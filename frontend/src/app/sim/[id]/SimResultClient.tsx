@@ -125,6 +125,14 @@ export default function SimResultClient() {
     );
   }
 
+  if (job.status === "cancelled") {
+    return (
+      <div className="card border-amber-500/20 p-6 text-center">
+        <p className="text-sm font-medium text-amber-400">Simulation Cancelled</p>
+      </div>
+    );
+  }
+
   if (job.status === "failed") {
     return (
       <div className="card border-red-500/20 p-6">
@@ -146,6 +154,8 @@ export default function SimResultClient() {
         progressStage={job.progress_stage}
         progressDetail={job.progress_detail}
         stagesCompleted={job.stages_completed}
+        jobId={id}
+        onCancelled={() => setJob({ ...job, status: "cancelled" })}
       />
     );
   }
@@ -224,7 +234,18 @@ export default function SimResultClient() {
       <div className="flex items-center justify-center gap-3 text-xs text-muted pb-4">
         {typeof r.simc_version === "string" && (
           <>
-            <span>{r.simc_version as string}</span>
+            {typeof r.simc_git_revision === "string" && r.simc_git_revision ? (
+              <a
+                href={`https://github.com/simulationcraft/simc/commit/${r.simc_git_revision}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white transition-colors"
+              >
+                {r.simc_version as string}
+              </a>
+            ) : (
+              <span>{r.simc_version as string}</span>
+            )}
             <span className="w-px h-3 bg-border" />
           </>
         )}

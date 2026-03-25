@@ -9,6 +9,10 @@ on:
       os:
         required: true
         type: string
+      version:
+        required: false
+        type: string
+        default: ''
     secrets:
       CSC_LINK:
         required: false
@@ -117,6 +121,18 @@ jobs:
       - name: Compact game data
         shell: bash
         run: node backend/scripts/compact-data.js backend/resources/data-full backend/resources/data
+
+      # -- Version --
+      - name: Set version
+        if: inputs.version != ''
+        shell: bash
+        run: |
+          cd desktop
+          node -e "
+            const pkg = require('./package.json');
+            pkg.version = '${{ inputs.version }}';
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
 
       # -- Frontend --
       - name: Install frontend dependencies

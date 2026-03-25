@@ -157,6 +157,7 @@ function setupAutoUpdater() {
     const { autoUpdater } = require("electron-updater");
     autoUpdater.autoDownload = false;
     autoUpdater.disableDifferentialDownload = true;
+    autoUpdater.allowPrerelease = app.getVersion().includes("-dev.");
 
     let availableUpdate = null;
 

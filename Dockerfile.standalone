@@ -25,7 +25,7 @@ RUN cargo build --release -p simhammer-server
 FROM node:20-alpine
 
 RUN apk add --no-cache \
-    ca-certificates curl jq bash libcurl libstdc++ gcompat \
+    ca-certificates curl jq bash libcurl libstdc++ gcompat coreutils \
     && rm -rf /var/cache/apk/*
 
 WORKDIR /app

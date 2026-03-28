@@ -327,6 +327,7 @@ function ExpertToggle({
 export default function SimSharedConfig() {
   const pathname = usePathname();
   const { simcInput, setSimcInput } = useSimContext();
+  const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
 
   const showConfig =
     pathname === '/quick-sim' ||
@@ -336,7 +337,6 @@ export default function SimSharedConfig() {
   if (!showConfig) return null;
 
   const detectedInfo = parseCharacterInfo(simcInput);
-  const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
 
   return (
     <div className="mb-6 space-y-4">

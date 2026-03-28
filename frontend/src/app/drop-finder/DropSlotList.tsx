@@ -49,10 +49,7 @@ export default function DropSlotList({
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
   const totalItems = Object.values(drops).reduce((n, items) => n + items.length, 0);
 
-  const allItems = useMemo(
-    () => Object.values(drops).flat(),
-    [drops],
-  );
+  const allItems = useMemo(() => Object.values(drops).flat(), [drops]);
 
   const instanceSorted = useMemo(() => {
     const groups = new Map<string, DropItem[]>();
@@ -72,7 +69,7 @@ export default function DropSlotList({
         const bi = SLOT_ORDER.indexOf(b);
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       }),
-    [drops],
+    [drops]
   );
 
   return (
@@ -86,7 +83,12 @@ export default function DropSlotList({
         </p>
         <div className="flex items-center gap-3">
           <div className="flex gap-1">
-            {([['instance', 'By Instance'], ['slot', 'By Slot']] as const).map(([mode, label]) => (
+            {(
+              [
+                ['instance', 'By Instance'],
+                ['slot', 'By Slot'],
+              ] as const
+            ).map(([mode, label]) => (
               <button
                 key={mode}
                 onClick={() => setGroupMode(mode)}
@@ -115,32 +117,30 @@ export default function DropSlotList({
         </div>
       </div>
 
-      {(groupMode === 'instance' ? instanceSorted : slotSorted).map(
-        ([groupLabel, items]) => (
-          <div key={groupLabel} className="card p-4">
-            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
-              {groupLabel}
-              <span className="ml-1.5 font-normal normal-case tracking-normal text-gray-600">
-                ({items.length})
-              </span>
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {items.map((item) => (
-                <DropItemCard
-                  key={item.item_id}
-                  item={item}
-                  isSelected={selected.has(item.item_id)}
-                  onToggle={() => onToggle(item.item_id)}
-                  difficulty={difficulty}
-                  dungeonDiff={dungeonDiff}
-                  upgradeLevel={upgradeLevel}
-                  upgradeTracks={upgradeTracks}
-                />
-              ))}
-            </div>
+      {(groupMode === 'instance' ? instanceSorted : slotSorted).map(([groupLabel, items]) => (
+        <div key={groupLabel} className="card p-4">
+          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
+            {groupLabel}
+            <span className="ml-1.5 font-normal normal-case tracking-normal text-gray-600">
+              ({items.length})
+            </span>
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {items.map((item) => (
+              <DropItemCard
+                key={item.item_id}
+                item={item}
+                isSelected={selected.has(item.item_id)}
+                onToggle={() => onToggle(item.item_id)}
+                difficulty={difficulty}
+                dungeonDiff={dungeonDiff}
+                upgradeLevel={upgradeLevel}
+                upgradeTracks={upgradeTracks}
+              />
+            ))}
           </div>
-        ),
-      )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -201,11 +201,11 @@ function DropItemCard({
         >
           {item.name}
         </a>
-        {item.encounter && (
-          <span className="text-[10px] text-zinc-500">{item.encounter}</span>
-        )}
+        {item.encounter && <span className="text-[10px] text-zinc-500">{item.encounter}</span>}
       </div>
-      <span className={`shrink-0 text-[11px] tabular-nums text-gray-600 ${isOffSpec ? 'opacity-60' : ''}`}>
+      <span
+        className={`shrink-0 text-[11px] tabular-nums text-gray-600 ${isOffSpec ? 'opacity-60' : ''}`}
+      >
         {resolved.ilvl}
       </span>
     </button>

@@ -69,6 +69,35 @@ fn make_item_uid(item: &Value) -> String {
     format!("{}:{}:{}:{}", item_id, bonus_key, origin, slot)
 }
 
+/// Build a slot-agnostic identity key used to mirror selections across paired slots.
+/// Format: "item_id:sorted_bonus_ids:origin"
+fn make_item_identity(item: &Value) -> String {
+    let item_id = item.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
+    let mut bonus_ids: Vec<u64> = item
+        .get("bonus_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|b| b.as_u64()).collect())
+        .unwrap_or_default();
+    bonus_ids.sort();
+    let bonus_key = bonus_ids
+        .iter()
+        .map(|b| b.to_string())
+        .collect::<Vec<_>>()
+        .join(":");
+    let origin = item
+        .get("origin")
+        .and_then(|v| v.as_str())
+        .unwrap_or("bags");
+    format!("{}:{}:{}", item_id, bonus_key, origin)
+}
+
+/// Convert a UID like "item:bonuses:origin:slot" into "item:bonuses:origin".
+fn uid_identity(uid: &str) -> String {
+    uid.rsplit_once(':')
+        .map(|(prefix, _)| prefix.to_string())
+        .unwrap_or_else(|| uid.to_string())
+}
+
 /// Generate a simc input string with full-set profilesets for Top Gear.
 ///
 /// Returns (simc_input_string, combination_count, combo_metadata).
@@ -141,7 +170,7 @@ pub fn generate_top_gear_input_with_talents(
 
     // Filter invalid combos and build gear sets
     let mut valid_combos: Vec<HashMap<String, Value>> = Vec::new();
-    eprintln!("[catalyst] charges={:?}, varying_slots={:?}", catalyst_charges, varying_slots);
+    let mut seen_combo_keys: HashSet<String> = HashSet::new();
 
     for combo_indices in &all_combos {
         // Build full gear set: start with equipped, override varying slots
@@ -166,6 +195,12 @@ pub fn generate_top_gear_input_with_talents(
         for (i, slot) in varying_slots.iter().enumerate() {
             let item = &option_lists[i][combo_indices[i]];
             gear_set.insert(slot.clone(), item.clone());
+        }
+
+        // For non-Fury specs, a 2H main hand forces an empty off hand.
+        // Normalize here so count and generated combos align.
+        if main_hand_is_two_hand(&gear_set, &spec) {
+            gear_set.remove("off_hand");
         }
 
         // Validate unique-equipped constraints
@@ -201,6 +236,11 @@ pub fn generate_top_gear_input_with_talents(
                 .unwrap_or(true)
         });
         if is_baseline {
+            continue;
+        }
+
+        let combo_key = gear_set_identity_key(&gear_set);
+        if !seen_combo_keys.insert(combo_key) {
             continue;
         }
 
@@ -460,6 +500,22 @@ pub fn generate_top_gear_input_with_talents(
                         item["talent_spec"] = json!(talent_spec);
                     }
                 }
+            }
+
+            // If a two-hander is selected in main hand, off_hand is intentionally empty.
+            // Emit a marker so the frontend can clear the equipped off-hand in the best-gear view.
+            if !gear_set.contains_key("off_hand") {
+                combo_items.push(json!({
+                    "slot": "off_hand",
+                    "item_id": 0,
+                    "ilevel": 0,
+                    "name": "",
+                    "bonus_ids": [],
+                    "enchant_id": 0,
+                    "gem_id": 0,
+                    "is_kept": false,
+                    "origin": "system",
+                }));
             }
 
             combo_metadata.insert(combo_name, combo_items);
@@ -981,12 +1037,28 @@ fn build_slot_candidates(
             None => continue,
         };
 
-        let selected_uids = selected_items.get(&slot).cloned().unwrap_or_default();
+        let selected_uids: HashSet<String> = selected_items
+            .get(&slot)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+
+        // Mirror selections from paired slots (rings/trinkets) using slot-agnostic identity.
+        // This ensures selecting a trinket/ring produces variants for both paired slots.
+        let mut selected_identities: HashSet<String> =
+            selected_uids.iter().map(|uid| uid_identity(uid)).collect();
+        if let Some(paired) = class_data::paired_slot(&slot) {
+            if let Some(paired_uids) = selected_items.get(paired) {
+                selected_identities.extend(paired_uids.iter().map(|uid| uid_identity(uid)));
+            }
+        }
 
         let mut candidates: Vec<Value> = Vec::new();
         for item in slot_items {
             let uid = make_item_uid(item);
-            if selected_uids.contains(&uid) {
+            let identity = make_item_identity(item);
+            if selected_uids.contains(&uid) || selected_identities.contains(&identity) {
                 candidates.push(item.clone());
             }
         }
@@ -1095,6 +1167,7 @@ fn count_valid_combos(
     }
 
     let mut count = 0usize;
+    let mut seen_combo_keys: HashSet<String> = HashSet::new();
     for combo_indices in &all_combos {
         let mut gear_set: HashMap<String, Value> = HashMap::new();
         for slot in GEAR_SLOTS {
@@ -1115,6 +1188,11 @@ fn count_valid_combos(
         for (i, slot) in varying_slots.iter().enumerate() {
             let item = &option_lists[i][combo_indices[i]];
             gear_set.insert(slot.clone(), item.clone());
+        }
+
+        // For non-Fury specs, a 2H main hand forces an empty off hand.
+        if main_hand_is_two_hand(&gear_set, spec) {
+            gear_set.remove("off_hand");
         }
 
         if !validate_unique_equipped(&gear_set) {
@@ -1143,6 +1221,11 @@ fn count_valid_combos(
             continue;
         }
 
+        let combo_key = gear_set_identity_key(&gear_set);
+        if !seen_combo_keys.insert(combo_key) {
+            continue;
+        }
+
         count += 1;
     }
 
@@ -1154,6 +1237,54 @@ fn count_valid_combos(
     }
 
     Ok(count)
+}
+
+fn gear_set_identity_key(gear_set: &HashMap<String, Value>) -> String {
+    GEAR_SLOTS
+        .iter()
+        .map(|slot| {
+            if let Some(item) = gear_set.get(*slot) {
+                let item_id = item.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                let mut bonus_ids: Vec<u64> = item
+                    .get("bonus_ids")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| arr.iter().filter_map(|b| b.as_u64()).collect())
+                    .unwrap_or_default();
+                bonus_ids.sort();
+                let bonus_key = bonus_ids
+                    .iter()
+                    .map(|b| b.to_string())
+                    .collect::<Vec<_>>()
+                    .join(":");
+                format!("{}={}:{}", slot, item_id, bonus_key)
+            } else {
+                format!("{}=none", slot)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+fn main_hand_is_two_hand(gear_set: &HashMap<String, Value>, spec: &str) -> bool {
+    if spec == "fury" {
+        return false;
+    }
+    let Some(mh) = gear_set.get("main_hand") else {
+        return false;
+    };
+    let mh_item_id = mh.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
+    if mh_item_id == 0 {
+        return false;
+    }
+    let mh_bonus_ids: Vec<u64> = mh
+        .get("bonus_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|b| b.as_u64()).collect())
+        .unwrap_or_default();
+    let inv_type = game_data::get_item_info(mh_item_id, Some(&mh_bonus_ids))
+        .map(|info| info.inventory_type)
+        .unwrap_or(0);
+    inv_type == 17
 }
 
 fn validate_unique_equipped(gear_set: &HashMap<String, Value>) -> bool {

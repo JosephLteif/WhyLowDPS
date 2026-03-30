@@ -4,18 +4,17 @@ import { useMemo, useState } from 'react';
 import DpsHeroCard from './DpsHeroCard';
 import GearOverview from './GearOverview';
 import type { GearItem } from './GearOverview';
+import { SLOT_LABELS, specDisplayName } from '../lib/types';
+import type { EnchantInfo, GemInfo, ItemInfo, ItemQuery } from '../lib/useItemInfo';
 import {
-  useItemInfo,
-  useEnchantInfo,
-  useGemInfo,
-  getIconUrl,
-  getWowheadUrl,
-  getWowheadData,
-  QUALITY_COLORS,
+    getIconUrl,
+    getWowheadData,
+    getWowheadUrl,
+    QUALITY_COLORS,
+    useEnchantInfo,
+    useGemInfo,
+    useItemInfo,
 } from '../lib/useItemInfo';
-import { specDisplayName } from '../lib/types';
-import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
-import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 interface ResultItem {
@@ -122,6 +121,10 @@ export default function TopGearResults({
     }
     if (bestResult && bestResult.delta > 0) {
       for (const it of bestResult.items) {
+        if (!it.is_kept && it.slot === 'off_hand' && it.item_id === 0) {
+          delete gearSet.off_hand;
+          continue;
+        }
         if (!it.is_kept && it.item_id > 0) {
           gearSet[it.slot] = { ...it };
         }
@@ -393,6 +396,19 @@ function ResultRow({
     </span>
   ) : null;
 
+  const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+  const changedSlots = new Set(changedItems.map((it) => it.slot));
+
+  const showBothRings = changedSlots.has('finger1') || changedSlots.has('finger2');
+  const showBothTrinkets = changedSlots.has('trinket1') || changedSlots.has('trinket2');
+
+  const displayItems = result.items.filter((it) => {
+    if (!it.is_kept) return it.item_id > 0;
+    if (showBothRings && (it.slot === 'finger1' || it.slot === 'finger2')) return true;
+    if (showBothTrinkets && (it.slot === 'trinket1' || it.slot === 'trinket2')) return true;
+    return false;
+  });
+
   return (
     <div
       className={`relative overflow-hidden rounded-lg ${
@@ -412,7 +428,6 @@ function ResultRow({
           )}
 
           {(() => {
-            const changedItems = result.items.filter((it) => !it.is_kept);
             const hasChangedItems = changedItems.length > 0;
 
             if (isEquipped) {
@@ -431,7 +446,7 @@ function ResultRow({
 
             return (
               <div className="flex min-w-0 flex-wrap items-center gap-1">
-                {changedItems.map((it, i) => (
+                {displayItems.map((it, i) => (
                   <ItemTag
                     key={i}
                     item={it}

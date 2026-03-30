@@ -57,6 +57,8 @@ static ITEM_CURVES: OnceCell<HashMap<u64, Vec<(u64, u64)>>> = OnceCell::new();
 static CURRENT_SEASON_ID: OnceCell<u64> = OnceCell::new();
 /// Currency metadata: currency_id → (name, icon)
 static CURRENCY_INFO: OnceCell<HashMap<u64, (String, String)>> = OnceCell::new();
+/// Item limit categories: bonus_id → (category_id, max_quantity)
+static ITEM_LIMIT_CATS: OnceCell<HashMap<u64, (u64, u64)>> = OnceCell::new();
 static SEASON_CONFIG: OnceCell<Value> = OnceCell::new();
 static TALENT_TREES: OnceCell<HashMap<u64, Value>> = OnceCell::new();
 
@@ -328,6 +330,39 @@ pub fn load(data_dir: &Path) {
             .unwrap_or("unknown");
         println!("Loaded season config: {}", name);
         let _ = SEASON_CONFIG.set(cfg);
+    }
+
+    // item-limit-categories.json — build bonus_id → (category_id, max_quantity) lookup
+    let limit_cats_path = data_dir.join("item-limit-categories.json");
+    if limit_cats_path.exists() {
+        let raw: HashMap<String, Value> = serde_json::from_reader(std::io::BufReader::new(
+            fs::File::open(&limit_cats_path).unwrap(),
+        ))
+        .unwrap_or_default();
+        let cats: HashMap<u64, u64> = raw
+            .into_iter()
+            .filter_map(|(k, v)| {
+                let id = k.parse::<u64>().ok()?;
+                let qty = v.get("quantity")?.as_u64()?;
+                Some((id, qty))
+            })
+            .collect();
+        // Map each bonus that has item_limit_category → (category_id, max_quantity)
+        let mut lookup: HashMap<u64, (u64, u64)> = HashMap::new();
+        if let Some(bonuses) = BONUSES.get() {
+            for (bid, bonus) in bonuses {
+                if let Some(cat_id) = bonus
+                    .get("item_limit_category")
+                    .and_then(|c| c.as_u64())
+                {
+                    if let Some(&qty) = cats.get(&cat_id) {
+                        lookup.insert(*bid, (cat_id, qty));
+                    }
+                }
+            }
+        }
+        println!("Loaded {} item limit category mappings", lookup.len());
+        let _ = ITEM_LIMIT_CATS.set(lookup);
     }
 
     // talents.json
@@ -691,6 +726,22 @@ pub(crate) fn resolve_bonuses(bonus_ids: &[u64]) -> BonusResolved {
 /// Get the raw JSON entry for an item from the DB.
 pub(crate) fn get_raw_item(item_id: u64) -> Option<&'static Value> {
     items().get(&item_id)
+}
+
+/// For a set of bonus IDs, return the item limit categories they belong to.
+/// Returns a map of category_id → max_quantity for each matching category.
+pub fn get_item_limit_categories(bonus_ids: &[u64]) -> HashMap<u64, u64> {
+    let cats = match ITEM_LIMIT_CATS.get() {
+        Some(c) => c,
+        None => return HashMap::new(),
+    };
+    let mut result: HashMap<u64, u64> = HashMap::new();
+    for bid in bonus_ids {
+        if let Some(&(cat_id, qty)) = cats.get(bid) {
+            result.insert(cat_id, qty);
+        }
+    }
+    result
 }
 
 /// Get inventory type for an item (e.g. 1=head, 7=legs, 13=one-hand, 17=two-hand).

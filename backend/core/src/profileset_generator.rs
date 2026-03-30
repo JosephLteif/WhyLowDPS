@@ -237,6 +237,11 @@ pub fn generate_top_gear_input_with_talents(
             }
         }
 
+        // Item limit categories (e.g. max 2 embellished items)
+        if !validate_item_limits(&gear_set) {
+            continue;
+        }
+
         // Check if this is identical to baseline (all equipped)
         let is_baseline = GEAR_SLOTS.iter().all(|slot| {
             gear_set
@@ -1218,6 +1223,9 @@ fn count_valid_combos(
                 continue;
             }
         }
+        if !validate_item_limits(&gear_set) {
+            continue;
+        }
 
         let is_baseline = GEAR_SLOTS.iter().all(|slot| {
             gear_set
@@ -1297,6 +1305,7 @@ fn main_hand_is_two_hand(gear_set: &HashMap<String, Value>, spec: &str) -> bool 
 }
 
 fn validate_unique_equipped(gear_set: &HashMap<String, Value>) -> bool {
+    // Check paired slots (rings, trinkets) for same item_id
     for (slot1, slot2) in UNIQUE_SLOT_PAIRS {
         let item1 = gear_set.get(*slot1);
         let item2 = gear_set.get(*slot2);
@@ -1304,6 +1313,33 @@ fn validate_unique_equipped(gear_set: &HashMap<String, Value>) -> bool {
             let id1 = i1.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
             let id2 = i2.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
             if id1 != 0 && id2 != 0 && id1 == id2 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Validate item limit categories (e.g. max 2 embellished items).
+fn validate_item_limits(gear_set: &HashMap<String, Value>) -> bool {
+    let mut category_counts: HashMap<u64, u64> = HashMap::new();
+    let mut category_limits: HashMap<u64, u64> = HashMap::new();
+
+    for item in gear_set.values() {
+        let bonus_ids: Vec<u64> = item
+            .get("bonus_ids")
+            .and_then(|v| v.as_array())
+            .map(|arr| arr.iter().filter_map(|b| b.as_u64()).collect())
+            .unwrap_or_default();
+        for (cat_id, max_qty) in game_data::get_item_limit_categories(&bonus_ids) {
+            *category_counts.entry(cat_id).or_insert(0) += 1;
+            category_limits.insert(cat_id, max_qty);
+        }
+    }
+
+    for (cat_id, count) in &category_counts {
+        if let Some(&limit) = category_limits.get(cat_id) {
+            if *count > limit {
                 return false;
             }
         }

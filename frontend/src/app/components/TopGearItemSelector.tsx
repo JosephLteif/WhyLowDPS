@@ -227,7 +227,11 @@ export default function TopGearItemSelector({
   );
 
   const handleAddItem = useCallback(
-    async (item: any, difficulty: string, overrides?: { bonus_ids: number[]; ilvl: number; track_name: string; level: number }) => {
+    async (
+      item: any,
+      difficulty: string,
+      overrides?: { bonus_ids: number[]; ilvl: number; track_name: string; level: number }
+    ) => {
       // 1. Determine slot
       const type = item.inventory_type;
       let slots = ['head'];
@@ -272,7 +276,7 @@ export default function TopGearItemSelector({
       // This ensures items have the correct stat curves for their item level in simulations.
       const equippedItem = Object.values(resolved.slots).find((s) => s.equipped)?.equipped;
       const globalBonusIds = equippedItem?.bonus_ids.filter((b) => b >= 7000 && b <= 11000) || [];
-      
+
       // If we're adding a modern item (expansion 11 or 12), ensure it has expansion bonuses.
       if ((item.expansion === 11 || item.expansion === 12) && globalBonusIds.length > 0) {
         globalBonusIds.forEach((gb) => {
@@ -280,7 +284,7 @@ export default function TopGearItemSelector({
         });
       } else if (item.expansion === 12 && !bonusIds.some((b) => b >= 8177 && b <= 8182)) {
         // Fallback for Midnight expansion if no global bonuses were found
-        bonusIds.push(8177); 
+        bonusIds.push(8177);
       }
 
       // 3. Construct UID
@@ -301,7 +305,14 @@ export default function TopGearItemSelector({
         name: item.name,
         icon: item.icon,
         quality: quality,
-        quality_color: quality === 5 ? '#ff8000' : quality === 4 ? '#a335ee' : quality === 3 ? '#0070dd' : '#1eff00',
+        quality_color:
+          quality === 5
+            ? '#ff8000'
+            : quality === 4
+              ? '#a335ee'
+              : quality === 3
+                ? '#0070dd'
+                : '#1eff00',
         tag: 'Bags',
         upgrade: upgradeStr,
         sockets: 0,
@@ -325,7 +336,10 @@ export default function TopGearItemSelector({
           if (!exists && !targetSlot.alternatives.find((a) => a.uid === uid)) {
             // For secondary slots, we need a unique UID if we want it in both
             const slotUid = `${item.item_id}:${sortedBonuses.join(':')}:bags:${s}`;
-            targetSlot.alternatives = [...targetSlot.alternatives, { ...newItem, uid: slotUid, slot: s }];
+            targetSlot.alternatives = [
+              ...targetSlot.alternatives,
+              { ...newItem, uid: slotUid, slot: s },
+            ];
           }
         }
       });
@@ -503,8 +517,10 @@ export default function TopGearItemSelector({
         : 'bg-surface-2 text-muted';
 
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);
-  const allVaultSelected = vaultUids.length > 0 && vaultUids.every((c) => selectedUids[c.slot]?.has(c.uid));
-  const allCatalystSelected = catalystUids.length > 0 && catalystUids.every((c) => selectedUids[c.slot]?.has(c.uid));
+  const allVaultSelected =
+    vaultUids.length > 0 && vaultUids.every((c) => selectedUids[c.slot]?.has(c.uid));
+  const allCatalystSelected =
+    catalystUids.length > 0 && catalystUids.every((c) => selectedUids[c.slot]?.has(c.uid));
 
   const quickSelectBar = (
     <div className="flex items-center gap-1.5">
@@ -538,7 +554,7 @@ export default function TopGearItemSelector({
         <button
           type="button"
           onClick={deselectAll}
-          className="rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 hover:bg-white/[0.04] hover:text-gray-300 transition-colors"
+          className="rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-white/[0.04] hover:text-gray-300"
         >
           Clear
         </button>
@@ -754,9 +770,7 @@ function UpgradeButton({
               Convert to Catalyst
             </button>
           )}
-          {onCatalystConvert && item.upgrade && (
-            <div className="my-1 border-t border-border/50" />
-          )}
+          {onCatalystConvert && item.upgrade && <div className="my-1 border-t border-border/50" />}
           {item.upgrade && (
             <>
               {loadingUpgrades ? (

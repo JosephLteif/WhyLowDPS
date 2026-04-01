@@ -257,7 +257,11 @@ export default function TopGearResults({
         <>
           <GearOverview
             gear={bestGearSet}
-            title={selectedResultName && selectedResultName !== bestResult?.name ? 'Selected Gear' : 'Best Gear'}
+            title={
+              selectedResultName && selectedResultName !== bestResult?.name
+                ? 'Selected Gear'
+                : 'Best Gear'
+            }
             characterRenderUrl={characterRenderUrl}
             upgradeSlots={upgradeSlots}
             downgradeSlots={downgradeSlots}
@@ -281,10 +285,11 @@ export default function TopGearResults({
                   <button
                     key={mode}
                     onClick={() => setGroupMode(mode)}
-                    className={`rounded border px-2.5 py-1 text-[13px] font-medium transition-all ${groupMode === mode
-                      ? 'border-white bg-white text-black'
-                      : 'border-border bg-surface-2 text-gray-400 hover:border-gray-500 hover:text-white'
-                      }`}
+                    className={`rounded border px-2.5 py-1 text-[13px] font-medium transition-all ${
+                      groupMode === mode
+                        ? 'border-white bg-white text-black'
+                        : 'border-border bg-surface-2 text-gray-400 hover:border-gray-500 hover:text-white'
+                    }`}
                   >
                     {label}
                   </button>
@@ -446,8 +451,15 @@ function ResultRow({
   return (
     <div
       onClick={onSelect}
-      className={`relative overflow-hidden rounded-lg cursor-pointer transition-colors hover:bg-white/[0.04] ${isSelected && !isBest ? 'ring-1 ring-emerald-500/50 bg-emerald-500/[0.04]' : isBest ? `ring-1 ring-gold/30 ${isSelected ? 'bg-gold/[0.05]' : 'bg-transparent'}` : isEquipped ? 'ring-1 ring-white/5' : ''
-        }`}
+      className={`relative cursor-pointer overflow-hidden rounded-lg transition-colors hover:bg-white/[0.04] ${
+        isSelected && !isBest
+          ? 'bg-emerald-500/[0.04] ring-1 ring-emerald-500/50'
+          : isBest
+            ? `ring-1 ring-gold/30 ${isSelected ? 'bg-gold/[0.05]' : 'bg-transparent'}`
+            : isEquipped
+              ? 'ring-1 ring-white/5'
+              : ''
+      }`}
     >
       <div
         className="absolute inset-y-0 left-0 bg-white/[0.02]"
@@ -502,12 +514,13 @@ function ResultRow({
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <span
-            className={`flex items-center gap-1.5 font-mono text-[15px] tabular-nums ${result.delta > 0
-              ? 'text-emerald-400'
-              : result.delta < 0
-                ? 'text-red-400'
-                : 'text-muted'
-              }`}
+            className={`flex items-center gap-1.5 font-mono text-[15px] tabular-nums ${
+              result.delta > 0
+                ? 'text-emerald-400'
+                : result.delta < 0
+                  ? 'text-red-400'
+                  : 'text-muted'
+            }`}
           >
             <span>
               {result.delta > 0
@@ -555,8 +568,9 @@ function ItemTag({
 
   return (
     <div
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${kept ? 'opacity-40' : 'bg-white/[0.04]'
-        }`}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
+        kept ? 'opacity-40' : 'bg-white/[0.04]'
+      }`}
     >
       <div className="h-4 w-4 shrink-0 overflow-hidden rounded-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -595,7 +609,10 @@ function ItemTag({
         </span>
       ) : null}
       {enchant?.name && (
-        <span className="max-w-[70px] truncate text-[11px] text-emerald-400/70" title={enchant.name}>
+        <span
+          className="max-w-[70px] truncate text-[11px] text-emerald-400/70"
+          title={enchant.name}
+        >
           {enchant.name}
         </span>
       )}

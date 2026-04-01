@@ -6,7 +6,7 @@
 
 @layer base {
   body {
-    @apply bg-bg text-gray-200 antialiased leading-relaxed;
+    @apply bg-bg leading-relaxed text-gray-200 antialiased;
   }
   ::selection {
     @apply bg-gold/25 text-white;

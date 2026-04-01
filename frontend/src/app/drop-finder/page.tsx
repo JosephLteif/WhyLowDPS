@@ -248,10 +248,7 @@ export default function DropFinderPage() {
     return [];
   }, [seasonConfig, isRaid, activeDungeonCat]);
 
-  const dungeonInstances = useMemo(
-    () => activeDungeonCat?.instances ?? [],
-    [activeDungeonCat]
-  );
+  const dungeonInstances = useMemo(() => activeDungeonCat?.instances ?? [], [activeDungeonCat]);
   const activeInstances = isRaid ? raids : dungeonInstances;
   const hasImages = activeInstances.some((i) => i.image_url);
 

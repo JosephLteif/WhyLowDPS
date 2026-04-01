@@ -571,48 +571,58 @@ fn generate_catalyst_alternatives(slots: &mut HashMap<String, SlotResolution>, w
             }
         }
 
-        let mut new_catalyst_items: Vec<ResolvedItem> = Vec::new();
-
         let current_season = item_db::current_season_id();
 
+        // Find the best catalyst candidate: highest ilevel, tiebreak by upgrade track rank
+        let mut best: Option<ResolvedItem> = None;
+
         for source in &sources {
-            // Skip items that are already catalyst variants
             if source.is_catalyst {
                 continue;
             }
-            // Only current season items
             if source.season_id != current_season {
                 continue;
             }
-            // Only veteran track or higher
             if !is_minimum_veteran(&source.upgrade) {
                 continue;
             }
-            // Skip if source is already the catalyst target item
             if source.item_id == tier_info.item_id {
                 continue;
             }
 
             let catalyst_item = build_catalyst_item(source, tier_info, slot_key);
 
-            // Check if this catalyst item already exists at same or higher ilevel
+            // Skip if an existing (non-catalyst) item already has this tier item at same+ ilevel
             if let Some(&existing_ilevel) = existing.get(&catalyst_item.item_id) {
                 if existing_ilevel >= catalyst_item.ilevel {
                     continue;
                 }
             }
 
-            // Track it so we don't create duplicates within this pass
-            let entry = existing.entry(catalyst_item.item_id).or_insert(0);
-            if catalyst_item.ilevel > *entry {
-                *entry = catalyst_item.ilevel;
-            }
+            let dominated = if let Some(ref current_best) = best {
+                if catalyst_item.ilevel > current_best.ilevel {
+                    false
+                } else if catalyst_item.ilevel < current_best.ilevel {
+                    true
+                } else {
+                    // Same ilevel — compare upgrade track rank (higher = better)
+                    let new_rank = item_db::track_rank(&catalyst_item.upgrade).unwrap_or(0);
+                    let cur_rank = item_db::track_rank(&current_best.upgrade).unwrap_or(0);
+                    new_rank <= cur_rank
+                }
+            } else {
+                false
+            };
 
-            new_catalyst_items.push(catalyst_item);
+            if !dominated {
+                best = Some(catalyst_item);
+            }
         }
 
-        if let Some(slot_res) = slots.get_mut(slot_key.as_str()) {
-            slot_res.alternatives.extend(new_catalyst_items);
+        if let Some(catalyst_item) = best {
+            if let Some(slot_res) = slots.get_mut(slot_key.as_str()) {
+                slot_res.alternatives.push(catalyst_item);
+            }
         }
     }
 }

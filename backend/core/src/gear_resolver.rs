@@ -11,7 +11,7 @@ use crate::types::class_data::{self, ARMOR_SLOTS, GEAR_SLOTS};
 use crate::types::*;
 
 /// Build a stable UID for deduplication: "item_id:sorted_bonus_ids:origin:raw_slot"
-fn make_uid(item: &RawParsedItem) -> String {
+fn make_uid(item: &RawParsedItem, slot: &str) -> String {
     let mut sorted = item.bonus_ids.clone();
     sorted.sort();
     let bonus_key = sorted
@@ -24,7 +24,7 @@ fn make_uid(item: &RawParsedItem) -> String {
         item.item_id,
         bonus_key,
         item.origin.as_str(),
-        item.raw_slot
+        slot
     )
 }
 
@@ -117,7 +117,7 @@ fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
     };
 
     ResolvedItem {
-        uid: make_uid(item),
+        uid: make_uid(item, slot),
         slot: slot.to_string(),
         item_id: item.item_id,
         ilevel,
@@ -204,6 +204,11 @@ fn resolve_gear_impl(
         .filter(|i| i.origin != ItemOrigin::Equipped)
         .collect();
 
+    let equipped_by_slot: HashMap<String, &RawParsedItem> = equipped_items
+        .iter()
+        .map(|i| (i.raw_slot.clone(), *i))
+        .collect();
+
     // Helper to get or create slot resolution
     fn get_slot<'a>(
         slots: &'a mut HashMap<String, SlotResolution>,
@@ -281,6 +286,17 @@ fn resolve_gear_impl(
         }
     }
 
+    // Pair 1 → Pair 2 crossover (Dual Rings, Dual Trinkets)
+    for &slot_name in &["finger1", "trinket1"] {
+        let other = if slot_name == "finger1" { "finger2" } else { "trinket2" };
+        if let Some(eq) = equipped_by_slot.get(slot_name) {
+            if eq.item_id > 0 {
+                let resolved = enrich(eq, other);
+                get_slot(&mut slots, other).alternatives.push(resolved);
+            }
+        }
+    }
+
     // Step 3: Place non-equipped items (bags + vault) in all eligible slots
     for item in &other_items {
         if item.item_id == 0 {
@@ -325,7 +341,7 @@ fn resolve_gear_impl(
             // Only apply armor exclusion to armor slots
             if armor_excluded && ARMOR_SLOTS.contains(&slot.as_str()) {
                 excluded.push(ExcludedItem {
-                    uid: make_uid(item),
+                    uid: make_uid(item, slot),
                     item_id: item.item_id,
                     name: item.name.clone(),
                     reason: "Wrong armor type".to_string(),
@@ -336,7 +352,7 @@ fn resolve_gear_impl(
             // Weapon type exclusion for weapon slots
             if weapon_excluded && matches!(slot.as_str(), "main_hand" | "off_hand") {
                 excluded.push(ExcludedItem {
-                    uid: make_uid(item),
+                    uid: make_uid(item, slot),
                     item_id: item.item_id,
                     name: item.name.clone(),
                     reason: "Wrong weapon type".to_string(),

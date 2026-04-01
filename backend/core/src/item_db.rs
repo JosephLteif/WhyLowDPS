@@ -1068,7 +1068,7 @@ pub fn apply_copy_enchants(
     items_by_slot: &HashMap<String, Vec<Value>>,
 ) -> HashMap<String, Vec<Value>> {
     let re = regex::Regex::new(r"enchant_id=\d+").unwrap();
-    let id_re = regex::Regex::new(r"(,id=\d+)").unwrap();
+    let id_re = regex::Regex::new(r"(id=\d+)").unwrap();
     let mut result = HashMap::new();
 
     for (slot, slot_items) in items_by_slot {

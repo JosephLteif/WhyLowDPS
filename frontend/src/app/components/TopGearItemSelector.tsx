@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL } from '../lib/api';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import AddItemModal from './AddItemModal';
 import GearItemRow from './GearItemRow';
 import { useSimContext } from './SimContext';
 
@@ -83,6 +84,8 @@ export default function TopGearItemSelector({
   const [loadingUpgrades, setLoadingUpgrades] = useState(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerVisible, setHeaderVisible] = useState(true);
+  const [isAddItemOpen, setAddItemOpen] = useState(false);
+  const [addItemSlot, setAddItemSlot] = useState<string | null>(null);
 
   useEffect(() => {
     const el = headerRef.current;
@@ -95,6 +98,11 @@ export default function TopGearItemSelector({
   }, []);
 
   useWowheadTooltips([resolved]);
+
+  const openAddItem = useCallback((slot?: string) => {
+    setAddItemSlot(slot || null);
+    setAddItemOpen(true);
+  }, []);
 
   const openUpgradeMenu = useCallback(
     async (item: ResolvedItem, key: string) => {
@@ -216,6 +224,129 @@ export default function TopGearItemSelector({
       setUpgradeMenuFor(null);
     },
     [resolved, upgradeOptions, onResolvedChange, onItemAdded, selectedUids, onSelectionChange]
+  );
+
+  const handleAddItem = useCallback(
+    async (item: any, difficulty: string, overrides?: { bonus_ids: number[]; ilvl: number; track_name: string; level: number }) => {
+      // 1. Determine slot
+      const type = item.inventory_type;
+      let slots = ['head'];
+      if (type === 1) slots = ['head'];
+      else if (type === 2) slots = ['neck'];
+      else if (type === 3) slots = ['shoulder'];
+      else if (type === 16) slots = ['back'];
+      else if (type === 5 || type === 20) slots = ['chest'];
+      else if (type === 9) slots = ['wrist'];
+      else if (type === 10) slots = ['hands'];
+      else if (type === 6) slots = ['waist'];
+      else if (type === 7) slots = ['legs'];
+      else if (type === 8) slots = ['feet'];
+      else if (type === 11) slots = ['finger1', 'finger2'];
+      else if (type === 12) slots = ['trinket1', 'trinket2'];
+      else if (type === 13 || type === 17 || type === 21) slots = ['main_hand'];
+      else if (type === 14 || type === 22 || type === 23) slots = ['off_hand'];
+
+      const slot = slots[0];
+
+      // 2. Resolve bonuses/ilvl
+      let bonusIds: number[] = [];
+      let ilvl = item.ilevel;
+      let quality = item.quality;
+      let upgradeStr = '';
+
+      if (overrides) {
+        bonusIds = [...overrides.bonus_ids];
+        ilvl = overrides.ilvl;
+        upgradeStr = `${overrides.track_name} ${overrides.level}`;
+      } else {
+        const diffInfo = item.difficulty_info?.[difficulty] || item.dungeon_info?.[difficulty];
+        bonusIds = diffInfo ? [diffInfo.bonus_id] : [];
+        ilvl = diffInfo?.ilvl || item.ilevel;
+        quality = diffInfo?.quality || item.quality;
+        if (diffInfo?.track) {
+          upgradeStr = `${diffInfo.track} ${diffInfo.level}/${diffInfo.max_level || 6}`;
+        }
+      }
+
+      // Add expansion global bonus IDs (e.g. Midnight Season 1 scaling) if available and missing.
+      // This ensures items have the correct stat curves for their item level in simulations.
+      const equippedItem = Object.values(resolved.slots).find((s) => s.equipped)?.equipped;
+      const globalBonusIds = equippedItem?.bonus_ids.filter((b) => b >= 7000 && b <= 11000) || [];
+      
+      // If we're adding a modern item (expansion 11 or 12), ensure it has expansion bonuses.
+      if ((item.expansion === 11 || item.expansion === 12) && globalBonusIds.length > 0) {
+        globalBonusIds.forEach((gb) => {
+          if (!bonusIds.includes(gb)) bonusIds.push(gb);
+        });
+      } else if (item.expansion === 12 && !bonusIds.some((b) => b >= 8177 && b <= 8182)) {
+        // Fallback for Midnight expansion if no global bonuses were found
+        bonusIds.push(8177); 
+      }
+
+      // 3. Construct UID
+      const sortedBonuses = [...bonusIds].sort((a, b) => a - b);
+      const uid = `${item.item_id}:${sortedBonuses.join(':')}:bags:${slot}`;
+
+      // 4. Construct ResolvedItem
+      const newItem: ResolvedItem = {
+        uid,
+        slot,
+        item_id: item.item_id,
+        ilevel: ilvl,
+        simc_string: `,id=${item.item_id}${ilvl > 0 ? `,ilevel=${ilvl}` : ''}${bonusIds.length > 0 ? `,bonus_id=${bonusIds.join('/')}` : ''},name=${item.name.replace(/ /g, '_')}`,
+        origin: 'bags',
+        bonus_ids: bonusIds,
+        enchant_id: 0,
+        gem_id: 0,
+        name: item.name,
+        icon: item.icon,
+        quality: quality,
+        quality_color: quality === 5 ? '#ff8000' : quality === 4 ? '#a335ee' : quality === 3 ? '#0070dd' : '#1eff00',
+        tag: 'Bags',
+        upgrade: upgradeStr,
+        sockets: 0,
+        enchant_name: '',
+        gem_name: '',
+        gem_icon: '',
+      };
+
+      // 5. Update resolved state
+      const nextResolved = { ...resolved };
+      slots.forEach((s) => {
+        const targetSlot = nextResolved.slots[s];
+        if (targetSlot) {
+          // Check if already exists (match by item_id and bonus_ids)
+          const exists =
+            targetSlot.equipped &&
+            targetSlot.equipped.item_id === item.item_id &&
+            JSON.stringify([...targetSlot.equipped.bonus_ids].sort()) ===
+              JSON.stringify(bonusIds.sort());
+
+          if (!exists && !targetSlot.alternatives.find((a) => a.uid === uid)) {
+            // For secondary slots, we need a unique UID if we want it in both
+            const slotUid = `${item.item_id}:${sortedBonuses.join(':')}:bags:${s}`;
+            targetSlot.alternatives = [...targetSlot.alternatives, { ...newItem, uid: slotUid, slot: s }];
+          }
+        }
+      });
+
+      onResolvedChange(nextResolved);
+
+      // 6. Select it for all applicable slots
+      const nextSelected = { ...selectedUids };
+      slots.forEach((s) => {
+        const slotUid = `${item.item_id}:${sortedBonuses.join(':')}:bags:${s}`;
+        if (!nextSelected[s]) nextSelected[s] = new Set();
+        nextSelected[s].add(slotUid);
+      });
+      onSelectionChange(nextSelected);
+
+      // 7. Persist to SimC
+      onItemAdded(slot, newItem.simc_string, 'bags');
+
+      setAddItemOpen(false);
+    },
+    [resolved, selectedUids, onResolvedChange, onSelectionChange, onItemAdded]
   );
 
   function toggleItem(item: ResolvedItem, group: DisplayGroup) {
@@ -420,23 +551,81 @@ export default function TopGearItemSelector({
 
   return (
     <div className="space-y-4">
+      <AddItemModal
+        isOpen={isAddItemOpen}
+        onClose={() => setAddItemOpen(false)}
+        onAdd={handleAddItem}
+        className={resolved.character.class_name}
+        spec={resolved.character.spec}
+        preferredSlot={addItemSlot}
+      />
+
+      {/* Sticky Header */}
       {!headerVisible && (
-        <div className="fixed left-0 right-0 top-12 z-40 flex items-center justify-between border-b border-border/50 bg-surface/90 px-4 py-2 backdrop-blur-sm">
-          <p className="text-xs font-medium uppercase tracking-widest text-muted">Select Items</p>
+        <div className="fixed left-0 right-0 top-12 z-50 flex items-center justify-between border-b border-border/50 bg-surface/90 px-4 py-2 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted">Select Items</p>
+            <button
+              onClick={() => openAddItem()}
+              className="flex items-center gap-1.5 rounded-md bg-gold/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-gold transition-all hover:bg-gold/20"
+            >
+              <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  fillRule="evenodd"
+                  d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Add Item
+            </button>
+          </div>
           {quickSelectBar}
         </div>
       )}
+
+      {/* Main Header */}
       <div ref={headerRef} className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-widest text-muted">Select Items</p>
+        <div className="flex items-center gap-4">
+          <p className="text-xs font-medium uppercase tracking-widest text-muted">Select Items</p>
+          <button
+            onClick={() => openAddItem()}
+            className="flex items-center gap-1.5 rounded-md bg-gold/10 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gold transition-all hover:bg-gold/20"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path
+                fillRule="evenodd"
+                d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                clipRule="evenodd"
+              />
+            </svg>
+            Add Item
+          </button>
+        </div>
         {quickSelectBar}
       </div>
 
+      {/* Item Grid */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
         {visibleGroups.map(({ group, equipped, alternatives }) => (
           <div key={group.label} className="card space-y-1 p-3.5">
-            <p className="mb-2 text-[13px] font-semibold uppercase tracking-widest text-muted">
-              {group.label}
-            </p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
+                {group.label}
+              </h2>
+              <button
+                onClick={() => openAddItem(group.slots[0])}
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-white/5 text-muted transition-colors hover:bg-gold/10 hover:text-gold"
+                title={`Add ${group.label.toLowerCase()}`}
+              >
+                <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+            </div>
 
             {equipped.map((item, eqIdx) => (
               <GearItemRow

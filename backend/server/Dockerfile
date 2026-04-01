@@ -16,10 +16,10 @@ FROM node:20-slim AS fetcher
 RUN apt-get update && apt-get install -y --no-install-recommends curl jq ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /data/full
-RUN curl -sL -o metadata.json https://www.raidbots.com/static/data/live/metadata.json \
+RUN curl -sLf -o metadata.json https://www.raidbots.com/static/data/live/metadata.json \
     && for f in $(jq -r '.files[]' metadata.json); do \
          echo "Downloading $f"; \
-         curl -sL -o "$f" "https://www.raidbots.com/static/data/live/$f"; \
+         curl -sLf -o "$f" "https://www.raidbots.com/static/data/live/$f"; \
        done
 
 COPY scripts/compact-data.js /compact-data.js

@@ -61,13 +61,47 @@ const MANIFEST = {
 };
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Safely read and parse a JSON file with descriptive error reporting.
+ */
+function readJson(filePath) {
+  const filename = path.basename(filePath);
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`\n\n  ERROR: File "${filename}" does not exist at ${filePath}\n`);
+  }
+  const raw = fs.readFileSync(filePath, "utf8");
+  const trimmed = raw.trim();
+
+  if (trimmed.startsWith("<?xml") || trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html")) {
+    throw new Error(
+      `\n\n  ERROR: File "${filename}" is XML/HTML, not JSON.\n` +
+      `  It likely contains an error page from a failed download.\n` +
+      `  Snippet: ${trimmed.slice(0, 100).replace(/\n/g, " ")}...\n`
+    );
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (err) {
+    throw new Error(
+      `\n\n  ERROR: Failed to parse "${filename}" as JSON.\n` +
+      `  Error: ${err.message}\n` +
+      `  Snippet: ${trimmed.slice(0, 100).replace(/\n/g, " ")}...\n`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Implementation
 // ---------------------------------------------------------------------------
 
 // Fields needed for item lookups (get_item_info, armor filtering, etc.)
 const ITEM_BASE_FIELDS = [
   "id", "name", "icon", "quality", "itemLevel",
-  "itemClass", "itemSubClass", "inventoryType",
+  "itemClass", "itemSubClass", "inventoryType", "expansion",
 ];
 
 // Additional fields needed for droppable items (droptimizer, spec filtering)
@@ -80,7 +114,7 @@ const ITEM_DROP_FIELDS = [...ITEM_BASE_FIELDS, "sources", "specs"];
  * - Older items without sources: keep only base fields for item lookups
  */
 function compactItems(inputPath, outputPath) {
-  const data = JSON.parse(fs.readFileSync(inputPath, "utf8"));
+  const data = readJson(inputPath);
 
   // Detect current expansion as the highest expansion number
   const currentExp = Math.max(...data.map(i => i.expansion || 0));
@@ -136,7 +170,7 @@ function downloadFile(url, dest) {
  * Compact instances.json, download instance tile images, and rewrite URLs to local paths.
  */
 async function compactInstances(inputPath, outputPath, inputDir, outputDir) {
-  const data = JSON.parse(fs.readFileSync(inputPath, "utf8"));
+  const data = readJson(inputPath);
 
   // Load instance and encounter image URLs from Blizzard API data (fetched at build time)
   let imageMap = new Map(); // id -> remote_url (instances + encounters)
@@ -145,7 +179,7 @@ async function compactInstances(inputPath, outputPath, inputDir, outputDir) {
   const instancesPath = path.join(inputDir, "blizzard-instances.json");
   if (fs.existsSync(instancesPath)) {
     try {
-      const instances = JSON.parse(fs.readFileSync(instancesPath, "utf8"));
+      const instances = readJson(instancesPath);
       for (const inst of [...(instances.dungeons || []), ...(instances.raids || [])]) {
         if (inst.id && inst.image_url) {
           imageMap.set(inst.id, inst.image_url);
@@ -164,7 +198,7 @@ async function compactInstances(inputPath, outputPath, inputDir, outputDir) {
   const seasonPath = path.join(inputDir, "blizzard-season.json");
   if (fs.existsSync(seasonPath)) {
     try {
-      const season = JSON.parse(fs.readFileSync(seasonPath, "utf8"));
+      const season = readJson(seasonPath);
       for (const d of season.mplus_rotation || []) {
         if (d.instance_id != null && d.image_url && !imageMap.has(d.instance_id)) {
           imageMap.set(d.instance_id, d.image_url);
@@ -242,8 +276,7 @@ async function compactFile(inputPath, outputPath, config, inputDir, outputDir) {
     return;
   }
 
-  const raw = fs.readFileSync(inputPath, "utf8");
-  const data = JSON.parse(raw);
+  const data = readJson(inputPath);
 
   if (config === null) {
     // Just minify
@@ -303,6 +336,7 @@ async function main() {
     const config = MANIFEST[filename] ?? null; // default: minify only
 
     const inSize = fs.statSync(inputPath).size;
+    process.stdout.write(`  Processing ${filename.padEnd(35)}... `);
     await compactFile(inputPath, outputPath, config, inputDir, outputDir);
     const outSize = fs.statSync(outputPath).size;
 
@@ -310,9 +344,7 @@ async function main() {
     totalOut += outSize;
 
     const pct = ((1 - outSize / inSize) * 100).toFixed(0);
-    console.log(
-      `  ${filename.padEnd(35)} ${fmt(inSize)} -> ${fmt(outSize)}  (-${pct}%)`
-    );
+    process.stdout.write(`${fmt(inSize)} -> ${fmt(outSize)}  (-${pct}%)\n`);
   }
 
   console.log(

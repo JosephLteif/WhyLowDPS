@@ -288,7 +288,11 @@ fn resolve_gear_impl(
 
     // Pair 1 → Pair 2 crossover (Dual Rings, Dual Trinkets)
     for &slot_name in &["finger1", "trinket1"] {
-        let other = if slot_name == "finger1" { "finger2" } else { "trinket2" };
+        let other = if slot_name == "finger1" {
+            "finger2"
+        } else {
+            "trinket2"
+        };
         if let Some(eq) = equipped_by_slot.get(slot_name) {
             if eq.item_id > 0 {
                 let resolved = enrich(eq, other);

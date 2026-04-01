@@ -351,10 +351,7 @@ pub fn load(data_dir: &Path) {
         let mut lookup: HashMap<u64, (u64, u64)> = HashMap::new();
         if let Some(bonuses) = BONUSES.get() {
             for (bid, bonus) in bonuses {
-                if let Some(cat_id) = bonus
-                    .get("item_limit_category")
-                    .and_then(|c| c.as_u64())
-                {
+                if let Some(cat_id) = bonus.get("item_limit_category").and_then(|c| c.as_u64()) {
                     if let Some(&qty) = cats.get(&cat_id) {
                         lookup.insert(*bid, (cat_id, qty));
                     }

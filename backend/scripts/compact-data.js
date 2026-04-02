@@ -58,6 +58,18 @@ const MANIFEST = {
 
   // Talent trees — keep as-is (keyed by specId)
   "talents.json": null,
+
+  // Catalyst item conversions — keep as-is
+  "item-conversions.json": null,
+
+  // Item limit categories (e.g. max 2 embellished) — keep as-is
+  "item-limit-categories.json": null,
+
+  // Item squish era mapping — keep as-is
+  "item-squish-era.json": null,
+
+  // Item curves for ilevel conversion — keep as-is
+  "item-curves.json": null,
 };
 
 // ---------------------------------------------------------------------------
@@ -243,7 +255,13 @@ async function compactFile(inputPath, outputPath, config, inputDir, outputDir) {
   }
 
   const raw = fs.readFileSync(inputPath, "utf8");
-  const data = JSON.parse(raw);
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    console.warn(`  SKIP ${path.basename(inputPath)} (not valid JSON)`);
+    return;
+  }
 
   if (config === null) {
     // Just minify
@@ -293,14 +311,17 @@ async function main() {
   let totalIn = 0;
   let totalOut = 0;
 
-  // Process all JSON files in the input directory.
-  // Files in MANIFEST get special compaction; everything else is just minified.
-  const allJsonFiles = fs.readdirSync(inputDir).filter(f => f.endsWith(".json"));
+  // Process only JSON files listed in the MANIFEST.
+  const manifestFiles = Object.keys(MANIFEST);
 
-  for (const filename of allJsonFiles) {
+  for (const filename of manifestFiles) {
     const inputPath = path.join(inputDir, filename);
+    if (!fs.existsSync(inputPath)) {
+      console.warn(`  SKIP ${filename} (not found)`);
+      continue;
+    }
     const outputPath = path.join(outputDir, filename);
-    const config = MANIFEST[filename] ?? null; // default: minify only
+    const config = MANIFEST[filename];
 
     const inSize = fs.statSync(inputPath).size;
     await compactFile(inputPath, outputPath, config, inputDir, outputDir);

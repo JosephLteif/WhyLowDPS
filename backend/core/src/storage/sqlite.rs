@@ -7,6 +7,7 @@ use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
 
 pub struct SqliteStorage {
     conn: Mutex<Connection>,
+    max_jobs: Mutex<usize>,
 }
 
 impl SqliteStorage {
@@ -29,9 +30,13 @@ impl SqliteStorage {
                 fight_style TEXT NOT NULL,
                 target_error REAL NOT NULL,
                 created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             );",
         )
-        .expect("Failed to create jobs table");
+        .expect("Failed to create tables");
 
         // Migrate: add columns if missing
         let _ = conn.execute_batch(
@@ -41,8 +46,20 @@ impl SqliteStorage {
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN raw_json TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN batch_id TEXT;");
 
+        let max_jobs = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'max_jobs'",
+                [],
+                |row| {
+                    let s: String = row.get(0)?;
+                    Ok(s.parse::<usize>().unwrap_or(*super::MAX_JOBS))
+                },
+            )
+            .unwrap_or(*super::MAX_JOBS);
+
         Self {
             conn: Mutex::new(conn),
+            max_jobs: Mutex::new(max_jobs),
         }
     }
 
@@ -102,8 +119,8 @@ impl JobStorage for SqliteStorage {
         conn.execute(
             "INSERT INTO jobs (id, status, sim_type, simc_input, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-             iterations, fight_style, target_error, created_at, batch_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+             iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![
                 job.id,
                 Self::status_to_str(&job.status),
@@ -121,14 +138,18 @@ impl JobStorage for SqliteStorage {
                 job.target_error,
                 job.created_at,
                 job.batch_id,
+                job.raw_json,
+                job.html_report,
+                job.text_output,
             ],
         )
         .expect("Failed to insert job");
 
         // Garbage collect oldest jobs beyond limit
+        let limit = *self.max_jobs.lock().unwrap();
         conn.execute(
             "DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY created_at DESC LIMIT ?1)",
-            params![*super::MAX_JOBS as u32],
+            params![limit as u32],
         ).ok();
     }
 
@@ -159,7 +180,8 @@ impl JobStorage for SqliteStorage {
             limit as u32
         };
         let mut stmt = conn.prepare(
-            "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id
+            "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id,
+             raw_json, html_report, text_output, combo_metadata_json
              FROM jobs ORDER BY created_at DESC LIMIT ?1"
         ).unwrap();
         let all: Vec<JobSummary> = stmt
@@ -168,6 +190,15 @@ impl JobStorage for SqliteStorage {
                 let result_json: Option<String> = row.get(7)?;
                 let simc_input: String = row.get::<_, String>(8).unwrap_or_default();
                 let s = extract_result_summary(&result_json, &simc_input);
+
+                // Estimate size from columns in bytes
+                let mut size_bytes = simc_input.len() as u64;
+                size_bytes += result_json.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+                size_bytes += row.get::<_, Option<String>>(10)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64; // raw_json
+                size_bytes += row.get::<_, Option<String>>(11)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64; // html_report
+                size_bytes += row.get::<_, Option<String>>(12)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64; // text_output
+                size_bytes += row.get::<_, Option<String>>(13)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64; // combo_metadata_json
+
                 Ok(JobSummary {
                     id: row.get(0)?,
                     status: Self::str_to_status(&status_str),
@@ -181,6 +212,9 @@ impl JobStorage for SqliteStorage {
                     realm: s.realm,
                     dps: s.dps,
                     batch_id: row.get(9).ok().flatten(),
+                    size_bytes,
+                    upgrades: s.upgrades,
+                    downgrades: s.downgrades,
                 })
             })
             .unwrap()
@@ -283,5 +317,58 @@ impl JobStorage for SqliteStorage {
             |row| row.get::<_, usize>(0),
         )
         .unwrap_or(0)
+    }
+
+    fn delete(&self, id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM jobs WHERE id = ?1", params![id])
+            .ok();
+    }
+
+    fn get_storage_size(&self) -> u64 {
+        let conn = self.conn.lock().unwrap();
+        // Sum the length of all data-heavy columns
+        conn.query_row(
+            "SELECT SUM(
+                LENGTH(CAST(simc_input AS BLOB)) +
+                IFNULL(LENGTH(CAST(result_json AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(raw_json AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(html_report AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(text_output AS BLOB)), 0) +
+                IFNULL(LENGTH(CAST(combo_metadata_json AS BLOB)), 0)
+            ) FROM jobs",
+            [],
+            |row| row.get::<_, Option<f64>>(0).map(|v| v.unwrap_or(0.0) as u64),
+        )
+        .unwrap_or(0)
+    }
+
+    fn clear_history(&self) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM jobs", []).ok();
+        conn.execute("VACUUM", []).ok();
+    }
+
+    fn get_max_jobs(&self) -> usize {
+        *self.max_jobs.lock().unwrap()
+    }
+
+    fn set_max_jobs(&self, limit: usize) {
+        let mut mj = self.max_jobs.lock().unwrap();
+        *mj = limit;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('max_jobs', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = ?1",
+            params![limit.to_string()],
+        )
+        .ok();
+
+        // Also clean up if limit was lowered
+        conn.execute(
+            "DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY created_at DESC LIMIT ?1)",
+            params![limit as u32],
+        )
+        .ok();
     }
 }

@@ -50,4 +50,9 @@ pub trait JobStorage: Send + Sync {
     fn set_error(&self, id: &str, error: String);
     fn set_report_files(&self, id: &str, html: Option<String>, text: Option<String>);
     fn count_batch(&self, batch_id: &str) -> usize;
+    fn delete(&self, id: &str);
+    fn get_storage_size(&self) -> u64;
+    fn clear_history(&self);
+    fn get_max_jobs(&self) -> usize;
+    fn set_max_jobs(&self, limit: usize);
 }

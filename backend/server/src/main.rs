@@ -35,11 +35,13 @@ async fn main() {
     game_data::load(&data_dir);
 
     let storage: Arc<dyn JobStorage> = if desktop_mode {
+        let db_url = env_or("DATABASE_URL", "simhammer.db");
         println!(
             "Starting SimHammer in desktop mode on {}:{}",
             bind_host, port
         );
-        Arc::new(simhammer_core::storage::memory::MemoryStorage::new())
+        println!("Using SQLite storage: {}", db_url);
+        Arc::new(simhammer_core::storage::sqlite::SqliteStorage::new(&db_url))
     } else {
         let db_url = env_or("DATABASE_URL", "simhammer.db");
         println!("Starting SimHammer server on {}:{}", bind_host, port);

@@ -6,6 +6,7 @@ use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
 
 pub struct MemoryStorage {
     jobs: Mutex<HashMap<String, Job>>,
+    max_jobs: Mutex<usize>,
 }
 
 impl Default for MemoryStorage {
@@ -18,6 +19,7 @@ impl MemoryStorage {
     pub fn new() -> Self {
         Self {
             jobs: Mutex::new(HashMap::new()),
+            max_jobs: Mutex::new(*super::MAX_JOBS),
         }
     }
 }
@@ -26,13 +28,14 @@ impl JobStorage for MemoryStorage {
     fn insert(&self, job: Job) {
         let mut jobs = self.jobs.lock().unwrap();
         jobs.insert(job.id.clone(), job);
-        if jobs.len() > *super::MAX_JOBS {
+        let limit = *self.max_jobs.lock().unwrap();
+        if jobs.len() > limit {
             let mut entries: Vec<(String, String)> = jobs
                 .iter()
                 .map(|(id, j)| (id.clone(), j.created_at.clone()))
                 .collect();
             entries.sort_by(|a, b| a.1.cmp(&b.1));
-            let to_remove = jobs.len() - *super::MAX_JOBS;
+            let to_remove = jobs.len() - limit;
             for (id, _) in entries.into_iter().take(to_remove) {
                 jobs.remove(&id);
             }
@@ -81,6 +84,9 @@ impl JobStorage for MemoryStorage {
                 realm: s.realm,
                 dps: s.dps,
                 batch_id: j.batch_id.clone(),
+                size_bytes: j.estimate_size(),
+                upgrades: s.upgrades,
+                downgrades: s.downgrades,
             });
         }
         results
@@ -135,5 +141,40 @@ impl JobStorage for MemoryStorage {
             .values()
             .filter(|j| j.batch_id.as_deref() == Some(batch_id))
             .count()
+    }
+
+    fn delete(&self, id: &str) {
+        self.jobs.lock().unwrap().remove(id);
+    }
+
+    fn get_storage_size(&self) -> u64 {
+        let jobs = self.jobs.lock().unwrap();
+        jobs.values().map(|j| j.estimate_size()).sum()
+    }
+
+    fn clear_history(&self) {
+        self.jobs.lock().unwrap().clear();
+    }
+
+    fn get_max_jobs(&self) -> usize {
+        *self.max_jobs.lock().unwrap()
+    }
+
+    fn set_max_jobs(&self, limit: usize) {
+        let mut mj = self.max_jobs.lock().unwrap();
+        *mj = limit;
+
+        let mut jobs = self.jobs.lock().unwrap();
+        if jobs.len() > limit {
+            let mut entries: Vec<(String, String)> = jobs
+                .iter()
+                .map(|(id, j)| (id.clone(), j.created_at.clone()))
+                .collect();
+            entries.sort_by(|a, b| a.1.cmp(&b.1));
+            let to_remove = jobs.len() - limit;
+            for (id, _) in entries.into_iter().take(to_remove) {
+                jobs.remove(&id);
+            }
+        }
     }
 }

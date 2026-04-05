@@ -8,6 +8,7 @@ mod upgrade_compare;
 use actix_cors::Cors;
 use actix_files::NamedFile;
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
+use serde::Deserialize;
 use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -47,10 +48,26 @@ impl SystemStats {
     }
 }
 
-async fn get_config() -> HttpResponse {
+async fn get_config(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
     HttpResponse::Ok().json(json!({
         "max_scenarios": *storage::MAX_SCENARIOS,
+        "max_jobs": store.get_max_jobs(),
     }))
+}
+
+#[derive(Deserialize)]
+struct UpdateConfig {
+    max_jobs: Option<usize>,
+}
+
+async fn update_config(
+    body: web::Json<UpdateConfig>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    if let Some(limit) = body.max_jobs {
+        store.set_max_jobs(limit);
+    }
+    HttpResponse::Ok().json(json!({"status": "updated"}))
 }
 
 async fn health_check() -> HttpResponse {
@@ -231,6 +248,15 @@ pub async fn start_with_storage_bind(
                 "/api/sim/{id}/data.csv",
                 web::get().to(job_handlers::get_sim_csv),
             )
+            .route("/api/sim/{id}", web::delete().to(job_handlers::delete_sim))
+            .route(
+                "/api/history/stats",
+                web::get().to(job_handlers::get_history_stats),
+            )
+            .route(
+                "/api/history/clear",
+                web::post().to(job_handlers::clear_history),
+            )
             // Game data routes
             .route(
                 "/api/item-info/{id}",
@@ -286,6 +312,7 @@ pub async fn start_with_storage_bind(
             )
             // System routes
             .route("/api/config", web::get().to(get_config))
+            .route("/api/config", web::post().to(update_config))
             .route("/health", web::get().to(health_check));
 
         #[cfg(feature = "desktop")]

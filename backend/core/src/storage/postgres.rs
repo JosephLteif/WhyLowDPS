@@ -207,6 +207,8 @@ impl JobStorage for PostgresStorage {
                     let result_json: Option<String> = row.get(7);
                     let simc_input: String = row.get::<_, Option<String>>(8).unwrap_or_default();
                     let s = extract_result_summary(&result_json, &simc_input);
+                    let size_bytes = simc_input.len() as u64 + result_json.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+
                     JobSummary {
                         id: row.get(0),
                         status: Self::str_to_status(&status_str),
@@ -220,6 +222,9 @@ impl JobStorage for PostgresStorage {
                         realm: s.realm,
                         dps: s.dps,
                         batch_id: row.get(9),
+                        size_bytes,
+                        upgrades: s.upgrades,
+                        downgrades: s.downgrades,
                     }
                 }).collect();
                 if player.is_none() && realm.is_none() {
@@ -343,5 +348,50 @@ impl JobStorage for PostgresStorage {
                     .unwrap_or(0)
             })
         })
+    }
+
+    fn delete(&self, id: &str) {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute("DELETE FROM jobs WHERE id = $1", &[&id]).await.ok();
+            });
+        });
+    }
+
+    fn get_storage_size(&self) -> u64 {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.query_one(
+                    "SELECT SUM(
+                        LENGTH(simc_input) +
+                        COALESCE(LENGTH(result_json), 0) +
+                        COALESCE(LENGTH(raw_json), 0) +
+                        COALESCE(LENGTH(html_report), 0) +
+                        COALESCE(LENGTH(text_output), 0) +
+                        COALESCE(LENGTH(combo_metadata_json), 0)
+                    )::BIGINT FROM jobs",
+                    &[]
+                ).await.map(|row| {
+                    let v: Option<i64> = row.get(0);
+                    v.unwrap_or(0) as u64
+                }).unwrap_or(0)
+            })
+        })
+    }
+
+    fn clear_history(&self) {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute("DELETE FROM jobs", &[]).await.ok();
+            });
+        });
+    }
+
+    fn get_max_jobs(&self) -> usize {
+        *super::MAX_JOBS // Just rely on env var for postgres currently
+    }
+
+    fn set_max_jobs(&self, _limit: usize) {
+        // Postgres implementation currently ignores this
     }
 }

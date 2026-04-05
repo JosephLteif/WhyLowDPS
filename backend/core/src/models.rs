@@ -49,6 +49,9 @@ pub struct JobSummary {
     pub realm: Option<String>,
     pub dps: Option<f64>,
     pub batch_id: Option<String>,
+    pub size_bytes: u64,
+    pub upgrades: Option<u32>,
+    pub downgrades: Option<u32>,
 }
 
 pub struct ResultSummary {
@@ -56,6 +59,8 @@ pub struct ResultSummary {
     pub player_class: Option<String>,
     pub dps: Option<f64>,
     pub realm: Option<String>,
+    pub upgrades: Option<u32>,
+    pub downgrades: Option<u32>,
 }
 
 pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) -> ResultSummary {
@@ -64,6 +69,8 @@ pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) ->
         player_class: None,
         dps: None,
         realm: None,
+        upgrades: None,
+        downgrades: None,
     };
 
     // Extract DPS, player name, class from parsed result
@@ -78,6 +85,35 @@ pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) ->
                 .and_then(|c| c.as_str())
                 .map(String::from);
             summary.dps = v.get("dps").and_then(|d| d.as_f64());
+
+            if let Some(sim_type) = v.get("type").and_then(|t| t.as_str()) {
+                if sim_type == "top_gear" || sim_type == "droptimizer" {
+                    if let Some(base_dps) = v.get("base_dps").and_then(|bd| bd.as_f64()) {
+                        if let Some(results) = v.get("results").and_then(|r| r.as_array()) {
+                            let mut upgrades = 0;
+                            let mut downgrades = 0;
+                            for r in results {
+                                let name = r.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                                let delta = r.get("delta").and_then(|d| d.as_f64()).unwrap_or(0.0);
+
+                                if delta == 0.0 && (name.starts_with("Currently Equipped") || name == "Base") {
+                                    continue;
+                                }
+
+                                if let Some(dps) = r.get("dps").and_then(|d| d.as_f64()) {
+                                    if dps > base_dps {
+                                        upgrades += 1;
+                                    } else {
+                                        downgrades += 1;
+                                    }
+                                }
+                            }
+                            summary.upgrades = Some(upgrades);
+                            summary.downgrades = Some(downgrades);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -135,5 +171,19 @@ impl Job {
             text_output: None,
             batch_id: None,
         }
+    }
+
+    pub fn estimate_size(&self) -> u64 {
+        let mut total = self.simc_input.len() as u64;
+        total += self.result_json.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+        total += self.raw_json.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+        total += self
+            .combo_metadata_json
+            .as_ref()
+            .map(|s| s.len())
+            .unwrap_or(0) as u64;
+        total += self.html_report.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+        total += self.text_output.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+        total
     }
 }

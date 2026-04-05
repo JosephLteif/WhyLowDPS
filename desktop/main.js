@@ -32,6 +32,7 @@ function startBackend() {
     ...process.env,
     DATA_DIR: getResourcePath("data"),
     SIMC_PATH: getResourcePath("simc", simcName),
+    DATABASE_URL: path.join(app.getPath("userData"), "simhammer.db"),
     RUST_BACKTRACE: "1",
     PORT: String(BACKEND_PORT),
     BIND_HOST: "127.0.0.1",

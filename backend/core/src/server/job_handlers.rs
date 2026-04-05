@@ -264,3 +264,32 @@ pub(super) async fn get_sim_csv(
         ))
         .body(csv)
 }
+
+pub(super) async fn delete_sim(
+    path: web::Path<String>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    // If it's a batch ID, we'd need a special method, but for now we just delete by ID.
+    // However, the frontend might send a batch ID.
+    // Let's check if there are multiple jobs with this batch_id.
+    // Actually, JobStorage doesn't have delete_batch, let's just delete the specific ID.
+    // If the user wants to delete a batch, we can either add delete_batch or have the frontend send all IDs.
+    // To keep it simple, we just delete the ID provided.
+    store.delete(&id);
+    HttpResponse::Ok().json(json!({"status": "deleted"}))
+}
+
+pub(super) async fn get_history_stats(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
+    let size = store.get_storage_size();
+    let sims = store.list_recent(1000, None, None);
+    HttpResponse::Ok().json(json!({
+        "size_bytes": size,
+        "count": sims.len(),
+    }))
+}
+
+pub(super) async fn clear_history(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
+    store.clear_history();
+    HttpResponse::Ok().json(json!({"status": "cleared"}))
+}

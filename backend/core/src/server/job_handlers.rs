@@ -8,9 +8,8 @@ use crate::models::JobStatus;
 use crate::simc_runner;
 use crate::storage::JobStorage;
 
-#[cfg(feature = "desktop")]
 pub(super) async fn list_sims(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    let summaries = store.list_recent(20, None, None);
+    let summaries = store.list_recent(store.get_max_jobs(), None, None);
     HttpResponse::Ok().json(summaries)
 }
 
@@ -22,7 +21,7 @@ pub(super) async fn list_sims_filtered(
     if query.player.is_empty() || query.realm.is_empty() {
         return HttpResponse::BadRequest().json(json!({"detail": "player and realm are required"}));
     }
-    let summaries = store.list_recent(20, Some(&query.player), Some(&query.realm));
+    let summaries = store.list_recent(store.get_max_jobs(), Some(&query.player), Some(&query.realm));
     HttpResponse::Ok().json(summaries)
 }
 

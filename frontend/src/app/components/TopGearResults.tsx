@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { API_URL } from '../lib/api';
+import { useSimContext } from './SimContext';
 import DpsHeroCard from './DpsHeroCard';
 import GearOverview from './GearOverview';
 import type { GearItem } from './GearOverview';
@@ -86,6 +88,7 @@ export default function TopGearResults({
   targetError,
   elapsedTime,
 }: TopGearResultsProps) {
+  const { disableCharacterMedia } = useSimContext();
   const maxDps = results.length > 0 ? results[0].dps : baseDps;
   const bestResult = results.length > 0 ? results[0] : null;
 
@@ -221,8 +224,8 @@ export default function TopGearResults({
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
 
   const characterRenderUrl =
-    playerRealm && playerName
-      ? `https://simhammer.com/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/render`
+    playerRealm && playerName && !disableCharacterMedia
+      ? `${API_URL}/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/render`
       : null;
 
   return (

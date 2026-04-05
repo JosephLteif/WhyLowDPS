@@ -39,6 +39,8 @@ interface SimContextType {
   addScenario: () => void;
   removeScenario: (id: string) => void;
   clearScenarios: () => void;
+  disableCharacterMedia: boolean;
+  setDisableCharacterMedia: (v: boolean) => void;
 }
 
 const SimContext = createContext<SimContextType | null>(null);
@@ -54,6 +56,12 @@ function readStored(key: string, fallback: number): number {
   if (v == null) return fallback;
   const n = parseInt(v, 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function readStoredBool(key: string, fallback: boolean): boolean {
+  const v = localStorage.getItem(key);
+  if (v == null) return fallback;
+  return v === 'true';
 }
 
 function readSessionString(key: string, fallback: string): string {
@@ -76,11 +84,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [simcFooter, setSimcFooter] = useState('');
   const [talentBuilds, setTalentBuilds] = useState<{ name: string; talentString: string }[]>([]);
   const [scenarios, setScenarios] = useState<FightScenario[]>([]);
+  const [disableCharacterMedia, _setDisableCharacterMedia] = useState(false);
 
   useEffect(() => {
     try {
       _setSimcInput(readSessionString('simhammer_simc_input', ''));
       _setThreads(readStored('simhammer_threads', 0));
+      _setDisableCharacterMedia(readStoredBool('simhammer_disable_character_media', false));
     } catch {}
   }, []);
 
@@ -124,6 +134,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const setDisableCharacterMedia = useCallback((v: boolean) => {
+    _setDisableCharacterMedia(v);
+    try {
+      localStorage.setItem('simhammer_disable_character_media', String(v));
+    } catch {}
+  }, []);
+
   return (
     <SimContext.Provider
       value={{
@@ -159,6 +176,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
         addScenario,
         removeScenario,
         clearScenarios,
+        disableCharacterMedia,
+        setDisableCharacterMedia,
       }}
     >
       {children}

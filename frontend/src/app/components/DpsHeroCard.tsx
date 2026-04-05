@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_URL } from '../lib/api';
+import { useSimContext } from './SimContext';
 
 interface DpsHeroCardProps {
   playerName: string;
@@ -27,16 +28,16 @@ const FACTION_BGS: Record<string, string> = {
   horde: '/api/data/static/faction-bg-horde.jpg',
 };
 
-function useFaction(realm?: string, name?: string): string | null {
+function useFaction(realm: string | undefined, name: string | undefined, disabled: boolean): string | null {
   const [faction, setFaction] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!realm || !name) return;
+    if (!realm || !name || disabled) return;
     let cancelled = false;
     (async () => {
       try {
         const res = await fetch(
-          `https://simhammer.com/api/blizzard/character/${encodeURIComponent(realm.toLowerCase())}/${encodeURIComponent(name.toLowerCase())}/profile`
+          `${API_URL}/api/blizzard/character/${encodeURIComponent(realm.toLowerCase())}/${encodeURIComponent(name.toLowerCase())}/profile`
         );
         if (!res.ok || cancelled) return;
         const data = await res.json();
@@ -67,17 +68,18 @@ export default function DpsHeroCard({
   elapsedTime,
   children,
 }: DpsHeroCardProps) {
+  const { disableCharacterMedia } = useSimContext();
   const hasMetadata =
     (dpsError != null && dpsError > 0) ||
     fightLength != null ||
     (iterations != null && iterations > 0) ||
     elapsedTime != null;
 
-  const faction = useFaction(playerRealm, playerName);
+  const faction = useFaction(playerRealm, playerName, disableCharacterMedia);
 
   const insetUrl =
-    playerRealm && playerName
-      ? `https://simhammer.com/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/inset`
+    playerRealm && playerName && !disableCharacterMedia
+      ? `${API_URL}/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/inset`
       : null;
 
   return (

@@ -12,6 +12,7 @@ import TalentTree from '../../components/TalentTree';
 import TopGearResults from '../../components/TopGearResults';
 
 import { API_URL } from '../../lib/api';
+import { useSimContext } from '../../components/SimContext';
 import {
   getScenarioSiblings,
   formatScenarioLabel,
@@ -32,6 +33,7 @@ interface JobData {
 export default function SimResultClient() {
   const params = useParams();
   const paramId = params.id as string;
+  const { disableCharacterMedia } = useSimContext();
 
   // In static export, useParams() may initially return "_" (the generateStaticParams
   // placeholder) before the router reconciles with the actual URL. Fall back to the URL.
@@ -269,8 +271,8 @@ export default function SimResultClient() {
               <GearOverview
                 gear={r.equipped_gear as Record<string, GearItem>}
                 characterRenderUrl={
-                  r.realm && r.player_name
-                    ? `https://simhammer.com/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render`
+                  r.realm && r.player_name && !disableCharacterMedia
+                    ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render`
                     : null
                 }
               />

@@ -310,7 +310,7 @@ function BatchGroup({ entry, onDelete }: { entry: Extract<HistoryEntry, { type: 
 
 export default function HistoryPage() {
   const { simcInput } = useSimContext();
-  const [isDesktop, setIsDesktop] = useState<boolean | null>(null);
+
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [character, setCharacter] = useState<{ name: string; realm: string } | null>(null);
@@ -319,50 +319,39 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    setIsDesktop(!!window.electronAPI);
-  }, []);
+    let char = extractCharacter(simcInput);
+    if (!char) {
+      try {
+        const stored = localStorage.getItem('simhammer_last_character');
+        if (stored) char = JSON.parse(stored);
+      } catch {}
+    }
+    setCharacter(char);
+  }, [simcInput]);
 
   const refreshHistory = useCallback(async () => {
-    if (isDesktop === true) {
-      try {
-        const r = await fetch(`${API_URL}/api/sims`);
-        const data = await r.json();
-        setSims(data);
-        const s = await getHistoryStats();
-        setStats(s);
-        const config = await getConfig();
-        setMaxJobs(config.max_jobs);
-      } catch (err) {}
-    } else if (isDesktop === false && character) {
-      try {
-        const r = await fetch(
-          `${API_URL}/api/sims?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}`
-        );
-        const data = r.ok ? await r.json() : [];
-        setSims(data);
-      } catch (err) {
-        setSims([]);
-      }
+    if (!character) return;
+    try {
+      const [simsRes, statsData] = await Promise.all([
+        fetch(`${API_URL}/api/sims?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}`),
+        getHistoryStats()
+      ]);
+      const data = simsRes.ok ? await simsRes.json() : [];
+      setSims(data);
+      setStats(statsData);
+    } catch (err) {
+      setSims([]);
     }
-  }, [isDesktop, character]);
+  }, [character]);
 
   useEffect(() => {
-    if (isDesktop === null) return;
-
     setLoading(true);
-    if (!isDesktop) {
-      let char = extractCharacter(simcInput);
-      if (!char) {
-        try {
-          const stored = localStorage.getItem('simhammer_last_character');
-          if (stored) char = JSON.parse(stored);
-        } catch {}
-      }
-      setCharacter(char);
-    }
-
-    refreshHistory().finally(() => setLoading(false));
-  }, [isDesktop, simcInput, refreshHistory]);
+    // Initial fetch for history and configuration
+    Promise.all([
+      refreshHistory(),
+      getConfig().then(cfg => setMaxJobs(cfg.max_jobs))
+    ]).finally(() => setLoading(false));
+  }, [refreshHistory]);
 
   const handleDelete = async (id: string) => {
     await deleteSim(id);
@@ -408,7 +397,7 @@ export default function HistoryPage() {
     return dateGroups;
   }, [sims, search]);
 
-  if (isDesktop === null) return null;
+
 
   if (loading) {
     return (
@@ -418,7 +407,7 @@ export default function HistoryPage() {
     );
   }
 
-  if (!isDesktop && !character) {
+  if (!character) {
     return (
       <div className="py-12 text-center">
         <p className="text-sm text-muted">
@@ -435,8 +424,8 @@ export default function HistoryPage() {
       <div className="flex flex-col gap-4 px-1 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-medium text-zinc-100">Simulation History</h2>
-          {isDesktop && stats && (
-            <span className="text-xs text-zinc-500">
+          {stats && (
+          <span className="text-xs text-zinc-500">
               {sims.length} records &middot; {formatSize(stats.size_bytes)}
             </span>
           )}
@@ -454,19 +443,17 @@ export default function HistoryPage() {
               className="w-48 rounded-md border border-border bg-surface-2 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-gold focus:outline-none"
             />
           </div>
-          {isDesktop && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-zinc-500">Keep last:</label>
-              <input
-                type="number"
-                value={maxJobs}
-                onChange={(e) => setMaxJobs(parseInt(e.target.value) || 0)}
-                onBlur={(e) => handleMaxJobsChange(e.target.value)}
-                className="w-16 rounded border border-border bg-surface-2 px-1.5 py-1 text-xs text-zinc-300 focus:border-gold focus:outline-none"
-              />
-            </div>
-          )}
-          {isDesktop && sims.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-zinc-500">Keep last:</label>
+            <input
+              type="number"
+              value={maxJobs}
+              onChange={(e) => setMaxJobs(parseInt(e.target.value) || 0)}
+              onBlur={(e) => handleMaxJobsChange(e.target.value)}
+              className="w-16 rounded border border-border bg-surface-2 px-1.5 py-1 text-xs text-zinc-300 focus:border-gold focus:outline-none"
+            />
+          </div>
+          { sims.length > 0 && (
             <button
               onClick={handleClear}
               className="rounded bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
@@ -474,6 +461,8 @@ export default function HistoryPage() {
               Clear All
             </button>
           )}
+
+
         </div>
       </div>
 
@@ -501,9 +490,9 @@ export default function HistoryPage() {
                   return (
                     <div key={id} className={!isLast ? "border-b border-border" : ""}>
                       {entry.type === 'single' ? (
-                        <SimRow sim={entry.sim} onDelete={isDesktop ? handleDelete : undefined} />
+                        <SimRow sim={entry.sim} onDelete={handleDelete} />
                       ) : (
-                        <BatchGroup entry={entry} onDelete={isDesktop ? handleDelete : undefined} />
+                        <BatchGroup entry={entry} onDelete={handleDelete} />
                       )}
                     </div>
                   );

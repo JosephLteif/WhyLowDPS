@@ -1,3 +1,4 @@
+mod blizzard;
 mod game_data_handlers;
 mod helpers;
 mod job_handlers;
@@ -117,6 +118,26 @@ async fn spa_fallback(
     Ok(NamedFile::open(frontend_dir.0.join("index.html"))?)
 }
 
+use std::process::Command;
+use std::time::Duration;
+use tokio::time::sleep;
+
+async fn shutdown() -> HttpResponse {
+    println!("System shutdown requested. Stopping Docker containers...");
+    // Launch docker compose down in the background
+    let _ = Command::new("docker")
+        .args(["compose", "-p", "simhammer", "down"])
+        .spawn();
+
+    // Give some time for the response to reach the client
+    tokio::spawn(async {
+        sleep(Duration::from_secs(2)).await;
+        std::process::exit(0);
+    });
+
+    HttpResponse::Ok().json(json!({"status": "shutting_down"}))
+}
+
 // ---------- Server startup ----------
 
 /// Start the HTTP server with in-memory storage (desktop default).
@@ -171,6 +192,14 @@ pub async fn start_with_storage_bind(
 
     let bind_addr = format!("{}:{}", bind_host, port);
 
+    let blizzard_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
+    let blizzard_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
+    let blizzard_state = if let (Some(id), Some(sec)) = (blizzard_id, blizzard_secret) {
+        Some(web::Data::new(Arc::new(blizzard::BlizzardState::new(id, sec))))
+    } else {
+        None
+    };
+
     let server = HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
@@ -183,6 +212,12 @@ pub async fn start_with_storage_bind(
             .app_data(store_data.clone())
             .app_data(simc_data.clone())
             .app_data(log_data.clone());
+
+        let mut app = if let Some(ref data) = blizzard_state {
+            app.app_data(data.clone())
+        } else {
+            app
+        };
         #[cfg(feature = "desktop")]
         let app = app.app_data(stats_data.clone());
 
@@ -256,6 +291,15 @@ pub async fn start_with_storage_bind(
             .route(
                 "/api/history/clear",
                 web::post().to(job_handlers::clear_history),
+            )
+            // Blizzard proxy routes (only active if configured)
+            .route(
+                "/api/blizzard/character/{realm}/{name}/profile",
+                web::get().to(blizzard::proxy_character_profile),
+            )
+            .route(
+                "/api/blizzard/character/{realm}/{name}/media/{type}",
+                web::get().to(blizzard::proxy_character_media),
             )
             // Game data routes
             .route(

@@ -1,12 +1,9 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
-import DesktopAppLink from './components/DesktopAppLink';
 import SettingsPopover from './components/SettingsPopover';
 import { SimProvider } from './components/SimContext';
 import SimSharedConfig from './components/SimSharedConfig';
 import SimTypeCards from './components/SimTypeCards';
-import UpdateChecker from './components/UpdateChecker';
-import WindowControls from './components/WindowTitlebar';
 import './globals.css';
 import packageJson from '../../package.json';
 
@@ -19,11 +16,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `if(window.electronAPI)document.documentElement.setAttribute("data-desktop","")`,
-          }}
-        />
         <Script
           id="wowhead-config"
           strategy="afterInteractive"
@@ -31,16 +23,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="https://wow.zamimg.com/js/tooltips.js" strategy="afterInteractive" />
       </head>
       <body className="min-h-screen">
-        <UpdateChecker />
         <SimProvider>
-          <header className="desktop-drag sticky top-0 z-50 border-b border-border/80 bg-bg/90 backdrop-blur-xl">
-            <div className="desktop-header:h-11 flex h-11 items-center justify-between">
+          <header className="sticky top-0 z-50 border-b border-border/80 bg-bg/90 backdrop-blur-xl">
+            <div className="flex h-11 items-center justify-between">
               <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6">
                 <a
                   href="https://simhammer.com"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="desktop-no-drag group flex items-center gap-2.5"
+                  className="group flex items-center gap-2.5"
                 >
                   <div className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-b from-gold to-gold-dark shadow-sm">
                     <svg className="h-3.5 w-3.5 text-black" viewBox="0 0 16 16" fill="currentColor">
@@ -51,12 +42,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     SimHammer
                   </span>
                 </a>
-                <div className="desktop-no-drag flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5">
                   <SettingsPopover />
-                  <DesktopAppLink />
                 </div>
               </div>
-              <WindowControls />
             </div>
           </header>
           <main className="mx-auto max-w-7xl px-6 py-8">

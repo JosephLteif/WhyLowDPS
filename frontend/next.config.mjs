@@ -2,7 +2,7 @@
 const nextConfig = {
   output: process.env.DESKTOP_BUILD ? "export" : "standalone",
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000",
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "",
   },
   images: {
     unoptimized: !!process.env.DESKTOP_BUILD,

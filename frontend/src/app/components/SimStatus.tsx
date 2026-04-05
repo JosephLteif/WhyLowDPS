@@ -31,42 +31,7 @@ function useSmoothedProgress(serverProgress: number): number {
   return Math.round(display);
 }
 
-/** Poll CPU usage from the desktop backend while a sim is running. */
-function useCpuUsage(isRunning: boolean): number | null {
-  const [cpu, setCpu] = useState<number | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isDesktop = useRef(false);
 
-  useEffect(() => {
-    isDesktop.current = !!window.electronAPI;
-  }, []);
-
-  useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-
-    if (!isRunning || !isDesktop.current) {
-      setCpu(null);
-      intervalRef.current = null;
-      return;
-    }
-
-    function fetchCpu() {
-      fetch(`${API_URL}/api/system-stats`)
-        .then((r) => r.json())
-        .then((d) => setCpu(d.cpu_usage ?? null))
-        .catch(() => {});
-    }
-
-    fetchCpu();
-    intervalRef.current = setInterval(fetchCpu, 1500);
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isRunning]);
-
-  return cpu;
-}
 
 function classifyLine(line: string): string {
   if (line.startsWith('SimulationCraft ')) return 'text-gold/70';
@@ -146,7 +111,6 @@ export default function SimStatus({
   const isPending = status === 'pending';
   const [cancelling, setCancelling] = useState(false);
   const displayProgress = useSmoothedProgress(progress);
-  const cpuUsage = useCpuUsage(isRunning);
   const title = progressStage || (isPending ? 'Queued' : 'Simulating');
   const hasStages = stagesCompleted && stagesCompleted.length > 0;
 
@@ -186,11 +150,7 @@ export default function SimStatus({
         </div>
         <div className="mt-2 flex items-center justify-between">
           <p className="font-mono text-[12px] tabular-nums text-zinc-500">{displayProgress}%</p>
-          {cpuUsage !== null && (
-            <p className="font-mono text-[12px] tabular-nums text-zinc-500">
-              CPU {Math.round(cpuUsage)}%
-            </p>
-          )}
+
         </div>
       </div>
 

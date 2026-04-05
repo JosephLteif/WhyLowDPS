@@ -8,12 +8,11 @@ use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
 pub struct PostgresStorage {
     client: Mutex<Client>,
     rt: tokio::runtime::Runtime,
+    max_jobs: Mutex<usize>,
 }
 
 impl PostgresStorage {
     /// Connect to PostgreSQL and create the jobs table if needed.
-    /// `url` should be a full connection string, e.g. "host=localhost user=simhammer dbname=simhammer"
-    /// or "postgres://simhammer:pass@localhost/simhammer".
     pub async fn new(url: &str) -> Self {
         let (client, connection) = tokio_postgres::connect(url, NoTls)
             .await
@@ -49,10 +48,14 @@ impl PostgresStorage {
                 fight_style TEXT NOT NULL,
                 target_error DOUBLE PRECISION NOT NULL,
                 created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             );",
             )
             .await
-            .expect("Failed to create jobs table");
+            .expect("Failed to create tables");
 
         // Migrate: add columns if missing
         let _ = client
@@ -64,9 +67,20 @@ impl PostgresStorage {
             )
             .await;
 
+        let max_jobs = client
+            .query_opt("SELECT value FROM settings WHERE key = 'max_jobs'", &[])
+            .await
+            .unwrap_or(None)
+            .and_then(|row| {
+                let s: String = row.get(0);
+                s.parse::<usize>().ok()
+            })
+            .unwrap_or(*super::MAX_JOBS);
+
         Self {
             client: Mutex::new(client),
             rt,
+            max_jobs: Mutex::new(max_jobs),
         }
     }
 
@@ -135,6 +149,7 @@ impl PostgresStorage {
 impl JobStorage for PostgresStorage {
     fn insert(&self, job: Job) {
         let stages_json = serde_json::to_string(&job.stages_completed).unwrap();
+        let limit = *self.max_jobs.lock().unwrap();
         self.blocking(|client| {
             self.rt.block_on(async {
                 client.execute(
@@ -165,7 +180,7 @@ impl JobStorage for PostgresStorage {
                 // Garbage collect oldest jobs beyond limit
                 client.execute(
                     "DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY created_at DESC LIMIT $1)",
-                    &[&(*super::MAX_JOBS as i64)],
+                    &[&(limit as i64)],
                 ).await.ok();
             });
         });
@@ -195,9 +210,13 @@ impl JobStorage for PostgresStorage {
         let realm = realm.map(String::from);
         self.blocking(|client| {
             self.rt.block_on(async {
-                let fetch_limit = if player.is_some() || realm.is_some() { 200i64 } else { limit as i64 };
+                let fetch_limit = if player.is_some() || realm.is_some() {
+                    std::cmp::max(200, limit as i64)
+                } else {
+                    limit as i64
+                };
                 let rows = client.query(
-                    "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id
+                    "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id, raw_json, html_report, text_output, combo_metadata_json
                      FROM jobs ORDER BY created_at DESC LIMIT $1",
                     &[&fetch_limit],
                 ).await.unwrap_or_default();
@@ -207,7 +226,13 @@ impl JobStorage for PostgresStorage {
                     let result_json: Option<String> = row.get(7);
                     let simc_input: String = row.get::<_, Option<String>>(8).unwrap_or_default();
                     let s = extract_result_summary(&result_json, &simc_input);
-                    let size_bytes = simc_input.len() as u64 + result_json.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+
+                    let mut size_bytes = simc_input.len() as u64;
+                    size_bytes += result_json.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+                    size_bytes += row.get::<_, Option<String>>(10).as_ref().map(|s| s.len()).unwrap_or(0) as u64; // raw_json
+                    size_bytes += row.get::<_, Option<String>>(11).as_ref().map(|s| s.len()).unwrap_or(0) as u64; // html_report
+                    size_bytes += row.get::<_, Option<String>>(12).as_ref().map(|s| s.len()).unwrap_or(0) as u64; // text_output
+                    size_bytes += row.get::<_, Option<String>>(13).as_ref().map(|s| s.len()).unwrap_or(0) as u64; // combo_metadata_json
 
                     JobSummary {
                         id: row.get(0),
@@ -388,10 +413,25 @@ impl JobStorage for PostgresStorage {
     }
 
     fn get_max_jobs(&self) -> usize {
-        *super::MAX_JOBS // Just rely on env var for postgres currently
+        *self.max_jobs.lock().unwrap()
     }
 
-    fn set_max_jobs(&self, _limit: usize) {
-        // Postgres implementation currently ignores this
+    fn set_max_jobs(&self, limit: usize) {
+        let mut mj = self.max_jobs.lock().unwrap();
+        *mj = limit;
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute(
+                    "INSERT INTO settings (key, value) VALUES ('max_jobs', $1)
+                     ON CONFLICT (key) DO UPDATE SET value = $1",
+                    &[&limit.to_string()],
+                ).await.ok();
+
+                client.execute(
+                    "DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY created_at DESC LIMIT $1)",
+                    &[&(limit as i64)],
+                ).await.ok();
+            });
+        });
     }
 }

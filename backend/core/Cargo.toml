@@ -4,7 +4,7 @@ version.workspace = true
 edition = "2021"
 
 [features]
-default = []
+default = ["postgres", "web"]
 desktop = ["dep:sysinfo"]
 web = ["dep:rusqlite"]
 postgres = ["dep:tokio-postgres"]
@@ -21,6 +21,7 @@ once_cell = "1"
 regex = "1"
 tempfile = "3"
 chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 [dependencies.sysinfo]
 version = "0.33"

@@ -1,8 +1,8 @@
 # SimHammer
 
-SimulationCraft made simple. Run sims from your browser or download the desktop app — no command line needed.
+SimulationCraft made simple. Run simulations from your browser or self-host your own instance.
 
-**[Try the Demo](https://simhammer.com)** · **[Download Desktop App](https://github.com/sortbek/simcraft/releases/latest)** · **[Documentation](docs/)**
+**[Try the Demo](https://simhammer.com)** · **[Documentation](docs/)**
 
 ---
 
@@ -21,13 +21,7 @@ SimulationCraft made simple. Run sims from your browser or download the desktop 
 | **Drop Finder** | Sim raid and dungeon loot to find upgrades |
 | **Crest Upgrades** | Find the best Dawncrest upgrade path within your budget |
 
-## Quick Start
-
-### Desktop
-
-Download the installer from [Releases](https://github.com/sortbek/simcraft/releases/latest). Available for Windows, macOS, and Linux. Runs locally using all CPU cores.
-
-### Self-Host with Docker
+## Quick Start (Self-Host with Docker)
 
 ```bash
 docker run -p 8000:8000 \
@@ -45,7 +39,7 @@ Visit **http://localhost:8000** — single container, batteries included.
 | | |
 |---|---|
 | **[Architecture](docs/architecture.md)** | System design, storage, deployment modes |
-| **[Development](docs/development.md)** | Local setup, web + desktop dev, building |
+| **[Development](docs/development.md)** | Local setup, web development, building |
 | **[Self-Hosting](docs/self-hosting.md)** | Docker, PostgreSQL, VPS deploy, environment variables |
 | **[Contributing](CONTRIBUTING.md)** | Code style, PRs, CI pipeline |
 

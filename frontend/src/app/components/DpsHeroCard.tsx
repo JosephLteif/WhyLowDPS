@@ -134,7 +134,7 @@ export default function DpsHeroCard({
           <p className="mt-4 text-5xl font-bold tabular-nums tracking-tight text-white">
             {Math.round(dps).toLocaleString()}
           </p>
-          <p className="mt-1.5 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
+          <p className="mt-1.5 text-[12px] font-medium uppercase tracking-widest text-zinc-500">
             Damage Per Second
           </p>
           {children}
@@ -175,10 +175,10 @@ export default function DpsHeroCard({
 function MetaStat({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
     <div className="flex-1 px-4 py-3 text-center">
-      <p className="text-[10px] uppercase tracking-wider text-zinc-600">{label}</p>
+      <p className="text-[12px] uppercase tracking-wider text-zinc-600">{label}</p>
       <p className="mt-0.5 text-xs font-medium tabular-nums text-zinc-300">
         {value}
-        {note && <span className="ml-1 text-[10px] font-normal text-zinc-600">{note}</span>}
+        {note && <span className="ml-1 text-[12px] font-normal text-zinc-600">{note}</span>}
       </p>
     </div>
   );

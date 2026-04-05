@@ -2,17 +2,19 @@
 
 import { useMemo, useState } from 'react';
 import DpsHeroCard from './DpsHeroCard';
+import GearOverview from './GearOverview';
+import type { GearItem } from './GearOverview';
+import { SLOT_LABELS, specDisplayName } from '../lib/types';
+import type { EnchantInfo, GemInfo, ItemInfo, ItemQuery } from '../lib/useItemInfo';
 import {
-  useItemInfo,
+  getIconUrl,
+  getWowheadData,
+  getWowheadUrl,
+  QUALITY_COLORS,
   useEnchantInfo,
   useGemInfo,
-  getIconUrl,
-  getWowheadUrl,
-  getWowheadData,
-  QUALITY_COLORS,
+  useItemInfo,
 } from '../lib/useItemInfo';
-import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
-import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 interface ResultItem {
@@ -33,6 +35,8 @@ interface TopGearResult {
   name: string;
   items: ResultItem[];
   dps: number;
+  talent_build?: string;
+  talent_spec?: string;
   delta: number;
 }
 
@@ -52,7 +56,7 @@ interface TopGearResultsProps {
   elapsedTime?: number;
 }
 
-// WoW character sheet order: left column, right column, then weapons
+// WoW, character sheet order: left column, right column, then weapons
 const GEAR_ORDER_LEFT = ['head', 'neck', 'shoulder', 'back', 'chest', 'wrist'];
 const GEAR_ORDER_RIGHT = [
   'hands',
@@ -89,6 +93,14 @@ export default function TopGearResults({
   const hasEncounterData = results.some((r) => r.items.some((it) => it.encounter));
   type GroupMode = 'rank' | 'encounter';
   const [groupMode, setGroupMode] = useState<GroupMode>('rank');
+  const [selectedResultName, setSelectedResultName] = useState<string | null>(null);
+
+  const selectedResult = useMemo(() => {
+    if (selectedResultName) {
+      return results.find((r) => r.name === selectedResultName) || bestResult;
+    }
+    return bestResult;
+  }, [selectedResultName, results, bestResult]);
 
   const groupedResults = useMemo(() => {
     if (groupMode === 'rank' || !hasEncounterData) return null;
@@ -106,28 +118,51 @@ export default function TopGearResults({
     });
   }, [results, groupMode, hasEncounterData]);
 
-  // Build the full gear set for best result: start with equipped, overlay upgrades
   const bestGearSet = useMemo(() => {
-    if (!equippedGear) return {};
-    const gearSet: Record<string, ResultItem & { isUpgrade: boolean }> = {};
-    // Start with all equipped gear
+    if (!equippedGear) return {} as Record<string, GearItem>;
+    const gearSet: Record<string, GearItem> = {};
+
     for (const slot of ALL_SLOTS) {
       if (equippedGear[slot]) {
-        gearSet[slot] = { ...equippedGear[slot], isUpgrade: false };
+        gearSet[slot] = { ...equippedGear[slot] };
       }
     }
-    // Overlay best result's changed items
-    if (bestResult && bestResult.delta > 0) {
-      for (const it of bestResult.items) {
+
+    if (selectedResult) {
+      for (const it of selectedResult.items) {
+        if (!it.is_kept && it.slot === 'off_hand' && it.item_id === 0) {
+          delete gearSet.off_hand;
+          continue;
+        }
         if (!it.is_kept && it.item_id > 0) {
-          gearSet[it.slot] = { ...it, isUpgrade: true };
+          gearSet[it.slot] = { ...it };
         }
       }
     }
     return gearSet;
-  }, [equippedGear, bestResult]);
+  }, [equippedGear, selectedResult]);
 
-  // Collect all item queries from results + equipped gear
+  const upgradeSlots = useMemo(() => {
+    const slots = new Set<string>();
+    if (selectedResult && selectedResult.delta > 0) {
+      for (const it of selectedResult.items) {
+        if (!it.is_kept && it.item_id > 0) slots.add(it.slot);
+      }
+    }
+    return slots;
+  }, [selectedResult]);
+
+  const downgradeSlots = useMemo(() => {
+    const slots = new Set<string>();
+    if (selectedResult && selectedResult.delta < 0) {
+      for (const it of selectedResult.items) {
+        if (!it.is_kept && it.item_id > 0) slots.add(it.slot);
+      }
+    }
+    return slots;
+  }, [selectedResult]);
+
+  // Collect all item queries from results (for rankings ItemTag)
   const allItemQueries = useMemo(() => {
     const seen = new Set<string>();
     const queries: ItemQuery[] = [];
@@ -196,7 +231,7 @@ export default function TopGearResults({
         playerName={playerName}
         playerClass={playerClass}
         playerRealm={playerRealm}
-        dps={bestResult && bestResult.delta > 0 ? bestResult.dps : baseDps}
+        dps={selectedResult && selectedResult.delta > 0 ? selectedResult.dps : baseDps}
         dpsError={dpsError}
         dpsErrorPct={dpsErrorPct}
         fightLength={fightLength}
@@ -205,10 +240,10 @@ export default function TopGearResults({
         targetError={targetError}
         elapsedTime={elapsedTime}
       >
-        {bestResult && bestResult.delta > 0 ? (
+        {selectedResult && selectedResult.delta > 0 ? (
           <div className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-3 py-1.5 text-emerald-400">
             <span className="text-sm font-semibold tabular-nums">
-              +{Math.round(bestResult.delta).toLocaleString()}
+              +{Math.round(selectedResult.delta).toLocaleString()}
             </span>
             <span className="text-xs opacity-60">upgrade</span>
           </div>
@@ -219,76 +254,19 @@ export default function TopGearResults({
 
       {/* Gear Overview */}
       {hasGearOverview && (
-        <div className="card relative overflow-hidden p-5">
-          {characterRenderUrl && (
-            <img
-              src={characterRenderUrl}
-              alt=""
-              className="pointer-events-none absolute inset-0 mx-auto h-[130%] w-auto -translate-y-[12%] object-contain opacity-30"
-              onError={(e) => {
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-              }}
-            />
-          )}
-          <div className="relative">
-            <p className="mb-4 text-xs font-medium uppercase tracking-widest text-muted">
-              Best Gear
-            </p>
-            <div
-              className={`grid gap-x-4 ${characterRenderUrl ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2'}`}
-            >
-              {/* Left column */}
-              <div className="space-y-1">
-                {GEAR_ORDER_LEFT.map((slot) => (
-                  <GearSlotRow
-                    key={slot}
-                    slot={slot}
-                    item={bestGearSet[slot]}
-                    isUpgrade={(bestGearSet[slot] as { isUpgrade?: boolean })?.isUpgrade}
-                    itemInfoMap={itemInfoMap}
-                    enchantInfoMap={enchantInfoMap}
-                    gemInfoMap={gemInfoMap}
-                  />
-                ))}
-              </div>
-              {/* Spacer for character render background */}
-              {characterRenderUrl && <div />}
-              {/* Right column */}
-              <div className="space-y-1">
-                {GEAR_ORDER_RIGHT.map((slot) => (
-                  <GearSlotRow
-                    key={slot}
-                    slot={slot}
-                    item={bestGearSet[slot]}
-                    isUpgrade={(bestGearSet[slot] as { isUpgrade?: boolean })?.isUpgrade}
-                    itemInfoMap={itemInfoMap}
-                    enchantInfoMap={enchantInfoMap}
-                    gemInfoMap={gemInfoMap}
-                    align="right"
-                  />
-                ))}
-              </div>
-            </div>
-            {/* Weapons row */}
-            <div
-              className={`mt-1 grid gap-x-4 ${characterRenderUrl ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2'}`}
-            >
-              {GEAR_ORDER_BOTTOM.map((slot, i) => (
-                <GearSlotRow
-                  key={slot}
-                  slot={slot}
-                  item={bestGearSet[slot]}
-                  isUpgrade={(bestGearSet[slot] as { isUpgrade?: boolean })?.isUpgrade}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                  align={i === 1 ? 'right' : 'left'}
-                />
-              ))}
-              {characterRenderUrl && <div />}
-            </div>
-          </div>
-        </div>
+        <>
+          <GearOverview
+            gear={bestGearSet}
+            title={
+              selectedResultName && selectedResultName !== bestResult?.name
+                ? 'Selected Gear'
+                : 'Best Gear'
+            }
+            characterRenderUrl={characterRenderUrl}
+            upgradeSlots={upgradeSlots}
+            downgradeSlots={downgradeSlots}
+          />
+        </>
       )}
 
       {/* Rankings */}
@@ -307,7 +285,7 @@ export default function TopGearResults({
                   <button
                     key={mode}
                     onClick={() => setGroupMode(mode)}
-                    className={`rounded border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                    className={`rounded border px-2.5 py-1 text-[13px] font-medium transition-all ${
                       groupMode === mode
                         ? 'border-white bg-white text-black'
                         : 'border-border bg-surface-2 text-gray-400 hover:border-gray-500 hover:text-white'
@@ -318,7 +296,7 @@ export default function TopGearResults({
                 ))}
               </div>
             )}
-            <span className="font-mono text-[11px] text-muted">{results.length} results</span>
+            <span className="font-mono text-[13px] text-muted">{results.length} results</span>
           </div>
         </div>
 
@@ -327,8 +305,8 @@ export default function TopGearResults({
             {groupedResults.map(([encounter, group]) => (
               <div key={encounter}>
                 <div className="mb-2 flex items-center gap-2 border-b border-border/50 pb-1.5">
-                  <span className="text-[12px] font-semibold text-gray-300">{encounter}</span>
-                  <span className="font-mono text-[10px] text-muted">{group.length} items</span>
+                  <span className="text-[14px] font-semibold text-gray-300">{encounter}</span>
+                  <span className="font-mono text-[12px] text-muted">{group.length} items</span>
                 </div>
                 <div className="space-y-1">
                   {group.map((result) => (
@@ -338,6 +316,8 @@ export default function TopGearResults({
                       maxDps={maxDps}
                       baseDps={baseDps}
                       isBest={result === results[0] && result.delta > 0}
+                      isSelected={result.name === (selectedResultName || results[0]?.name)}
+                      onSelect={() => setSelectedResultName(result.name)}
                       itemInfoMap={itemInfoMap}
                       enchantInfoMap={enchantInfoMap}
                       gemInfoMap={gemInfoMap}
@@ -355,6 +335,8 @@ export default function TopGearResults({
             itemInfoMap={itemInfoMap}
             enchantInfoMap={enchantInfoMap}
             gemInfoMap={gemInfoMap}
+            selectedResultName={selectedResultName}
+            onSelectResult={setSelectedResultName}
           />
         )}
       </div>
@@ -371,6 +353,8 @@ function RankedResults({
   itemInfoMap,
   enchantInfoMap,
   gemInfoMap,
+  selectedResultName,
+  onSelectResult,
 }: {
   results: TopGearResult[];
   maxDps: number;
@@ -378,6 +362,8 @@ function RankedResults({
   itemInfoMap: Record<number, ItemInfo>;
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
+  selectedResultName: string | null;
+  onSelectResult: (name: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
@@ -393,6 +379,8 @@ function RankedResults({
           maxDps={maxDps}
           baseDps={baseDps}
           isBest={idx === 0 && result.delta > 0}
+          isSelected={result.name === (selectedResultName || results[0]?.name)}
+          onSelect={() => onSelectResult(result.name)}
           itemInfoMap={itemInfoMap}
           enchantInfoMap={enchantInfoMap}
           gemInfoMap={gemInfoMap}
@@ -418,6 +406,8 @@ function ResultRow({
   maxDps,
   baseDps,
   isBest,
+  isSelected,
+  onSelect,
   itemInfoMap,
   enchantInfoMap,
   gemInfoMap,
@@ -427,17 +417,48 @@ function ResultRow({
   maxDps: number;
   baseDps: number;
   isBest: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
   itemInfoMap: Record<number, ItemInfo>;
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
 }) {
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
-  const isEquipped = result.items.length === 0 || result.name === 'Currently Equipped';
+  const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
+  const hasTalentBuild = !!result.talent_build;
+  const talentBadge = hasTalentBuild ? (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-1.5 py-px text-[11px] font-medium">
+      {result.talent_spec && (
+        <span className="text-purple-300">{specDisplayName(result.talent_spec)}</span>
+      )}
+      <span className="text-purple-400/70">{result.talent_build}</span>
+    </span>
+  ) : null;
+
+  const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+  const changedSlots = new Set(changedItems.map((it) => it.slot));
+
+  const showBothRings = changedSlots.has('finger1') || changedSlots.has('finger2');
+  const showBothTrinkets = changedSlots.has('trinket1') || changedSlots.has('trinket2');
+
+  const displayItems = result.items.filter((it) => {
+    if (!it.is_kept) return it.item_id > 0;
+    if (showBothRings && (it.slot === 'finger1' || it.slot === 'finger2')) return true;
+    if (showBothTrinkets && (it.slot === 'trinket1' || it.slot === 'trinket2')) return true;
+    return false;
+  });
 
   return (
     <div
-      className={`relative overflow-hidden rounded-lg ${
-        isBest ? 'ring-1 ring-gold/20' : isEquipped ? 'ring-1 ring-white/5' : ''
+      onClick={onSelect}
+      className={`relative cursor-pointer overflow-hidden rounded-lg transition-colors hover:bg-white/[0.04] ${
+        isSelected && !isBest
+          ? 'bg-emerald-500/[0.04] ring-1 ring-emerald-500/50'
+          : isBest
+            ? `ring-1 ring-gold/30 ${isSelected ? 'bg-gold/[0.05]' : 'bg-transparent'}`
+            : isEquipped
+              ? 'ring-1 ring-white/5'
+              : ''
       }`}
     >
       <div
@@ -447,18 +468,31 @@ function ResultRow({
       <div className="relative flex items-center justify-between gap-3 px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {rank != null && (
-            <span className="w-5 shrink-0 text-right font-mono text-[10px] tabular-nums text-gray-600">
+            <span className="w-5 shrink-0 text-right font-mono text-[12px] tabular-nums text-gray-600">
               {rank}
             </span>
           )}
 
-          {isEquipped ? (
-            <span className="text-[12px] text-muted">Currently Equipped</span>
-          ) : (
-            <div className="flex min-w-0 flex-wrap items-center gap-1">
-              {result.items
-                .filter((it) => !it.is_kept)
-                .map((it, i) => (
+          {(() => {
+            const hasChangedItems = changedItems.length > 0;
+
+            if (isEquipped) {
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] text-muted">Currently Equipped</span>
+                  {talentBadge}
+                </div>
+              );
+            }
+
+            // Talent-only comparison (no gear changes): show talent build as primary label
+            if (!hasChangedItems && hasTalentBuild) {
+              return talentBadge;
+            }
+
+            return (
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
+                {displayItems.map((it, i) => (
                   <ItemTag
                     key={i}
                     item={it}
@@ -467,18 +501,20 @@ function ResultRow({
                     gem={it.gem_id ? gemInfoMap[it.gem_id] : undefined}
                   />
                 ))}
-            </div>
-          )}
+                {talentBadge}
+              </div>
+            );
+          })()}
 
           {isBest && (
-            <span className="shrink-0 rounded bg-gold/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gold">
+            <span className="shrink-0 rounded bg-gold/10 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-gold">
               Best
             </span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <span
-            className={`flex items-center gap-1.5 font-mono text-[13px] tabular-nums ${
+            className={`flex items-center gap-1.5 font-mono text-[15px] tabular-nums ${
               result.delta > 0
                 ? 'text-emerald-400'
                 : result.delta < 0
@@ -509,120 +545,6 @@ function ResultRow({
   );
 }
 
-function GearSlotRow({
-  slot,
-  item,
-  isUpgrade,
-  itemInfoMap,
-  enchantInfoMap,
-  gemInfoMap,
-  align = 'left',
-}: {
-  slot: string;
-  item?: ResultItem;
-  isUpgrade?: boolean;
-  itemInfoMap: Record<number, ItemInfo>;
-  enchantInfoMap: Record<number, EnchantInfo>;
-  gemInfoMap: Record<number, GemInfo>;
-  align?: 'left' | 'right';
-}) {
-  const rtl = align === 'right';
-
-  if (!item || item.item_id <= 0) {
-    return (
-      <div
-        className={`flex items-center gap-2 rounded-lg px-2 py-1.5 ${rtl ? 'flex-row-reverse' : ''}`}
-      >
-        <div className="h-7 w-7 shrink-0 rounded border border-border bg-white/[0.03]" />
-        <div className={rtl ? 'text-right' : ''}>
-          <p className="text-[11px] text-gray-600">{SLOT_LABELS[slot] || slot}</p>
-          <p className="text-[9px] text-gray-700">Empty</p>
-        </div>
-      </div>
-    );
-  }
-
-  const info = itemInfoMap[item.item_id];
-  const enchant = item.enchant_id ? enchantInfoMap[item.enchant_id] : undefined;
-  const gem = item.gem_id ? gemInfoMap[item.gem_id] : undefined;
-  const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
-  const name = info?.name || item.name || `Item ${item.item_id}`;
-  const icon = info?.icon || 'inv_misc_questionmark';
-  const whData =
-    item.item_id > 0
-      ? getWowheadData(item.bonus_ids, item.ilevel, item.enchant_id, item.gem_id)
-      : undefined;
-
-  const fadeDir = rtl ? 'to left' : 'to right';
-
-  return (
-    <div
-      className={`relative flex items-center gap-2 rounded-lg px-2 py-1.5 ${rtl ? 'flex-row-reverse' : ''}`}
-    >
-      {isUpgrade && (
-        <div
-          className="pointer-events-none absolute inset-0 rounded-lg bg-emerald-500/[0.15] ring-1 ring-emerald-500/30"
-          style={{
-            maskImage: `linear-gradient(${fadeDir}, black 20%, transparent 85%)`,
-            WebkitMaskImage: `linear-gradient(${fadeDir}, black 20%, transparent 85%)`,
-          }}
-        />
-      )}
-      <div className="h-7 w-7 shrink-0 overflow-hidden rounded border border-border">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={getIconUrl(icon)}
-          alt=""
-          width={28}
-          height={28}
-          className="h-full w-full"
-          loading="lazy"
-        />
-      </div>
-      <div className={`min-w-0 flex-1 ${rtl ? 'text-right' : ''}`}>
-        <div className={`flex items-center gap-1.5 ${rtl ? 'flex-row-reverse' : ''}`}>
-          <a
-            href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
-            data-wowhead={whData}
-            className="truncate text-[11px] font-medium leading-tight no-underline"
-            style={{ color: qc }}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.preventDefault()}
-          >
-            {name}
-          </a>
-          {isUpgrade && item.upgrade_levels ? (
-            <span className="shrink-0 rounded bg-emerald-500/10 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-emerald-400">
-              +{item.upgrade_levels} {item.upgrade_levels === 1 ? 'level' : 'levels'}
-            </span>
-          ) : isUpgrade ? (
-            <span className="shrink-0 rounded bg-emerald-500/10 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-emerald-400">
-              New
-            </span>
-          ) : null}
-          {item.origin === 'vault' && (
-            <span className="shrink-0 rounded bg-amber-400/10 px-1 py-px text-[8px] font-bold uppercase tracking-wider text-amber-400">
-              Vault
-            </span>
-          )}
-        </div>
-        <p className="truncate text-[9px] text-muted">
-          {SLOT_LABELS[slot] || slot}
-          {item.ilevel > 0 && ` · ${item.ilevel}`}
-          {info?.tag && ` · ${info.tag}`}
-          {gem?.name ? (
-            <span className="text-sky-400/70"> · {gem.name}</span>
-          ) : (
-            (info?.sockets ?? 0) > 0 && <span className="text-sky-400/70"> · Socket</span>
-          )}
-          {enchant?.name && <span className="text-emerald-400/70"> · {enchant.name}</span>}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function ItemTag({
   item,
   info,
@@ -642,6 +564,7 @@ function ItemTag({
     item.item_id > 0
       ? getWowheadData(item.bonus_ids, item.ilevel, item.enchant_id, item.gem_id)
       : undefined;
+  const slotName = SLOT_LABELS[item.slot] || item.slot;
 
   return (
     <div
@@ -663,25 +586,33 @@ function ItemTag({
       <a
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
         data-wowhead={whData}
-        className="max-w-[120px] truncate text-[11px] font-medium no-underline"
+        className="max-w-[120px] truncate text-[13px] font-medium no-underline"
         style={{ color: qc }}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.preventDefault();
+          // Allow parent row handler to naturally select
+          // We don't stop propagation, so click selects the row
+        }}
       >
         {name}
       </a>
+      <span className="text-[11px] text-muted">({slotName})</span>
       {item.upgrade_levels ? (
-        <span className="shrink-0 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
           +{item.upgrade_levels}
         </span>
       ) : item.origin === 'vault' ? (
-        <span className="shrink-0 text-[8px] font-bold uppercase tracking-wider text-amber-400">
+        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-amber-400">
           V
         </span>
       ) : null}
       {enchant?.name && (
-        <span className="max-w-[70px] truncate text-[9px] text-emerald-400/70" title={enchant.name}>
+        <span
+          className="max-w-[70px] truncate text-[11px] text-emerald-400/70"
+          title={enchant.name}
+        >
           {enchant.name}
         </span>
       )}

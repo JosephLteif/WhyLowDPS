@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
-import FloatingSubmitButton from '../components/FloatingSubmitButton';
 import GearItemRow from '../components/GearItemRow';
 import { useSimContext } from '../components/SimContext';
 import { API_URL } from '../lib/api';
@@ -98,8 +97,8 @@ export default function UpgradeComparePage() {
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [comboCount, setComboCount] = useState(0);
 
-  const candidates = data?.candidates ?? [];
-  const currencies = data?.currencies ?? {};
+  const candidates = useMemo(() => data?.candidates ?? [], [data]);
+  const currencies = useMemo(() => data?.currencies ?? {}, [data]);
   const hasCurrencies = Object.keys(currencies).length > 0;
 
   // Reset selection when candidates change
@@ -227,7 +226,7 @@ export default function UpgradeComparePage() {
     <div className="space-y-6">
       {/* Explainer */}
       <div className="rounded-lg border border-border/50 bg-surface-2/50 px-4 py-3">
-        <p className="text-[13px] leading-relaxed text-zinc-400">
+        <p className="text-[15px] leading-relaxed text-zinc-400">
           Find the best way to spend your{' '}
           <span className="font-medium text-gold/80">Dawncrest upgrade currencies</span>. Select
           which equipped items to consider, and SimHammer will test every valid upgrade combination
@@ -238,7 +237,7 @@ export default function UpgradeComparePage() {
       {/* Currency Budget */}
       {hasCurrencies && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-medium uppercase tracking-widest text-muted">
+          <span className="text-[12px] font-medium uppercase tracking-widest text-muted">
             Budget
           </span>
           {Object.values(currencies)
@@ -254,8 +253,8 @@ export default function UpgradeComparePage() {
                   alt=""
                   className="h-4 w-4 shrink-0 rounded-sm"
                 />
-                <span className="text-[11px] text-gray-400">{c.name}</span>
-                <span className="font-mono text-[11px] tabular-nums text-white">{c.amount}</span>
+                <span className="text-[13px] text-gray-400">{c.name}</span>
+                <span className="font-mono text-[13px] tabular-nums text-white">{c.amount}</span>
               </div>
             ))}
         </div>
@@ -306,14 +305,14 @@ export default function UpgradeComparePage() {
                         alt=""
                         className="h-4 w-4 shrink-0 rounded-sm"
                       />
-                      <p className="text-[11px] font-semibold uppercase tracking-widest text-muted">
+                      <p className="text-[13px] font-semibold uppercase tracking-widest text-muted">
                         {group.currency?.name || `Currency ${group.currencyId}`}
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => toggleGroup(group.candidates)}
-                      className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                      className="text-[12px] text-zinc-500 hover:text-zinc-300"
                     >
                       {allSelected ? 'Deselect' : 'Select all'}
                     </button>
@@ -355,12 +354,30 @@ export default function UpgradeComparePage() {
 
       <ErrorAlert message={error} />
 
-      <FloatingSubmitButton
-        onClick={handleSubmit}
-        disabled={submitting || selectedSlots.size === 0 || !hasCurrencies}
-        submitting={submitting}
-        label={submitLabel}
-      />
+      <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
+        <button
+          onClick={handleSubmit}
+          disabled={submitting || selectedSlots.size === 0 || !hasCurrencies}
+          className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+        >
+          {submitting ? (
+            <>
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+                <path
+                  d="M14 8a6 6 0 00-6-6"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+              Starting sim…
+            </>
+          ) : (
+            submitLabel
+          )}
+        </button>
+      </div>
     </div>
   );
 }

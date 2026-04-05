@@ -34,7 +34,7 @@ export default function StatWeightsTable({ statWeights }: StatWeightsTableProps)
       <div className="space-y-3">
         {entries.map(({ stat, weight }) => (
           <div key={stat}>
-            <div className="mb-1.5 flex justify-between text-[13px]">
+            <div className="mb-1.5 flex justify-between text-[15px]">
               <span className="text-gray-300">{stat}</span>
               <span className="font-mono tabular-nums text-white">{weight.toFixed(4)}</span>
             </div>

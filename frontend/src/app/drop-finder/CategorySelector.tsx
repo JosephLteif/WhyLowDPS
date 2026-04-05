@@ -60,7 +60,7 @@ export default function CategorySelector({
             </svg>
           </div>
           <p
-            className={`text-[13px] font-semibold transition-colors ${category === cat.key ? 'text-gold' : 'text-white'}`}
+            className={`text-[15px] font-semibold transition-colors ${category === cat.key ? 'text-gold' : 'text-white'}`}
           >
             {cat.label}
           </p>

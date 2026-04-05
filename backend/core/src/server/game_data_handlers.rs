@@ -28,16 +28,8 @@ pub(super) async fn get_item_info(
         Some(bonus_list.as_slice())
     };
 
-    let result = game_data::get_item_info(item_id, bonus_ref).unwrap_or_else(|| {
-        json!({
-            "item_id": item_id,
-            "name": format!("Item {}", item_id),
-            "quality": 1,
-            "quality_name": "common",
-            "icon": "inv_misc_questionmark",
-            "ilevel": 0,
-        })
-    });
+    let result = game_data::get_item_info(item_id, bonus_ref)
+        .unwrap_or_else(|| crate::types::ItemInfo::unknown(item_id));
 
     HttpResponse::Ok().json(result)
 }
@@ -82,23 +74,15 @@ pub(super) async fn get_item_info_batch(req: web::Json<ItemInfoBatchRequest>) ->
         }
     }
 
-    let mut results: HashMap<String, Value> = HashMap::new();
+    let mut results: HashMap<String, crate::types::ItemInfo> = HashMap::new();
     for (iid, bonus) in &unique_items {
         let bonus_ref = if bonus.is_empty() {
             None
         } else {
             Some(bonus.as_slice())
         };
-        let info = game_data::get_item_info(*iid, bonus_ref).unwrap_or_else(|| {
-            json!({
-                "item_id": iid,
-                "name": format!("Item {}", iid),
-                "quality": 1,
-                "quality_name": "common",
-                "icon": "inv_misc_questionmark",
-                "ilevel": 0,
-            })
-        });
+        let info = game_data::get_item_info(*iid, bonus_ref)
+            .unwrap_or_else(|| crate::types::ItemInfo::unknown(*iid));
         results.insert(iid.to_string(), info);
     }
 
@@ -130,7 +114,7 @@ pub(super) async fn get_max_upgrade_ilevels(body: web::Json<Vec<Value>>) -> Http
             .unwrap_or_default();
         let upgraded = game_data::upgrade_bonus_ids_to_max(&bonus_ids);
         if let Some(info) = game_data::get_item_info(item_id, Some(&upgraded)) {
-            let ilevel = info.get("ilevel").and_then(|v| v.as_u64()).unwrap_or(0);
+            let ilevel = info.ilevel;
             let mut sorted_ids = bonus_ids.clone();
             sorted_ids.sort();
             let key = format!(
@@ -159,8 +143,91 @@ pub(super) async fn resolve_gear(req: web::Json<ResolveGearRequest>) -> HttpResp
         req.simc_input.clone()
     };
     let parse_result = addon_parser::parse_simc_input(&simc_input);
-    let resolved = gear_resolver::resolve_gear(&parse_result);
+    // Always parse catalyst charges so the frontend can show the toggle
+    let currency_id = crate::item_db::catalyst_currency_id();
+    let catalyst_charges =
+        crate::addon_parser::parse_catalyst_charges(&req.simc_input, currency_id);
+    let mut resolved = if req.catalyst && catalyst_charges.is_some() {
+        gear_resolver::resolve_gear_with_catalyst(&parse_result, catalyst_charges)
+    } else {
+        gear_resolver::resolve_gear(&parse_result)
+    };
+    resolved.catalyst_charges = catalyst_charges;
     HttpResponse::Ok().json(resolved)
+}
+
+pub(super) async fn catalyst_convert(
+    req: web::Json<super::types::CatalystConvertRequest>,
+) -> HttpResponse {
+    let class_id = match crate::types::class_data::class_wow_id(&req.class_name) {
+        Some(id) => id,
+        None => return HttpResponse::BadRequest().json(json!({"detail": "Unknown class"})),
+    };
+    let inv_type = match gear_resolver::slot_to_inv_type(&req.slot) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"detail": "Slot not eligible for catalyst"}))
+        }
+    };
+    let tier_info = match crate::item_db::catalyst_tier_item(class_id, inv_type) {
+        Some(t) => t,
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"detail": "No catalyst tier item for this class/slot"}))
+        }
+    };
+    let catalyst_item = gear_resolver::build_catalyst_item(&req.item, tier_info, &req.slot);
+    HttpResponse::Ok().json(catalyst_item)
+}
+
+pub(super) async fn get_talent_tree(path: web::Path<u64>) -> HttpResponse {
+    let spec_id = path.into_inner();
+    let tree = match game_data::talent_tree(spec_id) {
+        Some(t) => t,
+        None => return HttpResponse::NotFound().json(json!({"detail": "Talent tree not found"})),
+    };
+
+    // Build fullNodeMaxRanks by combining all specs of the same class.
+    // The fullNodeOrder covers ALL nodes across all specs, but each spec's
+    // node arrays only include its own subset. The decoder needs maxRanks
+    // for every node in fullNodeOrder to correctly parse the bit stream.
+    let mut max_ranks: HashMap<u64, u64> = HashMap::new();
+    for (key, nodes_key) in [
+        ("classNodes", "classNodes"),
+        ("specNodes", "specNodes"),
+        ("heroNodes", "heroNodes"),
+    ] {
+        for sibling in crate::item_db::talent_trees_for_class(spec_id) {
+            if let Some(nodes) = sibling.get(nodes_key).and_then(|v| v.as_array()) {
+                for node in nodes {
+                    if let (Some(id), Some(mr)) = (
+                        node.get("id").and_then(|v| v.as_u64()),
+                        node.get("maxRanks").and_then(|v| v.as_u64()),
+                    ) {
+                        max_ranks.insert(id, mr);
+                    }
+                }
+            }
+        }
+        let _ = key; // suppress unused warning
+    }
+    // SubTree nodes (maxRanks defaults to 1)
+    for sibling in crate::item_db::talent_trees_for_class(spec_id) {
+        if let Some(nodes) = sibling.get("subTreeNodes").and_then(|v| v.as_array()) {
+            for node in nodes {
+                if let Some(id) = node.get("id").and_then(|v| v.as_u64()) {
+                    max_ranks.entry(id).or_insert(1);
+                }
+            }
+        }
+    }
+
+    let mut response = tree.clone();
+    if let Some(obj) = response.as_object_mut() {
+        obj.insert("fullNodeMaxRanks".to_string(), json!(max_ranks));
+    }
+    HttpResponse::Ok().json(response)
 }
 
 pub(super) async fn get_season_config() -> HttpResponse {

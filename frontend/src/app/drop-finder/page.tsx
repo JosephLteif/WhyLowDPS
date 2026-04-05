@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
-import FloatingSubmitButton from '../components/FloatingSubmitButton';
 import { useSimContext } from '../components/SimContext';
 import ToggleButtonGroup from '../components/ToggleButtonGroup';
 import { API_URL } from '../lib/api';
@@ -249,7 +248,7 @@ export default function DropFinderPage() {
     return [];
   }, [seasonConfig, isRaid, activeDungeonCat]);
 
-  const dungeonInstances = activeDungeonCat?.instances ?? [];
+  const dungeonInstances = useMemo(() => activeDungeonCat?.instances ?? [], [activeDungeonCat]);
   const activeInstances = isRaid ? raids : dungeonInstances;
   const hasImages = activeInstances.some((i) => i.image_url);
 
@@ -397,14 +396,14 @@ export default function DropFinderPage() {
                     </span>
                     {ilvl && (
                       <span
-                        className={`mt-1 font-mono text-[11px] font-medium tabular-nums ${isActive ? 'text-zinc-300' : 'text-zinc-500'}`}
+                        className={`mt-1 font-mono text-[13px] font-medium tabular-nums ${isActive ? 'text-zinc-300' : 'text-zinc-500'}`}
                       >
                         ilvl {ilvl}
                       </span>
                     )}
                     {d.track ? (
                       <span
-                        className={`mt-0.5 text-[10px] font-semibold ${tc?.text ?? 'text-zinc-400'} ${isActive ? 'opacity-100' : 'opacity-60'}`}
+                        className={`mt-0.5 text-[12px] font-semibold ${tc?.text ?? 'text-zinc-400'} ${isActive ? 'opacity-100' : 'opacity-60'}`}
                       >
                         {TRACK_SHORT[d.track] ?? d.track} {d.level}/{max}
                       </span>
@@ -446,14 +445,14 @@ export default function DropFinderPage() {
                     <button
                       key={spec}
                       onClick={() => toggleSpec(spec)}
-                      className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-all duration-150 ${
+                      className={`rounded-md border px-2 py-0.5 text-[13px] font-medium transition-all duration-150 ${
                         isActive
                           ? 'border-gold/40 bg-gold/[0.08] text-gold'
                           : 'border-border bg-surface-2 text-zinc-600 hover:border-zinc-600 hover:text-zinc-400'
                       }`}
                     >
                       {formatSpecName(spec)}
-                      {isMain && <span className="ml-1 text-[9px] opacity-50">main</span>}
+                      {isMain && <span className="ml-1 text-[11px] opacity-50">main</span>}
                     </button>
                   );
                 })}
@@ -499,42 +498,37 @@ export default function DropFinderPage() {
 
           <ErrorAlert message={error} />
 
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || selected.size === 0 || !hasCharacter}
-            className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
-          >
-            {submitting ? (
-              <>
-                <svg className="h-4 w-4 animate-spin" viewBox="0 0 16 16" fill="none">
-                  <circle
-                    cx="8"
-                    cy="8"
-                    r="6"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    opacity="0.25"
-                  />
-                  <path
-                    d="M14 8a6 6 0 00-6-6"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                Starting sim…
-              </>
-            ) : (
-              submitLabel
-            )}
-          </button>
-
-          <FloatingSubmitButton
-            onClick={handleSubmit}
-            disabled={selected.size === 0 || !hasCharacter}
-            submitting={submitting}
-            label={buttonLabel(`Find Upgrades (${selected.size})`)}
-          />
+          <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || selected.size === 0 || !hasCharacter}
+              className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+            >
+              {submitting ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 16 16" fill="none">
+                    <circle
+                      cx="8"
+                      cy="8"
+                      r="6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      opacity="0.25"
+                    />
+                    <path
+                      d="M14 8a6 6 0 00-6-6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  Starting sim…
+                </>
+              ) : (
+                submitLabel
+              )}
+            </button>
+          </div>
         </>
       )}
 

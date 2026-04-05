@@ -100,7 +100,7 @@ export default function SimTypeCards() {
                   >
                     {sim.label}
                   </h2>
-                  <p className="hidden truncate text-[11px] text-zinc-500 sm:block">
+                  <p className="hidden truncate text-[13px] text-zinc-500 sm:block">
                     {sim.description}
                   </p>
                 </div>
@@ -124,8 +124,8 @@ export default function SimTypeCards() {
                         }`}
                       >
                         <div className="min-w-0">
-                          <p className="text-[13px] font-medium">{child.label}</p>
-                          <p className="text-[10px] text-zinc-500">{child.description}</p>
+                          <p className="text-[15px] font-medium">{child.label}</p>
+                          <p className="text-[12px] text-zinc-500">{child.description}</p>
                         </div>
                       </Link>
                     );

@@ -107,18 +107,18 @@ function LogConsole({ lines }: { lines: string[] }) {
       <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-border bg-surface px-3 py-1.5">
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-gold/60" />
-          <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
+          <span className="text-[12px] font-medium uppercase tracking-wider text-gray-500">
             SimC Output
           </span>
         </div>
-        <span className="font-mono text-[10px] tabular-nums text-gray-600">
+        <span className="font-mono text-[12px] tabular-nums text-gray-600">
           {lines.length} lines
         </span>
       </div>
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="max-h-[320px] overflow-y-auto rounded-b-lg border border-border bg-[#0c0c0e] p-3 font-mono text-[11px] leading-[1.7]"
+        className="max-h-[320px] overflow-y-auto rounded-b-lg border border-border bg-[#0c0c0e] p-3 font-mono text-[13px] leading-[1.7]"
       >
         {lines.map((line, i) => (
           <div key={i} className={`whitespace-pre-wrap break-all ${classifyLine(line)}`}>
@@ -174,7 +174,7 @@ export default function SimStatus({
 
       <div className="text-center">
         <p className="text-sm font-semibold text-zinc-100">{title}</p>
-        {progressDetail && <p className="mt-1 text-[11px] text-zinc-500">{progressDetail}</p>}
+        {progressDetail && <p className="mt-1 text-[13px] text-zinc-500">{progressDetail}</p>}
       </div>
 
       <div className="w-72">
@@ -185,9 +185,9 @@ export default function SimStatus({
           />
         </div>
         <div className="mt-2 flex items-center justify-between">
-          <p className="font-mono text-[10px] tabular-nums text-zinc-500">{displayProgress}%</p>
+          <p className="font-mono text-[12px] tabular-nums text-zinc-500">{displayProgress}%</p>
           {cpuUsage !== null && (
-            <p className="font-mono text-[10px] tabular-nums text-zinc-500">
+            <p className="font-mono text-[12px] tabular-nums text-zinc-500">
               CPU {Math.round(cpuUsage)}%
             </p>
           )}
@@ -199,14 +199,14 @@ export default function SimStatus({
           <button
             onClick={handleCancel}
             disabled={cancelling}
-            className="rounded-lg px-3 py-1 text-[12px] text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
+            className="rounded-lg px-3 py-1 text-[14px] text-gray-500 transition-colors hover:bg-red-500/10 hover:text-red-400"
           >
             {cancelling ? 'Cancelling...' : 'Cancel Sim'}
           </button>
           {onToggleLogs && (
             <button
               onClick={onToggleLogs}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-[12px] text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-[14px] text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300"
             >
               <svg
                 className="h-3.5 w-3.5"
@@ -241,7 +241,7 @@ export default function SimStatus({
               >
                 <path d="M12 5L6.5 10.5L4 8" />
               </svg>
-              <span className="text-[11px] text-gray-400">{stage}</span>
+              <span className="text-[13px] text-gray-400">{stage}</span>
             </div>
           ))}
           {progressStage && (
@@ -249,7 +249,7 @@ export default function SimStatus({
               <div className="flex h-3 w-3 shrink-0 items-center justify-center">
                 <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-gold" />
               </div>
-              <span className="text-[11px] text-gray-400">
+              <span className="text-[13px] text-gray-400">
                 {progressStage}
                 {progressDetail && <span className="text-gray-500"> · {progressDetail}</span>}
               </span>

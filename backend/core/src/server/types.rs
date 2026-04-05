@@ -28,6 +28,8 @@ pub struct SimOptions {
     pub threads: u32,
     #[serde(default)]
     pub talents: String,
+    #[serde(default)]
+    pub spec_override: String,
     /// Custom APL and SimC expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list).
     #[serde(default)]
     pub custom_apl: String,
@@ -84,6 +86,12 @@ pub struct SimRequest {
     pub options: SimOptions,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct TalentBuild {
+    pub name: String,
+    pub talent_string: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TopGearRequest {
     pub simc_input: String,
@@ -95,6 +103,12 @@ pub struct TopGearRequest {
     pub copy_enchants: bool,
     #[serde(default)]
     pub max_combinations: Option<usize>,
+    #[serde(default)]
+    pub talent_builds: Vec<TalentBuild>,
+    #[serde(default)]
+    pub catalyst: bool,
+    #[serde(default)]
+    pub catalyst_charges: Option<u32>,
     #[serde(flatten)]
     pub options: SimOptions,
 }
@@ -143,6 +157,15 @@ pub(super) struct ResolveGearRequest {
     pub simc_input: String,
     #[serde(default)]
     pub max_upgrade: bool,
+    #[serde(default)]
+    pub catalyst: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct CatalystConvertRequest {
+    pub class_name: String,
+    pub slot: String,
+    pub item: crate::types::ResolvedItem,
 }
 
 #[cfg(not(feature = "desktop"))]

@@ -2,9 +2,13 @@
 
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import DpsHeroCard from '../../components/DpsHeroCard';
+import GearOverview from '../../components/GearOverview';
+import type { GearItem } from '../../components/GearOverview';
 import ResultsChart from '../../components/ResultsChart';
 import SimStatus from '../../components/SimStatus';
 import StatWeightsTable from '../../components/StatWeightsTable';
+import TalentTree from '../../components/TalentTree';
 import TopGearResults from '../../components/TopGearResults';
 
 import { API_URL } from '../../lib/api';
@@ -134,7 +138,7 @@ export default function SimResultClient() {
     return (
       <div className="card border-red-500/20 bg-red-500/[0.03] p-6">
         <p className="mb-2 text-sm font-semibold text-red-400">Simulation Failed</p>
-        <p className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-red-400/60">
+        <p className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-red-400/60">
           {job.error || 'Unknown error'}
         </p>
       </div>
@@ -170,7 +174,7 @@ export default function SimResultClient() {
       {siblings && siblings.length > 1 && (
         <div className="card p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="shrink-0 text-[11px] uppercase tracking-wider text-muted">
+            <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
               Scenarios
             </span>
             <span className="h-4 w-px shrink-0 bg-border" />
@@ -180,7 +184,7 @@ export default function SimResultClient() {
                 <a
                   key={s.id}
                   href={`/sim/${s.id}`}
-                  className={`rounded-lg border px-2.5 py-1 text-[12px] font-medium transition-all ${
+                  className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
                     isCurrent
                       ? 'border-gold/40 bg-gold/[0.08] text-gold'
                       : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
@@ -241,17 +245,41 @@ export default function SimResultClient() {
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
           />
+          {typeof r.talent_string === 'string' && r.talent_string && (
+            <TalentTree talentString={r.talent_string as string} />
+          )}
         </>
       ) : (
         <>
-          <ResultsChart
+          <DpsHeroCard
+            playerName={r.player_name as string}
+            playerClass={r.player_class as string}
+            playerRealm={r.realm as string | undefined}
             dps={r.dps as number}
             dpsError={r.dps_error as number}
             dpsErrorPct={r.dps_error_pct as number | undefined}
             fightLength={r.fight_length as number}
-            playerName={r.player_name as string}
-            playerClass={r.player_class as string}
-            playerRealm={r.realm as string | undefined}
+            desiredTargets={r.desired_targets as number | undefined}
+            iterations={r.iterations as number | undefined}
+            targetError={r.target_error as number | undefined}
+            elapsedTime={r.elapsed_time_seconds as number | undefined}
+          />
+          {r.equipped_gear &&
+            Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (
+              <GearOverview
+                gear={r.equipped_gear as Record<string, GearItem>}
+                characterRenderUrl={
+                  r.realm && r.player_name
+                    ? `https://simhammer.com/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render`
+                    : null
+                }
+              />
+            )}
+          {typeof r.talent_string === 'string' && r.talent_string && (
+            <TalentTree talentString={r.talent_string as string} />
+          )}
+          <ResultsChart
+            dps={r.dps as number}
             abilities={
               (r.abilities as Array<{
                 name: string;
@@ -259,10 +287,6 @@ export default function SimResultClient() {
                 school: string;
               }>) || []
             }
-            desiredTargets={r.desired_targets as number | undefined}
-            iterations={r.iterations as number | undefined}
-            targetError={r.target_error as number | undefined}
-            elapsedTime={r.elapsed_time_seconds as number | undefined}
           />
           {r.stat_weights && (
             <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />

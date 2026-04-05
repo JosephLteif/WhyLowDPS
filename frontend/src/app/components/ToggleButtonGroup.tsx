@@ -11,7 +11,7 @@ export default function ToggleButtonGroup<T extends string | number>({
   options,
   size = 'md',
 }: ToggleButtonGroupProps<T>) {
-  const padding = size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-[13px]';
+  const padding = size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-[15px]';
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -26,7 +26,7 @@ export default function ToggleButtonGroup<T extends string | number>({
           }`}
         >
           {opt.label}
-          {opt.sublabel && <span className="ml-1 text-[10px] opacity-50">{opt.sublabel}</span>}
+          {opt.sublabel && <span className="ml-1 text-[12px] opacity-50">{opt.sublabel}</span>}
         </button>
       ))}
     </div>

@@ -92,7 +92,7 @@ export default function DropSlotList({
               <button
                 key={mode}
                 onClick={() => setGroupMode(mode)}
-                className={`rounded border px-2.5 py-1 text-[11px] font-medium transition-all ${
+                className={`rounded border px-2.5 py-1 text-[13px] font-medium transition-all ${
                   groupMode === mode
                     ? 'border-white bg-white text-black'
                     : 'border-border bg-surface-2 text-gray-400 hover:border-gray-500 hover:text-white'
@@ -104,13 +104,13 @@ export default function DropSlotList({
           </div>
           <button
             onClick={onSelectAll}
-            className="text-[11px] text-gray-500 transition-colors hover:text-white"
+            className="text-[13px] text-gray-500 transition-colors hover:text-white"
           >
             Select all
           </button>
           <button
             onClick={onClear}
-            className="text-[11px] text-gray-500 transition-colors hover:text-white"
+            className="text-[13px] text-gray-500 transition-colors hover:text-white"
           >
             Clear
           </button>
@@ -119,7 +119,7 @@ export default function DropSlotList({
 
       {(groupMode === 'instance' ? instanceSorted : slotSorted).map(([groupLabel, items]) => (
         <div key={groupLabel} className="card p-4">
-          <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted">
+          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-widest text-muted">
             {groupLabel}
             <span className="ml-1.5 font-normal normal-case tracking-normal text-gray-600">
               ({items.length})
@@ -183,7 +183,7 @@ function DropItemCard({
         />
         {isOffSpec && (
           <div
-            className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-black"
+            className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-black"
             title="Off-spec: may not drop for your main spec"
           >
             !
@@ -197,14 +197,14 @@ function DropItemCard({
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className={`block text-[12px] font-medium leading-tight ${QUALITY_COLORS[resolved.quality] || 'text-gray-400'}`}
+          className={`block text-[14px] font-medium leading-tight ${QUALITY_COLORS[resolved.quality] || 'text-gray-400'}`}
         >
           {item.name}
         </a>
-        {item.encounter && <span className="text-[10px] text-zinc-500">{item.encounter}</span>}
+        {item.encounter && <span className="text-[12px] text-zinc-500">{item.encounter}</span>}
       </div>
       <span
-        className={`shrink-0 text-[11px] tabular-nums text-gray-600 ${isOffSpec ? 'opacity-60' : ''}`}
+        className={`shrink-0 text-[13px] tabular-nums text-gray-600 ${isOffSpec ? 'opacity-60' : ''}`}
       >
         {resolved.ilvl}
       </span>

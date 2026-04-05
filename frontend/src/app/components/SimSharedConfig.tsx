@@ -6,14 +6,17 @@ import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
+import { specDisplayName } from '../lib/types';
 
-/** Adler-32 checksum matching the SimC addon's implementation. */
+/** Adler-32 checksum matching the SimC addon's implementation.
+ *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
 function adler32(s: string): number {
   const prime = 65521;
   let s1 = 1;
   let s2 = 0;
-  for (let i = 0; i < s.length; i++) {
-    s1 = (s1 + s.charCodeAt(i)) % prime;
+  const bytes = new TextEncoder().encode(s);
+  for (let i = 0; i < bytes.length; i++) {
+    s1 = (s1 + bytes[i]) % prime;
     s2 = (s2 + s1) % prime;
   }
   return ((s2 << 16) | s1) >>> 0;
@@ -24,11 +27,14 @@ function validateChecksum(input: string): 'valid' | 'invalid' | null {
   const match = input.match(/^#\s*Checksum:\s*([0-9a-fA-F]+)\s*$/m);
   if (!match) return null;
   const expected = parseInt(match[1], 16);
-  // The checksum covers everything before the checksum line
+  // The checksum covers everything before the checksum line.
+  // The SimC addon may compute with \r\n or \n line endings depending on OS.
+  // Browsers normalize textarea input to \n, so try both.
   const idx = input.indexOf(match[0]);
   const body = input.substring(0, idx);
-  const computed = adler32(body);
-  return computed === expected ? 'valid' : 'invalid';
+  if (adler32(body) === expected) return 'valid';
+  if (adler32(body.replace(/\n/g, '\r\n')) === expected) return 'valid';
+  return 'invalid';
 }
 
 function parseCharacterInfo(input: string) {
@@ -82,6 +88,20 @@ const EXPERT_TABS = [
 ] as const;
 
 type ExpertTabKey = (typeof EXPERT_TABS)[number]['key'];
+
+function CharacterInfoBar({ info }: { info: { className: string; name: string; spec: string } }) {
+  return (
+    <div className="flex items-center gap-2 rounded-lg bg-surface-2 px-3.5 py-2">
+      <div className="h-2 w-2 rounded-full bg-gold/70" />
+      <p className="text-xs font-medium text-zinc-300">
+        {info.name}
+        <span className="ml-1.5 font-normal text-zinc-500">
+          {specDisplayName(info.spec)} {info.className}
+        </span>
+      </p>
+    </div>
+  );
+}
 
 function AdvancedOptions() {
   const [open, setOpen] = useState(false);
@@ -160,7 +180,7 @@ function AdvancedOptions() {
           </svg>
           <span className="text-sm font-medium text-zinc-300">Advanced Options</span>
           {!open && !isDefault && (
-            <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold">
+            <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
               Modified
             </span>
           )}
@@ -179,26 +199,10 @@ function AdvancedOptions() {
       </button>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
-          <div className="pt-4">
-            <label className="label-text">Fight Style</label>
-            <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4 pt-4">
             <div className="space-y-2">
-              <label className="label-text">Number of Bosses</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  value={targetCount}
-                  onChange={(e) => setTargetCount(Number(e.target.value))}
-                  className="flex-1 accent-gold"
-                />
-                <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
-                  {targetCount}
-                </span>
-              </div>
+              <label className="label-text">Fight Style</label>
+              <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
             </div>
             <div className="space-y-2">
               <label className="label-text">Fight Length</label>
@@ -217,6 +221,22 @@ function AdvancedOptions() {
                 </span>
               </div>
             </div>
+            <div className="space-y-2">
+              <label className="label-text">Number of Bosses</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  value={targetCount}
+                  onChange={(e) => setTargetCount(Number(e.target.value))}
+                  className="flex-1 accent-gold"
+                />
+                <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
+                  {targetCount}
+                </span>
+              </div>
+            </div>
           </div>
 
           <ScenarioBuilder />
@@ -230,7 +250,7 @@ function AdvancedOptions() {
               placeholder="Custom APL or expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list=1)..."
               className="input-field h-28 resize-y font-mono text-xs"
             />
-            <p className="text-[11px] text-zinc-600">
+            <p className="text-[13px] text-zinc-600">
               Override action priority lists or set expansion-specific options. Injected after the
               base actor.
             </p>
@@ -284,7 +304,7 @@ function ExpertToggle({
         </div>
         <span className="text-sm font-medium text-zinc-300">Expert Mode</span>
         {!open && hasContent && (
-          <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold">
+          <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
             Modified
           </span>
         )}
@@ -317,7 +337,7 @@ function ExpertToggle({
             placeholder={`Paste ${activeTabInfo.label.toLowerCase()} SimC input here...`}
             className="input-field h-32 resize-y font-mono text-xs"
           />
-          <p className="text-[11px] text-zinc-600">{activeTabInfo.desc}</p>
+          <p className="text-[13px] text-zinc-600">{activeTabInfo.desc}</p>
         </div>
       )}
     </div>
@@ -346,33 +366,29 @@ export default function SimSharedConfig() {
           value={simcInput}
           onChange={(e) => setSimcInput(e.target.value)}
           placeholder="Paste your SimC addon export here..."
-          className="input-field h-40 resize-y font-mono text-[11px] leading-relaxed"
+          className="input-field h-40 resize-y font-mono text-[13px] leading-relaxed"
         />
         {checksumStatus === 'invalid' && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-            <svg className="h-4 w-4 shrink-0 text-amber-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg
+              className="h-4 w-4 shrink-0 text-amber-400"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            >
               <path d="M8 1L1 14h14L8 1zM8 6v4M8 12v.5" />
             </svg>
-            <p className="text-[12px] text-amber-300">
-              This input appears to have been manually edited. Results may not reflect your actual in-game character.
+            <p className="text-[14px] text-amber-300">
+              This input appears to have been manually edited. Results may not reflect your actual
+              in-game character.
             </p>
           </div>
         )}
-        {detectedInfo && (
-          <div className="flex items-center justify-between rounded-lg bg-surface-2 px-3.5 py-2">
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-gold/70" />
-              <p className="text-xs font-medium text-zinc-300">
-                {detectedInfo.name}
-                <span className="ml-1.5 font-normal text-zinc-500">
-                  {detectedInfo.spec} {detectedInfo.className}
-                </span>
-              </p>
-            </div>
-            <TalentPicker />
-          </div>
-        )}
+        {detectedInfo && <CharacterInfoBar info={detectedInfo} />}
       </div>
+      <TalentPicker />
       <AdvancedOptions />
     </div>
   );

@@ -196,7 +196,7 @@ pub(super) fn resolve_to_items_by_slot(
 }
 
 fn resolved_item_to_value(item: &crate::types::ResolvedItem, is_equipped: bool) -> Value {
-    json!({
+    let mut v = json!({
         "slot": item.slot,
         "simc_string": item.simc_string,
         "is_equipped": is_equipped,
@@ -207,7 +207,11 @@ fn resolved_item_to_value(item: &crate::types::ResolvedItem, is_equipped: bool) 
         "bonus_ids": item.bonus_ids,
         "enchant_id": item.enchant_id,
         "gem_id": item.gem_id,
-    })
+    });
+    if item.is_catalyst {
+        v["is_catalyst"] = json!(true);
+    }
+    v
 }
 
 /// Replace the talents= line in a simc input string with a new talent string.
@@ -224,12 +228,28 @@ pub(super) fn apply_talent_override(simc_input: &str, talents: &str) -> String {
     }
 }
 
+/// Replace the spec= line in a simc input string.
+pub(super) fn apply_spec_override(simc_input: &str, spec: &str) -> String {
+    if spec.is_empty() {
+        return simc_input.to_string();
+    }
+    let re = regex::Regex::new(r"(?m)^spec=.+$").unwrap();
+    if re.is_match(simc_input) {
+        re.replace(simc_input, format!("spec={}", spec)).to_string()
+    } else {
+        format!("{}\nspec={}", simc_input, spec)
+    }
+}
+
 /// Extract server= (realm) from a simc input string and inject it into a parsed result.
 pub(super) fn inject_realm(parsed: &mut Value, simc_input: &str) {
     for line in simc_input.lines() {
-        if let Some(val) = line.trim().strip_prefix("server=") {
+        let trimmed = line.trim();
+        if let Some(val) = trimmed.strip_prefix("server=") {
             parsed["realm"] = json!(val);
-            break;
+        }
+        if let Some(val) = trimmed.strip_prefix("talents=") {
+            parsed["talent_string"] = json!(val);
         }
     }
 }

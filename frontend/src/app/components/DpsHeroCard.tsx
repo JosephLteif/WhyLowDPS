@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { API_URL } from '../lib/api';
 import { useSimContext } from './SimContext';
 
@@ -142,7 +143,16 @@ export default function DpsHeroCard({
           />
         )}
         <div className="relative">
-          <p className="text-2xl font-bold tracking-tight text-white">{playerName}</p>
+          {playerRealm ? (
+            <Link 
+              href={`/character/${(playerRegion || 'us').toLowerCase()}/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}`}
+              className="text-2xl font-bold tracking-tight text-white transition-colors hover:text-gold"
+            >
+              {playerName}
+            </Link>
+          ) : (
+            <p className="text-2xl font-bold tracking-tight text-white">{playerName}</p>
+          )}
           <p className="mt-0.5 text-sm font-medium text-gold/70">{playerClass}</p>
           <p className="mt-4 text-5xl font-bold tabular-nums tracking-tight text-white">
             {Math.round(dps).toLocaleString()}

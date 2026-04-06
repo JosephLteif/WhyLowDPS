@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { API_URL } from '../lib/api';
 import { CLASS_COLORS } from '../lib/types';
+import Link from 'next/link';
 
 interface Character {
   name: string;
@@ -92,9 +93,10 @@ export default function CharactersPage() {
             const factionColor = isAlliance ? 'rgba(30, 58, 138, 0.4)' : 'rgba(127, 29, 29, 0.4)';
 
             return (
-              <div
+              <Link
                 key={`${char.name}-${char.realm}-${idx}`}
-                className="group card relative overflow-hidden flex flex-col h-64 transition-all hover:border-gold/30"
+                href={`/character/${char.region.toLowerCase()}/${char.realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-')}/${char.name.toLowerCase()}`}
+                className="group card relative overflow-hidden flex flex-col h-64 transition-all hover:border-gold/30 cursor-pointer active:scale-[0.99]"
               >
                 {/* Character Background Image */}
                 <div className="absolute inset-0 z-0">
@@ -124,11 +126,10 @@ export default function CharactersPage() {
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
                       <span
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-widest shadow-sm ${
-                          isAlliance
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-widest shadow-sm ${isAlliance
                             ? 'bg-blue-600 text-white'
                             : 'bg-red-700 text-white'
-                        }`}
+                          }`}
                       >
                         {char.faction}
                       </span>
@@ -143,25 +144,9 @@ export default function CharactersPage() {
                       <span className="text-[10px] font-semibold uppercase tracking-tighter text-zinc-500">Realm</span>
                       <span className="text-[13px] font-medium text-zinc-200">{char.realm}</span>
                     </div>
-
-                    <button
-                      onClick={() => copySimcString(char, idx)}
-                      className={`flex items-center gap-2 rounded-lg border border-gold/20 bg-gold/5 px-3 py-2 text-[12px] font-bold text-gold transition-all hover:bg-gold hover:text-black active:scale-[0.97] ${
-                        copiedIdx === idx ? 'bg-green-600/20 border-green-500/50 text-green-400' : ''
-                      }`}
-                    >
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
-                        {copiedIdx === idx ? (
-                          <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
-                        ) : (
-                          <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z" />
-                        )}
-                      </svg>
-                      {copiedIdx === idx ? 'Copied!' : 'Copy SimC'}
-                    </button>
                   </div>
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>

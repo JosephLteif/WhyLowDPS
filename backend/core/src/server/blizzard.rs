@@ -134,7 +134,6 @@ pub async fn proxy_character_media(
     match res {
         Ok(r) if r.status().is_success() => {
             let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
-            // Extract the specific image URL based on type (render, inset, etc)
             if let Some(assets) = data.get("assets").and_then(|a| a.as_array()) {
                 for asset in assets {
                     if let (Some(key), Some(value)) = (
@@ -152,5 +151,162 @@ pub async fn proxy_character_media(
             HttpResponse::NotFound().finish()
         }
         _ => HttpResponse::NotFound().finish(),
+    }
+}
+
+pub async fn proxy_character_equipment(
+    state: web::Data<Arc<BlizzardState>>,
+    path: web::Path<(String, String)>,
+    query: web::Query<ProxyQuery>,
+) -> HttpResponse {
+    let (realm, name) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+
+    let token = match state.get_token().await {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let url = format!(
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/equipment?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
+    );
+
+    let res = state.client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            HttpResponse::Ok().json(data)
+        }
+        _ => HttpResponse::NotFound().finish(),
+    }
+}
+
+pub async fn proxy_character_statistics(
+    state: web::Data<Arc<BlizzardState>>,
+    path: web::Path<(String, String)>,
+    query: web::Query<ProxyQuery>,
+) -> HttpResponse {
+    let (realm, name) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+
+    let token = match state.get_token().await {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let url = format!(
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/statistics?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
+    );
+
+    let res = state.client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            HttpResponse::Ok().json(data)
+        }
+        _ => {
+            println!("Blizzard API 404/Error for character statistics at {}", url);
+            HttpResponse::Ok().json(serde_json::json!({}))
+        }
+    }
+}
+
+pub async fn proxy_character_specializations(
+    state: web::Data<Arc<BlizzardState>>,
+    path: web::Path<(String, String)>,
+    query: web::Query<ProxyQuery>,
+) -> HttpResponse {
+    let (realm, name) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+
+    let token = match state.get_token().await {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let url = format!(
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/specializations?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
+    );
+
+    let res = state.client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            HttpResponse::Ok().json(data)
+        }
+        _ => {
+            println!("Blizzard API 404/Error for specializations at {}", url);
+            HttpResponse::Ok().json(serde_json::json!({}))
+        }
+    }
+}
+pub async fn proxy_character_professions(
+    state: web::Data<Arc<BlizzardState>>,
+    path: web::Path<(String, String)>,
+    query: web::Query<ProxyQuery>,
+) -> HttpResponse {
+    let (realm, name) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+
+    let token = match state.get_token().await {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let url = format!(
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/professions?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
+    );
+
+    let res = state.client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            HttpResponse::Ok().json(data)
+        }
+        _ => HttpResponse::Ok().json(serde_json::json!({})),
     }
 }

@@ -115,6 +115,15 @@ async fn spa_fallback(
         }
     }
 
+    // /character/[region]/[realm]/[name] -> character/[region]/[realm]/[name].html or fallback to index
+    if path.starts_with("/character/") {
+        // Since these are highly dynamic, we usually want to fallback to index.html 
+        // unless we have a specific catch-all. Next.js static export for dynamic routes
+        // without generateStaticParams usually falls back to the root index.
+        return Ok(NamedFile::open(frontend_dir.0.join("index.html"))?);
+    }
+
+
     // Fallback to index.html
     Ok(NamedFile::open(frontend_dir.0.join("index.html"))?)
 }
@@ -321,8 +330,24 @@ pub async fn start_with_storage_bind(
                 web::get().to(blizzard::proxy_character_profile),
             )
             .route(
+                "/api/blizzard/character/{realm}/{name}/equipment",
+                web::get().to(blizzard::proxy_character_equipment),
+            )
+            .route(
+                "/api/blizzard/character/{realm}/{name}/statistics",
+                web::get().to(blizzard::proxy_character_statistics),
+            )
+            .route(
+                "/api/blizzard/character/{realm}/{name}/specializations",
+                web::get().to(blizzard::proxy_character_specializations),
+            )
+            .route(
                 "/api/blizzard/character/{realm}/{name}/media/{type}",
                 web::get().to(blizzard::proxy_character_media),
+            )
+            .route(
+                "/api/blizzard/character/{realm}/{name}/professions",
+                web::get().to(blizzard::proxy_character_professions),
             )
             // Game data routes
             .route(

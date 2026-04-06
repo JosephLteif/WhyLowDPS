@@ -10,6 +10,7 @@ import SimStatus from '../../components/SimStatus';
 import StatWeightsTable from '../../components/StatWeightsTable';
 import TalentTree from '../../components/TalentTree';
 import TopGearResults from '../../components/TopGearResults';
+import { calculateAverageIlevel } from '../../lib/ilevel';
 
 import { API_URL } from '../../lib/api';
 import { useSimContext } from '../../components/SimContext';
@@ -187,6 +188,9 @@ export default function SimResultClient() {
   const r = job.result;
   const isTopGear = r.type === 'top_gear';
 
+  const equippedGear = r.equipped_gear as any;
+  const avgIlevel = equippedGear ? calculateAverageIlevel(equippedGear) : undefined;
+
   return (
     <div className="space-y-6">
       {siblings && siblings.length > 1 && (
@@ -283,6 +287,7 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
+            avgIlevel={avgIlevel}
           />
           {r.equipped_gear &&
             Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (

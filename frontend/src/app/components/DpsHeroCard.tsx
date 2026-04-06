@@ -16,6 +16,8 @@ interface DpsHeroCardProps {
   iterations?: number;
   targetError?: number;
   elapsedTime?: number;
+  avgIlevel?: number;
+  avgIlevelGain?: number;
   /** Optional content rendered between the DPS number and the metadata bar */
   children?: React.ReactNode;
 }
@@ -79,13 +81,16 @@ export default function DpsHeroCard({
   targetError,
   desiredTargets,
   elapsedTime,
+  avgIlevel,
+  avgIlevelGain,
   children,
 }: DpsHeroCardProps) {
   const hasMetadata =
     (dpsError != null && dpsError > 0) ||
     fightLength != null ||
     (iterations != null && iterations > 0) ||
-    elapsedTime != null;
+    elapsedTime != null ||
+    avgIlevel != null;
 
   const faction = useFaction(playerRealm, playerName, playerRegion);
 
@@ -165,6 +170,20 @@ export default function DpsHeroCard({
       </div>
       {hasMetadata && (
         <div className="flex items-center justify-center gap-px border-t border-border bg-surface-2">
+          {avgIlevel != null && (
+            <MetaStat 
+              label="Item Level" 
+              value={avgIlevel.toFixed(2)} 
+              note={avgIlevelGain != null && avgIlevelGain !== 0 ? `(${avgIlevelGain > 0 ? '+' : ''}${avgIlevelGain.toFixed(2)})` : undefined}
+              noteColor={
+                avgIlevelGain != null && avgIlevelGain > 0 
+                  ? 'text-emerald-400' 
+                  : avgIlevelGain != null && avgIlevelGain < 0 
+                    ? 'text-red-400' 
+                    : undefined
+              }
+            />
+          )}
           {dpsError != null && dpsError > 0 && (
             <MetaStat
               label="Margin of Error"
@@ -195,13 +214,13 @@ export default function DpsHeroCard({
   );
 }
 
-function MetaStat({ label, value, note }: { label: string; value: string; note?: string }) {
+function MetaStat({ label, value, note, noteColor }: { label: string; value: string; note?: string; noteColor?: string }) {
   return (
     <div className="flex-1 px-4 py-3 text-center">
       <p className="text-[12px] uppercase tracking-wider text-zinc-600">{label}</p>
       <p className="mt-0.5 text-xs font-medium tabular-nums text-zinc-300">
         {value}
-        {note && <span className="ml-1 text-[12px] font-normal text-zinc-600">{note}</span>}
+        {note && <span className={`ml-1 text-[12px] font-normal ${noteColor || 'text-zinc-600'}`}>{note}</span>}
       </p>
     </div>
   );

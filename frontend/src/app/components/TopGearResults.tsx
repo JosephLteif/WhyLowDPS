@@ -18,6 +18,7 @@ import {
   useItemInfo,
 } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import { calculateAverageIlevel } from '../lib/ilevel';
 
 interface ResultItem {
   slot: string;
@@ -40,6 +41,7 @@ interface TopGearResult {
   talent_build?: string;
   talent_spec?: string;
   delta: number;
+  target_error?: number;
 }
 
 interface TopGearResultsProps {
@@ -146,6 +148,16 @@ export default function TopGearResults({
     return gearSet;
   }, [equippedGear, selectedResult]);
 
+  const baseAvgIlevel = useMemo(() => {
+    if (!equippedGear) return 0;
+    return calculateAverageIlevel(equippedGear as any);
+  }, [equippedGear]);
+
+  const selectedAvgIlevel = useMemo(() => {
+    if (!bestGearSet) return baseAvgIlevel;
+    return calculateAverageIlevel(bestGearSet);
+  }, [bestGearSet, baseAvgIlevel]);
+
   const upgradeSlots = useMemo(() => {
     const slots = new Set<string>();
     if (selectedResult && selectedResult.delta > 0) {
@@ -236,24 +248,52 @@ export default function TopGearResults({
         playerClass={playerClass}
         playerRealm={playerRealm}
         playerRegion={playerRegion}
-        dps={selectedResult && selectedResult.delta > 0 ? selectedResult.dps : baseDps}
-        dpsError={dpsError}
+        dps={selectedResult?.dps || baseDps}
+        dpsError={selectedResult?.target_error ?? dpsError}
         dpsErrorPct={dpsErrorPct}
         fightLength={fightLength}
         desiredTargets={desiredTargets}
         iterations={iterations}
         targetError={targetError}
         elapsedTime={elapsedTime}
+        avgIlevel={selectedAvgIlevel}
+        avgIlevelGain={selectedAvgIlevel - baseAvgIlevel}
       >
-        {selectedResult && selectedResult.delta > 0 ? (
-          <div className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-3 py-1.5 text-emerald-400">
-            <span className="text-sm font-semibold tabular-nums">
-              +{Math.round(selectedResult.delta).toLocaleString()}
-            </span>
-            <span className="text-xs opacity-60">upgrade</span>
+        {selectedResult && (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            {selectedResult.delta > 0 ? (
+              <div className="flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-3 py-1.5 text-emerald-400">
+                <span className="text-sm font-bold">
+                  +{Math.round(selectedResult.delta).toLocaleString()} DPS (
+                  {((selectedResult.delta / baseDps) * 100).toFixed(1)}%)
+                </span>
+                <span className="text-xs opacity-60">upgrade</span>
+              </div>
+            ) : selectedResult.delta < 0 ? (
+              <div className="flex items-center gap-1.5 rounded-md bg-red-500/10 px-3 py-1.5 text-red-400">
+                <span className="text-sm font-bold">
+                  {Math.round(selectedResult.delta).toLocaleString()} DPS (
+                  {((selectedResult.delta / baseDps) * 100).toFixed(1)}%)
+                </span>
+                <span className="text-xs opacity-60">downgrade</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 rounded-md bg-zinc-500/10 px-3 py-1.5 text-zinc-400">
+                <span className="text-sm font-bold italic">Currently Equipped</span>
+              </div>
+            )}
+            
+            {selectedResultName && selectedResultName !== results[0]?.name && (
+              <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-600">
+                Viewing Selection: {selectedResultName}
+              </span>
+            )}
+            {selectedResultName === results[0]?.name && selectedResult.delta > 0 && (
+              <span className="text-[10px] uppercase tracking-[0.2em] text-gold/80">
+                Best Gear Combination
+              </span>
+            )}
           </div>
-        ) : (
-          <p className="mt-4 text-sm text-zinc-500">Current gear is already optimal.</p>
         )}
       </DpsHeroCard>
 
@@ -290,11 +330,10 @@ export default function TopGearResults({
                   <button
                     key={mode}
                     onClick={() => setGroupMode(mode)}
-                    className={`rounded border px-2.5 py-1 text-[13px] font-medium transition-all ${
-                      groupMode === mode
+                    className={`rounded border px-2.5 py-1 text-[13px] font-medium transition-all ${groupMode === mode
                         ? 'border-white bg-white text-black'
                         : 'border-border bg-surface-2 text-gray-400 hover:border-gray-500 hover:text-white'
-                    }`}
+                      }`}
                   >
                     {label}
                   </button>
@@ -313,6 +352,7 @@ export default function TopGearResults({
                   <span className="text-[14px] font-semibold text-gray-300">{encounter}</span>
                   <span className="font-mono text-[12px] text-muted">{group.length} items</span>
                 </div>
+                <RankingsHeader />
                 <div className="space-y-1">
                   {group.map((result) => (
                     <ResultRow
@@ -320,6 +360,8 @@ export default function TopGearResults({
                       result={result}
                       maxDps={maxDps}
                       baseDps={baseDps}
+                      equippedGear={equippedGear}
+                      baseAvgIlevel={baseAvgIlevel}
                       isBest={result === results[0] && result.delta > 0}
                       isSelected={result.name === (selectedResultName || results[0]?.name)}
                       onSelect={() => setSelectedResultName(result.name)}
@@ -337,6 +379,8 @@ export default function TopGearResults({
             results={results}
             maxDps={maxDps}
             baseDps={baseDps}
+            equippedGear={equippedGear}
+            baseAvgIlevel={baseAvgIlevel}
             itemInfoMap={itemInfoMap}
             enchantInfoMap={enchantInfoMap}
             gemInfoMap={gemInfoMap}
@@ -355,6 +399,8 @@ function RankedResults({
   results,
   maxDps,
   baseDps,
+  equippedGear,
+  baseAvgIlevel,
   itemInfoMap,
   enchantInfoMap,
   gemInfoMap,
@@ -364,6 +410,8 @@ function RankedResults({
   results: TopGearResult[];
   maxDps: number;
   baseDps: number;
+  equippedGear?: Record<string, ResultItem>;
+  baseAvgIlevel: number;
   itemInfoMap: Record<number, ItemInfo>;
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
@@ -376,6 +424,7 @@ function RankedResults({
 
   return (
     <div className="space-y-1">
+      <RankingsHeader />
       {visible.map((result, idx) => (
         <ResultRow
           key={result.name}
@@ -383,6 +432,8 @@ function RankedResults({
           rank={idx + 1}
           maxDps={maxDps}
           baseDps={baseDps}
+          equippedGear={equippedGear}
+          baseAvgIlevel={baseAvgIlevel}
           isBest={idx === 0 && result.delta > 0}
           isSelected={result.name === (selectedResultName || results[0]?.name)}
           onSelect={() => onSelectResult(result.name)}
@@ -405,11 +456,31 @@ function RankedResults({
   );
 }
 
+function RankingsHeader() {
+  return (
+    <div className="px-3 pb-2 pt-1">
+      <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="w-5 shrink-0 text-right text-[10px] uppercase tracking-widest text-zinc-600">#</span>
+          <span className="text-[10px] uppercase tracking-widest text-zinc-600">Items & Talents</span>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="w-28 text-right text-[10px] uppercase tracking-widest text-zinc-600">DPS Change</span>
+          <span className="w-16 text-right text-[10px] uppercase tracking-widest text-zinc-600">DPS</span>
+          <span className="w-24 text-right text-[10px] uppercase tracking-widest text-zinc-600">Item Level</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ResultRow({
   result,
   rank,
   maxDps,
   baseDps,
+  equippedGear,
+  baseAvgIlevel,
   isBest,
   isSelected,
   onSelect,
@@ -421,6 +492,8 @@ function ResultRow({
   rank?: number;
   maxDps: number;
   baseDps: number;
+  equippedGear?: Record<string, ResultItem>;
+  baseAvgIlevel: number;
   isBest: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
@@ -453,18 +526,31 @@ function ResultRow({
     return false;
   });
 
+  const ilvlGain = useMemo(() => {
+    if (!equippedGear || !baseAvgIlevel) return 0;
+    const gearSet = { ...equippedGear };
+    for (const it of result.items) {
+      if (!it.is_kept && it.item_id === 0 && it.slot === 'off_hand') {
+        delete gearSet.off_hand;
+      } else if (!it.is_kept && it.item_id > 0) {
+        gearSet[it.slot] = it;
+      }
+    }
+    const newIlevel = calculateAverageIlevel(gearSet as any);
+    return newIlevel - baseAvgIlevel;
+  }, [equippedGear, baseAvgIlevel, result.items]);
+
   return (
     <div
       onClick={onSelect}
-      className={`relative cursor-pointer overflow-hidden rounded-lg transition-colors hover:bg-white/[0.04] ${
-        isSelected && !isBest
+      className={`relative cursor-pointer overflow-hidden rounded-lg transition-colors hover:bg-white/[0.04] ${isSelected && !isBest
           ? 'bg-emerald-500/[0.04] ring-1 ring-emerald-500/50'
           : isBest
             ? `ring-1 ring-gold/30 ${isSelected ? 'bg-gold/[0.05]' : 'bg-transparent'}`
             : isEquipped
               ? 'ring-1 ring-white/5'
               : ''
-      }`}
+        }`}
     >
       <div
         className="absolute inset-y-0 left-0 bg-white/[0.02]"
@@ -519,22 +605,19 @@ function ResultRow({
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <span
-            className={`flex items-center gap-1.5 font-mono text-[15px] tabular-nums ${
-              result.delta > 0
+            className={`flex w-28 items-center justify-end gap-1.5 font-mono text-[15px] tabular-nums ${!isEquipped && result.delta > 0
                 ? 'text-emerald-400'
-                : result.delta < 0
+                : !isEquipped && result.delta < 0
                   ? 'text-red-400'
                   : 'text-muted'
-            }`}
+              }`}
           >
             <span>
-              {result.delta > 0
-                ? `+${Math.round(result.delta).toLocaleString()}`
-                : result.delta < 0
-                  ? Math.round(result.delta).toLocaleString()
-                  : '—'}
+              {!isEquipped && result.delta !== 0
+                ? (result.delta > 0 ? '+' : '') + Math.round(result.delta).toLocaleString()
+                : '—'}
             </span>
-            {result.delta !== 0 && baseDps > 0 && (
+            {!isEquipped && result.delta !== 0 && baseDps > 0 && (
               <span className="text-xs opacity-70">
                 ({result.delta > 0 ? '+' : ''}
                 {((result.delta / baseDps) * 100).toFixed(1)}%)
@@ -544,6 +627,20 @@ function ResultRow({
           <span className="w-16 text-right font-mono text-sm tabular-nums text-gray-300">
             {Math.round(result.dps).toLocaleString()}
           </span>
+          <div className="flex w-24 flex-col items-end gap-0.5">
+            <span className="text-[13px] tabular-nums text-gray-300">
+              {(baseAvgIlevel + ilvlGain).toFixed(2)}
+              {ilvlGain !== 0 && (
+                <span
+                  className={`ml-1 text-[11px] font-bold ${ilvlGain > 0 ? 'text-emerald-400/80' : 'text-red-400/80'
+                    }`}
+                >
+                  ({ilvlGain > 0 ? '+' : ''}
+                  {ilvlGain.toFixed(2)})
+                </span>
+              )}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -573,9 +670,8 @@ function ItemTag({
 
   return (
     <div
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
-        kept ? 'opacity-40' : 'bg-white/[0.04]'
-      }`}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${kept ? 'opacity-40' : 'bg-white/[0.04]'
+        }`}
     >
       <div className="h-4 w-4 shrink-0 overflow-hidden rounded-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}

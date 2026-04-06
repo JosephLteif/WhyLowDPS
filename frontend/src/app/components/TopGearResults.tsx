@@ -46,6 +46,7 @@ interface TopGearResultsProps {
   playerName: string;
   playerClass: string;
   playerRealm?: string;
+  playerRegion?: string;
   baseDps: number;
   results: TopGearResult[];
   equippedGear?: Record<string, ResultItem>;
@@ -77,6 +78,7 @@ export default function TopGearResults({
   playerName,
   playerClass,
   playerRealm,
+  playerRegion,
   baseDps,
   results,
   equippedGear,
@@ -88,7 +90,6 @@ export default function TopGearResults({
   targetError,
   elapsedTime,
 }: TopGearResultsProps) {
-  const { disableCharacterMedia } = useSimContext();
   const maxDps = results.length > 0 ? results[0].dps : baseDps;
   const bestResult = results.length > 0 ? results[0] : null;
 
@@ -224,8 +225,8 @@ export default function TopGearResults({
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
 
   const characterRenderUrl =
-    playerRealm && playerName && !disableCharacterMedia
-      ? `${API_URL}/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/render`
+    playerRealm && playerName
+      ? `${API_URL}/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/render${playerRegion ? `?region=${playerRegion.toLowerCase()}` : ''}`
       : null;
 
   return (
@@ -234,6 +235,7 @@ export default function TopGearResults({
         playerName={playerName}
         playerClass={playerClass}
         playerRealm={playerRealm}
+        playerRegion={playerRegion}
         dps={selectedResult && selectedResult.delta > 0 ? selectedResult.dps : baseDps}
         dpsError={dpsError}
         dpsErrorPct={dpsErrorPct}

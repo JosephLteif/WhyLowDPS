@@ -247,7 +247,8 @@ pub async fn get_characters(req: HttpRequest, state: web::Data<Arc<BlizzardAuthS
                             if let Some(chars) = account.get("characters").and_then(|v| v.as_array()) {
                                 for char_data in chars {
                                     let name = char_data.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
-                                    let realm = char_data.get("realm").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
+                                    let realm_name = char_data.get("realm").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
+                                    let realm_slug = char_data.get("realm").and_then(|v| v.get("slug")).and_then(|v| v.as_str()).unwrap_or("unknown");
                                     let class = char_data.get("playable_class").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
                                     let race = char_data.get("playable_race").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
                                     let faction = char_data.get("faction").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
@@ -255,7 +256,9 @@ pub async fn get_characters(req: HttpRequest, state: web::Data<Arc<BlizzardAuthS
                                     
                                     all_characters.push(json!({
                                         "name": name,
-                                        "realm": realm,
+                                        "realm": realm_slug,
+                                        "realm_name": realm_name,
+                                        "region": region,
                                         "class": class,
                                         "race": race,
                                         "faction": faction,

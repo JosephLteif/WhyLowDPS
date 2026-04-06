@@ -36,12 +36,12 @@ interface JobData {
   iterations?: number;
   iterations_completed?: number;
   fight_style?: string;
+  region?: string;
 }
 
 export default function SimResultClient() {
   const params = useParams();
   const paramId = params.id as string;
-  const { disableCharacterMedia } = useSimContext();
 
   // In static export, useParams() may initially return "_" (the generateStaticParams
   // placeholder) before the router reconciles with the actual URL. Fall back to the URL.
@@ -222,6 +222,7 @@ export default function SimResultClient() {
             playerName={r.player_name as string}
             playerClass={r.player_class as string}
             playerRealm={r.realm as string | undefined}
+            playerRegion={r.region as string | undefined}
             baseDps={r.base_dps as number}
             results={
               r.results as Array<{
@@ -273,6 +274,7 @@ export default function SimResultClient() {
             playerName={r.player_name as string}
             playerClass={r.player_class as string}
             playerRealm={r.realm as string | undefined}
+            playerRegion={r.region as string | undefined}
             dps={r.dps as number}
             dpsError={r.dps_error as number}
             dpsErrorPct={r.dps_error_pct as number | undefined}
@@ -287,8 +289,8 @@ export default function SimResultClient() {
               <GearOverview
                 gear={r.equipped_gear as Record<string, GearItem>}
                 characterRenderUrl={
-                  r.realm && r.player_name && !disableCharacterMedia
-                    ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render`
+                  r.realm && r.player_name
+                    ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
                     : null
                 }
               />

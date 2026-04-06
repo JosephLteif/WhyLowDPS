@@ -39,8 +39,6 @@ interface SimContextType {
   addScenario: () => void;
   removeScenario: (id: string) => void;
   clearScenarios: () => void;
-  disableCharacterMedia: boolean;
-  setDisableCharacterMedia: (v: boolean) => void;
 }
 
 const SimContext = createContext<SimContextType | null>(null);
@@ -84,13 +82,11 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [simcFooter, setSimcFooter] = useState('');
   const [talentBuilds, setTalentBuilds] = useState<{ name: string; talentString: string }[]>([]);
   const [scenarios, setScenarios] = useState<FightScenario[]>([]);
-  const [disableCharacterMedia, _setDisableCharacterMedia] = useState(false);
 
   useEffect(() => {
     try {
       _setSimcInput(readSessionString('simhammer_simc_input', ''));
       _setThreads(readStored('simhammer_threads', 0));
-      _setDisableCharacterMedia(readStoredBool('simhammer_disable_character_media', false));
     } catch {}
   }, []);
 
@@ -134,13 +130,6 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  const setDisableCharacterMedia = useCallback((v: boolean) => {
-    _setDisableCharacterMedia(v);
-    try {
-      localStorage.setItem('simhammer_disable_character_media', String(v));
-    } catch {}
-  }, []);
-
   return (
     <SimContext.Provider
       value={{
@@ -176,8 +165,6 @@ export function SimProvider({ children }: { children: ReactNode }) {
         addScenario,
         removeScenario,
         clearScenarios,
-        disableCharacterMedia,
-        setDisableCharacterMedia,
       }}
     >
       {children}

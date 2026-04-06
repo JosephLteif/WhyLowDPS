@@ -6,6 +6,7 @@ interface DpsHeroCardProps {
   playerName: string;
   playerClass: string;
   playerRealm?: string;
+  playerRegion?: string;
   dps: number;
   dpsError?: number;
   dpsErrorPct?: number;
@@ -28,20 +29,30 @@ const FACTION_BGS: Record<string, string> = {
   horde: '/api/data/static/faction-bg-horde.jpg',
 };
 
-function useFaction(realm: string | undefined, name: string | undefined, disabled: boolean): string | null {
+function useFaction(realm: string | undefined, name: string | undefined, region: string | undefined): string | null {
   const [faction, setFaction] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!realm || !name || disabled) return;
+    if (!realm || !name) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(
-          `${API_URL}/api/blizzard/character/${encodeURIComponent(realm.toLowerCase())}/${encodeURIComponent(name.toLowerCase())}/profile`
+        const url = new URL(
+          `${API_URL}/api/blizzard/character/${encodeURIComponent(realm.toLowerCase())}/${encodeURIComponent(name.toLowerCase())}/profile`,
+          window.location.origin
         );
+        if (region) url.searchParams.set('region', region.toLowerCase());
+
+        const res = await fetch(url.toString());
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        if (!cancelled && data.faction) setFaction(data.faction);
+        if (!cancelled && data.faction) {
+          if (typeof data.faction === 'string') {
+            setFaction(data.faction.toLowerCase());
+          } else if (data.faction.type) {
+            setFaction(data.faction.type.toLowerCase());
+          }
+        }
       } catch {
         // ignore
       }
@@ -49,7 +60,7 @@ function useFaction(realm: string | undefined, name: string | undefined, disable
     return () => {
       cancelled = true;
     };
-  }, [realm, name]);
+  }, [realm, name, region]);
 
   return faction;
 }
@@ -58,6 +69,7 @@ export default function DpsHeroCard({
   playerName,
   playerClass,
   playerRealm,
+  playerRegion,
   dps,
   dpsError,
   dpsErrorPct,
@@ -68,18 +80,17 @@ export default function DpsHeroCard({
   elapsedTime,
   children,
 }: DpsHeroCardProps) {
-  const { disableCharacterMedia } = useSimContext();
   const hasMetadata =
     (dpsError != null && dpsError > 0) ||
     fightLength != null ||
     (iterations != null && iterations > 0) ||
     elapsedTime != null;
 
-  const faction = useFaction(playerRealm, playerName, disableCharacterMedia);
+  const faction = useFaction(playerRealm, playerName, playerRegion);
 
   const insetUrl =
-    playerRealm && playerName && !disableCharacterMedia
-      ? `${API_URL}/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/inset`
+    playerRealm && playerName
+      ? `${API_URL}/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/inset${playerRegion ? `?region=${playerRegion.toLowerCase()}` : ''}`
       : null;
 
   return (
@@ -88,7 +99,7 @@ export default function DpsHeroCard({
         {faction && (faction === 'horde' || faction === 'alliance') && (
           <div
             className={`pointer-events-none absolute inset-0 ${
-              faction === 'horde' ? 'bg-red-950/30' : 'bg-blue-950/30'
+              faction === 'horde' ? 'bg-red-950/50' : 'bg-blue-950/50'
             }`}
             style={{
               maskImage: 'linear-gradient(to left, black 20%, transparent 60%)',
@@ -100,7 +111,7 @@ export default function DpsHeroCard({
           <img
             src={`${API_URL}${FACTION_BGS[faction]}`}
             alt=""
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.06]"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-20"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
@@ -110,7 +121,7 @@ export default function DpsHeroCard({
           <img
             src={insetUrl}
             alt=""
-            className="pointer-events-none absolute bottom-0 left-0 h-[130%] w-auto -translate-x-1/4 object-contain opacity-15"
+            className="pointer-events-none absolute bottom-0 left-0 h-[130%] w-auto -translate-x-1/4 object-contain opacity-50"
             style={{
               maskImage: 'linear-gradient(to right, black 50%, transparent 95%)',
               WebkitMaskImage: 'linear-gradient(to right, black 50%, transparent 95%)',
@@ -124,7 +135,7 @@ export default function DpsHeroCard({
           <img
             src={`${API_URL}${FACTION_ICONS[faction]}`}
             alt=""
-            className="pointer-events-none absolute bottom-0 right-[5%] top-[0%] h-[100%] w-auto object-contain opacity-[0.08]"
+            className="pointer-events-none absolute bottom-0 right-[5%] top-[0%] h-[100%] w-auto object-contain opacity-20"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}

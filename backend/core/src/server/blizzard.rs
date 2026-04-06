@@ -57,24 +57,34 @@ impl BlizzardState {
     }
 }
 
+#[derive(Deserialize)]
+pub struct ProxyQuery {
+    pub region: Option<String>,
+}
+
 pub async fn proxy_character_profile(
     state: web::Data<Arc<BlizzardState>>,
     path: web::Path<(String, String)>,
+    query: web::Query<ProxyQuery>,
 ) -> HttpResponse {
     let (realm, name) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+
     let token = match state.get_token().await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
 
     let url = format!(
-        "https://us.api.blizzard.com/profile/wow/character/{}/{}/status?namespace=profile-us&locale=en_US",
-        realm.to_lowercase(),
-        name.to_lowercase()
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
     );
 
-    // Note: For now we proxy a simple status check or specific profile data.
-    // If you need the full profile, use the base profile endpoint instead.
     let res = state.client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
@@ -93,17 +103,26 @@ pub async fn proxy_character_profile(
 pub async fn proxy_character_media(
     state: web::Data<Arc<BlizzardState>>,
     path: web::Path<(String, String, String)>,
+    query: web::Query<ProxyQuery>,
 ) -> HttpResponse {
     let (realm, name, _type) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+    
+    let target_type = if _type == "render" || _type == "main" { "main-raw" } else { _type.as_str() };
+
     let token = match state.get_token().await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
 
     let url = format!(
-        "https://us.api.blizzard.com/profile/wow/character/{}/{}/character-media?namespace=profile-us&locale=en_US",
-        realm.to_lowercase(),
-        name.to_lowercase()
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/character-media?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
     );
 
     let res = state.client
@@ -122,7 +141,7 @@ pub async fn proxy_character_media(
                         asset.get("key").and_then(|v| v.as_str()),
                         asset.get("value").and_then(|v| v.as_str()),
                     ) {
-                        if key == _type {
+                        if key == target_type {
                             return HttpResponse::Found()
                                 .append_header(("Location", value))
                                 .finish();

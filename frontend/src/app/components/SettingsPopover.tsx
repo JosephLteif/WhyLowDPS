@@ -19,8 +19,6 @@ export default function SettingsPopover() {
     setThreads,
     maxCombinations,
     setMaxCombinations,
-    disableCharacterMedia,
-    setDisableCharacterMedia,
   } = useSimContext();
 
   useEffect(() => {
@@ -128,27 +126,6 @@ export default function SettingsPopover() {
                 }}
                 className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
-            </div>
-
-            {/* Character Media Toggle */}
-            <div className="flex items-center justify-between border-t border-border pt-4">
-              <div className="space-y-0.5">
-                <p className="text-[14px] font-medium text-zinc-200">Character Media</p>
-                <p className="text-[11px] text-zinc-500">Enable 3D character renders.</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDisableCharacterMedia(!disableCharacterMedia)}
-                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-                  !disableCharacterMedia ? 'bg-gold' : 'border border-border bg-surface-2'
-                }`}
-              >
-                <div
-                  className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
-                    !disableCharacterMedia ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
-                  }`}
-                />
-              </button>
             </div>
 
             {/* Shutdown Button */}

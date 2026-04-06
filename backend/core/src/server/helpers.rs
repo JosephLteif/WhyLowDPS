@@ -241,15 +241,18 @@ pub(super) fn apply_spec_override(simc_input: &str, spec: &str) -> String {
     }
 }
 
-/// Extract server= (realm) from a simc input string and inject it into a parsed result.
+/// Extract server= (realm), region= and talents= from a simc input string and inject it into a parsed result.
 pub(super) fn inject_realm(parsed: &mut Value, simc_input: &str) {
     for line in simc_input.lines() {
         let trimmed = line.trim();
         if let Some(val) = trimmed.strip_prefix("server=") {
-            parsed["realm"] = json!(val);
+            parsed["realm"] = json!(val.trim_matches('"'));
+        }
+        if let Some(val) = trimmed.strip_prefix("region=") {
+            parsed["region"] = json!(val.trim_matches('"'));
         }
         if let Some(val) = trimmed.strip_prefix("talents=") {
-            parsed["talent_string"] = json!(val);
+            parsed["talent_string"] = json!(val.trim_matches('"'));
         }
     }
 }

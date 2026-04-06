@@ -1,3 +1,4 @@
+pub mod auth_handlers;
 mod blizzard;
 mod game_data_handlers;
 mod helpers;
@@ -194,8 +195,20 @@ pub async fn start_with_storage_bind(
 
     let blizzard_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
     let blizzard_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
-    let blizzard_state = if let (Some(id), Some(sec)) = (blizzard_id, blizzard_secret) {
+    let blizzard_state = if let (Some(id), Some(sec)) = (blizzard_id.clone(), blizzard_secret.clone()) {
         Some(web::Data::new(Arc::new(blizzard::BlizzardState::new(id, sec))))
+    } else {
+        None
+    };
+
+    let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI")
+        .unwrap_or_else(|_| "http://localhost:3000/api/auth/bnet/callback".to_string());
+    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
+
+    let auth_state = if let (Some(id), Some(sec)) = (blizzard_id, blizzard_secret) {
+        Some(web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
+            id, sec, bnet_redirect, jwt_secret,
+        ))))
     } else {
         None
     };
@@ -207,22 +220,32 @@ pub async fn start_with_storage_bind(
             .allow_any_header()
             .max_age(3600);
 
-        let app = App::new()
+        let mut app = App::new()
             .wrap(cors)
             .app_data(store_data.clone())
             .app_data(simc_data.clone())
             .app_data(log_data.clone());
 
-        let mut app = if let Some(ref data) = blizzard_state {
-            app.app_data(data.clone())
-        } else {
-            app
-        };
+        if let Some(ref data) = blizzard_state {
+            app = app.app_data(data.clone());
+        }
+        
+        if let Some(ref data) = auth_state {
+            app = app.app_data(data.clone())
+                .route("/api/auth/bnet/login", web::get().to(auth_handlers::bnet_login))
+                .route("/api/auth/bnet/callback", web::get().to(auth_handlers::bnet_callback))
+                .route("/api/auth/me", web::get().to(auth_handlers::get_me))
+                .route("/api/auth/logout", web::post().to(auth_handlers::bnet_logout))
+                .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters));
+        }
+
         #[cfg(feature = "desktop")]
-        let app = app.app_data(stats_data.clone());
+        {
+            app = app.app_data(stats_data.clone());
+        }
 
         // Simulation routes
-        let mut app = app
+        app = app
             .route("/api/sim", web::post().to(sim_handlers::create_sim))
             .route(
                 "/api/top-gear/sim",

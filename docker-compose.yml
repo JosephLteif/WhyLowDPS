@@ -23,6 +23,8 @@ services:
       - "8000:8000"
     depends_on:
       - db
+    env_file:
+      - .env
     environment:
       - DATA_DIR=/app/resources/data
       - DATABASE_URL=postgres://simhammer:simhammer@db:5432/simhammer
@@ -33,6 +35,9 @@ services:
       context: frontend
       args:
         - NEXT_PUBLIC_API_URL=https://${SERVER_IP:-localhost}
+        - INTERNAL_API_URL=http://backend:8000
+    environment:
+      - INTERNAL_API_URL=http://backend:8000
     ports:
       - "3000:3000"
 

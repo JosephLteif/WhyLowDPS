@@ -23,6 +23,8 @@ tempfile = "3"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json"] }
 sysinfo = "0.33"
+jsonwebtoken = "9"
+urlencoding = "2.1"
 
 [dependencies.rusqlite]
 version = "0.31"

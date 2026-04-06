@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import SettingsPopover from './SettingsPopover';
 import packageJson from '../../../package.json';
+import { useAuth } from './AuthContext';
 
 interface NavItem {
   href: string;
@@ -15,7 +16,7 @@ interface NavItem {
   children?: { href: string; label: string; description: string }[];
 }
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   {
     href: '/quick-sim',
     label: 'Quick Sim',
@@ -53,6 +54,19 @@ const navItems: NavItem[] = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const { user } = useAuth();
+
+  const navItems = [...baseNavItems];
+  
+  if (user) {
+    navItems.splice(1, 0, {
+      href: '/characters',
+      label: 'My Characters',
+      description: 'View your Battle.net roster.',
+      icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
+      matchPaths: ['/characters'],
+    });
+  }
 
   return (
     <aside className="fixed bottom-0 left-0 top-14 z-40 w-72 border-r border-border/80 bg-surface/50 pb-6 pt-6 flex flex-col justify-between">

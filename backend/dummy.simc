@@ -1,0 +1,8 @@
+hunter="Test"
+level=80
+race=orc
+role=attack
+position=back
+talents=1111111
+
+actions=auto_attack

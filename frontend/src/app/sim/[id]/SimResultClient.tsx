@@ -28,6 +28,14 @@ interface JobData {
   stages_completed?: string[];
   result: Record<string, unknown> | null;
   error: string | null;
+  profilesets_completed?: number;
+  profilesets_total?: number;
+  cpu_pct?: number;
+  mem_bytes?: number;
+  cpu_cores?: number;
+  iterations?: number;
+  iterations_completed?: number;
+  fight_style?: string;
 }
 
 export default function SimResultClient() {
@@ -160,6 +168,14 @@ export default function SimResultClient() {
         logLines={logLines}
         showLogs={showLogs}
         onToggleLogs={handleToggleLogs}
+        profilesetsCompleted={job.profilesets_completed}
+        profilesetsTotal={job.profilesets_total}
+        cpuPct={job.cpu_pct}
+        memBytes={job.mem_bytes}
+        cpuCores={job.cpu_cores}
+        iterations={job.iterations}
+        iterationsCompleted={job.iterations_completed}
+        fightStyle={job.fight_style}
       />
     );
   }

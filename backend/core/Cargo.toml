@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = ["postgres", "web"]
-desktop = ["dep:sysinfo"]
+desktop = []
 web = ["dep:rusqlite"]
 postgres = ["dep:tokio-postgres"]
 
@@ -22,10 +22,7 @@ regex = "1"
 tempfile = "3"
 chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json"] }
-
-[dependencies.sysinfo]
-version = "0.33"
-optional = true
+sysinfo = "0.33"
 
 [dependencies.rusqlite]
 version = "0.31"

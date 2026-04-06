@@ -58,6 +58,39 @@ pub(super) async fn get_sim_status(
         None
     };
 
+    let mut profilesets_completed = 0;
+    let mut profilesets_total = 0;
+    let mut iterations_completed = 0;
+    if let Some(ref detail) = job.progress_detail {
+        if let Some(caps) = regex::Regex::new(r"(\d+)/(\d+) profilesets").unwrap().captures(detail) {
+            profilesets_completed = caps[1].parse::<usize>().unwrap_or(0);
+            profilesets_total = caps[2].parse::<usize>().unwrap_or(0);
+        } else if let Some(caps) = regex::Regex::new(r"(\d+)/(\d+) iterations").unwrap().captures(detail) {
+            iterations_completed = caps[1].parse::<usize>().unwrap_or(0);
+        } else if let Some(caps) = regex::Regex::new(r"(\d+) combos").unwrap().captures(detail) {
+            profilesets_total = caps[1].parse::<usize>().unwrap_or(0);
+        }
+    }
+
+    let mut cpu_cores = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
+    for line in job.simc_input.lines() {
+        if let Some(val) = line.trim().strip_prefix("threads=") {
+            if let Ok(n) = val.parse::<u32>() {
+                cpu_cores = n;
+                break;
+            }
+        }
+    }
+
+    let mut cpu_pct = 0.0;
+    let mut mem_bytes = 0;
+    if job.status == JobStatus::Running {
+        if let Some((cpu, mem)) = crate::simc_runner::get_process_stats(&job_id) {
+            cpu_pct = cpu / cpu_cores as f32;
+            mem_bytes = mem;
+        }
+    }
+
     HttpResponse::Ok().json(json!({
         "id": job.id,
         "status": status_str,
@@ -67,6 +100,14 @@ pub(super) async fn get_sim_status(
         "stages_completed": job.stages_completed,
         "result": parsed_result,
         "error": job.error_message,
+        "iterations": job.iterations,
+        "iterations_completed": iterations_completed,
+        "fight_style": job.fight_style,
+        "profilesets_completed": profilesets_completed,
+        "profilesets_total": profilesets_total,
+        "cpu_pct": cpu_pct,
+        "mem_bytes": mem_bytes,
+        "cpu_cores": cpu_cores,
     }))
 }
 
@@ -269,13 +310,8 @@ pub(super) async fn delete_sim(
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
     let id = path.into_inner();
-    // If it's a batch ID, we'd need a special method, but for now we just delete by ID.
-    // However, the frontend might send a batch ID.
-    // Let's check if there are multiple jobs with this batch_id.
-    // Actually, JobStorage doesn't have delete_batch, let's just delete the specific ID.
-    // If the user wants to delete a batch, we can either add delete_batch or have the frontend send all IDs.
-    // To keep it simple, we just delete the ID provided.
     store.delete(&id);
+    crate::simc_runner::cleanup_cancelled_job(&id);
     HttpResponse::Ok().json(json!({"status": "deleted"}))
 }
 

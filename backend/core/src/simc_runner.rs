@@ -12,16 +12,21 @@ pub struct SimcOutput {
     pub text_output: Option<String>,
 }
 
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 // ---- Process Registry (for cancellation) ----
 
 use once_cell::sync::Lazy;
+use std::collections::HashSet;
 
 /// Maps job_id -> child process PID. Used to kill running sims.
 static RUNNING_PROCESSES: Lazy<Mutex<HashMap<String, u32>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+
+/// Tracks jobs that have been cancelled to prevent race conditions during process spawn.
+static CANCELLED_JOBS: Lazy<Mutex<HashSet<String>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
 
 fn register_process(job_id: &str, pid: u32) {
     RUNNING_PROCESSES
@@ -34,27 +39,71 @@ fn unregister_process(job_id: &str) {
     RUNNING_PROCESSES.lock().unwrap().remove(job_id);
 }
 
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
+static SYSINFO: Lazy<Mutex<System>> = Lazy::new(|| Mutex::new(System::new_all()));
+
+pub fn get_process_stats(job_id: &str) -> Option<(f32, u64)> {
+    let pid_u32 = {
+        let map = RUNNING_PROCESSES.lock().unwrap();
+        map.get(job_id).copied()
+    }?;
+
+    let mut sys = SYSINFO.lock().unwrap();
+    let pid = Pid::from_u32(pid_u32);
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::everything(),
+    );
+
+    if let Some(process) = sys.process(pid) {
+        Some((process.cpu_usage(), process.memory()))
+    } else {
+        None
+    }
+}
+
+pub fn cleanup_cancelled_job(job_id: &str) {
+    CANCELLED_JOBS.lock().unwrap().remove(job_id);
+}
+
 /// Kill the simc process for a job. Returns true if a process was found and killed.
 pub fn kill_job(job_id: &str) -> bool {
-    let pid = RUNNING_PROCESSES.lock().unwrap().remove(job_id);
-    if let Some(pid) = pid {
-        #[cfg(unix)]
-        {
-            let _ = std::process::Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .output();
+    CANCELLED_JOBS.lock().unwrap().insert(job_id.to_string());
+    
+    let pid_u32 = RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+    if let Some(pid_u32) = pid_u32 {
+        let mut sys = SYSINFO.lock().unwrap();
+        let pid = Pid::from_u32(pid_u32);
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&[pid]),
+            true,
+            ProcessRefreshKind::everything(),
+        );
+        
+        if let Some(process) = sys.process(pid) {
+            let killed = process.kill();
+            println!("Killed simc process {} for job {} (success: {})", pid_u32, job_id, killed);
+            killed
+        } else {
+            println!("Process {} not found by sysinfo, falling back to Command", pid_u32);
+            #[cfg(unix)]
+            {
+                let _ = std::process::Command::new("kill")
+                    .args(["-9", &pid_u32.to_string()])
+                    .output();
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let _ = std::process::Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid_u32.to_string()])
+                    .creation_flags(0x08000000)
+                    .output();
+            }
+            true
         }
-        #[cfg(windows)]
-        {
-            // Use taskkill /T to kill the process tree (simc may spawn child threads)
-            use std::os::windows::process::CommandExt;
-            let _ = std::process::Command::new("taskkill")
-                .args(["/F", "/T", "/PID", &pid.to_string()])
-                .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                .output();
-        }
-        println!("Killed simc process {} for job {}", pid, job_id);
-        true
     } else {
         false
     }
@@ -281,6 +330,14 @@ async fn run_simc_subprocess(
     // Register for cancellation + limit CPU affinity
     if let Some(pid) = child.id() {
         register_process(job_id, pid);
+        
+        // Immediately check if the job was cancelled just before spawning
+        if CANCELLED_JOBS.lock().unwrap().contains(job_id) {
+            let _ = child.kill().await;
+            unregister_process(job_id);
+            return Err("Job was cancelled before execution started".to_string());
+        }
+        
         #[cfg(windows)]
         set_process_affinity(pid, threads);
     }
@@ -292,25 +349,30 @@ async fn run_simc_subprocess(
     let stderr = child.stderr.take();
     let tx_err = tx.clone();
     tokio::spawn(async move {
-        if let Some(stream) = stderr {
-            let mut reader = BufReader::new(stream);
-            let mut line_buf = String::new();
+        if let Some(mut stream) = stderr {
+            let mut buf = [0u8; 1024];
+            let mut current_line = String::new();
             loop {
-                line_buf.clear();
-                match AsyncBufReadExt::read_line(&mut reader, &mut line_buf).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {
-                        // simc uses \r to overwrite progress lines in-place.
-                        // read_line reads until \n, so a single "line" may contain
-                        // multiple \r-separated updates. Take the last segment.
-                        let resolved = line_buf
-                            .trim_end()
-                            .rsplit('\r')
-                            .next()
-                            .unwrap_or("")
-                            .to_string();
+                match stream.read(&mut buf).await {
+                    Ok(0) | Err(_) => {
+                        let resolved = current_line.trim().to_string();
                         if !resolved.is_empty() {
                             let _ = tx_err.send((true, resolved)).await;
+                        }
+                        break;
+                    }
+                    Ok(n) => {
+                        let chunk = String::from_utf8_lossy(&buf[..n]);
+                        for c in chunk.chars() {
+                            if c == '\n' || c == '\r' {
+                                let resolved = current_line.trim().to_string();
+                                if !resolved.is_empty() {
+                                    let _ = tx_err.send((true, resolved)).await;
+                                }
+                                current_line.clear();
+                            } else {
+                                current_line.push(c);
+                            }
                         }
                     }
                 }
@@ -321,22 +383,30 @@ async fn run_simc_subprocess(
     let stdout = child.stdout.take();
     let tx_out = tx.clone();
     tokio::spawn(async move {
-        if let Some(stream) = stdout {
-            let mut reader = BufReader::new(stream);
-            let mut line_buf = String::new();
+        if let Some(mut stream) = stdout {
+            let mut buf = [0u8; 1024];
+            let mut current_line = String::new();
             loop {
-                line_buf.clear();
-                match AsyncBufReadExt::read_line(&mut reader, &mut line_buf).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {
-                        let resolved = line_buf
-                            .trim_end()
-                            .rsplit('\r')
-                            .next()
-                            .unwrap_or("")
-                            .to_string();
+                match stream.read(&mut buf).await {
+                    Ok(0) | Err(_) => {
+                        let resolved = current_line.trim().to_string();
                         if !resolved.is_empty() {
                             let _ = tx_out.send((false, resolved)).await;
+                        }
+                        break;
+                    }
+                    Ok(n) => {
+                        let chunk = String::from_utf8_lossy(&buf[..n]);
+                        for c in chunk.chars() {
+                            if c == '\n' || c == '\r' {
+                                let resolved = current_line.trim().to_string();
+                                if !resolved.is_empty() {
+                                    let _ = tx_out.send((false, resolved)).await;
+                                }
+                                current_line.clear();
+                            } else {
+                                current_line.push(c);
+                            }
                         }
                     }
                 }
@@ -357,16 +427,16 @@ async fn run_simc_subprocess(
         {
             Ok(Some((is_stderr, line))) => {
                 on_log(&line);
-                if is_stderr {
-                    if let Some(caps) = progress_re.captures(&line) {
-                        if let (Ok(current), Ok(total)) =
-                            (caps[1].parse::<usize>(), caps[2].parse::<usize>())
-                        {
-                            if total > 1 && current <= total {
-                                on_profileset_progress(current, total);
-                            }
+                if let Some(caps) = progress_re.captures(&line) {
+                    if let (Ok(current), Ok(total)) =
+                        (caps[1].parse::<usize>(), caps[2].parse::<usize>())
+                    {
+                        if total > 1 && current <= total {
+                            on_profileset_progress(current, total);
                         }
                     }
+                }
+                if is_stderr {
                     stderr_collected.push(line);
                 } else {
                     stdout_collected.push(line);
@@ -494,6 +564,7 @@ pub async fn run_simc(
     job_id: &str,
     simc_input: &str,
     options: &Value,
+    on_progress: impl Fn(usize, usize),
     on_log: impl Fn(&str),
 ) -> Result<SimcOutput, String> {
     let fight_style = options
@@ -539,7 +610,7 @@ pub async fn run_simc(
         single_actor_batch,
         "",
         true,      // generate HTML for quick sims
-        |_, _| {}, // Quick sim has no profilesets to track
+        on_progress,
         on_log,
     )
     .await

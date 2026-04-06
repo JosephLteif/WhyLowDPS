@@ -14,6 +14,14 @@ interface SimStatusProps {
   logLines?: string[];
   showLogs?: boolean;
   onToggleLogs?: () => void;
+  profilesetsCompleted?: number;
+  profilesetsTotal?: number;
+  cpuPct?: number;
+  memBytes?: number;
+  cpuCores?: number;
+  iterations?: number;
+  iterationsCompleted?: number;
+  fightStyle?: string;
 }
 
 /**
@@ -29,6 +37,12 @@ function useSmoothedProgress(serverProgress: number): number {
   }, [serverProgress]);
 
   return Math.round(display);
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return '0 MB';
+  const mb = bytes / 1024 / 1024;
+  return `${mb.toFixed(1)} MB`;
 }
 
 
@@ -106,6 +120,14 @@ export default function SimStatus({
   logLines,
   showLogs,
   onToggleLogs,
+  profilesetsCompleted,
+  profilesetsTotal,
+  cpuPct,
+  memBytes,
+  cpuCores,
+  iterations,
+  iterationsCompleted,
+  fightStyle,
 }: SimStatusProps) {
   const isRunning = status === 'running';
   const isPending = status === 'pending';
@@ -141,18 +163,61 @@ export default function SimStatus({
         {progressDetail && <p className="mt-1 text-[13px] text-zinc-500">{progressDetail}</p>}
       </div>
 
-      <div className="w-72">
-        <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
+      <div className="w-80">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
           <div
             className="h-full rounded-full bg-gradient-to-r from-gold-dark to-gold transition-all duration-700"
             style={{ width: `${Math.max(displayProgress, status === 'pending' ? 2 : 5)}%` }}
           />
         </div>
-        <div className="mt-2 flex items-center justify-between">
-          <p className="font-mono text-[12px] tabular-nums text-zinc-500">{displayProgress}%</p>
-
+        <div className="mt-3 flex items-center justify-between">
+          <p className="font-mono text-[13px] font-medium text-gold">{displayProgress}%</p>
+          {profilesetsTotal ? (
+            <p className="text-[12px] text-zinc-400">
+              <span className="text-zinc-200 font-medium">{profilesetsCompleted || 0}</span> / {profilesetsTotal} combos
+            </p>
+          ) : iterations && iterationsCompleted !== undefined ? (
+            <p className="text-[12px] text-zinc-400">
+              <span className="text-zinc-200 font-medium">{iterationsCompleted}</span> / {iterations} iterations
+            </p>
+          ) : null}
         </div>
       </div>
+
+      {isRunning && (
+        <div className="flex w-80 flex-wrap justify-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
+          {cpuPct !== undefined && cpuPct > 0 && (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">CPU Usage</span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{cpuPct.toFixed(1)}%</span>
+            </div>
+          )}
+          {cpuCores !== undefined && cpuCores > 0 && (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Cores</span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{cpuCores}</span>
+            </div>
+          )}
+          {memBytes !== undefined && memBytes > 0 && (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Memory</span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatBytes(memBytes)}</span>
+            </div>
+          )}
+          {iterations && (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Iterations</span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{(iterations / 1000).toFixed(0)}k</span>
+            </div>
+          )}
+          {fightStyle && (
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Style</span>
+              <span className="mt-1 text-[13px] text-zinc-200">{fightStyle}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {jobId && (isRunning || isPending) && (
         <div className="flex items-center gap-3">

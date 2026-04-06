@@ -52,13 +52,15 @@ export default function SettingsPopover() {
   );
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative w-full" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex h-7 items-center gap-1.5 rounded-md px-2 text-gray-400 transition-colors hover:bg-white/[0.06] hover:text-gray-200"
+        className={`group flex w-full items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
+          open ? 'bg-surface-2 text-white' : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
+        }`}
       >
         <svg
-          className="h-3.5 w-3.5"
+          className={`h-5 w-5 shrink-0 ${open ? 'text-zinc-300' : 'text-zinc-500 group-hover:text-zinc-300'}`}
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
@@ -69,11 +71,11 @@ export default function SettingsPopover() {
           <circle cx="8" cy="8" r="2" />
           <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
         </svg>
-        <span className="text-[13px] font-medium">Settings</span>
+        <span className="text-[15px] font-medium">Settings</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-[60] mt-2 w-80 rounded-xl border border-border bg-surface p-4 shadow-xl shadow-black/40">
+        <div className="absolute bottom-full left-0 z-[60] mb-2 w-80 rounded-xl border border-border bg-surface p-4 shadow-xl shadow-black/40">
           <div className="space-y-5">
             {/* CPU Threads */}
             {maxThreads > 0 && (

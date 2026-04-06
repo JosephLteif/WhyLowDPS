@@ -12,7 +12,7 @@
 
 ```bash
 # Terminal 1 — Backend
-cd backend && cargo run -p simhammer-server
+cd backend && cargo run -p whylowdps-server
 
 # Terminal 2 — Frontend
 cd frontend && npm install && npm run dev

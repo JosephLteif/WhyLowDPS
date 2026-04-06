@@ -1,11 +1,11 @@
-# SimHammer Makefile
+# WhyLowDps Makefile
 
 COMPOSE_DEV = docker-compose.dev.yml
 
 .PHONY: help serve stop rebuild logs clean build-standalone run-standalone
 
 help:
-	@echo "SimHammer Commands:"
+	@echo "WhyLowDps Commands:"
 	@echo "  make serve            - Start the development environment (Docker)"
 	@echo "  make stop             - Stop the development environment"
 	@echo "  make rebuild          - Rebuild containers and start"
@@ -30,12 +30,12 @@ clean:
 	docker compose -f $(COMPOSE_DEV) down -v
 
 build-standalone:
-	docker build -t simhammer-standalone -f Dockerfile.standalone .
+	docker build -t whylowdps-standalone -f Dockerfile.standalone .
 
 run-standalone:
 	docker run -it -p 8000:8000 \
-		-v simhammer-data:/app/resources/data \
-		-v simhammer-data-full:/app/resources/data_full \
-		-v simhammer-simc:/app/resources/simc \
-		-v simhammer-db:/app/db \
-		simhammer-standalone
+		-v whylowdps-data:/app/resources/data \
+		-v whylowdps-data-full:/app/resources/data_full \
+		-v whylowdps-simc:/app/resources/simc \
+		-v whylowdps-db:/app/db \
+		whylowdps-standalone

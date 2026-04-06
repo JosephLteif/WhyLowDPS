@@ -124,7 +124,7 @@ function extractCharacter(simcInput: string): { name: string; realm: string } | 
   }
   if (name && realm) {
     try {
-      localStorage.setItem('simhammer_last_character', JSON.stringify({ name, realm }));
+      localStorage.setItem('whylowdps_last_character', JSON.stringify({ name, realm }));
     } catch {}
     return { name, realm };
   }
@@ -322,7 +322,7 @@ export default function HistoryPage() {
     let char = extractCharacter(simcInput);
     if (!char) {
       try {
-        const stored = localStorage.getItem('simhammer_last_character');
+        const stored = localStorage.getItem('whylowdps_last_character');
         if (stored) char = JSON.parse(stored);
       } catch {}
     }

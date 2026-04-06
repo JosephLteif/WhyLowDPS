@@ -1,4 +1,4 @@
-# SimHammer
+# WhyLowDps
 
 SimulationCraft web app + desktop app.
 
@@ -17,14 +17,14 @@ SimulationCraft web app + desktop app.
 
 ### Desktop
 - **Shell** (`desktop/`): Electron app, spawns Rust backend as child process
-- **Backend**: `simhammer-server --desktop` (port 17384, MemoryStorage, localhost only)
+- **Backend**: `whylowdps-server --desktop` (port 17384, MemoryStorage, localhost only)
 - **Frontend**: Same Next.js app (static export for Electron, or dev server in dev mode)
 - **Window**: Frameless with custom title bar, uses `-webkit-app-region: drag` + Electron IPC
 - **Auto-updater**: `electron-updater` with GitHub Releases
 - **Sim**: Runs simc directly as subprocess, all CPU cores
 
 ### Web
-- **Server** (`backend/server/`): Standalone binary, uses `simhammer-core` with `web` feature
+- **Server** (`backend/server/`): Standalone binary, uses `whylowdps-core` with `web` feature
 - **Backend**: Rust + Actix-web (port 8000), SQLite job storage
 - **Frontend**: Next.js 14 App Router + TypeScript + Tailwind (port 3000)
 
@@ -34,7 +34,7 @@ SimulationCraft web app + desktop app.
 ```bash
 docker compose up          # Docker (from repo root)
 # or manually:
-cd backend && cargo run -p simhammer-server
+cd backend && cargo run -p whylowdps-server
 cd frontend && npm run dev
 ```
 
@@ -51,8 +51,8 @@ npm run desktop:build
 ## Cargo Workspace (`backend/`)
 ```
 Cargo.toml          — workspace root (members: core, server)
-core/               — simhammer-core library (features: desktop, web)
-server/             — simhammer-server (standalone binary, features: desktop)
+core/               — whylowdps-core library (features: desktop, web)
+server/             — whylowdps-server (standalone binary, features: desktop)
 ```
 
 ## Key Patterns

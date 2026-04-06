@@ -2,7 +2,7 @@
  * Compact game data for production builds.
  *
  * Reads from the full Raidbots data directory and outputs a stripped version
- * containing only the files and fields that simhammer-core actually uses.
+ * containing only the files and fields that whylowdps-core actually uses.
  *
  * Usage:  node compact-data.js <input-dir> <output-dir>
  *

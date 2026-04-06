@@ -136,7 +136,7 @@ async fn shutdown() -> HttpResponse {
     println!("System shutdown requested. Stopping Docker containers...");
     // Launch docker compose down in the background
     let _ = Command::new("docker")
-        .args(["compose", "-p", "simhammer", "down"])
+        .args(["compose", "-p", "whylowdps", "down"])
         .spawn();
 
     // Give some time for the response to reach the client

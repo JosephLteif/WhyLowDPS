@@ -1,5 +1,5 @@
 [package]
-name = "simhammer-launcher"
+name = "whylowdps-launcher"
 version.workspace = true
 edition = "2021"
 

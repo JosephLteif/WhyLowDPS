@@ -1,8 +1,8 @@
-# SimHammer
+# WhyLowDps
 
 SimulationCraft made simple. Run simulations from your browser or self-host your own instance.
 
-**[Try the Demo](https://simhammer.com)** · **[Documentation](docs/)**
+**[Try the Demo](https://whylowdps.com)** · **[Documentation](docs/)**
 
 ---
 
@@ -25,10 +25,10 @@ SimulationCraft made simple. Run simulations from your browser or self-host your
 
 ```bash
 docker run -p 8000:8000 \
-  -v simhammer-data:/app/resources/data \
-  -v simhammer-data-full:/app/resources/data_full \
-  -v simhammer-simc:/app/resources/simc \
-  -v simhammer-db:/app/db \
+  -v whylowdps-data:/app/resources/data \
+  -v whylowdps-data-full:/app/resources/data_full \
+  -v whylowdps-simc:/app/resources/simc \
+  -v whylowdps-db:/app/db \
   ghcr.io/sortbek/simcraft:latest
 ```
 

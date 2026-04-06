@@ -6,7 +6,7 @@ export default function Home() {
           <path d="M3 2l10 6-10 6V2z" />
         </svg>
       </div>
-      <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-100">Welcome to SimHammer</h1>
+      <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-100">Welcome to WhyLowDps</h1>
       <p className="text-base text-zinc-400">Select a simulation type from the sidebar on the left to get started.</p>
     </div>
   );

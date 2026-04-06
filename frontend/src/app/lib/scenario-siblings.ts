@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'simhammer_scenario_siblings';
+const STORAGE_KEY = 'whylowdps_scenario_siblings';
 
 const FIGHT_STYLE_LABELS: Record<string, string> = {
   Patchwerk: 'Patchwerk',

@@ -1,5 +1,5 @@
 [package]
-name = "simhammer-core"
+name = "whylowdps-core"
 version.workspace = true
 edition = "2021"
 

@@ -9,7 +9,7 @@ COPY server/ server/
 COPY launcher/ launcher/
 
 ARG CARGO_FEATURES=
-RUN cargo build --release -p simhammer-server ${CARGO_FEATURES:+--features $CARGO_FEATURES}
+RUN cargo build --release -p whylowdps-server ${CARGO_FEATURES:+--features $CARGO_FEATURES}
 
 # --- Fetch game data from Raidbots and compact ---
 FROM node:20-slim AS fetcher
@@ -58,7 +58,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
 ENV LANG=en_US.UTF-8
 
-COPY --from=builder /build/target/release/simhammer-server /usr/local/bin/simhammer-server
+COPY --from=builder /build/target/release/whylowdps-server /usr/local/bin/whylowdps-server
 COPY --from=simc-builder /usr/local/bin/simc /usr/local/bin/simc
 COPY --from=fetcher /data/compact /app/resources/data
 
@@ -69,4 +69,4 @@ ENV PORT=8000
 
 EXPOSE 8000
 
-CMD ["simhammer-server"]
+CMD ["whylowdps-server"]

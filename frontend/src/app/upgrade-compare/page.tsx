@@ -229,7 +229,7 @@ export default function UpgradeComparePage() {
         <p className="text-[15px] leading-relaxed text-zinc-400">
           Find the best way to spend your{' '}
           <span className="font-medium text-gold/80">Dawncrest upgrade currencies</span>. Select
-          which equipped items to consider, and SimHammer will test every valid upgrade combination
+          which equipped items to consider, and WhyLowDps will test every valid upgrade combination
           within your budget to find which gives the most DPS.
         </p>
       </div>

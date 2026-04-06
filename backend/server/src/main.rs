@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use simhammer_core::game_data;
-use simhammer_core::server;
-use simhammer_core::storage::JobStorage;
+use whylowdps_core::game_data;
+use whylowdps_core::server;
+use whylowdps_core::storage::JobStorage;
 
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
@@ -23,24 +23,24 @@ async fn main() {
     println!("Loading game data from {:?}", data_dir);
     game_data::load(&data_dir);
 
-    let db_url = env_or("DATABASE_URL", "simhammer.db");
-    println!("Starting SimHammer server on {}:{}", bind_host, port);
+    let db_url = env_or("DATABASE_URL", "whylowdps.db");
+    println!("Starting WhyLowDps server on {}:{}", bind_host, port);
 
     let storage: Arc<dyn JobStorage> = {
         #[cfg(feature = "postgres")]
         if db_url.starts_with("postgres://") || db_url.starts_with("postgresql://") {
             println!("Using PostgreSQL storage");
-            Arc::new(simhammer_core::storage::postgres::PostgresStorage::new(&db_url).await)
+            Arc::new(whylowdps_core::storage::postgres::PostgresStorage::new(&db_url).await)
         } else {
             #[cfg(feature = "web")]
             {
                 println!("Using SQLite storage: {}", db_url);
-                Arc::new(simhammer_core::storage::sqlite::SqliteStorage::new(&db_url))
+                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&db_url))
             }
             #[cfg(not(feature = "web"))]
             {
                 println!("Using In-Memory storage (SQLite not enabled)");
-                Arc::new(simhammer_core::storage::memory::MemoryStorage::new())
+                Arc::new(whylowdps_core::storage::memory::MemoryStorage::new())
             }
         }
 
@@ -49,12 +49,12 @@ async fn main() {
             #[cfg(feature = "web")]
             {
                 println!("Using SQLite storage: {}", db_url);
-                Arc::new(simhammer_core::storage::sqlite::SqliteStorage::new(&db_url))
+                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&db_url))
             }
             #[cfg(not(feature = "web"))]
             {
                 println!("Using In-Memory storage (SQLite not enabled)");
-                Arc::new(simhammer_core::storage::memory::MemoryStorage::new())
+                Arc::new(whylowdps_core::storage::memory::MemoryStorage::new())
             }
         }
     };

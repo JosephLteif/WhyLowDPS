@@ -151,8 +151,8 @@ done
 cp /app/default_season_config.json "$DATA_FULL_DIR/season-config.json"
 
 echo "==> Fetching Blizzard data..."
-curl -sL -o "$DATA_FULL_DIR/blizzard-season.json" https://simhammer.com/api/blizzard/season || true
-curl -sL -o "$DATA_FULL_DIR/blizzard-instances.json" https://simhammer.com/api/blizzard/instances || true
+curl -sL -o "$DATA_FULL_DIR/blizzard-season.json" https://whylowdps.com/api/blizzard/season || true
+curl -sL -o "$DATA_FULL_DIR/blizzard-instances.json" https://whylowdps.com/api/blizzard/instances || true
 
 echo "==> Compacting game data..."
 node /app/compact-data.js "$DATA_FULL_DIR" "$DATA_DIR"
@@ -160,5 +160,5 @@ node /app/compact-data.js "$DATA_FULL_DIR" "$DATA_DIR"
 export SIMC_PATH="$SIMC_BIN"
 export DATA_DIR="$DATA_DIR"
 
-echo "==> Starting SimHammer Server..."
+echo "==> Starting WhyLowDps Server..."
 exec "$@"

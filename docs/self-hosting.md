@@ -4,10 +4,10 @@
 
 ```bash
 docker run -p 8000:8000 \
-  -v simhammer-data:/app/resources/data \
-  -v simhammer-data-full:/app/resources/data_full \
-  -v simhammer-simc:/app/resources/simc \
-  -v simhammer-db:/app/db \
+  -v whylowdps-data:/app/resources/data \
+  -v whylowdps-data-full:/app/resources/data_full \
+  -v whylowdps-simc:/app/resources/simc \
+  -v whylowdps-db:/app/db \
   ghcr.io/sortbek/simcraft:latest
 ```
 
@@ -16,7 +16,7 @@ Visit **http://localhost:8000** — everything runs from a single container.
 On startup, the container automatically:
 1. Fetches the latest SimC binary from Docker Hub
 2. Downloads game data from Raidbots
-3. Fetches instance images and season data from simhammer.com
+3. Fetches instance images and season data from whylowdps.com
 4. Compacts game data for production use
 
 All fetched data is cached in volumes so subsequent starts are fast.
@@ -25,16 +25,16 @@ All fetched data is cached in volumes so subsequent starts are fast.
 
 | Volume | Contents | Without it |
 |--------|----------|------------|
-| `simhammer-data` | Compacted game data + instance images | Re-downloaded on every start |
-| `simhammer-data-full` | Raw Raidbots downloads | Re-downloaded on every start |
-| `simhammer-simc` | SimC binary + digest cache | Re-downloaded on every start |
-| `simhammer-db` | SQLite job history | Lost on every restart |
+| `whylowdps-data` | Compacted game data + instance images | Re-downloaded on every start |
+| `whylowdps-data-full` | Raw Raidbots downloads | Re-downloaded on every start |
+| `whylowdps-simc` | SimC binary + digest cache | Re-downloaded on every start |
+| `whylowdps-db` | SQLite job history | Lost on every restart |
 
 ### PostgreSQL
 
 ```bash
 docker run -p 8000:8000 \
-  -e DATABASE_URL=postgres://user:pass@host/simhammer \
+  -e DATABASE_URL=postgres://user:pass@host/whylowdps \
   ghcr.io/sortbek/simcraft:latest
 ```
 
@@ -63,7 +63,7 @@ docker compose -f docker-compose.dev.yml up --build
 |----------|---------|-------------|
 | `SIMC_PATH` | `/usr/local/bin/simc` | Path to SimulationCraft binary |
 | `DATA_DIR` | `./resources/data` | Path to game data JSON files |
-| `DATABASE_URL` | `simhammer.db` | SQLite path or `postgres://` URL |
+| `DATABASE_URL` | `whylowdps.db` | SQLite path or `postgres://` URL |
 | `PORT` | `8000` | Server port |
 | `BIND_HOST` | `0.0.0.0` | Server bind address |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend API URL (frontend build-time) |

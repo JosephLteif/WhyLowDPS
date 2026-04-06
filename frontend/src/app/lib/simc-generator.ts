@@ -59,7 +59,7 @@ export function generateSimcString(
 
   // Header comments (official addon style)
   lines.push(`# ${name} - ${specName || 'Unknown Spec'} - ${dateStr} - ${region.toUpperCase()}/${realm}`);
-  lines.push(`# SimHammer v1.0.0 (Blizzard API Data Mode)`);
+  lines.push(`# WhyLowDps v1.0.0 (Blizzard API Data Mode)`);
   lines.push(``);
 
   lines.push(`${playerClass}="${name}"`);

@@ -85,8 +85,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      _setSimcInput(readSessionString('simhammer_simc_input', ''));
-      _setThreads(readStored('simhammer_threads', 0));
+      _setSimcInput(readSessionString('whylowdps_simc_input', ''));
+      _setThreads(readStored('whylowdps_threads', 0));
     } catch {}
   }, []);
 
@@ -108,14 +108,14 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const setSimcInput = useCallback((v: string) => {
     _setSimcInput(v);
     try {
-      sessionStorage.setItem('simhammer_simc_input', v);
+      sessionStorage.setItem('whylowdps_simc_input', v);
     } catch {}
   }, []);
 
   const setThreads = useCallback((v: number) => {
     _setThreads(v);
     try {
-      localStorage.setItem('simhammer_threads', String(v));
+      localStorage.setItem('whylowdps_threads', String(v));
     } catch {}
   }, []);
 
@@ -123,9 +123,9 @@ export function SimProvider({ children }: { children: ReactNode }) {
     _setMaxCombinations(v);
     try {
       if (v == null) {
-        localStorage.removeItem('simhammer_max_combinations');
+        localStorage.removeItem('whylowdps_max_combinations');
       } else {
-        localStorage.setItem('simhammer_max_combinations', String(v));
+        localStorage.setItem('whylowdps_max_combinations', String(v));
       }
     } catch {}
   }, []);

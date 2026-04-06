@@ -1,11 +1,11 @@
 {
-  "name": "simhammer",
+  "name": "whylowdps",
   "version": "2.2.0",
   "private": true,
   "scripts": {
     "web": "docker compose up --build",
     "web:dev": "docker compose -f docker-compose.dev.yml up -d --build",
-    "backend:dev": "cd backend && cargo watch -w core/src -w server/src -w core/Cargo.toml -w server/Cargo.toml -w Cargo.toml -x 'run -p simhammer-server'",
+    "backend:dev": "cd backend && cargo watch -w core/src -w server/src -w core/Cargo.toml -w server/Cargo.toml -w Cargo.toml -x 'run -p whylowdps-server'",
     "kill": "node scripts/kill-ports.js"
   }
 }

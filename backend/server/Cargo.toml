@@ -1,13 +1,14 @@
 [package]
-name = "simhammer-server"
+name = "whylowdps-server"
 version.workspace = true
 edition = "2021"
 
 [features]
 default = []
-desktop = ["simhammer-core/desktop"]
-postgres = ["simhammer-core/postgres"]
+desktop = ["whylowdps-core/desktop"]
+postgres = ["whylowdps-core/postgres"]
+web = ["whylowdps-core/web"]
 
 [dependencies]
-simhammer-core = { path = "../core" }
+whylowdps-core = { path = "../core" }
 tokio = { version = "1", features = ["full"] }

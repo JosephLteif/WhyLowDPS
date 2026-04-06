@@ -1,17 +1,17 @@
-name: simhammer
+name: whylowdps
 
 services:
   db:
     image: postgres:16-alpine
     restart: always
     environment:
-      - POSTGRES_USER=simhammer
-      - POSTGRES_PASSWORD=simhammer
-      - POSTGRES_DB=simhammer
+      - POSTGRES_USER=whylowdps
+      - POSTGRES_PASSWORD=whylowdps
+      - POSTGRES_DB=whylowdps
     ports:
       - "5432:5432"
     volumes:
-      - simhammer-db-data:/var/lib/postgresql/data
+      - whylowdps-db-data:/var/lib/postgresql/data
 
   backend:
     build:
@@ -27,7 +27,7 @@ services:
       - .env
     environment:
       - DATA_DIR=/app/resources/data
-      - DATABASE_URL=postgres://simhammer:simhammer@db:5432/simhammer
+      - DATABASE_URL=postgres://whylowdps:whylowdps@db:5432/whylowdps
       - PORT=8000
 
   frontend:
@@ -42,4 +42,4 @@ services:
       - "3000:3000"
 
 volumes:
-  simhammer-db-data:
+  whylowdps-db-data:

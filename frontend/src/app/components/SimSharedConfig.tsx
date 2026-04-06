@@ -47,7 +47,7 @@ function parseCharacterInfo(input: string) {
   if (nameMatch[2] && realmMatch?.[1]) {
     try {
       localStorage.setItem(
-        'simhammer_last_character',
+        'whylowdps_last_character',
         JSON.stringify({ name: nameMatch[2], realm: realmMatch[1] })
       );
     } catch {}

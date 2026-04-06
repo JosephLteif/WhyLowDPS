@@ -2,7 +2,7 @@
 
 ## Overview
 
-SimHammer is a monorepo with three deployment modes sharing one codebase:
+WhyLowDps is a monorepo with three deployment modes sharing one codebase:
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -27,8 +27,8 @@ SimHammer is a monorepo with three deployment modes sharing one codebase:
 ```
 frontend/                Next.js app (shared by web + desktop)
 backend/                 Cargo workspace (Rust)
-  core/                  simhammer-core library (API, simc runner, game data)
-  server/                simhammer-server binary (--desktop flag for desktop mode)
+  core/                  whylowdps-core library (API, simc runner, game data)
+  server/                whylowdps-server binary (--desktop flag for desktop mode)
   resources/             Runtime resources (data/, simc/, frontend/) — gitignored
 desktop/                 Electron app (main process, preload, build scripts)
 docker-compose.dev.yml   Web dev setup (frontend + backend + postgres)
@@ -37,7 +37,7 @@ Dockerfile.standalone    Single-image build (frontend + backend)
 
 ## Rust Backend
 
-The core library (`simhammer-core`) provides:
+The core library (`whylowdps-core`) provides:
 
 - **Actix-web routes** — all API endpoints
 - **Addon parser** — parses SimC addon export strings
@@ -65,7 +65,7 @@ Jobs are automatically garbage collected on insert:
 
 ## Blizzard API Integration
 
-SimHammer uses `simhammer.com` as a caching proxy for Blizzard API data:
+WhyLowDps uses `whylowdps.com` as a caching proxy for Blizzard API data:
 
 | Endpoint | Purpose | Cache |
 |----------|---------|-------|

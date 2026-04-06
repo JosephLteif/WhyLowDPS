@@ -8,14 +8,14 @@ use std::io::Cursor;
 
 #[tokio::main]
 async fn main() {
-    let instance = SingleInstance::new("simhammer-launcher").unwrap();
+    let instance = SingleInstance::new("whylowdps-launcher").unwrap();
     if !instance.is_single() {
         let _ = webbrowser::open("http://localhost:8000");
         return;
     }
 
     println!("-------------------------------------------");
-    println!("   SimHammer Desktop Launcher             ");
+    println!("   WhyLowDps Desktop Launcher             ");
     println!("-------------------------------------------");
 
     // 1. Check for SimulationCraft
@@ -35,9 +35,9 @@ async fn main() {
         }
     }
 
-    // 2. Start SimHammer Server
+    // 2. Start WhyLowDps Server
     println!("Starting Simulation Server...");
-    let server_bin = if cfg!(windows) { "simhammer-server.exe" } else { "./simhammer-server" };
+    let server_bin = if cfg!(windows) { "whylowdps-server.exe" } else { "./whylowdps-server" };
     
     // Check if server exists in current dir
     if !Path::new(server_bin).exists() {
@@ -47,10 +47,10 @@ async fn main() {
 
     let mut server_child = Command::new(server_bin)
         .env("PORT", "8000")
-        .env("DATABASE_URL", "simhammer.db")
+        .env("DATABASE_URL", "whylowdps.db")
         .env("SIMC_PATH", simc_bin.to_str().unwrap_or("simc"))
         .spawn()
-        .expect("Failed to start SimHammer server.");
+        .expect("Failed to start WhyLowDps server.");
 
     // 3. Wait for server to be ready
     let client = reqwest::Client::new();
@@ -66,7 +66,7 @@ async fn main() {
     }
 
     // 4. Open Browser
-    println!("Opening SimHammer in your browser...");
+    println!("Opening WhyLowDps in your browser...");
     if let Err(e) = webbrowser::open("http://localhost:8000") {
         eprintln!("Failed to open browser: {}. Please visit http://localhost:8000 manually.", e);
     }

@@ -1,4 +1,4 @@
-# Contributing to SimHammer
+# Contributing to WhyLowDps
 
 ## Pull Request Guidelines
 

@@ -62,6 +62,12 @@ impl PostgresStorage {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS user_configs (
+                user_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (user_id, key)
             );",
             )
             .await;
@@ -515,5 +521,30 @@ impl JobStorage for PostgresStorage {
                 ).await.ok();
             });
         });
+    }
+
+    fn set_user_config(&self, user_id: &str, key: &str, value: &str) {
+        let (user_id, key, value) = (user_id.to_string(), key.to_string(), value.to_string());
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute(
+                    "INSERT INTO user_configs (user_id, key, value) VALUES ($1, $2, $3)
+                     ON CONFLICT (user_id, key) DO UPDATE SET value = $3",
+                    &[&user_id, &key, &value],
+                ).await.ok();
+            });
+        });
+    }
+
+    fn get_user_config(&self, user_id: &str, key: &str) -> Option<String> {
+        let (user_id, key) = (user_id.to_string(), key.to_string());
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.query_opt(
+                    "SELECT value FROM user_configs WHERE user_id = $1 AND key = $2",
+                    &[&user_id, &key],
+                ).await.ok().flatten().map(|row| row.get(0))
+            })
+        }).flatten()
     }
 }

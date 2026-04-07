@@ -38,6 +38,12 @@ impl SqliteStorage {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS user_configs (
+                user_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                PRIMARY KEY (user_id, key)
             );",
         )
         .expect("Failed to create tables");
@@ -421,5 +427,25 @@ impl JobStorage for SqliteStorage {
             params![region, realm, name, id],
         )
         .ok();
+    }
+
+    fn set_user_config(&self, user_id: &str, key: &str, value: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO user_configs (user_id, key, value) VALUES (?1, ?2, ?3)
+             ON CONFLICT(user_id, key) DO UPDATE SET value = ?3",
+            params![user_id, key, value],
+        )
+        .ok();
+    }
+
+    fn get_user_config(&self, user_id: &str, key: &str) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT value FROM user_configs WHERE user_id = ?1 AND key = ?2",
+            params![user_id, key],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
     }
 }

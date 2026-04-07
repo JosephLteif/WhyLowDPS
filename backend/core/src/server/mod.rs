@@ -202,25 +202,19 @@ pub async fn start_with_storage_bind(
 
     let bind_addr = format!("{}:{}", bind_host, port);
 
-    let blizzard_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
-    let blizzard_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
-    let blizzard_state = if let (Some(id), Some(sec)) = (blizzard_id.clone(), blizzard_secret.clone()) {
-        Some(web::Data::new(Arc::new(blizzard::BlizzardState::new(id, sec))))
-    } else {
-        None
-    };
+    let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
 
     let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI")
         .unwrap_or_else(|_| "http://localhost:3000/api/auth/bnet/callback".to_string());
     let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
 
-    let auth_state = if let (Some(id), Some(sec)) = (blizzard_id, blizzard_secret) {
-        Some(web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
-            id, sec, bnet_redirect, jwt_secret,
-        ))))
-    } else {
-        None
-    };
+    let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
+        None, None, bnet_redirect, jwt_secret,
+    )));
+
+    // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>> 
+    // to the proxy handlers so они can check for JWT sub.
+    let auth_state_opt_data = web::Data::new(Some(auth_state.get_ref().clone()));
 
     let server = HttpServer::new(move || {
         let cors = Cors::default()
@@ -233,20 +227,18 @@ pub async fn start_with_storage_bind(
             .wrap(cors)
             .app_data(store_data.clone())
             .app_data(simc_data.clone())
-            .app_data(log_data.clone());
-
-        if let Some(ref data) = blizzard_state {
-            app = app.app_data(data.clone());
-        }
-        
-        if let Some(ref data) = auth_state {
-            app = app.app_data(data.clone())
-                .route("/api/auth/bnet/login", web::get().to(auth_handlers::bnet_login))
-                .route("/api/auth/bnet/callback", web::get().to(auth_handlers::bnet_callback))
-                .route("/api/auth/me", web::get().to(auth_handlers::get_me))
-                .route("/api/auth/logout", web::post().to(auth_handlers::bnet_logout))
-                .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters));
-        }
+            .app_data(log_data.clone())
+            .app_data(blizzard_state.clone())
+            .app_data(auth_state.clone())
+            .app_data(auth_state_opt_data.clone())
+            .route("/api/auth/bnet/login", web::get().to(auth_handlers::bnet_login))
+            .route("/api/auth/bnet/callback", web::get().to(auth_handlers::bnet_callback))
+            .route("/api/auth/me", web::get().to(auth_handlers::get_me))
+            .route("/api/auth/logout", web::post().to(auth_handlers::bnet_logout))
+            .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters))
+            .route("/api/user/config", web::get().to(auth_handlers::get_user_configs))
+            .route("/api/user/config", web::post().to(auth_handlers::set_user_config))
+            .route("/api/user/blizzard/test", web::post().to(auth_handlers::test_blizzard_creds));
 
         #[cfg(feature = "desktop")]
         {

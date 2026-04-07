@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use reqwest::Client;
+use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct BlizzardToken {
@@ -12,35 +13,20 @@ struct BlizzardToken {
 }
 
 pub struct BlizzardState {
-    client_id: String,
-    client_secret: String,
-    client: Client,
-    token: Mutex<Option<(String, Instant)>>,
+    pub client: Client,
 }
 
 impl BlizzardState {
-    pub fn new(id: String, secret: String) -> Self {
+    pub fn new() -> Self {
         Self {
-            client_id: id,
-            client_secret: secret,
             client: Client::new(),
-            token: Mutex::new(None),
         }
     }
 
-    async fn get_token(&self) -> Option<String> {
-        let mut token_lock = self.token.lock().await;
-
-        if let Some((token, expiry)) = &*token_lock {
-            if Instant::now() < *expiry {
-                return Some(token.clone());
-            }
-        }
-
-        // Fetch new token
-        let res = self.client
+    pub async fn get_token_with_creds(client: &Client, id: &str, secret: &str) -> Option<String> {
+        let res = client
             .post("https://oauth.battle.net/token")
-            .basic_auth(&self.client_id, Some(&self.client_secret))
+            .basic_auth(id, Some(secret))
             .form(&[("grant_type", "client_credentials")])
             .send()
             .await
@@ -51,10 +37,28 @@ impl BlizzardState {
         }
 
         let data: BlizzardToken = res.json().await.ok()?;
-        let expiry = Instant::now() + Duration::from_secs(data.expires_in.saturating_sub(60));
-        *token_lock = Some((data.access_token.clone(), expiry));
         Some(data.access_token)
     }
+}
+
+async fn get_effective_token(
+    req: &actix_web::HttpRequest,
+    state: &BlizzardState,
+    auth_state: Option<&BlizzardAuthState>,
+    store: &dyn crate::storage::JobStorage,
+) -> Option<String> {
+    if let Some(auth) = auth_state {
+        if let Some(claims) = verify_jwt(req, &auth.jwt_secret) {
+            let user_id = &claims.sub;
+            let id = store.get_user_config(user_id, "blizzard_client_id");
+            let secret = store.get_user_config(user_id, "blizzard_client_secret");
+
+            if let (Some(id), Some(secret)) = (id, secret) {
+                return BlizzardState::get_token_with_creds(&state.client, &id, &secret).await;
+            }
+        }
+    }
+    None
 }
 
 #[derive(Deserialize)]
@@ -64,7 +68,9 @@ pub struct ProxyQuery {
 }
 
 pub async fn proxy_character_profile(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     path: web::Path<(String, String)>,
     query: web::Query<ProxyQuery>,
@@ -83,7 +89,7 @@ pub async fn proxy_character_profile(
         }
     }
 
-    let token = match state.get_token().await {
+    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -113,7 +119,9 @@ pub async fn proxy_character_profile(
 }
 
 pub async fn proxy_character_media(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     path: web::Path<(String, String, String)>,
     query: web::Query<ProxyQuery>,
@@ -134,7 +142,7 @@ pub async fn proxy_character_media(
         }
     }
 
-    let token = match state.get_token().await {
+    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -178,7 +186,9 @@ pub async fn proxy_character_media(
 }
 
 pub async fn proxy_character_equipment(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     path: web::Path<(String, String)>,
     query: web::Query<ProxyQuery>,
@@ -197,7 +207,7 @@ pub async fn proxy_character_equipment(
         }
     }
 
-    let token = match state.get_token().await {
+    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -227,7 +237,9 @@ pub async fn proxy_character_equipment(
 }
 
 pub async fn proxy_character_statistics(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     path: web::Path<(String, String)>,
     query: web::Query<ProxyQuery>,
@@ -246,7 +258,7 @@ pub async fn proxy_character_statistics(
         }
     }
 
-    let token = match state.get_token().await {
+    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -279,7 +291,9 @@ pub async fn proxy_character_statistics(
 }
 
 pub async fn proxy_character_specializations(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     path: web::Path<(String, String)>,
     query: web::Query<ProxyQuery>,
@@ -298,7 +312,7 @@ pub async fn proxy_character_specializations(
         }
     }
 
-    let token = match state.get_token().await {
+    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -330,7 +344,9 @@ pub async fn proxy_character_specializations(
     }
 }
 pub async fn proxy_character_professions(
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     path: web::Path<(String, String)>,
     query: web::Query<ProxyQuery>,
@@ -349,7 +365,7 @@ pub async fn proxy_character_professions(
         }
     }
 
-    let token = match state.get_token().await {
+    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };

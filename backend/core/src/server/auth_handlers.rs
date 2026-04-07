@@ -8,16 +8,16 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct BlizzardAuthState {
-    pub client_id: String,
-    pub client_secret: String,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
     pub redirect_uri: String,
     pub jwt_secret: String,
 }
 
 impl BlizzardAuthState {
     pub fn new(
-        client_id: String,
-        client_secret: String,
+        client_id: Option<String>,
+        client_secret: Option<String>,
         redirect_uri: String,
         jwt_secret: String,
     ) -> Self {
@@ -53,9 +53,14 @@ struct UserInfoResponse {
 }
 
 pub async fn bnet_login(state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
+    let client_id = match &state.client_id {
+        Some(id) => id,
+        None => return HttpResponse::InternalServerError().json(json!({"error": "Blizzard API Client ID not configured globally."})),
+    };
+
     let auth_url = format!(
         "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile&state={}",
-        state.client_id,
+        client_id,
         urlencoding::encode(&state.redirect_uri),
         uuid::Uuid::new_v4()
     );
@@ -70,8 +75,13 @@ pub async fn bnet_callback(
 ) -> HttpResponse {
     let client = reqwest::Client::new();
     
+    let (client_id, client_secret) = match (&state.client_id, &state.client_secret) {
+        (Some(id), Some(sec)) => (id, sec),
+        _ => return HttpResponse::InternalServerError().json(json!({"error": "Global Blizzard credentials not configured."})),
+    };
+
     let token_resp = client.post("https://oauth.battle.net/token")
-        .basic_auth(&state.client_id, Some(&state.client_secret))
+        .basic_auth(client_id, Some(client_secret))
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", &query.code),
@@ -314,3 +324,68 @@ pub async fn get_characters(
 
     HttpResponse::Ok().json(json_resp)
 }
+
+#[derive(Deserialize)]
+pub struct UserConfigUpdate {
+    pub key: String,
+    pub value: String,
+}
+
+pub async fn get_user_configs(
+    req: HttpRequest,
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+) -> HttpResponse {
+    let claims = match verify_jwt(&req, &state.jwt_secret) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
+    };
+
+    let client_id = store.get_user_config(&claims.sub, "blizzard_client_id").unwrap_or_default();
+    let has_secret = store.get_user_config(&claims.sub, "blizzard_client_secret").is_some();
+
+    HttpResponse::Ok().json(json!({
+        "blizzard_client_id": client_id,
+        "has_blizzard_client_secret": has_secret,
+    }))
+}
+
+pub async fn set_user_config(
+    req: HttpRequest,
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    body: web::Json<UserConfigUpdate>,
+) -> HttpResponse {
+    let claims = match verify_jwt(&req, &state.jwt_secret) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
+    };
+
+    if body.key != "blizzard_client_id" && body.key != "blizzard_client_secret" {
+        return HttpResponse::BadRequest().json(json!({"error": "Invalid config key"}));
+    }
+
+    store.set_user_config(&claims.sub, &body.key, &body.value);
+
+    HttpResponse::Ok().json(json!({"status": "updated"}))
+}
+
+#[derive(Deserialize)]
+pub struct TestBlizzardCreds {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+pub async fn test_blizzard_creds(
+    body: web::Json<TestBlizzardCreds>,
+) -> HttpResponse {
+    let client = reqwest::Client::new();
+    let res = crate::server::blizzard::BlizzardState::get_token_with_creds(&client, &body.client_id, &body.client_secret).await;
+    
+    if res.is_some() {
+        HttpResponse::Ok().json(json!({"status": "success"}))
+    } else {
+        HttpResponse::BadRequest().json(json!({"status": "error", "message": "Failed to authenticate with Blizzard"}))
+    }
+}
+

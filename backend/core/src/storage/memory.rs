@@ -8,6 +8,7 @@ pub struct MemoryStorage {
     jobs: Mutex<HashMap<String, Job>>,
     max_jobs: Mutex<usize>,
     cache: Mutex<HashMap<String, String>>,
+    user_configs: Mutex<HashMap<(String, String), String>>,
 }
 
 impl Default for MemoryStorage {
@@ -22,6 +23,7 @@ impl MemoryStorage {
             jobs: Mutex::new(HashMap::new()),
             max_jobs: Mutex::new(*super::MAX_JOBS),
             cache: Mutex::new(HashMap::new()),
+            user_configs: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -213,5 +215,15 @@ impl JobStorage for MemoryStorage {
             job.linked_realm = realm;
             job.linked_name = name;
         }
+    }
+
+    fn set_user_config(&self, user_id: &str, key: &str, value: &str) {
+        let mut configs = self.user_configs.lock().unwrap();
+        configs.insert((user_id.to_string(), key.to_string()), value.to_string());
+    }
+
+    fn get_user_config(&self, user_id: &str, key: &str) -> Option<String> {
+        let configs = self.user_configs.lock().unwrap();
+        configs.get(&(user_id.to_string(), key.to_string())).cloned()
     }
 }

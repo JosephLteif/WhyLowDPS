@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -9,7 +10,7 @@ use crate::simc_runner;
 use crate::storage::JobStorage;
 
 pub(super) async fn list_sims(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    let summaries = store.list_recent(store.get_max_jobs(), None, None);
+    let summaries = store.list_recent(store.get_max_jobs(), None, None, false);
     HttpResponse::Ok().json(summaries)
 }
 
@@ -18,10 +19,10 @@ pub(super) async fn list_sims_filtered(
     query: web::Query<ListSimsQuery>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
-    if query.player.is_empty() || query.realm.is_empty() {
-        return HttpResponse::BadRequest().json(json!({"detail": "player and realm are required"}));
-    }
-    let summaries = store.list_recent(store.get_max_jobs(), Some(&query.player), Some(&query.realm));
+    let player = if query.player.is_empty() { None } else { Some(query.player.as_str()) };
+    let realm = if query.realm.is_empty() { None } else { Some(query.realm.as_str()) };
+    
+    let summaries = store.list_recent(store.get_max_jobs(), player, realm, query.linked_only);
     HttpResponse::Ok().json(summaries)
 }
 
@@ -109,6 +110,9 @@ pub(super) async fn get_sim_status(
         "cpu_pct": cpu_pct,
         "mem_bytes": mem_bytes,
         "cpu_cores": cpu_cores,
+        "linked_region": job.linked_region,
+        "linked_realm": job.linked_realm,
+        "linked_name": job.linked_name,
     }))
 }
 
@@ -318,7 +322,7 @@ pub(super) async fn delete_sim(
 
 pub(super) async fn get_history_stats(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
     let size = store.get_storage_size();
-    let sims = store.list_recent(1000, None, None);
+    let sims = store.list_recent(1000, None, None, false);
     HttpResponse::Ok().json(json!({
         "size_bytes": size,
         "count": sims.len(),
@@ -328,4 +332,47 @@ pub(super) async fn get_history_stats(store: web::Data<Arc<dyn JobStorage>>) -> 
 pub(super) async fn clear_history(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
     store.clear_history();
     HttpResponse::Ok().json(json!({"status": "cleared"}))
+}
+
+#[derive(Deserialize)]
+pub struct LinkSimRequest {
+    pub region: Option<String>,
+    pub realm: Option<String>,
+    pub name: Option<String>,
+}
+
+pub(super) async fn link_sim(
+    path: web::Path<String>,
+    payload: web::Json<LinkSimRequest>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    store.link_character(&id, payload.region.clone(), payload.realm.clone(), payload.name.clone());
+    HttpResponse::Ok().json(json!({"status": "linked"}))
+}
+
+pub(super) async fn get_history_characters(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
+    let sims = store.list_recent(10000, None, None, false);
+    let mut seen = std::collections::HashSet::new();
+    let mut chars = Vec::new();
+    
+    for sim in sims {
+        // Use the summary names which already incorporate linked overrides
+        let name = sim.player_name.clone();
+        let realm = sim.realm.clone().unwrap_or_else(|| "Unknown".to_string());
+        let region = sim.linked_region.clone().unwrap_or_else(|| "us".to_string());
+        
+        if let Some(n) = name {
+            let key = format!("{}-{}-{}", n.to_lowercase(), realm.to_lowercase(), region.to_lowercase());
+            if seen.insert(key) {
+                chars.push(json!({
+                    "name": n,
+                    "realm": realm,
+                    "region": region,
+                }));
+            }
+        }
+    }
+    
+    HttpResponse::Ok().json(chars)
 }

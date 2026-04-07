@@ -42,6 +42,7 @@ pub trait JobStorage: Send + Sync {
         limit: usize,
         player: Option<&str>,
         realm: Option<&str>,
+        linked_only: bool,
     ) -> Vec<JobSummary>;
     fn update_status(&self, id: &str, status: JobStatus);
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str);
@@ -58,4 +59,6 @@ pub trait JobStorage: Send + Sync {
     // Cache methods for app-level storage (e.g. blizzard API proxy)
     fn set_cache(&self, key: &str, value: String);
     fn get_cache(&self, key: &str) -> Option<String>;
+    // Explicit linking
+    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>);
 }

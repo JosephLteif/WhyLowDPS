@@ -11,6 +11,7 @@ import StatWeightsTable from '../../components/StatWeightsTable';
 import TalentTree from '../../components/TalentTree';
 import TopGearResults from '../../components/TopGearResults';
 import { calculateAverageIlevel } from '../../lib/ilevel';
+import CharacterLinkButton from '../../components/CharacterLinkButton';
 
 import { API_URL } from '../../lib/api';
 import { useSimContext } from '../../components/SimContext';
@@ -39,6 +40,9 @@ interface JobData {
   iterations_completed?: number;
   fight_style?: string;
   region?: string;
+  linked_region?: string;
+  linked_realm?: string;
+  linked_name?: string;
 }
 
 export default function SimResultClient() {
@@ -195,32 +199,40 @@ export default function SimResultClient() {
 
   return (
     <div className="space-y-6">
-      {siblings && siblings.length > 1 && (
-        <div className="card p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
-              Scenarios
-            </span>
-            <span className="h-4 w-px shrink-0 bg-border" />
-            {siblings.map((s) => {
-              const isCurrent = s.id === id;
-              return (
-                <a
-                  key={s.id}
-                  href={`/sim/${s.id}`}
-                  className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
-                    isCurrent
-                      ? 'border-gold/40 bg-gold/[0.08] text-gold'
-                      : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
-                  }`}
-                >
-                  {formatScenarioLabel(s)}
-                </a>
-              );
-            })}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        {siblings && siblings.length > 1 ? (
+          <div className="card p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
+                Scenarios
+              </span>
+              <span className="h-4 w-px shrink-0 bg-border" />
+              {siblings.map((s) => {
+                const isCurrent = s.id === id;
+                return (
+                  <a
+                    key={s.id}
+                    href={`/sim/${s.id}`}
+                    className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
+                      isCurrent
+                        ? 'border-gold/40 bg-gold/[0.08] text-gold'
+                        : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                    }`}
+                  >
+                    {formatScenarioLabel(s)}
+                  </a>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        ) : <div />}
+        <CharacterLinkButton 
+          jobId={id} 
+          currentLinkedName={job.linked_name}
+          currentLinkedRealm={job.linked_realm}
+          currentLinkedRegion={job.linked_region}
+        />
+      </div>
 
       {isTopGear ? (
         <>

@@ -314,12 +314,14 @@ export default function HistoryPage() {
 
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [character, setCharacter] = useState<{ name: string; realm: string } | null>(null);
+  const [character, setCharacter] = useState<{ name: string; realm: string; region?: string } | null>(null);
+  const [bnetCharacters, setBnetCharacters] = useState<{ name: string; realm: string; region: string; source?: 'bnet' | 'history' }[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [maxJobs, setMaxJobs] = useState<number>(50);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
+    // Optionally auto-select from SimC input
     let char = extractCharacter(simcInput);
     if (!char) {
       try {
@@ -328,13 +330,34 @@ export default function HistoryPage() {
       } catch {}
     }
     setCharacter(char);
+
+    // Fetch account characters and historical characters
+    Promise.all([
+      fetch(`${API_URL}/api/bnet/user/characters`).then(r => r.json().catch(() => ({ characters: [] }))),
+      fetch(`${API_URL}/api/history/characters`).then(r => r.json().catch(() => []))
+    ]).then(([bnetResponse, historyData]) => {
+      const bnetList = Array.isArray(bnetResponse) ? bnetResponse : (bnetResponse?.characters || []);
+      const merged: any[] = bnetList.map((c: any) => ({ ...c, source: 'bnet' }));
+      const historyList = Array.isArray(historyData) ? historyData : [];
+      
+      for (const h of historyList) {
+        if (!merged.find(m => m.name.toLowerCase() === h.name.toLowerCase() && m.realm.toLowerCase() === h.realm.toLowerCase())) {
+          merged.push({ ...h, source: 'history' });
+        }
+      }
+      setBnetCharacters(merged);
+    }).catch(() => {});
   }, [simcInput]);
 
   const refreshHistory = useCallback(async () => {
-    if (!character) return;
     try {
+      let url = `${API_URL}/api/sims`;
+      if (character && character.name && character.realm) {
+        url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
+      }
+      
       const [simsRes, statsData] = await Promise.all([
-        fetch(`${API_URL}/api/sims?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}`),
+        fetch(url),
         getHistoryStats()
       ]);
       const data = simsRes.ok ? await simsRes.json() : [];
@@ -408,16 +431,6 @@ export default function HistoryPage() {
     );
   }
 
-  if (!character) {
-    return (
-      <div className="py-12 text-center">
-        <p className="text-sm text-muted">
-          Paste your SimC addon export to see your character&apos;s sim history.
-        </p>
-      </div>
-    );
-  }
-
   const groupKeys = Object.keys(filteredEntries);
 
   return (
@@ -432,6 +445,35 @@ export default function HistoryPage() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 pr-2 border-r border-border">
+            <span className="text-xs text-zinc-500">Filter by Character:</span>
+            <select
+              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
+              value={character ? `${character.name}-${character.realm}` : 'all'}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all') {
+                  setCharacter(null);
+                  localStorage.removeItem('whylowdps_last_character');
+                } else {
+                  const [name, realm] = val.split('-');
+                  setCharacter({ name, realm });
+                }
+              }}
+            >
+              <option value="all">All Sims</option>
+              {character && !bnetCharacters.find(c => c.name === character.name && c.realm === character.realm) && (
+                <option value={`${character.name}-${character.realm}`}>
+                  {character.name} - {character.realm}
+                </option>
+              )}
+              {bnetCharacters.map((c, i) => (
+                <option key={i} value={`${c.name}-${c.realm}`}>
+                  {c.name} - {c.realm} {c.source === 'history' ? '(History)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="relative">
             <div className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center">
               <SearchIcon />

@@ -33,6 +33,9 @@ pub struct Job {
     pub html_report: Option<String>,
     pub text_output: Option<String>,
     pub batch_id: Option<String>,
+    pub linked_region: Option<String>,
+    pub linked_realm: Option<String>,
+    pub linked_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +55,9 @@ pub struct JobSummary {
     pub size_bytes: u64,
     pub upgrades: Option<u32>,
     pub downgrades: Option<u32>,
+    pub linked_region: Option<String>,
+    pub linked_realm: Option<String>,
+    pub linked_name: Option<String>,
 }
 
 pub struct ResultSummary {
@@ -117,22 +123,32 @@ pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) ->
         }
     }
 
-    // Extract realm from simc input (server=quelthalas)
+    // Extract realm/region from simc input
     for line in simc_input.lines() {
         let trimmed = line.trim();
         if let Some(val) = trimmed.strip_prefix("server=") {
             summary.realm = Some(val.to_string());
-            break;
+        } else if let Some(_val) = trimmed.strip_prefix("region=") {
+            // This isn't in ResultSummary but we can use it to help get_history_characters if we added it to JobSummary
+            // For now, we'll focus on names and realms
         }
     }
 
-    // If player_name not in result yet, extract from simc input (e.g. deathknight="Simpydk")
+    // If player_name not in result yet, extract from simc input
     if summary.player_name.is_none() {
+        // Match line like: deathknight="Name" OR player="Name" OR name="Name" OR armory=us,realm,Name
         let re = Regex::new(
-            r#"^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker)\s*=\s*"(.+)""#
+            r#"(?i)^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name)\s*=\s*"?([^"\s,]+)"?"#
         ).unwrap();
+        let armory_re = Regex::new(r#"(?i)^armory=[^,]+,[^,]+,([^,\s]+)"#).unwrap();
+
         for line in simc_input.lines() {
-            if let Some(caps) = re.captures(line.trim()) {
+            let trimmed = line.trim();
+            if let Some(caps) = re.captures(trimmed) {
+                summary.player_name = Some(caps[1].to_string());
+                break;
+            }
+            if let Some(caps) = armory_re.captures(trimmed) {
                 summary.player_name = Some(caps[1].to_string());
                 break;
             }
@@ -170,6 +186,9 @@ impl Job {
             html_report: None,
             text_output: None,
             batch_id: None,
+            linked_region: None,
+            linked_realm: None,
+            linked_name: None,
         }
     }
 

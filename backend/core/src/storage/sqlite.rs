@@ -49,6 +49,9 @@ impl SqliteStorage {
         );
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN raw_json TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN batch_id TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_region TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_realm TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_name TEXT;");
 
         let max_jobs = conn
             .query_row(
@@ -112,6 +115,9 @@ impl SqliteStorage {
             html_report: row.get(16).ok().flatten(),
             text_output: row.get(17).ok().flatten(),
             batch_id: row.get(18).ok().flatten(),
+            linked_region: row.get(19).ok().flatten(),
+            linked_realm: row.get(20).ok().flatten(),
+            linked_name: row.get(21).ok().flatten(),
         })
     }
 }
@@ -123,8 +129,8 @@ impl JobStorage for SqliteStorage {
         conn.execute(
             "INSERT INTO jobs (id, status, sim_type, simc_input, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-             iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+             iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             params![
                 job.id,
                 Self::status_to_str(&job.status),
@@ -145,6 +151,9 @@ impl JobStorage for SqliteStorage {
                 job.raw_json,
                 job.html_report,
                 job.text_output,
+                job.linked_region,
+                job.linked_realm,
+                job.linked_name,
             ],
         )
         .expect("Failed to insert job");
@@ -162,7 +171,7 @@ impl JobStorage for SqliteStorage {
         conn.query_row(
             "SELECT id, status, sim_type, simc_input, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-             iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id
+             iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name
              FROM jobs WHERE id = ?1",
             params![id],
             Self::row_to_job,
@@ -175,6 +184,7 @@ impl JobStorage for SqliteStorage {
         limit: usize,
         player: Option<&str>,
         realm: Option<&str>,
+        linked_only: bool,
     ) -> Vec<JobSummary> {
         let conn = self.conn.lock().unwrap();
         let fetch_limit = if player.is_some() || realm.is_some() {
@@ -184,7 +194,7 @@ impl JobStorage for SqliteStorage {
         };
         let mut stmt = conn.prepare(
             "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id,
-             raw_json, html_report, text_output, combo_metadata_json
+             raw_json, html_report, text_output, combo_metadata_json, linked_region, linked_realm, linked_name
              FROM jobs ORDER BY created_at DESC LIMIT ?1"
         ).unwrap();
         let all: Vec<JobSummary> = stmt
@@ -201,6 +211,10 @@ impl JobStorage for SqliteStorage {
                 size_bytes += row.get::<_, Option<String>>(12)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
                 size_bytes += row.get::<_, Option<String>>(13)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
 
+                let linked_region: Option<String> = row.get(14).ok().flatten();
+                let linked_realm: Option<String> = row.get(15).ok().flatten();
+                let linked_name: Option<String> = row.get(16).ok().flatten();
+
                 Ok(JobSummary {
                     id: row.get(0)?,
                     status: Self::str_to_status(&status_str),
@@ -209,14 +223,17 @@ impl JobStorage for SqliteStorage {
                     fight_style: row.get(4)?,
                     iterations: row.get::<_, u32>(5)?,
                     error_message: row.get(6)?,
-                    player_name: s.player_name,
+                    player_name: linked_name.clone().or_else(|| s.player_name.clone()),
                     player_class: s.player_class,
-                    realm: s.realm,
+                    realm: linked_realm.clone().or_else(|| s.realm.clone()),
                     dps: s.dps,
                     batch_id: row.get(9).ok().flatten(),
                     size_bytes,
                     upgrades: s.upgrades,
                     downgrades: s.downgrades,
+                    linked_region,
+                    linked_realm,
+                    linked_name,
                 })
             })
             .unwrap()
@@ -228,11 +245,20 @@ impl JobStorage for SqliteStorage {
         }
         all.into_iter()
             .filter(|j| {
-                if let Some(p) = player {
-                    if j.player_name.as_deref() != Some(p) { return false; }
-                }
-                if let Some(r) = realm {
-                    if j.realm.as_deref() != Some(r) { return false; }
+                if linked_only {
+                    if let Some(p) = player {
+                        if j.linked_name.as_deref() != Some(p) { return false; }
+                    }
+                    if let Some(r) = realm {
+                        if j.linked_realm.as_deref() != Some(r) { return false; }
+                    }
+                } else {
+                    if let Some(p) = player {
+                        if j.player_name.as_deref() != Some(p) { return false; }
+                    }
+                    if let Some(r) = realm {
+                        if j.realm.as_deref() != Some(r) { return false; }
+                    }
                 }
                 true
             })
@@ -386,5 +412,14 @@ impl JobStorage for SqliteStorage {
             |row| row.get::<_, String>(0)
         )
         .ok()
+    }
+
+    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE jobs SET linked_region = ?1, linked_realm = ?2, linked_name = ?3 WHERE id = ?4",
+            params![region, realm, name, id],
+        )
+        .ok();
     }
 }

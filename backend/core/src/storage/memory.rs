@@ -53,6 +53,7 @@ impl JobStorage for MemoryStorage {
         limit: usize,
         player: Option<&str>,
         realm: Option<&str>,
+        linked_only: bool,
     ) -> Vec<JobSummary> {
         let jobs = self.jobs.lock().unwrap();
         let mut entries: Vec<&Job> = jobs.values().collect();
@@ -63,16 +64,29 @@ impl JobStorage for MemoryStorage {
                 break;
             }
             let s = extract_result_summary(&j.result_json, &j.simc_input);
-            if let Some(p) = player {
-                if s.player_name.as_deref() != Some(p) {
-                    continue;
+            let linked_region = j.linked_region.clone();
+            let linked_realm = j.linked_realm.clone();
+            let linked_name = j.linked_name.clone();
+
+            let player_name = linked_name.clone().or_else(|| s.player_name.clone());
+            let current_realm = linked_realm.clone().or_else(|| s.realm.clone());
+
+            if linked_only {
+                if let Some(p) = player {
+                    if linked_name.as_deref() != Some(p) { continue; }
+                }
+                if let Some(r) = realm {
+                    if linked_realm.as_deref() != Some(r) { continue; }
+                }
+            } else {
+                if let Some(p) = player {
+                    if player_name.as_deref() != Some(p) { continue; }
+                }
+                if let Some(r) = realm {
+                    if current_realm.as_deref() != Some(r) { continue; }
                 }
             }
-            if let Some(r) = realm {
-                if s.realm.as_deref() != Some(r) {
-                    continue;
-                }
-            }
+
             results.push(JobSummary {
                 id: j.id.clone(),
                 status: j.status.clone(),
@@ -81,14 +95,17 @@ impl JobStorage for MemoryStorage {
                 fight_style: j.fight_style.clone(),
                 iterations: j.iterations,
                 error_message: j.error_message.clone(),
-                player_name: s.player_name,
+                player_name,
                 player_class: s.player_class,
-                realm: s.realm,
+                realm: current_realm,
                 dps: s.dps,
                 batch_id: j.batch_id.clone(),
                 size_bytes: j.estimate_size(),
                 upgrades: s.upgrades,
                 downgrades: s.downgrades,
+                linked_region,
+                linked_realm,
+                linked_name,
             });
         }
         results
@@ -188,5 +205,13 @@ impl JobStorage for MemoryStorage {
     fn get_cache(&self, key: &str) -> Option<String> {
         let cache = self.cache.lock().unwrap();
         cache.get(key).cloned()
+    }
+
+    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>) {
+        if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+            job.linked_region = region;
+            job.linked_realm = realm;
+            job.linked_name = name;
+        }
     }
 }

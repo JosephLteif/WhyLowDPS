@@ -175,6 +175,8 @@ pub(super) struct ListSimsQuery {
     pub player: String,
     #[serde(default)]
     pub realm: String,
+    #[serde(default)]
+    pub linked_only: bool,
 }
 
 #[derive(Deserialize)]

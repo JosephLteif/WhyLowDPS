@@ -68,7 +68,10 @@ impl PostgresStorage {
                 "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS html_report TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS text_output TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS raw_json TEXT;
-             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS batch_id TEXT;",
+             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS batch_id TEXT;
+             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_region TEXT;
+             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_realm TEXT;
+             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_name TEXT;",
             )
             .await;
 
@@ -147,6 +150,9 @@ impl PostgresStorage {
             html_report: row.get(16),
             text_output: row.get(17),
             batch_id: row.get(18),
+            linked_region: row.get(19),
+            linked_realm: row.get(20),
+            linked_name: row.get(21),
         }
     }
 }
@@ -160,8 +166,8 @@ impl JobStorage for PostgresStorage {
                 client.execute(
                     "INSERT INTO jobs (id, status, sim_type, simc_input, result_json, combo_metadata_json,
                      error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-                     iterations, fight_style, target_error, created_at, batch_id)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)",
+                     iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
                     &[
                         &job.id,
                         &Self::status_to_str(&job.status),
@@ -179,6 +185,12 @@ impl JobStorage for PostgresStorage {
                         &job.target_error,
                         &job.created_at,
                         &job.batch_id,
+                        &job.raw_json,
+                        &job.html_report,
+                        &job.text_output,
+                        &job.linked_region,
+                        &job.linked_realm,
+                        &job.linked_name,
                     ],
                 ).await.expect("Failed to insert job");
 
@@ -197,7 +209,7 @@ impl JobStorage for PostgresStorage {
                 client.query_opt(
                     "SELECT id, status, sim_type, simc_input, result_json, combo_metadata_json,
                      error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-                     iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id
+                     iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name
                      FROM jobs WHERE id = $1",
                     &[&id],
                 ).await.ok().flatten().map(|row| Self::row_to_job(&row))
@@ -210,6 +222,7 @@ impl JobStorage for PostgresStorage {
         limit: usize,
         player: Option<&str>,
         realm: Option<&str>,
+        linked_only: bool,
     ) -> Vec<JobSummary> {
         let player = player.map(String::from);
         let realm = realm.map(String::from);
@@ -221,7 +234,7 @@ impl JobStorage for PostgresStorage {
                     limit as i64
                 };
                 let rows = client.query(
-                    "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id, raw_json, html_report, text_output, combo_metadata_json
+                    "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id, raw_json, html_report, text_output, combo_metadata_json, linked_region, linked_realm, linked_name
                      FROM jobs ORDER BY created_at DESC LIMIT $1",
                     &[&fetch_limit],
                 ).await.unwrap_or_default();
@@ -239,6 +252,10 @@ impl JobStorage for PostgresStorage {
                     size_bytes += row.get::<_, Option<String>>(12).as_ref().map(|s| s.len()).unwrap_or(0) as u64; // text_output
                     size_bytes += row.get::<_, Option<String>>(13).as_ref().map(|s| s.len()).unwrap_or(0) as u64; // combo_metadata_json
 
+                    let linked_region: Option<String> = row.get(14);
+                    let linked_realm: Option<String> = row.get(15);
+                    let linked_name: Option<String> = row.get(16);
+
                     JobSummary {
                         id: row.get(0),
                         status: Self::str_to_status(&status_str),
@@ -247,28 +264,43 @@ impl JobStorage for PostgresStorage {
                         fight_style: row.get(4),
                         iterations: iterations as u32,
                         error_message: row.get(6),
-                        player_name: s.player_name,
+                        player_name: linked_name.clone().or_else(|| s.player_name.clone()),
                         player_class: s.player_class,
-                        realm: s.realm,
+                        realm: linked_realm.clone().or_else(|| s.realm.clone()),
                         dps: s.dps,
                         batch_id: row.get(9),
                         size_bytes,
                         upgrades: s.upgrades,
                         downgrades: s.downgrades,
+                        linked_region,
+                        linked_realm,
+                        linked_name,
                     }
                 }).collect();
                 if player.is_none() && realm.is_none() {
                     return all;
                 }
-                all.into_iter().filter(|j| {
-                    if let Some(ref p) = player {
-                        if j.player_name.as_deref() != Some(p) { return false; }
-                    }
-                    if let Some(ref r) = realm {
-                        if j.realm.as_deref() != Some(r) { return false; }
-                    }
-                    true
-                }).take(limit).collect()
+                all.into_iter()
+                    .filter(|j| {
+                        if linked_only {
+                            if let Some(ref p) = player {
+                                if j.linked_name.as_deref() != Some(p) { return false; }
+                            }
+                            if let Some(ref r) = realm {
+                                if j.linked_realm.as_deref() != Some(r) { return false; }
+                            }
+                        } else {
+                            if let Some(ref p) = player {
+                                if j.player_name.as_deref() != Some(p) { return false; }
+                            }
+                            if let Some(ref r) = realm {
+                                if j.realm.as_deref() != Some(r) { return false; }
+                            }
+                        }
+                        true
+                    })
+                    .take(limit)
+                    .collect()
             })
         })
     }
@@ -462,5 +494,16 @@ impl JobStorage for PostgresStorage {
                 ).await.ok().flatten().map(|row| row.get(0))
             })
         })
+    }
+
+    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>) {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute(
+                    "UPDATE jobs SET linked_region = $1, linked_realm = $2, linked_name = $3 WHERE id = $4",
+                    &[&region, &realm, &name, &id],
+                ).await.ok();
+            });
+        });
     }
 }

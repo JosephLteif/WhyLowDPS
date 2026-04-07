@@ -296,6 +296,10 @@ pub async fn start_with_storage_bind(
                 web::post().to(job_handlers::cancel_sim),
             )
             .route(
+                "/api/sim/{id}/link",
+                web::post().to(job_handlers::link_sim),
+            )
+            .route(
                 "/api/sim/{id}/input",
                 web::get().to(job_handlers::get_sim_input),
             )
@@ -319,6 +323,10 @@ pub async fn start_with_storage_bind(
             .route(
                 "/api/history/stats",
                 web::get().to(job_handlers::get_history_stats),
+            )
+            .route(
+                "/api/history/characters",
+                web::get().to(job_handlers::get_history_characters),
             )
             .route(
                 "/api/history/clear",

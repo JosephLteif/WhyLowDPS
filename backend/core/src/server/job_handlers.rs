@@ -94,6 +94,7 @@ pub(super) async fn get_sim_status(
     HttpResponse::Ok().json(json!({
         "id": job.id,
         "status": status_str,
+        "sim_type": job.sim_type,
         "progress": progress,
         "progress_stage": job.progress_stage,
         "progress_detail": job.progress_detail,

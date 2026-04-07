@@ -25,6 +25,13 @@ const baseNavItems: NavItem[] = [
     matchPaths: ['/quick-sim'],
   },
   {
+    href: '/stat-weights',
+    label: 'Stat Weights',
+    description: 'Find stat scaling curves.',
+    icon: 'M4 8V6a6 6 0 1 1 12 0v2m1-2a7 7 0 1 1-14 0m7 7v4M8 11.232v4.5A4.5 4.5 0 0 0 12.5 11.232H3.5a4.5 4.5 0 0 0 4.5 4.5',
+    matchPaths: ['/stat-weights'],
+  },
+  {
     href: '/top-gear',
     label: 'Top Gear',
     description: 'Find the best gear from your bags.',

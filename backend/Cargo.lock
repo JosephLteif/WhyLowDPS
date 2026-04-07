@@ -2311,49 +2311,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
-name = "whylowdps-core"
-version = "2.2.0"
-dependencies = [
- "actix-cors",
- "actix-files",
- "actix-web",
- "chrono",
- "jsonwebtoken",
- "once_cell",
- "regex",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "sysinfo",
- "tempfile",
- "tokio",
- "tokio-postgres",
- "urlencoding",
- "uuid",
-]
-
-[[package]]
-name = "whylowdps-launcher"
-version = "2.2.0"
-dependencies = [
- "indicatif",
- "reqwest",
- "single-instance",
- "tokio",
- "webbrowser",
- "zip",
-]
-
-[[package]]
-name = "whylowdps-server"
-version = "2.2.0"
-dependencies = [
- "whylowdps-core",
- "tokio",
-]
-
-[[package]]
 name = "simple_asn1"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3101,6 +3058,49 @@ dependencies = [
  "objc2-system-configuration",
  "wasite",
  "web-sys",
+]
+
+[[package]]
+name = "whylowdps-core"
+version = "2.2.0"
+dependencies = [
+ "actix-cors",
+ "actix-files",
+ "actix-web",
+ "chrono",
+ "jsonwebtoken",
+ "once_cell",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "tempfile",
+ "tokio",
+ "tokio-postgres",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "whylowdps-launcher"
+version = "2.2.0"
+dependencies = [
+ "indicatif",
+ "reqwest",
+ "single-instance",
+ "tokio",
+ "webbrowser",
+ "zip",
+]
+
+[[package]]
+name = "whylowdps-server"
+version = "2.2.0"
+dependencies = [
+ "tokio",
+ "whylowdps-core",
 ]
 
 [[package]]

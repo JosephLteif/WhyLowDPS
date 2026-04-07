@@ -23,6 +23,7 @@ import {
 interface JobData {
   id: string;
   status: string;
+  sim_type?: string;
   progress: number;
   progress_stage?: string;
   progress_detail?: string;
@@ -187,6 +188,7 @@ export default function SimResultClient() {
 
   const r = job.result;
   const isTopGear = r.type === 'top_gear';
+  const isStatWeights = job.sim_type === 'stat_weights' || job.sim_type === 'stat-weights';
 
   const equippedGear = r.equipped_gear as any;
   const avgIlevel = equippedGear ? calculateAverageIlevel(equippedGear) : undefined;
@@ -270,6 +272,23 @@ export default function SimResultClient() {
           />
           {typeof r.talent_string === 'string' && r.talent_string && (
             <TalentTree talentString={r.talent_string as string} />
+          )}
+        </>
+      ) : isStatWeights ? (
+        <>
+          <div className="card p-6 border-gold/10 bg-gold/[0.02]">
+             <h2 className="text-lg font-bold text-zinc-100 mb-2">Stat Weights Generated</h2>
+             <p className="text-sm text-zinc-400">
+               Below are your character&apos;s current marginal stat weights. These numbers represent how much DPS you stand to gain from adding exactly <strong>1 point</strong> of each secondary stat.
+               Use these values in game addons (like Pawn) to quickly evaluate gear upgrades in your bags. Keep in mind that as you accumulate more of a particular stat, its value generally decreases.
+             </p>
+          </div>
+          {r.stat_weights ? (
+            <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />
+          ) : (
+             <div className="card border-amber-500/20 bg-amber-500/[0.03] p-6 text-center">
+               <p className="text-sm font-semibold text-amber-400">No stat weight data found in this simulation.</p>
+             </div>
           )}
         </>
       ) : (

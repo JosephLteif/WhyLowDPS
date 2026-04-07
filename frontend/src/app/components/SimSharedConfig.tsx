@@ -353,6 +353,7 @@ export default function SimSharedConfig() {
     pathname === '/quick-sim' ||
     pathname === '/top-gear' ||
     pathname === '/drop-finder' ||
+    pathname === '/stat-weights' ||
     pathname === '/upgrade-compare';
   if (!showConfig) return null;
 

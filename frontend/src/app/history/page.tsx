@@ -41,6 +41,7 @@ const SIM_TYPE_LABELS: Record<string, string> = {
   quick: 'Quick Sim',
   top_gear: 'Top Gear',
   droptimizer: 'Drop Finder',
+  stat_weights: 'Stat Weights',
 };
 
 function TrashIcon() {

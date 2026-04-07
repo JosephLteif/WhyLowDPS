@@ -6,6 +6,7 @@ import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import AddItemModal from './AddItemModal';
 import GearItemRow from './GearItemRow';
+import OptimizeItemModal from './OptimizeItemModal';
 import { useSimContext } from './SimContext';
 
 interface UpgradeOption {
@@ -67,6 +68,19 @@ function getWowheadData(item: ResolvedItem): string {
   return parts.join('&');
 }
 
+function makeUid(item: {
+  item_id: number;
+  bonus_ids: number[];
+  origin: string;
+  slot: string;
+  enchant_id?: number;
+  gem_id?: number;
+}): string {
+  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
+  const bonusKey = sorted.join(':');
+  return `${item.item_id}:${bonusKey}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
+}
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -86,6 +100,8 @@ export default function TopGearItemSelector({
   const [headerVisible, setHeaderVisible] = useState(true);
   const [isAddItemOpen, setAddItemOpen] = useState(false);
   const [addItemSlot, setAddItemSlot] = useState<string | null>(null);
+  const [isOptimizeOpen, setOptimizeOpen] = useState(false);
+  const [optimizeItem, setOptimizeItem] = useState<ResolvedItem | null>(null);
 
   useEffect(() => {
     const el = headerRef.current;
@@ -102,6 +118,11 @@ export default function TopGearItemSelector({
   const openAddItem = useCallback((slot?: string) => {
     setAddItemSlot(slot || null);
     setAddItemOpen(true);
+  }, []);
+
+  const openOptimize = useCallback((item: ResolvedItem) => {
+    setOptimizeItem(item);
+    setOptimizeOpen(true);
   }, []);
 
   const openUpgradeMenu = useCallback(
@@ -191,7 +212,14 @@ export default function TopGearItemSelector({
       const copy: ResolvedItem = {
         ...item,
         origin: copyOrigin as ResolvedItem['origin'],
-        uid: `${item.item_id}:${[...newBonusIds].sort((a, b) => a - b).join(':')}:${copyOrigin}:${item.slot}`,
+        uid: makeUid({
+          item_id: item.item_id,
+          bonus_ids: newBonusIds,
+          origin: copyOrigin,
+          slot: item.slot,
+          enchant_id: item.enchant_id,
+          gem_id: item.gem_id,
+        }),
         bonus_ids: newBonusIds,
         simc_string: newSimcString,
         ilevel: option.itemLevel,
@@ -224,6 +252,86 @@ export default function TopGearItemSelector({
       setUpgradeMenuFor(null);
     },
     [resolved, upgradeOptions, onResolvedChange, onItemAdded, selectedUids, onSelectionChange]
+  );
+
+  const handleOptimize = useCallback(
+    (enchantId: number, gemIds: number[]) => {
+      if (!optimizeItem) return;
+
+      const item = optimizeItem;
+      const firstGemId = gemIds[0] || 0;
+
+      // 1. Build new SimC string
+      let nextSimc = item.simc_string;
+      // Replace or Add enchant_id
+      if (enchantId > 0) {
+        if (nextSimc.includes('enchant_id=')) {
+          nextSimc = nextSimc.replace(/enchant_id=[0-9]+/, `enchant_id=${enchantId}`);
+        } else {
+          nextSimc += `,enchant_id=${enchantId}`;
+        }
+      } else {
+        nextSimc = nextSimc.replace(/,enchant_id=[0-9]+/, '');
+      }
+
+      // Replace or Add gem_id
+      if (firstGemId > 0) {
+        if (nextSimc.includes('gem_id=')) {
+          nextSimc = nextSimc.replace(/gem_id=[0-9/:]+/, `gem_id=${firstGemId}`);
+        } else {
+          nextSimc += `,gem_id=${firstGemId}`;
+        }
+      } else {
+        nextSimc = nextSimc.replace(/,gem_id=[0-9/:]+/, '');
+      }
+
+      // 2. Build UID (ensure it matches backend make_uid)
+      const uid = makeUid({
+        item_id: item.item_id,
+        bonus_ids: item.bonus_ids,
+        origin: 'bags',
+        slot: item.slot,
+        enchant_id: enchantId,
+        gem_id: firstGemId,
+      });
+
+      // 3. Enrich display names (ideally we would fetch from API, but we can do basic update)
+      const copy: ResolvedItem = {
+        ...item,
+        origin: 'bags',
+        uid,
+        enchant_id: enchantId,
+        gem_id: firstGemId,
+        simc_string: nextSimc,
+        tag: 'Opt',
+      };
+
+      // 4. Update resolved data
+      const updatedSlots = { ...resolved.slots };
+      const slotRes = updatedSlots[item.slot];
+      if (slotRes) {
+        // Prevent duplicate opts
+        if (!slotRes.alternatives.find((a) => a.uid === uid)) {
+          updatedSlots[item.slot] = {
+            ...slotRes,
+            alternatives: [...slotRes.alternatives, copy],
+          };
+        }
+      }
+      onResolvedChange({ ...resolved, slots: updatedSlots });
+
+      // 5. Notify parent
+      onItemAdded(item.slot, nextSimc, 'bags');
+
+      // 6. Auto-select
+      const nextSelected = { ...selectedUids };
+      if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
+      nextSelected[item.slot].add(uid);
+      onSelectionChange(nextSelected);
+
+      setOptimizeOpen(false);
+    },
+    [optimizeItem, resolved, onResolvedChange, onItemAdded, selectedUids, onSelectionChange]
   );
 
   const handleAddItem = useCallback(
@@ -288,8 +396,12 @@ export default function TopGearItemSelector({
       }
 
       // 3. Construct UID
-      const sortedBonuses = [...bonusIds].sort((a, b) => a - b);
-      const uid = `${item.item_id}:${sortedBonuses.join(':')}:bags:${slot}`;
+      const uid = makeUid({
+        item_id: item.item_id,
+        bonus_ids: bonusIds,
+        origin: 'bags',
+        slot,
+      });
 
       // 4. Construct ResolvedItem
       const newItem: ResolvedItem = {
@@ -335,7 +447,12 @@ export default function TopGearItemSelector({
 
           if (!exists && !targetSlot.alternatives.find((a) => a.uid === uid)) {
             // For secondary slots, we need a unique UID if we want it in both
-            const slotUid = `${item.item_id}:${sortedBonuses.join(':')}:bags:${s}`;
+            const slotUid = makeUid({
+              item_id: item.item_id,
+              bonus_ids: bonusIds,
+              origin: 'bags',
+              slot: s,
+            });
             targetSlot.alternatives = [
               ...targetSlot.alternatives,
               { ...newItem, uid: slotUid, slot: s },
@@ -349,7 +466,12 @@ export default function TopGearItemSelector({
       // 6. Select it for all applicable slots
       const nextSelected = { ...selectedUids };
       slots.forEach((s) => {
-        const slotUid = `${item.item_id}:${sortedBonuses.join(':')}:bags:${s}`;
+        const slotUid = makeUid({
+          item_id: item.item_id,
+          bonus_ids: bonusIds,
+          origin: 'bags',
+          slot: s,
+        });
         if (!nextSelected[s]) nextSelected[s] = new Set();
         nextSelected[s].add(slotUid);
       });
@@ -430,7 +552,7 @@ export default function TopGearItemSelector({
         if (!slotRes) continue;
         if (slotRes.equipped) equipped.push(slotRes.equipped);
         for (const alt of slotRes.alternatives) {
-          const key = `${alt.item_id}:${[...alt.bonus_ids].sort().join(':')}`;
+          const key = makeUid(alt);
           if (seenAltKeys.has(key)) continue;
           seenAltKeys.add(key);
           alternatives.push(alt);
@@ -576,6 +698,13 @@ export default function TopGearItemSelector({
         preferredSlot={addItemSlot}
       />
 
+      <OptimizeItemModal
+        isOpen={isOptimizeOpen}
+        onClose={() => setOptimizeOpen(false)}
+        item={optimizeItem}
+        onApply={handleOptimize}
+      />
+
       {/* Sticky Header */}
       {!headerVisible && (
         <div className="fixed left-0 right-0 top-12 z-50 flex items-center justify-between border-b border-border/50 bg-surface/90 px-4 py-2 backdrop-blur-sm">
@@ -654,6 +783,7 @@ export default function TopGearItemSelector({
                 equipped
                 href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
                 wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
+                optimized={item.enchant_id > 0 || item.gem_id > 0}
               >
                 <UpgradeButton
                   item={item}
@@ -663,6 +793,7 @@ export default function TopGearItemSelector({
                   onUpgradeClick={() => openUpgradeMenu(item, item.uid)}
                   onUpgradeSelect={(opt) => addUpgradedCopy(item, opt)}
                   onCatalystConvert={item.can_catalyst ? () => convertToCatalyst(item) : undefined}
+                  onOptimize={() => openOptimize(item)}
                 />
               </GearItemRow>
             ))}
@@ -686,6 +817,7 @@ export default function TopGearItemSelector({
                 catalyst={item.is_catalyst}
                 href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
                 wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
+                optimized={item.enchant_id > 0 || item.gem_id > 0}
               >
                 <UpgradeButton
                   item={item}
@@ -713,6 +845,7 @@ function UpgradeButton({
   onUpgradeClick,
   onUpgradeSelect,
   onCatalystConvert,
+  onOptimize,
 }: {
   item: ResolvedItem;
   upgradeMenuFor: string | null;
@@ -721,6 +854,7 @@ function UpgradeButton({
   onUpgradeClick: () => void;
   onUpgradeSelect: (opt: UpgradeOption) => void;
   onCatalystConvert?: () => void;
+  onOptimize?: () => void;
 }) {
   if (!item.upgrade && !onCatalystConvert) return null;
   const isMenuOpen = upgradeMenuFor === item.uid;
@@ -752,6 +886,24 @@ function UpgradeButton({
           <path d="M8 12V4M5 7l3-3 3 3" />
         </svg>
       </button>
+
+      {onOptimize && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            onOptimize();
+          }}
+          className="flex h-5 w-5 items-center justify-center rounded text-gray-600 transition-colors hover:bg-white/[0.05] hover:text-gold"
+          title="Optimize Gems/Enchants"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 1zm3.536 2.22a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.06zM15 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0115 8zm-2.22 3.536a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0zM8 15a.75.75 0 01-.75-.75v-1.5a.75.75 0 011.5 0v1.5A.75.75 0 018 15zm-3.536-2.22a.75.75 0 01-1.06 0l-1.061-1.06a.75.75 0 011.06-1.061l1.061 1.06a.75.75 0 010 1.06zM1 8a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 011 8zm2.22-3.536a.75.75 0 010-1.06l1.06-1.061a.75.75 0 011.061 1.06l-1.06 1.061a.75.75 0 01-1.061 0z" />
+          </svg>
+        </button>
+      )}
+
       {isMenuOpen && (
         <div className="absolute right-0 top-full z-50 mt-1 min-w-[180px] rounded-lg border border-border bg-surface py-1 shadow-xl">
           {onCatalystConvert && (

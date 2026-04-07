@@ -193,6 +193,11 @@ pub(super) struct DropsQuery {
     pub spec: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub(super) struct EnchantOptionsQuery {
+    pub slot: String,
+}
+
 fn default_iterations() -> u32 {
     1000
 }

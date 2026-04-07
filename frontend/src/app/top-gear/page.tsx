@@ -128,6 +128,20 @@ export default function TopGearPage() {
     return result;
   }, [selectedUids]);
 
+  const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
+    if (!resolved) return null;
+    const result: Record<string, any[]> = {};
+    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
+      const items = [];
+      if (slotRes.equipped) items.push({ ...slotRes.equipped, is_equipped: true });
+      if (slotRes.alternatives) {
+        items.push(...slotRes.alternatives.map((alt) => ({ ...alt, is_equipped: false })));
+      }
+      if (items.length > 0) result[slot] = items;
+    }
+    return result;
+  }, [resolved]);
+
   // Fetch combo count whenever selection changes
   useEffect(() => {
     const hasGearSelection = Object.values(selectedUids).some((s) => s.size > 0);
@@ -147,7 +161,7 @@ export default function TopGearPage() {
           body: JSON.stringify({
             simc_input: buildSubmitInput(),
             selected_items: buildSelectedUidsJson(),
-            items_by_slot: null,
+            items_by_slot: buildItemsBySlotJson(),
             max_upgrade: maxUpgrade,
             copy_enchants: copyEnchants,
             ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
@@ -195,13 +209,14 @@ export default function TopGearPage() {
     catalystCharges,
     buildSelectedUidsJson,
     buildSubmitInput,
+    buildItemsBySlotJson,
   ]);
 
   const buildPayload = useCallback(
     () => ({
       simc_input: buildSubmitInput(),
       selected_items: buildSelectedUidsJson(),
-      items_by_slot: null,
+      items_by_slot: buildItemsBySlotJson(),
       max_upgrade: maxUpgrade,
       copy_enchants: copyEnchants,
       ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
@@ -271,7 +286,7 @@ export default function TopGearPage() {
             <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
               Copy Enchants
             </span>
-            <p className="text-[13px] text-gray-600">Apply equipped enchants to alternatives</p>
+            <p className="text-[13px] text-gray-600">Apply equipped enchants to items that don&apos;t have one</p>
           </div>
         </label>
         <label className="group flex flex-1 cursor-pointer items-center gap-3">
@@ -291,7 +306,7 @@ export default function TopGearPage() {
             <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
               Sim Highest Upgrade
             </span>
-            <p className="text-[13px] text-gray-600">Simulate all items at max upgrade level</p>
+            <p className="text-[13px] text-gray-600">Treat all selected gear as their maximum upgrade level</p>
           </div>
         </label>
         {catalystCharges != null && catalystCharges > 0 && (

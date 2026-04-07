@@ -30,7 +30,12 @@ impl PostgresStorage {
             }
         });
 
-        client
+        // Smoke test to ensure connection is live
+        if let Err(e) = client.query("SELECT 1", &[]).await {
+            eprintln!("PostgreSQL smoke test failed: {}. Storage may be unavailable.", e);
+        }
+
+        let _ = client
             .batch_execute(
                 "CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY,
@@ -59,8 +64,7 @@ impl PostgresStorage {
                 updated_at TEXT NOT NULL
             );",
             )
-            .await
-            .expect("Failed to create tables");
+            .await;
 
         // Migrate: add columns if missing
         let _ = client
@@ -94,13 +98,16 @@ impl PostgresStorage {
 
     /// Run a closure with the DB client on a fresh OS thread,
     /// avoiding Tokio's "cannot block within a runtime" restriction.
-    fn blocking<F, T>(&self, f: F) -> T
+    /// Handles panics in the closure gracefully.
+    fn blocking<F, T>(&self, f: F) -> Option<T>
     where
         F: FnOnce(&Client) -> T + Send,
         T: Send,
     {
-        let client = self.client.lock().unwrap();
-        std::thread::scope(|s| s.spawn(|| f(&client)).join().unwrap())
+        let client = self.client.lock().ok()?;
+        std::thread::scope(|s| {
+            s.spawn(|| f(&client)).join().ok()
+        })
     }
 
     fn status_to_str(status: &JobStatus) -> &'static str {
@@ -163,7 +170,7 @@ impl JobStorage for PostgresStorage {
         let limit = *self.max_jobs.lock().unwrap();
         self.blocking(|client| {
             self.rt.block_on(async {
-                client.execute(
+                if let Err(e) = client.execute(
                     "INSERT INTO jobs (id, status, sim_type, simc_input, result_json, combo_metadata_json,
                      error_message, progress_pct, progress_stage, progress_detail, stages_completed,
                      iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name)
@@ -192,13 +199,15 @@ impl JobStorage for PostgresStorage {
                         &job.linked_realm,
                         &job.linked_name,
                     ],
-                ).await.expect("Failed to insert job");
+                ).await {
+                    eprintln!("Failed to insert job: {}. DB may be down.", e);
+                }
 
                 // Garbage collect oldest jobs beyond limit
-                client.execute(
+                let _ = client.execute(
                     "DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY created_at DESC LIMIT $1)",
                     &[&(limit as i64)],
-                ).await.ok();
+                ).await;
             });
         });
     }
@@ -214,7 +223,7 @@ impl JobStorage for PostgresStorage {
                     &[&id],
                 ).await.ok().flatten().map(|row| Self::row_to_job(&row))
             })
-        })
+        }).flatten()
     }
 
     fn list_recent(
@@ -302,7 +311,7 @@ impl JobStorage for PostgresStorage {
                     .take(limit)
                     .collect()
             })
-        })
+        }).unwrap_or_default()
     }
 
     fn update_status(&self, id: &str, status: JobStatus) {
@@ -409,7 +418,7 @@ impl JobStorage for PostgresStorage {
                     .map(|row| row.get::<_, i64>(0) as usize)
                     .unwrap_or(0)
             })
-        })
+        }).unwrap_or(0)
     }
 
     fn delete(&self, id: &str) {
@@ -438,7 +447,7 @@ impl JobStorage for PostgresStorage {
                     v.unwrap_or(0) as u64
                 }).unwrap_or(0)
             })
-        })
+        }).unwrap_or(0)
     }
 
     fn clear_history(&self) {
@@ -450,12 +459,13 @@ impl JobStorage for PostgresStorage {
     }
 
     fn get_max_jobs(&self) -> usize {
-        *self.max_jobs.lock().unwrap()
+        self.max_jobs.lock().map(|l| *l).unwrap_or(*super::MAX_JOBS)
     }
 
     fn set_max_jobs(&self, limit: usize) {
-        let mut mj = self.max_jobs.lock().unwrap();
-        *mj = limit;
+        if let Ok(mut mj) = self.max_jobs.lock() {
+            *mj = limit;
+        }
         self.blocking(|client| {
             self.rt.block_on(async {
                 client.execute(
@@ -493,7 +503,7 @@ impl JobStorage for PostgresStorage {
                     &[&key.to_string()],
                 ).await.ok().flatten().map(|row| row.get(0))
             })
-        })
+        }).flatten()
     }
 
     fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>) {

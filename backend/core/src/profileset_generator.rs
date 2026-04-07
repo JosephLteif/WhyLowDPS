@@ -49,6 +49,9 @@ pub static MAX_COMBINATIONS: Lazy<usize> = Lazy::new(|| {
 /// Build a UID from a legacy item JSON Value, matching gear_resolver::make_uid format:
 /// "item_id:sorted_bonus_ids:origin:slot"
 fn make_item_uid(item: &Value) -> String {
+    if let Some(uid) = item.get("uid").and_then(|v| v.as_str()) {
+        return uid.to_string();
+    }
     let item_id = item.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
     let mut bonus_ids: Vec<u64> = item
         .get("bonus_ids")
@@ -61,17 +64,22 @@ fn make_item_uid(item: &Value) -> String {
         .map(|b| b.to_string())
         .collect::<Vec<_>>()
         .join(":");
-    let origin = item
-        .get("origin")
-        .and_then(|v| v.as_str())
-        .unwrap_or("bags");
+    let origin = item.get("origin").and_then(|v| v.as_str()).unwrap_or("bags");
     let slot = item.get("slot").and_then(|v| v.as_str()).unwrap_or("");
-    format!("{}:{}:{}:{}", item_id, bonus_key, origin, slot)
+    let enchant_id = item.get("enchant_id").and_then(|v| v.as_u64()).unwrap_or(0);
+    let gem_id = item.get("gem_id").and_then(|v| v.as_u64()).unwrap_or(0);
+    format!(
+        "{}:{}:{}:e{}:g{}:{}",
+        item_id, bonus_key, origin, enchant_id, gem_id, slot
+    )
 }
 
 /// Build a slot-agnostic identity key used to mirror selections across paired slots.
 /// Format: "item_id:sorted_bonus_ids:origin"
 fn make_item_identity(item: &Value) -> String {
+    if let Some(uid) = item.get("uid").and_then(|v| v.as_str()) {
+        return uid_identity(uid);
+    }
     let item_id = item.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
     let mut bonus_ids: Vec<u64> = item
         .get("bonus_ids")
@@ -84,11 +92,13 @@ fn make_item_identity(item: &Value) -> String {
         .map(|b| b.to_string())
         .collect::<Vec<_>>()
         .join(":");
-    let origin = item
-        .get("origin")
-        .and_then(|v| v.as_str())
-        .unwrap_or("bags");
-    format!("{}:{}:{}", item_id, bonus_key, origin)
+    let origin = item.get("origin").and_then(|v| v.as_str()).unwrap_or("bags");
+    let enchant_id = item.get("enchant_id").and_then(|v| v.as_u64()).unwrap_or(0);
+    let gem_id = item.get("gem_id").and_then(|v| v.as_u64()).unwrap_or(0);
+    format!(
+        "{}:{}:{}:e{}:g{}",
+        item_id, bonus_key, origin, enchant_id, gem_id
+    )
 }
 
 /// Convert a UID like "item:bonuses:origin:slot" into "item:bonuses:origin".
@@ -1002,13 +1012,27 @@ fn build_slot_candidates(
             .into_iter()
             .collect();
 
+        eprintln!(
+            "[build_slot_candidates] slot={} selected_uids_count={} first={:?}",
+            slot,
+            selected_uids.len(),
+            selected_uids.iter().next()
+        );
+
         // Mirror selections from paired slots (rings/trinkets) using slot-agnostic identity.
         // This ensures selecting a trinket/ring produces variants for both paired slots.
         let mut selected_identities: HashSet<String> =
             selected_uids.iter().map(|uid| uid_identity(uid)).collect();
         if let Some(paired) = class_data::paired_slot(&slot) {
-            if let Some(paired_uids) = selected_items.get(paired) {
-                selected_identities.extend(paired_uids.iter().map(|uid| uid_identity(uid)));
+            let paired_uids = selected_items.get(paired);
+            eprintln!(
+                "[build_slot_candidates] slot={} paired={} has_paired_uids={}",
+                slot,
+                paired,
+                paired_uids.is_some()
+            );
+            if let Some(p_uids) = paired_uids {
+                selected_identities.extend(p_uids.iter().map(|uid| uid_identity(uid)));
             }
         }
 
@@ -1092,7 +1116,9 @@ fn gear_set_identity_key(gear_set: &HashMap<String, Value>) -> String {
                     .map(|b| b.to_string())
                     .collect::<Vec<_>>()
                     .join(":");
-                format!("{}={}:{}", slot, item_id, bonus_key)
+                let gem_id = item.get("gem_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                let enchant_id = item.get("enchant_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                format!("{}={}:{}:e{}:g{}", slot, item_id, bonus_key, enchant_id, gem_id)
             } else {
                 format!("{}=none", slot)
             }

@@ -35,6 +35,8 @@ interface GearItemRowProps {
   href?: string;
   /** Wowhead data attribute */
   wowheadData?: string;
+  /** Whether the item has manual optimizations (gems/enchants) */
+  optimized?: boolean;
   /** Optional content rendered after the details (e.g. upgrade button) */
   children?: React.ReactNode;
 }
@@ -57,6 +59,7 @@ export default function GearItemRow({
   catalyst,
   href,
   wowheadData,
+  optimized,
   children,
 }: GearItemRowProps) {
   const content = (
@@ -129,6 +132,11 @@ export default function GearItemRow({
           onClick={href ? (e) => e.preventDefault() : undefined}
         >
           {name}
+          {optimized && (
+            <span className="ml-1.5 inline-flex items-center rounded-sm bg-gold/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gold-light ring-1 ring-inset ring-gold/30">
+              Opt
+            </span>
+          )}
         </a>
         {details && details.length > 0 && (
           <span className="mt-0.5 block truncate text-[13px] text-muted">

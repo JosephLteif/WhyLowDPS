@@ -41,10 +41,16 @@ fn parse_item_props(item_str: &str) -> ItemProps {
             .filter_map(|s| s.parse().ok())
             .collect();
     }
-    if let Some(caps) = Regex::new(r"enchant_id=(\d+)").unwrap().captures(item_str) {
+    if let Some(caps) = Regex::new(r"(?:enchant_id|enchant)=(\d+)")
+        .unwrap()
+        .captures(item_str)
+    {
         props.enchant_id = caps[1].parse().unwrap_or(0);
     }
-    if let Some(caps) = Regex::new(r"gem_id=(\d+)").unwrap().captures(item_str) {
+    if let Some(caps) = Regex::new(r"(?:gem_id|gem|gem1)=(\d+)")
+        .unwrap()
+        .captures(item_str)
+    {
         props.gem_id = caps[1].parse().unwrap_or(0);
     }
     if let Some(caps) = Regex::new(r"name=([^,]+)").unwrap().captures(item_str) {

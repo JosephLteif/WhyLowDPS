@@ -379,6 +379,14 @@ pub async fn start_with_storage_bind(
                 web::post().to(game_data_handlers::get_max_upgrade_ilevels),
             )
             .route(
+                "/api/gear/enchant-options",
+                web::get().to(game_data_handlers::list_enchant_options),
+            )
+            .route(
+                "/api/gear/gem-options",
+                web::get().to(game_data_handlers::list_gem_options),
+            )
+            .route(
                 "/api/upgrade-tracks",
                 web::get().to(game_data_handlers::list_upgrade_tracks),
             )

@@ -20,10 +20,12 @@ fn make_uid(item: &RawParsedItem, slot: &str) -> String {
         .collect::<Vec<_>>()
         .join(":");
     format!(
-        "{}:{}:{}:{}",
+        "{}:{}:{}:e{}:g{}:{}",
         item.item_id,
         bonus_key,
         item.origin.as_str(),
+        item.enchant_id,
+        item.gem_id,
         slot
     )
 }
@@ -37,7 +39,7 @@ fn dedup_key(item: &RawParsedItem) -> String {
         .map(|b| b.to_string())
         .collect::<Vec<_>>()
         .join(":");
-    format!("{}:{}", item.item_id, bonus_key)
+    format!("{}:{}:e{}:g{}", item.item_id, bonus_key, item.enchant_id, item.gem_id)
 }
 
 /// Enrich a raw item with display info from the item DB.
@@ -420,6 +422,9 @@ pub fn slot_to_inv_type(slot: &str) -> Option<u64> {
         "wrist" => Some(9),
         "feet" => Some(8),
         "waist" => Some(6),
+        "finger1" | "finger2" => Some(11),
+        "main_hand" => Some(21),
+        "off_hand" => Some(22),
         _ => None,
     }
 }

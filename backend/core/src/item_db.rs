@@ -827,6 +827,44 @@ pub fn get_enchant_info(enchant_id: u64) -> Option<Value> {
     Some(serde_json::json!({ "enchant_id": enchant_id, "name": name }))
 }
 
+pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
+    let mask = 1u64 << inv_type;
+    ENCHANTS
+        .get()
+        .map(|m| {
+            m.values()
+                .filter(|e| {
+                    let reqs = e.get("equipRequirements");
+                    let type_mask = reqs
+                        .and_then(|r| r.get("invTypeMask"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    let item_class = reqs
+                        .and_then(|r| r.get("itemClass"))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+
+                    // If invTypeMask is 0, we check itemClass. 
+                    // itemClass 2 is Weapon, 4 is Armor.
+                    if type_mask == 0 {
+                        if inv_type == 13 || inv_type == 17 || inv_type == 21 || inv_type == 22 {
+                            return item_class == 2;
+                        }
+                        return false;
+                    }
+
+                    (type_mask & mask) != 0
+                })
+                .filter(|e| {
+                    let exp = e.get("expansion").and_then(|v| v.as_u64());
+                    exp == Some(10) || exp.is_none()
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn get_gem_info(gem_item_id: u64) -> Option<Value> {
     let gem = enchants_by_item_id().get(&gem_item_id)?;
     let name = gem
@@ -843,6 +881,22 @@ pub fn get_gem_info(gem_item_id: u64) -> Option<Value> {
     Some(
         serde_json::json!({ "gem_id": gem_item_id, "name": name, "icon": icon, "quality": quality }),
     )
+}
+
+pub fn list_gems() -> Vec<Value> {
+    ENCHANTS
+        .get()
+        .map(|m| {
+            m.values()
+                .filter(|e| e.get("slot").and_then(|v| v.as_str()) == Some("socket"))
+                .filter(|e| {
+                    let exp = e.get("expansion").and_then(|v| v.as_u64());
+                    exp == Some(10) || exp.is_none()
+                })
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Check if an item has a squishEra (legacy/timewalking item).
@@ -1092,7 +1146,7 @@ pub fn apply_copy_enchants(
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 let current_ench = item.get("enchant_id").and_then(|e| e.as_u64()).unwrap_or(0);
-                if is_equipped || current_ench == ench_id {
+                if is_equipped || current_ench > 0 {
                     return item.clone();
                 }
 

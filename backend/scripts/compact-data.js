@@ -33,7 +33,7 @@ const MANIFEST = {
   "enchantments.json": {
     fields: [
       "id", "displayName", "itemId", "itemName", "itemIcon",
-      "spellIcon", "quality",
+      "spellIcon", "quality", "expansion", "equipRequirements", "slot",
     ],
   },
 

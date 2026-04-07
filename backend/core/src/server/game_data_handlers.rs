@@ -103,6 +103,20 @@ pub(super) async fn get_gem_info(path: web::Path<u64>) -> HttpResponse {
     HttpResponse::Ok().json(result)
 }
 
+pub(super) async fn list_enchant_options(query: web::Query<EnchantOptionsQuery>) -> HttpResponse {
+    let inv_type = match gear_resolver::slot_to_inv_type(&query.slot) {
+        Some(t) => t,
+        None => return HttpResponse::BadRequest().json(json!({"detail": "Invalid slot for enchantments"})),
+    };
+    let options = crate::item_db::list_enchants_for_slot(inv_type);
+    HttpResponse::Ok().json(options)
+}
+
+pub(super) async fn list_gem_options() -> HttpResponse {
+    let options = crate::item_db::list_gems();
+    HttpResponse::Ok().json(options)
+}
+
 pub(super) async fn get_max_upgrade_ilevels(body: web::Json<Vec<Value>>) -> HttpResponse {
     let mut results: HashMap<String, u64> = HashMap::new();
     for item in body.iter().take(200) {

@@ -7,6 +7,7 @@ use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
 pub struct MemoryStorage {
     jobs: Mutex<HashMap<String, Job>>,
     max_jobs: Mutex<usize>,
+    cache: Mutex<HashMap<String, String>>,
 }
 
 impl Default for MemoryStorage {
@@ -20,6 +21,7 @@ impl MemoryStorage {
         Self {
             jobs: Mutex::new(HashMap::new()),
             max_jobs: Mutex::new(*super::MAX_JOBS),
+            cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -176,5 +178,15 @@ impl JobStorage for MemoryStorage {
                 jobs.remove(&id);
             }
         }
+    }
+
+    fn set_cache(&self, key: &str, value: String) {
+        let mut cache = self.cache.lock().unwrap();
+        cache.insert(key.to_string(), value);
+    }
+
+    fn get_cache(&self, key: &str) -> Option<String> {
+        let cache = self.cache.lock().unwrap();
+        cache.get(key).cloned()
     }
 }

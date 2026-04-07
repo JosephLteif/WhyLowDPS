@@ -215,11 +215,31 @@ pub async fn bnet_logout() -> HttpResponse {
         .json(json!({"status": "logged_out"}))
 }
 
-pub async fn get_characters(req: HttpRequest, state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
+#[derive(Deserialize)]
+pub struct RefreshQuery {
+    pub refresh: Option<bool>,
+}
+
+pub async fn get_characters(
+    req: HttpRequest, 
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    query: web::Query<RefreshQuery>,
+) -> HttpResponse {
     let claims = match verify_jwt(&req, &state.jwt_secret) {
         Some(c) => c,
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
+
+    let cache_key = format!("user_characters_{}", claims.sub);
+    
+    if !query.refresh.unwrap_or(false) {
+        if let Some(cached_data) = store.get_cache(&cache_key) {
+            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached_data) {
+                return HttpResponse::Ok().json(json_val);
+            }
+        }
+    }
 
     let client = reqwest::Client::new();
     
@@ -286,7 +306,11 @@ pub async fn get_characters(req: HttpRequest, state: web::Data<Arc<BlizzardAuthS
         return HttpResponse::InternalServerError().json(json!({"error": last_error.unwrap()}));
     }
 
-    HttpResponse::Ok().json(json!({
+    let json_resp = json!({
         "characters": all_characters
-    }))
+    });
+
+    store.set_cache(&cache_key, json_resp.to_string());
+
+    HttpResponse::Ok().json(json_resp)
 }

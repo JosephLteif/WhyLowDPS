@@ -52,6 +52,11 @@ impl PostgresStorage {
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS app_cache (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );",
             )
             .await
@@ -433,5 +438,29 @@ impl JobStorage for PostgresStorage {
                 ).await.ok();
             });
         });
+    }
+
+    fn set_cache(&self, key: &str, value: String) {
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute(
+                    "INSERT INTO app_cache (key, value, updated_at) VALUES ($1, $2, $3)
+                     ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = $3",
+                    &[&key.to_string(), &value, &updated_at],
+                ).await.ok();
+            });
+        });
+    }
+
+    fn get_cache(&self, key: &str) -> Option<String> {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.query_opt(
+                    "SELECT value FROM app_cache WHERE key = $1",
+                    &[&key.to_string()],
+                ).await.ok().flatten().map(|row| row.get(0))
+            })
+        })
     }
 }

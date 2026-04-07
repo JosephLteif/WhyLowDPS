@@ -55,4 +55,7 @@ pub trait JobStorage: Send + Sync {
     fn clear_history(&self);
     fn get_max_jobs(&self) -> usize;
     fn set_max_jobs(&self, limit: usize);
+    // Cache methods for app-level storage (e.g. blizzard API proxy)
+    fn set_cache(&self, key: &str, value: String);
+    fn get_cache(&self, key: &str) -> Option<String>;
 }

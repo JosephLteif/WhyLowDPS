@@ -17,13 +17,13 @@ export default function CharacterPage() {
   const [error, setError] = useState('');
   const [copying, setCopying] = useState(false);
 
-  const fetchCharacterData = useCallback(async () => {
+  const fetchCharacterData = useCallback(async (refresh = false) => {
     if (!realm || !name) return;
     setLoading(true);
     setError('');
 
     try {
-      const query = `?region=${region}`;
+      const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
       const [profileRes, equipRes, statsRes, specRes, profRes] = await Promise.all([
         fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/profile${query}`),
         fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/equipment${query}`),
@@ -90,7 +90,7 @@ export default function CharacterPage() {
         <h2 className="mb-2 text-xl font-bold text-zinc-200">Character Not Found</h2>
         <p className="mb-6 text-zinc-500">{error}</p>
         <button
-          onClick={fetchCharacterData}
+          onClick={() => fetchCharacterData(false)}
           className="rounded-lg bg-zinc-800 px-6 py-2 text-sm font-bold text-zinc-200 transition-colors hover:bg-zinc-700"
         >
           Try Again
@@ -118,6 +118,13 @@ export default function CharacterPage() {
                 <span className="text-[11px] font-bold text-gold/40">({profile.average_item_level})</span>
               )}
             </div>
+            <button
+              onClick={() => fetchCharacterData(true)}
+              disabled={loading}
+              className="ml-2 rounded border border-white/10 bg-black/20 backdrop-blur-sm px-3 py-1 text-xs font-bold text-zinc-200 hover:bg-white/10 active:scale-95 disabled:opacity-50"
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
           </div>
           <p className="mt-1 font-medium text-zinc-500">
             {profile.realm.name} — {region.toUpperCase()}

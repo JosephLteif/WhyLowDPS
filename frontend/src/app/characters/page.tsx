@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { API_URL } from '../lib/api';
 import { CLASS_COLORS } from '../lib/types';
@@ -24,10 +24,10 @@ export default function CharactersPage() {
   const [error, setError] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
-  useEffect(() => {
+  const fetchCharacters = useCallback((refresh = false) => {
     if (!loading && user) {
       setFetching(true);
-      fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'same-origin' })
+      fetch(`${API_URL}/api/bnet/user/characters${refresh ? '?refresh=true' : ''}`, { credentials: 'same-origin' })
         .then(async (res) => {
           if (!res.ok) {
             const body = await res.text();
@@ -39,7 +39,11 @@ export default function CharactersPage() {
         .catch((err) => setError(err.message))
         .finally(() => setFetching(false));
     }
-  }, [user, loading]);
+  }, [loading, user]);
+
+  useEffect(() => {
+    fetchCharacters();
+  }, [fetchCharacters]);
 
   const copySimcString = (char: Character, idx: number) => {
     const simcString = `armory=${char.region},${char.realm},${char.name}`;
@@ -69,7 +73,16 @@ export default function CharactersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight text-gray-100">My Characters</h1>
-        <p className="text-sm font-medium text-gold">{user.battletag}</p>
+        <div className="flex items-center gap-4">
+          <p className="text-sm font-medium text-gold">{user.battletag}</p>
+          <button 
+            onClick={() => fetchCharacters(true)} 
+            disabled={fetching}
+            className="rounded border border-white/10 bg-black/20 backdrop-blur-sm px-3 py-1 text-xs font-bold text-zinc-200 hover:bg-white/10 active:scale-95 disabled:opacity-50"
+          >
+            {fetching ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
       </div>
 
       {fetching ? (

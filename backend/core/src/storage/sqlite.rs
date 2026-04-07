@@ -33,6 +33,11 @@ impl SqliteStorage {
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS app_cache (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );",
         )
         .expect("Failed to create tables");
@@ -360,5 +365,26 @@ impl JobStorage for SqliteStorage {
             params![limit as u32],
         )
         .ok();
+    }
+
+    fn set_cache(&self, key: &str, value: String) {
+        let conn = self.conn.lock().unwrap();
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO app_cache (key, value, updated_at) VALUES (?1, ?2, ?3)
+             ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = ?3",
+            params![key, value, updated_at],
+        )
+        .ok();
+    }
+
+    fn get_cache(&self, key: &str) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT value FROM app_cache WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0)
+        )
+        .ok()
     }
 }

@@ -9,12 +9,14 @@ use crate::types::class_data;
 // ---- Re-exports from item_db ----
 
 pub use crate::item_db::{
-    apply_copy_enchants, catalyst_currency_id, catalyst_tier_item, get_currency_info,
-    get_enchant_info, get_gem_info, get_inventory_type, get_item_armor_subclass, get_item_info,
-    get_item_limit_categories, get_upgrade_cost_between, get_upgrade_options, get_upgrade_tracks,
-    is_catalyst_tier_item, load, talent_tree, upgrade_bonus_ids_to_max, upgrade_items_by_slot,
-    upgrade_simc_input, CatalystTierItem,
+    apply_copy_enchants, apply_copy_enchants_to_map, catalyst_currency_id, catalyst_tier_item,
+    get_currency_info, get_enchant_info, get_gem_info, get_inventory_type, get_item_armor_subclass,
+    get_item_info, get_item_limit_categories, get_upgrade_cost_between, get_upgrade_options,
+    get_upgrade_tracks, is_catalyst_tier_item, load, talent_tree, upgrade_bonus_ids_to_max,
+    upgrade_items_by_slot, upgrade_simc_input, CatalystTierItem, UpgradeOption,
 };
+
+
 pub use crate::types::class_data::{quality_name, QUALITY_NAMES};
 
 pub fn get_instances() -> &'static Vec<Value> {
@@ -95,25 +97,19 @@ pub fn get_instance_drops(
     for eid in encounter_ids.keys() {
         if let Some(items_list) = drops_map.get(eid) {
             for item in items_list {
-                let item_id = item.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                let item_id = item.id;
                 if !seen.insert(item_id) {
                     continue;
                 }
 
-                let inv_type = item
-                    .get("inventoryType")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
+                let inv_type = item.inventory_type.unwrap_or(0);
 
                 // Filter by armor type
                 if let Some(max) = max_armor {
                     if armor_slot_types.contains(&inv_type)
-                        && item.get("itemClass").and_then(|c| c.as_u64()) == Some(4)
+                        && item.class.unwrap_or(0) == 4
                     {
-                        let sub = item
-                            .get("itemSubClass")
-                            .and_then(|s| s.as_u64())
-                            .unwrap_or(0);
+                        let sub = item.subclass.unwrap_or(0);
                         if sub != 0 && sub != max {
                             continue;
                         }
@@ -121,11 +117,9 @@ pub fn get_instance_drops(
                 }
 
                 // Filter by weapon/shield/off-hand eligibility per active spec
-                let item_class = item.get("itemClass").and_then(|c| c.as_u64()).unwrap_or(0);
-                let weapon_sub = item
-                    .get("itemSubClass")
-                    .and_then(|s| s.as_u64())
-                    .unwrap_or(0);
+                let item_class = item.class.unwrap_or(0);
+                let weapon_sub = item.subclass.unwrap_or(0);
+
 
                 if item_class == 2 || inv_type == 14 || inv_type == 23 {
                     // Weapon, shield, or held off-hand — check spec profiles
@@ -149,6 +143,7 @@ pub fn get_instance_drops(
                                     }
                                 }
                             });
+
                             if !any_spec_can_use {
                                 continue;
                             }
@@ -162,11 +157,9 @@ pub fn get_instance_drops(
                 }
 
                 // Filter spec restrictions (items with explicit spec lists)
-                if let Some(specs) = item.get("specs").and_then(|s| s.as_array()) {
+                if let Some(specs) = &item.classes {
                     if !allowed_specs.is_empty() {
-                        let item_specs: Vec<u64> =
-                            specs.iter().filter_map(|v| v.as_u64()).collect();
-                        if !allowed_specs.iter().any(|s| item_specs.contains(s)) {
+                        if !allowed_specs.iter().any(|s| specs.contains(s)) {
                             continue;
                         }
                     }
@@ -230,11 +223,7 @@ pub fn get_instance_drops(
                 }
 
                 // Include item's spec restriction list (if any) for frontend off-spec indicators
-                let item_specs: Vec<u64> = item
-                    .get("specs")
-                    .and_then(|s| s.as_array())
-                    .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
-                    .unwrap_or_default();
+                let item_specs: Vec<u64> = item.classes.clone().unwrap_or_default();
 
                 let item_instance = if is_meta {
                     encounter_to_instance.get(eid).cloned().unwrap_or_default()
@@ -244,14 +233,15 @@ pub fn get_instance_drops(
 
                 let mut item_json = serde_json::json!({
                     "item_id": item_id,
-                    "name": item.get("name").and_then(|n| n.as_str()).unwrap_or(""),
-                    "icon": item.get("icon").and_then(|i| i.as_str()).unwrap_or("inv_misc_questionmark"),
-                    "quality": item.get("quality").and_then(|q| q.as_u64()).unwrap_or(1),
-                    "ilevel": item.get("itemLevel").and_then(|i| i.as_u64()).unwrap_or(0),
+                    "name": item.name,
+                    "icon": item.icon,
+                    "quality": item.quality,
+                    "ilevel": item.base_ilevel.unwrap_or(0),
                     "inventory_type": inv_type,
                     "encounter": encounter_ids.get(eid).cloned().unwrap_or_default(),
                     "instance_name": item_instance,
                 });
+
                 if !item_specs.is_empty() {
                     item_json["specs"] = serde_json::json!(item_specs);
                 }
@@ -297,6 +287,7 @@ pub fn get_instance_drops(
             }
         }
     }
+
 
     let mut ordered = serde_json::Map::new();
     for &slot in class_data::SLOT_DISPLAY_ORDER {

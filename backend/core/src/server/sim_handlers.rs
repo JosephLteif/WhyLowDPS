@@ -147,7 +147,7 @@ pub(super) async fn create_top_gear_sim(
     };
     let base_profile = resolved.base_profile.clone();
 
-    let mut items_by_slot: HashMap<String, Vec<serde_json::Value>> =
+    let mut items_by_slot: HashMap<String, Vec<crate::types::ResolvedItem>> =
         if let Some(ref ibs) = req.items_by_slot {
             ibs.clone()
         } else {
@@ -155,12 +155,13 @@ pub(super) async fn create_top_gear_sim(
         };
 
     if req.max_upgrade {
-        items_by_slot = game_data::upgrade_items_by_slot(&items_by_slot);
+        items_by_slot = game_data::upgrade_items_by_slot(items_by_slot);
     }
 
     if req.copy_enchants {
-        items_by_slot = game_data::apply_copy_enchants(&items_by_slot);
+        items_by_slot = game_data::apply_copy_enchants_to_map(items_by_slot);
     }
+
 
     // Build talent builds list: normalize each talent string
     let talent_builds: Vec<(String, String)> = req
@@ -280,7 +281,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
     };
     let base_profile = resolved.base_profile.clone();
 
-    let mut items_by_slot: HashMap<String, Vec<serde_json::Value>> =
+    let mut items_by_slot: HashMap<String, Vec<crate::types::ResolvedItem>> =
         if let Some(ref ibs) = req.items_by_slot {
             ibs.clone()
         } else {
@@ -288,11 +289,12 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         };
 
     if req.max_upgrade {
-        items_by_slot = game_data::upgrade_items_by_slot(&items_by_slot);
+        items_by_slot = game_data::upgrade_items_by_slot(items_by_slot);
     }
     if req.copy_enchants {
-        items_by_slot = game_data::apply_copy_enchants(&items_by_slot);
+        items_by_slot = game_data::apply_copy_enchants_to_map(items_by_slot);
     }
+
 
     let talent_builds: Vec<(String, String)> = req
         .talent_builds

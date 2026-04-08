@@ -18,6 +18,8 @@ interface TopGearItemSelectorProps {
   onResolvedChange: (resolved: ResolveGearResponse) => void;
   onItemAdded: (slot: string, simcString: string, origin: string) => void;
   comboCount: number;
+  maxUpgrade?: boolean;
+  comboError?: string;
 }
 
 interface DisplayGroup {

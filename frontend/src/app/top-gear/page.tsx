@@ -240,6 +240,7 @@ export default function TopGearPage() {
       talentBuilds,
       catalyst,
       catalystCharges,
+      buildItemsBySlotJson,
     ]
   );
 

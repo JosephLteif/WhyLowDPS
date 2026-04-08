@@ -25,7 +25,28 @@ export interface ResolvedItem {
   gem_icon: string;
   is_catalyst?: boolean;
   can_catalyst?: boolean;
+  inventory_type?: number;
+  season_id?: number;
 }
+
+export interface ResultItem extends ResolvedItem {
+  is_kept: boolean;
+  upgrade_levels?: number;
+  encounter?: string;
+  instance_name?: string;
+}
+
+export interface TopGearResult {
+  name: string;
+  dps: number;
+  delta: number;
+  items: ResultItem[];
+  talent_build?: string;
+  talent_spec?: string;
+  target_error?: number;
+}
+
+
 
 export interface SlotResolution {
   equipped: ResolvedItem | null;

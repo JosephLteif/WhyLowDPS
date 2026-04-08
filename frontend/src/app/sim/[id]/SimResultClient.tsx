@@ -12,6 +12,7 @@ import TalentTree from '../../components/TalentTree';
 import TopGearResults from '../../components/TopGearResults';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
+import type { ResultItem, TopGearResult } from '../../lib/types';
 
 import { API_URL } from '../../lib/api';
 import { useSimContext } from '../../components/SimContext';
@@ -242,38 +243,8 @@ export default function SimResultClient() {
             playerRealm={r.realm as string | undefined}
             playerRegion={r.region as string | undefined}
             baseDps={r.base_dps as number}
-            results={
-              r.results as Array<{
-                name: string;
-                items: Array<{
-                  slot: string;
-                  item_id: number;
-                  ilevel: number;
-                  name: string;
-                  bonus_ids?: number[];
-                  enchant_id?: number;
-                  gem_id?: number;
-                  is_kept?: boolean;
-                  encounter?: string;
-                }>;
-                dps: number;
-                delta: number;
-              }>
-            }
-            equippedGear={
-              r.equipped_gear as Record<
-                string,
-                {
-                  slot: string;
-                  item_id: number;
-                  ilevel: number;
-                  name: string;
-                  bonus_ids?: number[];
-                  enchant_id?: number;
-                  gem_id?: number;
-                }
-              >
-            }
+            results={r.results as TopGearResult[]}
+            equippedGear={r.equipped_gear as Record<string, ResultItem>}
             dpsError={r.dps_error as number | undefined}
             dpsErrorPct={r.dps_error_pct as number | undefined}
             fightLength={r.fight_length as number | undefined}

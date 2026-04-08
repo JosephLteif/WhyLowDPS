@@ -13,11 +13,12 @@ use crate::log_buffer::LogBuffer;
 use crate::models::Job;
 use crate::profileset_generator;
 use crate::storage::JobStorage;
+use crate::types::ResolvedItem;
 
 /// Shared prep: parse SimC input, extract upgrade budget, build upgrade options per slot.
 struct PreparedUpgradeCompare {
     base_profile: String,
-    upgraded_options_by_slot: HashMap<String, Vec<Value>>,
+    upgraded_options_by_slot: HashMap<String, Vec<ResolvedItem>>,
     upgrade_budget: HashMap<u64, u64>,
 }
 
@@ -41,7 +42,7 @@ fn prepare_upgrade_compare(
     let items_by_slot = resolve_to_items_by_slot(&resolved);
 
     let bonus_re = regex::Regex::new(r"bonus_id=([0-9/:]+)").unwrap();
-    let mut upgraded_options_by_slot: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut upgraded_options_by_slot: HashMap<String, Vec<ResolvedItem>> = HashMap::new();
 
     for slot in selected_slots {
         let slot_items = match items_by_slot.get(slot) {
@@ -49,111 +50,69 @@ fn prepare_upgrade_compare(
             None => continue,
         };
 
-        let equipped = match slot_items.iter().find(|it| {
-            it.get("is_equipped")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        }) {
+        let equipped = match slot_items.iter().find(|it| it.origin == crate::types::ItemOrigin::Equipped) {
             Some(e) => e,
             None => continue,
         };
 
-        let old_bonus_ids: Vec<u64> = equipped
-            .get("bonus_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|b| b.as_u64()).collect())
-            .unwrap_or_default();
+        let options = game_data::get_upgrade_options(&equipped.bonus_ids);
+        if options.is_empty() {
+            continue;
+        }
 
-        let options = match game_data::get_upgrade_options(&old_bonus_ids) {
-            Some(o) => o,
-            None => continue,
-        };
-
-        // Find current level and filter to higher levels with relevant currency costs
+        // Find current level
         let current_level = options
             .iter()
-            .filter_map(|opt| {
-                let bid = opt.get("bonus_id")?.as_u64()?;
-                if old_bonus_ids.contains(&bid) {
-                    opt.get("level")?.as_u64()
-                } else {
-                    None
-                }
-            })
+            .filter(|opt| equipped.bonus_ids.contains(&opt.bonus_id))
+            .map(|opt| opt.level)
             .next()
             .unwrap_or(0);
 
-        let mut slot_upgrades: Vec<Value> = Vec::new();
+        let mut slot_upgrades: Vec<ResolvedItem> = Vec::new();
         for opt in &options {
-            let level = opt.get("level").and_then(|l| l.as_u64()).unwrap_or(0);
-            if level <= current_level {
+            if opt.level <= current_level {
                 continue;
             }
 
             // Only include if costs involve our upgrade currencies
-            let has_relevant_cost = opt
-                .get("cumulative_costs")
-                .and_then(|c| c.as_object())
-                .map(|m| {
-                    m.keys()
-                        .any(|k| upgrade_currency_ids.contains(&k.parse().unwrap_or(0)))
-                })
-                .unwrap_or(false);
+            let has_relevant_cost = opt.cumulative_costs.keys()
+                .any(|k| upgrade_currency_ids.contains(k));
+                
             if !has_relevant_cost {
                 continue;
             }
 
-            let target_bonus_id = opt.get("bonus_id").and_then(|b| b.as_u64()).unwrap_or(0);
-            if target_bonus_id == 0 {
-                continue;
-            }
-
             // Build upgraded item
-            let mut new_bonus_ids = old_bonus_ids.clone();
+            let mut new_bonus_ids = equipped.bonus_ids.clone();
             // Replace the upgrade bonus_id
             for bid in &mut new_bonus_ids {
-                if bonuses_in_same_group(*bid, target_bonus_id) {
-                    *bid = target_bonus_id;
+                if bonuses_in_same_group(*bid, opt.bonus_id) {
+                    *bid = opt.bonus_id;
                 }
             }
 
             let mut upgraded = equipped.clone();
-            upgraded["is_equipped"] = json!(false);
-            upgraded["bonus_ids"] = json!(new_bonus_ids.clone());
-            upgraded["upgrade_levels"] = json!(level.saturating_sub(current_level));
+            upgraded.origin = crate::types::ItemOrigin::Bags; // Marks as not baseline
+            upgraded.bonus_ids = new_bonus_ids.clone();
+            upgraded.ilevel = opt.ilevel;
 
             // Update simc_string with new bonus_ids
-            if let Some(simc) = equipped.get("simc_string").and_then(|s| s.as_str()) {
-                let new_simc = bonus_re
-                    .replace(simc, |caps: &regex::Captures| {
-                        let raw = &caps[1];
-                        let sep = if raw.contains('/') { "/" } else { ":" };
-                        format!(
-                            "bonus_id={}",
-                            new_bonus_ids
-                                .iter()
-                                .map(|id| id.to_string())
-                                .collect::<Vec<_>>()
-                                .join(sep)
-                        )
-                    })
-                    .to_string();
-                upgraded["simc_string"] = json!(new_simc);
-
-                // Resolve new ilevel
-                let item_id = equipped
-                    .get("item_id")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
-                if let Some(info) = game_data::get_item_info(item_id, Some(&new_bonus_ids)) {
-                    upgraded["ilevel"] = json!(info.ilevel);
-                }
-            }
-
-            // Cumulative cost from current to this level
-            let costs = game_data::get_upgrade_cost_between(&old_bonus_ids, &new_bonus_ids);
-            upgraded["upgrade_costs"] = json!(costs);
-
+            let new_simc = bonus_re
+                .replace(&equipped.simc_string, |caps: &regex::Captures| {
+                    let raw = &caps[1];
+                    let sep = if raw.contains('/') { "/" } else { ":" };
+                    format!(
+                        "bonus_id={}",
+                        new_bonus_ids
+                            .iter()
+                            .map(|id| id.to_string())
+                            .collect::<Vec<_>>()
+                            .join(sep)
+                    )
+                })
+                .to_string();
+                
+            upgraded.simc_string = new_simc;
             slot_upgrades.push(upgraded);
         }
 
@@ -172,16 +131,8 @@ fn prepare_upgrade_compare(
 /// Check if two bonus IDs belong to the same upgrade group.
 fn bonuses_in_same_group(a: u64, b: u64) -> bool {
     let bonuses = crate::item_db::bonuses();
-    let group_a = bonuses
-        .get(&a)
-        .and_then(|v| v.get("upgrade"))
-        .and_then(|u| u.get("group"))
-        .and_then(|g| g.as_u64());
-    let group_b = bonuses
-        .get(&b)
-        .and_then(|v| v.get("upgrade"))
-        .and_then(|u| u.get("group"))
-        .and_then(|g| g.as_u64());
+    let group_a = bonuses.get(&a).and_then(|v| v.upgrade.as_ref()).and_then(|u| u.group);
+    let group_b = bonuses.get(&b).and_then(|v| v.upgrade.as_ref()).and_then(|u| u.group);
     group_a.is_some() && group_a == group_b
 }
 
@@ -208,61 +159,39 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
             Some(items) => items,
             None => continue,
         };
-        let equipped = match slot_items.iter().find(|it| {
-            it.get("is_equipped")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-        }) {
+        let equipped = match slot_items.iter().find(|it| it.origin == crate::types::ItemOrigin::Equipped) {
             Some(e) => e,
             None => continue,
         };
-        let bonus_ids: Vec<u64> = equipped
-            .get("bonus_ids")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|b| b.as_u64()).collect())
-            .unwrap_or_default();
-        if bonus_ids.is_empty() {
+        
+        if equipped.bonus_ids.is_empty() {
             continue;
         }
 
-        let options = match game_data::get_upgrade_options(&bonus_ids) {
-            Some(o) => o,
-            None => continue,
-        };
+        let options = game_data::get_upgrade_options(&equipped.bonus_ids);
+        if options.is_empty() {
+            continue;
+        }
 
         // Find current level and its cumulative cost
         let mut current_level: u64 = 0;
         let mut current_cumulative: HashMap<u64, u64> = HashMap::new();
         for opt in &options {
-            let bid = opt.get("bonus_id").and_then(|v| v.as_u64()).unwrap_or(0);
-            if bonus_ids.contains(&bid) {
-                current_level = opt.get("level").and_then(|v| v.as_u64()).unwrap_or(0);
-                if let Some(cc) = opt.get("cumulative_costs").and_then(|v| v.as_object()) {
-                    for (k, v) in cc {
-                        if let (Ok(cid), Some(amt)) = (k.parse::<u64>(), v.as_u64()) {
-                            current_cumulative.insert(cid, amt);
-                        }
-                    }
-                }
+            if equipped.bonus_ids.contains(&opt.bonus_id) {
+                current_level = opt.level;
+                current_cumulative = opt.cumulative_costs.clone();
                 break;
             }
         }
 
         // Filter to upgrades that cost our currencies
-        let upgrades: Vec<&Value> = options
+        let upgrades: Vec<&game_data::UpgradeOption> = options
             .iter()
             .filter(|o| {
-                let level = o.get("level").and_then(|l| l.as_u64()).unwrap_or(0);
-                if level <= current_level {
+                if o.level <= current_level {
                     return false;
                 }
-                o.get("cumulative_costs")
-                    .and_then(|c| c.as_object())
-                    .map(|m| {
-                        m.keys()
-                            .any(|k| upgrade_currency_ids.contains(&k.parse().unwrap_or(0)))
-                    })
-                    .unwrap_or(false)
+                o.cumulative_costs.keys().any(|k| upgrade_currency_ids.contains(k))
             })
             .collect();
 
@@ -271,41 +200,24 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
         }
 
         let max_upgrade = upgrades.last().unwrap();
-        let item_id = equipped
-            .get("item_id")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        let ilevel = equipped.get("ilevel").and_then(|v| v.as_u64()).unwrap_or(0);
-        let target_ilevel = max_upgrade
-            .get("itemLevel")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
+        let target_ilevel = max_upgrade.ilevel;
 
         // Delta cost = target cumulative - current cumulative
         let mut delta_costs: HashMap<String, u64> = HashMap::new();
-        if let Some(target_cc) = max_upgrade
-            .get("cumulative_costs")
-            .and_then(|v| v.as_object())
-        {
-            for (k, v) in target_cc {
-                let target_amt = v.as_u64().unwrap_or(0);
-                let current_amt = current_cumulative
-                    .get(&k.parse::<u64>().unwrap_or(0))
-                    .copied()
-                    .unwrap_or(0);
-                let delta = target_amt.saturating_sub(current_amt);
-                if delta > 0 {
-                    delta_costs.insert(k.clone(), delta);
-                }
+        for (cid, &target_amt) in &max_upgrade.cumulative_costs {
+            let current_amt = current_cumulative.get(cid).copied().unwrap_or(0);
+            let delta = target_amt.saturating_sub(current_amt);
+            if delta > 0 {
+                delta_costs.insert(cid.to_string(), delta);
             }
         }
         let costs = json!(delta_costs);
 
         candidates.push(json!({
             "slot": slot,
-            "item_id": item_id,
-            "bonus_ids": bonus_ids,
-            "ilevel": ilevel,
+            "item_id": equipped.item_id,
+            "bonus_ids": equipped.bonus_ids,
+            "ilevel": equipped.ilevel,
             "target_ilevel": target_ilevel,
             "costs": costs,
         }));
@@ -320,8 +232,8 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
             json!({
                 "id": cid,
                 "amount": amount,
-                "name": meta.as_ref().and_then(|m| m.get("name")).and_then(|n| n.as_str()).unwrap_or(""),
-                "icon": meta.as_ref().and_then(|m| m.get("icon")).and_then(|i| i.as_str()).unwrap_or(""),
+                "name": meta.as_ref().map(|(n, _)| n.as_str()).unwrap_or(""),
+                "icon": meta.as_ref().map(|(_, i)| i.as_str()).unwrap_or(""),
             }),
         );
     }
@@ -454,8 +366,7 @@ pub(super) async fn get_upgrade_options_handler(
         .filter_map(|s| s.trim().parse().ok())
         .collect();
 
-    match game_data::get_upgrade_options(&bonus_ids) {
-        Some(options) => HttpResponse::Ok().json(json!({ "options": options })),
-        None => HttpResponse::Ok().json(json!({ "options": [] })),
-    }
+    let options = game_data::get_upgrade_options(&bonus_ids);
+    HttpResponse::Ok().json(json!({ "options": options }))
 }
+

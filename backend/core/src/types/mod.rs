@@ -161,6 +161,7 @@ pub struct ResolvedItem {
     /// Season ID from upgrade track (0 if none).
     #[serde(default, skip_serializing_if = "is_zero")]
     pub season_id: u64,
+    pub inventory_type: u64,
     /// Whether this item is a catalyst-generated tier alternative.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_catalyst: bool,
@@ -175,7 +176,7 @@ fn is_zero(v: &u64) -> bool {
 
 // ---- Slot Resolution ----
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SlotResolution {
     pub equipped: Option<ResolvedItem>,
     pub alternatives: Vec<ResolvedItem>,
@@ -209,3 +210,96 @@ pub struct ExcludedItem {
     pub name: String,
     pub reason: String,
 }
+
+// ---- Game Data Structs (Strong Typing for item_db) ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameItem {
+    pub id: u64,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub icon: String,
+    #[serde(default)]
+    pub quality: u64,
+    #[serde(rename = "itemLevel")]
+    pub base_ilevel: Option<u64>,
+    #[serde(rename = "itemClass")]
+    pub class: Option<u64>,
+    #[serde(rename = "itemSubClass")]
+    pub subclass: Option<u64>,
+    #[serde(rename = "inventoryType")]
+    pub inventory_type: Option<u64>,
+    #[serde(rename = "itemSetId")]
+    pub set_id: Option<u64>,
+    #[serde(rename = "allowableClasses")]
+    pub classes: Option<Vec<u64>>,
+    pub sources: Option<Vec<ItemSource>>,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ItemSource {
+    #[serde(rename = "encounterId")]
+    pub encounter_id: Option<i64>,
+    #[serde(rename = "instanceId")]
+    pub instance_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnchantData {
+    pub id: u64,
+    #[serde(rename = "itemId")]
+    pub item_id: Option<u64>,
+    #[serde(rename = "itemName")]
+    pub item_name: Option<String>,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    #[serde(rename = "equipRequirements")]
+    pub requirements: Option<EnchantRequirements>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnchantRequirements {
+    #[serde(rename = "invTypeMask")]
+    pub inv_type_mask: Option<u64>,
+    #[serde(rename = "itemClass")]
+    pub item_class: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BonusData {
+    pub quality: Option<u64>,
+    #[serde(rename = "itemLevel")]
+    pub ilevel: Option<BonusIlevel>,
+    #[serde(rename = "levelOffset")]
+    pub offset: Option<BonusOffset>,
+    pub tag: Option<String>,
+    pub socket: Option<u64>,
+    pub upgrade: Option<BonusUpgrade>,
+    pub item_limit_category: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BonusIlevel {
+    pub amount: Option<u64>,
+    pub priority: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BonusOffset {
+    pub amount: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BonusUpgrade {
+    #[serde(rename = "fullName")]
+    pub full_name: Option<String>,
+    #[serde(rename = "itemLevel")]
+    pub ilevel: Option<u64>,
+    #[serde(rename = "seasonId")]
+    pub season_id: Option<u64>,
+    pub group: Option<u64>,
+    pub level: Option<u64>,
+}
+

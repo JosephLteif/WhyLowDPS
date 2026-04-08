@@ -96,7 +96,7 @@ pub struct TalentBuild {
 pub struct TopGearRequest {
     pub simc_input: String,
     pub selected_items: HashMap<String, Vec<String>>,
-    pub items_by_slot: Option<HashMap<String, Vec<Value>>>,
+    pub items_by_slot: Option<HashMap<String, Vec<crate::types::ResolvedItem>>>,
     #[serde(default)]
     pub max_upgrade: bool,
     #[serde(default)]
@@ -116,7 +116,7 @@ pub struct TopGearRequest {
 #[derive(Debug, Deserialize)]
 pub struct DroptimizerRequest {
     pub simc_input: String,
-    pub drop_items: Vec<Value>,
+    pub drop_items: Vec<crate::types::ResolvedItem>,
     #[serde(flatten)]
     pub options: SimOptions,
 }
@@ -130,6 +130,7 @@ pub struct UpgradeCompareRequest {
     #[serde(flatten)]
     pub options: SimOptions,
 }
+
 
 #[derive(Debug, Serialize)]
 pub struct SimResponse {

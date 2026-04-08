@@ -174,19 +174,19 @@ pub(super) fn inject_expert_fields(simc_input: &str, options: &SimOptions) -> St
     result.join("\n")
 }
 
-/// Convert ResolveGearResponse slots into the items_by_slot Value format
+/// Convert ResolveGearResponse slots into the items_by_slot ResolvedItem format
 /// used by profileset_generator and game_data functions.
 pub(super) fn resolve_to_items_by_slot(
     resolved: &ResolveGearResponse,
-) -> HashMap<String, Vec<Value>> {
-    let mut items_by_slot: HashMap<String, Vec<Value>> = HashMap::new();
+) -> HashMap<String, Vec<crate::types::ResolvedItem>> {
+    let mut items_by_slot: HashMap<String, Vec<crate::types::ResolvedItem>> = HashMap::new();
     for (slot, slot_res) in &resolved.slots {
-        let mut items: Vec<Value> = Vec::new();
+        let mut items: Vec<crate::types::ResolvedItem> = Vec::new();
         if let Some(eq) = &slot_res.equipped {
-            items.push(resolved_item_to_value(eq, true));
+            items.push(eq.clone());
         }
         for alt in &slot_res.alternatives {
-            items.push(resolved_item_to_value(alt, false));
+            items.push(alt.clone());
         }
         if !items.is_empty() {
             items_by_slot.insert(slot.clone(), items);
@@ -194,6 +194,7 @@ pub(super) fn resolve_to_items_by_slot(
     }
     items_by_slot
 }
+
 
 fn resolved_item_to_value(item: &crate::types::ResolvedItem, is_equipped: bool) -> Value {
     let mut v = json!({

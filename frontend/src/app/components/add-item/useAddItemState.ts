@@ -64,7 +64,7 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
       }
     };
     fetchInitial();
-  }, [isOpen]);
+  }, [isOpen, selectedInstance]);
 
   useEffect(() => {
     if (!isOpen || selectedInstance === null || selectedInstance === -2) return;

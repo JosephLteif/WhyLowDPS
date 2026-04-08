@@ -100,7 +100,7 @@ pub(super) async fn create_sim(
                     .map(|j| j.status == JobStatus::Cancelled)
                     .unwrap_or(false);
                 if !is_cancelled {
-                    store_clone.set_error(&job_id_clone, e);
+                    store_clone.set_error(&job_id_clone, e.to_string());
                 }
             }
         }
@@ -190,7 +190,7 @@ pub(super) async fn create_top_gear_sim(
         ) {
             Ok(r) => r,
             Err(e) => {
-                return HttpResponse::BadRequest().json(json!({"detail": e}));
+                return HttpResponse::BadRequest().json(json!({"detail": e.to_string()}));
             }
         };
 
@@ -320,13 +320,14 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
     ) {
         Ok((_, count, _)) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {
-            let count: usize = e
+            let e_str = e.to_string();
+            let count: usize = e_str
                 .split('(')
                 .nth(1)
                 .and_then(|s| s.split(')').next())
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
-            HttpResponse::Ok().json(json!({ "combo_count": count, "error": e }))
+            HttpResponse::Ok().json(json!({ "combo_count": count, "error": e_str }))
         }
     }
 }

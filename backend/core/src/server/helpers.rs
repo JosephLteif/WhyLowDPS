@@ -317,7 +317,7 @@ pub(super) fn spawn_staged_sim(
                     .map(|j| j.status == JobStatus::Cancelled)
                     .unwrap_or(false);
                 if !is_cancelled {
-                    store.set_error(&job_id, e);
+                    store.set_error(&job_id, e.to_string());
                 }
             }
         }

@@ -353,13 +353,14 @@ pub(super) async fn get_upgrade_compare_combo_count(
     ) {
         Ok((_, count, _)) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {
-            let count: usize = e
+            let e_str = e.to_string();
+            let count: usize = e_str
                 .split('(')
                 .nth(1)
                 .and_then(|s| s.split(')').next())
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
-            HttpResponse::Ok().json(json!({ "combo_count": count, "error": e }))
+            HttpResponse::Ok().json(json!({ "combo_count": count, "error": e_str }))
         }
     }
 }
@@ -389,7 +390,7 @@ pub(super) async fn create_upgrade_compare_sim(
         ) {
             Ok(result) => result,
             Err(e) => {
-                return HttpResponse::BadRequest().json(json!({ "detail": e }));
+                return HttpResponse::BadRequest().json(json!({ "detail": e.to_string() }));
             }
         };
 

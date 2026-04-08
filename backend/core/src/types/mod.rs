@@ -1,5 +1,6 @@
 pub mod class_data;
 pub mod season;
+pub mod simc;
 
 use serde::{Deserialize, Serialize};
 

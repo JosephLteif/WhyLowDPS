@@ -52,11 +52,50 @@ struct UserInfoResponse {
     battletag: String,
 }
 
-pub async fn bnet_login(state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
-    let client_id = match &state.client_id {
+#[derive(Deserialize)]
+pub struct LoginQuery {
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+}
+
+pub async fn get_credentials_status(state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
+    HttpResponse::Ok().json(json!({
+        "globally_configured": state.client_id.is_some() && state.client_secret.is_some()
+    }))
+}
+
+pub async fn bnet_login(
+    state: web::Data<Arc<BlizzardAuthState>>,
+    query: web::Query<LoginQuery>,
+) -> HttpResponse {
+    let client_id = query.client_id.as_ref().or(state.client_id.as_ref());
+
+    let client_id = match client_id {
         Some(id) => id,
-        None => return HttpResponse::InternalServerError().json(json!({"error": "Blizzard API Client ID not configured globally."})),
+        None => return HttpResponse::BadRequest().json(json!({"error": "Blizzard API Client ID not configured globally and not provided in request."})),
     };
+
+    let mut builder = HttpResponse::Found();
+
+    // If credentials were provided in query, set them as temporary cookies
+    if let (Some(id), Some(sec)) = (&query.client_id, &query.client_secret) {
+        builder.cookie(
+            Cookie::build("temp_bnet_id", id)
+                .path("/")
+                .http_only(true)
+                .secure(false) // Local dev
+                .same_site(SameSite::Lax)
+                .finish()
+        );
+        builder.cookie(
+            Cookie::build("temp_bnet_secret", sec)
+                .path("/")
+                .http_only(true)
+                .secure(false) // Local dev
+                .same_site(SameSite::Lax)
+                .finish()
+        );
+    }
 
     let auth_url = format!(
         "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile&state={}",
@@ -64,24 +103,31 @@ pub async fn bnet_login(state: web::Data<Arc<BlizzardAuthState>>) -> HttpRespons
         urlencoding::encode(&state.redirect_uri),
         uuid::Uuid::new_v4()
     );
-    HttpResponse::Found()
+
+    builder
         .append_header((header::LOCATION, auth_url))
         .finish()
 }
 
 pub async fn bnet_callback(
+    req: HttpRequest,
     query: web::Query<AuthCallbackQuery>,
     state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     let client = reqwest::Client::new();
     
-    let (client_id, client_secret) = match (&state.client_id, &state.client_secret) {
-        (Some(id), Some(sec)) => (id, sec),
-        _ => return HttpResponse::InternalServerError().json(json!({"error": "Global Blizzard credentials not configured."})),
+    let (client_id, client_secret) = if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
+        (id.clone(), sec.clone())
+    } else {
+        match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
+            (Some(id_c), Some(sec_c)) => (id_c.value().to_string(), sec_c.value().to_string()),
+            _ => return HttpResponse::InternalServerError().json(json!({"error": "Blizzard credentials not found in session."})),
+        }
     };
 
     let token_resp = client.post("https://oauth.battle.net/token")
-        .basic_auth(client_id, Some(client_secret))
+        .basic_auth(&client_id, Some(&client_secret))
         .form(&[
             ("grant_type", "authorization_code"),
             ("code", &query.code),
@@ -144,7 +190,7 @@ pub async fn bnet_callback(
     let expiration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize + (30 * 24 * 60 * 60); // 30 days
 
     let claims = Claims {
-        sub: battletag,
+        sub: battletag.clone(),
         access_token,
         exp: expiration,
     };
@@ -165,10 +211,21 @@ pub async fn bnet_callback(
         .max_age(actix_web::cookie::time::Duration::days(30))
         .finish();
 
-    HttpResponse::Found()
-        .append_header((header::LOCATION, "/characters")) // Redirect to characters page after login
-        .cookie(cookie)
-        .finish()
+    let mut resp_builder = HttpResponse::Found();
+    resp_builder.append_header((header::LOCATION, "/characters")); // Redirect to characters page after login
+    resp_builder.cookie(cookie);
+
+    // If we used temporary credentials, save them to the user's permanent config
+    if state.client_id.is_none() {
+        store.set_user_config(&battletag, "blizzard_client_id", &client_id);
+        store.set_user_config(&battletag, "blizzard_client_secret", &client_secret);
+        
+        // Clear temporary cookies
+        resp_builder.cookie(Cookie::build("temp_bnet_id", "").path("/").max_age(actix_web::cookie::time::Duration::seconds(0)).finish());
+        resp_builder.cookie(Cookie::build("temp_bnet_secret", "").path("/").max_age(actix_web::cookie::time::Duration::seconds(0)).finish());
+    }
+
+    resp_builder.finish()
 }
 
 pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {

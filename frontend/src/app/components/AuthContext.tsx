@@ -6,8 +6,9 @@ import { API_URL } from '../lib/api';
 interface AuthContextType {
   user: { battletag: string } | null;
   loading: boolean;
-  login: () => void;
+  login: (clientId?: string, clientSecret?: string) => void;
   logout: () => void;
+  checkCredentialsStatus: () => Promise<{ globally_configured: boolean }>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   login: () => {},
   logout: () => {},
+  checkCredentialsStatus: async () => ({ globally_configured: true }),
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -41,9 +43,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
-  const login = () => {
-    // Redirect to the login endpoint which will then redirect to Blizzard
-    window.location.href = `/api/auth/bnet/login`;
+  const checkCredentialsStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/auth/bnet/credentials-status`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (err) {
+      console.error('Failed to check credentials status:', err);
+    }
+    return { globally_configured: true }; // Fallback to avoid blocking if endpoint fails
+  };
+
+  const login = (clientId?: string, clientSecret?: string) => {
+    let url = `${API_URL}/api/auth/bnet/login`;
+    if (clientId && clientSecret) {
+      const params = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+      });
+      url += `?${params.toString()}`;
+    }
+    window.location.href = url;
   };
 
   const logout = () => {
@@ -54,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, checkCredentialsStatus }}>
       {children}
     </AuthContext.Provider>
   );

@@ -215,6 +215,7 @@ pub async fn start_with_storage_bind(
             .app_data(auth_state_opt_data.clone())
             .route("/api/auth/bnet/login", web::get().to(auth_handlers::bnet_login))
             .route("/api/auth/bnet/callback", web::get().to(auth_handlers::bnet_callback))
+            .route("/api/auth/bnet/credentials-status", web::get().to(auth_handlers::get_credentials_status))
             .route("/api/auth/me", web::get().to(auth_handlers::get_me))
             .route("/api/auth/logout", web::post().to(auth_handlers::bnet_logout))
             .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters))

@@ -101,7 +101,7 @@ pub fn build_catalyst_item(
         name,
         icon,
         quality,
-        quality_color: class_data::quality_color(quality).to_string(),
+        quality_color: class_data::quality_color(quality as u64).to_string(),
         tag,
         upgrade,
         sockets: 0,
@@ -131,7 +131,7 @@ pub fn mark_catalyst_eligible(slots: &mut HashMap<String, SlotResolution>, wow_c
 
         let check = |item: &ResolvedItem| -> bool {
             !item.is_catalyst
-                && item.season_id == current_season
+                && item.season_id == current_season as i64
                 && is_minimum_veteran(&item.upgrade)
                 && item.item_id != tier_info.item_id
         };
@@ -174,7 +174,7 @@ pub fn generate_catalyst_alternatives(slots: &mut HashMap<String, SlotResolution
         }
         sources.extend(slot_res.alternatives.iter().cloned());
 
-        let mut existing: HashMap<u64, u64> = HashMap::new();
+        let mut existing: HashMap<u64, i64> = HashMap::new();
         if let Some(ref eq) = slot_res.equipped {
             existing.insert(eq.item_id, eq.ilevel);
         }
@@ -189,7 +189,7 @@ pub fn generate_catalyst_alternatives(slots: &mut HashMap<String, SlotResolution
         let mut best: Option<ResolvedItem> = None;
 
         for source in &sources {
-            if source.is_catalyst || source.season_id != current_season || !is_minimum_veteran(&source.upgrade) || source.item_id == tier_info.item_id {
+            if source.is_catalyst || source.season_id != current_season as i64 || !is_minimum_veteran(&source.upgrade) || source.item_id == tier_info.item_id {
                 continue;
             }
 

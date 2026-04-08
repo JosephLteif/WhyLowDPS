@@ -94,7 +94,7 @@ fn prepare_upgrade_compare(
             let mut upgraded = equipped.clone();
             upgraded.origin = crate::types::ItemOrigin::Bags; // Marks as not baseline
             upgraded.bonus_ids = new_bonus_ids.clone();
-            upgraded.ilevel = opt.ilevel;
+            upgraded.ilevel = opt.ilevel as i64;
 
             // Update simc_string with new bonus_ids
             let new_simc = bonus_re

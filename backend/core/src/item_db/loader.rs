@@ -5,15 +5,27 @@ use std::path::Path;
 
 use super::state::*;
 use crate::types::{GameItem, EnchantData, BonusData};
+use crate::types::class_data;
+
 
 
 pub fn load_items(data_dir: &Path) {
     let path = data_dir.join("equippable-items-full.json");
     if !path.exists() { return; }
     
-    let data: Vec<GameItem> = serde_json::from_reader(std::io::BufReader::new(
-        fs::File::open(&path).expect("Failed to open items file"),
-    )).expect("Failed to deserialize items JSON");
+    let file = match fs::File::open(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to open items file {}: {}", path.display(), e);
+            return;
+        }
+    };
+    
+    let data: Vec<GameItem> = serde_json::from_reader(std::io::BufReader::new(file))
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to deserialize items JSON: {}", e);
+            Vec::new()
+        });
 
     
     let map: HashMap<u64, GameItem> = data
@@ -28,9 +40,13 @@ pub fn load_enchants(data_dir: &Path) {
     let path = data_dir.join("enchantments.json");
     if !path.exists() { return; }
     
-    let data: Vec<EnchantData> = serde_json::from_reader(std::io::BufReader::new(
-        fs::File::open(&path).unwrap(),
-    )).unwrap_or_default();
+    let file = match fs::File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    
+    let data: Vec<EnchantData> = serde_json::from_reader(std::io::BufReader::new(file))
+        .unwrap_or_default();
     
     let by_id: HashMap<u64, EnchantData> = data
         .iter()
@@ -54,9 +70,13 @@ pub fn load_bonuses(data_dir: &Path) {
     let path = data_dir.join("bonuses.json");
     if !path.exists() { return; }
     
-    let raw: HashMap<String, BonusData> = serde_json::from_reader(std::io::BufReader::new(
-        fs::File::open(&path).unwrap(),
-    )).unwrap_or_default();
+    let file = match fs::File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    
+    let raw: HashMap<String, BonusData> = serde_json::from_reader(std::io::BufReader::new(file))
+        .unwrap_or_default();
     
     let map: HashMap<u64, BonusData> = raw
         .into_iter()
@@ -104,15 +124,26 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
     let seasons_path = data_dir.join("seasons.json");
     if !bus_path.exists() { return; }
     
+    let bus_file = match fs::File::open(&bus_path) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+
     let bus_raw: HashMap<String, Vec<Value>> =
-        serde_json::from_reader(std::io::BufReader::new(fs::File::open(&bus_path).unwrap()))
+        serde_json::from_reader(std::io::BufReader::new(bus_file))
             .unwrap_or_default();
 
     let mut active_groups: Option<Vec<u64>> = None;
     if seasons_path.exists() {
-        let seasons: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(
-            fs::File::open(&seasons_path).unwrap(),
-        )).unwrap_or_default();
+        let s_file = match fs::File::open(&seasons_path) {
+            Ok(f) => f,
+            Err(_) => {
+                let _ = BONUSES.set(HashMap::new());
+                return;
+            }
+        };
+        let seasons: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(s_file))
+            .unwrap_or_default();
         
         if let Some(active) = seasons.iter().find(|s| s.get("active").and_then(|a| a.as_bool()).unwrap_or(false)) {
             let groups: Vec<u64> = active
@@ -368,3 +399,27 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
         }
     }
 }
+
+pub fn load_classes(data_dir: &Path) {
+    let path = data_dir.join("classes.json");
+    if !path.exists() {
+        return;
+    }
+
+    let file = match fs::File::open(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("Failed to open classes file {}: {}", path.display(), e);
+            return;
+        }
+    };
+
+    let data: Vec<class_data::ClassDef> = serde_json::from_reader(std::io::BufReader::new(file))
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to deserialize classes JSON: {}", e);
+            Vec::new()
+        });
+
+    let _ = class_data::CLASSES.set(data);
+}
+

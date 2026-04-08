@@ -140,7 +140,7 @@ pub(super) async fn get_max_upgrade_ilevels(body: web::Json<Vec<Value>>) -> Http
                     .collect::<Vec<_>>()
                     .join(",")
             );
-            results.insert(key, ilevel);
+            results.insert(key, ilevel as u64);
         }
     }
     HttpResponse::Ok().json(results)

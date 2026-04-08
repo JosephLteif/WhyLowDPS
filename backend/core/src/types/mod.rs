@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 
 // ---- Item Origin ----
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ItemOrigin {
+    #[default]
     Equipped,
     Bags,
     Vault,
@@ -31,7 +32,7 @@ pub struct RawParsedItem {
     pub raw_slot: String,
     pub simc_string: String,
     pub item_id: u64,
-    pub ilevel: u64,
+    pub ilevel: i64,
     pub name: String,
     pub bonus_ids: Vec<u64>,
     pub enchant_id: u64,
@@ -82,12 +83,12 @@ pub struct ParseResult {
 
 #[derive(Debug, Clone, Default)]
 pub struct BonusResolved {
-    pub quality: Option<u64>,
-    pub ilevel: Option<u64>,
+    pub quality: Option<i64>,
+    pub ilevel: Option<i64>,
     pub tag: Option<String>,
-    pub sockets: Option<u64>,
+    pub sockets: Option<i64>,
     pub upgrade: Option<String>,
-    pub season_id: Option<u64>,
+    pub season_id: Option<i64>,
 }
 
 // ---- Item Info (output of item_db::get_item_info) ----
@@ -97,16 +98,16 @@ pub struct ItemInfo {
     pub item_id: u64,
     pub name: String,
     pub icon: String,
-    pub ilevel: u64,
-    pub quality: u64,
+    pub ilevel: i64,
+    pub quality: i64,
     pub quality_name: String,
     pub tag: String,
     pub upgrade: String,
-    pub sockets: u64,
-    pub armor_subclass: u64,
-    pub inventory_type: u64,
-    pub item_class: u64,
-    pub item_subclass: u64,
+    pub sockets: i64,
+    pub armor_subclass: i64,
+    pub inventory_type: i64,
+    pub item_class: i64,
+    pub item_subclass: i64,
 }
 
 impl ItemInfo {
@@ -135,33 +136,53 @@ impl ItemInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedItem {
     /// Stable identity: "item_id:sorted_bonus_ids:origin:raw_slot"
+    #[serde(default)]
     pub uid: String,
+    #[serde(default)]
     pub slot: String,
+    #[serde(default)]
     pub item_id: u64,
-    pub ilevel: u64,
+    #[serde(default)]
+    pub ilevel: i64,
+    #[serde(default)]
     pub simc_string: String,
+    #[serde(default)]
     pub origin: ItemOrigin,
+    #[serde(default)]
     pub bonus_ids: Vec<u64>,
+    #[serde(default)]
     pub enchant_id: u64,
+    #[serde(default)]
     pub gem_id: u64,
     /// Display info from item DB.
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub icon: String,
-    pub quality: u64,
+    #[serde(default)]
+    pub quality: i64,
+    #[serde(default)]
     pub quality_color: String,
+    #[serde(default)]
     pub tag: String,
+    #[serde(default)]
     pub upgrade: String,
-    pub sockets: u64,
+    #[serde(default)]
+    pub sockets: i64,
     /// Enchant display name (empty if none).
+    #[serde(default)]
     pub enchant_name: String,
     /// Gem display name (empty if none).
+    #[serde(default)]
     pub gem_name: String,
     /// Gem icon (empty if none).
+    #[serde(default)]
     pub gem_icon: String,
     /// Season ID from upgrade track (0 if none).
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub season_id: u64,
-    pub inventory_type: u64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub season_id: i64,
+    #[serde(default)]
+    pub inventory_type: i64,
     /// Whether this item is a catalyst-generated tier alternative.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_catalyst: bool,
@@ -170,7 +191,9 @@ pub struct ResolvedItem {
     pub can_catalyst: bool,
 }
 
-fn is_zero(v: &u64) -> bool {
+
+
+fn is_zero_i64(v: &i64) -> bool {
     *v == 0
 }
 
@@ -205,9 +228,13 @@ pub struct CharacterResolveInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExcludedItem {
+    #[serde(default)]
     pub uid: String,
+    #[serde(default)]
     pub item_id: u64,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub reason: String,
 }
 
@@ -223,15 +250,16 @@ pub struct GameItem {
     #[serde(default)]
     pub quality: u64,
     #[serde(rename = "itemLevel")]
-    pub base_ilevel: Option<u64>,
+    pub base_ilevel: Option<i64>,
     #[serde(rename = "itemClass")]
-    pub class: Option<u64>,
+    pub class: Option<i64>,
     #[serde(rename = "itemSubClass")]
-    pub subclass: Option<u64>,
+    pub subclass: Option<i64>,
     #[serde(rename = "inventoryType")]
-    pub inventory_type: Option<u64>,
+    pub inventory_type: Option<i64>,
     #[serde(rename = "itemSetId")]
-    pub set_id: Option<u64>,
+    pub set_id: Option<i64>,
+
     #[serde(rename = "allowableClasses")]
     pub classes: Option<Vec<u64>>,
     pub sources: Option<Vec<ItemSource>>,
@@ -243,10 +271,12 @@ pub struct ItemSource {
     #[serde(rename = "encounterId")]
     pub encounter_id: Option<i64>,
     #[serde(rename = "instanceId")]
-    pub instance_id: Option<u64>,
+    pub instance_id: Option<i64>,
+
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct EnchantData {
     pub id: u64,
     #[serde(rename = "itemId")]
@@ -259,7 +289,8 @@ pub struct EnchantData {
     pub requirements: Option<EnchantRequirements>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct EnchantRequirements {
     #[serde(rename = "invTypeMask")]
     pub inv_type_mask: Option<u64>,
@@ -267,7 +298,8 @@ pub struct EnchantRequirements {
     pub item_class: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct BonusData {
     pub quality: Option<u64>,
     #[serde(rename = "itemLevel")]
@@ -275,23 +307,26 @@ pub struct BonusData {
     #[serde(rename = "levelOffset")]
     pub offset: Option<BonusOffset>,
     pub tag: Option<String>,
-    pub socket: Option<u64>,
+    pub socket: Option<i64>,
     pub upgrade: Option<BonusUpgrade>,
     pub item_limit_category: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct BonusIlevel {
     pub amount: Option<u64>,
     pub priority: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct BonusOffset {
     pub amount: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct BonusUpgrade {
     #[serde(rename = "fullName")]
     pub full_name: Option<String>,

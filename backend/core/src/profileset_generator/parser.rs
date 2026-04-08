@@ -2,7 +2,7 @@ use regex::Regex;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
-use crate::types::class_data;
+
 
 pub mod patterns {
     use super::*;

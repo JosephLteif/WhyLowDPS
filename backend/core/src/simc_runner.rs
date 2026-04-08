@@ -17,7 +17,7 @@ mod patterns {
     use super::*;
     pub static PROGRESS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)/(\d+)").unwrap());
     pub static HEADER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^###\s+(Combo \d+)").unwrap());
-    pub static ENCHANT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(enchant_id=\d+)").unwrap());
+
 }
 
 // ---- Process Registry (for cancellation) ----

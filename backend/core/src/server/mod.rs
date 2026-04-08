@@ -128,25 +128,7 @@ async fn spa_fallback(
     Ok(NamedFile::open(frontend_dir.0.join("index.html"))?)
 }
 
-use std::process::Command;
-use std::time::Duration;
-use tokio::time::sleep;
 
-async fn shutdown() -> HttpResponse {
-    println!("System shutdown requested. Stopping Docker containers...");
-    // Launch docker compose down in the background
-    let _ = Command::new("docker")
-        .args(["compose", "-p", "whylowdps", "down"])
-        .spawn();
-
-    // Give some time for the response to reach the client
-    tokio::spawn(async {
-        sleep(Duration::from_secs(2)).await;
-        std::process::exit(0);
-    });
-
-    HttpResponse::Ok().json(json!({"status": "shutting_down"}))
-}
 
 // ---------- Server startup ----------
 

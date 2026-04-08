@@ -28,8 +28,8 @@ pub fn write_base_actor(
 
     let base_spec = extract_spec_id_from_talent_string(base_talent)
         .and_then(class_data::spec_id_to_name)
-        .map(|s| s.to_string())
         .unwrap_or_else(|| spec.to_string());
+
 
     if !base_talent.is_empty() {
         lines.push(format!("talents={}", base_talent));

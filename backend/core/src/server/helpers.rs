@@ -196,25 +196,7 @@ pub(super) fn resolve_to_items_by_slot(
 }
 
 
-fn resolved_item_to_value(item: &crate::types::ResolvedItem, is_equipped: bool) -> Value {
-    let mut v = json!({
-        "uid": item.uid,
-        "slot": item.slot,
-        "simc_string": item.simc_string,
-        "is_equipped": is_equipped,
-        "origin": item.origin.as_str(),
-        "item_id": item.item_id,
-        "ilevel": item.ilevel,
-        "name": item.name,
-        "bonus_ids": item.bonus_ids,
-        "enchant_id": item.enchant_id,
-        "gem_id": item.gem_id,
-    });
-    if item.is_catalyst {
-        v["is_catalyst"] = json!(true);
-    }
-    v
-}
+
 
 /// Replace the talents= line in a simc input string with a new talent string.
 pub(super) fn apply_talent_override(simc_input: &str, talents: &str) -> String {

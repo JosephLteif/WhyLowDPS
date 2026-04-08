@@ -89,7 +89,7 @@ fn resolve_gear_impl(
             if let Some(item_info) = item_db::get_item_info(item.item_id, Some(&item.bonus_ids)) {
                 let ic = item_info.item_class;
                 let isc = item_info.item_subclass;
-                ic == 2 && !weapons.contains(&isc)
+                ic == 2 && !weapons.contains(&(isc as u64))
             } else {
                 false
             }

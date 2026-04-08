@@ -35,7 +35,7 @@ pub fn get_instance_drops(
         .iter()
         .find(|i| i.get("id").and_then(|id| id.as_i64()) == Some(instance_id))?;
 
-    let max_armor = class_name.and_then(class_data::class_max_armor);
+
     let allowed_weapons = class_name.and_then(class_data::class_allowed_weapons);
     let active_spec_names: Vec<&str> = spec_name
         .map(|s| s.split(',').map(|s| s.trim()).collect())
@@ -103,21 +103,23 @@ pub fn get_instance_drops(
                 }
 
                 let inv_type = item.inventory_type.unwrap_or(0);
+                let item_class = item.class.unwrap_or(0);
 
                 // Filter by armor type
-                if let Some(max) = max_armor {
-                    if armor_slot_types.contains(&inv_type)
-                        && item.class.unwrap_or(0) == 4
+                if let Some(cn) = class_name {
+                    if armor_slot_types.contains(&(inv_type as u64))
+                        && item_class == 4
+                        && (inv_type as u64) != 2
                     {
                         let sub = item.subclass.unwrap_or(0);
-                        if sub != 0 && sub != max {
+                        let max = class_data::class_max_armor(cn).unwrap_or(0);
+                        if sub != 0 && (sub as u64) != max {
                             continue;
                         }
                     }
                 }
 
                 // Filter by weapon/shield/off-hand eligibility per active spec
-                let item_class = item.class.unwrap_or(0);
                 let weapon_sub = item.subclass.unwrap_or(0);
 
 
@@ -128,31 +130,36 @@ pub fn get_instance_drops(
                             let any_spec_can_use = active_spec_names.iter().any(|spec| {
                                 if let Some(profile) = class_data::spec_weapon_profile(cn, spec) {
                                     if item_class == 2 {
-                                        profile.weapon_subclasses.contains(&weapon_sub)
+                                        profile.weapon_subclasses.contains(&(weapon_sub as u64))
                                     } else if inv_type == 14 {
                                         profile.can_use_shield
                                     } else {
                                         profile.can_use_offhand
                                     }
+
                                 } else {
                                     // Unknown spec — fall back to class-level check
-                                    if let Some(weapons) = allowed_weapons {
-                                        item_class != 2 || weapons.contains(&weapon_sub)
+                                    if let Some(weapons) = &allowed_weapons {
+                                        item_class != 2 || weapons.contains(&(weapon_sub as u64))
                                     } else {
                                         true
                                     }
+
+
                                 }
                             });
 
                             if !any_spec_can_use {
                                 continue;
                             }
-                        } else if let Some(weapons) = allowed_weapons {
+                        } else if let Some(weapons) = &allowed_weapons {
                             // No spec info — fall back to class-level weapon check
-                            if item_class == 2 && !weapons.contains(&weapon_sub) {
+                            if item_class == 2 && !weapons.contains(&(weapon_sub as u64)) {
                                 continue;
                             }
                         }
+
+
                     }
                 }
 
@@ -165,7 +172,8 @@ pub fn get_instance_drops(
                     }
                 }
 
-                let slot = class_data::inventory_type_display_slot(inv_type);
+                let slot = class_data::inventory_type_display_slot(inv_type as u64);
+
 
                 // Compute per-difficulty info from upgrade tracks (raids)
                 let upgrade_lvl = item_db::encounter_upgrade_level(*eid);
@@ -264,7 +272,8 @@ pub fn get_instance_drops(
                     if main_can_use && (item_class == 2 || inv_type == 14 || inv_type == 23) {
                         if let Some(profile) = class_data::spec_weapon_profile(cn, main_spec) {
                             main_can_use = if item_class == 2 {
-                                profile.weapon_subclasses.contains(&weapon_sub)
+                                 profile.weapon_subclasses.contains(&(weapon_sub as u64))
+
                             } else if inv_type == 14 {
                                 profile.can_use_shield
                             } else {

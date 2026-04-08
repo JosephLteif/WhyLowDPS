@@ -343,9 +343,22 @@ fn extract_all_gear(player: &Value) -> HashMap<String, Value> {
             .replace('_', " ");
         let name = title_case(&name);
 
+        let mut sorted_bonuses = bonus_ids.clone();
+        sorted_bonuses.sort();
+        let bonus_key = sorted_bonuses
+            .iter()
+            .map(|b| b.to_string())
+            .collect::<Vec<_>>()
+            .join(":");
+        let uid = format!(
+            "{}:{}:equipped:e{}:g{}:{}",
+            item_id, bonus_key, enchant_id, gem_id, slot
+        );
+
         baseline.insert(
             slot.clone(),
             json!({
+                "uid": uid,
                 "slot": &slot,
                 "item_id": item_id,
                 "ilevel": ilevel,

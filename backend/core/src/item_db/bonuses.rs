@@ -33,20 +33,20 @@ pub fn upgrade_track_max() -> u64 {
 pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>) -> BonusResolved {
 
     let mut result = BonusResolved::default();
-    let mut upgrade_ilevel: Option<u64> = None;
+    let mut upgrade_ilevel: Option<i64> = None;
     let mut level_offset: i64 = 0;
     let mut ilevel_priority: i64 = -1;
 
     for bid in bonus_ids {
         if let Some(bonus) = bonuses_map.get(bid) {
             if let Some(q) = bonus.quality {
-                result.quality = Some(q);
+                result.quality = Some(q as i64);
             }
             if let Some(il_obj) = &bonus.ilevel {
                 let priority = il_obj.priority.unwrap_or(0);
                 if priority >= ilevel_priority {
                     if let Some(amount) = il_obj.amount {
-                        result.ilevel = Some(amount);
+                        result.ilevel = Some(amount as i64);
                         ilevel_priority = priority;
                     }
                 }
@@ -59,7 +59,7 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
                 result.tag = Some(tag_str.to_string());
             }
             if let Some(socket) = bonus.socket {
-                result.sockets = Some(socket);
+                result.sockets = Some(socket as i64);
             }
             if let Some(upgrade) = &bonus.upgrade {
                 if let Some(full_name) = &upgrade.full_name {
@@ -67,10 +67,10 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
                     result.upgrade = Some(name_str.to_string());
                 }
                 if let Some(il) = upgrade.ilevel {
-                    upgrade_ilevel = Some(il);
+                    upgrade_ilevel = Some(il as i64);
                 }
                 if let Some(sid) = upgrade.season_id {
-                    result.season_id = Some(sid);
+                    result.season_id = Some(sid as i64);
                 }
             }
 
@@ -83,7 +83,7 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
 
     if level_offset != 0 {
         if let Some(il) = result.ilevel {
-            result.ilevel = Some((il as i64 + level_offset).max(0) as u64);
+            result.ilevel = Some((il + level_offset).max(0));
         }
     }
 

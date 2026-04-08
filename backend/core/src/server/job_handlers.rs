@@ -9,10 +9,7 @@ use crate::models::JobStatus;
 use crate::simc_runner;
 use crate::storage::JobStorage;
 
-pub(super) async fn list_sims(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    let summaries = store.list_recent(store.get_max_jobs(), None, None, false);
-    HttpResponse::Ok().json(summaries)
-}
+
 
 #[cfg(not(feature = "desktop"))]
 pub(super) async fn list_sims_filtered(

@@ -60,11 +60,11 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         (
             name,
             "inv_misc_questionmark".to_string(),
-            resolved.quality.unwrap_or(1),
+            resolved.quality.map(|q| q as i64).unwrap_or(1),
             resolved.tag.unwrap_or_default(),
             resolved.upgrade.unwrap_or_default(),
-            resolved.sockets.unwrap_or(0),
-            resolved.ilevel.unwrap_or(0),
+            resolved.sockets.map(|s| s as i64).unwrap_or(0),
+            resolved.ilevel.map(|l| l as i64).unwrap_or(0),
         )
     };
 
@@ -109,10 +109,10 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         name,
         icon,
         quality,
-        quality_color: class_data::quality_color(quality).to_string(),
+        quality_color: class_data::quality_color(quality as u64).to_string(),
         tag,
         upgrade,
-        sockets,
+        sockets: sockets as i64,
         enchant_name,
         gem_name,
         gem_icon,
@@ -128,7 +128,7 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
 pub fn eligible_slots(item: &RawParsedItem, spec: &str) -> Vec<String> {
     if let Some(inv_type) = item_db::get_inventory_type(item.item_id) {
         if inv_type > 0 {
-            return class_data::inv_type_to_slots(inv_type, spec)
+            return class_data::inv_type_to_slots(inv_type as u64, spec)
                 .into_iter()
                 .map(|s| s.to_string())
                 .collect();

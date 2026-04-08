@@ -99,7 +99,7 @@ pub fn generate_droptimizer_input(base_profile: &str, drop_items: &[ResolvedItem
 
     let mut combo_idx = 2;
     for item in drop_items {
-        let mut slots = crate::types::class_data::inv_type_to_slots(item.inventory_type, &spec);
+        let mut slots = crate::types::class_data::inv_type_to_slots(item.inventory_type as u64, &spec);
 
         if has_2h && !(spec == "fury" && item.inventory_type == 17) {
             slots.retain(|s| *s != "off_hand");

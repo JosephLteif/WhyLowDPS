@@ -6,7 +6,7 @@ use crate::types::{CharacterInfo, ItemOrigin, ParseResult, RawParsedItem, Talent
 
 struct ItemProps {
     item_id: u64,
-    ilevel: u64,
+    ilevel: i64,
     name: String,
     bonus_ids: Vec<u64>,
     enchant_id: u64,
@@ -133,7 +133,7 @@ pub fn parse_simc_input(simc_input: &str) -> ParseResult {
                     props.name = pending_name.clone();
                 }
                 if props.ilevel == 0 && pending_ilevel > 0 {
-                    props.ilevel = pending_ilevel;
+                    props.ilevel = pending_ilevel as i64;
                 }
                 pending_name.clear();
                 pending_ilevel = 0;
@@ -206,7 +206,7 @@ pub fn parse_simc_input(simc_input: &str) -> ParseResult {
                     props.name = pending_name.clone();
                 }
                 if props.ilevel == 0 && pending_ilevel > 0 {
-                    props.ilevel = pending_ilevel;
+                    props.ilevel = pending_ilevel as i64;
                 }
                 pending_name.clear();
                 pending_ilevel = 0;

@@ -1,8 +1,6 @@
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::Mutex;
 use reqwest::Client;
 use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 

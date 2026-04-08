@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use crate::types::class_data::{self, ARMOR_SLOTS, GEAR_SLOTS};
 use crate::types::{ResolvedItem, ItemOrigin};

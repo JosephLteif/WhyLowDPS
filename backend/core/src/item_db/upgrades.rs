@@ -245,6 +245,7 @@ pub fn upgrade_items_by_slot(mut items: HashMap<String, Vec<ResolvedItem>>) -> H
                     item.quality = info.quality;
                     item.tag = info.tag;
                     item.upgrade = info.upgrade;
+                    item.sockets = info.sockets as i64;
                 }
             }
         }

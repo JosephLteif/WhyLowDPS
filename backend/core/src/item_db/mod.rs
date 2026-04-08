@@ -13,7 +13,7 @@ pub mod upgrades;
 pub mod enchants;
 
 pub use state::CatalystTierItem;
-use state::*;
+
 
 // Re-exports for convenience
 
@@ -24,7 +24,9 @@ pub use enchants::*;
 // ---- Load ----
 
 pub fn load(data_dir: &Path) {
+    loader::load_classes(data_dir);
     loader::load_items(data_dir);
+
     loader::load_enchants(data_dir);
     loader::load_bonuses(data_dir);
     loader::load_bus_and_seasons(data_dir);
@@ -43,28 +45,36 @@ use crate::types::{class_data, ItemInfo, GameItem, EnchantData, BonusData};
 
 // ---- Accessors ----
 
+use once_cell::sync::Lazy;
+
+static EMPTY_ITEMS: Lazy<HashMap<u64, GameItem>> = Lazy::new(HashMap::new);
+static EMPTY_ENCHANTS: Lazy<HashMap<u64, EnchantData>> = Lazy::new(HashMap::new);
+static EMPTY_BONUSES: Lazy<HashMap<u64, BonusData>> = Lazy::new(HashMap::new);
+static EMPTY_INSTANCES: Lazy<Vec<Value>> = Lazy::new(Vec::new);
+static EMPTY_DROPS: Lazy<HashMap<i64, Vec<GameItem>>> = Lazy::new(HashMap::new);
+
 pub fn items() -> &'static HashMap<u64, GameItem> {
-    state::ITEMS.get().expect("Game data not loaded")
+    state::ITEMS.get().unwrap_or(&EMPTY_ITEMS)
 }
 
 pub fn enchants() -> &'static HashMap<u64, EnchantData> {
-    state::ENCHANTS.get().expect("Game data not loaded")
+    state::ENCHANTS.get().unwrap_or(&EMPTY_ENCHANTS)
 }
 
 pub fn enchants_by_item_id() -> &'static HashMap<u64, EnchantData> {
-    state::ENCHANTS_BY_ITEM_ID.get().expect("Game data not loaded")
+    state::ENCHANTS_BY_ITEM_ID.get().unwrap_or(&EMPTY_ENCHANTS)
 }
 
 pub fn bonuses() -> &'static HashMap<u64, BonusData> {
-    state::BONUSES.get().expect("Game data not loaded")
+    state::BONUSES.get().unwrap_or(&EMPTY_BONUSES)
 }
 
 pub fn instances() -> &'static Vec<Value> {
-    state::INSTANCES.get().expect("Game data not loaded")
+    state::INSTANCES.get().unwrap_or(&EMPTY_INSTANCES)
 }
 
 pub fn drops_by_encounter() -> &'static HashMap<i64, Vec<GameItem>> {
-    state::DROPS_BY_ENCOUNTER.get().expect("Game data not loaded")
+    state::DROPS_BY_ENCOUNTER.get().unwrap_or(&EMPTY_DROPS)
 }
 
 
@@ -145,9 +155,10 @@ pub fn get_item_limit_categories(bonus_ids: &[u64]) -> HashMap<u64, u64> {
     result
 }
 
-pub fn get_inventory_type(item_id: u64) -> Option<u64> {
+pub fn get_inventory_type(item_id: u64) -> Option<i64> {
     get_raw_item(item_id).and_then(|i| i.inventory_type)
 }
+
 
 
 pub(crate) fn get_raw_item(item_id: u64) -> Option<&'static GameItem> {
@@ -158,7 +169,7 @@ pub(crate) fn get_raw_item(item_id: u64) -> Option<&'static GameItem> {
 pub fn get_item_armor_subclass(item_id: u64) -> Option<u64> {
     get_raw_item(item_id).map(|i| {
         if i.class.unwrap_or(0) == 4 {
-            i.subclass.unwrap_or(0)
+            i.subclass.unwrap_or(0) as u64
         } else {
             0
         }
@@ -166,13 +177,14 @@ pub fn get_item_armor_subclass(item_id: u64) -> Option<u64> {
 }
 
 
+
 pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo> {
     let item = get_raw_item(item_id)?;
-    let mut quality = item.quality;
+    let mut quality = item.quality as i64;
     let mut ilevel = item.base_ilevel.unwrap_or(0);
 
     let mut tag = String::new();
-    let mut sockets: u64 = 0;
+    let mut sockets: i64 = 0;
     let mut upgrade = String::new();
 
     let mut bonus_set_ilevel = false;
@@ -180,14 +192,16 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
         let resolved = bonuses::resolve_bonuses(bids, bonuses());
         if let Some(q) = resolved.quality { quality = q; }
         if let Some(i) = resolved.ilevel { ilevel = i; bonus_set_ilevel = true; }
+
         if let Some(t) = resolved.tag { tag = t; }
         if let Some(s) = resolved.sockets { sockets = s; }
         if let Some(u) = resolved.upgrade { upgrade = u; }
     }
 
     if !bonus_set_ilevel {
-        ilevel = bonuses::squish_ilevel(item_id, ilevel);
+        ilevel = bonuses::squish_ilevel(item_id, ilevel as u64) as i64;
     }
+
 
     let armor_subclass = if item.class.unwrap_or(0) == 4 {
         item.subclass.unwrap_or(0)
@@ -201,16 +215,18 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
         icon: item.icon.clone(),
         ilevel,
         quality,
-        quality_name: class_data::quality_name(quality).to_string(),
+        quality_name: class_data::quality_name(quality as u64),
         tag,
         upgrade,
         sockets,
-        armor_subclass,
+        armor_subclass: armor_subclass,
         inventory_type: item.inventory_type.unwrap_or(0),
         item_class: item.class.unwrap_or(0),
         item_subclass: item.subclass.unwrap_or(0),
     })
 }
+
+
 
 
 pub fn get_enchant_info(enchant_id: u64) -> Option<Value> {

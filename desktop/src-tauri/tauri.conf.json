@@ -1,12 +1,12 @@
 {
   "productName": "WhyLowDps",
   "version": "0.2.1",
-  "identifier": "com.whylowdps.app",
+  "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",
     "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "cross-env DESKTOP_BUILD=true npm run dev --prefix frontend",
-    "beforeBuildCommand": "cross-env DESKTOP_BUILD=true npm run build --prefix frontend"
+    "beforeDevCommand": "npm run dev --prefix frontend",
+    "beforeBuildCommand": "npm run build --prefix frontend"
   },
   "app": {
     "windows": [

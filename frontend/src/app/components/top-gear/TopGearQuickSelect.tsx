@@ -70,8 +70,12 @@ export default function TopGearQuickSelect({
           </button>
         )}
       </div>
-      <span className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-mono text-xs font-medium shadow-inner ${comboColorClass}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${comboCount > maxCombinations ? 'bg-red-500' : comboCount > 0 ? 'bg-emerald-500' : 'bg-gray-600'}`} />
+      <span
+        className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-mono text-xs font-medium shadow-inner ${comboColorClass}`}
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${comboCount > maxCombinations ? 'bg-red-500' : comboCount > 0 ? 'bg-emerald-500' : 'bg-gray-600'}`}
+        />
         {comboLabel}
       </span>
     </div>

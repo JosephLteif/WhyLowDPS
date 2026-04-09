@@ -83,10 +83,12 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="fixed bottom-0 left-0 top-14 z-40 w-72 border-r border-border/80 bg-surface/50 pb-6 pt-6 flex flex-col justify-between">
-      <nav className="flex flex-col gap-2 px-4 overflow-y-auto">
+    <aside className="fixed bottom-0 left-0 top-14 z-40 flex w-72 flex-col justify-between border-r border-border/80 bg-surface/50 pb-6 pt-6">
+      <nav className="flex flex-col gap-2 overflow-y-auto px-4">
         {navItems.map((item) => {
-          const isActive = item.matchPaths.some((p) => pathname === p || pathname.startsWith(p + '/'));
+          const isActive = item.matchPaths.some(
+            (p) => pathname === p || pathname.startsWith(p + '/')
+          );
           const hasChildren = item.children && item.children.length > 0;
           const isOpen = openMenu === item.label || isActive;
 
@@ -144,10 +146,10 @@ export default function Sidebar() {
           );
         })}
       </nav>
-      
-      <div className="mt-auto flex flex-col px-4 pt-4 border-t border-border/50 gap-2">
+
+      <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
         <SettingsPopover />
-        <div className="text-center text-[11px] text-zinc-600 px-2 mt-2">
+        <div className="mt-2 px-2 text-center text-[11px] text-zinc-600">
           v{packageJson.version}
         </div>
       </div>

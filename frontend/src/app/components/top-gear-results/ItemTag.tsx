@@ -1,13 +1,7 @@
-import {
-  getIconUrl,
-  getWowheadData,
-  getWowheadUrl,
-  QUALITY_COLORS,
-} from '../../lib/useItemInfo';
+import { getIconUrl, getWowheadData, getWowheadUrl, QUALITY_COLORS } from '../../lib/useItemInfo';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import type { ResultItem } from '../../lib/types';
 import { SLOT_LABELS } from '../../lib/types';
-
 
 interface ItemTagProps {
   item: ResultItem;

@@ -29,9 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <DataGuard>
             <SimProvider>
               <TopHeader />
-              
+
               <Sidebar />
-              
+
               <main className="ml-72 mt-14 min-h-[calc(100vh-3.5rem)] px-8 py-8 lg:px-12">
                 <div className="mx-auto max-w-5xl">
                   <SimSharedConfig />

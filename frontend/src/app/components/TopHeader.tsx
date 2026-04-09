@@ -74,11 +74,11 @@ export default function TopHeader() {
         </div>
       </header>
 
-      <LoginModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <LoginModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
         onConfirm={handleModalConfirm}
       />
     </>
   );
-}
+}

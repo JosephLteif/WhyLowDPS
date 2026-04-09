@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { API_URL } from '../lib/api';
@@ -14,7 +14,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const [isGloballyConfigured, setIsGloballyConfigured] = useState(true);
 
   useEffect(() => {
-    checkCredentialsStatus().then(status => {
+    checkCredentialsStatus().then((status) => {
       setIsGloballyConfigured(status.globally_configured);
     });
   }, [checkCredentialsStatus, user]);
@@ -24,7 +24,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
       const res = await fetch(`${API_URL}/api/data/status`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
-        
+
         if (data.status === 'ready') {
           setDataStatus(data);
           setIsReady(true);
@@ -32,13 +32,17 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
           if (data.can_sync) {
             // Trigger a sync if we have keys (system or user) available
             setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
-            fetch(`${API_URL}/api/data/sync`, { method: 'POST', credentials: 'include' }).catch(() => {});
+            fetch(`${API_URL}/api/data/sync`, { method: 'POST', credentials: 'include' }).catch(
+              () => {}
+            );
           } else {
             // Check if we have global credentials (backup check)
             const creds = await checkCredentialsStatus();
             if (creds.globally_configured) {
               setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
-              fetch(`${API_URL}/api/data/sync`, { method: 'POST', credentials: 'include' }).catch(() => {});
+              fetch(`${API_URL}/api/data/sync`, { method: 'POST', credentials: 'include' }).catch(
+                () => {}
+              );
             } else {
               // Only now show the needs_credentials status (shows the Configure button)
               setDataStatus(data);
@@ -85,18 +89,18 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
 
   if (!user && !isSettingsPage) {
     return (
-      <SplashScreen 
-        status={isGloballyConfigured ? "unauthenticated" : "unauthenticated_needs_keys"} 
-        progress="" 
+      <SplashScreen
+        status={isGloballyConfigured ? 'unauthenticated' : 'unauthenticated_needs_keys'}
+        progress=""
       />
     );
   }
 
   if (!isReady && !isSettingsPage) {
     return (
-      <SplashScreen 
-        status={dataStatus.status} 
-        progress={dataStatus.progress} 
+      <SplashScreen
+        status={dataStatus.status}
+        progress={dataStatus.progress}
         onRetry={handleRetry}
         onConfigureKeys={handleConfigureKeys}
       />

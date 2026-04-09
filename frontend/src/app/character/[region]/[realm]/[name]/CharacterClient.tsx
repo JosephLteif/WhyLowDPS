@@ -17,40 +17,55 @@ export default function CharacterClient() {
   const [error, setError] = useState('');
   const [copying, setCopying] = useState(false);
 
-  const fetchCharacterData = useCallback(async (refresh = false) => {
-    if (!realm || !name) return;
-    setLoading(true);
-    setError('');
+  const fetchCharacterData = useCallback(
+    async (refresh = false) => {
+      if (!realm || !name) return;
+      setLoading(true);
+      setError('');
 
-    try {
-      const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
-      const [profileRes, equipRes, statsRes, specRes, profRes] = await Promise.all([
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/profile${query}`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/equipment${query}`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/statistics${query}`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/specializations${query}`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/professions${query}`, { credentials: 'include' }),
-      ]);
+      try {
+        const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
+        const [profileRes, equipRes, statsRes, specRes, profRes] = await Promise.all([
+          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/profile${query}`, {
+            credentials: 'include',
+          }),
+          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/equipment${query}`, {
+            credentials: 'include',
+          }),
+          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/statistics${query}`, {
+            credentials: 'include',
+          }),
+          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/specializations${query}`, {
+            credentials: 'include',
+          }),
+          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/professions${query}`, {
+            credentials: 'include',
+          }),
+        ]);
 
-      if (!profileRes.ok) {
-        throw new Error(`Profile not found (${profileRes.status}). Ensure the character name and realm are correct.`);
+        if (!profileRes.ok) {
+          throw new Error(
+            `Profile not found (${profileRes.status}). Ensure the character name and realm are correct.`
+          );
+        }
+
+        const [profile, equipment, statistics, specializations, professions] = await Promise.all([
+          profileRes.json(),
+          equipRes.ok ? equipRes.json() : Promise.resolve({ equipped_items: [] }),
+          statsRes.ok ? statsRes.json() : Promise.resolve({}),
+          specRes.ok ? specRes.json() : Promise.resolve({}),
+          profRes.ok ? profRes.json() : Promise.resolve({}),
+        ]);
+
+        setData({ profile, equipment, statistics, specializations, professions });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch character');
+      } finally {
+        setLoading(false);
       }
-
-      const [profile, equipment, statistics, specializations, professions] = await Promise.all([
-        profileRes.json(),
-        equipRes.ok ? equipRes.json() : Promise.resolve({ equipped_items: [] }),
-        statsRes.ok ? statsRes.json() : Promise.resolve({}),
-        specRes.ok ? specRes.json() : Promise.resolve({}),
-        profRes.ok ? profRes.json() : Promise.resolve({}),
-      ]);
-
-      setData({ profile, equipment, statistics, specializations, professions });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch character');
-    } finally {
-      setLoading(false);
-    }
-  }, [region, realm, name]);
+    },
+    [region, realm, name]
+  );
 
   useEffect(() => {
     fetchCharacterData();
@@ -84,7 +99,12 @@ export default function CharacterClient() {
       <div className="mx-auto max-w-lg py-20 text-center">
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500">
           <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
         </div>
         <h2 className="mb-2 text-xl font-bold text-zinc-200">Character Not Found</h2>
@@ -112,16 +132,20 @@ export default function CharacterClient() {
               Lv {profile.level} {profile.race.name} {profile.character_class.name}
             </span>
             <div className="flex items-center gap-2 rounded-lg bg-gold/10 px-3 py-1 ring-1 ring-gold/20">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-gold/70">ILVL</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gold/70">
+                ILVL
+              </span>
               <span className="text-sm font-black text-gold">{profile.equipped_item_level}</span>
               {profile.average_item_level !== profile.equipped_item_level && (
-                <span className="text-[11px] font-bold text-gold/40">({profile.average_item_level})</span>
+                <span className="text-[11px] font-bold text-gold/40">
+                  ({profile.average_item_level})
+                </span>
               )}
             </div>
             <button
               onClick={() => fetchCharacterData(true)}
               disabled={loading}
-              className="ml-2 rounded border border-white/10 bg-black/20 backdrop-blur-sm px-3 py-1 text-xs font-bold text-zinc-200 hover:bg-white/10 active:scale-95 disabled:opacity-50"
+              className="ml-2 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95 disabled:opacity-50"
             >
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
@@ -130,7 +154,6 @@ export default function CharacterClient() {
             {profile.realm.name} — {region.toUpperCase()}
           </p>
         </div>
-
       </div>
 
       <CharacterPanel

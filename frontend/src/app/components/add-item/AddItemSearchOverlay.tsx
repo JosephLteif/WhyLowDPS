@@ -43,7 +43,10 @@ export default function AddItemSearchOverlay({
                 className="group flex w-full items-center gap-3 border-b border-white/5 p-3 transition-colors last:border-0 hover:bg-white/[0.03]"
               >
                 <img
-                  src={`https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg` || '/assets/unknown.png'}
+                  src={
+                    `https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg` ||
+                    '/assets/unknown.png'
+                  }
                   className="h-8 w-8 rounded-lg shadow-lg"
                   alt=""
                 />

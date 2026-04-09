@@ -14,12 +14,7 @@ export default function SettingsPopover() {
   const [open, setOpen] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
-  const {
-    threads,
-    setThreads,
-    maxCombinations,
-    setMaxCombinations,
-  } = useSimContext();
+  const { threads, setThreads, maxCombinations, setMaxCombinations } = useSimContext();
 
   useEffect(() => {
     // Fetch system info from backend for thread management
@@ -98,9 +93,7 @@ export default function SettingsPopover() {
                         }`}
                       >
                         <span className="block text-[12px] font-semibold">{p.label}</span>
-                        <span className="mt-0.5 block text-[10px] opacity-70">
-                          {val} threads
-                        </span>
+                        <span className="mt-0.5 block text-[10px] opacity-70">{val} threads</span>
                       </button>
                     );
                   })}
@@ -133,7 +126,10 @@ export default function SettingsPopover() {
               <button
                 onClick={() => {
                   if (confirm('Are you sure you want to shut down the simulation server?')) {
-                    fetch(`${API_URL}/api/system/shutdown`, { method: 'POST', credentials: 'include' });
+                    fetch(`${API_URL}/api/system/shutdown`, {
+                      method: 'POST',
+                      credentials: 'include',
+                    });
                     setOpen(false);
                     // Show overlay or something
                     const overlay = document.createElement('div');
@@ -156,10 +152,15 @@ export default function SettingsPopover() {
                     document.body.appendChild(overlay);
                   }
                 }}
-                className="w-full flex items-center justify-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 py-2.5 text-[13px] font-medium text-red-400 transition-all hover:bg-red-950/40 hover:text-red-300 active:scale-[0.98]"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 py-2.5 text-[13px] font-medium text-red-400 transition-all hover:bg-red-950/40 hover:text-red-300 active:scale-[0.98]"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636"
+                  />
                 </svg>
                 Shutdown Simulation Server
               </button>

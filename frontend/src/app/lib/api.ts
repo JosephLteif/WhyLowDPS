@@ -1,8 +1,9 @@
-const isDesktop = typeof window !== 'undefined' &&
+const isDesktop =
+  typeof window !== 'undefined' &&
   (window.location.protocol === 'tauri:' ||
-   window.location.protocol === 'asset:' ||
-   (window as any).__TAURI_METADATA__ ||
-   process.env.DESKTOP_BUILD);
+    window.location.protocol === 'asset:' ||
+    (window as any).__TAURI_METADATA__ ||
+    process.env.DESKTOP_BUILD);
 export const API_URL = isDesktop ? 'http://localhost:17384' : '';
 
 /** Fetch JSON with consistent error handling. Throws on non-ok responses. */
@@ -17,9 +18,9 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
 }
 
 export async function deleteSim(id: string): Promise<void> {
-  await fetch(`${API_URL}/api/sim/${id}`, { 
+  await fetch(`${API_URL}/api/sim/${id}`, {
     method: 'DELETE',
-    credentials: 'include' as RequestCredentials
+    credentials: 'include' as RequestCredentials,
   });
 }
 
@@ -33,9 +34,9 @@ export async function getHistoryStats(): Promise<HistoryStats> {
 }
 
 export async function clearHistory(): Promise<void> {
-  await fetch(`${API_URL}/api/history/clear`, { 
+  await fetch(`${API_URL}/api/history/clear`, {
     method: 'POST',
-    credentials: 'include' as RequestCredentials
+    credentials: 'include' as RequestCredentials,
   });
 }
 
@@ -53,6 +54,6 @@ export async function updateConfig(config: Partial<AppConfig>): Promise<void> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
-    credentials: 'include' as RequestCredentials
+    credentials: 'include' as RequestCredentials,
   });
 }

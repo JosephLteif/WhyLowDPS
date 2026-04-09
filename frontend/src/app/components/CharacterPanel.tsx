@@ -102,19 +102,20 @@ export default function CharacterPanel({
         ...(activeLoadout.selected_class_talents || []),
         ...(activeLoadout.selected_spec_talents || []),
         ...(activeLoadout.selected_hero_talents || []),
-        ...(activeSpec.talents || [])
+        ...(activeSpec.talents || []),
       ];
 
       for (const t of talents) {
         const tid = t.id || t.talent?.id;
         if (!tid) continue;
-        const node = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]
-          .find(n => n.id === tid || n.entries.some(e => e.id === tid));
+        const node = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes].find(
+          (n) => n.id === tid || n.entries.some((e) => e.id === tid)
+        );
         if (node) {
-          const choiceIndex = node.entries.findIndex(e => e.id === tid);
+          const choiceIndex = node.entries.findIndex((e) => e.id === tid);
           selections.set(node.id, {
             ranks: t.rank ?? node.maxRanks ?? 1,
-            choiceIndex: choiceIndex >= 0 ? choiceIndex : -1
+            choiceIndex: choiceIndex >= 0 ? choiceIndex : -1,
           });
         }
       }
@@ -180,16 +181,21 @@ export default function CharacterPanel({
           href={armoryUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-zinc-300 transition-all hover:bg-white/10 hover:text-white ring-1 ring-white/5 active:scale-95"
+          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-zinc-300 ring-1 ring-white/5 transition-all hover:bg-white/10 hover:text-white active:scale-95"
         >
-          <img src="/icons/blizzard.png" alt="" className="h-3.5 w-3.5 opacity-70" onError={(e) => e.currentTarget.style.display = 'none'} />
+          <img
+            src="/icons/blizzard.png"
+            alt=""
+            className="h-3.5 w-3.5 opacity-70"
+            onError={(e) => (e.currentTarget.style.display = 'none')}
+          />
           Official Armory
         </a>
         <a
           href={`https://www.warcraftlogs.com/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#ca3333]/20 bg-[#ca3333]/10 px-3 py-1.5 text-xs font-bold text-[#ff4d4d] transition-all hover:bg-[#ca3333]/20 hover:text-[#ff6666] ring-1 ring-white/5 active:scale-95"
+          className="flex items-center gap-2 rounded-lg border border-[#ca3333]/20 bg-[#ca3333]/10 px-3 py-1.5 text-xs font-bold text-[#ff4d4d] ring-1 ring-white/5 transition-all hover:bg-[#ca3333]/20 hover:text-[#ff6666] active:scale-95"
         >
           Warcraft Logs
         </a>
@@ -197,7 +203,7 @@ export default function CharacterPanel({
           href={`https://raider.io/characters/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#fb8c00]/20 bg-[#fb8c00]/10 px-3 py-1.5 text-xs font-bold text-[#ffb74d] transition-all hover:bg-[#fb8c00]/20 hover:text-[#ffcc80] ring-1 ring-white/5 active:scale-95"
+          className="flex items-center gap-2 rounded-lg border border-[#fb8c00]/20 bg-[#fb8c00]/10 px-3 py-1.5 text-xs font-bold text-[#ffb74d] ring-1 ring-white/5 transition-all hover:bg-[#fb8c00]/20 hover:text-[#ffcc80] active:scale-95"
         >
           Raider.io
         </a>
@@ -220,13 +226,11 @@ export default function CharacterPanel({
         {/* Gear Panel */}
         <div className="card relative min-h-[600px] overflow-hidden p-6">
           {characterMediaUrl && (
-            <div
-              className="group absolute inset-0 z-10 flex cursor-pointer items-center justify-center"
-            >
+            <div className="group absolute inset-0 z-10 flex cursor-pointer items-center justify-center">
               <img
                 src={characterMediaUrl}
                 alt={name}
-                className="pointer-events-none mx-auto h-[120%] w-auto -translate-y-[10%] object-contain opacity-40 transition-all duration-500 group-hover:scale-105 group-hover:opacity-70 group-hover:brightness-110 mix-blend-lighten"
+                className="pointer-events-none mx-auto h-[120%] w-auto -translate-y-[10%] object-contain opacity-40 mix-blend-lighten transition-all duration-500 group-hover:scale-105 group-hover:opacity-70 group-hover:brightness-110"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = 'none';
                 }}
@@ -342,12 +346,7 @@ function BlizzardGearSlot({
   const enchant = enchantId ? enchantInfoMap[enchantId] : undefined;
   const gem = gemId ? gemInfoMap[gemId] : undefined;
 
-  const whData = getWowheadData(
-    item.bonus_list,
-    item.level?.value,
-    enchantId,
-    gemId
-  );
+  const whData = getWowheadData(item.bonus_list, item.level?.value, enchantId, gemId);
 
   return (
     <div className={`flex items-start gap-3 ${rtl ? 'flex-row-reverse' : ''}`}>
@@ -355,11 +354,7 @@ function BlizzardGearSlot({
         className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105"
         style={{ borderColor: `${qc}44` }}
       >
-        <img
-          src={getIconUrl(icon)}
-          alt=""
-          className="h-full w-full object-cover"
-        />
+        <img src={getIconUrl(icon)} alt="" className="h-full w-full object-cover" />
         <div
           className="absolute inset-0 ring-1 ring-inset ring-white/10"
           style={{ boxShadow: `inset 0 0 10px ${qc}33` }}
@@ -377,13 +372,11 @@ function BlizzardGearSlot({
           {item.name}
         </a>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium text-zinc-500">
-          <span className="text-zinc-400">{item.level?.value} {label}</span>
-          {enchant && (
-            <span className="text-emerald-400/80">· {enchant.name}</span>
-          )}
-          {gem && (
-            <span className="text-sky-400/80">· {gem.name}</span>
-          )}
+          <span className="text-zinc-400">
+            {item.level?.value} {label}
+          </span>
+          {enchant && <span className="text-emerald-400/80">· {enchant.name}</span>}
+          {gem && <span className="text-sky-400/80">· {gem.name}</span>}
         </div>
       </div>
     </div>
@@ -402,10 +395,15 @@ function StatsCard({ statistics }: { statistics: any }) {
     };
 
     const getPercentValue = (stat?: any, rating?: any) => {
-      const p = stat?.value ?? stat?.percent ?? stat?.rating_bonus ?? (typeof stat === 'number' ? stat : null);
+      const p =
+        stat?.value ??
+        stat?.percent ??
+        stat?.rating_bonus ??
+        (typeof stat === 'number' ? stat : null);
       if (p === null) return null;
 
-      const r = rating?.rating_normalized ?? rating?.rating ?? (typeof rating === 'number' ? rating : null);
+      const r =
+        rating?.rating_normalized ?? rating?.rating ?? (typeof rating === 'number' ? rating : null);
       const percStr = p.toFixed(2) + '%';
       return r !== null ? `${Math.round(r)} (${percStr})` : percStr;
     };
@@ -414,8 +412,13 @@ function StatsCard({ statistics }: { statistics: any }) {
     const mainStat = statistics.intellect || statistics.agility || statistics.strength;
 
     // Find the relevant crit/haste/mastery (they are usually mirrored in modern WoW, but we pick the best one)
-    const crit = statistics.melee_crit || statistics.spell_crit || statistics.ranged_crit || statistics.crit;
-    const haste = statistics.melee_haste || statistics.spell_haste || statistics.ranged_haste || statistics.haste;
+    const crit =
+      statistics.melee_crit || statistics.spell_crit || statistics.ranged_crit || statistics.crit;
+    const haste =
+      statistics.melee_haste ||
+      statistics.spell_haste ||
+      statistics.ranged_haste ||
+      statistics.haste;
     const mastery = statistics.mastery;
     const versatility = statistics.versatility_offensive_modifier ?? statistics.versatility;
 
@@ -426,7 +429,10 @@ function StatsCard({ statistics }: { statistics: any }) {
       { label: 'Crit', value: getPercentValue(crit, crit) ?? '0.0%' },
       { label: 'Haste', value: getPercentValue(haste, haste) ?? '0.0%' },
       { label: 'Mastery', value: getPercentValue(mastery, mastery) ?? '0.0%' },
-      { label: 'Versatility', value: getPercentValue(versatility, statistics.versatility) ?? '0.0%' },
+      {
+        label: 'Versatility',
+        value: getPercentValue(versatility, statistics.versatility) ?? '0.0%',
+      },
     ];
 
     return list;
@@ -435,7 +441,9 @@ function StatsCard({ statistics }: { statistics: any }) {
   if (!statistics) {
     return (
       <div className="card p-5 opacity-40">
-        <h1 className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-500">Attributes</h1>
+        <h1 className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-500">
+          Attributes
+        </h1>
         <p className="text-[11px] italic text-zinc-600">Loading attributes...</p>
       </div>
     );
@@ -465,7 +473,7 @@ function TalentsCard({
   activeLoadout,
   talentString,
   specId,
-  tree
+  tree,
 }: {
   activeSpec: any;
   activeLoadout: any;
@@ -479,7 +487,9 @@ function TalentsCard({
     return (
       <div className="card p-5 opacity-40">
         <h1 className="mb-2 text-xs font-bold uppercase tracking-wider text-zinc-500">Talents</h1>
-        <p className="text-[11px] italic text-zinc-600">Talent data unavailable for this character (Privacy settings or 404).</p>
+        <p className="text-[11px] italic text-zinc-600">
+          Talent data unavailable for this character (Privacy settings or 404).
+        </p>
       </div>
     );
   }
@@ -488,25 +498,30 @@ function TalentsCard({
     ...(activeLoadout?.selected_class_talents || []),
     ...(activeLoadout?.selected_spec_talents || []),
     ...(activeLoadout?.selected_hero_talents || []),
-    ...(activeSpec?.talents || [])
+    ...(activeSpec?.talents || []),
   ]
     .map((t: any) => t.tooltip_spell?.name || t.talent?.name)
     .filter(Boolean);
 
   return (
     <div className="card overflow-hidden">
-      <div className="p-5 border-b border-white/5 bg-white/[0.01]">
+      <div className="border-b border-white/5 bg-white/[0.01] p-5">
         <div className="flex items-center justify-between">
           <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
             Specialization: <span className="text-gold">{activeSpec.specialization.name}</span>
           </h1>
-          {loading && <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />}
+          {loading && (
+            <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+          )}
         </div>
       </div>
 
       {talentString ? (
         <div className="bg-black/20 p-2">
-          <div className="scale-100 origin-top transform transition-opacity duration-500" style={{ opacity: loading ? 0.3 : 1 }}>
+          <div
+            className="origin-top scale-100 transform transition-opacity duration-500"
+            style={{ opacity: loading ? 0.3 : 1 }}
+          >
             <TalentTree talentString={talentString} specId={specId ?? undefined} bare />
           </div>
         </div>
@@ -523,7 +538,7 @@ function TalentsCard({
                 </span>
               ))
             ) : (
-              <p className="text-[11px] text-zinc-600 italic">No talent data available</p>
+              <p className="text-[11px] italic text-zinc-600">No talent data available</p>
             )}
           </div>
         </div>

@@ -32,12 +32,12 @@ export default function StatWeightsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="space-y-1">
-         <h2 className="text-xl font-bold tracking-tight text-zinc-100">Stat Weights</h2>
-         <p className="text-sm text-zinc-400">
-           Calculates the marginal DPS value of 1 point of Haste, Crit, Mastery, and Versatility.
-         </p>
+        <h2 className="text-xl font-bold tracking-tight text-zinc-100">Stat Weights</h2>
+        <p className="text-sm text-zinc-400">
+          Calculates the marginal DPS value of 1 point of Haste, Crit, Mastery, and Versatility.
+        </p>
       </div>
-      
+
       <form
         onSubmit={(e) => {
           e.preventDefault();

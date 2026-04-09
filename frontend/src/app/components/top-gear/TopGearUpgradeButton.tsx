@@ -34,7 +34,7 @@ export default function TopGearUpgradeButton({
   const isMenuOpen = upgradeMenuFor === item.uid;
 
   return (
-    <div className="relative shrink-0 flex items-center gap-0.5">
+    <div className="relative flex shrink-0 items-center gap-0.5">
       {onOptimize && (
         <button
           type="button"
@@ -99,13 +99,13 @@ export default function TopGearUpgradeButton({
             </button>
           )}
           {onCatalystConvert && item.upgrade && <div className="my-1 border-t border-border/50" />}
-          
+
           {item.upgrade && (
             <div className="max-h-[300px] overflow-y-auto">
               {loadingUpgrades ? (
-                <div className="px-3 py-2 text-xs text-muted italic">Loading options...</div>
+                <div className="px-3 py-2 text-xs italic text-muted">Loading options...</div>
               ) : upgradeOptions.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-muted italic">No upgrade paths found</div>
+                <div className="px-3 py-2 text-xs italic text-muted">No upgrade paths found</div>
               ) : (
                 upgradeOptions.map((opt) => {
                   const isCurrent = item.bonus_ids.includes(opt.bonus_id);
@@ -121,7 +121,7 @@ export default function TopGearUpgradeButton({
                       }}
                       className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs ${
                         isCurrent
-                          ? 'cursor-default opacity-40 bg-white/5'
+                          ? 'cursor-default bg-white/5 opacity-40'
                           : 'text-gray-300 hover:bg-white/[0.08] hover:text-white'
                       }`}
                     >

@@ -4,9 +4,22 @@ export interface GearItem {
 }
 
 const ALL_SLOTS = [
-  'head', 'neck', 'shoulder', 'back', 'chest', 'wrist',
-  'hands', 'waist', 'legs', 'feet', 'finger1', 'finger2',
-  'trinket1', 'trinket2', 'main_hand', 'off_hand'
+  'head',
+  'neck',
+  'shoulder',
+  'back',
+  'chest',
+  'wrist',
+  'hands',
+  'waist',
+  'legs',
+  'feet',
+  'finger1',
+  'finger2',
+  'trinket1',
+  'trinket2',
+  'main_hand',
+  'off_hand',
 ];
 
 /**

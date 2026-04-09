@@ -15,19 +15,16 @@ pub fn is_minimum_track(upgrade: &str, minimum: &str) -> bool {
 }
 
 pub fn upgrade_track_max() -> u64 {
-    if let Some(tracks) = UPGRADE_TRACKS.get() {
-        let mut counts: HashMap<u64, usize> = HashMap::new();
-        for (_, _, max) in tracks.keys() {
-            *counts.entry(*max).or_default() += 1;
-        }
-        counts
-            .into_iter()
-            .max_by_key(|(_, count)| *count)
-            .map(|(max, _)| max)
-            .unwrap_or(6)
-    } else {
-        6
+    let tracks = UPGRADE_TRACKS.read().unwrap();
+    let mut counts: HashMap<u64, usize> = HashMap::new();
+    for (_, _, max) in tracks.keys() {
+        *counts.entry(*max).or_default() += 1;
     }
+    counts
+        .into_iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(max, _)| max)
+        .unwrap_or(6)
 }
 
 pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>) -> BonusResolved {
@@ -92,8 +89,8 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
 
 
 pub fn squish_ilevel(item_id: u64, ilevel: u64) -> u64 {
-    let eras = match SQUISH_ERAS.get() { Some(e) => e, None => return ilevel };
-    let curves = match ITEM_CURVES.get() { Some(c) => c, None => return ilevel };
+    let eras = SQUISH_ERAS.read().unwrap();
+    let curves = ITEM_CURVES.read().unwrap();
 
     let curve_id = match eras.get(&item_id) { Some(&id) => id, None => return ilevel };
     let points = match curves.get(&curve_id) { Some(p) => p, None => return ilevel };

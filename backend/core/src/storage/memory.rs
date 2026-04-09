@@ -226,4 +226,9 @@ impl JobStorage for MemoryStorage {
         let configs = self.user_configs.lock().unwrap();
         configs.get(&(user_id.to_string(), key.to_string())).cloned()
     }
+
+    fn remove_user_config(&self, user_id: &str, key: &str) {
+        let mut configs = self.user_configs.lock().unwrap();
+        configs.remove(&(user_id.to_string(), key.to_string()));
+    }
 }

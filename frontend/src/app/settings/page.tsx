@@ -164,6 +164,34 @@ export default function SettingsPage() {
                 >
                   {testing ? 'Testing...' : 'Test Connection'}
                 </button>
+
+                <button
+                  onClick={async () => {
+                    if (confirm('Are you sure you want to clear your saved Blizzard API credentials? You will be unable to fetch new character data until they are re-configured.')) {
+                      setSaving(true);
+                      try {
+                        const res = await fetch(`${API_URL}/api/user/config`, { 
+                          method: 'DELETE',
+                          credentials: 'include' 
+                        });
+                        if (res.ok) {
+                          setClientId('');
+                          setHasSecret(false);
+                          setMessage({ type: 'success', text: 'All Blizzard credentials cleared.' });
+                        } else {
+                          setMessage({ type: 'error', text: 'Failed to clear credentials.' });
+                        }
+                      } catch (err) {
+                        setMessage({ type: 'error', text: 'Network error.' });
+                      }
+                      setSaving(false);
+                    }
+                  }}
+                  disabled={saving || (!clientId && !hasSecret)}
+                  className="rounded-lg bg-red-500/10 border border-red-500/20 px-6 py-2.5 text-sm font-semibold text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                >
+                  Clear All Credentials
+                </button>
              </div>
 
              {message && (

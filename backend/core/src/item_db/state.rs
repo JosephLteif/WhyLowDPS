@@ -1,6 +1,7 @@
 use crate::types::{GameItem, EnchantData, BonusData};
 use std::collections::{HashMap, HashSet};
-use once_cell::sync::OnceCell;
+use once_cell::sync::Lazy;
+use std::sync::RwLock;
 use serde_json::Value;
 
 // ---- Upgrade Tracks (ranked) ----
@@ -15,47 +16,47 @@ pub const TRACK_RANKS: &[&str] = &[
     "Myth",
 ];
 
+use std::sync::Arc;
+
 // ---- Static Data Stores ----
 
-pub static ITEMS: OnceCell<HashMap<u64, GameItem>> = OnceCell::new();
-pub static ENCHANTS: OnceCell<HashMap<u64, EnchantData>> = OnceCell::new();
-pub static ENCHANTS_BY_ITEM_ID: OnceCell<HashMap<u64, EnchantData>> = OnceCell::new();
-pub static BONUSES: OnceCell<HashMap<u64, BonusData>> = OnceCell::new();
-pub static UPGRADE_MAX: OnceCell<HashMap<u64, u64>> = OnceCell::new();
-pub static INSTANCES: OnceCell<Vec<Value>> = OnceCell::new();
-pub static DROPS_BY_ENCOUNTER: OnceCell<HashMap<i64, Vec<GameItem>>> = OnceCell::new();
+pub static ITEMS: Lazy<RwLock<Arc<HashMap<u64, GameItem>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static ENCHANTS: Lazy<RwLock<Arc<HashMap<u64, EnchantData>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static ENCHANTS_BY_ITEM_ID: Lazy<RwLock<Arc<HashMap<u64, EnchantData>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static BONUSES: Lazy<RwLock<Arc<HashMap<u64, BonusData>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static UPGRADE_MAX: Lazy<RwLock<Arc<HashMap<u64, u64>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static INSTANCES: Lazy<RwLock<Vec<Value>>> = Lazy::new(|| RwLock::new(Vec::new()));
+pub static DROPS_BY_ENCOUNTER: Lazy<RwLock<Arc<HashMap<i64, Vec<GameItem>>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 
 pub type UpgradeTrackKey = (String, u64, u64);
 pub type UpgradeTrackValue = (u64, u64, u64);
-pub static UPGRADE_TRACKS: OnceCell<HashMap<UpgradeTrackKey, UpgradeTrackValue>> = OnceCell::new();
+pub static UPGRADE_TRACKS: Lazy<RwLock<Arc<HashMap<UpgradeTrackKey, UpgradeTrackValue>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 
 /// Per-step upgrade costs: bonus_id → HashMap<currency_id, amount>
-pub static UPGRADE_STEP_COSTS: OnceCell<HashMap<u64, HashMap<u64, u64>>> = OnceCell::new();
+pub static UPGRADE_STEP_COSTS: Lazy<RwLock<Arc<HashMap<u64, HashMap<u64, u64>>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 /// Squish era → curve ID mapping.
-pub static SQUISH_ERAS: OnceCell<HashMap<u64, u64>> = OnceCell::new();
+pub static SQUISH_ERAS: Lazy<RwLock<Arc<HashMap<u64, u64>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 /// Item curves: curve_id → sorted Vec<(old_ilevel, new_ilevel)>.
-pub static ITEM_CURVES: OnceCell<HashMap<u64, Vec<(u64, u64)>>> = OnceCell::new();
+pub static ITEM_CURVES: Lazy<RwLock<Arc<HashMap<u64, Vec<(u64, u64)>>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 /// Current season ID (highest seasonId found in upgrade bonuses).
-pub static CURRENT_SEASON_ID: OnceCell<u64> = OnceCell::new();
+pub static CURRENT_SEASON_ID: Lazy<RwLock<u64>> = Lazy::new(|| RwLock::new(0));
 /// Currency metadata: currency_id → (name, icon)
-pub static CURRENCY_INFO: OnceCell<HashMap<u64, (String, String)>> = OnceCell::new();
+pub static CURRENCY_INFO: Lazy<RwLock<Arc<HashMap<u64, (String, String)>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 /// Item limit categories: bonus_id → (category_id, max_quantity)
-pub static ITEM_LIMIT_CATS: OnceCell<HashMap<u64, (u64, u64)>> = OnceCell::new();
-pub static SEASON_CONFIG: OnceCell<Value> = OnceCell::new();
-pub static TALENT_TREES: OnceCell<HashMap<u64, Value>> = OnceCell::new();
+pub static ITEM_LIMIT_CATS: Lazy<RwLock<Arc<HashMap<u64, (u64, u64)>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static SEASON_CONFIG: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_json::json!({})));
+pub static TALENT_TREES: Lazy<RwLock<Arc<HashMap<u64, Value>>>> = Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 
-
-/// Catalyst item info for a specific class + slot combination.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct CatalystTierItem {
     pub item_id: u64,
     pub name: String,
     pub icon: String,
-    /// Whether this item is part of a tier set (has itemSetId).
     pub has_set: bool,
 }
 
 /// Catalyst conversion data for the current season.
+#[derive(Default)]
 pub struct CatalystData {
     /// Maps (wow_class_id, inventory_type) → tier item info.
     pub tier_items: HashMap<(u64, u64), CatalystTierItem>,
@@ -65,7 +66,7 @@ pub struct CatalystData {
     pub catalyst_currency_id: u64,
 }
 
-pub static CATALYST: OnceCell<CatalystData> = OnceCell::new();
+pub static CATALYST: Lazy<RwLock<Arc<CatalystData>>> = Lazy::new(|| RwLock::new(Arc::new(CatalystData::default())));
 
 pub static EMPTY_SEASON_CONFIG: once_cell::sync::Lazy<Value> =
     once_cell::sync::Lazy::new(|| serde_json::json!({}));

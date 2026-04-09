@@ -98,7 +98,7 @@ pub async fn bnet_login(
     }
 
     let auth_url = format!(
-        "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile&state={}",
+        "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}",
         client_id,
         urlencoding::encode(&state.redirect_uri),
         uuid::Uuid::new_v4()
@@ -271,7 +271,16 @@ pub async fn get_me(req: HttpRequest, state: web::Data<Arc<BlizzardAuthState>>) 
     }
 }
 
-pub async fn bnet_logout() -> HttpResponse {
+pub async fn bnet_logout(
+    req: HttpRequest,
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+) -> HttpResponse {
+    if let Some(claims) = verify_jwt(&req, &state.jwt_secret) {
+        store.remove_user_config(&claims.sub, "blizzard_client_id");
+        store.remove_user_config(&claims.sub, "blizzard_client_secret");
+    }
+
     let same_site = if cfg!(feature = "desktop") { SameSite::None } else { SameSite::Lax };
     let secure = cfg!(feature = "desktop");
 
@@ -283,8 +292,20 @@ pub async fn bnet_logout() -> HttpResponse {
         .max_age(actix_web::cookie::time::Duration::seconds(0))
         .finish();
 
+    let temp_id = Cookie::build("temp_bnet_id", "")
+        .path("/")
+        .max_age(actix_web::cookie::time::Duration::seconds(0))
+        .finish();
+        
+    let temp_sec = Cookie::build("temp_bnet_secret", "")
+        .path("/")
+        .max_age(actix_web::cookie::time::Duration::seconds(0))
+        .finish();
+
     HttpResponse::Ok()
         .cookie(cookie)
+        .cookie(temp_id)
+        .cookie(temp_sec)
         .json(json!({"status": "logged_out"}))
 }
 
@@ -431,6 +452,22 @@ pub async fn set_user_config(
     store.set_user_config(&claims.sub, &body.key, &body.value);
 
     HttpResponse::Ok().json(json!({"status": "updated"}))
+}
+
+pub async fn clear_user_configs(
+    req: HttpRequest,
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+) -> HttpResponse {
+    let claims = match verify_jwt(&req, &state.jwt_secret) {
+        Some(c) => c,
+        None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
+    };
+
+    store.remove_user_config(&claims.sub, "blizzard_client_id");
+    store.remove_user_config(&claims.sub, "blizzard_client_secret");
+
+    HttpResponse::Ok().json(json!({"status": "cleared"}))
 }
 
 #[derive(Deserialize)]

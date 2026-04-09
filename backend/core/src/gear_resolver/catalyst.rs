@@ -193,7 +193,7 @@ pub fn generate_catalyst_alternatives(slots: &mut HashMap<String, SlotResolution
                 continue;
             }
 
-            let catalyst_item = build_catalyst_item(source, tier_info, slot_key);
+            let catalyst_item = build_catalyst_item(source, &tier_info, slot_key);
 
             if let Some(&existing_ilevel) = existing.get(&catalyst_item.item_id) {
                 if existing_ilevel >= catalyst_item.ilevel {

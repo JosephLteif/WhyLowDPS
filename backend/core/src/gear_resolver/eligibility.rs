@@ -37,7 +37,7 @@ pub fn dedup_key(item: &RawParsedItem) -> String {
 /// Enrich a raw item with display info from the item DB.
 pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
     let info = item_db::get_item_info(item.item_id, Some(&item.bonus_ids));
-    let resolved = item_db::resolve_bonuses(&item.bonus_ids, item_db::bonuses());
+    let resolved = item_db::resolve_bonuses(&item.bonus_ids, &item_db::bonuses());
 
     let season_id = resolved.season_id.unwrap_or(0);
 

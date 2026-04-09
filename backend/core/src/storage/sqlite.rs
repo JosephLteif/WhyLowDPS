@@ -448,4 +448,13 @@ impl JobStorage for SqliteStorage {
         )
         .ok()
     }
+
+    fn remove_user_config(&self, user_id: &str, key: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM user_configs WHERE user_id = ?1 AND key = ?2",
+            params![user_id, key],
+        )
+        .ok();
+    }
 }

@@ -547,4 +547,16 @@ impl JobStorage for PostgresStorage {
             })
         }).flatten()
     }
+
+    fn remove_user_config(&self, user_id: &str, key: &str) {
+        let (user_id, key) = (user_id.to_string(), key.to_string());
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute(
+                    "DELETE FROM user_configs WHERE user_id = $1 AND key = $2",
+                    &[&user_id, &key],
+                ).await.ok();
+            });
+        });
+    }
 }

@@ -191,7 +191,7 @@ pub(super) async fn catalyst_convert(
                 .json(json!({"detail": "No catalyst tier item for this class/slot"}))
         }
     };
-    let catalyst_item = gear_resolver::build_catalyst_item(&req.item, tier_info, &req.slot);
+    let catalyst_item = gear_resolver::build_catalyst_item(&req.item, &tier_info, &req.slot);
     HttpResponse::Ok().json(catalyst_item)
 }
 

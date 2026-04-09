@@ -4,7 +4,7 @@ use super::state::*;
 use super::bonuses::upgrade_track_max;
 
 pub fn encounter_upgrade_level(encounter_id: i64) -> Option<u64> {
-    let cfg = SEASON_CONFIG.get()?;
+    let cfg = super::season_cfg();
     let raid_diffs = cfg.get("raidDifficulties")?.as_array()?;
     for diff in raid_diffs {
         let encounters = diff.get("encounters")?.as_array()?;
@@ -18,7 +18,7 @@ pub fn encounter_upgrade_level(encounter_id: i64) -> Option<u64> {
 }
 
 pub fn difficulty_track_name(difficulty: &str) -> Option<String> {
-    let cfg = SEASON_CONFIG.get()?;
+    let cfg = super::season_cfg();
     let raid_diffs = cfg.get("raidDifficulties")?.as_array()?;
     for diff in raid_diffs {
         if diff.get("name").and_then(|n| n.as_str()) == Some(difficulty) {
@@ -29,21 +29,21 @@ pub fn difficulty_track_name(difficulty: &str) -> Option<String> {
 }
 
 pub fn dungeon_normal_ilvl() -> u64 {
-    SEASON_CONFIG.get()
-        .and_then(|c| c.get("dungeonNormalIlvl"))
+    super::season_cfg()
+        .get("dungeonNormalIlvl")
         .and_then(|v| v.as_u64())
         .unwrap_or(554)
 }
 
 pub fn dungeon_normal_quality() -> u64 {
-    SEASON_CONFIG.get()
-        .and_then(|c| c.get("dungeonNormalQuality"))
+    super::season_cfg()
+        .get("dungeonNormalQuality")
         .and_then(|v| v.as_u64())
         .unwrap_or(3)
 }
 
 pub fn get_upgrade_tracks() -> Value {
-    let tracks = match UPGRADE_TRACKS.get() { Some(t) => t, None => return json!([]) };
+    let tracks = UPGRADE_TRACKS.read().unwrap();
     let mut result = Vec::new();
     let mut tracks_vec: Vec<_> = tracks.iter().collect();
     tracks_vec.sort_by(|((n1, l1, m1), _), ((n2, l2, m2), _)| {
@@ -64,7 +64,7 @@ pub fn get_upgrade_tracks() -> Value {
 }
 
 pub fn upgrade_bonus_ids_to_max(bonus_ids: &[u64]) -> Vec<u64> {
-    let max_map = match UPGRADE_MAX.get() { Some(m) => m, None => return bonus_ids.to_vec() };
+    let max_map = UPGRADE_MAX.read().unwrap();
 
 
     let mut result = Vec::new();
@@ -90,8 +90,8 @@ pub struct UpgradeOption {
 }
 
 pub fn get_upgrade_options(bonus_ids: &[u64]) -> Vec<UpgradeOption> {
-    let bonuses = match BONUSES.get() { Some(b) => b, None => return vec![] };
-    let tracks = match UPGRADE_TRACKS.get() { Some(t) => t, None => return vec![] };
+    let bonuses = BONUSES.read().unwrap();
+    let tracks = UPGRADE_TRACKS.read().unwrap();
     let max_level = upgrade_track_max();
 
     let mut current_track: Option<(String, u64, u64)> = None;
@@ -119,7 +119,8 @@ pub fn get_upgrade_options(bonus_ids: &[u64]) -> Vec<UpgradeOption> {
         if let Some(&(ilvl, bonus_id, quality)) = tracks.get(&(track_name.clone(), l, max_level)) {
             // Calculate cumulative costs from current_level to l
             let mut cumulative_costs = HashMap::new();
-            if let Some(costs_map) = UPGRADE_STEP_COSTS.get() {
+            {
+                let costs_map = UPGRADE_STEP_COSTS.read().unwrap();
                 for bid in bonuses.keys() {
                     if let Some(b) = bonuses.get(bid) {
                         if let Some(u) = &b.upgrade {
@@ -151,8 +152,8 @@ pub fn get_upgrade_options(bonus_ids: &[u64]) -> Vec<UpgradeOption> {
 
 
 pub fn get_upgrade_cost_between(from_bonus_id: u64, to_bonus_id: u64) -> HashMap<u64, u64> {
-    let bonuses = match BONUSES.get() { Some(b) => b, None => return HashMap::new() };
-    let costs_map = match UPGRADE_STEP_COSTS.get() { Some(m) => m, None => return HashMap::new() };
+    let bonuses = BONUSES.read().unwrap();
+    let costs_map = UPGRADE_STEP_COSTS.read().unwrap();
 
     let mut from_info = None;
     let mut to_info = None;
@@ -191,7 +192,7 @@ pub fn get_upgrade_cost_between(from_bonus_id: u64, to_bonus_id: u64) -> HashMap
 }
 
 pub fn get_currency_info(currency_id: u64) -> Option<(String, String)> {
-    CURRENCY_INFO.get()?.get(&currency_id).cloned()
+    CURRENCY_INFO.read().unwrap().get(&currency_id).cloned()
 }
 
 pub fn upgrade_simc_input(input: &str) -> String {

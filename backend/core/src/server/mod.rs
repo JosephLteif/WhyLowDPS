@@ -5,6 +5,8 @@ mod blizzard;
 #[cfg(feature = "web")]
 mod game_data_handlers;
 #[cfg(feature = "web")]
+mod data_sync;
+#[cfg(feature = "web")]
 mod helpers;
 #[cfg(feature = "web")]
 mod job_handlers;
@@ -211,10 +213,15 @@ pub async fn start_with_storage_bind(
         let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI")
             .unwrap_or_else(|_| "http://localhost:3000/api/auth/bnet/callback".to_string());
         let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
+        
+        let client_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
+        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
 
         let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
-            None, None, bnet_redirect, jwt_secret,
+            client_id, client_secret, bnet_redirect, jwt_secret,
         )));
+
+        let sync_state = web::Data::new(Arc::new(data_sync::DataSyncState::new()));
 
         // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>> 
         // to the proxy handlers so они can check for JWT sub.
@@ -250,7 +257,10 @@ pub async fn start_with_storage_bind(
                 .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters))
                 .route("/api/user/config", web::get().to(auth_handlers::get_user_configs))
                 .route("/api/user/config", web::post().to(auth_handlers::set_user_config))
-                .route("/api/user/blizzard/test", web::post().to(auth_handlers::test_blizzard_creds));
+                .route("/api/user/config", web::delete().to(auth_handlers::clear_user_configs))
+                .route("/api/user/blizzard/test", web::post().to(auth_handlers::test_blizzard_creds))
+                .route("/api/data/status", web::get().to(data_sync::get_sync_status))
+                .route("/api/data/sync", web::post().to(data_sync::trigger_sync));
 
             #[cfg(feature = "desktop")]
             {
@@ -431,6 +441,10 @@ pub async fn start_with_storage_bind(
             {
                 app = app.route("/api/system-stats", web::get().to(system_stats));
             }
+
+            let data_dir_inner = data.clone();
+            app = app.app_data(web::Data::new(data_dir_inner));
+            app = app.app_data(sync_state.clone());
 
             // Serve cached assets from data directory
             if let Some(ref dir) = data {

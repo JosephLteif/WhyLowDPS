@@ -1,10 +1,5 @@
-//! Single source of truth for all WoW class, spec, and gear slot constants.
-//!
-//! Every module in the codebase imports from here. Nothing else defines these.
-
-use regex::Regex;
-use serde::{Deserialize, Serialize};
-use once_cell::sync::OnceCell;
+use std::sync::{Arc, RwLock};
+use once_cell::sync::Lazy;
 
 
 // ---- Gear Slots ----
@@ -121,7 +116,12 @@ pub struct ClassDef {
     pub specs: Vec<SpecDef>,
 }
 
-pub static CLASSES: OnceCell<Vec<ClassDef>> = OnceCell::new();
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+
+// ---- Logic Constants ----
+
+pub static CLASSES: Lazy<RwLock<Arc<Vec<ClassDef>>>> = Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
 
 
 // ---- Lookup Helpers ----
@@ -130,7 +130,7 @@ pub static CLASSES: OnceCell<Vec<ClassDef>> = OnceCell::new();
 fn find_class(name: &str) -> Option<ClassDef> {
     let n = name.to_lowercase();
     CLASSES
-        .get()?
+        .read().unwrap()
         .iter()
         .find(|c| c.name == n || c.aliases.iter().any(|a| a == &n))
         .cloned()
@@ -140,9 +140,8 @@ fn find_class(name: &str) -> Option<ClassDef> {
 
 pub fn can_dual_wield(spec: &str) -> bool {
     CLASSES
-        .get()
-        .map(|cs| cs.iter().flat_map(|c| c.specs.iter()).any(|s| s.name == spec && s.can_dual_wield))
-        .unwrap_or(false)
+        .read().unwrap()
+        .iter().flat_map(|c| c.specs.iter()).any(|s| s.name == spec && s.can_dual_wield)
 }
 
 
@@ -228,7 +227,7 @@ pub fn inv_type_to_slots(inv_type: u64, spec: &str) -> Vec<&'static str> {
 /// Map a numeric spec ID to the SimC spec name (e.g., 254 → "marksmanship").
 pub fn spec_id_to_name(spec_id: u64) -> Option<String> {
     CLASSES
-        .get()?
+        .read().unwrap()
         .iter()
         .flat_map(|c| c.specs.iter())
         .find(|s| s.id == spec_id)
@@ -270,7 +269,7 @@ pub fn class_wow_id(class_name: &str) -> Option<u64> {
 
 /// Detect the character class from a simc input string.
 pub fn detect_class(simc_input: &str) -> Option<String> {
-    let classes = CLASSES.get()?;
+    let classes = CLASSES.read().unwrap();
     let names: Vec<String> = classes
         .iter()
         .flat_map(|c| std::iter::once(c.name.clone()).chain(c.aliases.iter().cloned()))

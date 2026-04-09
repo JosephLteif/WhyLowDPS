@@ -42,51 +42,38 @@ pub fn load(data_dir: &Path) {
 // ---- Accessors ----
 
 use crate::types::{class_data, ItemInfo, GameItem, EnchantData, BonusData};
+use std::sync::Arc;
 
-// ---- Accessors ----
-
-use once_cell::sync::Lazy;
-
-static EMPTY_ITEMS: Lazy<HashMap<u64, GameItem>> = Lazy::new(HashMap::new);
-static EMPTY_ENCHANTS: Lazy<HashMap<u64, EnchantData>> = Lazy::new(HashMap::new);
-static EMPTY_BONUSES: Lazy<HashMap<u64, BonusData>> = Lazy::new(HashMap::new);
-static EMPTY_INSTANCES: Lazy<Vec<Value>> = Lazy::new(Vec::new);
-static EMPTY_DROPS: Lazy<HashMap<i64, Vec<GameItem>>> = Lazy::new(HashMap::new);
-
-pub fn items() -> &'static HashMap<u64, GameItem> {
-    state::ITEMS.get().unwrap_or(&EMPTY_ITEMS)
+pub fn items() -> Arc<HashMap<u64, GameItem>> {
+    state::ITEMS.read().unwrap().clone()
 }
 
-pub fn enchants() -> &'static HashMap<u64, EnchantData> {
-    state::ENCHANTS.get().unwrap_or(&EMPTY_ENCHANTS)
+pub fn enchants() -> Arc<HashMap<u64, EnchantData>> {
+    state::ENCHANTS.read().unwrap().clone()
 }
 
-pub fn enchants_by_item_id() -> &'static HashMap<u64, EnchantData> {
-    state::ENCHANTS_BY_ITEM_ID.get().unwrap_or(&EMPTY_ENCHANTS)
+pub fn enchants_by_item_id() -> Arc<HashMap<u64, EnchantData>> {
+    state::ENCHANTS_BY_ITEM_ID.read().unwrap().clone()
 }
 
-pub fn bonuses() -> &'static HashMap<u64, BonusData> {
-    state::BONUSES.get().unwrap_or(&EMPTY_BONUSES)
+pub fn bonuses() -> Arc<HashMap<u64, BonusData>> {
+    state::BONUSES.read().unwrap().clone()
 }
 
-pub fn instances() -> &'static Vec<Value> {
-    state::INSTANCES.get().unwrap_or(&EMPTY_INSTANCES)
+pub fn instances() -> Vec<Value> {
+    state::INSTANCES.read().unwrap().clone()
 }
 
-pub fn drops_by_encounter() -> &'static HashMap<i64, Vec<GameItem>> {
-    state::DROPS_BY_ENCOUNTER.get().unwrap_or(&EMPTY_DROPS)
+pub fn drops_by_encounter() -> Arc<HashMap<i64, Vec<GameItem>>> {
+    state::DROPS_BY_ENCOUNTER.read().unwrap().clone()
 }
 
-
-pub fn talent_tree(spec_id: u64) -> Option<&'static Value> {
-    state::TALENT_TREES.get()?.get(&spec_id)
+pub fn talent_tree(spec_id: u64) -> Option<Value> {
+    state::TALENT_TREES.read().unwrap().get(&spec_id).cloned()
 }
 
-pub fn talent_trees_for_class(spec_id: u64) -> Vec<&'static Value> {
-    let trees: &HashMap<u64, Value> = match state::TALENT_TREES.get() {
-        Some(t) => t,
-        None => return Vec::new(),
-    };
+pub fn talent_trees_for_class(spec_id: u64) -> Vec<Value> {
+    let trees = state::TALENT_TREES.read().unwrap();
     let class_id = match trees.get(&spec_id) {
         Some(t) => t.get("classId").and_then(|v| v.as_u64()),
         None => return Vec::new(),
@@ -98,56 +85,58 @@ pub fn talent_trees_for_class(spec_id: u64) -> Vec<&'static Value> {
     trees
         .values()
         .filter(|t| t.get("classId").and_then(|v| v.as_u64()) == Some(class_id))
+        .cloned()
         .collect()
 }
 
-pub fn catalyst_tier_item(class_id: u64, inv_type: u64) -> Option<&'static CatalystTierItem> {
-    let cat = state::CATALYST.get()?;
+pub fn catalyst_tier_item(class_id: u64, inv_type: u64) -> Option<CatalystTierItem> {
+    let cat = state::CATALYST.read().unwrap();
     let inv = if inv_type == 20 { 5 } else { inv_type };
-    cat.tier_items.get(&(class_id, inv))
+    cat.tier_items.get(&(class_id, inv)).cloned()
 }
 
 pub fn is_catalyst_tier_item(item_id: u64) -> bool {
-    state::CATALYST.get().map(|c| c.tier_item_ids.contains(&item_id)).unwrap_or(false)
+    state::CATALYST.read().unwrap().tier_item_ids.contains(&item_id)
 }
 
 pub fn filter_ilevel_bonus_ids(bonus_ids: &[u64]) -> Vec<u64> {
-    let bonuses: &HashMap<u64, BonusData> = match state::BONUSES.get() { Some(b) => b, None => return vec![] };
+    let bonuses = bonuses();
     bonus_ids.iter().filter(|&&bid| bonuses.get(&bid).and_then(|b| b.ilevel.as_ref()).and_then(|il| il.amount).is_some()).copied().collect()
 }
 
 pub fn current_season_id() -> u64 {
-    state::CURRENT_SEASON_ID.get().copied().unwrap_or(0)
+    *state::CURRENT_SEASON_ID.read().unwrap()
 }
 
 pub fn catalyst_currency_id() -> u64 {
-    state::CATALYST.get().map(|c| c.catalyst_currency_id).unwrap_or(3378)
+    state::CATALYST.read().unwrap().catalyst_currency_id
 }
 
 pub fn tier_set_bonus_id() -> u64 {
-    state::SEASON_CONFIG.get()
-        .and_then(|c| c.get("tierSetBonusId"))
+    season_cfg()
+        .get("tierSetBonusId")
         .and_then(|v| v.as_u64())
         .unwrap_or(20)
 }
 
-pub fn upgrade_tracks() -> Option<&'static HashMap<state::UpgradeTrackKey, state::UpgradeTrackValue>> {
-
-    state::UPGRADE_TRACKS.get()
+pub fn upgrade_tracks() -> Arc<HashMap<state::UpgradeTrackKey, state::UpgradeTrackValue>> {
+    state::UPGRADE_TRACKS.read().unwrap().clone()
 }
 
-pub fn season_cfg() -> &'static Value {
-    state::SEASON_CONFIG.get().unwrap_or(&state::EMPTY_SEASON_CONFIG)
+pub fn season_cfg() -> Value {
+    state::SEASON_CONFIG.read().unwrap().clone()
 }
 
 // Re-exports from bonuses
 pub use bonuses::{resolve_bonuses, track_rank, is_minimum_track, upgrade_track_max};
 
+pub use loader::hydrate_runtime_metadata;
+
 
 // ---- Item Lookups ----
 
 pub fn get_item_limit_categories(bonus_ids: &[u64]) -> HashMap<u64, u64> {
-    let cats: &HashMap<u64, (u64, u64)> = match state::ITEM_LIMIT_CATS.get() { Some(c) => c, None => return HashMap::new() };
+    let cats = state::ITEM_LIMIT_CATS.read().unwrap();
     let mut result: HashMap<u64, u64> = HashMap::new();
     for bid in bonus_ids {
         if let Some(&(cat_id, qty)) = cats.get(bid) { result.insert(cat_id, qty); }
@@ -161,8 +150,8 @@ pub fn get_inventory_type(item_id: u64) -> Option<i64> {
 
 
 
-pub(crate) fn get_raw_item(item_id: u64) -> Option<&'static GameItem> {
-    items().get(&item_id)
+pub(crate) fn get_raw_item(item_id: u64) -> Option<GameItem> {
+    items().get(&item_id).cloned()
 }
 
 
@@ -189,7 +178,7 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
 
     let mut bonus_set_ilevel = false;
     if let Some(bids) = bonus_ids {
-        let resolved = bonuses::resolve_bonuses(bids, bonuses());
+        let resolved = bonuses::resolve_bonuses(bids, &bonuses());
         if let Some(q) = resolved.quality { quality = q; }
         if let Some(i) = resolved.ilevel { ilevel = i; bonus_set_ilevel = true; }
 
@@ -230,14 +219,15 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
 
 
 pub fn get_enchant_info(enchant_id: u64) -> Option<Value> {
-    let enchant = enchants().get(&enchant_id)?;
+    let enchants = enchants();
+    let enchant = enchants.get(&enchant_id)?;
     let name = enchant.item_name.as_ref().or(enchant.display_name.as_ref()).cloned().unwrap_or_default();
     Some(serde_json::json!({ "enchant_id": enchant_id, "name": name }))
 }
 
 pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
     let mask = 1u64 << inv_type;
-    let enchants_map: &HashMap<u64, EnchantData> = match state::ENCHANTS.get() { Some(m) => m, None => return vec![] };
+    let enchants_map = enchants();
     
     enchants_map.values().filter(|e| {
 

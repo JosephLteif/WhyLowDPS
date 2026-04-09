@@ -70,4 +70,5 @@ pub trait JobStorage: Send + Sync {
     // User configuration storage
     fn set_user_config(&self, user_id: &str, key: &str, value: &str);
     fn get_user_config(&self, user_id: &str, key: &str) -> Option<String>;
+    fn remove_user_config(&self, user_id: &str, key: &str);
 }

@@ -99,16 +99,10 @@ jobs:
           cd backend/resources/data-full
           curl -sL -o metadata.json https://www.raidbots.com/static/data/live/metadata.json
           # Download all required data files listed in metadata
-          node -e "const m=require('./metadata.json'); m.files.forEach(f=>console.log(f))" | xargs -I {} curl -sL -o "{}" "https://www.raidbots.com/static/data/live/{}"
+          node -e "const m=require('./metadata.json'); m.files.forEach(f=>console.log(f))" | xargs -I {} -P 8 curl -sL -o "{}" "https://www.raidbots.com/static/data/live/{}"
           # Copy local season config and supplemental data
           cp ../../core/season-config.json ./season-config.json 2>/dev/null || true
-          curl -sL -o blizzard-season.json https://simhammer.com/api/blizzard/season || true
-          curl -sL -o blizzard-instances.json https://simhammer.com/api/blizzard/instances || true
-
-      - name: Compact game data
-        shell: bash
-        run: |
-          mkdir -p backend/resources/data
+          cd ../../..
           node backend/scripts/compact-data.js backend/resources/data-full backend/resources/data
           touch backend/resources/data/.keep
 

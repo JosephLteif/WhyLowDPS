@@ -5,7 +5,7 @@ use regex::Regex;
 
 
 pub fn list_gems() -> Vec<Value> {
-    let items_map = match ITEMS.get() { Some(m) => m, None => return vec![] };
+    let items_map = ITEMS.read().unwrap();
     items_map.values()
         .filter(|v| {
             // Gem criteria: itemClass=3, quality >= 3
@@ -24,7 +24,7 @@ pub fn list_gems() -> Vec<Value> {
 }
 
 pub fn get_gem_info(gem_id: u64) -> Option<Value> {
-    let item = ITEMS.get()?.get(&gem_id)?;
+    let item = ITEMS.read().unwrap().get(&gem_id)?.clone();
     Some(json!({
         "gem_id": gem_id,
         "name": item.name,

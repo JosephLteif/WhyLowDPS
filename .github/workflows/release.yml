@@ -41,7 +41,7 @@ jobs:
       - name: install dependencies
         run: npm install && npm install --prefix frontend
 
-      - name: prepare resources (download simc and fetch data)
+      - name: prepare resources (download simc)
         shell: bash
         run: |
           mkdir -p backend/resources/simc
@@ -49,20 +49,32 @@ jobs:
           
           # Download SimC for Windows
           if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
-            curl -L https://github.com/simulationcraft/simc/releases/download/archived/nightly/simc-1100-01-win64.zip -o simc.zip
-            7z x simc.zip -obackend/resources/simc/
-            mv backend/resources/simc/simc-1100-01-win64/simc.exe backend/resources/simc/
+            echo "Downloading SimC for Windows..."
+            curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/thewarwithin/Windows%20Nightly%20x64.zip" -o simc_win.zip
+            unzip simc_win.zip -d backend/resources/simc/
+            # The zip contains another .7z file usually, but nightly.link often zips the artifact.
+            # If it's a 7z inside the zip:
+            find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
+            # Move the actual exe to the root of the simc folder
+            find backend/resources/simc -name "simc.exe" -exec mv {} backend/resources/simc/ \;
           fi
           
           # Download SimC for Linux
           if [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]]; then
-            curl -L https://github.com/simulationcraft/simc/releases/download/archived/nightly/simc-1100-01-linux-x86_64.tar.gz -o simc.tar.gz
-            tar -xzf simc.tar.gz -C backend/resources/simc/ --strip-components=1
+            echo "Downloading SimC for Linux..."
+            curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/thewarwithin/Linux%20Nightly%20x64.zip" -o simc_linux.zip
+            unzip simc_linux.zip -d backend/resources/simc/
+            find backend/resources/simc -name "*.tar.gz" -exec tar -xzf {} -C backend/resources/simc/ --strip-components=1 \;
+            # Ensure the binary is executable
+            chmod +x backend/resources/simc/simc || true
           fi
 
-          # Ensure data directory isn't empty for Tauri glob
+          # Ensure directories exist for Tauri glob
           touch backend/resources/data/.keep
           touch backend/resources/simc/.keep
+          
+          echo "SimC preparation complete."
+          ls -R backend/resources/simc
 
       - name: build frontend
         env:

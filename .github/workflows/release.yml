@@ -38,8 +38,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libnm-dev libcloudproviders-dev librsvg2-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev liblibrsvg2-dev
 
-      - name: install frontend dependencies
-        run: npm install
+      - name: install dependencies
+        run: npm install && npm install --prefix frontend
 
       - name: build frontend
         env:

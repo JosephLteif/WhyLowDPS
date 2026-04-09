@@ -12,14 +12,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'windows-latest'
+          - platform: 'windows'
+            os: 'windows-latest'
             args: '--config desktop/src-tauri/tauri.conf.json'
-          - platform: 'macos-latest'
+          - platform: 'linux'
+            os: 'ubuntu-22.04'
             args: '--config desktop/src-tauri/tauri.conf.json'
-          - platform: 'ubuntu-22.04'
-            args: '--config desktop/src-tauri/tauri.conf.json'
+          # Add macos here if needed later
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +34,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libnm-dev libcloudproviders-dev librsvg2-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev liblibrsvg2-dev
@@ -41,41 +42,77 @@ jobs:
       - name: install dependencies
         run: npm install && npm install --prefix frontend
 
-      - name: prepare resources (download simc)
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # -- SimC Preparation --
+      - name: Resolve SimC version
+        id: simc-version
+        shell: bash
+        run: |
+          HASH=$(git ls-remote https://github.com/simulationcraft/simc.git HEAD | cut -f1)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Cache SimC binary
+        id: simc-cache
+        uses: actions/cache@v4
+        with:
+          path: backend/resources/simc
+          key: ${{ runner.os }}-simc-${{ steps.simc-version.outputs.hash }}
+
+      - name: Download SimC binary (Windows)
+        if: steps.simc-cache.outputs.cache-hit != 'true' && matrix.platform == 'windows'
         shell: bash
         run: |
           mkdir -p backend/resources/simc
-          mkdir -p backend/resources/data
-          
-          # Download SimC for Windows
-          if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
-            echo "Downloading SimC for Windows..."
-            curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/thewarwithin/Windows%20Nightly%20x64.zip" -o simc_win.zip
-            unzip simc_win.zip -d backend/resources/simc/
-            # The zip contains another .7z file usually, but nightly.link often zips the artifact.
-            # If it's a 7z inside the zip:
-            find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
-            # Move the actual exe to the root of the simc folder
-            find backend/resources/simc -name "simc.exe" -exec mv {} backend/resources/simc/ \;
-          fi
-          
-          # Download SimC for Linux
-          if [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]]; then
-            echo "Downloading SimC for Linux..."
-            curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/thewarwithin/Linux%20Nightly%20x64.zip" -o simc_linux.zip
-            unzip simc_linux.zip -d backend/resources/simc/
-            find backend/resources/simc -name "*.tar.gz" -exec tar -xzf {} -C backend/resources/simc/ --strip-components=1 \;
-            # Ensure the binary is executable
-            chmod +x backend/resources/simc/simc || true
-          fi
-
-          # Ensure directories exist for Tauri glob
-          touch backend/resources/data/.keep
+          curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/master/simc-nightly-win64-midnight.zip" -o simc_win.zip
+          unzip simc_win.zip -d backend/resources/simc/
+          find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
+          find backend/resources/simc -name "simc.exe" -exec mv {} backend/resources/simc/ \;
           touch backend/resources/simc/.keep
-          
-          echo "SimC preparation complete."
-          ls -R backend/resources/simc
 
+      - name: Build SimC from source (Linux)
+        if: steps.simc-cache.outputs.cache-hit != 'true' && matrix.platform == 'linux'
+        shell: bash
+        run: |
+          mkdir -p backend/resources/simc
+          git clone --depth 1 https://github.com/simulationcraft/simc.git /tmp/simc-src
+          cd /tmp/simc-src/engine
+          make -j$(nproc) OPTS="-O2" LTO=1 optimized
+          cp simc ${{ github.workspace }}/backend/resources/simc/simc
+          chmod +x ${{ github.workspace }}/backend/resources/simc/simc
+          rm -rf /tmp/simc-src
+          touch ${{ github.workspace }}/backend/resources/simc/.keep
+
+      # -- Game Data Preparation --
+      - name: Fetch game data
+        shell: bash
+        run: |
+          mkdir -p backend/resources/data-full
+          cd backend/resources/data-full
+          curl -sL -o metadata.json https://www.raidbots.com/static/data/live/metadata.json
+          # Download all required data files listed in metadata
+          node -e "const m=require('./metadata.json'); m.files.forEach(f=>console.log(f))" | xargs -I {} curl -sL -o "{}" "https://www.raidbots.com/static/data/live/{}"
+          # Copy local season config and supplemental data
+          cp ../../core/season-config.json ./season-config.json 2>/dev/null || true
+          curl -sL -o blizzard-season.json https://simhammer.com/api/blizzard/season || true
+          curl -sL -o blizzard-instances.json https://simhammer.com/api/blizzard/instances || true
+
+      - name: Compact game data
+        shell: bash
+        run: |
+          mkdir -p backend/resources/data
+          node backend/scripts/compact-data.js backend/resources/data-full backend/resources/data
+          touch backend/resources/data/.keep
+
+      # -- Build and Release --
       - name: build frontend
         env:
           DESKTOP_BUILD: true

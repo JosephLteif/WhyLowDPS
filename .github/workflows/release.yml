@@ -42,7 +42,9 @@ jobs:
         run: npm install
 
       - name: build frontend
-        run: cross-env DESKTOP_BUILD=true npm run build --prefix frontend
+        env:
+          DESKTOP_BUILD: true
+        run: npm run build --prefix frontend
 
       - uses: tauri-apps/tauri-action@v0
         env:

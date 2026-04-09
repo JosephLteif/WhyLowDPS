@@ -53,7 +53,7 @@ export function useTopGearState({
       setUpgradeMenuFor(item.uid);
       setLoadingUpgrades(true);
       try {
-        const res = await fetch(`${API_URL}/api/upgrade-options?bonus_ids=${item.bonus_ids.join(',')}`);
+        const res = await fetch(`${API_URL}/api/upgrade-options?bonus_ids=${item.bonus_ids.join(',')}`, { credentials: 'include' });
         const data = await res.json();
         setUpgradeOptions(data.options || []);
       } catch {

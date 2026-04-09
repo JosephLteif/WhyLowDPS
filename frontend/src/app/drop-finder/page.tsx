@@ -55,15 +55,15 @@ function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
   const specParam = useMemo(() => [...activeSpecs].sort().join(','), [activeSpecs]);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/season-config`)
+    fetch(`${API_URL}/api/season-config`, { credentials: 'include' })
       .then((r) => r.json())
       .then(setSeasonConfig)
       .catch(() => {});
-    fetch(`${API_URL}/api/instances`)
+    fetch(`${API_URL}/api/instances`, { credentials: 'include' })
       .then((r) => r.json())
       .then(setInstances)
       .catch(() => {});
-    fetch(`${API_URL}/api/upgrade-tracks`)
+    fetch(`${API_URL}/api/upgrade-tracks`, { credentials: 'include' })
       .then((r) => r.json())
       .then(setUpgradeTracks)
       .catch(() => {});
@@ -125,7 +125,7 @@ function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
     const url = selectedId.startsWith('type:')
       ? `${API_URL}/api/instances/type/${selectedId.slice(5)}/drops`
       : `${API_URL}/api/instances/${selectedId}/drops`;
-    fetch(`${url}${qs ? `?${qs}` : ''}`)
+    fetch(`${url}${qs ? `?${qs}` : ''}`, { credentials: 'include' })
       .then((r) => r.json())
       .then((data) => setDrops(data.detail ? null : data))
       .catch(() => setDrops(null))

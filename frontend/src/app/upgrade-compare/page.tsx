@@ -68,6 +68,7 @@ function useUpgradeData(simcInput: string) {
       try {
         const res = await fetch(`${API_URL}/api/upgrade-compare/prepare`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ simc_input: simcInput }),
         });
@@ -128,6 +129,7 @@ export default function UpgradeComparePage() {
       try {
         const res = await fetch(`${API_URL}/api/upgrade-compare/combo-count`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             simc_input: simcInput,

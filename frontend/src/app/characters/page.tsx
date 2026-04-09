@@ -27,7 +27,7 @@ export default function CharactersPage() {
   const fetchCharacters = useCallback((refresh = false) => {
     if (!loading && user) {
       setFetching(true);
-      fetch(`${API_URL}/api/bnet/user/characters${refresh ? '?refresh=true' : ''}`, { credentials: 'same-origin' })
+      fetch(`${API_URL}/api/bnet/user/characters${refresh ? '?refresh=true' : ''}`, { credentials: 'include' })
         .then(async (res) => {
           if (!res.ok) {
             const body = await res.text();

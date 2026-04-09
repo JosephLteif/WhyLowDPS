@@ -116,6 +116,7 @@ export default function TopGearItemSelector({
     try {
       const res = await fetch(`${API_URL}/api/gear/catalyst-convert`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ class_name: resolved.character.class_name, slot: item.slot, item }),
       });

@@ -4,6 +4,12 @@ pub mod postgres;
 #[cfg(feature = "web")]
 pub mod sqlite;
 
+pub use memory::MemoryStorage;
+#[cfg(feature = "web")]
+pub use sqlite::SqliteStorage;
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresStorage;
+
 use crate::models::{Job, JobStatus, JobSummary};
 use once_cell::sync::Lazy;
 

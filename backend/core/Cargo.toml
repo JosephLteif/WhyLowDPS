@@ -5,14 +5,11 @@ edition = "2021"
 
 [features]
 default = ["postgres", "web"]
-desktop = []
-web = ["dep:rusqlite"]
+desktop = ["dep:rusqlite"]
+web = ["dep:rusqlite", "dep:actix-web", "dep:actix-cors", "dep:actix-files"]
 postgres = ["dep:tokio-postgres"]
 
 [dependencies]
-actix-web = "4"
-actix-cors = "0.7"
-actix-files = "0.6"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
@@ -26,6 +23,10 @@ sysinfo = "0.33"
 jsonwebtoken = "9"
 urlencoding = "2.1"
 thiserror = "2.0.18"
+
+actix-web = { version = "4", optional = true }
+actix-cors = { version = "0.7", optional = true }
+actix-files = { version = "0.6", optional = true }
 
 [dependencies.rusqlite]
 version = "0.31"

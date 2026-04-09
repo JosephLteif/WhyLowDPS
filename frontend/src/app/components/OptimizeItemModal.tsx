@@ -131,8 +131,8 @@ export default function OptimizeItemModal({
     setLoading(true);
     try {
       const [enchantsRes, gemsRes] = await Promise.all([
-        fetch(`${API_URL}/api/gear/enchant-options?slot=${item.slot}`),
-        fetch(`${API_URL}/api/gear/gem-options`),
+        fetch(`${API_URL}/api/gear/enchant-options?slot=${item.slot}`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/gear/gem-options`, { credentials: 'include' }),
       ]);
       if (enchantsRes.ok) {
         setRawEnchants(await enchantsRes.json());

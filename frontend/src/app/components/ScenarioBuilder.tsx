@@ -11,7 +11,7 @@ export default function ScenarioBuilder() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/config`)
+    fetch(`${API_URL}/api/config`, { credentials: 'include' })
       .then((r) => r.json())
       .then((data) => setMaxScenarios(data.max_scenarios ?? 10))
       .catch(() => setMaxScenarios(10))

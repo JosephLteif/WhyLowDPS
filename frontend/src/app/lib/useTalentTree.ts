@@ -86,7 +86,7 @@ export function useTalentTree(specId: number | null): TalentTreeData | null {
     }
 
     let cancelled = false;
-    fetch(`${API_URL}/api/talent-tree/${specId}`)
+    fetch(`${API_URL}/api/talent-tree/${specId}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();

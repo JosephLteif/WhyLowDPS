@@ -46,7 +46,7 @@ function useFaction(realm: string | undefined, name: string | undefined, region:
         );
         if (region) url.searchParams.set('region', region.toLowerCase());
 
-        const res = await fetch(url.toString());
+        const res = await fetch(url.toString(), { credentials: 'include' });
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled && data.faction) {

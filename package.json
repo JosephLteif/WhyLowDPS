@@ -2,10 +2,16 @@
   "name": "whylowdps",
   "version": "2.2.0",
   "private": true,
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "cross-env": "^7"
+  },
   "scripts": {
     "web": "docker compose up --build",
     "web:dev": "docker compose -f docker-compose.dev.yml up --build",
     "backend:dev": "cd backend && cargo watch -w core/src -w server/src -w core/Cargo.toml -w server/Cargo.toml -w Cargo.toml -x 'run -p whylowdps-server'",
-    "kill": "node scripts/kill-ports.js"
+    "kill": "node scripts/kill-ports.js",
+    "desktop:dev": "cross-env DESKTOP_BUILD=true CARGO_TARGET_DIR=target_desktop tauri dev --config desktop/src-tauri/tauri.conf.json",
+    "desktop:build": "cross-env DESKTOP_BUILD=true CARGO_TARGET_DIR=target_desktop tauri build --config desktop/src-tauri/tauri.conf.json"
   }
 }

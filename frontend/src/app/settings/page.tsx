@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
+import { API_URL } from '../lib/api';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -21,7 +22,7 @@ export default function SettingsPage() {
       return;
     }
 
-    fetch('/api/user/config')
+    fetch(`${API_URL}/api/user/config`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
         setClientId(data.blizzard_client_id || '');
@@ -37,10 +38,11 @@ export default function SettingsPage() {
   const handleSave = async (key: 'blizzard_client_id' | 'blizzard_client_secret', value: string) => {
     setSaving(true);
     try {
-      const res = await fetch('/api/user/config', {
+      const res = await fetch(`${API_URL}/api/user/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value }),
+        credentials: 'include',
       });
 
       if (res.ok) {
@@ -59,10 +61,11 @@ export default function SettingsPage() {
     setTesting(true);
     setMessage(null);
     try {
-      const res = await fetch('/api/user/blizzard/test', {
+      const res = await fetch(`${API_URL}/api/user/blizzard/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+        credentials: 'include',
       });
 
       const data = await res.json();

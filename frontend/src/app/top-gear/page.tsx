@@ -53,6 +53,7 @@ export default function TopGearPage() {
         try {
           const res = await fetch(`${API_URL}/api/gear/resolve`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ simc_input: simcInput, max_upgrade: maxUpgrade, catalyst }),
           });
@@ -157,6 +158,7 @@ export default function TopGearPage() {
       try {
         const res = await fetch(`${API_URL}/api/top-gear/combo-count`, {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             simc_input: buildSubmitInput(),

@@ -78,6 +78,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
         configs.map(async (config) => {
           const res = await fetch(`${API_URL}${endpoint}`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ...sharedPayload,

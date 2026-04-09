@@ -11,8 +11,7 @@ use crate::storage::JobStorage;
 
 
 
-#[cfg(not(feature = "desktop"))]
-pub(super) async fn list_sims_filtered(
+pub(super) async fn list_sims(
     query: web::Query<ListSimsQuery>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {

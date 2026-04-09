@@ -23,7 +23,7 @@ export default function SettingsPopover() {
 
   useEffect(() => {
     // Fetch system info from backend for thread management
-    fetch(`${API_URL}/health`)
+    fetch(`${API_URL}/health`, { credentials: 'include' })
       .then((res) => res.json())
       .then((data) => {
         if (data.threads) {
@@ -133,7 +133,7 @@ export default function SettingsPopover() {
               <button
                 onClick={() => {
                   if (confirm('Are you sure you want to shut down the simulation server?')) {
-                    fetch(`${API_URL}/api/system/shutdown`, { method: 'POST' });
+                    fetch(`${API_URL}/api/system/shutdown`, { method: 'POST', credentials: 'include' });
                     setOpen(false);
                     // Show overlay or something
                     const overlay = document.createElement('div');

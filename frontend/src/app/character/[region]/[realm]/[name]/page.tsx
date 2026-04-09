@@ -6,6 +6,10 @@ import { API_URL } from '../../../../lib/api';
 import CharacterPanel from '../../../../components/CharacterPanel';
 import { generateSimcString } from '../../../../lib/simc-generator';
 
+export function generateStaticParams() {
+  return [{ region: 'us', realm: 'realm', name: 'name' }];
+}
+
 export default function CharacterPage() {
   const params = useParams();
   const region = (params.region as string) || 'us';
@@ -25,11 +29,11 @@ export default function CharacterPage() {
     try {
       const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
       const [profileRes, equipRes, statsRes, specRes, profRes] = await Promise.all([
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/profile${query}`),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/equipment${query}`),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/statistics${query}`),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/specializations${query}`),
-        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/professions${query}`),
+        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/profile${query}`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/equipment${query}`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/statistics${query}`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/specializations${query}`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/professions${query}`, { credentials: 'include' }),
       ]);
 
       if (!profileRes.ok) {

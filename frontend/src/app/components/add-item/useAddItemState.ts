@@ -48,9 +48,9 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
     const fetchInitial = async () => {
       try {
         const [instRes, seasonRes, tracksRes] = await Promise.all([
-          fetch(`${API_URL}/api/instances`),
-          fetch(`${API_URL}/api/season-config`),
-          fetch(`${API_URL}/api/upgrade-tracks`),
+          fetch(`${API_URL}/api/instances`, { credentials: 'include' }),
+          fetch(`${API_URL}/api/season-config`, { credentials: 'include' }),
+          fetch(`${API_URL}/api/upgrade-tracks`, { credentials: 'include' }),
         ]);
         const instData = await instRes.json();
         const seasonData = await seasonRes.json();
@@ -77,8 +77,8 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
         let data: Record<string, ExternalItem[]> = {};
         if (selectedInstance === 0) {
           const [raidRes, dungRes] = await Promise.all([
-            fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`),
-            fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`),
+            fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, { credentials: 'include' }),
+            fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, { credentials: 'include' }),
           ]);
           const raidData = await raidRes.json();
           const dungData = await dungRes.json();
@@ -86,7 +86,7 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
             data[slot] = [...(raidData[slot] || []), ...(dungData[slot] || [])];
           }
         } else {
-          const res = await fetch(`${API_URL}/api/instances/${selectedInstance}/drops?${query.toString()}`);
+          const res = await fetch(`${API_URL}/api/instances/${selectedInstance}/drops?${query.toString()}`, { credentials: 'include' });
           data = await res.json();
         }
         setDrops(data);
@@ -108,8 +108,8 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
         if (className) query.set('class_name', className);
         if (spec) query.set('spec', spec);
         const [raidRes, dungRes] = await Promise.all([
-          fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`),
-          fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`),
+          fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, { credentials: 'include' }),
+          fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, { credentials: 'include' }),
         ]);
         const raidData = await raidRes.json();
         const dungData = await dungRes.json();

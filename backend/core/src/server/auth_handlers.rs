@@ -203,11 +203,14 @@ pub async fn bnet_callback(
         }
     };
 
+    let same_site = if cfg!(feature = "desktop") { SameSite::None } else { SameSite::Lax };
+    let secure = cfg!(feature = "desktop");
+
     let cookie = Cookie::build("bnet_session", token)
         .path("/")
         .http_only(true)
-        .secure(false) // Set to false for local dev without HTTPS
-        .same_site(SameSite::Lax)
+        .secure(secure)
+        .same_site(same_site)
         .max_age(actix_web::cookie::time::Duration::days(30))
         .finish();
 
@@ -269,11 +272,14 @@ pub async fn get_me(req: HttpRequest, state: web::Data<Arc<BlizzardAuthState>>) 
 }
 
 pub async fn bnet_logout() -> HttpResponse {
+    let same_site = if cfg!(feature = "desktop") { SameSite::None } else { SameSite::Lax };
+    let secure = cfg!(feature = "desktop");
+
     let cookie = Cookie::build("bnet_session", "")
         .path("/")
         .http_only(true)
-        .secure(false)
-        .same_site(SameSite::Lax)
+        .secure(secure)
+        .same_site(same_site)
         .max_age(actix_web::cookie::time::Duration::seconds(0))
         .finish();
 

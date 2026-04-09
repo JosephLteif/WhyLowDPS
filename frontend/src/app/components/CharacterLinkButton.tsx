@@ -33,8 +33,8 @@ export default function CharacterLinkButton({
     if (isOpen && characters.length === 0) {
       setLoading(true);
       Promise.all([
-        fetch(`${API_URL}/api/bnet/user/characters`).then(r => r.json().catch(() => ({ characters: [] }))),
-        fetch(`${API_URL}/api/history/characters`).then(r => r.json().catch(() => []))
+        fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'include' }).then(r => r.json().catch(() => ({ characters: [] }))),
+        fetch(`${API_URL}/api/history/characters`, { credentials: 'include' }).then(r => r.json().catch(() => []))
       ]).then(([bnetResponse, historyData]) => {
         const bnetList = Array.isArray(bnetResponse) ? bnetResponse : (bnetResponse?.characters || []);
         const merged: Character[] = bnetList.map((c: any) => ({ ...c, source: 'bnet' }));
@@ -62,6 +62,7 @@ export default function CharacterLinkButton({
     try {
       await fetch(`${API_URL}/api/sim/${jobId}/link`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: char.name,
@@ -81,6 +82,7 @@ export default function CharacterLinkButton({
     try {
       await fetch(`${API_URL}/api/sim/${jobId}/link`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: null,

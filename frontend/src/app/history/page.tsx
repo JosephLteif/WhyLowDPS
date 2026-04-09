@@ -333,8 +333,8 @@ export default function HistoryPage() {
 
     // Fetch account characters and historical characters
     Promise.all([
-      fetch(`${API_URL}/api/bnet/user/characters`).then(r => r.json().catch(() => ({ characters: [] }))),
-      fetch(`${API_URL}/api/history/characters`).then(r => r.json().catch(() => []))
+      fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'include' }).then(r => r.json().catch(() => ({ characters: [] }))),
+      fetch(`${API_URL}/api/history/characters`, { credentials: 'include' }).then(r => r.json().catch(() => []))
     ]).then(([bnetResponse, historyData]) => {
       const bnetList = Array.isArray(bnetResponse) ? bnetResponse : (bnetResponse?.characters || []);
       const merged: any[] = bnetList.map((c: any) => ({ ...c, source: 'bnet' }));
@@ -357,7 +357,7 @@ export default function HistoryPage() {
       }
       
       const [simsRes, statsData] = await Promise.all([
-        fetch(url),
+        fetch(url, { credentials: 'include' }),
         getHistoryStats()
       ]);
       const data = simsRes.ok ? await simsRes.json() : [];

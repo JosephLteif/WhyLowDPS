@@ -85,7 +85,7 @@ export function useItemInfo(queries: ItemQuery[]): Record<number, ItemInfo> {
             params.set('bonus_ids', q.bonus_ids.join(','));
           }
           const url = `${API_URL}/api/item-info/${q.item_id}?${params}`;
-          const res = await fetch(url);
+          const res = await fetch(url, { credentials: 'include' });
           if (!res.ok || cancelled) return;
           const info: ItemInfo = await res.json();
           if (cancelled) return;
@@ -147,7 +147,7 @@ export function useEnchantInfo(enchantIds: number[]): Record<number, EnchantInfo
     for (const id of toFetch) {
       (async () => {
         try {
-          const res = await fetch(`${API_URL}/api/enchant-info/${id}`);
+          const res = await fetch(`${API_URL}/api/enchant-info/${id}`, { credentials: 'include' });
           if (!res.ok || cancelled) return;
           const info: EnchantInfo = await res.json();
           if (cancelled || !info.name) return;
@@ -209,7 +209,7 @@ export function useGemInfo(gemIds: number[]): Record<number, GemInfo> {
     for (const id of toFetch) {
       (async () => {
         try {
-          const res = await fetch(`${API_URL}/api/gem-info/${id}`);
+          const res = await fetch(`${API_URL}/api/gem-info/${id}`, { credentials: 'include' });
           if (!res.ok || cancelled) return;
           const info: GemInfo = await res.json();
           if (cancelled || !info.name) return;

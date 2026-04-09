@@ -1,35 +1,50 @@
+#[cfg(feature = "web")]
 pub mod auth_handlers;
+#[cfg(feature = "web")]
 mod blizzard;
+#[cfg(feature = "web")]
 mod game_data_handlers;
+#[cfg(feature = "web")]
 mod helpers;
+#[cfg(feature = "web")]
 mod job_handlers;
+#[cfg(feature = "web")]
 mod sim_handlers;
+#[cfg(feature = "web")]
 mod types;
+#[cfg(feature = "web")]
 mod upgrade_compare;
 
+#[cfg(feature = "web")]
 use actix_cors::Cors;
+#[cfg(feature = "web")]
 use actix_files::NamedFile;
+#[cfg(feature = "web")]
 use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
+#[cfg(feature = "web")]
 use serde::Deserialize;
+#[cfg(feature = "web")]
 use serde_json::json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", feature = "web"))]
 use std::sync::Mutex;
 
+#[cfg(feature = "web")]
 use crate::log_buffer::LogBuffer;
 use crate::storage::{self, JobStorage};
+#[cfg(feature = "web")]
 use types::FrontendDir;
 
 // ---------- System handlers ----------
 
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", feature = "web"))]
 /// Shared system info state, refreshed in background for live CPU readings.
 struct SystemStats {
     sys: sysinfo::System,
 }
 
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", feature = "web"))]
 impl SystemStats {
     fn new() -> Self {
         let mut sys = sysinfo::System::new();
@@ -50,6 +65,7 @@ impl SystemStats {
     }
 }
 
+#[cfg(feature = "web")]
 async fn get_config(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
     HttpResponse::Ok().json(json!({
         "max_scenarios": *storage::MAX_SCENARIOS,
@@ -57,11 +73,13 @@ async fn get_config(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
     }))
 }
 
+#[cfg(feature = "web")]
 #[derive(Deserialize)]
 struct UpdateConfig {
     max_jobs: Option<usize>,
 }
 
+#[cfg(feature = "web")]
 async fn update_config(
     body: web::Json<UpdateConfig>,
     store: web::Data<Arc<dyn JobStorage>>,
@@ -72,6 +90,7 @@ async fn update_config(
     HttpResponse::Ok().json(json!({"status": "updated"}))
 }
 
+#[cfg(feature = "web")]
 async fn health_check() -> HttpResponse {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
@@ -83,7 +102,7 @@ async fn health_check() -> HttpResponse {
     }))
 }
 
-#[cfg(feature = "desktop")]
+#[cfg(all(feature = "desktop", feature = "web"))]
 async fn system_stats(stats: web::Data<Arc<Mutex<SystemStats>>>) -> HttpResponse {
     let mut s = stats.lock().unwrap();
     s.refresh();
@@ -93,6 +112,7 @@ async fn system_stats(stats: web::Data<Arc<Mutex<SystemStats>>>) -> HttpResponse
     }))
 }
 
+#[cfg(feature = "web")]
 /// SPA fallback: serve the appropriate HTML file for client-side routes
 async fn spa_fallback(
     req: HttpRequest,
@@ -174,274 +194,284 @@ pub async fn start_with_storage_bind(
     frontend_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
 ) -> u16 {
-    let store_data = web::Data::new(storage);
-    let simc_data = web::Data::new(simc_path);
-    let log_data = web::Data::new(Arc::new(LogBuffer::new()));
-    #[cfg(feature = "desktop")]
-    let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
-    let frontend = frontend_dir.clone();
-    let data = data_dir.clone();
-
-    let bind_addr = format!("{}:{}", bind_host, port);
-
-    let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
-
-    let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI")
-        .unwrap_or_else(|_| "http://localhost:3000/api/auth/bnet/callback".to_string());
-    let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
-
-    let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
-        None, None, bnet_redirect, jwt_secret,
-    )));
-
-    // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>> 
-    // to the proxy handlers so они can check for JWT sub.
-    let auth_state_opt_data = web::Data::new(Some(auth_state.get_ref().clone()));
-
-    let server = HttpServer::new(move || {
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
-            .max_age(3600);
-
-        let mut app = App::new()
-            .wrap(cors)
-            .app_data(store_data.clone())
-            .app_data(simc_data.clone())
-            .app_data(log_data.clone())
-            .app_data(blizzard_state.clone())
-            .app_data(auth_state.clone())
-            .app_data(auth_state_opt_data.clone())
-            .route("/api/auth/bnet/login", web::get().to(auth_handlers::bnet_login))
-            .route("/api/auth/bnet/callback", web::get().to(auth_handlers::bnet_callback))
-            .route("/api/auth/bnet/credentials-status", web::get().to(auth_handlers::get_credentials_status))
-            .route("/api/auth/me", web::get().to(auth_handlers::get_me))
-            .route("/api/auth/logout", web::post().to(auth_handlers::bnet_logout))
-            .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters))
-            .route("/api/user/config", web::get().to(auth_handlers::get_user_configs))
-            .route("/api/user/config", web::post().to(auth_handlers::set_user_config))
-            .route("/api/user/blizzard/test", web::post().to(auth_handlers::test_blizzard_creds));
-
+    #[cfg(feature = "web")]
+    {
+        let store_data = web::Data::new(storage);
+        let simc_data = web::Data::new(simc_path);
+        let log_data = web::Data::new(Arc::new(LogBuffer::new()));
         #[cfg(feature = "desktop")]
-        {
-            app = app.app_data(stats_data.clone());
-        }
+        let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
+        let frontend = frontend_dir.clone();
+        let data = data_dir.clone();
 
-        // Simulation routes
-        app = app
-            .route("/api/sim", web::post().to(sim_handlers::create_sim))
-            .route(
-                "/api/top-gear/sim",
-                web::post().to(sim_handlers::create_top_gear_sim),
-            )
-            .route(
-                "/api/top-gear/combo-count",
-                web::post().to(sim_handlers::get_top_gear_combo_count),
-            )
-            .route(
-                "/api/droptimizer/sim",
-                web::post().to(sim_handlers::create_droptimizer_sim),
-            )
-            // Upgrade compare routes
-            .route(
-                "/api/upgrade-compare/prepare",
-                web::post().to(upgrade_compare::get_upgrade_compare_prepare),
-            )
-            .route(
-                "/api/upgrade-compare/sim",
-                web::post().to(upgrade_compare::create_upgrade_compare_sim),
-            )
-            .route(
-                "/api/upgrade-compare/combo-count",
-                web::post().to(upgrade_compare::get_upgrade_compare_combo_count),
-            )
-            .route(
-                "/api/upgrade-options",
-                web::get().to(upgrade_compare::get_upgrade_options_handler),
-            )
-            // Job management routes
-            .route("/api/sim/{id}", web::get().to(job_handlers::get_sim_status))
-            .route(
-                "/api/sim/{id}/logs",
-                web::get().to(job_handlers::get_sim_logs),
-            )
-            .route(
-                "/api/sim/{id}/cancel",
-                web::post().to(job_handlers::cancel_sim),
-            )
-            .route(
-                "/api/sim/{id}/link",
-                web::post().to(job_handlers::link_sim),
-            )
-            .route(
-                "/api/sim/{id}/input",
-                web::get().to(job_handlers::get_sim_input),
-            )
-            .route(
-                "/api/sim/{id}/raw",
-                web::get().to(job_handlers::get_sim_raw),
-            )
-            .route(
-                "/api/sim/{id}/html",
-                web::get().to(job_handlers::get_sim_html),
-            )
-            .route(
-                "/api/sim/{id}/output.txt",
-                web::get().to(job_handlers::get_sim_text_output),
-            )
-            .route(
-                "/api/sim/{id}/data.csv",
-                web::get().to(job_handlers::get_sim_csv),
-            )
-            .route("/api/sim/{id}", web::delete().to(job_handlers::delete_sim))
-            .route(
-                "/api/history/stats",
-                web::get().to(job_handlers::get_history_stats),
-            )
-            .route(
-                "/api/history/characters",
-                web::get().to(job_handlers::get_history_characters),
-            )
-            .route(
-                "/api/history/clear",
-                web::post().to(job_handlers::clear_history),
-            )
-            // Blizzard proxy routes (only active if configured)
-            .route(
-                "/api/blizzard/character/{realm}/{name}/profile",
-                web::get().to(blizzard::proxy_character_profile),
-            )
-            .route(
-                "/api/blizzard/character/{realm}/{name}/equipment",
-                web::get().to(blizzard::proxy_character_equipment),
-            )
-            .route(
-                "/api/blizzard/character/{realm}/{name}/statistics",
-                web::get().to(blizzard::proxy_character_statistics),
-            )
-            .route(
-                "/api/blizzard/character/{realm}/{name}/specializations",
-                web::get().to(blizzard::proxy_character_specializations),
-            )
-            .route(
-                "/api/blizzard/character/{realm}/{name}/media/{type}",
-                web::get().to(blizzard::proxy_character_media),
-            )
-            .route(
-                "/api/blizzard/character/{realm}/{name}/professions",
-                web::get().to(blizzard::proxy_character_professions),
-            )
-            // Game data routes
-            .route(
-                "/api/item-info/{id}",
-                web::get().to(game_data_handlers::get_item_info),
-            )
-            .route(
-                "/api/item-info/batch",
-                web::post().to(game_data_handlers::get_item_info_batch),
-            )
-            .route(
-                "/api/enchant-info/{id}",
-                web::get().to(game_data_handlers::get_enchant_info),
-            )
-            .route(
-                "/api/gem-info/{id}",
-                web::get().to(game_data_handlers::get_gem_info),
-            )
-            .route(
-                "/api/max-upgrade-ilevels",
-                web::post().to(game_data_handlers::get_max_upgrade_ilevels),
-            )
-            .route(
-                "/api/gear/enchant-options",
-                web::get().to(game_data_handlers::list_enchant_options),
-            )
-            .route(
-                "/api/gear/gem-options",
-                web::get().to(game_data_handlers::list_gem_options),
-            )
-            .route(
-                "/api/upgrade-tracks",
-                web::get().to(game_data_handlers::list_upgrade_tracks),
-            )
-            .route(
-                "/api/gear/resolve",
-                web::post().to(game_data_handlers::resolve_gear),
-            )
-            .route(
-                "/api/gear/catalyst-convert",
-                web::post().to(game_data_handlers::catalyst_convert),
-            )
-            .route(
-                "/api/season-config",
-                web::get().to(game_data_handlers::get_season_config),
-            )
-            .route(
-                "/api/instances",
-                web::get().to(game_data_handlers::list_instances),
-            )
-            .route(
-                "/api/instances/type/{type}/drops",
-                web::get().to(game_data_handlers::get_drops_by_type),
-            )
-            .route(
-                "/api/instances/{id}/drops",
-                web::get().to(game_data_handlers::get_instance_drops),
-            )
-            .route(
-                "/api/talent-tree/{specId}",
-                web::get().to(game_data_handlers::get_talent_tree),
-            )
-            // System routes
-            .route("/api/config", web::get().to(get_config))
-            .route("/api/config", web::post().to(update_config))
-            .route("/health", web::get().to(health_check));
+        let bind_addr = format!("{}:{}", bind_host, port);
 
-        #[cfg(feature = "desktop")]
-        {
+        let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
+
+        let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI")
+            .unwrap_or_else(|_| "http://localhost:3000/api/auth/bnet/callback".to_string());
+        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
+
+        let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
+            None, None, bnet_redirect, jwt_secret,
+        )));
+
+        // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>> 
+        // to the proxy handlers so они can check for JWT sub.
+        let auth_state_opt_data = web::Data::new(Some(auth_state.get_ref().clone()));
+
+        let server = HttpServer::new(move || {
+            let cors = Cors::default()
+                .allowed_origin_fn(|origin, _req_head| {
+                    let origin_str = origin.to_str().unwrap_or("");
+                    origin_str == "http://localhost:3000" || 
+                    origin_str == "tauri://localhost" ||
+                    origin_str.starts_with("http://localhost:") ||
+                    origin_str.starts_with("https://localhost:")
+                })
+                .allow_any_method()
+                .allow_any_header()
+                .supports_credentials()
+                .max_age(3600);
+
+            let mut app = App::new()
+                .wrap(cors)
+                .app_data(store_data.clone())
+                .app_data(simc_data.clone())
+                .app_data(log_data.clone())
+                .app_data(blizzard_state.clone())
+                .app_data(auth_state.clone())
+                .app_data(auth_state_opt_data.clone())
+                .route("/api/auth/bnet/login", web::get().to(auth_handlers::bnet_login))
+                .route("/api/auth/bnet/callback", web::get().to(auth_handlers::bnet_callback))
+                .route("/api/auth/bnet/credentials-status", web::get().to(auth_handlers::get_credentials_status))
+                .route("/api/auth/me", web::get().to(auth_handlers::get_me))
+                .route("/api/auth/logout", web::post().to(auth_handlers::bnet_logout))
+                .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters))
+                .route("/api/user/config", web::get().to(auth_handlers::get_user_configs))
+                .route("/api/user/config", web::post().to(auth_handlers::set_user_config))
+                .route("/api/user/blizzard/test", web::post().to(auth_handlers::test_blizzard_creds));
+
+            #[cfg(feature = "desktop")]
+            {
+                app = app.app_data(stats_data.clone());
+            }
+
+            // Simulation routes
             app = app
+                .route("/api/sim", web::post().to(sim_handlers::create_sim))
+                .route(
+                    "/api/top-gear/sim",
+                    web::post().to(sim_handlers::create_top_gear_sim),
+                )
+                .route(
+                    "/api/top-gear/combo-count",
+                    web::post().to(sim_handlers::get_top_gear_combo_count),
+                )
+                .route(
+                    "/api/droptimizer/sim",
+                    web::post().to(sim_handlers::create_droptimizer_sim),
+                )
+                // Upgrade compare routes
+                .route(
+                    "/api/upgrade-compare/prepare",
+                    web::post().to(upgrade_compare::get_upgrade_compare_prepare),
+                )
+                .route(
+                    "/api/upgrade-compare/sim",
+                    web::post().to(upgrade_compare::create_upgrade_compare_sim),
+                )
+                .route(
+                    "/api/upgrade-compare/combo-count",
+                    web::post().to(upgrade_compare::get_upgrade_compare_combo_count),
+                )
+                .route(
+                    "/api/upgrade-options",
+                    web::get().to(upgrade_compare::get_upgrade_options_handler),
+                )
+                // Job management routes
+                .route("/api/sim/{id}", web::get().to(job_handlers::get_sim_status))
+                .route(
+                    "/api/sim/{id}/logs",
+                    web::get().to(job_handlers::get_sim_logs),
+                )
+                .route(
+                    "/api/sim/{id}/cancel",
+                    web::post().to(job_handlers::cancel_sim),
+                )
+                .route(
+                    "/api/sim/{id}/link",
+                    web::post().to(job_handlers::link_sim),
+                )
+                .route(
+                    "/api/sim/{id}/input",
+                    web::get().to(job_handlers::get_sim_input),
+                )
+                .route(
+                    "/api/sim/{id}/raw",
+                    web::get().to(job_handlers::get_sim_raw),
+                )
+                .route(
+                    "/api/sim/{id}/html",
+                    web::get().to(job_handlers::get_sim_html),
+                )
+                .route(
+                    "/api/sim/{id}/output.txt",
+                    web::get().to(job_handlers::get_sim_text_output),
+                )
+                .route(
+                    "/api/sim/{id}/data.csv",
+                    web::get().to(job_handlers::get_sim_csv),
+                )
+                .route("/api/sim/{id}", web::delete().to(job_handlers::delete_sim))
+                .route(
+                    "/api/history/stats",
+                    web::get().to(job_handlers::get_history_stats),
+                )
+                .route(
+                    "/api/history/characters",
+                    web::get().to(job_handlers::get_history_characters),
+                )
+                .route(
+                    "/api/history/clear",
+                    web::post().to(job_handlers::clear_history),
+                )
+                // Blizzard proxy routes (only active if configured)
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/profile",
+                    web::get().to(blizzard::proxy_character_profile),
+                )
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/equipment",
+                    web::get().to(blizzard::proxy_character_equipment),
+                )
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/statistics",
+                    web::get().to(blizzard::proxy_character_statistics),
+                )
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/specializations",
+                    web::get().to(blizzard::proxy_character_specializations),
+                )
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/media/{type}",
+                    web::get().to(blizzard::proxy_character_media),
+                )
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/professions",
+                    web::get().to(blizzard::proxy_character_professions),
+                )
+                // Game data routes
+                .route(
+                    "/api/item-info/{id}",
+                    web::get().to(game_data_handlers::get_item_info),
+                )
+                .route(
+                    "/api/item-info/batch",
+                    web::post().to(game_data_handlers::get_item_info_batch),
+                )
+                .route(
+                    "/api/enchant-info/{id}",
+                    web::get().to(game_data_handlers::get_enchant_info),
+                )
+                .route(
+                    "/api/gem-info/{id}",
+                    web::get().to(game_data_handlers::get_gem_info),
+                )
+                .route(
+                    "/api/max-upgrade-ilevels",
+                    web::post().to(game_data_handlers::get_max_upgrade_ilevels),
+                )
+                .route(
+                    "/api/gear/enchant-options",
+                    web::get().to(game_data_handlers::list_enchant_options),
+                )
+                .route(
+                    "/api/gear/gem-options",
+                    web::get().to(game_data_handlers::list_gem_options),
+                )
+                .route(
+                    "/api/upgrade-tracks",
+                    web::get().to(game_data_handlers::list_upgrade_tracks),
+                )
+                .route(
+                    "/api/gear/resolve",
+                    web::post().to(game_data_handlers::resolve_gear),
+                )
+                .route(
+                    "/api/gear/catalyst-convert",
+                    web::post().to(game_data_handlers::catalyst_convert),
+                )
+                .route(
+                    "/api/season-config",
+                    web::get().to(game_data_handlers::get_season_config),
+                )
+                .route(
+                    "/api/instances",
+                    web::get().to(game_data_handlers::list_instances),
+                )
+                .route(
+                    "/api/instances/type/{type}/drops",
+                    web::get().to(game_data_handlers::get_drops_by_type),
+                )
+                .route(
+                    "/api/instances/{id}/drops",
+                    web::get().to(game_data_handlers::get_instance_drops),
+                )
+                .route(
+                    "/api/talent-tree/{specId}",
+                    web::get().to(game_data_handlers::get_talent_tree),
+                )
                 .route("/api/sims", web::get().to(job_handlers::list_sims))
-                .route("/api/system-stats", web::get().to(system_stats));
-        }
-        #[cfg(not(feature = "desktop"))]
-        {
-            app = app.route("/api/sims", web::get().to(job_handlers::list_sims_filtered));
-        }
+                .route("/api/config", web::get().to(get_config))
+                .route("/api/config", web::post().to(update_config))
+                .route("/health", web::get().to(health_check));
 
-        // Serve cached assets from data directory
-        if let Some(ref dir) = data {
-            let images_dir = dir.join("instance-images");
-            if images_dir.exists() {
-                app = app.service(
-                    actix_files::Files::new("/api/data/instance-images", images_dir)
-                        .prefer_utf8(true),
-                );
+            #[cfg(feature = "desktop")]
+            {
+                app = app.route("/api/system-stats", web::get().to(system_stats));
             }
-            let static_dir = dir.join("static");
-            if static_dir.exists() {
-                app = app.service(
-                    actix_files::Files::new("/api/data/static", static_dir).prefer_utf8(true),
-                );
+
+            // Serve cached assets from data directory
+            if let Some(ref dir) = data {
+                let images_dir = dir.join("instance-images");
+                if images_dir.exists() {
+                    app = app.service(
+                        actix_files::Files::new("/api/data/instance-images", images_dir)
+                            .prefer_utf8(true),
+                    );
+                }
+                let static_dir = dir.join("static");
+                if static_dir.exists() {
+                    app = app.service(
+                        actix_files::Files::new("/api/data/static", static_dir).prefer_utf8(true),
+                    );
+                }
             }
-        }
 
-        // Serve static frontend files in production (not in dev mode)
-        if let Some(ref dir) = frontend {
-            app = app
-                .app_data(web::Data::new(FrontendDir(dir.clone())))
-                .service(actix_files::Files::new("/_next", dir.join("_next")).prefer_utf8(true))
-                .default_service(web::get().to(spa_fallback));
-        }
+            // Serve static frontend files in production (not in dev mode)
+            if let Some(ref dir) = frontend {
+                app = app
+                    .app_data(web::Data::new(FrontendDir(dir.clone())))
+                    .service(actix_files::Files::new("/_next", dir.join("_next")).prefer_utf8(true))
+                    .default_service(web::get().to(spa_fallback));
+            }
 
-        app
-    })
-    .bind(&bind_addr)
-    .unwrap_or_else(|_| panic!("Failed to bind to {}", bind_addr))
-    .run();
+            app
+        })
+        .bind(&bind_addr)
+        .unwrap_or_else(|_| panic!("Failed to bind to {}", bind_addr))
+        .run();
 
-    tokio::spawn(server);
+        tokio::spawn(server);
 
-    println!("HTTP server started on port {}", port);
-    port
+        println!("HTTP server started on port {}", port);
+        port
+    }
+    #[cfg(not(feature = "web"))]
+    {
+        let _ = (storage, simc_path, bind_host, frontend_dir, data_dir);
+        println!("HTTP server disabled (web feature not active)");
+        port
+    }
 }

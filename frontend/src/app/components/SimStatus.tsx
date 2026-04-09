@@ -140,7 +140,7 @@ export default function SimStatus({
     if (!jobId || cancelling) return;
     setCancelling(true);
     try {
-      await fetch(`${API_URL}/api/sim/${jobId}/cancel`, { method: 'POST' });
+      await fetch(`${API_URL}/api/sim/${jobId}/cancel`, { method: 'POST', credentials: 'include' });
       onCancelled?.();
     } catch {
       // ignore

@@ -76,7 +76,7 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const res = await fetch(`${API_URL}/api/sim/${id}`);
+        const res = await fetch(`${API_URL}/api/sim/${id}`, { credentials: 'include' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data: JobData = await res.json();
         if (active) setJob(data);
@@ -102,7 +102,7 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function pollLogs() {
       try {
-        const res = await fetch(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`);
+        const res = await fetch(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`, { credentials: 'include' });
         if (!res.ok || !active) return;
         const data = await res.json();
         if (data.lines.length > 0) {

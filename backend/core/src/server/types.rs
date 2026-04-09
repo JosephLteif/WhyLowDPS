@@ -169,7 +169,6 @@ pub(super) struct CatalystConvertRequest {
     pub item: crate::types::ResolvedItem,
 }
 
-#[cfg(not(feature = "desktop"))]
 #[derive(Debug, Deserialize)]
 pub(super) struct ListSimsQuery {
     #[serde(default)]

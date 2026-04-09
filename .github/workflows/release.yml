@@ -41,6 +41,29 @@ jobs:
       - name: install dependencies
         run: npm install && npm install --prefix frontend
 
+      - name: prepare resources (download simc and fetch data)
+        shell: bash
+        run: |
+          mkdir -p backend/resources/simc
+          mkdir -p backend/resources/data
+          
+          # Download SimC for Windows
+          if [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
+            curl -L https://github.com/simulationcraft/simc/releases/download/archived/nightly/simc-1100-01-win64.zip -o simc.zip
+            7z x simc.zip -obackend/resources/simc/
+            mv backend/resources/simc/simc-1100-01-win64/simc.exe backend/resources/simc/
+          fi
+          
+          # Download SimC for Linux
+          if [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]]; then
+            curl -L https://github.com/simulationcraft/simc/releases/download/archived/nightly/simc-1100-01-linux-x86_64.tar.gz -o simc.tar.gz
+            tar -xzf simc.tar.gz -C backend/resources/simc/ --strip-components=1
+          fi
+
+          # Ensure data directory isn't empty for Tauri glob
+          touch backend/resources/data/.keep
+          touch backend/resources/simc/.keep
+
       - name: build frontend
         env:
           DESKTOP_BUILD: true

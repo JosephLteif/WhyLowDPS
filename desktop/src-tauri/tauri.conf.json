@@ -1,0 +1,50 @@
+{
+  "productName": "WhyLowDps",
+  "version": "2.2.0",
+  "identifier": "com.whylowdps.app",
+  "build": {
+    "frontendDist": "frontend/out",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "cross-env DESKTOP_BUILD=true npm run dev --prefix frontend",
+    "beforeBuildCommand": "cross-env DESKTOP_BUILD=true npm run build --prefix frontend"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "WhyLowDps",
+        "width": 1280,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "../../backend/resources/data/**/*",
+      "../../backend/resources/simc/**/*"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/JosephLteif/simcraft/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_WITH_YOUR_PUBLIC_SIGNING_KEY"
+    }
+  }
+}

@@ -1,0 +1,58 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: '--config desktop/src-tauri/tauri.conf.json'
+          - platform: 'macos-latest'
+            args: '--config desktop/src-tauri/tauri.conf.json'
+          - platform: 'ubuntu-22.04'
+            args: '--config desktop/src-tauri/tauri.conf.json'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libnm-dev libcloudproviders-dev librsvg2-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev liblibrsvg2-dev
+
+      - name: install frontend dependencies
+        run: npm install
+
+      - name: build frontend
+        run: cross-env DESKTOP_BUILD=true npm run build --prefix frontend
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "WhyLowDps v__VERSION__"
+          releaseBody: "See the assets below for the installers."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

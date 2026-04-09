@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "backend/core",
+    "backend/server",
+    "backend/launcher",
+    "desktop/src-tauri",
+]
+resolver = "2"
+
+[workspace.package]
+version = "2.2.0"
+authors = ["WhyLowDps Team"]
+edition = "2021"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = 3
+strip = true

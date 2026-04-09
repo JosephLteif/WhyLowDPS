@@ -11,7 +11,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const { user, checkCredentialsStatus } = useAuth();
   const [showSetup, setShowSetup] = useState(false);
-  const [isGloballyConfigured, setIsGloballyConfigured] = useState(true);
+  const [isGloballyConfigured, setIsGloballyConfigured] = useState(false);
 
   useEffect(() => {
     checkCredentialsStatus().then((status) => {

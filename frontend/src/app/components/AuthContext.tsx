@@ -16,7 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   login: () => {},
   logout: (switchAccount?: boolean) => {},
-  checkCredentialsStatus: async () => ({ globally_configured: true }),
+  checkCredentialsStatus: async () => ({ globally_configured: false }),
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Failed to check credentials status:', err);
     }
-    return { globally_configured: true }; // Fallback to avoid blocking if endpoint fails
+    return { globally_configured: false }; // Fallback to avoid dead-end if request fails
   };
 
   const login = (clientId?: string, clientSecret?: string) => {

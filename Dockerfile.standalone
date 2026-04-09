@@ -13,7 +13,7 @@ RUN npm run build
 
 # --- Stage 2: Build the Rust Backend ---
 FROM rust:1.88-alpine AS backend-builder
-RUN apk add --no-cache musl-dev
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev
 WORKDIR /build
 COPY backend/Cargo.toml ./
 COPY backend/core/ core/

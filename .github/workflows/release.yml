@@ -15,10 +15,6 @@ jobs:
           - platform: 'windows'
             os: 'windows-latest'
             args: '--config desktop/src-tauri/tauri.conf.json'
-          - platform: 'linux'
-            os: 'ubuntu-22.04'
-            args: '--config desktop/src-tauri/tauri.conf.json'
-          # Add macos here if needed later
 
     runs-on: ${{ matrix.os }}
     steps:

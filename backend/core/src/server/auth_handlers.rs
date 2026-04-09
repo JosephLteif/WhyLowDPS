@@ -1,7 +1,7 @@
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::http::header;
 use actix_web::{web, HttpRequest, HttpResponse};
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ impl BlizzardAuthState {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,         // BattleTag
+    pub sub: String, // BattleTag
     pub access_token: String,
     pub exp: usize,
 }
@@ -85,7 +85,7 @@ pub async fn bnet_login(
                 .http_only(true)
                 .secure(false) // Local dev
                 .same_site(SameSite::Lax)
-                .finish()
+                .finish(),
         );
         builder.cookie(
             Cookie::build("temp_bnet_secret", sec)
@@ -93,7 +93,7 @@ pub async fn bnet_login(
                 .http_only(true)
                 .secure(false) // Local dev
                 .same_site(SameSite::Lax)
-                .finish()
+                .finish(),
         );
     }
 
@@ -104,9 +104,7 @@ pub async fn bnet_login(
         uuid::Uuid::new_v4()
     );
 
-    builder
-        .append_header((header::LOCATION, auth_url))
-        .finish()
+    builder.append_header((header::LOCATION, auth_url)).finish()
 }
 
 pub async fn bnet_callback(
@@ -116,17 +114,22 @@ pub async fn bnet_callback(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     let client = reqwest::Client::new();
-    
-    let (client_id, client_secret) = if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
-        (id.clone(), sec.clone())
-    } else {
-        match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
-            (Some(id_c), Some(sec_c)) => (id_c.value().to_string(), sec_c.value().to_string()),
-            _ => return HttpResponse::InternalServerError().json(json!({"error": "Blizzard credentials not found in session."})),
-        }
-    };
 
-    let token_resp = client.post("https://oauth.battle.net/token")
+    let (client_id, client_secret) =
+        if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
+            (id.clone(), sec.clone())
+        } else {
+            match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
+                (Some(id_c), Some(sec_c)) => (id_c.value().to_string(), sec_c.value().to_string()),
+                _ => {
+                    return HttpResponse::InternalServerError()
+                        .json(json!({"error": "Blizzard credentials not found in session."}))
+                }
+            }
+        };
+
+    let token_resp = client
+        .post("https://oauth.battle.net/token")
         .basic_auth(&client_id, Some(&client_secret))
         .form(&[
             ("grant_type", "authorization_code"),
@@ -143,23 +146,30 @@ pub async fn bnet_callback(
                 Ok(data) => data.access_token,
                 Err(e) => {
                     println!("Failed to parse token response: {}, raw: {}", e, text);
-                    return HttpResponse::InternalServerError().json(json!({"error": "Failed to parse token response", "details": text}))
+                    return HttpResponse::InternalServerError()
+                        .json(json!({"error": "Failed to parse token response", "details": text}));
                 }
             }
-        },
+        }
         Ok(res) => {
             let status = res.status();
             let text = res.text().await.unwrap_or_default();
-            println!("Token exchange failed with status: {}, body: {}", status, text);
-            return HttpResponse::BadRequest().json(json!({"error": "Failed to exchange code", "details": text}))
-        },
+            println!(
+                "Token exchange failed with status: {}, body: {}",
+                status, text
+            );
+            return HttpResponse::BadRequest()
+                .json(json!({"error": "Failed to exchange code", "details": text}));
+        }
         Err(e) => {
             println!("Network error during token exchange: {}", e);
-            return HttpResponse::BadRequest().json(json!({"error": "Network error during token exchange"}))
+            return HttpResponse::BadRequest()
+                .json(json!({"error": "Network error during token exchange"}));
         }
     };
 
-    let user_resp = client.get("https://oauth.battle.net/oauth/userinfo")
+    let user_resp = client
+        .get("https://oauth.battle.net/oauth/userinfo")
         .bearer_auth(&access_token)
         .send()
         .await;
@@ -171,23 +181,34 @@ pub async fn bnet_callback(
                 Ok(data) => data.battletag,
                 Err(e) => {
                     println!("Failed to parse userinfo response: {}, raw: {}", e, text);
-                    return HttpResponse::InternalServerError().json(json!({"error": "Failed to parse userinfo response", "details": text}))
+                    return HttpResponse::InternalServerError().json(
+                        json!({"error": "Failed to parse userinfo response", "details": text}),
+                    );
                 }
             }
-        },
+        }
         Ok(res) => {
             let status = res.status();
             let text = res.text().await.unwrap_or_default();
-            println!("Userinfo fetch failed with status: {}, body: {}", status, text);
-            return HttpResponse::BadRequest().json(json!({"error": "Failed to get userinfo", "details": text}))
-        },
+            println!(
+                "Userinfo fetch failed with status: {}, body: {}",
+                status, text
+            );
+            return HttpResponse::BadRequest()
+                .json(json!({"error": "Failed to get userinfo", "details": text}));
+        }
         Err(e) => {
             println!("Network error during userinfo fetch: {}", e);
-            return HttpResponse::BadRequest().json(json!({"error": "Network error during userinfo fetch"}))
+            return HttpResponse::BadRequest()
+                .json(json!({"error": "Network error during userinfo fetch"}));
         }
     };
 
-    let expiration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as usize + (30 * 24 * 60 * 60); // 30 days
+    let expiration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as usize
+        + (30 * 24 * 60 * 60); // 30 days
 
     let claims = Claims {
         sub: battletag.clone(),
@@ -195,15 +216,24 @@ pub async fn bnet_callback(
         exp: expiration,
     };
 
-    let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret(state.jwt_secret.as_bytes())) {
+    let token = match encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
+    ) {
         Ok(t) => t,
         Err(e) => {
             println!("Failed to generate JWT token: {}", e);
-            return HttpResponse::InternalServerError().json(json!({"error": "Failed to generate token"}))
+            return HttpResponse::InternalServerError()
+                .json(json!({"error": "Failed to generate token"}));
         }
     };
 
-    let same_site = if cfg!(feature = "desktop") { SameSite::None } else { SameSite::Lax };
+    let same_site = if cfg!(feature = "desktop") {
+        SameSite::None
+    } else {
+        SameSite::Lax
+    };
     let secure = cfg!(feature = "desktop");
 
     let cookie = Cookie::build("bnet_session", token)
@@ -222,10 +252,20 @@ pub async fn bnet_callback(
     if state.client_id.is_none() {
         store.set_user_config(&battletag, "blizzard_client_id", &client_id);
         store.set_user_config(&battletag, "blizzard_client_secret", &client_secret);
-        
+
         // Clear temporary cookies
-        resp_builder.cookie(Cookie::build("temp_bnet_id", "").path("/").max_age(actix_web::cookie::time::Duration::seconds(0)).finish());
-        resp_builder.cookie(Cookie::build("temp_bnet_secret", "").path("/").max_age(actix_web::cookie::time::Duration::seconds(0)).finish());
+        resp_builder.cookie(
+            Cookie::build("temp_bnet_id", "")
+                .path("/")
+                .max_age(actix_web::cookie::time::Duration::seconds(0))
+                .finish(),
+        );
+        resp_builder.cookie(
+            Cookie::build("temp_bnet_secret", "")
+                .path("/")
+                .max_age(actix_web::cookie::time::Duration::seconds(0))
+                .finish(),
+        );
     }
 
     resp_builder.finish()
@@ -234,12 +274,15 @@ pub async fn bnet_callback(
 pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
     let cookie = req.cookie("bnet_session");
     if cookie.is_none() {
-        println!("No bnet_session cookie found in request headers: {:?}", req.headers());
+        println!(
+            "No bnet_session cookie found in request headers: {:?}",
+            req.headers()
+        );
         return None;
     }
     let cookie = cookie.unwrap();
     let token = cookie.value();
-    
+
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
@@ -263,7 +306,7 @@ pub async fn get_me(req: HttpRequest, state: web::Data<Arc<BlizzardAuthState>>) 
             HttpResponse::Ok().json(json!({
                 "battletag": claims.sub
             }))
-        },
+        }
         None => {
             println!("get_me failed: not logged in or invalid token");
             HttpResponse::Unauthorized().json(json!({"error": "Not logged in"}))
@@ -281,7 +324,11 @@ pub async fn bnet_logout(
         store.remove_user_config(&claims.sub, "blizzard_client_secret");
     }
 
-    let same_site = if cfg!(feature = "desktop") { SameSite::None } else { SameSite::Lax };
+    let same_site = if cfg!(feature = "desktop") {
+        SameSite::None
+    } else {
+        SameSite::Lax
+    };
     let secure = cfg!(feature = "desktop");
 
     let cookie = Cookie::build("bnet_session", "")
@@ -296,7 +343,7 @@ pub async fn bnet_logout(
         .path("/")
         .max_age(actix_web::cookie::time::Duration::seconds(0))
         .finish();
-        
+
     let temp_sec = Cookie::build("temp_bnet_secret", "")
         .path("/")
         .max_age(actix_web::cookie::time::Duration::seconds(0))
@@ -315,7 +362,7 @@ pub struct RefreshQuery {
 }
 
 pub async fn get_characters(
-    req: HttpRequest, 
+    req: HttpRequest,
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     query: web::Query<RefreshQuery>,
@@ -326,7 +373,7 @@ pub async fn get_characters(
     };
 
     let cache_key = format!("user_characters_{}", claims.sub);
-    
+
     if !query.refresh.unwrap_or(false) {
         if let Some(cached_data) = store.get_cache(&cache_key) {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached_data) {
@@ -336,19 +383,20 @@ pub async fn get_characters(
     }
 
     let client = reqwest::Client::new();
-    
+
     // We attempt to fetch from both US and EU regions as we don't know the user's primary region
-    let regions = [
-        ("us", "profile-us"),
-        ("eu", "profile-eu"),
-    ];
+    let regions = [("us", "profile-us"), ("eu", "profile-eu")];
 
     let mut all_characters = vec![];
     let mut last_error = None;
 
     for (region, namespace) in regions {
-        let url = format!("https://{}.api.blizzard.com/profile/user/wow?namespace={}&locale=en_US", region, namespace);
-        let resp = client.get(&url)
+        let url = format!(
+            "https://{}.api.blizzard.com/profile/user/wow?namespace={}&locale=en_US",
+            region, namespace
+        );
+        let resp = client
+            .get(&url)
             .bearer_auth(&claims.access_token)
             .send()
             .await;
@@ -356,18 +404,47 @@ pub async fn get_characters(
         match resp {
             Ok(res) if res.status().is_success() => {
                 if let Ok(data) = res.json::<serde_json::Value>().await {
-                    if let Some(wow_accounts) = data.get("wow_accounts").and_then(|v| v.as_array()) {
+                    if let Some(wow_accounts) = data.get("wow_accounts").and_then(|v| v.as_array())
+                    {
                         for account in wow_accounts {
-                            if let Some(chars) = account.get("characters").and_then(|v| v.as_array()) {
+                            if let Some(chars) =
+                                account.get("characters").and_then(|v| v.as_array())
+                            {
                                 for char_data in chars {
-                                    let name = char_data.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
-                                    let realm_name = char_data.get("realm").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
-                                    let realm_slug = char_data.get("realm").and_then(|v| v.get("slug")).and_then(|v| v.as_str()).unwrap_or("unknown");
-                                    let class = char_data.get("playable_class").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
-                                    let race = char_data.get("playable_race").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
-                                    let faction = char_data.get("faction").and_then(|v| v.get("name")).and_then(|v| v.as_str()).unwrap_or("Unknown");
-                                    let level = char_data.get("level").and_then(|v| v.as_u64()).unwrap_or(0);
-                                    
+                                    let name = char_data
+                                        .get("name")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Unknown");
+                                    let realm_name = char_data
+                                        .get("realm")
+                                        .and_then(|v| v.get("name"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Unknown");
+                                    let realm_slug = char_data
+                                        .get("realm")
+                                        .and_then(|v| v.get("slug"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("unknown");
+                                    let class = char_data
+                                        .get("playable_class")
+                                        .and_then(|v| v.get("name"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Unknown");
+                                    let race = char_data
+                                        .get("playable_race")
+                                        .and_then(|v| v.get("name"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Unknown");
+                                    let faction = char_data
+                                        .get("faction")
+                                        .and_then(|v| v.get("name"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("Unknown");
+                                    let level = char_data
+                                        .get("level")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0);
+
                                     all_characters.push(json!({
                                         "name": name,
                                         "realm": realm_slug,
@@ -384,20 +461,25 @@ pub async fn get_characters(
                         }
                     }
                 }
-            },
+            }
             Ok(res) => {
                 if res.status() != reqwest::StatusCode::NOT_FOUND {
                     last_error = Some(format!("Blizzard {} API error: {}", region, res.status()));
                 }
-            },
+            }
             Err(e) => {
-                last_error = Some(format!("Network error fetching {} characters: {}", region, e));
+                last_error = Some(format!(
+                    "Network error fetching {} characters: {}",
+                    region, e
+                ));
             }
         }
     }
 
-    if all_characters.is_empty() && last_error.is_some() {
-        return HttpResponse::InternalServerError().json(json!({"error": last_error.unwrap()}));
+    if all_characters.is_empty() {
+        if let Some(err) = last_error {
+            return HttpResponse::InternalServerError().json(json!({"error": err}));
+        }
     }
 
     let json_resp = json!({
@@ -425,8 +507,12 @@ pub async fn get_user_configs(
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
 
-    let client_id = store.get_user_config(&claims.sub, "blizzard_client_id").unwrap_or_default();
-    let has_secret = store.get_user_config(&claims.sub, "blizzard_client_secret").is_some();
+    let client_id = store
+        .get_user_config(&claims.sub, "blizzard_client_id")
+        .unwrap_or_default();
+    let has_secret = store
+        .get_user_config(&claims.sub, "blizzard_client_secret")
+        .is_some();
 
     HttpResponse::Ok().json(json!({
         "blizzard_client_id": client_id,
@@ -476,16 +562,19 @@ pub struct TestBlizzardCreds {
     pub client_secret: String,
 }
 
-pub async fn test_blizzard_creds(
-    body: web::Json<TestBlizzardCreds>,
-) -> HttpResponse {
+pub async fn test_blizzard_creds(body: web::Json<TestBlizzardCreds>) -> HttpResponse {
     let client = reqwest::Client::new();
-    let res = crate::server::blizzard::BlizzardState::get_token_with_creds(&client, &body.client_id, &body.client_secret).await;
-    
+    let res = crate::server::blizzard::BlizzardState::get_token_with_creds(
+        &client,
+        &body.client_id,
+        &body.client_secret,
+    )
+    .await;
+
     if res.is_some() {
         HttpResponse::Ok().json(json!({"status": "success"}))
     } else {
-        HttpResponse::BadRequest().json(json!({"status": "error", "message": "Failed to authenticate with Blizzard"}))
+        HttpResponse::BadRequest()
+            .json(json!({"status": "error", "message": "Failed to authenticate with Blizzard"}))
     }
 }
-

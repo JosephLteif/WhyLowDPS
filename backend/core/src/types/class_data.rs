@@ -1,6 +1,5 @@
-use std::sync::{Arc, RwLock};
 use once_cell::sync::Lazy;
-
+use std::sync::{Arc, RwLock};
 
 // ---- Gear Slots ----
 
@@ -121,44 +120,39 @@ use serde::{Deserialize, Serialize};
 
 // ---- Logic Constants ----
 
-pub static CLASSES: Lazy<RwLock<Arc<Vec<ClassDef>>>> = Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
-
+pub static CLASSES: Lazy<RwLock<Arc<Vec<ClassDef>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
 
 // ---- Lookup Helpers ----
-
 
 fn find_class(name: &str) -> Option<ClassDef> {
     let n = name.to_lowercase();
     CLASSES
-        .read().unwrap()
+        .read()
+        .unwrap()
         .iter()
         .find(|c| c.name == n || c.aliases.iter().any(|a| a == &n))
         .cloned()
 }
 
-
-
 pub fn can_dual_wield(spec: &str) -> bool {
     CLASSES
-        .read().unwrap()
-        .iter().flat_map(|c| c.specs.iter()).any(|s| s.name == spec && s.can_dual_wield)
+        .read()
+        .unwrap()
+        .iter()
+        .flat_map(|c| c.specs.iter())
+        .any(|s| s.name == spec && s.can_dual_wield)
 }
-
-
-
 
 /// Max armor subclass: 1=Cloth, 2=Leather, 3=Mail, 4=Plate.
 pub fn class_max_armor(class_name: &str) -> Option<u64> {
     find_class(class_name).map(|c| c.max_armor)
 }
 
-
 /// Weapon subclass IDs each class can equip (broad filter for drop tables).
 pub fn class_allowed_weapons(class_name: &str) -> Option<Vec<u64>> {
     find_class(class_name).map(|c| c.weapons)
 }
-
-
 
 /// Per-spec weapon eligibility. Returns the full `SpecDef` which includes
 /// `weapon_subclasses`, `can_use_shield`, `can_use_offhand`, and more.
@@ -166,7 +160,6 @@ pub fn spec_weapon_profile(class_name: &str, spec: &str) -> Option<SpecDef> {
     let class = find_class(class_name)?;
     class.specs.into_iter().find(|s| s.name == spec)
 }
-
 
 /// Map spec name → numeric spec ID.
 pub fn class_spec_ids(class_name: &str, spec_name: Option<&str>) -> Vec<u64> {
@@ -227,14 +220,13 @@ pub fn inv_type_to_slots(inv_type: u64, spec: &str) -> Vec<&'static str> {
 /// Map a numeric spec ID to the SimC spec name (e.g., 254 → "marksmanship").
 pub fn spec_id_to_name(spec_id: u64) -> Option<String> {
     CLASSES
-        .read().unwrap()
+        .read()
+        .unwrap()
         .iter()
         .flat_map(|c| c.specs.iter())
         .find(|s| s.id == spec_id)
         .map(|s| s.name.clone())
 }
-
-
 
 /// Map a SimC class name to its WoW numeric class ID.
 pub fn class_wow_id(class_name: &str) -> Option<u64> {
@@ -284,7 +276,6 @@ pub fn detect_class(simc_input: &str) -> Option<String> {
     None
 }
 
-
 /// Detect the spec from a simc input string.
 pub fn detect_spec(simc_input: &str) -> Option<String> {
     let spec_re = Regex::new(r"^spec=(\w+)").unwrap();
@@ -316,7 +307,6 @@ pub fn quality_name(quality: u64) -> String {
         .map(|(_, name)| name.to_string())
         .unwrap_or_else(|| "common".to_string())
 }
-
 
 pub fn quality_color(quality: u64) -> &'static str {
     match quality {

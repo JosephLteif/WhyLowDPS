@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use crate::item_db;
-use crate::types::*;
 use crate::types::class_data;
+use crate::types::*;
+use std::collections::HashMap;
 
 /// Inventory type for each slot (used for catalyst item lookup).
 pub fn slot_to_inv_type(slot: &str) -> Option<u64> {
@@ -150,7 +150,10 @@ pub fn mark_catalyst_eligible(slots: &mut HashMap<String, SlotResolution>, wow_c
 }
 
 /// Generate catalyst alternatives across all slots.
-pub fn generate_catalyst_alternatives(slots: &mut HashMap<String, SlotResolution>, wow_class_id: u64) {
+pub fn generate_catalyst_alternatives(
+    slots: &mut HashMap<String, SlotResolution>,
+    wow_class_id: u64,
+) {
     let slot_keys: Vec<String> = slots.keys().cloned().collect();
 
     for slot_key in &slot_keys {
@@ -189,7 +192,11 @@ pub fn generate_catalyst_alternatives(slots: &mut HashMap<String, SlotResolution
         let mut best: Option<ResolvedItem> = None;
 
         for source in &sources {
-            if source.is_catalyst || source.season_id != current_season as i64 || !is_minimum_veteran(&source.upgrade) || source.item_id == tier_info.item_id {
+            if source.is_catalyst
+                || source.season_id != current_season as i64
+                || !is_minimum_veteran(&source.upgrade)
+                || source.item_id == tier_info.item_id
+            {
                 continue;
             }
 

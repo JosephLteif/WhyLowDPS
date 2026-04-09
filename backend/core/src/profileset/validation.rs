@@ -1,7 +1,7 @@
-use std::collections::{HashMap, HashSet};
 use crate::game_data;
-use crate::types::{ResolvedItem, ItemOrigin};
 use crate::types::class_data::UNIQUE_SLOT_PAIRS;
+use crate::types::{ItemOrigin, ResolvedItem};
+use std::collections::{HashMap, HashSet};
 
 /// Vault constraint: at most one vault item across all slots.
 pub fn validate_vault_constraint(gear_set: &HashMap<String, ResolvedItem>) -> bool {
@@ -18,11 +18,11 @@ pub fn validate_vault_constraint(gear_set: &HashMap<String, ResolvedItem>) -> bo
 }
 
 /// Catalyst constraint: at most `max_charges` catalyst items per combination.
-pub fn validate_catalyst_constraint(gear_set: &HashMap<String, ResolvedItem>, max_charges: u32) -> bool {
-    let count = gear_set
-        .values()
-        .filter(|item| item.is_catalyst)
-        .count();
+pub fn validate_catalyst_constraint(
+    gear_set: &HashMap<String, ResolvedItem>,
+    max_charges: u32,
+) -> bool {
+    let count = gear_set.values().filter(|item| item.is_catalyst).count();
     count as u32 <= max_charges
 }
 
@@ -46,9 +46,7 @@ pub fn validate_weapon_constraint(gear_set: &HashMap<String, ResolvedItem>, spec
     let oh = gear_set.get("off_hand");
     match oh {
         None => true,
-        Some(oh_item) => {
-            oh_item.item_id == 0
-        }
+        Some(oh_item) => oh_item.item_id == 0,
     }
 }
 
@@ -103,4 +101,3 @@ pub fn main_hand_is_two_hand(gear_set: &HashMap<String, ResolvedItem>, spec: &st
         .unwrap_or(0);
     inv_type == 17
 }
-

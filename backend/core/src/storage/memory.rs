@@ -75,17 +75,25 @@ impl JobStorage for MemoryStorage {
 
             if linked_only {
                 if let Some(p) = player {
-                    if linked_name.as_deref() != Some(p) { continue; }
+                    if linked_name.as_deref() != Some(p) {
+                        continue;
+                    }
                 }
                 if let Some(r) = realm {
-                    if linked_realm.as_deref() != Some(r) { continue; }
+                    if linked_realm.as_deref() != Some(r) {
+                        continue;
+                    }
                 }
             } else {
                 if let Some(p) = player {
-                    if player_name.as_deref() != Some(p) { continue; }
+                    if player_name.as_deref() != Some(p) {
+                        continue;
+                    }
                 }
                 if let Some(r) = realm {
-                    if current_realm.as_deref() != Some(r) { continue; }
+                    if current_realm.as_deref() != Some(r) {
+                        continue;
+                    }
                 }
             }
 
@@ -209,7 +217,13 @@ impl JobStorage for MemoryStorage {
         cache.get(key).cloned()
     }
 
-    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>) {
+    fn link_character(
+        &self,
+        id: &str,
+        region: Option<String>,
+        realm: Option<String>,
+        name: Option<String>,
+    ) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
             job.linked_region = region;
             job.linked_realm = realm;
@@ -224,7 +238,9 @@ impl JobStorage for MemoryStorage {
 
     fn get_user_config(&self, user_id: &str, key: &str) -> Option<String> {
         let configs = self.user_configs.lock().unwrap();
-        configs.get(&(user_id.to_string(), key.to_string())).cloned()
+        configs
+            .get(&(user_id.to_string(), key.to_string()))
+            .cloned()
     }
 
     fn remove_user_config(&self, user_id: &str, key: &str) {

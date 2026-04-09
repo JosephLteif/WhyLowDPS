@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-use crate::types::{BonusResolved, BonusData};
 use super::state::*;
-
+use crate::types::{BonusData, BonusResolved};
+use std::collections::HashMap;
 
 pub fn track_rank(track: &str) -> Option<usize> {
     TRACK_RANKS.iter().position(|&t| track.starts_with(t))
@@ -28,7 +27,6 @@ pub fn upgrade_track_max() -> u64 {
 }
 
 pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>) -> BonusResolved {
-
     let mut result = BonusResolved::default();
     let mut upgrade_ilevel: Option<i64> = None;
     let mut level_offset: i64 = 0;
@@ -56,7 +54,7 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
                 result.tag = Some(tag_str.to_string());
             }
             if let Some(socket) = bonus.socket {
-                result.sockets = Some(socket as i64);
+                result.sockets = Some(socket);
             }
             if let Some(upgrade) = &bonus.upgrade {
                 if let Some(full_name) = &upgrade.full_name {
@@ -70,7 +68,6 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
                     result.season_id = Some(sid as i64);
                 }
             }
-
         }
     }
 
@@ -87,19 +84,28 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
     result
 }
 
-
 pub fn squish_ilevel(item_id: u64, ilevel: u64) -> u64 {
     let eras = SQUISH_ERAS.read().unwrap();
     let curves = ITEM_CURVES.read().unwrap();
 
-    let curve_id = match eras.get(&item_id) { Some(&id) => id, None => return ilevel };
-    let points = match curves.get(&curve_id) { Some(p) => p, None => return ilevel };
+    let curve_id = match eras.get(&item_id) {
+        Some(&id) => id,
+        None => return ilevel,
+    };
+    let points = match curves.get(&curve_id) {
+        Some(p) => p,
+        None => return ilevel,
+    };
 
     for i in 0..points.len() {
-        if points[i].0 == ilevel { return points[i].1; }
+        if points[i].0 == ilevel {
+            return points[i].1;
+        }
         if points[i].0 > ilevel {
-            if i == 0 { return points[0].1; }
-            let (x1, y1) = points[i-1];
+            if i == 0 {
+                return points[0].1;
+            }
+            let (x1, y1) = points[i - 1];
             let (x2, y2) = points[i];
             let ratio = (ilevel - x1) as f64 / (x2 - x1) as f64;
             return (y1 as f64 + ratio * (y2 as f64 - y1 as f64)).round() as u64;

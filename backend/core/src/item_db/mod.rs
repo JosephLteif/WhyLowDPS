@@ -6,20 +6,18 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub mod state;
-pub mod loader;
 pub mod bonuses;
-pub mod upgrades;
 pub mod enchants;
+pub mod loader;
+pub mod state;
+pub mod upgrades;
 
 pub use state::CatalystTierItem;
 
-
 // Re-exports for convenience
 
-pub use upgrades::*;
 pub use enchants::*;
-
+pub use upgrades::*;
 
 // ---- Load ----
 
@@ -41,7 +39,7 @@ pub fn load(data_dir: &Path) {
 
 // ---- Accessors ----
 
-use crate::types::{class_data, ItemInfo, GameItem, EnchantData, BonusData};
+use crate::types::{class_data, BonusData, EnchantData, GameItem, ItemInfo};
 use std::sync::Arc;
 
 pub fn items() -> Arc<HashMap<u64, GameItem>> {
@@ -96,12 +94,26 @@ pub fn catalyst_tier_item(class_id: u64, inv_type: u64) -> Option<CatalystTierIt
 }
 
 pub fn is_catalyst_tier_item(item_id: u64) -> bool {
-    state::CATALYST.read().unwrap().tier_item_ids.contains(&item_id)
+    state::CATALYST
+        .read()
+        .unwrap()
+        .tier_item_ids
+        .contains(&item_id)
 }
 
 pub fn filter_ilevel_bonus_ids(bonus_ids: &[u64]) -> Vec<u64> {
     let bonuses = bonuses();
-    bonus_ids.iter().filter(|&&bid| bonuses.get(&bid).and_then(|b| b.ilevel.as_ref()).and_then(|il| il.amount).is_some()).copied().collect()
+    bonus_ids
+        .iter()
+        .filter(|&&bid| {
+            bonuses
+                .get(&bid)
+                .and_then(|b| b.ilevel.as_ref())
+                .and_then(|il| il.amount)
+                .is_some()
+        })
+        .copied()
+        .collect()
 }
 
 pub fn current_season_id() -> u64 {
@@ -128,10 +140,9 @@ pub fn season_cfg() -> Value {
 }
 
 // Re-exports from bonuses
-pub use bonuses::{resolve_bonuses, track_rank, is_minimum_track, upgrade_track_max};
+pub use bonuses::{is_minimum_track, resolve_bonuses, track_rank, upgrade_track_max};
 
 pub use loader::hydrate_runtime_metadata;
-
 
 // ---- Item Lookups ----
 
@@ -139,7 +150,9 @@ pub fn get_item_limit_categories(bonus_ids: &[u64]) -> HashMap<u64, u64> {
     let cats = state::ITEM_LIMIT_CATS.read().unwrap();
     let mut result: HashMap<u64, u64> = HashMap::new();
     for bid in bonus_ids {
-        if let Some(&(cat_id, qty)) = cats.get(bid) { result.insert(cat_id, qty); }
+        if let Some(&(cat_id, qty)) = cats.get(bid) {
+            result.insert(cat_id, qty);
+        }
     }
     result
 }
@@ -148,12 +161,9 @@ pub fn get_inventory_type(item_id: u64) -> Option<i64> {
     get_raw_item(item_id).and_then(|i| i.inventory_type)
 }
 
-
-
 pub(crate) fn get_raw_item(item_id: u64) -> Option<GameItem> {
     items().get(&item_id).cloned()
 }
-
 
 pub fn get_item_armor_subclass(item_id: u64) -> Option<u64> {
     get_raw_item(item_id).map(|i| {
@@ -164,8 +174,6 @@ pub fn get_item_armor_subclass(item_id: u64) -> Option<u64> {
         }
     })
 }
-
-
 
 pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo> {
     let item = get_raw_item(item_id)?;
@@ -179,18 +187,28 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
     let mut bonus_set_ilevel = false;
     if let Some(bids) = bonus_ids {
         let resolved = bonuses::resolve_bonuses(bids, &bonuses());
-        if let Some(q) = resolved.quality { quality = q; }
-        if let Some(i) = resolved.ilevel { ilevel = i; bonus_set_ilevel = true; }
+        if let Some(q) = resolved.quality {
+            quality = q;
+        }
+        if let Some(i) = resolved.ilevel {
+            ilevel = i;
+            bonus_set_ilevel = true;
+        }
 
-        if let Some(t) = resolved.tag { tag = t; }
-        if let Some(s) = resolved.sockets { sockets = s; }
-        if let Some(u) = resolved.upgrade { upgrade = u; }
+        if let Some(t) = resolved.tag {
+            tag = t;
+        }
+        if let Some(s) = resolved.sockets {
+            sockets = s;
+        }
+        if let Some(u) = resolved.upgrade {
+            upgrade = u;
+        }
     }
 
     if !bonus_set_ilevel {
         ilevel = bonuses::squish_ilevel(item_id, ilevel as u64) as i64;
     }
-
 
     let armor_subclass = if item.class.unwrap_or(0) == 4 {
         item.subclass.unwrap_or(0)
@@ -208,43 +226,54 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
         tag,
         upgrade,
         sockets,
-        armor_subclass: armor_subclass,
+        armor_subclass,
         inventory_type: item.inventory_type.unwrap_or(0),
         item_class: item.class.unwrap_or(0),
         item_subclass: item.subclass.unwrap_or(0),
     })
 }
 
-
-
-
 pub fn get_enchant_info(enchant_id: u64) -> Option<Value> {
     let enchants = enchants();
     let enchant = enchants.get(&enchant_id)?;
-    let name = enchant.item_name.as_ref().or(enchant.display_name.as_ref()).cloned().unwrap_or_default();
+    let name = enchant
+        .item_name
+        .as_ref()
+        .or(enchant.display_name.as_ref())
+        .cloned()
+        .unwrap_or_default();
     Some(serde_json::json!({ "enchant_id": enchant_id, "name": name }))
 }
 
 pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
     let mask = 1u64 << inv_type;
     let enchants_map = enchants();
-    
-    enchants_map.values().filter(|e| {
 
-        if let Some(reqs) = &e.requirements {
-            let type_mask = reqs.inv_type_mask.unwrap_or(0);
-            if type_mask == 0 {
-                let item_class = reqs.item_class.unwrap_or(0);
-                if inv_type == 13 || inv_type == 17 || inv_type == 21 || inv_type == 22 { return item_class == 2; }
-                return false;
+    enchants_map
+        .values()
+        .filter(|e| {
+            if let Some(reqs) = &e.requirements {
+                let type_mask = reqs.inv_type_mask.unwrap_or(0);
+                if type_mask == 0 {
+                    let item_class = reqs.item_class.unwrap_or(0);
+                    if inv_type == 13 || inv_type == 17 || inv_type == 21 || inv_type == 22 {
+                        return item_class == 2;
+                    }
+                    return false;
+                }
+                (type_mask & mask) != 0
+            } else {
+                false
             }
-            (type_mask & mask) != 0
-        } else {
-            false
-        }
-    }).map(|e| {
-        let name = e.item_name.as_ref().or(e.display_name.as_ref()).cloned().unwrap_or_default();
-        serde_json::json!({ "enchant_id": e.id, "name": name })
-    }).collect()
+        })
+        .map(|e| {
+            let name = e
+                .item_name
+                .as_ref()
+                .or(e.display_name.as_ref())
+                .cloned()
+                .unwrap_or_default();
+            serde_json::json!({ "enchant_id": e.id, "name": name })
+        })
+        .collect()
 }
-

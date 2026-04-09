@@ -195,9 +195,6 @@ pub(super) fn resolve_to_items_by_slot(
     items_by_slot
 }
 
-
-
-
 /// Replace the talents= line in a simc input string with a new talent string.
 pub(super) fn apply_talent_override(simc_input: &str, talents: &str) -> String {
     if talents.is_empty() {

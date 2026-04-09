@@ -1,8 +1,8 @@
+use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 use actix_web::{web, HttpResponse};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use reqwest::Client;
-use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct BlizzardToken {
@@ -78,7 +78,12 @@ pub async fn proxy_character_profile(
     let namespace = format!("profile-{}", region);
     let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
 
-    let cache_key = format!("char_profile_{}_{}_{}", region, realm_slug, name.to_lowercase());
+    let cache_key = format!(
+        "char_profile_{}_{}_{}",
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
     if !query.refresh.unwrap_or(false) {
         if let Some(cached) = store.get_cache(&cache_key) {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
@@ -87,7 +92,14 @@ pub async fn proxy_character_profile(
         }
     }
 
-    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -100,7 +112,8 @@ pub async fn proxy_character_profile(
         namespace
     );
 
-    let res = state.client
+    let res = state
+        .client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -128,10 +141,20 @@ pub async fn proxy_character_media(
     let region = query.region.as_deref().unwrap_or("us");
     let namespace = format!("profile-{}", region);
     let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
-    
-    let target_type = if _type == "render" || _type == "main" { "main-raw" } else { _type.as_str() };
 
-    let cache_key = format!("char_media_{}_{}_{}_{}", target_type, region, realm_slug, name.to_lowercase());
+    let target_type = if _type == "render" || _type == "main" {
+        "main-raw"
+    } else {
+        _type.as_str()
+    };
+
+    let cache_key = format!(
+        "char_media_{}_{}_{}_{}",
+        target_type,
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
     if !query.refresh.unwrap_or(false) {
         if let Some(cached) = store.get_cache(&cache_key) {
             return HttpResponse::Found()
@@ -140,7 +163,14 @@ pub async fn proxy_character_media(
         }
     }
 
-    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -153,7 +183,8 @@ pub async fn proxy_character_media(
         namespace
     );
 
-    let res = state.client
+    let res = state
+        .client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -196,7 +227,12 @@ pub async fn proxy_character_equipment(
     let namespace = format!("profile-{}", region);
     let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
 
-    let cache_key = format!("char_equip_{}_{}_{}", region, realm_slug, name.to_lowercase());
+    let cache_key = format!(
+        "char_equip_{}_{}_{}",
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
     if !query.refresh.unwrap_or(false) {
         if let Some(cached) = store.get_cache(&cache_key) {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
@@ -205,7 +241,14 @@ pub async fn proxy_character_equipment(
         }
     }
 
-    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -218,7 +261,8 @@ pub async fn proxy_character_equipment(
         namespace
     );
 
-    let res = state.client
+    let res = state
+        .client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -247,7 +291,12 @@ pub async fn proxy_character_statistics(
     let namespace = format!("profile-{}", region);
     let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
 
-    let cache_key = format!("char_stats_{}_{}_{}", region, realm_slug, name.to_lowercase());
+    let cache_key = format!(
+        "char_stats_{}_{}_{}",
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
     if !query.refresh.unwrap_or(false) {
         if let Some(cached) = store.get_cache(&cache_key) {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
@@ -256,7 +305,14 @@ pub async fn proxy_character_statistics(
         }
     }
 
-    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -269,7 +325,8 @@ pub async fn proxy_character_statistics(
         namespace
     );
 
-    let res = state.client
+    let res = state
+        .client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -301,7 +358,12 @@ pub async fn proxy_character_specializations(
     let namespace = format!("profile-{}", region);
     let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
 
-    let cache_key = format!("char_specs_{}_{}_{}", region, realm_slug, name.to_lowercase());
+    let cache_key = format!(
+        "char_specs_{}_{}_{}",
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
     if !query.refresh.unwrap_or(false) {
         if let Some(cached) = store.get_cache(&cache_key) {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
@@ -310,7 +372,14 @@ pub async fn proxy_character_specializations(
         }
     }
 
-    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -323,7 +392,8 @@ pub async fn proxy_character_specializations(
         namespace
     );
 
-    let res = state.client
+    let res = state
+        .client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()
@@ -354,7 +424,12 @@ pub async fn proxy_character_professions(
     let namespace = format!("profile-{}", region);
     let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
 
-    let cache_key = format!("char_profs_{}_{}_{}", region, realm_slug, name.to_lowercase());
+    let cache_key = format!(
+        "char_profs_{}_{}_{}",
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
     if !query.refresh.unwrap_or(false) {
         if let Some(cached) = store.get_cache(&cache_key) {
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
@@ -363,7 +438,14 @@ pub async fn proxy_character_professions(
         }
     }
 
-    let token = match get_effective_token(&req, &state, auth_state.as_ref().as_ref().map(|a| a.as_ref()), &***store).await {
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
         Some(t) => t,
         None => return HttpResponse::Unauthorized().finish(),
     };
@@ -376,7 +458,8 @@ pub async fn proxy_character_professions(
         namespace
     );
 
-    let res = state.client
+    let res = state
+        .client
         .get(&url)
         .header("Authorization", format!("Bearer {}", token))
         .send()

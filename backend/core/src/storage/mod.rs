@@ -5,10 +5,10 @@ pub mod postgres;
 pub mod sqlite;
 
 pub use memory::MemoryStorage;
-#[cfg(feature = "web")]
-pub use sqlite::SqliteStorage;
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresStorage;
+#[cfg(feature = "web")]
+pub use sqlite::SqliteStorage;
 
 use crate::models::{Job, JobStatus, JobSummary};
 use once_cell::sync::Lazy;
@@ -66,7 +66,13 @@ pub trait JobStorage: Send + Sync {
     fn set_cache(&self, key: &str, value: String);
     fn get_cache(&self, key: &str) -> Option<String>;
     // Explicit linking
-    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>);
+    fn link_character(
+        &self,
+        id: &str,
+        region: Option<String>,
+        realm: Option<String>,
+        name: Option<String>,
+    );
     // User configuration storage
     fn set_user_config(&self, user_id: &str, key: &str, value: &str);
     fn get_user_config(&self, user_id: &str, key: &str) -> Option<String>;

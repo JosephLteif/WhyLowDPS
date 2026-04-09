@@ -1,6 +1,6 @@
 {
   "name": "whylowdps",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "devDependencies": {
     "@tauri-apps/cli": "^2",
@@ -8,6 +8,7 @@
     "cross-env": "^7"
   },
   "scripts": {
+    "tauri": "tauri",
     "web": "docker compose up --build",
     "web:dev": "docker compose -f docker-compose.dev.yml up --build",
     "backend:dev": "cd backend && cargo watch -w core/src -w server/src -w core/Cargo.toml -w server/Cargo.toml -w Cargo.toml -x 'run -p whylowdps-server'",

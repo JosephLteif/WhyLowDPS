@@ -45,8 +45,6 @@ function formatBytes(bytes: number) {
   return `${mb.toFixed(1)} MB`;
 }
 
-
-
 function classifyLine(line: string): string {
   if (line.startsWith('SimulationCraft ')) return 'text-gold/70';
   if (line.startsWith('Simulating...')) return 'text-gray-500';
@@ -174,11 +172,13 @@ export default function SimStatus({
           <p className="font-mono text-[13px] font-medium text-gold">{displayProgress}%</p>
           {profilesetsTotal ? (
             <p className="text-[12px] text-zinc-400">
-              <span className="text-zinc-200 font-medium">{profilesetsCompleted || 0}</span> / {profilesetsTotal} combos
+              <span className="font-medium text-zinc-200">{profilesetsCompleted || 0}</span> /{' '}
+              {profilesetsTotal} combos
             </p>
           ) : iterations && iterationsCompleted !== undefined ? (
             <p className="text-[12px] text-zinc-400">
-              <span className="text-zinc-200 font-medium">{iterationsCompleted}</span> / {iterations} iterations
+              <span className="font-medium text-zinc-200">{iterationsCompleted}</span> /{' '}
+              {iterations} iterations
             </p>
           ) : null}
         </div>
@@ -188,31 +188,45 @@ export default function SimStatus({
         <div className="flex w-80 flex-wrap justify-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
           {cpuPct !== undefined && cpuPct > 0 && (
             <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">CPU Usage</span>
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                CPU Usage
+              </span>
               <span className="mt-1 font-mono text-[13px] text-zinc-200">{cpuPct.toFixed(1)}%</span>
             </div>
           )}
           {cpuCores !== undefined && cpuCores > 0 && (
             <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Cores</span>
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                Cores
+              </span>
               <span className="mt-1 font-mono text-[13px] text-zinc-200">{cpuCores}</span>
             </div>
           )}
           {memBytes !== undefined && memBytes > 0 && (
             <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Memory</span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatBytes(memBytes)}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                Memory
+              </span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                {formatBytes(memBytes)}
+              </span>
             </div>
           )}
           {iterations && (
             <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Iterations</span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">{(iterations / 1000).toFixed(0)}k</span>
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                Iterations
+              </span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                {(iterations / 1000).toFixed(0)}k
+              </span>
             </div>
           )}
           {fightStyle && (
             <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Style</span>
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                Style
+              </span>
               <span className="mt-1 text-[13px] text-zinc-200">{fightStyle}</span>
             </div>
           )}

@@ -1,13 +1,6 @@
 import { useState } from 'react';
-import type {
-  ResultItem,
-  TopGearResult,
-} from '../../lib/types';
-import type {
-  EnchantInfo,
-  GemInfo,
-  ItemInfo,
-} from '../../lib/useItemInfo';
+import type { ResultItem, TopGearResult } from '../../lib/types';
+import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 
 import RankingsHeader from './RankingsHeader';
 import ResultRow from './ResultRow';
@@ -70,9 +63,7 @@ export default function RankedResults({
         >
           {expanded
             ? 'Show less'
-            : `Show all ${results.length} results (+${
-                results.length - INITIAL_VISIBLE
-              } more)`}
+            : `Show all ${results.length} results (+${results.length - INITIAL_VISIBLE} more)`}
         </button>
       )}
     </div>

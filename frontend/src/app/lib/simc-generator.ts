@@ -1,4 +1,3 @@
-
 export interface BlizzardItem {
   slot: { type: string };
   item: { id: number };
@@ -46,19 +45,23 @@ export function generateSimcString(
   specName?: string | null
 ): string {
   const lines: string[] = [];
-  
+
   const name = character.name || 'Unknown';
   const realm = character.realm?.name || character.realm?.slug || character.realm || 'Unknown';
   const region = character.region?.name || character.region || 'us';
   const playerClassRaw = character.character_class?.name || character.class || 'Warrior';
   const playerClass = playerClassRaw.toLowerCase().replace(/\s+/g, '_');
-  const race = character.race?.name?.toLowerCase().replace(/\s+/g, '_') || 
-               character.race?.toLowerCase().replace(/\s+/g, '_') || 'human';
+  const race =
+    character.race?.name?.toLowerCase().replace(/\s+/g, '_') ||
+    character.race?.toLowerCase().replace(/\s+/g, '_') ||
+    'human';
   const level = character.level?.value || character.level || 80;
   const dateStr = new Date().toISOString().split('T')[0];
 
   // Header comments (official addon style)
-  lines.push(`# ${name} - ${specName || 'Unknown Spec'} - ${dateStr} - ${region.toUpperCase()}/${realm}`);
+  lines.push(
+    `# ${name} - ${specName || 'Unknown Spec'} - ${dateStr} - ${region.toUpperCase()}/${realm}`
+  );
   lines.push(`# WhyLowDps v1.0.0 (Blizzard API Data Mode)`);
   lines.push(``);
 
@@ -67,7 +70,7 @@ export function generateSimcString(
   lines.push(`race=${race.replace(/\s+/g, '_')}`);
   lines.push(`region=${region.toString().toLowerCase()}`);
   lines.push(`server=${realm.toString().toLowerCase().replace(/\s+/g, '_')}`);
-  
+
   // Professions
   if (character.professions?.primaries) {
     const profs = character.professions.primaries
@@ -82,11 +85,11 @@ export function generateSimcString(
   const casters = ['warlock', 'mage', 'priest', 'druid', 'shaman']; // Simple caster check
   const isCaster = casters.includes(playerClass);
   lines.push(`role=${isCaster ? 'spell' : 'damager'}`);
-  
+
   if (specName) {
     lines.push(`spec=${specName.toLowerCase().replace(/\s+/g, '_')}`);
   }
-  
+
   if (talents) {
     lines.push(`talents=${talents}`);
   }
@@ -98,7 +101,7 @@ export function generateSimcString(
   lines.push(`actions.precombat+=/food=feast_of_the_midnight_masquerade`);
   lines.push(`actions.precombat+=/potion=tempted_fate_3`);
   lines.push(`actions.precombat+=/augmentation=crystallized_augmentation`);
-  
+
   lines.push(``);
 
   const items = equipment.equipped_items || [];
@@ -111,9 +114,9 @@ export function generateSimcString(
 
     // Standard SimC format: slot=,id=...,bonus_id=...,enchant_id=...,gem_id=...
     let itemLine = `${simcSlot}=,id=${item.item.id}`;
-    
+
     if (item.level?.value) {
-        itemLine += `,ilevel=${item.level.value}`;
+      itemLine += `,ilevel=${item.level.value}`;
     }
 
     if (item.bonus_list && item.bonus_list.length > 0) {
@@ -129,9 +132,7 @@ export function generateSimcString(
     }
 
     if (item.sockets) {
-      const gemIds = item.sockets
-        .map((s: any) => s.item?.id)
-        .filter(Boolean);
+      const gemIds = item.sockets.map((s: any) => s.item?.id).filter(Boolean);
       if (gemIds.length > 0) {
         itemLine += `,gem_id=${gemIds.join('/')}`;
       }

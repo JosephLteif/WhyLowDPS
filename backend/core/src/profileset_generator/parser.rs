@@ -1,8 +1,6 @@
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use std::collections::HashMap;
-
-
 
 pub mod patterns {
     use super::*;
@@ -42,7 +40,9 @@ pub fn extract_spec_id_from_talent_string(talent_str: &str) -> Option<u64> {
     Some(spec_id)
 }
 
-pub fn parse_base_profile(base_profile: &str) -> (Vec<String>, HashMap<String, String>, String, String) {
+pub fn parse_base_profile(
+    base_profile: &str,
+) -> (Vec<String>, HashMap<String, String>, String, String) {
     let mut non_gear_lines = Vec::new();
     let mut equipped_gear = HashMap::new();
     let mut talents = String::new();
@@ -50,7 +50,9 @@ pub fn parse_base_profile(base_profile: &str) -> (Vec<String>, HashMap<String, S
 
     for line in base_profile.lines() {
         let stripped = line.trim();
-        if stripped.is_empty() { continue; }
+        if stripped.is_empty() {
+            continue;
+        }
 
         if let Some(caps) = patterns::TALENTS_RE.captures(stripped) {
             talents = caps[1].to_string();

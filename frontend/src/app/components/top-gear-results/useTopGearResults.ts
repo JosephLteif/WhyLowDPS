@@ -9,11 +9,7 @@ interface UseTopGearResultsProps {
   baseDps: number;
 }
 
-export function useTopGearResults({
-  results,
-  equippedGear,
-  baseDps,
-}: UseTopGearResultsProps) {
+export function useTopGearResults({ results, equippedGear, baseDps }: UseTopGearResultsProps) {
   const bestResult = results.length > 0 ? results[0] : null;
 
   const hasEncounterData = useMemo(

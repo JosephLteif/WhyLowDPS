@@ -106,7 +106,10 @@ pub(super) async fn get_gem_info(path: web::Path<u64>) -> HttpResponse {
 pub(super) async fn list_enchant_options(query: web::Query<EnchantOptionsQuery>) -> HttpResponse {
     let inv_type = match gear_resolver::slot_to_inv_type(&query.slot) {
         Some(t) => t,
-        None => return HttpResponse::BadRequest().json(json!({"detail": "Invalid slot for enchantments"})),
+        None => {
+            return HttpResponse::BadRequest()
+                .json(json!({"detail": "Invalid slot for enchantments"}))
+        }
     };
     let options = crate::item_db::list_enchants_for_slot(inv_type);
     HttpResponse::Ok().json(options)
@@ -191,7 +194,7 @@ pub(super) async fn catalyst_convert(
                 .json(json!({"detail": "No catalyst tier item for this class/slot"}))
         }
     };
-    let catalyst_item = gear_resolver::build_catalyst_item(&req.item, tier_info, &req.slot);
+    let catalyst_item = gear_resolver::build_catalyst_item(&req.item, &tier_info, &req.slot);
     HttpResponse::Ok().json(catalyst_item)
 }
 

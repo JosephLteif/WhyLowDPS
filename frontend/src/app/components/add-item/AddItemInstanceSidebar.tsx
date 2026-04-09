@@ -40,9 +40,7 @@ export default function AddItemInstanceSidebar({
         </button>
       ))}
       {instances.length === 0 && (
-        <div className="p-8 text-center text-xs italic text-slate-600">
-          No instances found
-        </div>
+        <div className="p-8 text-center text-xs italic text-slate-600">No instances found</div>
       )}
     </div>
   );

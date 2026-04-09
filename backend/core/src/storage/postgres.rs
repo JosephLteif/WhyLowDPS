@@ -32,7 +32,10 @@ impl PostgresStorage {
 
         // Smoke test to ensure connection is live
         if let Err(e) = client.query("SELECT 1", &[]).await {
-            eprintln!("PostgreSQL smoke test failed: {}. Storage may be unavailable.", e);
+            eprintln!(
+                "PostgreSQL smoke test failed: {}. Storage may be unavailable.",
+                e
+            );
         }
 
         let _ = client
@@ -111,9 +114,7 @@ impl PostgresStorage {
         T: Send,
     {
         let client = self.client.lock().ok()?;
-        std::thread::scope(|s| {
-            s.spawn(|| f(&client)).join().ok()
-        })
+        std::thread::scope(|s| s.spawn(|| f(&client)).join().ok())
     }
 
     fn status_to_str(status: &JobStatus) -> &'static str {
@@ -424,13 +425,17 @@ impl JobStorage for PostgresStorage {
                     .map(|row| row.get::<_, i64>(0) as usize)
                     .unwrap_or(0)
             })
-        }).unwrap_or(0)
+        })
+        .unwrap_or(0)
     }
 
     fn delete(&self, id: &str) {
         self.blocking(|client| {
             self.rt.block_on(async {
-                client.execute("DELETE FROM jobs WHERE id = $1", &[&id]).await.ok();
+                client
+                    .execute("DELETE FROM jobs WHERE id = $1", &[&id])
+                    .await
+                    .ok();
             });
         });
     }
@@ -438,8 +443,9 @@ impl JobStorage for PostgresStorage {
     fn get_storage_size(&self) -> u64 {
         self.blocking(|client| {
             self.rt.block_on(async {
-                client.query_one(
-                    "SELECT SUM(
+                client
+                    .query_one(
+                        "SELECT SUM(
                         LENGTH(simc_input) +
                         COALESCE(LENGTH(result_json), 0) +
                         COALESCE(LENGTH(raw_json), 0) +
@@ -447,13 +453,17 @@ impl JobStorage for PostgresStorage {
                         COALESCE(LENGTH(text_output), 0) +
                         COALESCE(LENGTH(combo_metadata_json), 0)
                     )::BIGINT FROM jobs",
-                    &[]
-                ).await.map(|row| {
-                    let v: Option<i64> = row.get(0);
-                    v.unwrap_or(0) as u64
-                }).unwrap_or(0)
+                        &[],
+                    )
+                    .await
+                    .map(|row| {
+                        let v: Option<i64> = row.get(0);
+                        v.unwrap_or(0) as u64
+                    })
+                    .unwrap_or(0)
             })
-        }).unwrap_or(0)
+        })
+        .unwrap_or(0)
     }
 
     fn clear_history(&self) {
@@ -492,11 +502,14 @@ impl JobStorage for PostgresStorage {
         let updated_at = chrono::Utc::now().to_rfc3339();
         self.blocking(|client| {
             self.rt.block_on(async {
-                client.execute(
-                    "INSERT INTO app_cache (key, value, updated_at) VALUES ($1, $2, $3)
+                client
+                    .execute(
+                        "INSERT INTO app_cache (key, value, updated_at) VALUES ($1, $2, $3)
                      ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = $3",
-                    &[&key.to_string(), &value, &updated_at],
-                ).await.ok();
+                        &[&key.to_string(), &value, &updated_at],
+                    )
+                    .await
+                    .ok();
             });
         });
     }
@@ -504,15 +517,27 @@ impl JobStorage for PostgresStorage {
     fn get_cache(&self, key: &str) -> Option<String> {
         self.blocking(|client| {
             self.rt.block_on(async {
-                client.query_opt(
-                    "SELECT value FROM app_cache WHERE key = $1",
-                    &[&key.to_string()],
-                ).await.ok().flatten().map(|row| row.get(0))
+                client
+                    .query_opt(
+                        "SELECT value FROM app_cache WHERE key = $1",
+                        &[&key.to_string()],
+                    )
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|row| row.get(0))
             })
-        }).flatten()
+        })
+        .flatten()
     }
 
-    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>) {
+    fn link_character(
+        &self,
+        id: &str,
+        region: Option<String>,
+        realm: Option<String>,
+        name: Option<String>,
+    ) {
         self.blocking(|client| {
             self.rt.block_on(async {
                 client.execute(
@@ -527,11 +552,14 @@ impl JobStorage for PostgresStorage {
         let (user_id, key, value) = (user_id.to_string(), key.to_string(), value.to_string());
         self.blocking(|client| {
             self.rt.block_on(async {
-                client.execute(
-                    "INSERT INTO user_configs (user_id, key, value) VALUES ($1, $2, $3)
+                client
+                    .execute(
+                        "INSERT INTO user_configs (user_id, key, value) VALUES ($1, $2, $3)
                      ON CONFLICT (user_id, key) DO UPDATE SET value = $3",
-                    &[&user_id, &key, &value],
-                ).await.ok();
+                        &[&user_id, &key, &value],
+                    )
+                    .await
+                    .ok();
             });
         });
     }
@@ -540,11 +568,32 @@ impl JobStorage for PostgresStorage {
         let (user_id, key) = (user_id.to_string(), key.to_string());
         self.blocking(|client| {
             self.rt.block_on(async {
-                client.query_opt(
-                    "SELECT value FROM user_configs WHERE user_id = $1 AND key = $2",
-                    &[&user_id, &key],
-                ).await.ok().flatten().map(|row| row.get(0))
+                client
+                    .query_opt(
+                        "SELECT value FROM user_configs WHERE user_id = $1 AND key = $2",
+                        &[&user_id, &key],
+                    )
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|row| row.get(0))
             })
-        }).flatten()
+        })
+        .flatten()
+    }
+
+    fn remove_user_config(&self, user_id: &str, key: &str) {
+        let (user_id, key) = (user_id.to_string(), key.to_string());
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client
+                    .execute(
+                        "DELETE FROM user_configs WHERE user_id = $1 AND key = $2",
+                        &[&user_id, &key],
+                    )
+                    .await
+                    .ok();
+            });
+        });
     }
 }

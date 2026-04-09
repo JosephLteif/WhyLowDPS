@@ -5,6 +5,7 @@ import SimSharedConfig from './components/SimSharedConfig';
 import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import { AuthProvider } from './components/AuthContext';
+import DataGuard from './components/DataGuard';
 import './globals.css';
 import packageJson from '../../package.json';
 
@@ -25,18 +26,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="min-h-screen">
         <AuthProvider>
-          <SimProvider>
-            <TopHeader />
-            
-            <Sidebar />
-            
-            <main className="ml-72 mt-14 min-h-[calc(100vh-3.5rem)] px-8 py-8 lg:px-12">
-              <div className="mx-auto max-w-5xl">
-                <SimSharedConfig />
-                {children}
-              </div>
-            </main>
-          </SimProvider>
+          <DataGuard>
+            <SimProvider>
+              <TopHeader />
+
+              <Sidebar />
+
+              <main className="ml-72 mt-14 min-h-[calc(100vh-3.5rem)] px-8 py-8 lg:px-12">
+                <div className="mx-auto max-w-5xl">
+                  <SimSharedConfig />
+                  {children}
+                </div>
+              </main>
+            </SimProvider>
+          </DataGuard>
         </AuthProvider>
       </body>
     </html>

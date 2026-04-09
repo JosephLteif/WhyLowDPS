@@ -16,10 +16,9 @@ pub use crate::item_db::{
     upgrade_items_by_slot, upgrade_simc_input, CatalystTierItem, UpgradeOption,
 };
 
-
 pub use crate::types::class_data::{quality_name, QUALITY_NAMES};
 
-pub fn get_instances() -> &'static Vec<Value> {
+pub fn get_instances() -> Vec<Value> {
     item_db::instances()
 }
 
@@ -34,7 +33,6 @@ pub fn get_instance_drops(
     let instance = instances
         .iter()
         .find(|i| i.get("id").and_then(|id| id.as_i64()) == Some(instance_id))?;
-
 
     let allowed_weapons = class_name.and_then(class_data::class_allowed_weapons);
     let active_spec_names: Vec<&str> = spec_name
@@ -122,7 +120,6 @@ pub fn get_instance_drops(
                 // Filter by weapon/shield/off-hand eligibility per active spec
                 let weapon_sub = item.subclass.unwrap_or(0);
 
-
                 if item_class == 2 || inv_type == 14 || inv_type == 23 {
                     // Weapon, shield, or held off-hand — check spec profiles
                     if let Some(cn) = class_name {
@@ -136,7 +133,6 @@ pub fn get_instance_drops(
                                     } else {
                                         profile.can_use_offhand
                                     }
-
                                 } else {
                                     // Unknown spec — fall back to class-level check
                                     if let Some(weapons) = &allowed_weapons {
@@ -144,8 +140,6 @@ pub fn get_instance_drops(
                                     } else {
                                         true
                                     }
-
-
                                 }
                             });
 
@@ -158,29 +152,24 @@ pub fn get_instance_drops(
                                 continue;
                             }
                         }
-
-
                     }
                 }
 
                 // Filter spec restrictions (items with explicit spec lists)
                 if let Some(specs) = &item.classes {
-                    if !allowed_specs.is_empty() {
-                        if !allowed_specs.iter().any(|s| specs.contains(s)) {
-                            continue;
-                        }
+                    if !allowed_specs.is_empty() && !allowed_specs.iter().any(|s| specs.contains(s)) {
+                        continue;
                     }
                 }
 
                 let slot = class_data::inventory_type_display_slot(inv_type as u64);
 
-
                 // Compute per-difficulty info from upgrade tracks (raids)
                 let upgrade_lvl = item_db::encounter_upgrade_level(*eid);
-                let track_map = item_db::upgrade_tracks();
+                let tracks = item_db::upgrade_tracks();
                 let tm = item_db::upgrade_track_max();
                 let mut diff_info = serde_json::Map::new();
-                if let (Some(lvl), Some(tracks)) = (upgrade_lvl, track_map) {
+                if let Some(lvl) = upgrade_lvl {
                     for diff in &["lfr", "normal", "heroic", "mythic"] {
                         if let Some(track) = item_db::difficulty_track_name(diff) {
                             if let Some(&(ilvl, bonus_id, quality)) =
@@ -204,27 +193,25 @@ pub fn get_instance_drops(
                     dungeon_info.insert("normal".to_string(), serde_json::json!({
                         "ilvl": item_db::dungeon_normal_ilvl(), "bonus_id": 0, "quality": item_db::dungeon_normal_quality(),
                     }));
-                    if let Some(tracks) = track_map {
-                        if let Some(ddt) = item_db::season_cfg()
-                            .get("dungeonDifficultyTracks")
-                            .and_then(|v| v.as_object())
-                        {
-                            for (diff_key, entry) in ddt {
-                                let track =
-                                    entry.get("track").and_then(|v| v.as_str()).unwrap_or("");
-                                let level =
-                                    entry.get("level").and_then(|v| v.as_u64()).unwrap_or(0);
-                                if let Some(&(ilvl, bonus_id, quality)) =
-                                    tracks.get(&(track.to_string(), level, tm))
-                                {
-                                    dungeon_info.insert(
-                                        diff_key.clone(),
-                                        serde_json::json!({
-                                            "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
-                                            "track": track, "level": level, "max_level": tm,
-                                        }),
-                                    );
-                                }
+
+                    let sc = item_db::season_cfg();
+                    if let Some(ddt) = sc
+                        .get("dungeonDifficultyTracks")
+                        .and_then(|v| v.as_object())
+                    {
+                        for (diff_key, entry) in ddt {
+                            let track = entry.get("track").and_then(|v| v.as_str()).unwrap_or("");
+                            let level = entry.get("level").and_then(|v| v.as_u64()).unwrap_or(0);
+                            if let Some(&(ilvl, bonus_id, quality)) =
+                                tracks.get(&(track.to_string(), level, tm))
+                            {
+                                dungeon_info.insert(
+                                    diff_key.clone(),
+                                    serde_json::json!({
+                                        "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
+                                        "track": track, "level": level, "max_level": tm,
+                                    }),
+                                );
                             }
                         }
                     }
@@ -272,8 +259,7 @@ pub fn get_instance_drops(
                     if main_can_use && (item_class == 2 || inv_type == 14 || inv_type == 23) {
                         if let Some(profile) = class_data::spec_weapon_profile(cn, main_spec) {
                             main_can_use = if item_class == 2 {
-                                 profile.weapon_subclasses.contains(&(weapon_sub as u64))
-
+                                profile.weapon_subclasses.contains(&(weapon_sub as u64))
                             } else if inv_type == 14 {
                                 profile.can_use_shield
                             } else {
@@ -296,7 +282,6 @@ pub fn get_instance_drops(
             }
         }
     }
-
 
     let mut ordered = serde_json::Map::new();
     for &slot in class_data::SLOT_DISPLAY_ORDER {

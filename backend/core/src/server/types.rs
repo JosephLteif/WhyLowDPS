@@ -131,7 +131,6 @@ pub struct UpgradeCompareRequest {
     pub options: SimOptions,
 }
 
-
 #[derive(Debug, Serialize)]
 pub struct SimResponse {
     pub id: String,

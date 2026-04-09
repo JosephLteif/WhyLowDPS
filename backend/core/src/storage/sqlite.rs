@@ -1,5 +1,5 @@
-use std::sync::Mutex;
 use rusqlite::{params, Connection};
+use std::sync::Mutex;
 
 use super::JobStorage;
 use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
@@ -212,10 +212,26 @@ impl JobStorage for SqliteStorage {
 
                 let mut size_bytes = simc_input.len() as u64;
                 size_bytes += result_json.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
-                size_bytes += row.get::<_, Option<String>>(10)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
-                size_bytes += row.get::<_, Option<String>>(11)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
-                size_bytes += row.get::<_, Option<String>>(12)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
-                size_bytes += row.get::<_, Option<String>>(13)?.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
+                size_bytes += row
+                    .get::<_, Option<String>>(10)?
+                    .as_ref()
+                    .map(|s| s.len())
+                    .unwrap_or(0) as u64;
+                size_bytes += row
+                    .get::<_, Option<String>>(11)?
+                    .as_ref()
+                    .map(|s| s.len())
+                    .unwrap_or(0) as u64;
+                size_bytes += row
+                    .get::<_, Option<String>>(12)?
+                    .as_ref()
+                    .map(|s| s.len())
+                    .unwrap_or(0) as u64;
+                size_bytes += row
+                    .get::<_, Option<String>>(13)?
+                    .as_ref()
+                    .map(|s| s.len())
+                    .unwrap_or(0) as u64;
 
                 let linked_region: Option<String> = row.get(14).ok().flatten();
                 let linked_realm: Option<String> = row.get(15).ok().flatten();
@@ -253,17 +269,25 @@ impl JobStorage for SqliteStorage {
             .filter(|j| {
                 if linked_only {
                     if let Some(p) = player {
-                        if j.linked_name.as_deref() != Some(p) { return false; }
+                        if j.linked_name.as_deref() != Some(p) {
+                            return false;
+                        }
                     }
                     if let Some(r) = realm {
-                        if j.linked_realm.as_deref() != Some(r) { return false; }
+                        if j.linked_realm.as_deref() != Some(r) {
+                            return false;
+                        }
                     }
                 } else {
                     if let Some(p) = player {
-                        if j.player_name.as_deref() != Some(p) { return false; }
+                        if j.player_name.as_deref() != Some(p) {
+                            return false;
+                        }
                     }
                     if let Some(r) = realm {
-                        if j.realm.as_deref() != Some(r) { return false; }
+                        if j.realm.as_deref() != Some(r) {
+                            return false;
+                        }
                     }
                 }
                 true
@@ -366,7 +390,10 @@ impl JobStorage for SqliteStorage {
                 IFNULL(LENGTH(CAST(combo_metadata_json AS BLOB)), 0)
             ) FROM jobs",
             [],
-            |row| row.get::<_, Option<f64>>(0).map(|v| v.unwrap_or(0.0) as u64),
+            |row| {
+                row.get::<_, Option<f64>>(0)
+                    .map(|v| v.unwrap_or(0.0) as u64)
+            },
         )
         .unwrap_or(0)
     }
@@ -415,12 +442,18 @@ impl JobStorage for SqliteStorage {
         conn.query_row(
             "SELECT value FROM app_cache WHERE key = ?1",
             params![key],
-            |row| row.get::<_, String>(0)
+            |row| row.get::<_, String>(0),
         )
         .ok()
     }
 
-    fn link_character(&self, id: &str, region: Option<String>, realm: Option<String>, name: Option<String>) {
+    fn link_character(
+        &self,
+        id: &str,
+        region: Option<String>,
+        realm: Option<String>,
+        name: Option<String>,
+    ) {
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "UPDATE jobs SET linked_region = ?1, linked_realm = ?2, linked_name = ?3 WHERE id = ?4",
@@ -447,5 +480,14 @@ impl JobStorage for SqliteStorage {
             |row| row.get::<_, String>(0),
         )
         .ok()
+    }
+
+    fn remove_user_config(&self, user_id: &str, key: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM user_configs WHERE user_id = ?1 AND key = ?2",
+            params![user_id, key],
+        )
+        .ok();
     }
 }

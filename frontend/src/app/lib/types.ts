@@ -46,8 +46,6 @@ export interface TopGearResult {
   target_error?: number;
 }
 
-
-
 export interface SlotResolution {
   equipped: ResolvedItem | null;
   alternatives: ResolvedItem[];

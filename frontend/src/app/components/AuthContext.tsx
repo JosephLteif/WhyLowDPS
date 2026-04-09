@@ -7,7 +7,7 @@ interface AuthContextType {
   user: { battletag: string } | null;
   loading: boolean;
   login: (clientId?: string, clientSecret?: string) => void;
-  logout: () => void;
+  logout: (switchAccount?: boolean) => void;
   checkCredentialsStatus: () => Promise<{ globally_configured: boolean }>;
 }
 
@@ -15,7 +15,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   login: () => {},
-  logout: () => {},
+  logout: (switchAccount?: boolean) => {},
   checkCredentialsStatus: async () => ({ globally_configured: true }),
 });
 
@@ -67,10 +67,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.href = url;
   };
 
-  const logout = () => {
+  const logout = (switchAccount?: boolean) => {
     fetch(`${API_URL}/api/auth/logout`, { method: 'POST', credentials: 'include' }).then(() => {
       setUser(null);
-      window.location.href = '/';
+      if (switchAccount) {
+        // Redirect to Blizzard's logout to clear their SSO session
+        window.location.href = 'https://battle.net/login/en/logout';
+      } else {
+        window.location.href = '/';
+      }
     });
   };
 

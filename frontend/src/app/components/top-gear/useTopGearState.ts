@@ -53,7 +53,10 @@ export function useTopGearState({
       setUpgradeMenuFor(item.uid);
       setLoadingUpgrades(true);
       try {
-        const res = await fetch(`${API_URL}/api/upgrade-options?bonus_ids=${item.bonus_ids.join(',')}`, { credentials: 'include' });
+        const res = await fetch(
+          `${API_URL}/api/upgrade-options?bonus_ids=${item.bonus_ids.join(',')}`,
+          { credentials: 'include' }
+        );
         const data = await res.json();
         setUpgradeOptions(data.options || []);
       } catch {
@@ -66,7 +69,8 @@ export function useTopGearState({
 
   const deselectAll = useCallback(() => onSelectionChange({}), [onSelectionChange]);
 
-  const toggleGroup = useCallback((items: { uid: string; slot: string }[]) => {
+  const toggleGroup = useCallback(
+    (items: { uid: string; slot: string }[]) => {
       const allSelected = items.length > 0 && items.every((c) => selectedUids[c.slot]?.has(c.uid));
       const updated: Record<string, Set<string>> = {};
       for (const [k, v] of Object.entries(selectedUids)) {
@@ -85,9 +89,12 @@ export function useTopGearState({
     [selectedUids, onSelectionChange]
   );
 
-  const toggleItem = useCallback((item: ResolvedItem, slots: string[]) => {
-      const updated = { ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])) };
-      
+  const toggleItem = useCallback(
+    (item: ResolvedItem, slots: string[]) => {
+      const updated = {
+        ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+      };
+
       if (slots.length === 1) {
         const slot = item.slot;
         if (!updated[slot]) updated[slot] = new Set();
@@ -98,11 +105,11 @@ export function useTopGearState({
         }
       } else {
         // Paired slots
-        const isSelected = slots.some(s => {
-            const slotRes = resolved.slots[s];
-            if (!slotRes) return false;
-            const matching = slotRes.alternatives.find(a => a.uid === item.uid);
-            return matching ? selectedUids[s]?.has(matching.uid) : false;
+        const isSelected = slots.some((s) => {
+          const slotRes = resolved.slots[s];
+          if (!slotRes) return false;
+          const matching = slotRes.alternatives.find((a) => a.uid === item.uid);
+          return matching ? selectedUids[s]?.has(matching.uid) : false;
         });
 
         for (const slot of slots) {

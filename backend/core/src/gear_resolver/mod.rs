@@ -8,7 +8,6 @@ pub mod eligibility;
 
 pub use catalyst::{build_catalyst_item, slot_to_inv_type};
 
-
 use crate::item_db;
 use crate::types::class_data::{ARMOR_SLOTS, GEAR_SLOTS};
 use crate::types::*;
@@ -60,13 +59,26 @@ fn resolve_gear_impl(
 
     // Step 1: Place equipped items
     for item in &equipped_items {
-        if item.item_id == 0 { continue; }
+        if item.item_id == 0 {
+            continue;
+        }
         let slot = &item.raw_slot;
-        if !GEAR_SLOTS.contains(&slot.as_str()) { continue; }
-        
-        seen_per_slot.entry(slot.clone()).or_default().insert(dedup_key(item));
+        if !GEAR_SLOTS.contains(&slot.as_str()) {
+            continue;
+        }
+
+        seen_per_slot
+            .entry(slot.clone())
+            .or_default()
+            .insert(dedup_key(item));
         let resolved = enrich(item, slot);
-        slots.entry(slot.clone()).or_insert_with(|| SlotResolution { equipped: None, alternatives: Vec::new() }).equipped = Some(resolved);
+        slots
+            .entry(slot.clone())
+            .or_insert_with(|| SlotResolution {
+                equipped: None,
+                alternatives: Vec::new(),
+            })
+            .equipped = Some(resolved);
     }
 
     // Step 2: Dual-wield and Pair crossover
@@ -77,15 +89,19 @@ fn resolve_gear_impl(
 
     // Step 3: Place non-equipped items
     for item in &other_items {
-        if item.item_id == 0 { continue; }
+        if item.item_id == 0 {
+            continue;
+        }
         let item_eligible = eligible_slots(item, spec);
-        if item_eligible.is_empty() { continue; }
+        if item_eligible.is_empty() {
+            continue;
+        }
 
-        let armor_excluded = max_armor.map_or(false, |max| {
-            item_db::get_item_armor_subclass(item.item_id).map_or(false, |sub| sub > 0 && sub > max)
+        let armor_excluded = max_armor.is_some_and(|max| {
+            item_db::get_item_armor_subclass(item.item_id).is_some_and(|sub| sub > 0 && sub > max)
         });
 
-        let weapon_excluded = allowed_weapons.as_ref().map_or(false, |weapons| {
+        let weapon_excluded = allowed_weapons.as_ref().is_some_and(|weapons| {
             if let Some(item_info) = item_db::get_item_info(item.item_id, Some(&item.bonus_ids)) {
                 let ic = item_info.item_class;
                 let isc = item_info.item_subclass;
@@ -96,15 +112,27 @@ fn resolve_gear_impl(
         });
 
         for slot in &item_eligible {
-            if !GEAR_SLOTS.contains(&slot.as_str()) { continue; }
+            if !GEAR_SLOTS.contains(&slot.as_str()) {
+                continue;
+            }
 
             if armor_excluded && ARMOR_SLOTS.contains(&slot.as_str()) {
-                excluded.push(ExcludedItem { uid: make_uid(item, slot), item_id: item.item_id, name: item.name.clone(), reason: "Wrong armor type".to_string() });
+                excluded.push(ExcludedItem {
+                    uid: make_uid(item, slot),
+                    item_id: item.item_id,
+                    name: item.name.clone(),
+                    reason: "Wrong armor type".to_string(),
+                });
                 continue;
             }
 
             if weapon_excluded && matches!(slot.as_str(), "main_hand" | "off_hand") {
-                excluded.push(ExcludedItem { uid: make_uid(item, slot), item_id: item.item_id, name: item.name.clone(), reason: "Wrong weapon type".to_string() });
+                excluded.push(ExcludedItem {
+                    uid: make_uid(item, slot),
+                    item_id: item.item_id,
+                    name: item.name.clone(),
+                    reason: "Wrong weapon type".to_string(),
+                });
                 continue;
             }
 
@@ -113,13 +141,22 @@ fn resolve_gear_impl(
                 continue;
             }
 
-            slots.entry(slot.clone()).or_insert_with(|| SlotResolution { equipped: None, alternatives: Vec::new() }).alternatives.push(enrich(item, slot));
+            slots
+                .entry(slot.clone())
+                .or_insert_with(|| SlotResolution {
+                    equipped: None,
+                    alternatives: Vec::new(),
+                })
+                .alternatives
+                .push(enrich(item, slot));
         }
     }
 
     // Sort and finalize
     for slot_res in slots.values_mut() {
-        slot_res.alternatives.sort_by(|a, b| b.ilevel.cmp(&a.ilevel));
+        slot_res
+            .alternatives
+            .sort_by(|a, b| b.ilevel.cmp(&a.ilevel));
     }
 
     if let Some(class_id) = crate::types::class_data::class_wow_id(class_name) {
@@ -130,7 +167,11 @@ fn resolve_gear_impl(
     }
 
     ResolveGearResponse {
-        character: CharacterResolveInfo { class_name: character.class_name.clone(), spec: character.spec.clone(), can_dual_wield: can_dw },
+        character: CharacterResolveInfo {
+            class_name: character.class_name.clone(),
+            spec: character.spec.clone(),
+            can_dual_wield: can_dw,
+        },
         base_profile: parse_result.base_profile.clone(),
         slots,
         excluded,
@@ -139,31 +180,57 @@ fn resolve_gear_impl(
     }
 }
 
-fn handle_dw_crossover(equipped: &[&RawParsedItem], slots: &mut HashMap<String, SlotResolution>, seen: &mut HashMap<String, HashSet<String>>) {
+fn handle_dw_crossover(
+    equipped: &[&RawParsedItem],
+    slots: &mut HashMap<String, SlotResolution>,
+    seen: &mut HashMap<String, HashSet<String>>,
+) {
     let mh = equipped.iter().find(|i| i.raw_slot == "main_hand");
     let oh = equipped.iter().find(|i| i.raw_slot == "off_hand");
 
-    let crossover = |item: &RawParsedItem, target_slot: &str, slots: &mut HashMap<String, SlotResolution>, seen: &mut HashMap<String, HashSet<String>>| {
+    let crossover = |item: &RawParsedItem,
+                     target_slot: &str,
+                     slots: &mut HashMap<String, SlotResolution>,
+                     seen: &mut HashMap<String, HashSet<String>>| {
         if item.item_id > 0 && item_db::get_inventory_type(item.item_id) == Some(13) {
             let dk = dedup_key(item);
             if seen.entry(target_slot.to_string()).or_default().insert(dk) {
                 let mut resolved = enrich(item, target_slot);
                 resolved.origin = ItemOrigin::Equipped;
-                slots.entry(target_slot.to_string()).or_default().alternatives.push(resolved);
+                slots
+                    .entry(target_slot.to_string())
+                    .or_default()
+                    .alternatives
+                    .push(resolved);
             }
         }
     };
 
-    if let Some(m) = mh { crossover(m, "off_hand", slots, seen); }
-    if let Some(o) = oh { crossover(o, "main_hand", slots, seen); }
+    if let Some(m) = mh {
+        crossover(m, "off_hand", slots, seen);
+    }
+    if let Some(o) = oh {
+        crossover(o, "main_hand", slots, seen);
+    }
 }
 
-fn handle_pair_crossover(equipped_by_slot: &HashMap<String, &RawParsedItem>, slots: &mut HashMap<String, SlotResolution>) {
+fn handle_pair_crossover(
+    equipped_by_slot: &HashMap<String, &RawParsedItem>,
+    slots: &mut HashMap<String, SlotResolution>,
+) {
     for &slot_name in &["finger1", "trinket1"] {
-        let other = if slot_name == "finger1" { "finger2" } else { "trinket2" };
+        let other = if slot_name == "finger1" {
+            "finger2"
+        } else {
+            "trinket2"
+        };
         if let Some(eq) = equipped_by_slot.get(slot_name) {
             if eq.item_id > 0 {
-                slots.entry(other.to_string()).or_default().alternatives.push(enrich(eq, other));
+                slots
+                    .entry(other.to_string())
+                    .or_default()
+                    .alternatives
+                    .push(enrich(eq, other));
             }
         }
     }

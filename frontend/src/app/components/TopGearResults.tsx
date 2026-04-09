@@ -13,7 +13,6 @@ import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
 
-
 interface TopGearResultsProps {
   playerName: string;
   playerClass: string;
@@ -202,9 +201,7 @@ export default function TopGearResults({
 
       <div className="card p-5">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-widest text-muted">
-            Rankings
-          </p>
+          <p className="text-xs font-medium uppercase tracking-widest text-muted">Rankings</p>
           <div className="flex items-center gap-3">
             {hasEncounterData && (
               <div className="flex gap-1">
@@ -228,9 +225,7 @@ export default function TopGearResults({
                 ))}
               </div>
             )}
-            <span className="font-mono text-[13px] text-muted">
-              {results.length} results
-            </span>
+            <span className="font-mono text-[13px] text-muted">{results.length} results</span>
           </div>
         </div>
 
@@ -239,12 +234,8 @@ export default function TopGearResults({
             {groupedResults.map(([encounter, group]) => (
               <div key={encounter}>
                 <div className="mb-2 flex items-center gap-2 border-b border-border/50 pb-1.5">
-                  <span className="text-[14px] font-semibold text-gray-300">
-                    {encounter}
-                  </span>
-                  <span className="font-mono text-[12px] text-muted">
-                    {group.length} items
-                  </span>
+                  <span className="text-[14px] font-semibold text-gray-300">{encounter}</span>
+                  <span className="font-mono text-[12px] text-muted">{group.length} items</span>
                 </div>
                 <RankingsHeader />
                 <div className="space-y-1">

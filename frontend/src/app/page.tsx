@@ -7,7 +7,9 @@ export default function Home() {
         </svg>
       </div>
       <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-100">Welcome to WhyLowDps</h1>
-      <p className="text-base text-zinc-400">Select a simulation type from the sidebar on the left to get started.</p>
+      <p className="text-base text-zinc-400">
+        Select a simulation type from the sidebar on the left to get started.
+      </p>
     </div>
   );
 }

@@ -50,7 +50,10 @@ fn prepare_upgrade_compare(
             None => continue,
         };
 
-        let equipped = match slot_items.iter().find(|it| it.origin == crate::types::ItemOrigin::Equipped) {
+        let equipped = match slot_items
+            .iter()
+            .find(|it| it.origin == crate::types::ItemOrigin::Equipped)
+        {
             Some(e) => e,
             None => continue,
         };
@@ -75,9 +78,11 @@ fn prepare_upgrade_compare(
             }
 
             // Only include if costs involve our upgrade currencies
-            let has_relevant_cost = opt.cumulative_costs.keys()
+            let has_relevant_cost = opt
+                .cumulative_costs
+                .keys()
                 .any(|k| upgrade_currency_ids.contains(k));
-                
+
             if !has_relevant_cost {
                 continue;
             }
@@ -111,7 +116,7 @@ fn prepare_upgrade_compare(
                     )
                 })
                 .to_string();
-                
+
             upgraded.simc_string = new_simc;
             slot_upgrades.push(upgraded);
         }
@@ -131,8 +136,14 @@ fn prepare_upgrade_compare(
 /// Check if two bonus IDs belong to the same upgrade group.
 fn bonuses_in_same_group(a: u64, b: u64) -> bool {
     let bonuses = crate::item_db::bonuses();
-    let group_a = bonuses.get(&a).and_then(|v| v.upgrade.as_ref()).and_then(|u| u.group);
-    let group_b = bonuses.get(&b).and_then(|v| v.upgrade.as_ref()).and_then(|u| u.group);
+    let group_a = bonuses
+        .get(&a)
+        .and_then(|v| v.upgrade.as_ref())
+        .and_then(|u| u.group);
+    let group_b = bonuses
+        .get(&b)
+        .and_then(|v| v.upgrade.as_ref())
+        .and_then(|u| u.group);
     group_a.is_some() && group_a == group_b
 }
 
@@ -159,11 +170,14 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
             Some(items) => items,
             None => continue,
         };
-        let equipped = match slot_items.iter().find(|it| it.origin == crate::types::ItemOrigin::Equipped) {
+        let equipped = match slot_items
+            .iter()
+            .find(|it| it.origin == crate::types::ItemOrigin::Equipped)
+        {
             Some(e) => e,
             None => continue,
         };
-        
+
         if equipped.bonus_ids.is_empty() {
             continue;
         }
@@ -191,7 +205,9 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
                 if o.level <= current_level {
                     return false;
                 }
-                o.cumulative_costs.keys().any(|k| upgrade_currency_ids.contains(k))
+                o.cumulative_costs
+                    .keys()
+                    .any(|k| upgrade_currency_ids.contains(k))
             })
             .collect();
 
@@ -369,4 +385,3 @@ pub(super) async fn get_upgrade_options_handler(
     let options = game_data::get_upgrade_options(&bonus_ids);
     HttpResponse::Ok().json(json!({ "options": options }))
 }
-

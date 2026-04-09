@@ -1,17 +1,16 @@
-use serde_json::{Value, json};
-use std::collections::HashMap;
 use super::state::*;
 use regex::Regex;
-
+use serde_json::{json, Value};
+use std::collections::HashMap;
 
 pub fn list_gems() -> Vec<Value> {
-    let items_map = match ITEMS.get() { Some(m) => m, None => return vec![] };
-    items_map.values()
+    let items_map = ITEMS.read().unwrap();
+    items_map
+        .values()
         .filter(|v| {
             // Gem criteria: itemClass=3, quality >= 3
             v.class.unwrap_or(0) == 3 && v.quality >= 3
         })
-
         .map(|v| {
             json!({
                 "item_id": v.id,
@@ -24,7 +23,7 @@ pub fn list_gems() -> Vec<Value> {
 }
 
 pub fn get_gem_info(gem_id: u64) -> Option<Value> {
-    let item = ITEMS.get()?.get(&gem_id)?;
+    let item = ITEMS.read().unwrap().get(&gem_id)?.clone();
     Some(json!({
         "gem_id": gem_id,
         "name": item.name,
@@ -33,18 +32,21 @@ pub fn get_gem_info(gem_id: u64) -> Option<Value> {
     }))
 }
 
-pub fn apply_copy_enchants(
-    source_simc: &str,
-    target_simc: &str,
-) -> String {
+pub fn apply_copy_enchants(source_simc: &str, target_simc: &str) -> String {
     let re_enchant = Regex::new(r",enchant_id=(\d+)").unwrap();
     let re_gem = Regex::new(r",gem_id=(\d+)").unwrap();
 
-    let enchant = re_enchant.captures(source_simc).and_then(|c| c.get(1)).map(|m| m.as_str());
-    let gem = re_gem.captures(source_simc).and_then(|c| c.get(1)).map(|m| m.as_str());
+    let enchant = re_enchant
+        .captures(source_simc)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str());
+    let gem = re_gem
+        .captures(source_simc)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str());
 
     let mut result = target_simc.to_string();
-    
+
     // Remove existing
     result = re_enchant.replace_all(&result, "").to_string();
     result = re_gem.replace_all(&result, "").to_string();
@@ -56,7 +58,7 @@ pub fn apply_copy_enchants(
     if let Some(g) = gem {
         result.push_str(&format!(",gem_id={}", g));
     }
-    
+
     result
 }
 
@@ -68,8 +70,19 @@ pub fn apply_copy_enchants_to_map(
     // Find equipped items to use as sources
     let mut sources: HashMap<String, (u64, u64, String, String)> = HashMap::new();
     for list in items_by_slot.values() {
-        if let Some(eq) = list.iter().find(|i: &&ResolvedItem| i.origin == crate::types::ItemOrigin::Equipped) {
-            sources.insert(eq.slot.clone(), (eq.enchant_id, eq.gem_id, eq.enchant_name.clone(), eq.gem_name.clone()));
+        if let Some(eq) = list
+            .iter()
+            .find(|i: &&ResolvedItem| i.origin == crate::types::ItemOrigin::Equipped)
+        {
+            sources.insert(
+                eq.slot.clone(),
+                (
+                    eq.enchant_id,
+                    eq.gem_id,
+                    eq.enchant_name.clone(),
+                    eq.gem_name.clone(),
+                ),
+            );
         }
     }
 
@@ -83,14 +96,15 @@ pub fn apply_copy_enchants_to_map(
                     item.gem_id = gid;
                     item.enchant_name = ename_str.to_string();
                     item.gem_name = gname_str.to_string();
-                    
+
                     // Update simc_string
-                    item.simc_string = apply_copy_enchants(&format!(",enchant_id={},gem_id={}", eid, gid), &item.simc_string);
+                    item.simc_string = apply_copy_enchants(
+                        &format!(",enchant_id={},gem_id={}", eid, gid),
+                        &item.simc_string,
+                    );
                 }
             }
         }
     }
     items_by_slot
 }
-
-

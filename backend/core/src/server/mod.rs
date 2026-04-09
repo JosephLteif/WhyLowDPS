@@ -3,6 +3,8 @@ pub mod auth_handlers;
 #[cfg(feature = "web")]
 mod blizzard;
 #[cfg(feature = "web")]
+mod data_sync;
+#[cfg(feature = "web")]
 mod game_data_handlers;
 #[cfg(feature = "web")]
 mod helpers;
@@ -137,18 +139,15 @@ async fn spa_fallback(
 
     // /character/[region]/[realm]/[name] -> character/[region]/[realm]/[name].html or fallback to index
     if path.starts_with("/character/") {
-        // Since these are highly dynamic, we usually want to fallback to index.html 
+        // Since these are highly dynamic, we usually want to fallback to index.html
         // unless we have a specific catch-all. Next.js static export for dynamic routes
         // without generateStaticParams usually falls back to the root index.
         return Ok(NamedFile::open(frontend_dir.0.join("index.html"))?);
     }
 
-
     // Fallback to index.html
     Ok(NamedFile::open(frontend_dir.0.join("index.html"))?)
 }
-
-
 
 // ---------- Server startup ----------
 
@@ -210,13 +209,22 @@ pub async fn start_with_storage_bind(
 
         let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI")
             .unwrap_or_else(|_| "http://localhost:3000/api/auth/bnet/callback".to_string());
-        let jwt_secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
+        let jwt_secret =
+            std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
+
+        let client_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
+        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
 
         let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
-            None, None, bnet_redirect, jwt_secret,
+            client_id,
+            client_secret,
+            bnet_redirect,
+            jwt_secret,
         )));
 
-        // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>> 
+        let sync_state = web::Data::new(Arc::new(data_sync::DataSyncState::new()));
+
+        // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>>
         // to the proxy handlers so они can check for JWT sub.
         let auth_state_opt_data = web::Data::new(Some(auth_state.get_ref().clone()));
 
@@ -224,10 +232,10 @@ pub async fn start_with_storage_bind(
             let cors = Cors::default()
                 .allowed_origin_fn(|origin, _req_head| {
                     let origin_str = origin.to_str().unwrap_or("");
-                    origin_str == "http://localhost:3000" || 
-                    origin_str == "tauri://localhost" ||
-                    origin_str.starts_with("http://localhost:") ||
-                    origin_str.starts_with("https://localhost:")
+                    origin_str == "http://localhost:3000"
+                        || origin_str == "tauri://localhost"
+                        || origin_str.starts_with("http://localhost:")
+                        || origin_str.starts_with("https://localhost:")
                 })
                 .allow_any_method()
                 .allow_any_header()
@@ -242,15 +250,48 @@ pub async fn start_with_storage_bind(
                 .app_data(blizzard_state.clone())
                 .app_data(auth_state.clone())
                 .app_data(auth_state_opt_data.clone())
-                .route("/api/auth/bnet/login", web::get().to(auth_handlers::bnet_login))
-                .route("/api/auth/bnet/callback", web::get().to(auth_handlers::bnet_callback))
-                .route("/api/auth/bnet/credentials-status", web::get().to(auth_handlers::get_credentials_status))
+                .route(
+                    "/api/auth/bnet/login",
+                    web::get().to(auth_handlers::bnet_login),
+                )
+                .route(
+                    "/api/auth/bnet/callback",
+                    web::get().to(auth_handlers::bnet_callback),
+                )
+                .route(
+                    "/api/auth/bnet/credentials-status",
+                    web::get().to(auth_handlers::get_credentials_status),
+                )
                 .route("/api/auth/me", web::get().to(auth_handlers::get_me))
-                .route("/api/auth/logout", web::post().to(auth_handlers::bnet_logout))
-                .route("/api/bnet/user/characters", web::get().to(auth_handlers::get_characters))
-                .route("/api/user/config", web::get().to(auth_handlers::get_user_configs))
-                .route("/api/user/config", web::post().to(auth_handlers::set_user_config))
-                .route("/api/user/blizzard/test", web::post().to(auth_handlers::test_blizzard_creds));
+                .route(
+                    "/api/auth/logout",
+                    web::post().to(auth_handlers::bnet_logout),
+                )
+                .route(
+                    "/api/bnet/user/characters",
+                    web::get().to(auth_handlers::get_characters),
+                )
+                .route(
+                    "/api/user/config",
+                    web::get().to(auth_handlers::get_user_configs),
+                )
+                .route(
+                    "/api/user/config",
+                    web::post().to(auth_handlers::set_user_config),
+                )
+                .route(
+                    "/api/user/config",
+                    web::delete().to(auth_handlers::clear_user_configs),
+                )
+                .route(
+                    "/api/user/blizzard/test",
+                    web::post().to(auth_handlers::test_blizzard_creds),
+                )
+                .route(
+                    "/api/data/status",
+                    web::get().to(data_sync::get_sync_status),
+                )
+                .route("/api/data/sync", web::post().to(data_sync::trigger_sync));
 
             #[cfg(feature = "desktop")]
             {
@@ -299,10 +340,7 @@ pub async fn start_with_storage_bind(
                     "/api/sim/{id}/cancel",
                     web::post().to(job_handlers::cancel_sim),
                 )
-                .route(
-                    "/api/sim/{id}/link",
-                    web::post().to(job_handlers::link_sim),
-                )
+                .route("/api/sim/{id}/link", web::post().to(job_handlers::link_sim))
                 .route(
                     "/api/sim/{id}/input",
                     web::get().to(job_handlers::get_sim_input),
@@ -431,6 +469,10 @@ pub async fn start_with_storage_bind(
             {
                 app = app.route("/api/system-stats", web::get().to(system_stats));
             }
+
+            let data_dir_inner = data.clone();
+            app = app.app_data(web::Data::new(data_dir_inner));
+            app = app.app_data(sync_state.clone());
 
             // Serve cached assets from data directory
             if let Some(ref dir) = data {

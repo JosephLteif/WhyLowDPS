@@ -191,8 +191,6 @@ pub struct ResolvedItem {
     pub can_catalyst: bool,
 }
 
-
-
 fn is_zero_i64(v: &i64) -> bool {
     *v == 0
 }
@@ -265,14 +263,12 @@ pub struct GameItem {
     pub sources: Option<Vec<ItemSource>>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemSource {
     #[serde(rename = "encounterId")]
     pub encounter_id: Option<i64>,
     #[serde(rename = "instanceId")]
     pub instance_id: Option<i64>,
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -337,4 +333,3 @@ pub struct BonusUpgrade {
     pub group: Option<u64>,
     pub level: Option<u64>,
 }
-

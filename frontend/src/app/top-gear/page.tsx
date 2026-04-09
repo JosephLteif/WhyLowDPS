@@ -289,7 +289,9 @@ export default function TopGearPage() {
             <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
               Copy Enchants
             </span>
-            <p className="text-[13px] text-gray-600">Apply equipped enchants to items that don&apos;t have one</p>
+            <p className="text-[13px] text-gray-600">
+              Apply equipped enchants to items that don&apos;t have one
+            </p>
           </div>
         </label>
         <label className="group flex flex-1 cursor-pointer items-center gap-3">
@@ -309,7 +311,9 @@ export default function TopGearPage() {
             <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
               Sim Highest Upgrade
             </span>
-            <p className="text-[13px] text-gray-600">Treat all selected gear as their maximum upgrade level</p>
+            <p className="text-[13px] text-gray-600">
+              Treat all selected gear as their maximum upgrade level
+            </p>
           </div>
         </label>
         {catalystCharges != null && catalystCharges > 0 && (

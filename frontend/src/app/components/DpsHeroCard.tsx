@@ -32,7 +32,11 @@ const FACTION_BGS: Record<string, string> = {
   horde: '/api/data/static/faction-bg-horde.jpg',
 };
 
-function useFaction(realm: string | undefined, name: string | undefined, region: string | undefined): string | null {
+function useFaction(
+  realm: string | undefined,
+  name: string | undefined,
+  region: string | undefined
+): string | null {
   const [faction, setFaction] = useState<string | null>(null);
 
   useEffect(() => {
@@ -149,7 +153,7 @@ export default function DpsHeroCard({
         )}
         <div className="relative">
           {playerRealm ? (
-            <Link 
+            <Link
               href={`/character/${(playerRegion || 'us').toLowerCase()}/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}`}
               className="text-2xl font-bold tracking-tight text-white transition-colors hover:text-gold"
             >
@@ -171,15 +175,19 @@ export default function DpsHeroCard({
       {hasMetadata && (
         <div className="flex items-center justify-center gap-px border-t border-border bg-surface-2">
           {avgIlevel != null && (
-            <MetaStat 
-              label="Item Level" 
-              value={avgIlevel.toFixed(2)} 
-              note={avgIlevelGain != null && avgIlevelGain !== 0 ? `(${avgIlevelGain > 0 ? '+' : ''}${avgIlevelGain.toFixed(2)})` : undefined}
+            <MetaStat
+              label="Item Level"
+              value={avgIlevel.toFixed(2)}
+              note={
+                avgIlevelGain != null && avgIlevelGain !== 0
+                  ? `(${avgIlevelGain > 0 ? '+' : ''}${avgIlevelGain.toFixed(2)})`
+                  : undefined
+              }
               noteColor={
-                avgIlevelGain != null && avgIlevelGain > 0 
-                  ? 'text-emerald-400' 
-                  : avgIlevelGain != null && avgIlevelGain < 0 
-                    ? 'text-red-400' 
+                avgIlevelGain != null && avgIlevelGain > 0
+                  ? 'text-emerald-400'
+                  : avgIlevelGain != null && avgIlevelGain < 0
+                    ? 'text-red-400'
                     : undefined
               }
             />
@@ -214,13 +222,27 @@ export default function DpsHeroCard({
   );
 }
 
-function MetaStat({ label, value, note, noteColor }: { label: string; value: string; note?: string; noteColor?: string }) {
+function MetaStat({
+  label,
+  value,
+  note,
+  noteColor,
+}: {
+  label: string;
+  value: string;
+  note?: string;
+  noteColor?: string;
+}) {
   return (
     <div className="flex-1 px-4 py-3 text-center">
       <p className="text-[12px] uppercase tracking-wider text-zinc-600">{label}</p>
       <p className="mt-0.5 text-xs font-medium tabular-nums text-zinc-300">
         {value}
-        {note && <span className={`ml-1 text-[12px] font-normal ${noteColor || 'text-zinc-600'}`}>{note}</span>}
+        {note && (
+          <span className={`ml-1 text-[12px] font-normal ${noteColor || 'text-zinc-600'}`}>
+            {note}
+          </span>
+        )}
       </p>
     </div>
   );

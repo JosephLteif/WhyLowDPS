@@ -102,7 +102,9 @@ pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) ->
                                 let name = r.get("name").and_then(|n| n.as_str()).unwrap_or("");
                                 let delta = r.get("delta").and_then(|d| d.as_f64()).unwrap_or(0.0);
 
-                                if delta == 0.0 && (name.starts_with("Currently Equipped") || name == "Base") {
+                                if delta == 0.0
+                                    && (name.starts_with("Currently Equipped") || name == "Base")
+                                {
                                     continue;
                                 }
 

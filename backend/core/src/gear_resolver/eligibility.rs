@@ -1,6 +1,6 @@
 use crate::item_db;
-use crate::types::*;
 use crate::types::class_data;
+use crate::types::*;
 
 /// Build a stable UID for deduplication: "item_id:sorted_bonus_ids:origin:raw_slot"
 pub fn make_uid(item: &RawParsedItem, slot: &str) -> String {
@@ -31,13 +31,16 @@ pub fn dedup_key(item: &RawParsedItem) -> String {
         .map(|b| b.to_string())
         .collect::<Vec<_>>()
         .join(":");
-    format!("{}:{}:e{}:g{}", item.item_id, bonus_key, item.enchant_id, item.gem_id)
+    format!(
+        "{}:{}:e{}:g{}",
+        item.item_id, bonus_key, item.enchant_id, item.gem_id
+    )
 }
 
 /// Enrich a raw item with display info from the item DB.
 pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
     let info = item_db::get_item_info(item.item_id, Some(&item.bonus_ids));
-    let resolved = item_db::resolve_bonuses(&item.bonus_ids, item_db::bonuses());
+    let resolved = item_db::resolve_bonuses(&item.bonus_ids, &item_db::bonuses());
 
     let season_id = resolved.season_id.unwrap_or(0);
 
@@ -60,11 +63,11 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         (
             name,
             "inv_misc_questionmark".to_string(),
-            resolved.quality.map(|q| q as i64).unwrap_or(1),
+            resolved.quality.unwrap_or(1),
             resolved.tag.unwrap_or_default(),
             resolved.upgrade.unwrap_or_default(),
-            resolved.sockets.map(|s| s as i64).unwrap_or(0),
-            resolved.ilevel.map(|l| l as i64).unwrap_or(0),
+            resolved.sockets.unwrap_or(0),
+            resolved.ilevel.unwrap_or(0),
         )
     };
 
@@ -77,7 +80,8 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
     };
 
     let enchant_name = if item.enchant_id > 0 {
-        item_db::enchants().get(&item.enchant_id)
+        item_db::enchants()
+            .get(&item.enchant_id)
             .and_then(|e| e.item_name.as_ref().or(e.display_name.as_ref()).cloned())
             .unwrap_or_default()
     } else {
@@ -85,16 +89,18 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
     };
 
     let (gem_name, gem_icon) = if item.gem_id > 0 {
-        item_db::items().get(&item.gem_id)
+        item_db::items()
+            .get(&item.gem_id)
             .map(|g| (g.name.clone(), g.icon.clone()))
             .unwrap_or_default()
     } else {
         (String::new(), String::new())
     };
 
-    let inventory_type = info.as_ref().map(|i| i.inventory_type).unwrap_or_else(|| {
-        item_db::get_inventory_type(item.item_id).unwrap_or(0)
-    });
+    let inventory_type = info
+        .as_ref()
+        .map(|i| i.inventory_type)
+        .unwrap_or_else(|| item_db::get_inventory_type(item.item_id).unwrap_or(0));
 
     ResolvedItem {
         uid: make_uid(item, slot),
@@ -112,7 +118,7 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         quality_color: class_data::quality_color(quality as u64).to_string(),
         tag,
         upgrade,
-        sockets: sockets as i64,
+        sockets,
         enchant_name,
         gem_name,
         gem_icon,
@@ -122,7 +128,6 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         can_catalyst: false,
     }
 }
-
 
 /// Determine eligible slots for an item using the item DB's inventory_type.
 pub fn eligible_slots(item: &RawParsedItem, spec: &str) -> Vec<String> {

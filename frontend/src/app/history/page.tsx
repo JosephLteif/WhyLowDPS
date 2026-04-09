@@ -2,7 +2,15 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { API_URL, deleteSim, clearHistory, getHistoryStats, getConfig, updateConfig, type HistoryStats } from '../lib/api';
+import {
+  API_URL,
+  deleteSim,
+  clearHistory,
+  getHistoryStats,
+  getConfig,
+  updateConfig,
+  type HistoryStats,
+} from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 
 interface JobSummary {
@@ -47,7 +55,12 @@ const SIM_TYPE_LABELS: Record<string, string> = {
 function TrashIcon() {
   return (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+      />
     </svg>
   );
 }
@@ -68,7 +81,12 @@ function ChevronIcon({ open }: { open: boolean }) {
 function SearchIcon() {
   return (
     <svg className="h-4 w-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+      />
     </svg>
   );
 }
@@ -104,7 +122,11 @@ function formatDateHeader(dateStr: string): string {
   if (target.getTime() === today.getTime()) return 'Today';
   if (target.getTime() === yesterday.getTime()) return 'Yesterday';
 
-  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+  return d.toLocaleDateString(undefined, {
+    month: 'long',
+    day: 'numeric',
+    year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  });
 }
 
 function extractCharacter(simcInput: string): { name: string; realm: string } | null {
@@ -132,7 +154,15 @@ function extractCharacter(simcInput: string): { name: string; realm: string } | 
   return null;
 }
 
-function SimRow({ sim, compact, onDelete }: { sim: JobSummary; compact?: boolean; onDelete?: (id: string) => void }) {
+function SimRow({
+  sim,
+  compact,
+  onDelete,
+}: {
+  sim: JobSummary;
+  compact?: boolean;
+  onDelete?: (id: string) => void;
+}) {
   return (
     <div className="group relative flex items-center">
       <Link
@@ -143,7 +173,7 @@ function SimRow({ sim, compact, onDelete }: { sim: JobSummary; compact?: boolean
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_COLORS[sim.status] || STATUS_COLORS.pending}`}
         />
         {!compact && (
-          <span className="shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-[12px] font-medium text-gold w-[80px] text-center">
+          <span className="w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold">
             {SIM_TYPE_LABELS[sim.sim_type] || sim.sim_type}
           </span>
         )}
@@ -153,7 +183,7 @@ function SimRow({ sim, compact, onDelete }: { sim: JobSummary; compact?: boolean
               {sim.player_name}
               {sim.player_class && <span className="ml-1.5 text-zinc-500">{sim.player_class}</span>}
               {sim.status === 'done' && sim.upgrades != null && sim.downgrades != null && (
-                <span className="ml-2 text-zinc-400 text-xs">
+                <span className="ml-2 text-xs text-zinc-400">
                   &middot;{' '}
                   {sim.sim_type === 'droptimizer'
                     ? `${sim.upgrades} items upgrade vs ${sim.downgrades} downgrade`
@@ -171,20 +201,18 @@ function SimRow({ sim, compact, onDelete }: { sim: JobSummary; compact?: boolean
             </span>
           )}
         </div>
-        <span
-          className="shrink-0 text-right font-mono tabular-nums text-zinc-200 w-20 text-sm"
-        >
+        <span className="w-20 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-200">
           {sim.dps ? Math.round(sim.dps).toLocaleString() : '—'}
         </span>
-        <span
-          className="hidden shrink-0 text-right text-zinc-500 sm:block w-20 text-[13px]"
-        >
+        <span className="hidden w-20 shrink-0 text-right text-[13px] text-zinc-500 sm:block">
           {FIGHT_STYLE_SHORT[sim.fight_style] || sim.fight_style}
         </span>
-        <div className="shrink-0 text-right group-hover:opacity-0 w-20">
+        <div className="w-20 shrink-0 text-right group-hover:opacity-0">
           <div className="text-[12px] text-zinc-500">{timeAgo(sim.created_at)}</div>
           {sim.size_bytes > 0 && (
-            <div className="text-[10px] text-zinc-600 tabular-nums">{formatSize(sim.size_bytes)}</div>
+            <div className="text-[10px] tabular-nums text-zinc-600">
+              {formatSize(sim.size_bytes)}
+            </div>
           )}
         </div>
       </Link>
@@ -243,7 +271,13 @@ function groupByBatch(sims: JobSummary[]): HistoryEntry[] {
   return entries;
 }
 
-function BatchGroup({ entry, onDelete }: { entry: Extract<HistoryEntry, { type: 'batch' }>; onDelete?: (id: string) => void }) {
+function BatchGroup({
+  entry,
+  onDelete,
+}: {
+  entry: Extract<HistoryEntry, { type: 'batch' }>;
+  onDelete?: (id: string) => void;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const first = entry.sims[0];
   const simType = SIM_TYPE_LABELS[first?.sim_type] || first?.sim_type || 'Sim';
@@ -252,10 +286,13 @@ function BatchGroup({ entry, onDelete }: { entry: Extract<HistoryEntry, { type: 
 
   return (
     <div className="border-b border-border last:border-b-0">
-      <div className="group relative flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.03]" onClick={() => setIsOpen(!isOpen)}>
+      <div
+        className="group relative flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.03]"
+        onClick={() => setIsOpen(!isOpen)}
+      >
         <ChevronIcon open={isOpen} />
 
-        <span className="shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-[12px] font-medium text-gold w-[80px] text-center">
+        <span className="w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold">
           {simType}
         </span>
 
@@ -265,16 +302,16 @@ function BatchGroup({ entry, onDelete }: { entry: Extract<HistoryEntry, { type: 
           </span>
         </div>
 
-        <span className="shrink-0 text-right font-mono text-sm tabular-nums text-zinc-200 w-20">
+        <span className="w-20 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-200">
           {bestDps > 0 ? Math.round(bestDps).toLocaleString() : '—'}
         </span>
 
-        <span className="hidden shrink-0 w-20 sm:block" />
+        <span className="hidden w-20 shrink-0 sm:block" />
 
         <div className="w-20 shrink-0 text-right group-hover:opacity-0">
           <div className="text-[12px] text-zinc-600">{timeAgo(first?.created_at)}</div>
           {batchSize > 0 && (
-            <div className="text-[10px] text-zinc-700 tabular-nums">{formatSize(batchSize)}</div>
+            <div className="text-[10px] tabular-nums text-zinc-700">{formatSize(batchSize)}</div>
           )}
         </div>
 
@@ -314,8 +351,14 @@ export default function HistoryPage() {
 
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [character, setCharacter] = useState<{ name: string; realm: string; region?: string } | null>(null);
-  const [bnetCharacters, setBnetCharacters] = useState<{ name: string; realm: string; region: string; source?: 'bnet' | 'history' }[]>([]);
+  const [character, setCharacter] = useState<{
+    name: string;
+    realm: string;
+    region?: string;
+  } | null>(null);
+  const [bnetCharacters, setBnetCharacters] = useState<
+    { name: string; realm: string; region: string; source?: 'bnet' | 'history' }[]
+  >([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [maxJobs, setMaxJobs] = useState<number>(50);
   const [search, setSearch] = useState('');
@@ -333,20 +376,34 @@ export default function HistoryPage() {
 
     // Fetch account characters and historical characters
     Promise.all([
-      fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'include' }).then(r => r.json().catch(() => ({ characters: [] }))),
-      fetch(`${API_URL}/api/history/characters`, { credentials: 'include' }).then(r => r.json().catch(() => []))
-    ]).then(([bnetResponse, historyData]) => {
-      const bnetList = Array.isArray(bnetResponse) ? bnetResponse : (bnetResponse?.characters || []);
-      const merged: any[] = bnetList.map((c: any) => ({ ...c, source: 'bnet' }));
-      const historyList = Array.isArray(historyData) ? historyData : [];
-      
-      for (const h of historyList) {
-        if (!merged.find(m => m.name.toLowerCase() === h.name.toLowerCase() && m.realm.toLowerCase() === h.realm.toLowerCase())) {
-          merged.push({ ...h, source: 'history' });
+      fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'include' }).then((r) =>
+        r.json().catch(() => ({ characters: [] }))
+      ),
+      fetch(`${API_URL}/api/history/characters`, { credentials: 'include' }).then((r) =>
+        r.json().catch(() => [])
+      ),
+    ])
+      .then(([bnetResponse, historyData]) => {
+        const bnetList = Array.isArray(bnetResponse)
+          ? bnetResponse
+          : bnetResponse?.characters || [];
+        const merged: any[] = bnetList.map((c: any) => ({ ...c, source: 'bnet' }));
+        const historyList = Array.isArray(historyData) ? historyData : [];
+
+        for (const h of historyList) {
+          if (
+            !merged.find(
+              (m) =>
+                m.name.toLowerCase() === h.name.toLowerCase() &&
+                m.realm.toLowerCase() === h.realm.toLowerCase()
+            )
+          ) {
+            merged.push({ ...h, source: 'history' });
+          }
         }
-      }
-      setBnetCharacters(merged);
-    }).catch(() => {});
+        setBnetCharacters(merged);
+      })
+      .catch(() => {});
   }, [simcInput]);
 
   const refreshHistory = useCallback(async () => {
@@ -355,10 +412,10 @@ export default function HistoryPage() {
       if (character && character.name && character.realm) {
         url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
       }
-      
+
       const [simsRes, statsData] = await Promise.all([
         fetch(url, { credentials: 'include' }),
-        getHistoryStats()
+        getHistoryStats(),
       ]);
       const data = simsRes.ok ? await simsRes.json() : [];
       setSims(data);
@@ -371,10 +428,9 @@ export default function HistoryPage() {
   useEffect(() => {
     setLoading(true);
     // Initial fetch for history and configuration
-    Promise.all([
-      refreshHistory(),
-      getConfig().then(cfg => setMaxJobs(cfg.max_jobs))
-    ]).finally(() => setLoading(false));
+    Promise.all([refreshHistory(), getConfig().then((cfg) => setMaxJobs(cfg.max_jobs))]).finally(
+      () => setLoading(false)
+    );
   }, [refreshHistory]);
 
   const handleDelete = async (id: string) => {
@@ -399,11 +455,12 @@ export default function HistoryPage() {
   const filteredEntries = useMemo(() => {
     const query = search.toLowerCase().trim();
     const filtered = query
-      ? sims.filter(s =>
-          s.player_name?.toLowerCase().includes(query) ||
-          s.sim_type.toLowerCase().includes(query) ||
-          SIM_TYPE_LABELS[s.sim_type]?.toLowerCase().includes(query) ||
-          s.player_class?.toLowerCase().includes(query)
+      ? sims.filter(
+          (s) =>
+            s.player_name?.toLowerCase().includes(query) ||
+            s.sim_type.toLowerCase().includes(query) ||
+            SIM_TYPE_LABELS[s.sim_type]?.toLowerCase().includes(query) ||
+            s.player_class?.toLowerCase().includes(query)
         )
       : sims;
 
@@ -411,7 +468,7 @@ export default function HistoryPage() {
 
     // Group by date
     const dateGroups: Record<string, HistoryEntry[]> = {};
-    grouped.forEach(entry => {
+    grouped.forEach((entry) => {
       const date = entry.type === 'single' ? entry.sim.created_at : entry.sims[0].created_at;
       const header = formatDateHeader(date);
       if (!dateGroups[header]) dateGroups[header] = [];
@@ -420,8 +477,6 @@ export default function HistoryPage() {
 
     return dateGroups;
   }, [sims, search]);
-
-
 
   if (loading) {
     return (
@@ -439,13 +494,13 @@ export default function HistoryPage() {
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-medium text-zinc-100">Simulation History</h2>
           {stats && (
-          <span className="text-xs text-zinc-500">
+            <span className="text-xs text-zinc-500">
               {sims.length} records &middot; {formatSize(stats.size_bytes)}
             </span>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 pr-2 border-r border-border">
+          <div className="flex items-center gap-2 border-r border-border pr-2">
             <span className="text-xs text-zinc-500">Filter by Character:</span>
             <select
               className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
@@ -462,11 +517,14 @@ export default function HistoryPage() {
               }}
             >
               <option value="all">All Sims</option>
-              {character && !bnetCharacters.find(c => c.name === character.name && c.realm === character.realm) && (
-                <option value={`${character.name}-${character.realm}`}>
-                  {character.name} - {character.realm}
-                </option>
-              )}
+              {character &&
+                !bnetCharacters.find(
+                  (c) => c.name === character.name && c.realm === character.realm
+                ) && (
+                  <option value={`${character.name}-${character.realm}`}>
+                    {character.name} - {character.realm}
+                  </option>
+                )}
               {bnetCharacters.map((c, i) => (
                 <option key={i} value={`${c.name}-${c.realm}`}>
                   {c.name} - {c.realm} {c.source === 'history' ? '(History)' : ''}
@@ -496,7 +554,7 @@ export default function HistoryPage() {
               className="w-16 rounded border border-border bg-surface-2 px-1.5 py-1 text-xs text-zinc-300 focus:border-gold focus:outline-none"
             />
           </div>
-          { sims.length > 0 && (
+          {sims.length > 0 && (
             <button
               onClick={handleClear}
               className="rounded bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
@@ -504,8 +562,6 @@ export default function HistoryPage() {
               Clear All
             </button>
           )}
-
-
         </div>
       </div>
 
@@ -521,7 +577,7 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-8">
-          {groupKeys.map(group => (
+          {groupKeys.map((group) => (
             <div key={group} className="space-y-2">
               <h3 className="px-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                 {group}
@@ -531,7 +587,7 @@ export default function HistoryPage() {
                   const id = entry.type === 'single' ? entry.sim.id : entry.batchId;
                   const isLast = idx === filteredEntries[group].length - 1;
                   return (
-                    <div key={id} className={!isLast ? "border-b border-border" : ""}>
+                    <div key={id} className={!isLast ? 'border-b border-border' : ''}>
                       {entry.type === 'single' ? (
                         <SimRow sim={entry.sim} onDelete={handleDelete} />
                       ) : (

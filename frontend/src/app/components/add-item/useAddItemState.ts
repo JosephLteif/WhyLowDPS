@@ -16,7 +16,12 @@ export interface ExternalItem {
   dungeon_info?: Record<string, any>;
 }
 
-export function useAddItemState(isOpen: boolean, className: string | null | undefined, spec: string | null | undefined, preferredSlot: string | null | undefined) {
+export function useAddItemState(
+  isOpen: boolean,
+  className: string | null | undefined,
+  spec: string | null | undefined,
+  preferredSlot: string | null | undefined
+) {
   const [instances, setInstances] = useState<any[]>([]);
   const [selectedInstance, setSelectedInstance] = useState<number>(0);
   const [drops, setDrops] = useState<Record<string, ExternalItem[]>>({});
@@ -77,8 +82,12 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
         let data: Record<string, ExternalItem[]> = {};
         if (selectedInstance === 0) {
           const [raidRes, dungRes] = await Promise.all([
-            fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, { credentials: 'include' }),
-            fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, { credentials: 'include' }),
+            fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, {
+              credentials: 'include',
+            }),
+            fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, {
+              credentials: 'include',
+            }),
           ]);
           const raidData = await raidRes.json();
           const dungData = await dungRes.json();
@@ -86,7 +95,10 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
             data[slot] = [...(raidData[slot] || []), ...(dungData[slot] || [])];
           }
         } else {
-          const res = await fetch(`${API_URL}/api/instances/${selectedInstance}/drops?${query.toString()}`, { credentials: 'include' });
+          const res = await fetch(
+            `${API_URL}/api/instances/${selectedInstance}/drops?${query.toString()}`,
+            { credentials: 'include' }
+          );
           data = await res.json();
         }
         setDrops(data);
@@ -108,8 +120,12 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
         if (className) query.set('class_name', className);
         if (spec) query.set('spec', spec);
         const [raidRes, dungRes] = await Promise.all([
-          fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, { credentials: 'include' }),
-          fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, { credentials: 'include' }),
+          fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, {
+            credentials: 'include',
+          }),
+          fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, {
+            credentials: 'include',
+          }),
         ]);
         const raidData = await raidRes.json();
         const dungData = await dungRes.json();
@@ -118,7 +134,8 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
           data[slot] = [...(raidData[slot] || []), ...(dungData[slot] || [])];
         }
         setAllPossibleDrops(data);
-      } catch (e) {} finally {
+      } catch (e) {
+      } finally {
         setIsGlobalLoading(false);
       }
     };
@@ -126,20 +143,35 @@ export function useAddItemState(isOpen: boolean, className: string | null | unde
   }, [isOpen, className, spec]);
 
   return {
-    instances, setInstances,
-    selectedInstance, setSelectedInstance,
-    drops, setDrops,
-    loading, setLoading,
-    globalSearch, setGlobalSearch,
-    localSearch, setLocalSearch,
-    seasonConfig, setSeasonConfig,
-    selectedDifficulty, setSelectedDifficulty,
-    filterSlot, setFilterSlot,
-    category, setCategory,
-    upgradeTracks, setUpgradeTracks,
-    itemTiers, setItemTiers,
-    allPossibleDrops, setAllPossibleDrops,
-    showSearchDropdown, setShowSearchDropdown,
-    isGlobalLoading, setIsGlobalLoading
+    instances,
+    setInstances,
+    selectedInstance,
+    setSelectedInstance,
+    drops,
+    setDrops,
+    loading,
+    setLoading,
+    globalSearch,
+    setGlobalSearch,
+    localSearch,
+    setLocalSearch,
+    seasonConfig,
+    setSeasonConfig,
+    selectedDifficulty,
+    setSelectedDifficulty,
+    filterSlot,
+    setFilterSlot,
+    category,
+    setCategory,
+    upgradeTracks,
+    setUpgradeTracks,
+    itemTiers,
+    setItemTiers,
+    allPossibleDrops,
+    setAllPossibleDrops,
+    showSearchDropdown,
+    setShowSearchDropdown,
+    isGlobalLoading,
+    setIsGlobalLoading,
   };
 }

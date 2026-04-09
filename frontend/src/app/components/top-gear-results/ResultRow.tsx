@@ -1,17 +1,9 @@
 import { useMemo } from 'react';
 import { specDisplayName } from '../../lib/types';
-import type {
-  ResultItem,
-  TopGearResult,
-} from '../../lib/types';
-import type {
-  EnchantInfo,
-  GemInfo,
-  ItemInfo,
-} from '../../lib/useItemInfo';
+import type { ResultItem, TopGearResult } from '../../lib/types';
+import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import ItemTag from './ItemTag';
-
 
 interface ResultRowProps {
   result: TopGearResult;
@@ -43,8 +35,7 @@ export default function ResultRow({
   gemInfoMap,
 }: ResultRowProps) {
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
-  const isEquipped =
-    result.items.length === 0 || result.name.startsWith('Currently Equipped');
+  const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
   const hasTalentBuild = !!result.talent_build;
 
   const talentBadge = hasTalentBuild ? (
@@ -65,8 +56,7 @@ export default function ResultRow({
   const displayItems = result.items.filter((it) => {
     if (!it.is_kept) return it.item_id > 0;
     if (showBothRings && (it.slot === 'finger1' || it.slot === 'finger2')) return true;
-    if (showBothTrinkets && (it.slot === 'trinket1' || it.slot === 'trinket2'))
-      return true;
+    if (showBothTrinkets && (it.slot === 'trinket1' || it.slot === 'trinket2')) return true;
     return false;
   });
 
@@ -91,10 +81,10 @@ export default function ResultRow({
         isSelected && !isBest
           ? 'bg-emerald-500/[0.04] ring-1 ring-emerald-500/50'
           : isBest
-          ? `ring-1 ring-gold/30 ${isSelected ? 'bg-gold/[0.05]' : 'bg-transparent'}`
-          : isEquipped
-          ? 'ring-1 ring-white/5'
-          : ''
+            ? `ring-1 ring-gold/30 ${isSelected ? 'bg-gold/[0.05]' : 'bg-transparent'}`
+            : isEquipped
+              ? 'ring-1 ring-white/5'
+              : ''
       }`}
     >
       <div
@@ -153,8 +143,8 @@ export default function ResultRow({
               !isEquipped && result.delta > 0
                 ? 'text-emerald-400'
                 : !isEquipped && result.delta < 0
-                ? 'text-red-400'
-                : 'text-muted'
+                  ? 'text-red-400'
+                  : 'text-muted'
             }`}
           >
             <span>

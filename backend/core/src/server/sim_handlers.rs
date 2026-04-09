@@ -31,9 +31,11 @@ pub(super) async fn create_sim(
     simc_input = apply_spec_override(&simc_input, &req.options.spec_override);
     simc_input = crate::talent_normalize::normalize_simc_talents(&simc_input);
     simc_input = inject_expert_fields(&simc_input, &req.options);
-    
+
     let resolved_threads = if req.options.threads == 0 {
-        std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4)
+        std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(4)
     } else {
         req.options.threads
     };
@@ -70,19 +72,24 @@ pub(super) async fn create_sim(
         let jid_cb = jid_logs.clone();
         let store_prog = store_clone.clone();
         let jid_prog = job_id_clone.clone();
-        
+
         match simc_runner::run_simc(
-            &simc, 
-            &job_id_clone, 
-            &simc_input, 
-            &options, 
+            &simc,
+            &job_id_clone,
+            &simc_input,
+            &options,
             move |current, total| {
                 let pct = 20 + ((current as f64 / total as f64) * 80.0) as u8;
-                store_prog.update_progress(&jid_prog, pct, "Simulating", &format!("{}/{} iterations", current, total));
+                store_prog.update_progress(
+                    &jid_prog,
+                    pct,
+                    "Simulating",
+                    &format!("{}/{} iterations", current, total),
+                );
             },
             move |line| {
                 logs_cb.push_line(&jid_cb, line.to_string());
-            }
+            },
         )
         .await
         {
@@ -162,7 +169,6 @@ pub(super) async fn create_top_gear_sim(
         items_by_slot = game_data::apply_copy_enchants_to_map(items_by_slot);
     }
 
-
     // Build talent builds list: normalize each talent string
     let talent_builds: Vec<(String, String)> = req
         .talent_builds
@@ -202,9 +208,11 @@ pub(super) async fn create_top_gear_sim(
     }
 
     let mut generated_input = inject_expert_fields(&generated_input, &req.options);
-    
+
     let resolved_threads = if req.options.threads == 0 {
-        std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4)
+        std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(4)
     } else {
         req.options.threads
     };
@@ -295,7 +303,6 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         items_by_slot = game_data::apply_copy_enchants_to_map(items_by_slot);
     }
 
-
     let talent_builds: Vec<(String, String)> = req
         .talent_builds
         .iter()
@@ -358,9 +365,11 @@ pub(super) async fn create_droptimizer_sim(
     }
 
     let mut generated_input = inject_expert_fields(&generated_input, &req.options);
-    
+
     let resolved_threads = if req.options.threads == 0 {
-        std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4)
+        std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(4)
     } else {
         req.options.threads
     };

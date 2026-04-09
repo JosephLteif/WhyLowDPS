@@ -24,22 +24,27 @@ export default function CharactersPage() {
   const [error, setError] = useState<string | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
-  const fetchCharacters = useCallback((refresh = false) => {
-    if (!loading && user) {
-      setFetching(true);
-      fetch(`${API_URL}/api/bnet/user/characters${refresh ? '?refresh=true' : ''}`, { credentials: 'include' })
-        .then(async (res) => {
-          if (!res.ok) {
-            const body = await res.text();
-            throw new Error(`Failed to fetch characters: ${res.status} ${body}`);
-          }
-          return res.json();
+  const fetchCharacters = useCallback(
+    (refresh = false) => {
+      if (!loading && user) {
+        setFetching(true);
+        fetch(`${API_URL}/api/bnet/user/characters${refresh ? '?refresh=true' : ''}`, {
+          credentials: 'include',
         })
-        .then((data) => setCharacters(data.characters || []))
-        .catch((err) => setError(err.message))
-        .finally(() => setFetching(false));
-    }
-  }, [loading, user]);
+          .then(async (res) => {
+            if (!res.ok) {
+              const body = await res.text();
+              throw new Error(`Failed to fetch characters: ${res.status} ${body}`);
+            }
+            return res.json();
+          })
+          .then((data) => setCharacters(data.characters || []))
+          .catch((err) => setError(err.message))
+          .finally(() => setFetching(false));
+      }
+    },
+    [loading, user]
+  );
 
   useEffect(() => {
     fetchCharacters();
@@ -64,7 +69,9 @@ export default function CharactersPage() {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center text-center">
         <h1 className="mb-2 text-2xl font-bold tracking-tight text-gray-100">Access Denied</h1>
-        <p className="text-base text-zinc-400">Please log in with Battle.net to view your characters.</p>
+        <p className="text-base text-zinc-400">
+          Please log in with Battle.net to view your characters.
+        </p>
       </div>
     );
   }
@@ -75,10 +82,10 @@ export default function CharactersPage() {
         <h1 className="text-2xl font-bold tracking-tight text-gray-100">My Characters</h1>
         <div className="flex items-center gap-4">
           <p className="text-sm font-medium text-gold">{user.battletag}</p>
-          <button 
-            onClick={() => fetchCharacters(true)} 
+          <button
+            onClick={() => fetchCharacters(true)}
             disabled={fetching}
-            className="rounded border border-white/10 bg-black/20 backdrop-blur-sm px-3 py-1 text-xs font-bold text-zinc-200 hover:bg-white/10 active:scale-95 disabled:opacity-50"
+            className="rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95 disabled:opacity-50"
           >
             {fetching ? 'Refreshing...' : 'Refresh'}
           </button>
@@ -109,7 +116,7 @@ export default function CharactersPage() {
               <Link
                 key={`${char.name}-${char.realm}-${idx}`}
                 href={`/character/${char.region.toLowerCase()}/${char.realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-')}/${char.name.toLowerCase()}`}
-                className="group card relative overflow-hidden flex flex-col h-64 transition-all hover:border-gold/30 cursor-pointer active:scale-[0.99]"
+                className="card group relative flex h-64 cursor-pointer flex-col overflow-hidden transition-all hover:border-gold/30 active:scale-[0.99]"
               >
                 {/* Character Background Image */}
                 <div className="absolute inset-0 z-0">
@@ -127,7 +134,7 @@ export default function CharactersPage() {
                   />
                 </div>
 
-                <div className="relative z-10 flex flex-col h-full p-5">
+                <div className="relative z-10 flex h-full flex-col p-5">
                   <div className="flex items-start justify-between">
                     <div className="flex flex-col">
                       <span className="text-xl font-black tracking-tight" style={{ color }}>
@@ -139,14 +146,13 @@ export default function CharactersPage() {
                     </div>
                     <div className="flex flex-col items-end gap-1.5">
                       <span
-                        className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-widest shadow-sm ${isAlliance
-                            ? 'bg-blue-600 text-white'
-                            : 'bg-red-700 text-white'
-                          }`}
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                          isAlliance ? 'bg-blue-600 text-white' : 'bg-red-700 text-white'
+                        }`}
                       >
                         {char.faction}
                       </span>
-                      <span className="rounded border border-white/10 bg-black/20 backdrop-blur-sm px-1.5 py-0.5 text-[10px] font-bold text-zinc-200">
+                      <span className="rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[10px] font-bold text-zinc-200 backdrop-blur-sm">
                         Level {char.level} • {char.mode}
                       </span>
                     </div>
@@ -154,7 +160,9 @@ export default function CharactersPage() {
 
                   <div className="mt-auto flex items-center justify-between gap-3">
                     <div className="flex flex-col">
-                      <span className="text-[10px] font-semibold uppercase tracking-tighter text-zinc-500">Realm</span>
+                      <span className="text-[10px] font-semibold uppercase tracking-tighter text-zinc-500">
+                        Realm
+                      </span>
                       <span className="text-[13px] font-medium text-zinc-200">{char.realm}</span>
                     </div>
                   </div>

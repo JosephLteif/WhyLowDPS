@@ -102,7 +102,9 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function pollLogs() {
       try {
-        const res = await fetch(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`, { credentials: 'include' });
+        const res = await fetch(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`, {
+          credentials: 'include',
+        });
         if (!res.ok || !active) return;
         const data = await res.json();
         if (data.lines.length > 0) {
@@ -226,9 +228,11 @@ export default function SimResultClient() {
               })}
             </div>
           </div>
-        ) : <div />}
-        <CharacterLinkButton 
-          jobId={id} 
+        ) : (
+          <div />
+        )}
+        <CharacterLinkButton
+          jobId={id}
           currentLinkedName={job.linked_name}
           currentLinkedRealm={job.linked_realm}
           currentLinkedRegion={job.linked_region}
@@ -259,19 +263,24 @@ export default function SimResultClient() {
         </>
       ) : isStatWeights ? (
         <>
-          <div className="card p-6 border-gold/10 bg-gold/[0.02]">
-             <h2 className="text-lg font-bold text-zinc-100 mb-2">Stat Weights Generated</h2>
-             <p className="text-sm text-zinc-400">
-               Below are your character&apos;s current marginal stat weights. These numbers represent how much DPS you stand to gain from adding exactly <strong>1 point</strong> of each secondary stat.
-               Use these values in game addons (like Pawn) to quickly evaluate gear upgrades in your bags. Keep in mind that as you accumulate more of a particular stat, its value generally decreases.
-             </p>
+          <div className="card border-gold/10 bg-gold/[0.02] p-6">
+            <h2 className="mb-2 text-lg font-bold text-zinc-100">Stat Weights Generated</h2>
+            <p className="text-sm text-zinc-400">
+              Below are your character&apos;s current marginal stat weights. These numbers represent
+              how much DPS you stand to gain from adding exactly <strong>1 point</strong> of each
+              secondary stat. Use these values in game addons (like Pawn) to quickly evaluate gear
+              upgrades in your bags. Keep in mind that as you accumulate more of a particular stat,
+              its value generally decreases.
+            </p>
           </div>
           {r.stat_weights ? (
             <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />
           ) : (
-             <div className="card border-amber-500/20 bg-amber-500/[0.03] p-6 text-center">
-               <p className="text-sm font-semibold text-amber-400">No stat weight data found in this simulation.</p>
-             </div>
+            <div className="card border-amber-500/20 bg-amber-500/[0.03] p-6 text-center">
+              <p className="text-sm font-semibold text-amber-400">
+                No stat weight data found in this simulation.
+              </p>
+            </div>
           )}
         </>
       ) : (

@@ -54,7 +54,7 @@ export default function TopHeader() {
                     </div>
                     <div className="h-6 w-px bg-border" />
                     <button
-                      onClick={logout}
+                      onClick={() => logout(true)}
                       className="text-[13px] font-medium text-zinc-400 transition-colors hover:text-white"
                     >
                       Logout
@@ -74,11 +74,11 @@ export default function TopHeader() {
         </div>
       </header>
 
-      <LoginModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <LoginModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
         onConfirm={handleModalConfirm}
       />
     </>
   );
-}
+}

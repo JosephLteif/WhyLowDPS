@@ -1,10 +1,10 @@
+use single_instance::SingleInstance;
+use std::fs;
+use std::io::Cursor;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 use tokio::time::sleep;
-use single_instance::SingleInstance;
-use std::fs;
-use std::io::Cursor;
 
 #[tokio::main]
 async fn main() {
@@ -29,7 +29,10 @@ async fn main() {
     if !simc_bin.exists() {
         println!("(!) SimulationCraft not found. Bootstrapping...");
         if let Err(e) = bootstrap_simc(simc_dir).await {
-            eprintln!("Error Downloading SimC: {}. You may need to install it manually in resources/simc", e);
+            eprintln!(
+                "Error Downloading SimC: {}. You may need to install it manually in resources/simc",
+                e
+            );
         } else {
             println!("(+) SimulationCraft installed successfully.");
         }
@@ -37,12 +40,16 @@ async fn main() {
 
     // 2. Start WhyLowDps Server
     println!("Starting Simulation Server...");
-    let server_bin = if cfg!(windows) { "whylowdps-server.exe" } else { "./whylowdps-server" };
-    
+    let server_bin = if cfg!(windows) {
+        "whylowdps-server.exe"
+    } else {
+        "./whylowdps-server"
+    };
+
     // Check if server exists in current dir
     if !Path::new(server_bin).exists() {
-         eprintln!("Error: {} not found in the current directory.", server_bin);
-         // In dev mode, we might be running from cargo, but for the 'app', it should be there.
+        eprintln!("Error: {} not found in the current directory.", server_bin);
+        // In dev mode, we might be running from cargo, but for the 'app', it should be there.
     }
 
     let mut server_child = Command::new(server_bin)
@@ -68,11 +75,14 @@ async fn main() {
     // 4. Open Browser
     println!("Opening WhyLowDps in your browser...");
     if let Err(e) = webbrowser::open("http://localhost:8000") {
-        eprintln!("Failed to open browser: {}. Please visit http://localhost:8000 manually.", e);
+        eprintln!(
+            "Failed to open browser: {}. Please visit http://localhost:8000 manually.",
+            e
+        );
     }
 
     println!("App is running. Use the Settings menu in the web UI to shut down.");
-    
+
     // Keep launcher alive to monitor server?
     // If the server process dies, the launcher should probably exit.
     loop {
@@ -94,7 +104,7 @@ async fn main() {
 
 async fn bootstrap_simc(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(dir)?;
-    
+
     let url = if cfg!(windows) {
         "https://github.com/simulationcraft/simc/releases/download/v1100-01/simc-1100-01-win64.zip"
     } else {
@@ -105,10 +115,10 @@ async fn bootstrap_simc(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     println!("Downloading from GitHub...");
     let response = reqwest::get(url).await?;
     let content = response.bytes().await?;
-    
+
     println!("Extracting...");
     let mut archive = zip::ZipArchive::new(Cursor::new(content))?;
-    
+
     // Extract everything to the dir
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;

@@ -4,6 +4,7 @@ import { useSimContext } from '../components/SimContext';
 import { API_URL, fetchJson } from './api';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
+import { simResultHref } from './routes';
 
 interface UseSimSubmitOptions {
   /** API endpoint path, e.g. "/api/sim" */
@@ -96,7 +97,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
       if (scenarios.length === 0) {
         const r = results[0];
         if (r.status === 'fulfilled') {
-          router.push(`/sim/${r.value.id}`);
+          router.push(simResultHref(r.value.id));
         } else {
           throw r.reason;
         }
@@ -118,7 +119,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
         if (siblings.length > 0) {
           storeScenarioSiblings(siblings);
           clearScenarios();
-          router.push(`/sim/${siblings[0].id}`);
+          router.push(simResultHref(siblings[0].id));
         } else {
           throw new Error('All scenario submissions failed');
         }

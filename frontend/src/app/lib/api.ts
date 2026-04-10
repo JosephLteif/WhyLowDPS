@@ -3,6 +3,7 @@ export const isDesktop =
   (window.location.protocol === 'tauri:' ||
     window.location.protocol === 'asset:' ||
     window.location.hostname === 'tauri.localhost' ||
+    (window as any).__TAURI__ ||
     (window as any).__TAURI_METADATA__ ||
     (window as any).__TAURI_INTERNALS__ ||
     process.env.DESKTOP_BUILD ||

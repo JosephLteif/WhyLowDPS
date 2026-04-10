@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import { CLASS_COLORS } from '../lib/types';
+import { characterHref } from '../lib/routes';
 import Link from 'next/link';
 
 interface Character {
@@ -115,7 +116,11 @@ export default function CharactersPage() {
             return (
               <Link
                 key={`${char.name}-${char.realm}-${idx}`}
-                href={`/character/${char.region.toLowerCase()}/${char.realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-')}/${char.name.toLowerCase()}`}
+                href={characterHref(
+                  char.region,
+                  char.realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-'),
+                  char.name
+                )}
                 className="card group relative flex h-64 cursor-pointer flex-col overflow-hidden transition-all hover:border-gold/30 active:scale-[0.99]"
               >
                 {/* Character Background Image */}

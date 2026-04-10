@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
@@ -15,13 +15,14 @@ import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 
-import { API_URL } from '../../lib/api';
+import { API_URL, fetchJson } from '../../lib/api';
 import { useSimContext } from '../../components/SimContext';
 import {
   getScenarioSiblings,
   formatScenarioLabel,
   type ScenarioSibling,
 } from '../../lib/scenario-siblings';
+import { simResultHref } from '../../lib/routes';
 
 interface JobData {
   id: string;
@@ -49,14 +50,25 @@ interface JobData {
 
 export default function SimResultClient() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const paramId = params.id as string;
+  const queryId = (searchParams.get('id') || '').trim();
 
-  // In static export, useParams() may initially return "_" (the generateStaticParams
-  // placeholder) before the router reconciles with the actual URL. Fall back to the URL.
-  let id = paramId;
+  // Robust ID resolution from params or URL
+  let id = queryId || paramId;
   if ((!paramId || paramId === '_') && typeof window !== 'undefined') {
-    const match = window.location.pathname.match(/\/sim\/(.+)/);
-    if (match) id = match[1];
+    const query = new URLSearchParams(window.location.search);
+    const queryIdFromUrl = (query.get('id') || '').trim();
+    if (queryIdFromUrl) {
+      id = queryIdFromUrl;
+    }
+
+    const parts = window.location.pathname.split('/');
+    // Sims IDs are uuid or nanoid and are generally 20+ chars
+    const foundId = parts.find(p => p.length > 20 && (p.includes('-') || /^[a-f0-9]+$/i.test(p)));
+    if (foundId) {
+      id = foundId;
+    }
   }
 
   const [job, setJob] = useState<JobData | null>(null);
@@ -71,15 +83,15 @@ export default function SimResultClient() {
   }, []);
 
   useEffect(() => {
+    console.log('[SimResult] Initializing with ID:', id);
     if (!id || id === '_') return;
+    setJob(null); // Reset when ID changes
     setFetchError('');
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const res = await fetch(`${API_URL}/api/sim/${id}`, { credentials: 'include' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: JobData = await res.json();
+        const data = await fetchJson<JobData>(`${API_URL}/api/sim/${id}`);
         if (active) setJob(data);
         if (active && (data.status === 'pending' || data.status === 'running')) {
           timer = setTimeout(poll, 2000);
@@ -103,11 +115,8 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function pollLogs() {
       try {
-        const res = await fetch(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`, {
-          credentials: 'include',
-        });
-        if (!res.ok || !active) return;
-        const data = await res.json();
+        const data = await fetchJson<any>(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`);
+        if (!active) return;
         if (data.lines.length > 0) {
           setLogLines((prev) => {
             const merged = [...prev, ...data.lines];
@@ -216,7 +225,7 @@ export default function SimResultClient() {
                 return (
                   <Link
                     key={s.id}
-                    href={`/sim/${s.id}`}
+                    href={simResultHref(s.id)}
                     className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
                       isCurrent
                         ? 'border-gold/40 bg-gold/[0.08] text-gold'

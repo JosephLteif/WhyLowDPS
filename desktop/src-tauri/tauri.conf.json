@@ -33,10 +33,10 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../../backend/resources/data/**/*",
-      "../../backend/resources/simc/**/*"
-    ]
+    "resources": {
+      "../../backend/resources/data": "data",
+      "../../backend/resources/simc": "simc"
+    }
   },
   "plugins": {
     "updater": {

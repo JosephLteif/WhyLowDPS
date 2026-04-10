@@ -121,31 +121,44 @@ async fn spa_fallback(
     frontend_dir: web::Data<FrontendDir>,
 ) -> actix_web::Result<NamedFile> {
     let path = req.path();
+    let trimmed = path.trim_start_matches('/').trim_end_matches('/');
 
-    // Try exact file match first (e.g., /quick-sim -> quick-sim.html)
-    let trimmed = path.trim_start_matches('/');
-    let html_path = frontend_dir.0.join(format!("{}.html", trimmed));
-    if html_path.exists() {
-        return Ok(NamedFile::open(html_path)?);
-    }
+    // Try static-export folder routes first (e.g., /quick-sim -> quick-sim/index.html).
+    if !trimmed.is_empty() {
+        let folder_index = frontend_dir.0.join(trimmed).join("index.html");
+        if folder_index.exists() {
+            return Ok(NamedFile::open(folder_index)?);
+        }
 
-    // /sim/{id} -> sim/_.html (the placeholder page)
-    if path.starts_with("/sim/") {
-        let sim_html = frontend_dir.0.join("sim").join("_.html");
-        if sim_html.exists() {
-            return Ok(NamedFile::open(sim_html)?);
+        // Support non-folder exports when present.
+        let flat_html = frontend_dir.0.join(format!("{}.html", trimmed));
+        if flat_html.exists() {
+            return Ok(NamedFile::open(flat_html)?);
         }
     }
 
-    // /character/[region]/[realm]/[name] -> character/[region]/[realm]/[name].html or fallback to index
-    if path.starts_with("/character/") {
-        // Since these are highly dynamic, we usually want to fallback to index.html
-        // unless we have a specific catch-all. Next.js static export for dynamic routes
-        // without generateStaticParams usually falls back to the root index.
-        return Ok(NamedFile::open(frontend_dir.0.join("index.html"))?);
+    // Map dynamic exported pages to their static placeholders.
+    if path.starts_with("/sim/") || path == "/sim" || path == "/sim/" {
+        let sim_placeholder = frontend_dir.0.join("sim").join("_").join("index.html");
+        if sim_placeholder.exists() {
+            return Ok(NamedFile::open(sim_placeholder)?);
+        }
     }
 
-    // Fallback to index.html
+    if path.starts_with("/character/") || path == "/character" || path == "/character/" {
+        let character_placeholder = frontend_dir
+            .0
+            .join("character")
+            .join("us")
+            .join("realm")
+            .join("name")
+            .join("index.html");
+        if character_placeholder.exists() {
+            return Ok(NamedFile::open(character_placeholder)?);
+        }
+    }
+
+    // Final fallback for unknown routes.
     Ok(NamedFile::open(frontend_dir.0.join("index.html"))?)
 }
 

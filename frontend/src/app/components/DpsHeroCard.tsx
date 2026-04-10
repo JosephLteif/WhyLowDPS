@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchJson } from '../lib/api';
 import { useSimContext } from './SimContext';
+import { characterHref } from '../lib/routes';
 
 interface DpsHeroCardProps {
   playerName: string;
@@ -50,9 +51,7 @@ function useFaction(
         );
         if (region) url.searchParams.set('region', region.toLowerCase());
 
-        const res = await fetch(url.toString(), { credentials: 'include' });
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
+        const data = await fetchJson<any>(url.toString());
         if (!cancelled && data.faction) {
           if (typeof data.faction === 'string') {
             setFaction(data.faction.toLowerCase());
@@ -154,7 +153,7 @@ export default function DpsHeroCard({
         <div className="relative">
           {playerRealm ? (
             <Link
-              href={`/character/${(playerRegion || 'us').toLowerCase()}/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}`}
+              href={characterHref(playerRegion || 'us', playerRealm, playerName)}
               className="text-2xl font-bold tracking-tight text-white transition-colors hover:text-gold"
             >
               {playerName}

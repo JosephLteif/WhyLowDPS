@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  trailingSlash: true,
   output: (process.env.DESKTOP_BUILD && process.env.NODE_ENV === 'production') ? "export" : "standalone",
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? "",

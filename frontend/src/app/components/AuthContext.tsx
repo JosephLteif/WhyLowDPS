@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { API_URL, isDesktop, fetchJson, TOKEN_KEY } from '../lib/api';
 
 interface AuthContextType {
@@ -49,16 +49,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
-  const checkCredentialsStatus = async () => {
+  const checkCredentialsStatus = useCallback(async () => {
     try {
-      return await fetchJson<{ globally_configured: boolean }>(`${API_URL}/api/auth/bnet/credentials-status`);
+      return await fetchJson<{ globally_configured: boolean }>(
+        `${API_URL}/api/auth/bnet/credentials-status`
+      );
     } catch (err) {
       console.error('Failed to check credentials status:', err);
     }
     return { globally_configured: false }; // Fallback to avoid dead-end if request fails
-  };
+  }, []);
 
-  const setSystemCredentials = async (clientId: string, clientSecret: string) => {
+  const setSystemCredentials = useCallback(async (clientId: string, clientSecret: string) => {
     try {
       const res = await fetch(`${API_URL}/api/system/blizzard/credentials`, {
         method: 'POST',
@@ -70,24 +72,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Failed to set system credentials:', err);
       return false;
     }
-  };
+  }, []);
 
-  const login = async (clientId?: string, clientSecret?: string) => {
+  const login = useCallback(async (clientId?: string, clientSecret?: string) => {
     const flowId = crypto.randomUUID();
     let url = `${API_URL}/api/auth/bnet/login?flow_id=${flowId}`;
-    
+
     if (clientId && clientSecret) {
-      url += `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`;
+      url += `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(
+        clientSecret
+      )}`;
     }
 
     if (isDesktop) {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         console.log('Opening isolated auth window:', url);
-        
+
         // Use double-encoding for the ref URL to ensure Blizzard's logout redirect works correctly
         await invoke('open_auth_window', { url: encodeURIComponent(url) });
-        
+
         // Start polling for token
         startPolling(flowId);
         return;
@@ -106,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     console.log('Initiating login redirect to:', url);
     window.location.assign(url);
-  };
+  }, []);
 
   const startPolling = (flowId: string) => {
     const interval = setInterval(async () => {
@@ -131,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => clearInterval(interval), 5 * 60 * 1000);
   };
 
-  const logout = (switchAccount?: boolean) => {
+  const logout = useCallback((switchAccount?: boolean) => {
     const performLocalLogout = () => {
       localStorage.removeItem(TOKEN_KEY);
       setUser(null);
@@ -144,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('Backend logout failed:', err);
         performLocalLogout();
       });
-  };
+  }, []);
 
   return (
     <AuthContext.Provider

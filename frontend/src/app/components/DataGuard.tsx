@@ -17,6 +17,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setIsChecking(true);
     checkCredentialsStatus().then((status) => {
+      console.log('[DataGuard] Credentials status:', status);
       setIsGloballyConfigured(status.globally_configured);
       setIsChecking(false);
     });
@@ -44,6 +45,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Initial check
+    console.log('[DataGuard] Initial check started');
     checkStatus();
 
     // Start sync if ready and not syncing
@@ -66,31 +68,22 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isSettingsPage = pathname === '/settings';
 
-  // While we're still performing initial auth/credential checks, don't show the "needs keys" screen
-  if (loading || isChecking) {
-    return null; // Or a minimal full-screen spinner
+  // 1. Initial configuration check (no data yet)
+  if ((loading || isChecking) && !isGloballyConfigured && !user && !isSettingsPage) {
+    return null;
   }
 
-  // 1. If the system is not configured with Blizzard keys, we MUST show the setup screen.
+  // 2. If the system is not configured with Blizzard keys, show setup screen
   if (!isGloballyConfigured && !isSettingsPage) {
-    return (
-      <SplashScreen
-        status="unauthenticated_needs_keys"
-        progress=""
-      />
-    );
+    return <SplashScreen status="unauthenticated_needs_keys" progress="" />;
   }
 
-  // 2. If the system is configured but the user is not logged in, show the login screen.
+  // 3. If the system is configured but the user is not logged in, show login screen
   if (!user && !isSettingsPage) {
-    return (
-      <SplashScreen
-        status="unauthenticated"
-        progress=""
-      />
-    );
+    return <SplashScreen status="unauthenticated" progress="" />;
   }
 
+  // 4. If data is not ready, show syncing splash screen (only if not on settings)
   if (!isReady && !isSettingsPage) {
     return (
       <SplashScreen
@@ -101,5 +94,6 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // 5. Default: show application content
   return <>{children}</>;
 }

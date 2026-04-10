@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import { API_URL, fetchJson } from '../../../../lib/api';
 import CharacterPanel from '../../../../components/CharacterPanel';
@@ -8,9 +8,35 @@ import { generateSimcString } from '../../../../lib/simc-generator';
 
 export default function CharacterClient() {
   const params = useParams();
-  const region = (params.region as string) || 'us';
-  const realm = (params.realm as string) || '';
-  const name = (params.name as string) || '';
+  const searchParams = useSearchParams();
+  
+  // Robust resolution from params or URL path
+  let region = (searchParams.get('region') || params.region as string || 'us').toLowerCase();
+  let realm = (searchParams.get('realm') || params.realm as string || '').toLowerCase();
+  let name = (searchParams.get('name') || params.name as string || '').toLowerCase();
+
+  const usingPlaceholderSegments = realm === 'realm' && name === 'name';
+
+  if ((!realm || !name || usingPlaceholderSegments) && typeof window !== 'undefined') {
+    const query = new URLSearchParams(window.location.search);
+    const queryRegion = query.get('region');
+    const queryRealm = query.get('realm');
+    const queryName = query.get('name');
+    if (queryRegion && queryRealm && queryName) {
+      region = queryRegion.toLowerCase();
+      realm = queryRealm.toLowerCase();
+      name = queryName.toLowerCase();
+    } else {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      // Expected pattern: character/[region]/[realm]/[name]
+      const charIndex = parts.indexOf('character');
+      if (charIndex !== -1 && parts.length >= charIndex + 4) {
+        region = parts[charIndex + 1];
+        realm = parts[charIndex + 2];
+        name = parts[charIndex + 3];
+      }
+    }
+  }
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);

@@ -12,6 +12,7 @@ import {
   type HistoryStats, fetchJson,
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
+import { simResultHref } from '../lib/routes';
 
 interface JobSummary {
   id: string;
@@ -166,7 +167,7 @@ function SimRow({
   return (
     <div className="group relative flex items-center">
       <Link
-        href={`/sim/${sim.id}`}
+        href={simResultHref(sim.id)}
         className={`flex min-w-0 flex-1 items-center gap-3 transition-colors hover:bg-white/[0.03] ${compact ? 'px-4 py-2' : 'px-5 py-3'}`}
       >
         <span

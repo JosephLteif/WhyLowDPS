@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { API_URL, isDesktop } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { invoke } from '@tauri-apps/api/core';
+import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 interface SplashScreenProps {
   status: string;
@@ -222,10 +223,14 @@ export default function SplashScreen({
         </div>
 
         <div className="mt-12 flex flex-col items-center gap-4">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+          <div className="hidden text-[10px] uppercase tracking-[0.2em] text-zinc-500">
             Version 0.2.4-STABILITY-V2 • Production Ready
           </div>
           
+          <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+            Version {APP_VERSION_WITH_PREFIX} • Production Ready
+          </div>
+
           {(showDebugButton && isDesktop) && (
             <button 
               onClick={fetchDebugInfo}
@@ -239,7 +244,7 @@ export default function SplashScreen({
 
       <div className="fixed bottom-4 left-4 z-50">
         <span className="text-[10px] font-mono text-zinc-700 bg-black/40 px-2 py-1 rounded border border-white/5">
-          Build: 0.2.4-STABILITY-V2
+          Build: {APP_VERSION}
         </span>
       </div>
 

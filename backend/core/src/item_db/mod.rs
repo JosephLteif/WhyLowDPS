@@ -273,7 +273,20 @@ pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
                 .or(e.display_name.as_ref())
                 .cloned()
                 .unwrap_or_default();
-            serde_json::json!({ "enchant_id": e.id, "name": name })
+            serde_json::json!({
+                "id": e.id,
+                "enchant_id": e.id,
+                "name": name,
+                "displayName": e.display_name,
+                "baseDisplayName": e.base_display_name,
+                "itemId": e.item_id,
+                "itemName": e.item_name,
+                "itemIcon": e.item_icon,
+                "spellIcon": e.spell_icon,
+                "quality": e.quality.unwrap_or(3),
+                "craftingQuality": e.crafting_quality,
+                "slot": e.slot,
+            })
         })
         .collect()
 }

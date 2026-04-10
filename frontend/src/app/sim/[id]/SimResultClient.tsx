@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
@@ -49,6 +50,7 @@ interface JobData {
 }
 
 export default function SimResultClient() {
+  const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
   const paramId = params.id as string;
@@ -77,10 +79,44 @@ export default function SimResultClient() {
   const [showLogs, setShowLogs] = useState(true);
   const logCursorRef = useRef(0);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
+  const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setSiblings(getScenarioSiblings());
   }, []);
+
+  useEffect(() => {
+    if (!siblings || siblings.length === 0) return;
+    const siblingList = siblings;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function pollSiblingStatuses() {
+      const statuses: Record<string, string> = {};
+      for (const s of siblingList) {
+        try {
+          const data = await fetchJson<JobData>(`${API_URL}/api/sim/${s.id}`);
+          statuses[s.id] = data.status || 'pending';
+        } catch {
+          statuses[s.id] = 'pending';
+        }
+      }
+      if (!active) return;
+      if (id && job?.status) statuses[id] = job.status;
+      setSiblingStatuses(statuses);
+
+      const shouldContinue = Object.values(statuses).some(
+        (status) => status === 'pending' || status === 'running'
+      );
+      if (shouldContinue) timer = setTimeout(pollSiblingStatuses, 2000);
+    }
+
+    pollSiblingStatuses();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [siblings, id, job?.status]);
 
   useEffect(() => {
     console.log('[SimResult] Initializing with ID:', id);
@@ -137,6 +173,22 @@ export default function SimResultClient() {
   }, [showLogs, id, job?.status]);
 
   const handleToggleLogs = useCallback(() => setShowLogs((v) => !v), []);
+  const navigateToScenario = useCallback(
+    (scenarioId: string) => {
+      if (!scenarioId || scenarioId === id) return;
+      router.push(simResultHref(scenarioId), { scroll: false });
+    },
+    [id, router]
+  );
+
+  const scenarioStatusTone = useCallback((status: string, isCurrent: boolean): string => {
+    if (isCurrent) return 'text-gold';
+    if (status === 'running') return 'text-blue-300';
+    if (status === 'pending') return 'text-zinc-300';
+    if (status === 'done') return 'text-emerald-300';
+    if (status === 'failed' || status === 'cancelled') return 'text-red-300';
+    return 'text-zinc-300';
+  }, []);
 
   if (fetchError) {
     return (
@@ -212,9 +264,9 @@ export default function SimResultClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="sticky top-16 z-40 flex flex-wrap items-center justify-between gap-4 py-2">
         {siblings && siblings.length > 1 ? (
-          <div className="card p-3">
+          <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
             <div className="flex flex-wrap items-center gap-2">
               <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
                 Scenarios
@@ -222,18 +274,42 @@ export default function SimResultClient() {
               <span className="h-4 w-px shrink-0 bg-border" />
               {siblings.map((s) => {
                 const isCurrent = s.id === id;
+                const status = siblingStatuses[s.id] || (isCurrent ? job.status : 'pending');
                 return (
-                  <Link
+                  <button
                     key={s.id}
-                    href={simResultHref(s.id)}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      navigateToScenario(s.id);
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateToScenario(s.id);
+                    }}
                     className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
                       isCurrent
                         ? 'border-gold/40 bg-gold/[0.08] text-gold'
                         : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
                     }`}
                   >
-                    {formatScenarioLabel(s)}
-                  </Link>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{formatScenarioLabel(s)}</span>
+                      <span className={`text-[11px] ${scenarioStatusTone(status, isCurrent)}`}>
+                        {status === 'running'
+                          ? 'In Progress'
+                          : status === 'pending'
+                            ? 'Pending'
+                            : status === 'done'
+                              ? 'Done'
+                              : status === 'failed'
+                                ? 'Failed'
+                                : status === 'cancelled'
+                                  ? 'Cancelled'
+                                  : ''}
+                      </span>
+                    </span>
+                  </button>
                 );
               })}
             </div>

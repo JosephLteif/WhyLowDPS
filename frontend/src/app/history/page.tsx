@@ -12,6 +12,11 @@ import {
   type HistoryStats, fetchJson,
 } from '../lib/api';
 import { simResultHref } from '../lib/routes';
+import {
+  clearScenarioSiblings,
+  storeScenarioSiblings,
+  type ScenarioSibling,
+} from '../lib/scenario-siblings';
 
 interface JobSummary {
   id: string;
@@ -133,15 +138,31 @@ function SimRow({
   sim,
   compact,
   onDelete,
+  siblingGroup,
 }: {
   sim: JobSummary;
   compact?: boolean;
   onDelete?: (id: string) => void;
+  siblingGroup?: JobSummary[];
 }) {
   return (
     <div className="group relative flex items-center">
       <Link
         href={simResultHref(sim.id)}
+        onClick={() => {
+          if (!siblingGroup || siblingGroup.length <= 1) {
+            clearScenarioSiblings();
+            return;
+          }
+          const siblings: ScenarioSibling[] = siblingGroup.map((s, idx) => ({
+            id: s.id,
+            fightStyle: s.fight_style || 'Patchwerk',
+            targetCount: 0,
+            fightLength: 0,
+            simType: SIM_TYPE_LABELS[s.sim_type] || s.sim_type || `Scenario ${idx + 1}`,
+          }));
+          storeScenarioSiblings(siblings);
+        }}
         className={`flex min-w-0 flex-1 items-center gap-3 transition-colors hover:bg-white/[0.03] ${compact ? 'px-4 py-2' : 'px-5 py-3'}`}
       >
         <span
@@ -312,7 +333,13 @@ function BatchGroup({
         <div className="border-t border-border/50 bg-surface-2/50 pl-4">
           <div className="divide-y divide-border/30">
             {entry.sims.map((sim) => (
-              <SimRow key={sim.id} sim={sim} compact onDelete={onDelete} />
+              <SimRow
+                key={sim.id}
+                sim={sim}
+                compact
+                onDelete={onDelete}
+                siblingGroup={entry.sims}
+              />
             ))}
           </div>
         </div>

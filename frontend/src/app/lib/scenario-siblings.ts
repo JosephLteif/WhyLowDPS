@@ -11,14 +11,24 @@ export interface ScenarioSibling {
   fightStyle: string;
   targetCount: number;
   fightLength: number;
+  label?: string;
+  simType?: string;
 }
 
 export function formatScenarioLabel(s: ScenarioSibling): string {
+  if (s.label && s.label.trim().length > 0) return s.label;
   const style = FIGHT_STYLE_LABELS[s.fightStyle] || s.fightStyle;
-  const bosses = s.targetCount === 1 ? '1 boss' : `${s.targetCount} bosses`;
-  const min = Math.floor(s.fightLength / 60);
-  const sec = String(s.fightLength % 60).padStart(2, '0');
-  return `${style} / ${bosses} / ${min}:${sec}`;
+  const meta: string[] = [];
+  if (s.targetCount > 0) {
+    meta.push(s.targetCount === 1 ? '1 boss' : `${s.targetCount} bosses`);
+  }
+  if (s.fightLength > 0) {
+    const min = Math.floor(s.fightLength / 60);
+    const sec = String(s.fightLength % 60).padStart(2, '0');
+    meta.push(`${min}:${sec}`);
+  }
+  const base = s.simType ? `${s.simType} · ${style}` : style;
+  return meta.length > 0 ? `${base} / ${meta.join(' / ')}` : base;
 }
 
 export function storeScenarioSiblings(siblings: ScenarioSibling[]): void {

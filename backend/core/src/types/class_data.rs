@@ -262,15 +262,52 @@ pub fn class_wow_id(class_name: &str) -> Option<u64> {
 /// Detect the character class from a simc input string.
 pub fn detect_class(simc_input: &str) -> Option<String> {
     let classes = CLASSES.read().unwrap();
-    let names: Vec<String> = classes
+    let mut names: Vec<String> = classes
         .iter()
         .flat_map(|c| std::iter::once(c.name.clone()).chain(c.aliases.iter().cloned()))
         .collect();
-    let pattern = format!(r#"^({})\s*="#, names.join("|"));
+
+    // Fallback list for environments where class metadata failed to load.
+    if names.is_empty() {
+        names = vec![
+            "warrior".to_string(),
+            "paladin".to_string(),
+            "hunter".to_string(),
+            "rogue".to_string(),
+            "priest".to_string(),
+            "death_knight".to_string(),
+            "deathknight".to_string(),
+            "shaman".to_string(),
+            "mage".to_string(),
+            "warlock".to_string(),
+            "monk".to_string(),
+            "druid".to_string(),
+            "demon_hunter".to_string(),
+            "demonhunter".to_string(),
+            "evoker".to_string(),
+        ];
+    }
+
+    // Escape names to avoid regex metacharacter surprises and match case-insensitively.
+    let escaped = names
+        .iter()
+        .map(|n| regex::escape(n))
+        .collect::<Vec<_>>()
+        .join("|");
+    let pattern = format!(r#"(?i)^({})\s*="#, escaped);
     let class_re = Regex::new(&pattern).unwrap();
+
     for line in simc_input.lines() {
-        if let Some(caps) = class_re.captures(line.trim()) {
-            return Some(caps[1].to_string());
+        // Be tolerant of clipboard-introduced leading markers (BOM, zero-width, bidi marks).
+        let normalized = line
+            .trim()
+            .trim_start_matches('\u{feff}')
+            .trim_start_matches('\u{200b}')
+            .trim_start_matches('\u{200e}')
+            .trim_start_matches('\u{200f}');
+
+        if let Some(caps) = class_re.captures(normalized) {
+            return Some(caps[1].to_lowercase());
         }
     }
     None

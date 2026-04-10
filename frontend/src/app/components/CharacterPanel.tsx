@@ -16,7 +16,8 @@ import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
 import { useTalentTree } from '../lib/useTalentTree';
-import { encodeTalentString } from '../lib/talentEncode';
+import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
+import { decodeHeader } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { generateSimcString } from '../lib/simc-generator';
 import { useState } from 'react';
@@ -33,6 +34,55 @@ const GEAR_ORDER_RIGHT = [
   'TRINKET_2',
 ];
 const GEAR_ORDER_BOTTOM = ['MAIN_HAND', 'OFF_HAND'];
+const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
+
+function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length < 16 || !TALENT_EXPORT_RE.test(trimmed)) return false;
+  try {
+    const header = decodeHeader(trimmed);
+    if (header.bits.length <= header.offset) return false;
+    if (header.specId <= 0) return false;
+    if (expectedSpecId && header.specId !== expectedSpecId) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findTalentExportString(input: unknown, expectedSpecId?: number | null): string | null {
+  if (!input || typeof input !== 'object') return null;
+  const seen = new Set<unknown>();
+  const stack: unknown[] = [input];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || seen.has(current)) continue;
+    seen.add(current);
+
+    if (typeof current === 'string') {
+      if (isTalentExportString(current, expectedSpecId)) return current.trim();
+      continue;
+    }
+
+    if (Array.isArray(current)) {
+      for (const item of current) stack.push(item);
+      continue;
+    }
+
+    if (typeof current === 'object') {
+      for (const value of Object.values(current as Record<string, unknown>)) {
+        if (typeof value === 'string') {
+          if (isTalentExportString(value, expectedSpecId)) return value.trim();
+        } else if (value && typeof value === 'object') {
+          stack.push(value);
+        }
+      }
+    }
+  }
+
+  return null;
+}
 
 interface CharacterPanelProps {
   name: string;
@@ -95,31 +145,63 @@ export default function CharacterPanel({
   const tree = useTalentTree(specId);
 
   const talentString = useMemo(() => {
-    if (!activeLoadout || !tree || !specId) return null;
+    if (!tree || !specId) return null;
     try {
+      const directCandidates = [
+        activeLoadout?.talent_loadout_code,
+        activeLoadout?.talentLoadoutCode,
+        activeLoadout?.loadout_code,
+        activeLoadout?.code,
+        activeSpec?.talent_loadout_code,
+        activeSpec?.talentLoadoutCode,
+      ].filter((v): v is string => typeof v === 'string');
+      const direct = directCandidates.find((v) => isTalentExportString(v, specId));
+      if (direct) return normalizeTalentString(direct, tree);
+
+      const discovered =
+        findTalentExportString(activeLoadout, specId) ?? findTalentExportString(activeSpec, specId);
+      if (discovered) return normalizeTalentString(discovered, tree);
+
       const selections = new Map<number, NodeSelection>();
-      const talents = [
-        ...(activeLoadout.selected_class_talents || []),
-        ...(activeLoadout.selected_spec_talents || []),
-        ...(activeLoadout.selected_hero_talents || []),
-        ...(activeSpec.talents || []),
+      const selectedTalents = [
+        ...(activeLoadout?.selected_class_talents || []),
+        ...(activeLoadout?.selected_spec_talents || []),
+        ...(activeLoadout?.selected_hero_talents || []),
       ];
+      const talents = [...selectedTalents, ...(activeSpec.talents || [])];
+      const allNodes = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes];
 
       for (const t of talents) {
-        const tid = t.id || t.talent?.id;
-        if (!tid) continue;
-        const node = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes].find(
-          (n) => n.id === tid || n.entries.some((e) => e.id === tid)
+        const candidateIds = [
+          t.id,
+          t.talent?.id,
+          t.tooltip_spell?.id,
+          t.spell_tooltip?.spell?.id,
+          t.selected_tooltip?.spell?.id,
+        ].filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
+        if (candidateIds.length === 0) continue;
+
+        const node = allNodes.find((n) =>
+          candidateIds.some(
+            (id) => n.id === id || n.entries.some((e) => e.id === id || e.spellId === id)
+          )
         );
         if (node) {
-          const choiceIndex = node.entries.findIndex((e) => e.id === tid);
+          const choiceIndex = node.entries.findIndex((e) =>
+            candidateIds.some((id) => e.id === id || e.spellId === id)
+          );
+          const existing = selections.get(node.id);
+          const nextRanks = Math.max(existing?.ranks ?? 0, t.rank ?? node.maxRanks ?? 1);
+          const nextChoice =
+            choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
           selections.set(node.id, {
-            ranks: t.rank ?? node.maxRanks ?? 1,
-            choiceIndex: choiceIndex >= 0 ? choiceIndex : -1,
+            ranks: nextRanks,
+            choiceIndex: nextChoice,
           });
         }
       }
-      return encodeTalentString(selections, tree, specId);
+      if (selections.size === 0) return null;
+      return normalizeTalentString(encodeTalentString(selections, tree, specId), tree);
     } catch (err) {
       console.warn('Failed to encode talent string:', err);
       return null;
@@ -482,6 +564,7 @@ function TalentsCard({
   tree: any;
 }) {
   const loading = specId !== null && !tree;
+  const [copiedTalentTree, setCopiedTalentTree] = useState(false);
 
   if (!activeSpec) {
     return (
@@ -510,9 +593,24 @@ function TalentsCard({
           <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
             Specialization: <span className="text-gold">{activeSpec.specialization.name}</span>
           </h1>
-          {loading && (
-            <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
-          )}
+          <div className="flex items-center gap-2">
+            {talentString && (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(talentString);
+                  setCopiedTalentTree(true);
+                  setTimeout(() => setCopiedTalentTree(false), 1500);
+                }}
+                className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+              >
+                {copiedTalentTree ? 'Copied' : 'Copy Talent Tree'}
+              </button>
+            )}
+            {loading && (
+              <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+            )}
+          </div>
         </div>
       </div>
 

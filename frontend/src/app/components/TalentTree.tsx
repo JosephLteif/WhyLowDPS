@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { decodeHeader, decodeNodes } from '../lib/talentDecode';
+import { decodeHeader, decodeNodeSelections, decodeNodes } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { encodeTalentString } from '../lib/talentEncode';
 import {
@@ -31,9 +31,9 @@ interface TalentTreeProps {
 }
 
 // Node dimensions in SVG units (posX/posY use ~600 unit spacing)
-const NODE_SIZE = 260;
-const ICON_SIZE = 210;
-const PADDING = 200;
+const NODE_SIZE = 380;
+const ICON_SIZE = 315;
+const PADDING = 240;
 
 const GOLD = '#C8992A';
 const DIM = 'rgba(255,255,255,0.15)';
@@ -68,17 +68,11 @@ export default function TalentTree({
   const resolvedSpecId = specIdProp ?? header?.specId ?? null;
   const tree = useTalentTree(resolvedSpecId);
 
-  // Decode selections from the (stable) talent string.
-  // fullNodeOrder covers ALL nodes across all specs of the class.
-  // fullNodeMaxRanks (from the backend) provides maxRanks for every node
-  // including nodes from other specs. Without it, bit positions misalign
-  // because the decoder can't determine the correct bit width for each node.
-  const decodedFromString = useMemo(() => {
+  const decodeMeta = useMemo(() => {
     if (!header || !tree) return null;
     const orderedIds = tree.fullNodeOrder;
     if (!orderedIds) return null;
 
-    // Use backend-provided maxRanks (covers all specs), fall back to local nodes
     const localNodes = [
       ...tree.classNodes,
       ...tree.specNodes,
@@ -89,7 +83,23 @@ export default function TalentTree({
     const maxRanks = new Map(
       orderedIds.map((id) => [id, tree.fullNodeMaxRanks?.[id] ?? localMap.get(id) ?? 1])
     );
-    const decoded = decodeNodes(header.bits, header.offset, orderedIds, maxRanks);
+
+    return { orderedIds, maxRanks };
+  }, [header, tree]);
+
+  // Decode selections from the (stable) talent string.
+  // fullNodeOrder covers ALL nodes across all specs of the class.
+  // fullNodeMaxRanks (from the backend) provides maxRanks for every node
+  // including nodes from other specs. Without it, bit positions misalign
+  // because the decoder can't determine the correct bit width for each node.
+  const decodedFromString = useMemo(() => {
+    if (!header || !tree || !decodeMeta) return null;
+    const decoded = decodeNodes(
+      header.bits,
+      header.offset,
+      decodeMeta.orderedIds,
+      decodeMeta.maxRanks
+    );
 
     // Auto-grant freeNode talents that the game grants implicitly.
     // Some export strings omit free entry nodes — grant ALL of them
@@ -101,7 +111,12 @@ export default function TalentTree({
     }
 
     return decoded;
-  }, [header, tree]);
+  }, [header, tree, decodeMeta]);
+
+  const purchasedFromString = useMemo(() => {
+    if (!header || !decodeMeta || editable) return null;
+    return decodeNodeSelections(header.bits, header.offset, decodeMeta.orderedIds, decodeMeta.maxRanks);
+  }, [header, decodeMeta, editable]);
 
   // Editable state — initialized from decoded string once
   const [editSelections, setEditSelections] = useState<Map<number, NodeSelection>>(new Map());
@@ -190,26 +205,47 @@ export default function TalentTree({
   const activeHeroNodes = selectedSubTreeId
     ? tree.heroNodes.filter((n) => n.subTreeId === selectedSubTreeId)
     : [];
+  const sharedHeroNodes = tree.heroNodes.filter((n) => !n.subTreeId);
+  const visibleHeroNodes = [...activeHeroNodes, ...sharedHeroNodes];
 
   const selectedSubTree = tree.subTreeNodes
     ?.flatMap((st) => st.entries)
     .find((e) => e.traitSubTreeId === selectedSubTreeId);
 
-  const classSpent = getPointsSpent(selections, tree.classNodes);
-  const specSpent = getPointsSpent(selections, tree.specNodes);
-  const heroSpent = getPointsSpent(selections, activeHeroNodes);
+  const classNodeIds = new Set(tree.classNodes.map((n) => n.id));
+  const specNodeIds = new Set(tree.specNodes.map((n) => n.id));
+  const heroNodeIds = new Set(tree.heroNodes.map((n) => n.id));
+
+  let purchasedSpent: { classPoints: number; specPoints: number; heroPoints: number } | null = null;
+  if (purchasedFromString) {
+    let classPoints = 0;
+    let specPoints = 0;
+    let heroPoints = 0;
+
+    for (const [nodeId, state] of purchasedFromString) {
+      if (!state.purchased) continue;
+      if (classNodeIds.has(nodeId)) classPoints += state.ranks;
+      else if (specNodeIds.has(nodeId)) specPoints += state.ranks;
+      else if (heroNodeIds.has(nodeId)) heroPoints += state.ranks;
+    }
+
+    purchasedSpent = { classPoints, specPoints, heroPoints };
+  }
+
+  const classSpent = purchasedSpent?.classPoints ?? getPointsSpent(selections, tree.classNodes);
+  const specSpent = purchasedSpent?.specPoints ?? getPointsSpent(selections, tree.specNodes);
+  const heroSpent = purchasedSpent?.heroPoints ?? getPointsSpent(selections, tree.heroNodes);
 
   const allNodesArr = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes];
-
   if (mini) {
     return (
       <div className="flex h-full w-full items-stretch gap-0.5">
         <div className="min-w-0 flex-[2]">
           <MiniTreeSvg nodes={tree.classNodes} selections={selections} allNodes={allNodesArr} />
         </div>
-        {activeHeroNodes.length > 0 && (
+        {visibleHeroNodes.length > 0 && (
           <div className="h-[45%] min-w-0 flex-1 self-center">
-            <MiniTreeSvg nodes={activeHeroNodes} selections={selections} allNodes={allNodesArr} />
+            <MiniTreeSvg nodes={visibleHeroNodes} selections={selections} allNodes={allNodesArr} />
           </div>
         )}
         <div className="min-w-0 flex-[2]">
@@ -222,7 +258,7 @@ export default function TalentTree({
   return (
     <div className={bare ? 'space-y-3' : 'card space-y-3 p-4'}>
       {!bare && <p className="text-xs font-medium uppercase tracking-widest text-muted">Talents</p>}
-      <div className="flex flex-col gap-3 lg:flex-row lg:gap-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
         <TreeSection
           label={tree.className}
           nodes={tree.classNodes}
@@ -236,6 +272,24 @@ export default function TalentTree({
           onChoiceCycle={handleChoiceCycle}
           pointsDisplay={`${classSpent}/${CLASS_POINTS}`}
         />
+        {visibleHeroNodes.length > 0 && (
+          <>
+            <div className="hidden h-auto w-px bg-border lg:block" />
+            <TreeSection
+              label={selectedSubTree?.name ?? 'Hero'}
+              nodes={visibleHeroNodes}
+              selections={selections}
+              allNodes={[...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]}
+              editable={editable}
+              tree={tree}
+              nodeMap={nodeMap}
+              onNodeClick={handleNodeClick}
+              onNodeRightClick={handleNodeRightClick}
+              onChoiceCycle={handleChoiceCycle}
+              pointsDisplay={`${heroSpent}`}
+            />
+          </>
+        )}
         <div className="hidden h-auto w-px bg-border lg:block" />
         <TreeSection
           label={tree.specName}
@@ -250,25 +304,6 @@ export default function TalentTree({
           onChoiceCycle={handleChoiceCycle}
           pointsDisplay={`${specSpent}/${SPEC_POINTS}`}
         />
-        {activeHeroNodes.length > 0 && (
-          <>
-            <div className="hidden h-auto w-px bg-border lg:block" />
-            <TreeSection
-              label={selectedSubTree?.name ?? 'Hero'}
-              nodes={activeHeroNodes}
-              selections={selections}
-              allNodes={[...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]}
-              editable={editable}
-              tree={tree}
-              nodeMap={nodeMap}
-              onNodeClick={handleNodeClick}
-              onNodeRightClick={handleNodeRightClick}
-              onChoiceCycle={handleChoiceCycle}
-              pointsDisplay={`${heroSpent}`}
-              compact
-            />
-          </>
-        )}
       </div>
     </div>
   );
@@ -328,7 +363,7 @@ function TreeSection({
   const sectionNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
 
   return (
-    <div className={compact ? 'w-[180px] shrink-0' : 'min-w-0 flex-1'}>
+    <div className={compact ? 'w-[260px] shrink-0' : 'min-w-0 flex-1'}>
       <div className="mb-1 flex items-center justify-center gap-2">
         <p className="text-center text-[12px] font-medium uppercase tracking-wider text-muted">
           {label}
@@ -341,7 +376,7 @@ function TreeSection({
       </div>
       <svg
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-        className={`w-full ${compact ? 'max-h-[320px]' : 'max-h-[420px]'}`}
+        className={`w-full ${compact ? 'max-h-[460px]' : 'max-h-[620px]'}`}
         preserveAspectRatio="xMidYMid meet"
         onContextMenu={editable ? (e) => e.preventDefault() : undefined}
       >

@@ -183,7 +183,7 @@ pub async fn login_success() -> HttpResponse {
     let html = r#"
 <!DOCTYPE html>
 <html>
-<head>
+    <meta charset="UTF-8">
     <title>Login Successful - WhyLowDps</title>
     <style>
         body {
@@ -218,6 +218,15 @@ pub async fn login_success() -> HttpResponse {
             font-size: 2rem;
             box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
         }
+        .icon svg {
+            width: 32px;
+            height: 32px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
         h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
         p { color: #a1a1aa; line-height: 1.5; margin-bottom: 1.5rem; }
         .button {
@@ -234,7 +243,11 @@ pub async fn login_success() -> HttpResponse {
 </head>
 <body>
     <div class="container">
-        <div class="icon">✓</div>
+        <div class="icon">
+            <svg viewBox="0 0 24 24">
+                <path d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
         <h1>Logged In Successfully!</h1>
         <p>Your Battle.net account has been linked. You can now close this window and return to the WhyLowDps app.</p>
         <p style="font-size: 0.8rem;">(This window will not close automatically for security reasons)</p>

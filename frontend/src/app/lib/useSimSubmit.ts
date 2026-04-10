@@ -18,11 +18,60 @@ interface UseSimSubmitOptions {
   validate?: () => string | null;
 }
 
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
+}
 
+function normalizeRealm(realm: string): string {
+  return realm
+    .trim()
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[\s_-]+/g, '');
+}
+
+function extractSimcIdentity(simcInput: string): { name: string; realm: string; region: string } | null {
+  const lines = simcInput.split(/\r?\n/);
+  let name = '';
+  let realm = '';
+  let region = 'us';
+
+  const classLine =
+    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name)\s*=\s*"?([^"\s,]+)"?/i;
+  const armoryLine = /^armory\s*=\s*([^,\s]+)\s*,\s*([^,\s]+)\s*,\s*([^,\s]+)\s*$/i;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    const armory = line.match(armoryLine);
+    if (armory) {
+      region = armory[1].toLowerCase();
+      realm = armory[2];
+      name = armory[3];
+      break;
+    }
+
+    if (!name) {
+      const cls = line.match(classLine);
+      if (cls) name = cls[1];
+    }
+    if (!realm && line.toLowerCase().startsWith('server=')) {
+      realm = line.slice(7).trim().replace(/^"|"$/g, '');
+    }
+    if (line.toLowerCase().startsWith('region=')) {
+      region = line.slice(7).trim().replace(/^"|"$/g, '').toLowerCase() || 'us';
+    }
+  }
+
+  if (!name || !realm) return null;
+  return { name, realm, region };
+}
 
 export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitOptions) {
   const router = useRouter();
   const {
+    simcInput,
     fightStyle,
     threads,
     selectedTalent,
@@ -40,6 +89,44 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const autoLinkJobToCharacter = useCallback(
+    async (jobId: string) => {
+      const identity = extractSimcIdentity(simcInput);
+      if (!identity) return;
+
+      try {
+        const data = await fetchJson<{ characters: Array<{ name: string; realm: string; region: string }> }>(
+          `${API_URL}/api/bnet/user/characters`
+        );
+        const characters = Array.isArray((data as unknown))
+          ? ((data as unknown) as Array<{ name: string; realm: string; region: string }>)
+          : data?.characters || [];
+
+        const match = characters.find((c) => {
+          return (
+            normalizeName(c.name) === normalizeName(identity.name) &&
+            normalizeRealm(c.realm) === normalizeRealm(identity.realm) &&
+            (c.region || '').toLowerCase() === identity.region.toLowerCase()
+          );
+        });
+
+        if (!match) return;
+
+        await fetchJson(`${API_URL}/api/sim/${jobId}/link`, {
+          method: 'POST',
+          body: JSON.stringify({
+            name: match.name,
+            realm: match.realm,
+            region: match.region,
+          }),
+        });
+      } catch {
+        // Keep job unlinked when roster is unavailable/not authenticated.
+      }
+    },
+    [simcInput]
+  );
 
   const submit = useCallback(async () => {
     setError('');
@@ -97,6 +184,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
       if (scenarios.length === 0) {
         const r = results[0];
         if (r.status === 'fulfilled') {
+          void autoLinkJobToCharacter(r.value.id);
           router.push(simResultHref(r.value.id));
         } else {
           throw r.reason;
@@ -117,6 +205,9 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
           .filter((s): s is NonNullable<typeof s> => s !== null);
 
         if (siblings.length > 0) {
+          siblings.forEach((s) => {
+            void autoLinkJobToCharacter(s.id);
+          });
           storeScenarioSiblings(siblings);
           clearScenarios();
           router.push(simResultHref(siblings[0].id));
@@ -147,6 +238,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     simcFooter,
     scenarios,
     clearScenarios,
+    autoLinkJobToCharacter,
   ]);
 
   const buttonLabel = useCallback(

@@ -239,6 +239,7 @@ impl JobStorage for PostgresStorage {
         player: Option<&str>,
         realm: Option<&str>,
         linked_only: bool,
+        unlinked_only: bool,
     ) -> Vec<JobSummary> {
         let player = player.map(String::from);
         let realm = realm.map(String::from);
@@ -293,11 +294,19 @@ impl JobStorage for PostgresStorage {
                         linked_name,
                     }
                 }).collect();
-                if player.is_none() && realm.is_none() {
+                if player.is_none() && realm.is_none() && !unlinked_only {
                     return all;
                 }
                 all.into_iter()
                     .filter(|j| {
+                        if unlinked_only
+                            && (j.linked_name.is_some()
+                                || j.linked_realm.is_some()
+                                || j.linked_region.is_some())
+                        {
+                            return false;
+                        }
+
                         if linked_only {
                             if let Some(ref p) = player {
                                 if j.linked_name.as_deref() != Some(p) { return false; }

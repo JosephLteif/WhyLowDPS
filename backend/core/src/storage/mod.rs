@@ -49,6 +49,7 @@ pub trait JobStorage: Send + Sync {
         player: Option<&str>,
         realm: Option<&str>,
         linked_only: bool,
+        unlinked_only: bool,
     ) -> Vec<JobSummary>;
     fn update_status(&self, id: &str, status: JobStatus);
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str);

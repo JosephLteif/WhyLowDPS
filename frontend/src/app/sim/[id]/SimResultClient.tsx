@@ -241,12 +241,22 @@ export default function SimResultClient() {
         ) : (
           <div />
         )}
-        <CharacterLinkButton
-          jobId={id}
-          currentLinkedName={job.linked_name}
-          currentLinkedRealm={job.linked_realm}
-          currentLinkedRegion={job.linked_region}
-        />
+        <div className="flex items-center gap-3">
+          {isTopGear && (
+            <Link
+              href="/top-gear"
+              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              Sim Again
+            </Link>
+          )}
+          <CharacterLinkButton
+            jobId={id}
+            currentLinkedName={job.linked_name}
+            currentLinkedRealm={job.linked_realm}
+            currentLinkedRegion={job.linked_region}
+          />
+        </div>
       </div>
 
       {isTopGear ? (

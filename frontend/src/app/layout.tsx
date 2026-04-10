@@ -24,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >{`const whTooltips = { colorLinks: false, iconizeLinks: false, renameLinks: false };`}</Script>
         <Script src="https://wow.zamimg.com/js/tooltips.js" strategy="afterInteractive" />
       </head>
-      <body className="min-h-screen">
+      <body className="min-h-screen" style={{ ['--sidebar-width' as string]: '18rem' }}>
         <AuthProvider>
           <DataGuard>
             <SimProvider>
@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <Sidebar />
 
-              <main className="ml-72 mt-14 min-h-[calc(100vh-3.5rem)] px-8 py-8 lg:px-12">
+              <main className="mt-14 ml-[var(--sidebar-width)] min-h-[calc(100vh-3.5rem)] px-8 py-8 transition-[margin-left] duration-200 lg:px-12">
                 <div className="mx-auto max-w-5xl">
                   <SimSharedConfig />
                   {children}

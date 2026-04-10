@@ -56,6 +56,7 @@ impl JobStorage for MemoryStorage {
         player: Option<&str>,
         realm: Option<&str>,
         linked_only: bool,
+        unlinked_only: bool,
     ) -> Vec<JobSummary> {
         let jobs = self.jobs.lock().unwrap();
         let mut entries: Vec<&Job> = jobs.values().collect();
@@ -72,6 +73,12 @@ impl JobStorage for MemoryStorage {
 
             let player_name = linked_name.clone().or_else(|| s.player_name.clone());
             let current_realm = linked_realm.clone().or_else(|| s.realm.clone());
+
+            if unlinked_only
+                && (linked_name.is_some() || linked_realm.is_some() || linked_region.is_some())
+            {
+                continue;
+            }
 
             if linked_only {
                 if let Some(p) = player {
@@ -215,6 +222,11 @@ impl JobStorage for MemoryStorage {
     fn get_cache(&self, key: &str) -> Option<String> {
         let cache = self.cache.lock().unwrap();
         cache.get(key).cloned()
+    }
+
+    fn remove_cache(&self, key: &str) {
+        let mut cache = self.cache.lock().unwrap();
+        cache.remove(key);
     }
 
     fn link_character(

@@ -281,6 +281,16 @@ pub struct EnchantData {
     pub item_name: Option<String>,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
+    #[serde(rename = "baseDisplayName")]
+    pub base_display_name: Option<String>,
+    #[serde(rename = "itemIcon")]
+    pub item_icon: Option<String>,
+    #[serde(rename = "spellIcon")]
+    pub spell_icon: Option<String>,
+    pub slot: Option<String>,
+    pub quality: Option<u64>,
+    #[serde(rename = "craftingQuality")]
+    pub crafting_quality: Option<u64>,
     #[serde(rename = "equipRequirements")]
     pub requirements: Option<EnchantRequirements>,
 }

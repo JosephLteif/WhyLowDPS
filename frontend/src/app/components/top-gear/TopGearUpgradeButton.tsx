@@ -30,7 +30,7 @@ export default function TopGearUpgradeButton({
   onCatalystConvert,
   onOptimize,
 }: TopGearUpgradeButtonProps) {
-  if (!item.upgrade && !onCatalystConvert) return null;
+  if (!item.upgrade && !onCatalystConvert && !onOptimize) return null;
   const isMenuOpen = upgradeMenuFor === item.uid;
 
   return (

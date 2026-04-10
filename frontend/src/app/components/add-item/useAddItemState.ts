@@ -16,6 +16,38 @@ export interface ExternalItem {
   dungeon_info?: Record<string, any>;
 }
 
+function normalizeUpgradeTracks(input: any): Record<string, any[]> {
+  if (!input) return {};
+
+  // New API shape: flat array [{ name, level, max, itemLevel, bonus_id, quality }]
+  if (Array.isArray(input)) {
+    const grouped: Record<string, any[]> = {};
+    for (const row of input) {
+      const name = typeof row?.name === 'string' ? row.name : '';
+      if (!name) continue;
+      if (!grouped[name]) grouped[name] = [];
+      grouped[name].push({
+        level: Number(row.level || 0),
+        max: Number(row.max || 0),
+        ilvl: Number(row.itemLevel || row.ilevel || 0),
+        bonus_id: Number(row.bonus_id || 0),
+        quality: Number(row.quality || 0),
+      });
+    }
+    for (const key of Object.keys(grouped)) {
+      grouped[key].sort((a, b) => a.level - b.level);
+    }
+    return grouped;
+  }
+
+  // Legacy API shape: { [trackName]: [{ level, ilvl, bonus_id, ... }] }
+  if (typeof input === 'object') {
+    return input as Record<string, any[]>;
+  }
+
+  return {};
+}
+
 export function useAddItemState(
   isOpen: boolean,
   className: string | null | undefined,
@@ -62,7 +94,7 @@ export function useAddItemState(
         const tracksData = await tracksRes.json();
         setInstances(instData);
         setSeasonConfig(seasonData);
-        setUpgradeTracks(tracksData);
+        setUpgradeTracks(normalizeUpgradeTracks(tracksData));
         if (instData.length > 0 && !selectedInstance) setSelectedInstance(instData[0].id);
       } catch (e) {
         console.error('Failed to fetch initial data', e);

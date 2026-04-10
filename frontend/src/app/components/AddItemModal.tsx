@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { getWowheadData } from '../lib/useItemInfo';
@@ -22,6 +22,21 @@ interface AddItemModalProps {
   preferredSlot?: string | null;
 }
 
+const RAID_TRACK_BY_DIFFICULTY: Record<string, string> = {
+  lfr: 'Veteran',
+  normal: 'Champion',
+  heroic: 'Hero',
+  mythic: 'Myth',
+};
+
+const getMappedTrackName = (
+  selectedDifficulty: string,
+  info: { track?: string } | null | undefined
+): string => {
+  const raidTrack = RAID_TRACK_BY_DIFFICULTY[selectedDifficulty?.toLowerCase()];
+  return raidTrack || info?.track || '';
+};
+
 const getEffectiveTier = (
   item: ExternalItem,
   selectedDifficulty: string,
@@ -30,18 +45,22 @@ const getEffectiveTier = (
 ) => {
   const info =
     item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
-  if (!info?.track) return null;
+  const trackName = getMappedTrackName(selectedDifficulty, info);
+  if (!info || !trackName) return null;
 
-  const currentLevel = itemTiers[item.item_id] || info.level || 1;
-  const track = upgradeTracks[info.track];
+  const baseLevel = info.level || 1;
+  const currentLevel = itemTiers[item.item_id] || baseLevel;
+  const track = upgradeTracks[trackName];
   if (!track || !Array.isArray(track)) return null;
 
   const levelInfo = track.find((t: any) => t.level === currentLevel);
   return {
-    track: info.track,
+    track: trackName,
     level: currentLevel,
     maxLevel: info.max_level || track[track.length - 1].level,
     ilvl: levelInfo?.ilvl || info.ilvl,
+    baseLevel,
+    baseIlvl: info.ilvl,
     bonus_id: info.bonus_id,
   };
 };
@@ -90,6 +109,11 @@ export default function AddItemModal({
       return type === 'dungeon' || type === 'expansion-dungeon' || type === 'mplus-chest';
     });
   }, [instances, category, selectedInstance]);
+
+  // Reset per-item ilvl slider selections when top filters change.
+  useEffect(() => {
+    setItemTiers({});
+  }, [category, selectedDifficulty, globalSearch, setItemTiers]);
 
   const globalSearchResults = useMemo(() => {
     if (!globalSearch || globalSearch.length < 2) return [];
@@ -169,7 +193,7 @@ export default function AddItemModal({
   const handleAdd = (item: ExternalItem) => {
     const info =
       item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
-    const trackName = info?.track;
+    const trackName = getMappedTrackName(selectedDifficulty, info);
     const selectedLevel = itemTiers[item.item_id];
     const baseBonusIds = info?.bonus_id ? [info.bonus_id] : [];
 
@@ -336,57 +360,53 @@ export default function AddItemModal({
                         return (
                           <div
                             key={`${item.item_id}-${item.encounter}`}
-                            className="group relative flex cursor-pointer items-center gap-4 rounded-2xl border border-white/5 bg-white/[0.03] p-3 shadow-sm transition-all hover:border-white/10 hover:bg-white/[0.06] hover:shadow-blue-900/10"
+                            className="group relative rounded-2xl border border-white/5 bg-white/[0.03] p-3 shadow-sm transition-all hover:border-white/10 hover:bg-white/[0.06] hover:shadow-blue-900/10"
                           >
-                            <img
-                              src={`https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg`}
-                              className="h-12 w-12 rounded-xl border border-white/10 shadow-lg"
-                              alt=""
-                              data-wowhead={whData}
-                            />
-                            <div className="min-w-0 flex-1" onClick={() => handleAdd(item)}>
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="truncate text-[13px] font-bold text-white transition-colors group-hover:text-blue-400">
-                                  {item.name}
-                                </span>
-                                <span className="shrink-0 rounded-lg border border-blue-500/10 bg-blue-500/5 px-1.5 py-0.5 font-mono text-[10px] font-black text-blue-500/80">
-                                  {currentIlvl}
-                                </span>
-                              </div>
-                              <div className="truncate text-[11px] font-medium text-slate-500">
-                                {item.encounter}
+                            <div className="flex cursor-pointer items-center gap-4" onClick={() => handleAdd(item)}>
+                              <img
+                                src={`https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg`}
+                                className="h-12 w-12 rounded-xl border border-white/10 shadow-lg"
+                                alt=""
+                                data-wowhead={whData}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-[13px] font-bold text-white transition-colors group-hover:text-blue-400">
+                                    {item.name}
+                                  </span>
+                                  <span className="shrink-0 rounded-lg border border-blue-500/10 bg-blue-500/5 px-1.5 py-0.5 font-mono text-[10px] font-black text-blue-500/80">
+                                    {currentIlvl}
+                                  </span>
+                                </div>
+                                <div className="truncate text-[11px] font-medium text-slate-500">
+                                  {item.encounter}
+                                </div>
                               </div>
                             </div>
-                            {tier && (
-                              <div className="flex flex-col gap-1 pr-2">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
+                            {tier && tier.maxLevel > 1 && (
+                              <div className="mt-3 pl-16 pr-1">
+                                <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                                  <span>
+                                    Selected: {tier.track} {tier.level}/{tier.maxLevel}
+                                  </span>
+                                  <span className="font-mono text-blue-300/90">{tier.ilvl} ilvl</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={1}
+                                  max={tier.maxLevel}
+                                  step={1}
+                                  value={tier.level}
+                                  onChange={(e) => {
+                                    const nextLevel = Number(e.target.value);
                                     setItemTiers((prev) => ({
                                       ...prev,
-                                      [item.item_id]: Math.min(tier.maxLevel, tier.level + 1),
+                                      [item.item_id]: nextLevel,
                                     }));
                                   }}
-                                  className="text-slate-500 hover:text-white"
-                                >
-                                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" />
-                                  </svg>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setItemTiers((prev) => ({
-                                      ...prev,
-                                      [item.item_id]: Math.max(1, tier.level - 1),
-                                    }));
-                                  }}
-                                  className="text-slate-500 hover:text-white"
-                                >
-                                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                                  </svg>
-                                </button>
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-blue-500"
+                                />
                               </div>
                             )}
                           </div>

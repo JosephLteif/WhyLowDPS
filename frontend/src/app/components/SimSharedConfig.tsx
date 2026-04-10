@@ -349,12 +349,16 @@ export default function SimSharedConfig() {
   const { simcInput, setSimcInput } = useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
 
+  const normalizedPath = pathname.endsWith('/') && pathname !== '/'
+    ? pathname.slice(0, -1)
+    : pathname;
+
   const showConfig =
-    pathname === '/quick-sim' ||
-    pathname === '/top-gear' ||
-    pathname === '/drop-finder' ||
-    pathname === '/stat-weights' ||
-    pathname === '/upgrade-compare';
+    normalizedPath === '/quick-sim' ||
+    normalizedPath === '/top-gear' ||
+    normalizedPath === '/drop-finder' ||
+    normalizedPath === '/stat-weights' ||
+    normalizedPath === '/upgrade-compare';
   if (!showConfig) return null;
 
   const detectedInfo = parseCharacterInfo(simcInput);

@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import SettingsPopover from './SettingsPopover';
-import packageJson from '../../../package.json';
 import { useAuth } from './AuthContext';
+import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 interface NavItem {
   href: string;
@@ -58,34 +58,152 @@ const baseNavItems: NavItem[] = [
   },
 ];
 
+const SIDEBAR_COLLAPSED_KEY = 'whylowdps_sidebar_collapsed';
+const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
+
+function moveLabel(order: string[], source: string, target: string): string[] {
+  if (source === target) return order;
+  const withoutSource = order.filter((label) => label !== source);
+  const targetIdx = withoutSource.indexOf(target);
+  if (targetIdx === -1) return withoutSource;
+  withoutSource.splice(targetIdx, 0, source);
+  return withoutSource;
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [navOrder, setNavOrder] = useState<string[] | null>(null);
+  const [draggingLabel, setDraggingLabel] = useState<string | null>(null);
+  const [dragOverLabel, setDragOverLabel] = useState<string | null>(null);
+  const dragSourceRef = useRef<string | null>(null);
+  const dragOverRef = useRef<string | null>(null);
   const { user } = useAuth();
 
-  const navItems = [...baseNavItems];
-  if (user) {
-    navItems.splice(1, 0, {
-      href: '/characters',
-      label: 'My Characters',
-      description: 'View your Battle.net roster.',
-      icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
-      matchPaths: ['/characters'],
-    });
+  const navItems = useMemo(() => {
+    const items = [...baseNavItems];
+    if (user) {
+      items.splice(1, 0, {
+        href: '/characters',
+        label: 'My Characters',
+        description: 'View your Battle.net roster.',
+        icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
+        matchPaths: ['/characters'],
+      });
 
-    navItems.push({
-      href: '/settings',
-      label: 'Settings',
-      description: 'API keys and account setup.',
-      icon: 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.592c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456c.53-.199 1.144.02 1.41.52l1.296 2.247c.266.46.16 1.05-.24 1.411l-1.014.891c-.265.233-.367.618-.266.953.013.045.024.09.033.135a1.275 1.275 0 0 1 0 .524c-.01.045-.02.09-.033.135a1.275 1.275 0 0 1 .266.953l1.014.891c.4.364.506.95.24 1.411l-1.296 2.247c-.266.5-.88.719-1.41.52l-1.217-.456a1.275 1.275 0 0 1-1.075-.124c-.073.044-.146.087-.22.127a1.275 1.275 0 0 1-.645.87l-.213 1.282c-.09.542-.56.94-1.11.94h-2.592a1.275 1.275 0 0 1-1.11-.94l-.213-1.281a1.275 1.275 0 0 1-.645-.87c-.074-.04-.147-.083-.22-.127a1.275 1.275 0 0 1-1.075-.124l-1.217.456c-.53.199-1.144-.02-1.41-.52l-1.296-2.247c-.266-.46-.16-1.05.24-1.411l1.014-.891c.265-.233.367-.618.266-.953a1.275 1.275 0 0 1-.033-.135 1.275 1.275 0 0 1 0-.524 1.275 1.275 0 0 1 .033-.135 1.275 1.275 0 0 1-.266-.953l-1.014-.891c-.4-.364-.506-.95-.24-1.411l1.296-2.247c.266-.5.88-.719 1.41-.52l1.217.456c.355.133.751.072 1.075-.124.074-.044.147-.087.22-.127a1.275 1.275 0 0 1 .645-.87l.213-1.282z',
-      matchPaths: ['/settings'],
+      items.push({
+        href: '/settings',
+        label: 'Settings',
+        description: 'API keys and account setup.',
+        icon: 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.592c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456c.53-.199 1.144.02 1.41.52l1.296 2.247c.266.46.16 1.05-.24 1.411l-1.014.891c-.265.233-.367.618-.266.953.013.045.024.09.033.135a1.275 1.275 0 0 1 0 .524c-.01.045-.02.09-.033.135a1.275 1.275 0 0 1 .266.953l1.014.891c.4.364.506.95.24 1.411l-1.296 2.247c-.266.5-.88.719-1.41.52l-1.217-.456a1.275 1.275 0 0 1-1.075-.124c-.073.044-.146.087-.22.127a1.275 1.275 0 0 1-.645.87l-.213 1.282c-.09.542-.56.94-1.11.94h-2.592a1.275 1.275 0 0 1-1.11-.94l-.213-1.281a1.275 1.275 0 0 1-.645-.87c-.074-.04-.147-.083-.22-.127a1.275 1.275 0 0 1-1.075-.124l-1.217.456c-.53.199-1.144-.02-1.41-.52l-1.296-2.247c-.266-.46-.16-1.05.24-1.411l1.014-.891c.265-.233.367-.618.266-.953a1.275 1.275 0 0 1-.033-.135 1.275 1.275 0 0 1 0-.524 1.275 1.275 0 0 1 .033-.135 1.275 1.275 0 0 1-.266-.953l-1.014-.891c-.4-.364-.506-.95-.24-1.411l1.296-2.247c.266-.5.88-.719 1.41-.52l1.217.456c.355.133.751.072 1.075-.124.074-.044.147-.087.22-.127a1.275 1.275 0 0 1 .645-.87l.213-1.282z',
+        matchPaths: ['/settings'],
+      });
+    }
+    return items;
+  }, [user]);
+
+  const orderedNavItems = useMemo(() => {
+    if (!navOrder || navOrder.length === 0) return navItems;
+    const byLabel = new Map(navItems.map((item) => [item.label, item]));
+    const ordered: NavItem[] = [];
+    for (const label of navOrder) {
+      const item = byLabel.get(label);
+      if (item) {
+        ordered.push(item);
+        byLabel.delete(label);
+      }
+    }
+    for (const item of navItems) {
+      if (byLabel.has(item.label)) ordered.push(item);
+    }
+    return ordered;
+  }, [navItems, navOrder]);
+
+  useEffect(() => {
+    const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    setIsCollapsed(collapsed === '1');
+    const savedOrder = localStorage.getItem(SIDEBAR_ORDER_KEY);
+    if (savedOrder) {
+      try {
+        const parsed = JSON.parse(savedOrder);
+        if (Array.isArray(parsed)) {
+          setNavOrder(parsed.filter((v) => typeof v === 'string'));
+        }
+      } catch {
+        // ignore malformed stored order
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--sidebar-width', isCollapsed ? '5rem' : '18rem');
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed ? '1' : '0');
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    if (!navOrder) return;
+    localStorage.setItem(SIDEBAR_ORDER_KEY, JSON.stringify(navOrder));
+  }, [navOrder]);
+
+  useEffect(() => {
+    setNavOrder((prev) => {
+      const labels = navItems.map((item) => item.label);
+      if (!prev || prev.length === 0) return labels;
+      const deduped = prev.filter((label, idx) => prev.indexOf(label) === idx);
+      const filtered = deduped.filter((label) => labels.includes(label));
+      for (const label of labels) {
+        if (!filtered.includes(label)) filtered.push(label);
+      }
+      return filtered;
     });
-  }
+  }, [navItems]);
+
+  useEffect(() => {
+    dragOverRef.current = dragOverLabel;
+  }, [dragOverLabel]);
+
+  const finishPointerDrag = useCallback(() => {
+    const source = dragSourceRef.current;
+    const target = dragOverRef.current;
+    if (source && target && source !== target) {
+      setNavOrder((prev) => moveLabel(prev ?? orderedNavItems.map((i) => i.label), source, target));
+    }
+    dragSourceRef.current = null;
+    setDraggingLabel(null);
+    setDragOverLabel(null);
+  }, [orderedNavItems]);
+
+  useEffect(() => {
+    if (!draggingLabel) return;
+    const onPointerUp = () => finishPointerDrag();
+    const onPointerCancel = () => finishPointerDrag();
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+    return () => {
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+    };
+  }, [draggingLabel, finishPointerDrag]);
 
   return (
-    <aside className="fixed bottom-0 left-0 top-14 z-40 flex w-72 flex-col justify-between border-r border-border/80 bg-surface/50 pb-6 pt-6">
-      <nav className="flex flex-col gap-2 overflow-y-auto px-4">
-        {navItems.map((item) => {
+    <aside
+      className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border/80 bg-surface/50 pb-6 pt-6 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
+    >
+      <div className="mb-2 flex items-center justify-end px-4">
+        <button
+          type="button"
+          onClick={() => setIsCollapsed((v) => !v)}
+          className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white"
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? '>>' : '<<'}
+        </button>
+      </div>
+      <nav
+        className={`flex flex-col gap-2 overflow-y-auto px-4 ${draggingLabel ? 'select-none' : ''}`}
+      >
+        {orderedNavItems.map((item) => {
           const isActive = item.matchPaths.some(
             (p) => pathname === p || pathname.startsWith(p + '/')
           );
@@ -93,35 +211,82 @@ export default function Sidebar() {
           const isOpen = openMenu === item.label || isActive;
 
           return (
-            <div key={item.label} className="flex flex-col gap-1">
-              <Link
-                href={item.href}
-                onClick={() => hasChildren && setOpenMenu(isOpen ? null : item.label)}
-                className={`group flex items-center gap-3 rounded-lg px-4 py-3 transition-colors ${
-                  isActive
-                    ? 'bg-gold/10 text-gold'
-                    : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
-                }`}
-              >
-                <svg
-                  className={`h-5 w-5 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+            <div
+              key={item.label}
+              data-nav-label={item.label}
+              className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
+                dragOverLabel === item.label && draggingLabel !== item.label
+                  ? 'scale-[1.01] bg-gold/[0.06] ring-1 ring-gold/40'
+                  : ''
+              }`}
+              onPointerEnter={() => {
+                if (draggingLabel && draggingLabel !== item.label) {
+                  setDragOverLabel(item.label);
+                }
+              }}
+            >
+              <div className="flex items-stretch gap-1">
+                {!isCollapsed && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => {
+                      if (e.pointerType === 'mouse' && e.button !== 0) return;
+                      e.preventDefault();
+                      dragSourceRef.current = item.label;
+                      setDraggingLabel(item.label);
+                      setDragOverLabel(item.label);
+                    }}
+                    className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all active:cursor-grabbing hover:bg-white/5 hover:text-zinc-300 ${
+                      draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
+                    }`}
+                    title={`Drag to reorder ${item.label}`}
+                    aria-label={`Drag to reorder ${item.label}`}
+                  >
+                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+                      <circle cx="5" cy="4" r="1.1" />
+                      <circle cx="11" cy="4" r="1.1" />
+                      <circle cx="5" cy="8" r="1.1" />
+                      <circle cx="11" cy="8" r="1.1" />
+                      <circle cx="5" cy="12" r="1.1" />
+                      <circle cx="11" cy="12" r="1.1" />
+                    </svg>
+                  </button>
+                )}
+                <Link
+                  href={item.href}
+                  onClick={() => hasChildren && setOpenMenu(isOpen ? null : item.label)}
+                  draggable={false}
+                  className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
+                    draggingLabel === item.label ? 'scale-[0.98] opacity-65 shadow-lg' : ''
+                  } ${
+                    isActive
+                      ? 'bg-gold/10 text-gold'
+                      : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
+                  }`}
+                  title={item.label}
                 >
-                  <path d={item.icon} />
-                </svg>
-                <div className="flex flex-col">
-                  <span className="text-[15px] font-medium">{item.label}</span>
-                  <span className={`text-[12px] ${isActive ? 'text-gold/70' : 'text-zinc-500'}`}>
-                    {item.description}
-                  </span>
-                </div>
-              </Link>
-              {hasChildren && isOpen && (
+                  <svg
+                    className={`h-5 w-5 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d={item.icon} />
+                  </svg>
+                  {!isCollapsed && (
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="text-[15px] font-medium">{item.label}</span>
+                      <span className={`text-[12px] ${isActive ? 'text-gold/70' : 'text-zinc-500'}`}>
+                        {item.description}
+                      </span>
+                    </div>
+                  )}
+                </Link>
+              </div>
+              {hasChildren && isOpen && !isCollapsed && (
                 <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
                   {item.children!.map((child) => {
                     const childActive =
@@ -148,9 +313,9 @@ export default function Sidebar() {
       </nav>
 
       <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
-        <SettingsPopover />
+        {!isCollapsed && <SettingsPopover />}
         <div className="mt-2 px-2 text-center text-[11px] text-zinc-600">
-          v{packageJson.version}
+          {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
         </div>
       </div>
     </aside>

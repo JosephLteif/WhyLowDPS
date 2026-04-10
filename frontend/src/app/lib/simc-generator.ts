@@ -1,3 +1,5 @@
+import { APP_VERSION_WITH_PREFIX } from './version';
+
 export interface BlizzardItem {
   slot: { type: string };
   item: { id: number };
@@ -62,7 +64,7 @@ export function generateSimcString(
   lines.push(
     `# ${name} - ${specName || 'Unknown Spec'} - ${dateStr} - ${region.toUpperCase()}/${realm}`
   );
-  lines.push(`# WhyLowDps v1.0.0 (Blizzard API Data Mode)`);
+  lines.push(`# WhyLowDps ${APP_VERSION_WITH_PREFIX} (Blizzard API Data Mode)`);
   lines.push(``);
 
   lines.push(`${playerClass}="${name}"`);

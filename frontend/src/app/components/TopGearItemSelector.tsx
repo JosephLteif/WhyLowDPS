@@ -284,19 +284,21 @@ export default function TopGearItemSelector({
       else if (type === 13 || type === 17 || type === 21) slots = ['main_hand'];
       else if (type === 14 || type === 22 || type === 23) slots = ['off_hand'];
 
+      const difficultyInfo =
+        item.difficulty_info?.[difficulty] || item.dungeon_info?.[difficulty] || null;
       const slot = slots[0];
       let bonusIds = overrides
         ? [...overrides.bonus_ids]
-        : item.difficulty_info?.[difficulty]?.bonus_id
-          ? [item.difficulty_info[difficulty].bonus_id]
+        : difficultyInfo?.bonus_id
+          ? [difficultyInfo.bonus_id]
           : [];
       let ilvl = overrides
         ? overrides.ilvl
-        : item.difficulty_info?.[difficulty]?.ilvl || item.ilevel;
+        : difficultyInfo?.ilvl || item.ilevel;
       let upgradeStr = overrides
         ? `${overrides.track_name} ${overrides.level}`
-        : item.difficulty_info?.[difficulty]?.track
-          ? `${item.difficulty_info[difficulty].track} ${item.difficulty_info[difficulty].level}/${item.difficulty_info[difficulty].max_level}`
+        : difficultyInfo?.track
+          ? `${difficultyInfo.track} ${difficultyInfo.level}/${difficultyInfo.max_level}`
           : '';
 
       const uid = makeUid({ item_id: item.item_id, bonus_ids: bonusIds, origin: 'bags', slot });

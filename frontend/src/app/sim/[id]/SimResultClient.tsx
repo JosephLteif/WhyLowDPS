@@ -1,6 +1,8 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import GearOverview from '../../components/GearOverview';
@@ -14,13 +16,14 @@ import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 
-import { API_URL } from '../../lib/api';
+import { API_URL, fetchJson } from '../../lib/api';
 import { useSimContext } from '../../components/SimContext';
 import {
   getScenarioSiblings,
   formatScenarioLabel,
   type ScenarioSibling,
 } from '../../lib/scenario-siblings';
+import { simResultHref } from '../../lib/routes';
 
 interface JobData {
   id: string;
@@ -47,15 +50,27 @@ interface JobData {
 }
 
 export default function SimResultClient() {
+  const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const paramId = params.id as string;
+  const queryId = (searchParams.get('id') || '').trim();
 
-  // In static export, useParams() may initially return "_" (the generateStaticParams
-  // placeholder) before the router reconciles with the actual URL. Fall back to the URL.
-  let id = paramId;
+  // Robust ID resolution from params or URL
+  let id = queryId || paramId;
   if ((!paramId || paramId === '_') && typeof window !== 'undefined') {
-    const match = window.location.pathname.match(/\/sim\/(.+)/);
-    if (match) id = match[1];
+    const query = new URLSearchParams(window.location.search);
+    const queryIdFromUrl = (query.get('id') || '').trim();
+    if (queryIdFromUrl) {
+      id = queryIdFromUrl;
+    }
+
+    const parts = window.location.pathname.split('/');
+    // Sims IDs are uuid or nanoid and are generally 20+ chars
+    const foundId = parts.find(p => p.length > 20 && (p.includes('-') || /^[a-f0-9]+$/i.test(p)));
+    if (foundId) {
+      id = foundId;
+    }
   }
 
   const [job, setJob] = useState<JobData | null>(null);
@@ -64,21 +79,55 @@ export default function SimResultClient() {
   const [showLogs, setShowLogs] = useState(true);
   const logCursorRef = useRef(0);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
+  const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setSiblings(getScenarioSiblings());
   }, []);
 
   useEffect(() => {
+    if (!siblings || siblings.length === 0) return;
+    const siblingList = siblings;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+
+    async function pollSiblingStatuses() {
+      const statuses: Record<string, string> = {};
+      for (const s of siblingList) {
+        try {
+          const data = await fetchJson<JobData>(`${API_URL}/api/sim/${s.id}`);
+          statuses[s.id] = data.status || 'pending';
+        } catch {
+          statuses[s.id] = 'pending';
+        }
+      }
+      if (!active) return;
+      if (id && job?.status) statuses[id] = job.status;
+      setSiblingStatuses(statuses);
+
+      const shouldContinue = Object.values(statuses).some(
+        (status) => status === 'pending' || status === 'running'
+      );
+      if (shouldContinue) timer = setTimeout(pollSiblingStatuses, 2000);
+    }
+
+    pollSiblingStatuses();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [siblings, id, job?.status]);
+
+  useEffect(() => {
+    console.log('[SimResult] Initializing with ID:', id);
     if (!id || id === '_') return;
+    setJob(null); // Reset when ID changes
     setFetchError('');
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const res = await fetch(`${API_URL}/api/sim/${id}`, { credentials: 'include' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data: JobData = await res.json();
+        const data = await fetchJson<JobData>(`${API_URL}/api/sim/${id}`);
         if (active) setJob(data);
         if (active && (data.status === 'pending' || data.status === 'running')) {
           timer = setTimeout(poll, 2000);
@@ -102,11 +151,8 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function pollLogs() {
       try {
-        const res = await fetch(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`, {
-          credentials: 'include',
-        });
-        if (!res.ok || !active) return;
-        const data = await res.json();
+        const data = await fetchJson<any>(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`);
+        if (!active) return;
         if (data.lines.length > 0) {
           setLogLines((prev) => {
             const merged = [...prev, ...data.lines];
@@ -127,6 +173,22 @@ export default function SimResultClient() {
   }, [showLogs, id, job?.status]);
 
   const handleToggleLogs = useCallback(() => setShowLogs((v) => !v), []);
+  const navigateToScenario = useCallback(
+    (scenarioId: string) => {
+      if (!scenarioId || scenarioId === id) return;
+      router.push(simResultHref(scenarioId), { scroll: false });
+    },
+    [id, router]
+  );
+
+  const scenarioStatusTone = useCallback((status: string, isCurrent: boolean): string => {
+    if (isCurrent) return 'text-gold';
+    if (status === 'running') return 'text-blue-300';
+    if (status === 'pending') return 'text-zinc-300';
+    if (status === 'done') return 'text-emerald-300';
+    if (status === 'failed' || status === 'cancelled') return 'text-red-300';
+    return 'text-zinc-300';
+  }, []);
 
   if (fetchError) {
     return (
@@ -202,9 +264,9 @@ export default function SimResultClient() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="sticky top-16 z-40 flex flex-wrap items-center justify-between gap-4 py-2">
         {siblings && siblings.length > 1 ? (
-          <div className="card p-3">
+          <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
             <div className="flex flex-wrap items-center gap-2">
               <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
                 Scenarios
@@ -212,18 +274,42 @@ export default function SimResultClient() {
               <span className="h-4 w-px shrink-0 bg-border" />
               {siblings.map((s) => {
                 const isCurrent = s.id === id;
+                const status = siblingStatuses[s.id] || (isCurrent ? job.status : 'pending');
                 return (
-                  <a
+                  <button
                     key={s.id}
-                    href={`/sim/${s.id}`}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      navigateToScenario(s.id);
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigateToScenario(s.id);
+                    }}
                     className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
                       isCurrent
                         ? 'border-gold/40 bg-gold/[0.08] text-gold'
                         : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
                     }`}
                   >
-                    {formatScenarioLabel(s)}
-                  </a>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span>{formatScenarioLabel(s)}</span>
+                      <span className={`text-[11px] ${scenarioStatusTone(status, isCurrent)}`}>
+                        {status === 'running'
+                          ? 'In Progress'
+                          : status === 'pending'
+                            ? 'Pending'
+                            : status === 'done'
+                              ? 'Done'
+                              : status === 'failed'
+                                ? 'Failed'
+                                : status === 'cancelled'
+                                  ? 'Cancelled'
+                                  : ''}
+                      </span>
+                    </span>
+                  </button>
                 );
               })}
             </div>
@@ -231,12 +317,22 @@ export default function SimResultClient() {
         ) : (
           <div />
         )}
-        <CharacterLinkButton
-          jobId={id}
-          currentLinkedName={job.linked_name}
-          currentLinkedRealm={job.linked_realm}
-          currentLinkedRegion={job.linked_region}
-        />
+        <div className="flex items-center gap-3">
+          {isTopGear && (
+            <Link
+              href="/top-gear"
+              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              Sim Again
+            </Link>
+          )}
+          <CharacterLinkButton
+            jobId={id}
+            currentLinkedName={job.linked_name}
+            currentLinkedRealm={job.linked_realm}
+            currentLinkedRegion={job.linked_region}
+          />
+        </div>
       </div>
 
       {isTopGear ? (

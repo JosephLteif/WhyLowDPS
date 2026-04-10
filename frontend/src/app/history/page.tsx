@@ -9,9 +9,14 @@ import {
   getHistoryStats,
   getConfig,
   updateConfig,
-  type HistoryStats,
+  type HistoryStats, fetchJson,
 } from '../lib/api';
-import { useSimContext } from '../components/SimContext';
+import { simResultHref } from '../lib/routes';
+import {
+  clearScenarioSiblings,
+  storeScenarioSiblings,
+  type ScenarioSibling,
+} from '../lib/scenario-siblings';
 
 interface JobSummary {
   id: string;
@@ -129,44 +134,35 @@ function formatDateHeader(dateStr: string): string {
   });
 }
 
-function extractCharacter(simcInput: string): { name: string; realm: string } | null {
-  let name = '';
-  let realm = '';
-  for (const line of simcInput.split('\n')) {
-    const trimmed = line.trim();
-    if (!name) {
-      const match = trimmed.match(
-        /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker)\s*=\s*"(.+)"/
-      );
-      if (match) name = match[1];
-    }
-    if (!realm && trimmed.startsWith('server=')) {
-      realm = trimmed.slice(7);
-    }
-    if (name && realm) break;
-  }
-  if (name && realm) {
-    try {
-      localStorage.setItem('whylowdps_last_character', JSON.stringify({ name, realm }));
-    } catch {}
-    return { name, realm };
-  }
-  return null;
-}
-
 function SimRow({
   sim,
   compact,
   onDelete,
+  siblingGroup,
 }: {
   sim: JobSummary;
   compact?: boolean;
   onDelete?: (id: string) => void;
+  siblingGroup?: JobSummary[];
 }) {
   return (
     <div className="group relative flex items-center">
       <Link
-        href={`/sim/${sim.id}`}
+        href={simResultHref(sim.id)}
+        onClick={() => {
+          if (!siblingGroup || siblingGroup.length <= 1) {
+            clearScenarioSiblings();
+            return;
+          }
+          const siblings: ScenarioSibling[] = siblingGroup.map((s, idx) => ({
+            id: s.id,
+            fightStyle: s.fight_style || 'Patchwerk',
+            targetCount: 0,
+            fightLength: 0,
+            simType: SIM_TYPE_LABELS[s.sim_type] || s.sim_type || `Scenario ${idx + 1}`,
+          }));
+          storeScenarioSiblings(siblings);
+        }}
         className={`flex min-w-0 flex-1 items-center gap-3 transition-colors hover:bg-white/[0.03] ${compact ? 'px-4 py-2' : 'px-5 py-3'}`}
       >
         <span
@@ -337,7 +333,13 @@ function BatchGroup({
         <div className="border-t border-border/50 bg-surface-2/50 pl-4">
           <div className="divide-y divide-border/30">
             {entry.sims.map((sim) => (
-              <SimRow key={sim.id} sim={sim} compact onDelete={onDelete} />
+              <SimRow
+                key={sim.id}
+                sim={sim}
+                compact
+                onDelete={onDelete}
+                siblingGroup={entry.sims}
+              />
             ))}
           </div>
         </div>
@@ -347,10 +349,9 @@ function BatchGroup({
 }
 
 export default function HistoryPage() {
-  const { simcInput } = useSimContext();
-
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showUnlinkedOnly, setShowUnlinkedOnly] = useState(false);
   const [character, setCharacter] = useState<{
     name: string;
     realm: string;
@@ -364,25 +365,14 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    // Optionally auto-select from SimC input
-    let char = extractCharacter(simcInput);
-    if (!char) {
-      try {
-        const stored = localStorage.getItem('whylowdps_last_character');
-        if (stored) char = JSON.parse(stored);
-      } catch {}
-    }
-    setCharacter(char);
-
     // Fetch account characters and historical characters
     Promise.all([
-      fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'include' }).then((r) =>
-        r.json().catch(() => ({ characters: [] }))
-      ),
-      fetch(`${API_URL}/api/history/characters`, { credentials: 'include' }).then((r) =>
-        r.json().catch(() => [])
-      ),
+      fetchJson<{ characters: any[] }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({
+        characters: [],
+      })),
+      fetchJson<any[]>(`${API_URL}/api/history/characters`).catch(() => []),
     ])
+
       .then(([bnetResponse, historyData]) => {
         const bnetList = Array.isArray(bnetResponse)
           ? bnetResponse
@@ -404,26 +394,24 @@ export default function HistoryPage() {
         setBnetCharacters(merged);
       })
       .catch(() => {});
-  }, [simcInput]);
+  }, []);
 
   const refreshHistory = useCallback(async () => {
     try {
       let url = `${API_URL}/api/sims`;
-      if (character && character.name && character.realm) {
+      if (showUnlinkedOnly) {
+        url += '?unlinked_only=true';
+      } else if (character && character.name && character.realm) {
         url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
       }
 
-      const [simsRes, statsData] = await Promise.all([
-        fetch(url, { credentials: 'include' }),
-        getHistoryStats(),
-      ]);
-      const data = simsRes.ok ? await simsRes.json() : [];
-      setSims(data);
+      const [simsData, statsData] = await Promise.all([fetchJson<JobSummary[]>(url), getHistoryStats()]);
+      setSims(simsData);
       setStats(statsData);
     } catch (err) {
       setSims([]);
     }
-  }, [character]);
+  }, [character, showUnlinkedOnly]);
 
   useEffect(() => {
     setLoading(true);
@@ -504,27 +492,24 @@ export default function HistoryPage() {
             <span className="text-xs text-zinc-500">Filter by Character:</span>
             <select
               className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
-              value={character ? `${character.name}-${character.realm}` : 'all'}
+              value={showUnlinkedOnly ? 'unlinked' : character ? `${character.name}-${character.realm}` : 'all'}
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === 'all') {
                   setCharacter(null);
-                  localStorage.removeItem('whylowdps_last_character');
+                  setShowUnlinkedOnly(false);
+                } else if (val === 'unlinked') {
+                  setCharacter(null);
+                  setShowUnlinkedOnly(true);
                 } else {
                   const [name, realm] = val.split('-');
+                  setShowUnlinkedOnly(false);
                   setCharacter({ name, realm });
                 }
               }}
             >
               <option value="all">All Sims</option>
-              {character &&
-                !bnetCharacters.find(
-                  (c) => c.name === character.name && c.realm === character.realm
-                ) && (
-                  <option value={`${character.name}-${character.realm}`}>
-                    {character.name} - {character.realm}
-                  </option>
-                )}
+              <option value="unlinked">Unlinked</option>
               {bnetCharacters.map((c, i) => (
                 <option key={i} value={`${c.name}-${c.realm}`}>
                   {c.name} - {c.realm} {c.source === 'history' ? '(History)' : ''}
@@ -570,7 +555,9 @@ export default function HistoryPage() {
           <p className="text-sm text-muted">
             {search
               ? 'No records match your search.'
-              : character
+              : showUnlinkedOnly
+                ? 'No unlinked simulations found.'
+                : character
                 ? `No simulations found for ${character.name} on ${character.realm}.`
                 : 'No simulations yet.'}
           </p>

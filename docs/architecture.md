@@ -65,14 +65,21 @@ Jobs are automatically garbage collected on insert:
 
 ## Blizzard API Integration
 
-WhyLowDps uses `whylowdps.com` as a caching proxy for Blizzard API data:
+WhyLowDps performs direct Blizzard API integration. It can be configured in two modes:
 
-| Endpoint | Purpose | Cache |
-|----------|---------|-------|
-| `/api/blizzard/season` | M+ rotation, season info | 7 days |
-| `/api/blizzard/instances` | Expansion dungeons + raids with tile images | 7 days |
-| `/api/blizzard/character/{realm}/{name}/media/{type}` | Character render/avatar/inset (302 redirect) | 1 hour |
+1. **System Credentials (Local/Desktop)**: Provide your own Client ID and Client Secret in the app settings. The local backend will use these keys to fetch character data, season information, and mythic rotation directly from Blizzard.
+2. **User OAuth**: Users can link their Battle.net account to fetch their personal characters. This requires providing Client ID/Secret to the app first.
+
+The following routes act as a local proxy to Blizzard APIs (using the configured system or user keys):
+
+| Path | Description | Caching |
+|---|---|---|
 | `/api/blizzard/character/{realm}/{name}/profile` | Character summary with faction | 15 min |
+| `/api/blizzard/character/{realm}/{name}/equipment` | Equipped gear | 15 min |
+| `/api/blizzard/character/{realm}/{name}/media/{type}` | Character render/avatar/inset (302 redirect) | 1 hour |
+| `/api/season-config` | M+ rotation, season info | Processed locally |
+| `/api/instances` | Expansion dungeons + raids with images | Processed locally |
+
 
 Instance images and faction assets are fetched at **build time** and served locally — no runtime CDN dependency.
 

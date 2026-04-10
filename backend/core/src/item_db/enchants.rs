@@ -4,13 +4,57 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub fn list_gems() -> Vec<Value> {
+    // Prefer enchantments dataset for gems (slot=socket), because the equippable
+    // item index can omit gem items.
+    let enchants_map = ENCHANTS.read().unwrap();
+    let mut by_item_id: HashMap<u64, Value> = HashMap::new();
+
+    for e in enchants_map.values() {
+        if e.slot.as_deref() != Some("socket") {
+            continue;
+        }
+        let item_id = e.item_id.unwrap_or(e.id);
+        if item_id == 0 {
+            continue;
+        }
+        let quality = e.quality.unwrap_or(3);
+        let candidate = json!({
+            "id": e.id,
+            "item_id": item_id,
+            "name": e.item_name.clone().or(e.display_name.clone()).unwrap_or_default(),
+            "icon": e.item_icon.clone().or(e.spell_icon.clone()).unwrap_or_else(|| "inv_misc_questionmark".to_string()),
+            "quality": quality,
+            "craftingQuality": e.crafting_quality,
+        });
+
+        match by_item_id.get(&item_id) {
+            Some(existing) => {
+                let existing_quality = existing.get("quality").and_then(|v| v.as_u64()).unwrap_or(0);
+                if quality > existing_quality {
+                    by_item_id.insert(item_id, candidate);
+                }
+            }
+            None => {
+                by_item_id.insert(item_id, candidate);
+            }
+        }
+    }
+
+    if !by_item_id.is_empty() {
+        let mut values: Vec<Value> = by_item_id.into_values().collect();
+        values.sort_by(|a, b| {
+            let an = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let bn = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            an.cmp(bn)
+        });
+        return values;
+    }
+
+    // Fallback: old behavior from the item dataset.
     let items_map = ITEMS.read().unwrap();
     items_map
         .values()
-        .filter(|v| {
-            // Gem criteria: itemClass=3, quality >= 3
-            v.class.unwrap_or(0) == 3 && v.quality >= 3
-        })
+        .filter(|v| v.class.unwrap_or(0) == 3 && v.quality >= 3)
         .map(|v| {
             json!({
                 "item_id": v.id,
@@ -23,13 +67,34 @@ pub fn list_gems() -> Vec<Value> {
 }
 
 pub fn get_gem_info(gem_id: u64) -> Option<Value> {
-    let item = ITEMS.read().unwrap().get(&gem_id)?.clone();
-    Some(json!({
-        "gem_id": gem_id,
-        "name": item.name,
-        "icon": item.icon,
-        "quality": item.quality,
-    }))
+    if let Some(item) = ITEMS.read().unwrap().get(&gem_id).cloned() {
+        return Some(json!({
+            "gem_id": gem_id,
+            "name": item.name,
+            "icon": item.icon,
+            "quality": item.quality,
+        }));
+    }
+
+    // Fallback: find the gem in enchantments dataset by item_id (preferred) or id.
+    if let Some(e) = ENCHANTS_BY_ITEM_ID.read().unwrap().get(&gem_id).cloned() {
+        return Some(json!({
+            "gem_id": gem_id,
+            "name": e.item_name.or(e.display_name).unwrap_or_default(),
+            "icon": e.item_icon.or(e.spell_icon).unwrap_or_else(|| "inv_misc_questionmark".to_string()),
+            "quality": e.quality.unwrap_or(3),
+        }));
+    }
+    if let Some(e) = ENCHANTS.read().unwrap().get(&gem_id).cloned() {
+        return Some(json!({
+            "gem_id": gem_id,
+            "name": e.item_name.or(e.display_name).unwrap_or_default(),
+            "icon": e.item_icon.or(e.spell_icon).unwrap_or_else(|| "inv_misc_questionmark".to_string()),
+            "quality": e.quality.unwrap_or(3),
+        }));
+    }
+
+    None
 }
 
 pub fn apply_copy_enchants(source_simc: &str, target_simc: &str) -> String {

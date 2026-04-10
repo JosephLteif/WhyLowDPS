@@ -6,8 +6,10 @@ import type { ResolvedItem } from '../lib/types';
 
 /** Raw enchant shape returned by the backend (straight from enchantments.json). */
 interface RawEnchant {
-  id: number;
-  displayName: string;
+  id?: number;
+  enchant_id?: number;
+  name?: string;
+  displayName?: string;
   baseDisplayName?: string;
   itemId?: number;
   itemName?: string;
@@ -21,8 +23,11 @@ interface RawEnchant {
 
 /** Raw gem shape returned by the backend (straight from enchantments.json, slot=socket). */
 interface RawGem {
-  id: number;
-  displayName: string;
+  id?: number;
+  item_id?: number;
+  name?: string;
+  icon?: string;
+  displayName?: string;
   itemId?: number;
   itemName?: string;
   itemIcon?: string;
@@ -64,18 +69,23 @@ function deduplicateEnchants(raw: RawEnchant[]): EnchantDisplay[] {
   for (const e of raw) {
     // Skip socket-type entries (those are gems)
     if (e.slot === 'socket') continue;
-    const baseName = e.baseDisplayName || e.itemName || e.displayName || '';
+    const baseName =
+      e.baseDisplayName ||
+      e.itemName ||
+      e.displayName ||
+      e.name ||
+      `enchant-${e.enchant_id ?? e.id ?? 0}`;
     const existing = byBase.get(baseName);
     if (!existing || (e.craftingQuality ?? 0) > (existing.craftingQuality ?? 0)) {
       byBase.set(baseName, e);
     }
   }
   return Array.from(byBase.values()).map((e) => ({
-    enchantId: e.id,
-    name: e.itemName || e.displayName || 'Unknown',
+    enchantId: e.enchant_id ?? e.id ?? 0,
+    name: e.itemName || e.displayName || e.name || 'Unknown',
     icon: e.itemIcon || e.spellIcon || 'inv_misc_questionmark',
     quality: e.quality ?? 3,
-  }));
+  })).filter((e) => e.enchantId > 0);
 }
 
 /**
@@ -84,19 +94,20 @@ function deduplicateEnchants(raw: RawEnchant[]): EnchantDisplay[] {
 function deduplicateGems(raw: RawGem[]): GemDisplay[] {
   const byBase = new Map<string, RawGem>();
   for (const g of raw) {
-    const baseName = g.itemName || g.displayName || '';
+    const baseName =
+      g.itemName || g.displayName || g.name || `gem-${g.item_id ?? g.itemId ?? g.id ?? 0}`;
     const existing = byBase.get(baseName);
     if (!existing || (g.craftingQuality ?? 0) > (existing.craftingQuality ?? 0)) {
       byBase.set(baseName, g);
     }
   }
   return Array.from(byBase.values()).map((g) => ({
-    gemItemId: g.itemId ?? g.id,
-    enchantId: g.id,
-    name: g.itemName || g.displayName || 'Unknown',
-    icon: g.itemIcon || 'inv_misc_questionmark',
+    gemItemId: g.item_id ?? g.itemId ?? g.id ?? 0,
+    enchantId: g.id ?? 0,
+    name: g.itemName || g.displayName || g.name || 'Unknown',
+    icon: g.itemIcon || g.icon || 'inv_misc_questionmark',
     quality: g.quality ?? 3,
-  }));
+  })).filter((g) => g.gemItemId > 0);
 }
 
 export default function OptimizeItemModal({
@@ -229,9 +240,9 @@ export default function OptimizeItemModal({
                     </div>
                     <div className="text-[13px] font-bold">No Enchant</div>
                   </button>
-                  {enchants.map((e) => (
+                  {enchants.map((e, idx) => (
                     <button
-                      key={e.enchantId}
+                      key={`ench-${e.enchantId}-${e.name}-${idx}`}
                       onClick={() => setSelectedEnchant(e.enchantId)}
                       className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                         selectedEnchant === e.enchantId
@@ -310,9 +321,9 @@ export default function OptimizeItemModal({
                     </div>
                     <div className="text-[13px] font-bold">Empty Sockets</div>
                   </button>
-                  {filteredGems.map((g) => (
+                  {filteredGems.map((g, idx) => (
                     <button
-                      key={g.gemItemId}
+                      key={`gem-${g.gemItemId}-${g.name}-${idx}`}
                       onClick={() => setSelectedGem(g.gemItemId)}
                       className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
                         selectedGem === g.gemItemId

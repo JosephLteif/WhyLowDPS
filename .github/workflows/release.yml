@@ -14,7 +14,7 @@ jobs:
         include:
           - platform: 'windows'
             os: 'windows-latest'
-            args: '--config desktop/src-tauri/tauri.conf.json'
+            args: '--config src-tauri/tauri.conf.json'
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -103,20 +103,18 @@ jobs:
           touch backend/resources/data/.keep
 
       # -- Build and Release --
-      - name: build frontend
-        env:
-          DESKTOP_BUILD: true
-        run: npm run build --prefix frontend
-
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          DESKTOP_BUILD: true
+          NEXT_PUBLIC_DESKTOP_BUILD: true
         with:
-          tagName: v__VERSION__
-          releaseName: "WhyLowDps v__VERSION__"
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "WhyLowDps ${{ github.ref_name }}"
           releaseBody: "See the assets below for the installers."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

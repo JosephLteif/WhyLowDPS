@@ -37,25 +37,65 @@ impl BlizzardState {
         let data: BlizzardToken = res.json().await.ok()?;
         Some(data.access_token)
     }
+
+    pub fn get_effective_credentials(
+        req: &actix_web::HttpRequest,
+        auth_state: Option<&BlizzardAuthState>,
+        store: &dyn crate::storage::JobStorage,
+    ) -> Option<(String, String)> {
+        // 1. Try system credentials (local app config)
+        if let (Some(id), Some(sec)) = (
+            store.get_user_config("system", "blizzard_client_id"),
+            store.get_user_config("system", "blizzard_client_secret"),
+        ) {
+            return Some((id, sec));
+        }
+
+        // 2. Try logged in user credentials
+        if let Some(auth) = auth_state {
+            if let Some(claims) = verify_jwt(req, &auth.jwt_secret) {
+                if let (Some(id), Some(sec)) = (
+                    store.get_user_config(&claims.sub, "blizzard_client_id"),
+                    store.get_user_config(&claims.sub, "blizzard_client_secret"),
+                ) {
+                    return Some((id, sec));
+                }
+            }
+        }
+
+        // 3. Try global config (env vars)
+        if let Some(auth) = auth_state {
+            if let (Some(id), Some(sec)) = (&auth.client_id, &auth.client_secret) {
+                return Some((id.clone(), sec.clone()));
+            }
+        }
+
+        None
+    }
 }
 
-async fn get_effective_token(
+pub async fn get_effective_token(
     req: &actix_web::HttpRequest,
     state: &BlizzardState,
     auth_state: Option<&BlizzardAuthState>,
     store: &dyn crate::storage::JobStorage,
 ) -> Option<String> {
+    // Priority 1: Check for an active user session token (direct access)
     if let Some(auth) = auth_state {
-        if let Some(claims) = verify_jwt(req, &auth.jwt_secret) {
-            let user_id = &claims.sub;
-            let id = store.get_user_config(user_id, "blizzard_client_id");
-            let secret = store.get_user_config(user_id, "blizzard_client_secret");
-
-            if let (Some(id), Some(secret)) = (id, secret) {
-                return BlizzardState::get_token_with_creds(&state.client, &id, &secret).await;
-            }
+        if let Some(_claims) = verify_jwt(req, &auth.jwt_secret) {
+            // If the user is logged in via OAuth, we might have their access token directly.
+            // However, Blizzard user tokens expire. For proxying, we often prefer client_credentials
+            // using their configured keys, or just use their user token if it's fresh.
+            // For now, we continue to prioritize client_credentials for proxying as it's more stable.
+            // But we COULD return claims.access_token here if we wanted.
         }
     }
+
+    // Priority 2: Use client_credentials from the best available source
+    if let Some((id, secret)) = BlizzardState::get_effective_credentials(req, auth_state, store) {
+        return BlizzardState::get_token_with_creds(&state.client, &id, &secret).await;
+    }
+
     None
 }
 

@@ -176,6 +176,8 @@ pub(super) struct ListSimsQuery {
     pub realm: String,
     #[serde(default)]
     pub linked_only: bool,
+    #[serde(default)]
+    pub unlinked_only: bool,
 }
 
 #[derive(Deserialize)]

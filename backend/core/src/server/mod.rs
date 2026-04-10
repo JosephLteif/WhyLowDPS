@@ -121,38 +121,51 @@ async fn spa_fallback(
     frontend_dir: web::Data<FrontendDir>,
 ) -> actix_web::Result<NamedFile> {
     let path = req.path();
+    let trimmed = path.trim_start_matches('/').trim_end_matches('/');
 
-    // Try exact file match first (e.g., /quick-sim -> quick-sim.html)
-    let trimmed = path.trim_start_matches('/');
-    let html_path = frontend_dir.0.join(format!("{}.html", trimmed));
-    if html_path.exists() {
-        return Ok(NamedFile::open(html_path)?);
-    }
+    // Try static-export folder routes first (e.g., /quick-sim -> quick-sim/index.html).
+    if !trimmed.is_empty() {
+        let folder_index = frontend_dir.0.join(trimmed).join("index.html");
+        if folder_index.exists() {
+            return Ok(NamedFile::open(folder_index)?);
+        }
 
-    // /sim/{id} -> sim/_.html (the placeholder page)
-    if path.starts_with("/sim/") {
-        let sim_html = frontend_dir.0.join("sim").join("_.html");
-        if sim_html.exists() {
-            return Ok(NamedFile::open(sim_html)?);
+        // Support non-folder exports when present.
+        let flat_html = frontend_dir.0.join(format!("{}.html", trimmed));
+        if flat_html.exists() {
+            return Ok(NamedFile::open(flat_html)?);
         }
     }
 
-    // /character/[region]/[realm]/[name] -> character/[region]/[realm]/[name].html or fallback to index
-    if path.starts_with("/character/") {
-        // Since these are highly dynamic, we usually want to fallback to index.html
-        // unless we have a specific catch-all. Next.js static export for dynamic routes
-        // without generateStaticParams usually falls back to the root index.
-        return Ok(NamedFile::open(frontend_dir.0.join("index.html"))?);
+    // Map dynamic exported pages to their static placeholders.
+    if path.starts_with("/sim/") || path == "/sim" || path == "/sim/" {
+        let sim_placeholder = frontend_dir.0.join("sim").join("_").join("index.html");
+        if sim_placeholder.exists() {
+            return Ok(NamedFile::open(sim_placeholder)?);
+        }
     }
 
-    // Fallback to index.html
+    if path.starts_with("/character/") || path == "/character" || path == "/character/" {
+        let character_placeholder = frontend_dir
+            .0
+            .join("character")
+            .join("us")
+            .join("realm")
+            .join("name")
+            .join("index.html");
+        if character_placeholder.exists() {
+            return Ok(NamedFile::open(character_placeholder)?);
+        }
+    }
+
+    // Final fallback for unknown routes.
     Ok(NamedFile::open(frontend_dir.0.join("index.html"))?)
 }
 
 // ---------- Server startup ----------
 
 /// Start the HTTP server with in-memory storage (desktop default).
-pub async fn start(resource_dir: &Path, frontend_dir: Option<PathBuf>) -> u16 {
+pub async fn start(resource_dir: &Path, frontend_dir: Option<PathBuf>) -> (actix_web::dev::Server, u16) {
     let simc_path = if cfg!(windows) {
         resource_dir.join("simc").join("simc.exe")
     } else {
@@ -164,14 +177,14 @@ pub async fn start(resource_dir: &Path, frontend_dir: Option<PathBuf>) -> u16 {
 }
 
 /// Start the actix-web HTTP server with a given storage backend.
-/// Returns the port number.
+/// Returns the server handle and port number.
 pub async fn start_with_storage(
     storage: Arc<dyn JobStorage>,
     simc_path: PathBuf,
     port: u16,
     frontend_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
-) -> u16 {
+) -> (actix_web::dev::Server, u16) {
     start_with_storage_bind(
         storage,
         simc_path,
@@ -184,7 +197,7 @@ pub async fn start_with_storage(
 }
 
 /// Start the actix-web HTTP server with a given storage backend and bind address.
-/// Returns the port number.
+/// Returns the server handle and the port number.
 pub async fn start_with_storage_bind(
     storage: Arc<dyn JobStorage>,
     simc_path: PathBuf,
@@ -192,7 +205,7 @@ pub async fn start_with_storage_bind(
     port: u16,
     frontend_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
-) -> u16 {
+) -> (actix_web::dev::Server, u16) {
     #[cfg(feature = "web")]
     {
         let store_data = web::Data::new(storage);
@@ -207,13 +220,20 @@ pub async fn start_with_storage_bind(
 
         let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
 
-        let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI")
-            .unwrap_or_else(|_| "http://localhost:3000/api/auth/bnet/callback".to_string());
+        let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI").unwrap_or_else(|_| {
+            if port == 17384 || cfg!(feature = "desktop") {
+                format!("http://localhost:{}/api/auth/bnet/callback", port)
+            } else {
+                "http://localhost:3000/api/auth/bnet/callback".to_string()
+            }
+        });
         let jwt_secret =
             std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
 
         let client_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
         let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
+
+        println!("Configured Blizzard Redirect URI: {}", bnet_redirect);
 
         let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
             client_id,
@@ -234,8 +254,13 @@ pub async fn start_with_storage_bind(
                     let origin_str = origin.to_str().unwrap_or("");
                     origin_str == "http://localhost:3000"
                         || origin_str == "tauri://localhost"
+                        || origin_str == "https://tauri.localhost"
+                        || origin_str == "http://tauri.localhost"
+                        || origin_str == "tauri.localhost"
                         || origin_str.starts_with("http://localhost:")
                         || origin_str.starts_with("https://localhost:")
+                        || origin_str.starts_with("http://127.0.0.1:")
+                        || origin_str.starts_with("https://127.0.0.1:")
                 })
                 .allow_any_method()
                 .allow_any_header()
@@ -243,6 +268,14 @@ pub async fn start_with_storage_bind(
                 .max_age(3600);
 
             let mut app = App::new()
+                .app_data(web::JsonConfig::default().error_handler(|err, _req| {
+                    let detail = err.to_string();
+                    actix_web::error::InternalError::from_response(
+                        err,
+                        HttpResponse::BadRequest().json(serde_json::json!({ "detail": detail })),
+                    )
+                    .into()
+                }))
                 .wrap(cors)
                 .app_data(store_data.clone())
                 .app_data(simc_data.clone())
@@ -253,6 +286,14 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/auth/bnet/login",
                     web::get().to(auth_handlers::bnet_login),
+                )
+                .route(
+                    "/api/auth/bnet/login-success",
+                    web::get().to(auth_handlers::login_success),
+                )
+                .route(
+                    "/api/auth/poll",
+                    web::get().to(auth_handlers::poll_login),
                 )
                 .route(
                     "/api/auth/bnet/callback",
@@ -280,11 +321,16 @@ pub async fn start_with_storage_bind(
                     web::post().to(auth_handlers::set_user_config),
                 )
                 .route(
-                    "/api/user/config",
-                    web::delete().to(auth_handlers::clear_user_configs),
-                )
-                .route(
+                    "/api/user/blizzard/clear",
+                    web::post().to(auth_handlers::clear_user_configs),
+                    )
+                    .route(
+                    "/api/system/blizzard/credentials",
+                    web::post().to(auth_handlers::set_system_blizzard_creds),
+                    )
+                    .route(
                     "/api/user/blizzard/test",
+
                     web::post().to(auth_handlers::test_blizzard_creds),
                 )
                 .route(
@@ -505,15 +551,11 @@ pub async fn start_with_storage_bind(
         .unwrap_or_else(|_| panic!("Failed to bind to {}", bind_addr))
         .run();
 
-        tokio::spawn(server);
-
-        println!("HTTP server started on port {}", port);
-        port
+        println!("HTTP server starting on port {}", port);
+        (server, port)
     }
     #[cfg(not(feature = "web"))]
     {
-        let _ = (storage, simc_path, bind_host, frontend_dir, data_dir);
-        println!("HTTP server disabled (web feature not active)");
-        port
+        panic!("HTTP server disabled (web feature not active)");
     }
 }

@@ -20,6 +20,11 @@ export interface NodeSelection {
   choiceIndex: number;
 }
 
+export interface DecodedNodeSelection extends NodeSelection {
+  /** True when this node consumed talent points in the export payload. */
+  purchased: boolean;
+}
+
 export interface DecodedHeader {
   version: number;
   specId: number;
@@ -83,7 +88,24 @@ export function decodeNodes(
   sortedNodeIds: number[],
   nodeMaxRanks: Map<number, number>
 ): Map<number, NodeSelection> {
+  const states = decodeNodeSelections(bits, offset, sortedNodeIds, nodeMaxRanks);
   const selections = new Map<number, NodeSelection>();
+  for (const [nodeId, state] of states) {
+    selections.set(nodeId, { ranks: state.ranks, choiceIndex: state.choiceIndex });
+  }
+  return selections;
+}
+
+/**
+ * Decode per-node selections including whether each selected node is purchased.
+ */
+export function decodeNodeSelections(
+  bits: boolean[],
+  offset: number,
+  sortedNodeIds: number[],
+  nodeMaxRanks: Map<number, number>
+): Map<number, DecodedNodeSelection> {
+  const selections = new Map<number, DecodedNodeSelection>();
   let pos = offset;
 
   for (const nodeId of sortedNodeIds) {
@@ -97,7 +119,11 @@ export function decodeNodes(
     [isPurchased, pos] = readBits(bits, pos, 1);
     if (!isPurchased) {
       // Node is selected but not purchased (granted/free node)
-      selections.set(nodeId, { ranks: nodeMaxRanks.get(nodeId) ?? 1, choiceIndex: -1 });
+      selections.set(nodeId, {
+        ranks: nodeMaxRanks.get(nodeId) ?? 1,
+        choiceIndex: -1,
+        purchased: false,
+      });
       continue;
     }
 
@@ -117,7 +143,7 @@ export function decodeNodes(
       [choiceIndex, pos] = readBits(bits, pos, 2);
     }
 
-    selections.set(nodeId, { ranks, choiceIndex });
+    selections.set(nodeId, { ranks, choiceIndex, purchased: true });
   }
 
   return selections;

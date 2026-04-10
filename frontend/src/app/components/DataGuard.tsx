@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { API_URL } from '../lib/api';
+import { API_URL, TOKEN_KEY, fetchJson } from '../lib/api';
 import SplashScreen from './SplashScreen';
 import { useAuth } from './AuthContext';
 import { usePathname } from 'next/navigation';
@@ -9,61 +9,47 @@ import { usePathname } from 'next/navigation';
 export default function DataGuard({ children }: { children: React.ReactNode }) {
   const [dataStatus, setDataStatus] = useState<any>({ status: 'syncing', progress: '' });
   const [isReady, setIsReady] = useState(false);
-  const { user, checkCredentialsStatus } = useAuth();
+  const { user, loading, checkCredentialsStatus } = useAuth();
   const [showSetup, setShowSetup] = useState(false);
-  const [isGloballyConfigured, setIsGloballyConfigured] = useState(true);
+  const [isGloballyConfigured, setIsGloballyConfigured] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
+    setIsChecking(true);
     checkCredentialsStatus().then((status) => {
+      console.log('[DataGuard] Credentials status:', status);
       setIsGloballyConfigured(status.globally_configured);
+      setIsChecking(false);
     });
   }, [checkCredentialsStatus, user]);
 
   const checkStatus = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/data/status`, { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
+      const data = await fetchJson<any>(`${API_URL}/api/data/status`);
 
-        if (data.status === 'ready') {
-          setDataStatus(data);
-          setIsReady(true);
-        } else if (data.status === 'needs_credentials') {
-          if (data.can_sync) {
-            // Trigger a sync if we have keys (system or user) available
-            setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
-            fetch(`${API_URL}/api/data/sync`, { method: 'POST', credentials: 'include' }).catch(
-              () => {}
-            );
-          } else {
-            // Check if we have global credentials (backup check)
-            const creds = await checkCredentialsStatus();
-            if (creds.globally_configured) {
-              setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
-              fetch(`${API_URL}/api/data/sync`, { method: 'POST', credentials: 'include' }).catch(
-                () => {}
-              );
-            } else {
-              // Only now show the needs_credentials status (shows the Configure button)
-              setDataStatus(data);
-            }
-          }
-        } else {
-          setDataStatus(data);
-        }
+      if (data.status === 'ready') {
+        setDataStatus(data);
+        setIsReady(true);
+      } else if (data.status === 'needs_credentials') {
+        // Trigger a sync assuming credentials are configured
+        setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
+        fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).catch(() => {});
+      } else {
+        setDataStatus(data);
       }
     } catch (err) {
       console.error('Failed to fetch data status:', err);
       setDataStatus({ status: 'Error', progress: 'Connection failed. Is the backend running?' });
     }
-  }, [checkCredentialsStatus]);
+  }, []);
 
   useEffect(() => {
     // Initial check
+    console.log('[DataGuard] Initial check started');
     checkStatus();
 
     // Start sync if ready and not syncing
-    fetch(`${API_URL}/api/data/sync`, { method: 'POST', credentials: 'include' }).catch(() => {});
+    fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).catch(() => {});
 
     // Poll while not ready
     const interval = setInterval(() => {
@@ -76,36 +62,38 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   }, [isReady, checkStatus]);
 
   const handleRetry = () => {
-    fetch(`${API_URL}/api/data/sync`, { method: 'POST' }).then(() => checkStatus());
-  };
-
-  const handleConfigureKeys = () => {
-    // For now, Redirect to settings or just show the setup message
-    window.location.href = '/settings';
+    fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).then(() => checkStatus());
   };
 
   const pathname = usePathname();
   const isSettingsPage = pathname === '/settings';
 
-  if (!user && !isSettingsPage) {
-    return (
-      <SplashScreen
-        status={isGloballyConfigured ? 'unauthenticated' : 'unauthenticated_needs_keys'}
-        progress=""
-      />
-    );
+  // 1. Initial configuration check (no data yet)
+  if ((loading || isChecking) && !isGloballyConfigured && !user && !isSettingsPage) {
+    return null;
   }
 
+  // 2. If the system is not configured with Blizzard keys, show setup screen
+  if (!isGloballyConfigured && !isSettingsPage) {
+    return <SplashScreen status="unauthenticated_needs_keys" progress="" />;
+  }
+
+  // 3. If the system is configured but the user is not logged in, show login screen
+  if (!user && !isSettingsPage) {
+    return <SplashScreen status="unauthenticated" progress="" />;
+  }
+
+  // 4. If data is not ready, show syncing splash screen (only if not on settings)
   if (!isReady && !isSettingsPage) {
     return (
       <SplashScreen
         status={dataStatus.status}
         progress={dataStatus.progress}
         onRetry={handleRetry}
-        onConfigureKeys={handleConfigureKeys}
       />
     );
   }
 
+  // 5. Default: show application content
   return <>{children}</>;
 }

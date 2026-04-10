@@ -129,6 +129,7 @@ export default function TopGearSlotGroup({
               onUpgradeClick={() => onUpgradeClick(item)}
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
+              onOptimize={() => onOptimize(item)}
             />
           </GearItemRow>
         ))}

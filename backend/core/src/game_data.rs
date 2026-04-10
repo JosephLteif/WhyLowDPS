@@ -169,20 +169,25 @@ pub fn get_instance_drops(
                 let tracks = item_db::upgrade_tracks();
                 let tm = item_db::upgrade_track_max();
                 let mut diff_info = serde_json::Map::new();
-                if let Some(lvl) = upgrade_lvl {
-                    for diff in &["lfr", "normal", "heroic", "mythic"] {
-                        if let Some(track) = item_db::difficulty_track_name(diff) {
-                            if let Some(&(ilvl, bonus_id, quality)) =
-                                tracks.get(&(track.clone(), lvl, tm))
-                            {
-                                diff_info.insert(
-                                    diff.to_string(),
-                                    serde_json::json!({
-                                        "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
-                                        "track": track, "level": lvl, "max_level": tm,
-                                    }),
-                                );
-                            }
+                for diff in &["lfr", "normal", "heroic", "mythic"] {
+                    if let Some(track) = item_db::difficulty_track_name(diff) {
+                        // LFR always starts at Veteran 1/6.
+                        // If we don't have per-encounter level metadata, fall back to 1.
+                        let effective_level = if *diff == "lfr" {
+                            1
+                        } else {
+                            upgrade_lvl.unwrap_or(1)
+                        };
+                        if let Some(&(ilvl, bonus_id, quality)) =
+                            tracks.get(&(track.clone(), effective_level, tm))
+                        {
+                            diff_info.insert(
+                                diff.to_string(),
+                                serde_json::json!({
+                                    "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
+                                    "track": track, "level": effective_level, "max_level": tm,
+                                }),
+                            );
                         }
                     }
                 }

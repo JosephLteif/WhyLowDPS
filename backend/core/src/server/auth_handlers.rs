@@ -40,6 +40,7 @@ pub struct Claims {
 #[derive(Deserialize)]
 pub struct AuthCallbackQuery {
     pub code: String,
+    pub state: String, // This is our flow_id
 }
 
 #[derive(Deserialize)]
@@ -56,23 +57,67 @@ struct UserInfoResponse {
 pub struct LoginQuery {
     pub client_id: Option<String>,
     pub client_secret: Option<String>,
+    pub flow_id: Option<String>,
+}
+fn get_effective_creds(
+    state: &BlizzardAuthState,
+    store: &dyn crate::storage::JobStorage,
+    query_id: Option<&String>,
+    query_secret: Option<&String>,
+) -> Option<(String, String)> {
+    // 1. Try query params (temporary session use)
+    if let (Some(id), Some(sec)) = (query_id, query_secret) {
+        return Some((id.clone(), sec.clone()));
+    }
+
+    // 2. Try environment variables
+    if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
+        return Some((id.clone(), sec.clone()));
+    }
+
+    // 3. Try "system" config in storage (saved via UI)
+    if let (Some(id), Some(sec)) = (
+        store.get_user_config("system", "blizzard_client_id"),
+        store.get_user_config("system", "blizzard_client_secret"),
+    ) {
+        return Some((id, sec));
+    }
+
+    None
 }
 
-pub async fn get_credentials_status(state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
+pub async fn get_credentials_status(
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+) -> HttpResponse {
+    let env_configured = state.client_id.is_some() && state.client_secret.is_some();
+    let system_configured = store.get_user_config("system", "blizzard_client_id").is_some()
+        && store.get_user_config("system", "blizzard_client_secret").is_some();
+
     HttpResponse::Ok().json(json!({
-        "globally_configured": state.client_id.is_some() && state.client_secret.is_some()
+        "globally_configured": env_configured || system_configured
     }))
 }
 
 pub async fn bnet_login(
     state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     query: web::Query<LoginQuery>,
 ) -> HttpResponse {
-    let client_id = query.client_id.as_ref().or(state.client_id.as_ref());
+    let creds = get_effective_creds(
+        &state,
+        &***store,
+        query.client_id.as_ref(),
+        query.client_secret.as_ref(),
+    );
 
-    let client_id = match client_id {
-        Some(id) => id,
-        None => return HttpResponse::BadRequest().json(json!({"error": "Blizzard API Client ID not configured globally and not provided in request."})),
+    let (client_id, client_secret) = match creds {
+        Some(c) => c,
+        None => {
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Blizzard API Client ID not configured globally and not provided in request."
+            }))
+        }
     };
 
     let mut builder = HttpResponse::Found();
@@ -97,14 +142,120 @@ pub async fn bnet_login(
         );
     }
 
+    println!("Starting Blizzard Login for client_id: {}", client_id);
+    println!("Target Redirect URI: {}", state.redirect_uri);
+
+    let flow_id = query.flow_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
     let auth_url = format!(
-        "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}",
+        "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}&prompt=login%20consent&max_age=0",
         client_id,
         urlencoding::encode(&state.redirect_uri),
-        uuid::Uuid::new_v4()
+        flow_id
     );
 
+    println!("Final Blizzard Auth URL: {}", auth_url);
+
     builder.append_header((header::LOCATION, auth_url)).finish()
+}
+
+#[derive(Deserialize)]
+pub struct PollQuery {
+    pub flow_id: String,
+}
+
+pub async fn poll_login(
+    query: web::Query<PollQuery>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+) -> HttpResponse {
+    let cache_key = format!("login_flow_{}", query.flow_id);
+    match store.get_cache(&cache_key) {
+        Some(token) => {
+            // Remove from cache after successful poll to clean up
+            store.remove_cache(&cache_key);
+            HttpResponse::Ok().json(json!({ "token": token }))
+        }
+        None => HttpResponse::NotFound().json(json!({ "status": "pending" })),
+    }
+}
+
+pub async fn login_success() -> HttpResponse {
+    let html = r#"
+<!DOCTYPE html>
+<html>
+    <meta charset="UTF-8">
+    <title>Login Successful - WhyLowDps</title>
+    <style>
+        body {
+            background-color: #0c0c0e;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2rem;
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 400px;
+        }
+        .icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(180deg, #ffd700, #b8860b);
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: black;
+            font-size: 2rem;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+        }
+        .icon svg {
+            width: 32px;
+            height: 32px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+        p { color: #a1a1aa; line-height: 1.5; margin-bottom: 1.5rem; }
+        .button {
+            background: #0074e0;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            text-decoration: none;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .button:hover { background: #005fb8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">
+            <svg viewBox="0 0 24 24">
+                <path d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+        <h1>Logged In Successfully!</h1>
+        <p>Your Battle.net account has been linked. You can now close this window and return to the WhyLowDps app.</p>
+        <p style="font-size: 0.8rem;">(This window will not close automatically for security reasons)</p>
+    </div>
+</body>
+</html>
+"#;
+    HttpResponse::Ok().content_type("text/html").body(html)
 }
 
 pub async fn bnet_callback(
@@ -115,18 +266,18 @@ pub async fn bnet_callback(
 ) -> HttpResponse {
     let client = reqwest::Client::new();
 
-    let (client_id, client_secret) =
-        if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
-            (id.clone(), sec.clone())
-        } else {
-            match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
-                (Some(id_c), Some(sec_c)) => (id_c.value().to_string(), sec_c.value().to_string()),
-                _ => {
-                    return HttpResponse::InternalServerError()
-                        .json(json!({"error": "Blizzard credentials not found in session."}))
-                }
-            }
-        };
+    let creds = match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
+        (Some(id_c), Some(sec_c)) => Some((id_c.value().to_string(), sec_c.value().to_string())),
+        _ => get_effective_creds(&state, &***store, None, None),
+    };
+
+    let (client_id, client_secret) = match creds {
+        Some(c) => c,
+        None => {
+            return HttpResponse::InternalServerError()
+                .json(json!({"error": "Blizzard credentials not found."}))
+        }
+    };
 
     let token_resp = client
         .post("https://oauth.battle.net/token")
@@ -236,7 +387,7 @@ pub async fn bnet_callback(
     };
     let secure = cfg!(feature = "desktop");
 
-    let cookie = Cookie::build("bnet_session", token)
+    let cookie = Cookie::build("bnet_session", token.clone())
         .path("/")
         .http_only(true)
         .secure(secure)
@@ -244,9 +395,16 @@ pub async fn bnet_callback(
         .max_age(actix_web::cookie::time::Duration::days(30))
         .finish();
 
+    let redirect_url = "/api/auth/bnet/login-success";
+
     let mut resp_builder = HttpResponse::Found();
-    resp_builder.append_header((header::LOCATION, "/characters")); // Redirect to characters page after login
+    resp_builder.append_header((header::LOCATION, redirect_url)); // Redirect to success page
     resp_builder.cookie(cookie);
+
+    // Store token in cache for polling (handoff to desktop app)
+    let flow_id = query.state.clone();
+    let cache_key = format!("login_flow_{}", flow_id);
+    store.set_cache(&cache_key, token);
 
     // If we used temporary credentials, save them to the user's permanent config
     if state.client_id.is_none() {
@@ -272,19 +430,25 @@ pub async fn bnet_callback(
 }
 
 pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
-    let cookie = req.cookie("bnet_session");
-    if cookie.is_none() {
+    let token = if let Some(cookie) = req.cookie("bnet_session") {
+        cookie.value().to_string()
+    } else if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
+        let auth_str = auth_header.to_str().unwrap_or_default();
+        if auth_str.starts_with("Bearer ") {
+            auth_str[7..].to_string()
+        } else {
+            return None;
+        }
+    } else {
         println!(
-            "No bnet_session cookie found in request headers: {:?}",
+            "No auth found in request (cookie or Authorization header). headers: {:?}",
             req.headers()
         );
         return None;
-    }
-    let cookie = cookie.unwrap();
-    let token = cookie.value();
+    };
 
     let token_data = decode::<Claims>(
-        token,
+        &token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
     );
@@ -299,7 +463,13 @@ pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
 }
 
 pub async fn get_me(req: HttpRequest, state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
-    println!("get_me called, checking auth...");
+    println!("get_me called. Headers: {:?}", req.headers());
+    if let Some(cookie) = req.cookie("bnet_session") {
+        println!("Found bnet_session cookie: {}", cookie.value());
+    } else {
+        println!("No bnet_session cookie found.");
+    }
+
     match verify_jwt(&req, &state.jwt_secret) {
         Some(claims) => {
             println!("get_me success: {}", claims.sub);
@@ -323,6 +493,10 @@ pub async fn bnet_logout(
         store.remove_user_config(&claims.sub, "blizzard_client_id");
         store.remove_user_config(&claims.sub, "blizzard_client_secret");
     }
+
+    // Also clear system-level credentials if they were set via the UI
+    store.remove_user_config("system", "blizzard_client_id");
+    store.remove_user_config("system", "blizzard_client_secret");
 
     let same_site = if cfg!(feature = "desktop") {
         SameSite::None
@@ -353,7 +527,7 @@ pub async fn bnet_logout(
         .cookie(cookie)
         .cookie(temp_id)
         .cookie(temp_sec)
-        .json(json!({"status": "logged_out"}))
+        .json(json!({"status": "success"}))
 }
 
 #[derive(Deserialize)]
@@ -538,6 +712,22 @@ pub async fn set_user_config(
     store.set_user_config(&claims.sub, &body.key, &body.value);
 
     HttpResponse::Ok().json(json!({"status": "updated"}))
+}
+
+#[derive(Deserialize)]
+pub struct SystemConfigUpdate {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+pub async fn set_system_blizzard_creds(
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    body: web::Json<SystemConfigUpdate>,
+) -> HttpResponse {
+    store.set_user_config("system", "blizzard_client_id", &body.client_id);
+    store.set_user_config("system", "blizzard_client_secret", &body.client_secret);
+
+    HttpResponse::Ok().json(json!({"status": "system credentials updated"}))
 }
 
 pub async fn clear_user_configs(

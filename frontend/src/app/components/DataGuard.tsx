@@ -71,12 +71,21 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     return null; // Or a minimal full-screen spinner
   }
 
-  // Allow unauthenticated access if the system is globally configured with Blizzard keys.
-  // In a local/desktop app, this allows using character lookup features without a personal login.
-  if (!user && !isGloballyConfigured && !isSettingsPage) {
+  // 1. If the system is not configured with Blizzard keys, we MUST show the setup screen.
+  if (!isGloballyConfigured && !isSettingsPage) {
     return (
       <SplashScreen
         status="unauthenticated_needs_keys"
+        progress=""
+      />
+    );
+  }
+
+  // 2. If the system is configured but the user is not logged in, show the login screen.
+  if (!user && !isSettingsPage) {
+    return (
+      <SplashScreen
+        status="unauthenticated"
         progress=""
       />
     );

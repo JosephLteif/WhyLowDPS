@@ -11,6 +11,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 whylowdps-core = { path = "../../backend/core", default-features = false, features = ["desktop", "web"] }
+url = "2.5.8"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

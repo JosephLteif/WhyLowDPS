@@ -59,22 +59,65 @@ pub struct LoginQuery {
     pub client_secret: Option<String>,
     pub flow_id: Option<String>,
 }
+fn get_effective_creds(
+    state: &BlizzardAuthState,
+    store: &dyn crate::storage::JobStorage,
+    query_id: Option<&String>,
+    query_secret: Option<&String>,
+) -> Option<(String, String)> {
+    // 1. Try query params (temporary session use)
+    if let (Some(id), Some(sec)) = (query_id, query_secret) {
+        return Some((id.clone(), sec.clone()));
+    }
 
-pub async fn get_credentials_status(state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
+    // 2. Try environment variables
+    if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
+        return Some((id.clone(), sec.clone()));
+    }
+
+    // 3. Try "system" config in storage (saved via UI)
+    if let (Some(id), Some(sec)) = (
+        store.get_user_config("system", "blizzard_client_id"),
+        store.get_user_config("system", "blizzard_client_secret"),
+    ) {
+        return Some((id, sec));
+    }
+
+    None
+}
+
+pub async fn get_credentials_status(
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+) -> HttpResponse {
+    let env_configured = state.client_id.is_some() && state.client_secret.is_some();
+    let system_configured = store.get_user_config("system", "blizzard_client_id").is_some()
+        && store.get_user_config("system", "blizzard_client_secret").is_some();
+
     HttpResponse::Ok().json(json!({
-        "globally_configured": state.client_id.is_some() && state.client_secret.is_some()
+        "globally_configured": env_configured || system_configured
     }))
 }
 
 pub async fn bnet_login(
     state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     query: web::Query<LoginQuery>,
 ) -> HttpResponse {
-    let client_id = query.client_id.as_ref().or(state.client_id.as_ref());
+    let creds = get_effective_creds(
+        &state,
+        &***store,
+        query.client_id.as_ref(),
+        query.client_secret.as_ref(),
+    );
 
-    let client_id = match client_id {
-        Some(id) => id,
-        None => return HttpResponse::BadRequest().json(json!({"error": "Blizzard API Client ID not configured globally and not provided in request."})),
+    let (client_id, client_secret) = match creds {
+        Some(c) => c,
+        None => {
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Blizzard API Client ID not configured globally and not provided in request."
+            }))
+        }
     };
 
     let mut builder = HttpResponse::Found();
@@ -105,7 +148,7 @@ pub async fn bnet_login(
     let flow_id = query.flow_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let auth_url = format!(
-        "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}",
+        "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}&prompt=login%20consent&max_age=0",
         client_id,
         urlencoding::encode(&state.redirect_uri),
         flow_id
@@ -210,18 +253,18 @@ pub async fn bnet_callback(
 ) -> HttpResponse {
     let client = reqwest::Client::new();
 
-    let (client_id, client_secret) =
-        if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
-            (id.clone(), sec.clone())
-        } else {
-            match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
-                (Some(id_c), Some(sec_c)) => (id_c.value().to_string(), sec_c.value().to_string()),
-                _ => {
-                    return HttpResponse::InternalServerError()
-                        .json(json!({"error": "Blizzard credentials not found in session."}))
-                }
-            }
-        };
+    let creds = match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
+        (Some(id_c), Some(sec_c)) => Some((id_c.value().to_string(), sec_c.value().to_string())),
+        _ => get_effective_creds(&state, &***store, None, None),
+    };
+
+    let (client_id, client_secret) = match creds {
+        Some(c) => c,
+        None => {
+            return HttpResponse::InternalServerError()
+                .json(json!({"error": "Blizzard credentials not found."}))
+        }
+    };
 
     let token_resp = client
         .post("https://oauth.battle.net/token")
@@ -437,6 +480,10 @@ pub async fn bnet_logout(
         store.remove_user_config(&claims.sub, "blizzard_client_id");
         store.remove_user_config(&claims.sub, "blizzard_client_secret");
     }
+
+    // Also clear system-level credentials if they were set via the UI
+    store.remove_user_config("system", "blizzard_client_id");
+    store.remove_user_config("system", "blizzard_client_secret");
 
     let same_site = if cfg!(feature = "desktop") {
         SameSite::None

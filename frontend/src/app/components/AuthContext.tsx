@@ -82,15 +82,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (isDesktop) {
       try {
-        const { open } = await import('@tauri-apps/plugin-shell');
-        console.log('Opening login in system browser:', url);
-        await open(url);
+        const { invoke } = await import('@tauri-apps/api/core');
+        console.log('Opening isolated auth window:', url);
+        
+        // Use double-encoding for the ref URL to ensure Blizzard's logout redirect works correctly
+        await invoke('open_auth_window', { url: encodeURIComponent(url) });
         
         // Start polling for token
         startPolling(flowId);
         return;
       } catch (err) {
-        console.error('Failed to use Tauri shell for login, falling back to window location:', err);
+        console.error('Failed to use Tauri internal window, falling back to shell:', err);
+        try {
+          const { open } = await import('@tauri-apps/plugin-shell');
+          await open(url);
+          startPolling(flowId);
+          return;
+        } catch (shellErr) {
+          console.error('Shell fallback failed:', shellErr);
+        }
       }
     }
 
@@ -125,11 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const performLocalLogout = () => {
       localStorage.removeItem(TOKEN_KEY);
       setUser(null);
-      if (switchAccount) {
-        window.location.href = 'https://battle.net/login/en/logout';
-      } else {
-        window.location.href = '/';
-      }
+      window.location.href = '/';
     };
 
     fetchJson(`${API_URL}/api/auth/logout`, { method: 'POST' })

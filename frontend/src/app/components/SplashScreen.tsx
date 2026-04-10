@@ -20,12 +20,12 @@ export default function SplashScreen({
   const [clientSecret, setClientSecret] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
 
-  const handleSaveKeys = async () => {
+  const handleSaveAndLogin = async () => {
     setIsSaving(true);
     const success = await setSystemCredentials(clientId, clientSecret);
     if (success) {
-      // Reload to trigger data sync
-      window.location.reload();
+      // Immediately initiate login using these keys
+      login(clientId, clientSecret);
     } else {
       setIsSaving(false);
       alert('Failed to save Blizzard API credentials. Please check your inputs.');
@@ -163,30 +163,23 @@ export default function SplashScreen({
                 </div>
 
                 <button
-                  onClick={handleSaveKeys}
+                  onClick={handleSaveAndLogin}
                   disabled={!clientId || !clientSecret || isSaving}
-                  className="flex w-full items-center justify-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95 disabled:opacity-50 disabled:grayscale"
+                  className="flex w-full items-center justify-center gap-3 rounded-xl bg-gold px-4 py-4 text-sm font-bold text-black shadow-lg shadow-gold/20 transition-all hover:bg-gold-light active:scale-95 disabled:opacity-50 disabled:grayscale"
                 >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2zm4 8h-2V7h2v10z" />
-                  </svg>
-                  {isSaving ? 'Saving...' : 'Set API Credentials'}
-                </button>
-
-                <div className="flex items-center gap-2 py-2">
-                  <div className="h-px flex-1 bg-white/10" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">
-                    OR
-                  </span>
-                  <div className="h-px flex-1 bg-white/10" />
-                </div>
-
-                <button
-                  onClick={() => login(clientId, clientSecret)}
-                  disabled={!clientId || !clientSecret || isSaving}
-                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50 disabled:grayscale"
-                >
-                  Login with Battle.net
+                  {isSaving ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black" />
+                      <span>Processing...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2zm4 8h-2V7h2v10z" />
+                      </svg>
+                      Save & Login with Battle.net
+                    </>
+                  )}
                 </button>
               </div>
             ) : isError ? (

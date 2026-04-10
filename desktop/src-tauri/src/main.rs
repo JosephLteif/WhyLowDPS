@@ -8,10 +8,32 @@ use whylowdps_core::game_data;
 use whylowdps_core::server;
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
 
+#[tauri::command]
+async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), String> {
+    // We use the Blizzard logout endpoint with a 'ref' parameter to force a session clear
+    // before redirecting to the actual authorize URL.
+    let logout_url = format!("https://battle.net/login/en/logout?ref={}", url);
+    
+    tauri::WebviewWindowBuilder::new(
+        &handle,
+        "auth",
+        tauri::WebviewUrl::External(logout_url.parse::<url::Url>().map_err(|e| e.to_string())?),
+    )
+    .title("Blizzard Login")
+    .inner_size(600.0, 750.0)
+    .resizable(true)
+    .always_on_top(true)
+    .build()
+    .map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![open_auth_window])
         .setup(|app| {
             let app_handle = app.handle().clone();
             

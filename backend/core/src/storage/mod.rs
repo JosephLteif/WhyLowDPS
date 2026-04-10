@@ -65,6 +65,7 @@ pub trait JobStorage: Send + Sync {
     // Cache methods for app-level storage (e.g. blizzard API proxy)
     fn set_cache(&self, key: &str, value: String);
     fn get_cache(&self, key: &str) -> Option<String>;
+    fn remove_cache(&self, key: &str);
     // Explicit linking
     fn link_character(
         &self,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import GearOverview from '../../components/GearOverview';
@@ -213,7 +214,7 @@ export default function SimResultClient() {
               {siblings.map((s) => {
                 const isCurrent = s.id === id;
                 return (
-                  <a
+                  <Link
                     key={s.id}
                     href={`/sim/${s.id}`}
                     className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
@@ -223,7 +224,7 @@ export default function SimResultClient() {
                     }`}
                   >
                     {formatScenarioLabel(s)}
-                  </a>
+                  </Link>
                 );
               })}
             </div>

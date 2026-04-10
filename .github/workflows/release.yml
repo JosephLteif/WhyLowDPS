@@ -109,6 +109,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           DESKTOP_BUILD: true
+          NEXT_PUBLIC_DESKTOP_BUILD: true
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}

@@ -2,7 +2,7 @@
 
 import { useParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { API_URL } from '../../../../lib/api';
+import { API_URL, fetchJson } from '../../../../lib/api';
 import CharacterPanel from '../../../../components/CharacterPanel';
 import { generateSimcString } from '../../../../lib/simc-generator';
 
@@ -25,37 +25,16 @@ export default function CharacterClient() {
 
       try {
         const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
-        const [profileRes, equipRes, statsRes, specRes, profRes] = await Promise.all([
-          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/profile${query}`, {
-            credentials: 'include',
-          }),
-          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/equipment${query}`, {
-            credentials: 'include',
-          }),
-          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/statistics${query}`, {
-            credentials: 'include',
-          }),
-          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/specializations${query}`, {
-            credentials: 'include',
-          }),
-          fetch(`${API_URL}/api/blizzard/character/${realm}/${name}/professions${query}`, {
-            credentials: 'include',
-          }),
-        ]);
+        const baseUrl = `${API_URL}/api/blizzard/character/${realm}/${name}`;
 
-        if (!profileRes.ok) {
-          throw new Error(
-            `Profile not found (${profileRes.status}). Ensure the character name and realm are correct.`
-          );
-        }
-
-        const [profile, equipment, statistics, specializations, professions] = await Promise.all([
-          profileRes.json(),
-          equipRes.ok ? equipRes.json() : Promise.resolve({ equipped_items: [] }),
-          statsRes.ok ? statsRes.json() : Promise.resolve({}),
-          specRes.ok ? specRes.json() : Promise.resolve({}),
-          profRes.ok ? profRes.json() : Promise.resolve({}),
-        ]);
+        const [profile, equipment, statistics, specializations, professions] =
+          await Promise.all([
+            fetchJson<any>(`${baseUrl}/profile${query}`),
+            fetchJson<any>(`${baseUrl}/equipment${query}`).catch(() => ({ equipped_items: [] })),
+            fetchJson<any>(`${baseUrl}/statistics${query}`).catch(() => ({})),
+            fetchJson<any>(`${baseUrl}/specializations${query}`).catch(() => ({})),
+            fetchJson<any>(`${baseUrl}/professions${query}`).catch(() => ({})),
+          ]);
 
         setData({ profile, equipment, statistics, specializations, professions });
       } catch (err) {

@@ -9,7 +9,7 @@ import {
   getHistoryStats,
   getConfig,
   updateConfig,
-  type HistoryStats,
+  type HistoryStats, fetchJson,
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 
@@ -376,13 +376,12 @@ export default function HistoryPage() {
 
     // Fetch account characters and historical characters
     Promise.all([
-      fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'include' }).then((r) =>
-        r.json().catch(() => ({ characters: [] }))
-      ),
-      fetch(`${API_URL}/api/history/characters`, { credentials: 'include' }).then((r) =>
-        r.json().catch(() => [])
-      ),
+      fetchJson<{ characters: any[] }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({
+        characters: [],
+      })),
+      fetchJson<any[]>(`${API_URL}/api/history/characters`).catch(() => []),
     ])
+
       .then(([bnetResponse, historyData]) => {
         const bnetList = Array.isArray(bnetResponse)
           ? bnetResponse
@@ -413,12 +412,8 @@ export default function HistoryPage() {
         url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
       }
 
-      const [simsRes, statsData] = await Promise.all([
-        fetch(url, { credentials: 'include' }),
-        getHistoryStats(),
-      ]);
-      const data = simsRes.ok ? await simsRes.json() : [];
-      setSims(data);
+      const [simsData, statsData] = await Promise.all([fetchJson<JobSummary[]>(url), getHistoryStats()]);
+      setSims(simsData);
       setStats(statsData);
     } catch (err) {
       setSims([]);

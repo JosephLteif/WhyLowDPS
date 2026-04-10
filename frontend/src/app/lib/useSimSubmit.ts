@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
-import { API_URL } from './api';
+import { API_URL, fetchJson } from './api';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 
@@ -16,7 +17,10 @@ interface UseSimSubmitOptions {
   validate?: () => string | null;
 }
 
+
+
 export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitOptions) {
+  const router = useRouter();
   const {
     fightStyle,
     threads,
@@ -76,9 +80,8 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
 
       const results = await Promise.allSettled(
         configs.map(async (config) => {
-          const res = await fetch(`${API_URL}${endpoint}`, {
+          return fetchJson<any>(`${API_URL}${endpoint}`, {
             method: 'POST',
-            credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               ...sharedPayload,
@@ -87,18 +90,13 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
               max_time: config.fightLength,
             }),
           });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.detail || `Server error ${res.status}`);
-          }
-          return res.json();
         })
       );
 
       if (scenarios.length === 0) {
         const r = results[0];
         if (r.status === 'fulfilled') {
-          window.location.href = `/sim/${r.value.id}`;
+          router.push(`/sim/${r.value.id}`);
         } else {
           throw r.reason;
         }
@@ -120,7 +118,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
         if (siblings.length > 0) {
           storeScenarioSiblings(siblings);
           clearScenarios();
-          window.location.href = `/sim/${siblings[0].id}`;
+          router.push(`/sim/${siblings[0].id}`);
         } else {
           throw new Error('All scenario submissions failed');
         }
@@ -134,6 +132,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     endpoint,
     buildPayload,
     validate,
+    router,
     fightStyle,
     threads,
     selectedTalent,

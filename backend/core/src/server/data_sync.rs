@@ -5,12 +5,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::item_db;
-use crate::server::auth_handlers::{self, BlizzardAuthState};
+
+use crate::server::auth_handlers::BlizzardAuthState;
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
-
-use actix_web::HttpRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -36,7 +34,7 @@ impl DataSyncState {
 }
 
 pub async fn get_sync_status(
-    req: HttpRequest,
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<DataSyncState>>,
     auth_state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn JobStorage>>,
@@ -44,11 +42,12 @@ pub async fn get_sync_status(
     let status = state.status.lock().await.clone();
     let progress = state.progress.lock().await.clone();
 
-    let mut can_sync = false;
-    if status == SyncStatus::NeedsCredentials 
-        && get_effective_credentials(&req, &auth_state, store.get_ref()).is_some() {
-        can_sync = true;
-    }
+    let can_sync = BlizzardState::get_effective_credentials(
+        &req,
+        Some(auth_state.get_ref()),
+        &***store,
+    )
+    .is_some();
 
     HttpResponse::Ok().json(json!({
         "status": status,
@@ -57,39 +56,8 @@ pub async fn get_sync_status(
     }))
 }
 
-fn get_effective_credentials(
-    req: &HttpRequest,
-    auth_state: &Arc<BlizzardAuthState>,
-    store: &Arc<dyn JobStorage>,
-) -> Option<(String, String)> {
-    // 1. Try system
-    if let (Some(id), Some(sec)) = (
-        store.get_user_config("system", "blizzard_client_id"),
-        store.get_user_config("system", "blizzard_client_secret"),
-    ) {
-        return Some((id, sec));
-    }
-
-    // 2. Try logged in user
-    if let Some(claims) = auth_handlers::verify_jwt(req, &auth_state.jwt_secret) {
-        if let (Some(id), Some(sec)) = (
-            store.get_user_config(&claims.sub, "blizzard_client_id"),
-            store.get_user_config(&claims.sub, "blizzard_client_secret"),
-        ) {
-            return Some((id, sec));
-        }
-    }
-
-    // 3. Try global config (from auth_state)
-    if let (Some(id), Some(sec)) = (&auth_state.client_id, &auth_state.client_secret) {
-        return Some((id.clone(), sec.clone()));
-    }
-
-    None
-}
-
 pub async fn trigger_sync(
-    req: HttpRequest,
+    req: actix_web::HttpRequest,
     state: web::Data<Arc<DataSyncState>>,
     auth_state: web::Data<Arc<BlizzardAuthState>>,
     blizzard: web::Data<Arc<BlizzardState>>,
@@ -101,7 +69,11 @@ pub async fn trigger_sync(
         return HttpResponse::Conflict().json(json!({"detail": "Sync already in progress"}));
     }
 
-    let creds = get_effective_credentials(&req, &auth_state, store.get_ref());
+    let creds = BlizzardState::get_effective_credentials(
+        &req,
+        Some(auth_state.get_ref()),
+        &***store,
+    );
     if creds.is_none() {
         *status = SyncStatus::NeedsCredentials;
         return HttpResponse::BadRequest()
@@ -148,7 +120,7 @@ async fn perform_sync(
 
     {
         let mut p = state.progress.lock().await;
-        *p = "Metadata:0:1:Fetching Raidbots metadata...".to_string();
+        *p = "Metadata:0:1:Checking Raidbots metadata...".to_string();
     }
 
     let res = blizzard
@@ -162,137 +134,164 @@ async fn perform_sync(
         .await
         .map_err(|e| format!("Failed to read metadata: {}", e))?;
 
-    // Extract all file names ending in .json, .txt, or .lua using a simple regex mirror of the bash script
-    let re = regex::Regex::new(r#""([^"]*\.(json|txt|lua))""#).unwrap();
-    let files: Vec<String> = re
-        .captures_iter(&metadata_text)
-        .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-        .collect();
-
-    let total_files = files.len();
-    if let Some(dir) = &data_dir {
-        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-
-        for (i, file_name) in files.iter().enumerate() {
-            {
-                let mut p = state.progress.lock().await;
-                *p = format!("Files:{}:{}:{}", i + 1, total_files, file_name);
+    // Check if we need to sync based on metadata changes
+    let mut skip_raidbots = false;
+    if let Some(ref dir) = data_dir {
+        let local_metadata_path = dir.join("metadata.json");
+        if local_metadata_path.exists() {
+            if let Ok(local_metadata) = std::fs::read_to_string(&local_metadata_path) {
+                if local_metadata == metadata_text {
+                    println!("Raidbots metadata matches local cache. Skipping file downloads.");
+                    skip_raidbots = true;
+                }
             }
-
-            let file_url = format!("{}/{}", base_url, file_name);
-            let file_path = dir.join(file_name);
-
-            let file_res = blizzard
-                .client
-                .get(&file_url)
-                .send()
-                .await
-                .map_err(|e| format!("Failed to download {}: {}", file_name, e))?;
-            let content = file_res
-                .bytes()
-                .await
-                .map_err(|e| format!("Failed to read {}: {}", file_name, e))?;
-
-            std::fs::write(&file_path, content)
-                .map_err(|e| format!("Failed to save {}: {}", file_name, e))?;
         }
     }
 
-    {
-        let mut p = state.progress.lock().await;
-        *p = "Season:0:1:Fetching current season index...".to_string();
+    if !skip_raidbots {
+        // Extract all file names ending in .json, .txt, or .lua
+        let re = regex::Regex::new(r#""([^"]*\.(json|txt|lua))""#).unwrap();
+        let files: Vec<String> = re
+            .captures_iter(&metadata_text)
+            .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
+            .collect();
+
+        let total_files = files.len();
+        if let Some(dir) = &data_dir {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+
+            for (i, file_name) in files.iter().enumerate() {
+                {
+                    let mut p = state.progress.lock().await;
+                    *p = format!("Files:{}:{}:{}", i + 1, total_files, file_name);
+                }
+
+                let file_url = format!("{}/{}", base_url, file_name);
+                let file_path = dir.join(file_name);
+
+                let file_res = blizzard
+                    .client
+                    .get(&file_url)
+                    .send()
+                    .await
+                    .map_err(|e| format!("Failed to download {}: {}", file_name, e))?;
+                let content = file_res
+                    .bytes()
+                    .await
+                    .map_err(|e| format!("Failed to read {}: {}", file_name, e))?;
+
+                std::fs::write(&file_path, content)
+                    .map_err(|e| format!("Failed to save {}: {}", file_name, e))?;
+            }
+            // Save metadata last
+            std::fs::write(dir.join("metadata.json"), &metadata_text).ok();
+        }
     }
 
     // 2. Blizzard Season Sync (Rotation Data)
-    let season_index_url = "https://us.api.blizzard.com/data/wow/mythic-keystone/season/index?namespace=dynamic-us&locale=en_US";
-    let token = BlizzardState::get_token_with_creds(&blizzard.client, &client_id, &client_secret)
-        .await
-        .ok_or("Failed to authenticate with Blizzard")?;
-    let res = blizzard
-        .client
-        .get(season_index_url)
-        .bearer_auth(&token)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let season_index: Value = res.json().await.map_err(|e| e.to_string())?;
-
-    let current_season_id = season_index
-        .get("current_season")
-        .and_then(|s| s.get("id"))
-        .and_then(|id| id.as_i64())
-        .ok_or("Could not find current season ID")?;
-
-    {
-        let mut p = state.progress.lock().await;
-        *p = format!("Fetching details for Season {}...", current_season_id);
+    let mut skip_blizzard = false;
+    if let Some(ref dir) = data_dir {
+        let runtime_file = dir.join("blizzard-runtime-data.json");
+        if runtime_file.exists() {
+            if let Ok(content) = std::fs::read_to_string(&runtime_file) {
+                if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                    if let Some(last_sync_str) = v.get("last_sync").and_then(|ls| ls.as_str()) {
+                        if let Ok(last_sync) = chrono::DateTime::parse_from_rfc3339(last_sync_str) {
+                            let now = chrono::Utc::now();
+                            if now.signed_duration_since(last_sync).num_hours() < 24 {
+                                println!("Blizzard sync performed recently. Skipping.");
+                                skip_blizzard = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    let season_url = format!("https://us.api.blizzard.com/data/wow/mythic-keystone/season/{}?namespace=dynamic-us&locale=en_US", current_season_id);
-    let res = blizzard
-        .client
-        .get(&season_url)
-        .bearer_auth(&token)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let season_data: Value = res.json().await.map_err(|e| e.to_string())?;
+    if !skip_blizzard {
+        let season_index_url = "https://us.api.blizzard.com/data/wow/mythic-keystone/season/index?namespace=dynamic-us&locale=en_US";
+        let token = BlizzardState::get_token_with_creds(&blizzard.client, &client_id, &client_secret)
+            .await
+            .ok_or("Failed to authenticate with Blizzard")?;
+        let res = blizzard
+            .client
+            .get(season_index_url)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let season_index: Value = res.json().await.map_err(|e| e.to_string())?;
 
-    let mut rotation_dungeons = Vec::new();
+        let current_season_id = season_index
+            .get("current_season")
+            .and_then(|s| s.get("id"))
+            .and_then(|id| id.as_i64())
+            .ok_or("Could not find current season ID")?;
 
-    // 2. Process Dungeons
-    let dungeons = season_data.get("dungeons").and_then(|d| d.as_array());
-    let dungeon_count = dungeons.map(|d| d.len()).unwrap_or(0);
+        {
+            let mut p = state.progress.lock().await;
+            *p = format!("Fetching details for Season {}...", current_season_id);
+        }
 
-    if let Some(dungeons) = dungeons {
-        for (i, dungeon) in dungeons.iter().enumerate() {
-            let name = dungeon
-                .get("name")
-                .and_then(|n| n.as_str())
-                .unwrap_or("Unknown Dungeon");
-            {
-                let mut p = state.progress.lock().await;
-                *p = format!("Dungeons:{}:{}:{}", i + 1, dungeon_count, name);
+        let season_url = format!("https://us.api.blizzard.com/data/wow/mythic-keystone/season/{}?namespace=dynamic-us&locale=en_US", current_season_id);
+        let res = blizzard
+            .client
+            .get(&season_url)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let season_data: Value = res.json().await.map_err(|e| e.to_string())?;
+
+        let mut rotation_dungeons = Vec::new();
+        let dungeons = season_data.get("dungeons").and_then(|d| d.as_array());
+        let dungeon_count = dungeons.map(|d| d.len()).unwrap_or(0);
+
+        if let Some(dungeons) = dungeons {
+            for (i, dungeon) in dungeons.iter().enumerate() {
+                let name = dungeon
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("Unknown Dungeon");
+                {
+                    let mut p = state.progress.lock().await;
+                    *p = format!("Dungeons:{}:{}:{}", i + 1, dungeon_count, name);
+                }
+                if let Some(id) = dungeon.get("id").and_then(|v| v.as_i64()) {
+                    rotation_dungeons.push(id);
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
             }
+        }
 
-            // Collect dungeon ID for rotation
-            if let Some(id) = dungeon.get("id").and_then(|v| v.as_i64()) {
-                rotation_dungeons.push(id);
-            }
+        if let Some(dir) = &data_dir {
+            let runtime_file = dir.join("blizzard-runtime-data.json");
+            let runtime_data = json!({
+                "current_season_id": current_season_id,
+                "mplus_rotation": rotation_dungeons,
+                "last_sync": chrono::Utc::now().to_rfc3339(),
+            });
+            std::fs::write(&runtime_file, serde_json::to_string_pretty(&runtime_data).unwrap()).ok();
+        }
+    }
 
-            // Small artificial delay to make the UI feel "alive" if it's too fast
-            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+    // Always Load/Reload data into memory at the end
+    if let Some(dir) = &data_dir {
+        crate::item_db::load(&dir);
+        let runtime_file = dir.join("blizzard-runtime-data.json");
+        if runtime_file.exists() {
+            crate::item_db::hydrate_runtime_metadata(&runtime_file);
         }
     }
 
     {
         let mut p = state.progress.lock().await;
-        *p = "Finalizing:0:0:Saving rotation data...".to_string();
-    }
-
-    // 3. Update INSTANCES state and RELOAD all data
-    if let Some(dir) = data_dir {
-        let runtime_file = dir.join("blizzard-runtime-data.json");
-        let runtime_data = json!({
-            "current_season_id": current_season_id,
-            "mplus_rotation": rotation_dungeons,
-            "last_sync": chrono::Utc::now().to_rfc3339(),
-        });
-
-        std::fs::write(
-            &runtime_file,
-            serde_json::to_string_pretty(&runtime_data).unwrap(),
-        )
-        .map_err(|e| format!("Failed to save runtime data: {}", e))?;
-
-        // Reload everything from the disk into memory
-        item_db::load(&dir);
-        item_db::hydrate_runtime_metadata(&runtime_file);
-    }
-
-    {
-        let mut p = state.progress.lock().await;
-        *p = "Done:1:1:Sync complete".to_string();
+        *p = if skip_raidbots && skip_blizzard {
+            "Done:1:1:Sync complete (cached)".to_string()
+        } else {
+            "Done:1:1:Sync complete".to_string()
+        };
     }
 
     Ok(())

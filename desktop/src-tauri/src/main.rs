@@ -50,7 +50,7 @@ fn main() {
                 println!("Using SQLite database at {}", db_path_str);
                 let storage: Arc<dyn JobStorage> = Arc::new(SqliteStorage::new(&db_path_str));
                 
-                server::start_with_storage_bind(
+                let (server, _actual_port) = server::start_with_storage_bind(
                     storage,
                     simc_bin,
                     "127.0.0.1",
@@ -59,6 +59,8 @@ fn main() {
                     Some(data_dir),
                 )
                 .await;
+                
+                server.await.expect("Server error");
             });
             
             Ok(())

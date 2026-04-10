@@ -531,6 +531,18 @@ impl JobStorage for PostgresStorage {
         .flatten()
     }
 
+    fn remove_cache(&self, key: &str) {
+        let key = key.to_string();
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client
+                    .execute("DELETE FROM app_cache WHERE key = $1", &[&key])
+                    .await
+                    .ok();
+            });
+        });
+    }
+
     fn link_character(
         &self,
         id: &str,

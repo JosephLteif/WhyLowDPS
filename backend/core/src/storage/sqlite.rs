@@ -447,6 +447,12 @@ impl JobStorage for SqliteStorage {
         .ok()
     }
 
+    fn remove_cache(&self, key: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM app_cache WHERE key = ?1", params![key])
+            .ok();
+    }
+
     fn link_character(
         &self,
         id: &str,

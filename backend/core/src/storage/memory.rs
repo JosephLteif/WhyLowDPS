@@ -217,6 +217,11 @@ impl JobStorage for MemoryStorage {
         cache.get(key).cloned()
     }
 
+    fn remove_cache(&self, key: &str) {
+        let mut cache = self.cache.lock().unwrap();
+        cache.remove(key);
+    }
+
     fn link_character(
         &self,
         id: &str,

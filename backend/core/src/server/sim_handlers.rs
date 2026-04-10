@@ -27,6 +27,14 @@ pub(super) async fn create_sim(
     } else {
         req.simc_input.clone()
     };
+
+    let class_name = crate::types::class_data::detect_class(&simc_input);
+    if class_name.is_none() {
+        return HttpResponse::BadRequest().json(json!({
+            "detail": "Could not detect character class from SimC input. Ensure the input starts with a character name line (e.g. warrior=\"Name\")."
+        }));
+    }
+
     simc_input = apply_talent_override(&simc_input, &req.options.talents);
     simc_input = apply_spec_override(&simc_input, &req.options.spec_override);
     simc_input = crate::talent_normalize::normalize_simc_talents(&simc_input);
@@ -132,6 +140,13 @@ pub(super) async fn create_top_gear_sim(
     } else {
         req.simc_input.clone()
     };
+
+    if crate::types::class_data::detect_class(&simc_input).is_none() {
+        return HttpResponse::BadRequest().json(json!({
+            "detail": "Could not detect character class from SimC input. Ensure the input starts with a character name line (e.g. warrior=\"Name\")."
+        }));
+    }
+
     simc_input = apply_spec_override(
         &apply_talent_override(&simc_input, &req.options.talents),
         &req.options.spec_override,

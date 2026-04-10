@@ -8,6 +8,27 @@
   "permissions": [
     "core:default",
     "shell:default",
-    "updater:default"
-  ]
+    "updater:default",
+    {
+      "identifier": "shell:allow-open",
+      "allow": [
+        {
+          "url": "http://localhost:17384/**"
+        },
+        {
+          "url": "https://*.battle.net/**"
+        },
+        {
+          "url": "https://*.blizzard.com/**"
+        }
+      ]
+    }
+  ],
+  "remote": {
+    "urls": [
+      "http://localhost:17384/**",
+      "https://*.battle.net/**",
+      "https://*.blizzard.com/**"
+    ]
+  }
 }

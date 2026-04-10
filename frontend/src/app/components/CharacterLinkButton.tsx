@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { API_URL } from '../lib/api';
+import { useRouter } from 'next/navigation';
+import { API_URL, fetchJson } from '../lib/api';
 
 interface Character {
   name: string;
@@ -24,6 +25,7 @@ export default function CharacterLinkButton({
   currentLinkedRealm?: string;
   currentLinkedRegion?: string;
 }) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,12 +35,10 @@ export default function CharacterLinkButton({
     if (isOpen && characters.length === 0) {
       setLoading(true);
       Promise.all([
-        fetch(`${API_URL}/api/bnet/user/characters`, { credentials: 'include' }).then((r) =>
-          r.json().catch(() => ({ characters: [] }))
-        ),
-        fetch(`${API_URL}/api/history/characters`, { credentials: 'include' }).then((r) =>
-          r.json().catch(() => [])
-        ),
+        fetchJson<{ characters: any[] }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({
+          characters: [],
+        })),
+        fetchJson<any[]>(`${API_URL}/api/history/characters`).catch(() => []),
       ])
         .then(([bnetResponse, historyData]) => {
           const bnetList = Array.isArray(bnetResponse)
@@ -74,10 +74,8 @@ export default function CharacterLinkButton({
   const handleLink = async (char: Character) => {
     setLinking(true);
     try {
-      await fetch(`${API_URL}/api/sim/${jobId}/link`, {
+      await fetchJson(`${API_URL}/api/sim/${jobId}/link`, {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: char.name,
           realm: char.realm,
@@ -85,7 +83,7 @@ export default function CharacterLinkButton({
         }),
       });
       // reload to reflect new state
-      window.location.reload();
+      router.refresh();
     } catch (e) {
       console.error(e);
       setLinking(false);
@@ -94,17 +92,15 @@ export default function CharacterLinkButton({
   const handleUnlink = async () => {
     setLinking(true);
     try {
-      await fetch(`${API_URL}/api/sim/${jobId}/link`, {
+      await fetchJson(`${API_URL}/api/sim/${jobId}/link`, {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: null,
           realm: null,
           region: null,
         }),
       });
-      window.location.reload();
+      router.refresh();
     } catch (e) {
       console.error(e);
       setLinking(false);

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchJson } from '../lib/api';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -22,8 +22,7 @@ export default function SettingsPage() {
       return;
     }
 
-    fetch(`${API_URL}/api/user/config`, { credentials: 'include' })
-      .then((res) => res.json())
+    fetchJson<any>(`${API_URL}/api/user/config`)
       .then((data) => {
         setClientId(data.blizzard_client_id || '');
         setHasSecret(data.has_blizzard_client_secret || false);
@@ -41,21 +40,16 @@ export default function SettingsPage() {
   ) => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/user/config`, {
+      await fetchJson(`${API_URL}/api/user/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value }),
-        credentials: 'include',
       });
 
-      if (res.ok) {
-        setMessage({ type: 'success', text: `${key.replace(/_/g, ' ')} updated successfully.` });
-        if (key === 'blizzard_client_secret') setHasSecret(true);
-      } else {
-        setMessage({ type: 'error', text: `Failed to update ${key.replace(/_/g, ' ')}.` });
-      }
+      setMessage({ type: 'success', text: `${key.replace(/_/g, ' ')} updated successfully.` });
+      if (key === 'blizzard_client_secret') setHasSecret(true);
     } catch (err) {
-      setMessage({ type: 'error', text: 'Network error.' });
+      setMessage({ type: 'error', text: 'Failed to update configuration.' });
     }
     setSaving(false);
   };
@@ -64,21 +58,15 @@ export default function SettingsPage() {
     setTesting(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API_URL}/api/user/blizzard/test`, {
+      await fetchJson(`${API_URL}/api/user/blizzard/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
-        credentials: 'include',
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setMessage({ type: 'success', text: 'Credentials verified successfully!' });
-      } else {
-        setMessage({ type: 'error', text: data.message || 'Failed to verify credentials.' });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Network error during test.' });
+      setMessage({ type: 'success', text: 'Credentials verified successfully!' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to verify credentials.' });
     }
     setTesting(false);
   };
@@ -179,19 +167,14 @@ export default function SettingsPage() {
                   ) {
                     setSaving(true);
                     try {
-                      const res = await fetch(`${API_URL}/api/user/config`, {
+                      await fetchJson(`${API_URL}/api/user/config`, {
                         method: 'DELETE',
-                        credentials: 'include',
                       });
-                      if (res.ok) {
-                        setClientId('');
-                        setHasSecret(false);
-                        setMessage({ type: 'success', text: 'All Blizzard credentials cleared.' });
-                      } else {
-                        setMessage({ type: 'error', text: 'Failed to clear credentials.' });
-                      }
+                      setClientId('');
+                      setHasSecret(false);
+                      setMessage({ type: 'success', text: 'All Blizzard credentials cleared.' });
                     } catch (err) {
-                      setMessage({ type: 'error', text: 'Network error.' });
+                      setMessage({ type: 'error', text: 'Failed to clear credentials.' });
                     }
                     setSaving(false);
                   }

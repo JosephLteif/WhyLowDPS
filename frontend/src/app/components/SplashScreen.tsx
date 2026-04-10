@@ -8,22 +8,33 @@ interface SplashScreenProps {
   status: string;
   progress: string;
   onRetry?: () => void;
-  onConfigureKeys?: () => void;
 }
 
 export default function SplashScreen({
   status,
   progress,
   onRetry,
-  onConfigureKeys,
 }: SplashScreenProps) {
-  const { login, logout } = useAuth();
+  const { login, setSystemCredentials } = useAuth();
   const [clientId, setClientId] = React.useState('');
   const [clientSecret, setClientSecret] = React.useState('');
+  const [isSaving, setIsSaving] = React.useState(false);
 
-  const isError = status.toLowerCase().includes('error');
-  const needsCredentials = status === 'needs_credentials';
-  const isSyncing = status === 'syncing';
+  const handleSaveKeys = async () => {
+    setIsSaving(true);
+    const success = await setSystemCredentials(clientId, clientSecret);
+    if (success) {
+      // Reload to trigger data sync
+      window.location.reload();
+    } else {
+      setIsSaving(false);
+      alert('Failed to save Blizzard API credentials. Please check your inputs.');
+    }
+  };
+
+  const statusString = typeof status === 'string' ? status : JSON.stringify(status);
+  const isError = statusString.toLowerCase().includes('error');
+  const isSyncing = statusString === 'syncing' || (typeof status === 'string' && status === 'syncing');
 
   // Helper to parse: "TASK:CURRENT:TOTAL:DETAILS"
   const parseProgress = (str: string) => {
@@ -136,39 +147,46 @@ export default function SplashScreen({
                   />
                 </div>
 
-                <p className="text-[10px] text-zinc-500">
-                  <a
-                    href="https://develop.battle.net/access/clients"
-                    target="_blank"
-                    className="text-gold hover:underline"
-                  >
-                    Create a client
-                  </a>{' '}
-                  on the Blizzard Developer Portal.
-                </p>
+                <div className="text-left">
+                  <p className="mb-2 text-[10px] leading-relaxed text-zinc-500">
+                    <span className="font-bold text-zinc-400">Setup Instructions:</span><br />
+                    1. Create a client on the{' '}
+                    <a
+                      href="https://develop.battle.net/access/clients"
+                      target="_blank"
+                      className="text-gold hover:underline"
+                    >
+                      Blizzard Developer Portal
+                    </a>.<br />
+                    2. Add <code className="text-zinc-300">http://localhost:17384/api/auth/bnet/callback</code> to your **Redirect URIs**.
+                  </p>
+                </div>
 
                 <button
-                  onClick={() => login(clientId, clientSecret)}
-                  disabled={!clientId || !clientSecret}
+                  onClick={handleSaveKeys}
+                  disabled={!clientId || !clientSecret || isSaving}
                   className="flex w-full items-center justify-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95 disabled:opacity-50 disabled:grayscale"
                 >
                   <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2zm4 8h-2V7h2v10z" />
                   </svg>
-                  Login with Battle.net
+                  {isSaving ? 'Saving...' : 'Set API Credentials'}
                 </button>
-              </div>
-            ) : needsCredentials ? (
-              <div className="text-center">
-                <p className="mb-6 text-sm text-zinc-300">
-                  Blizzard API credentials are required to download game data for the current
-                  season.
-                </p>
+
+                <div className="flex items-center gap-2 py-2">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                    OR
+                  </span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+
                 <button
-                  onClick={onConfigureKeys}
-                  className="w-full rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-black shadow-lg shadow-gold/20 transition-all hover:bg-gold-light active:scale-95"
+                  onClick={() => login(clientId, clientSecret)}
+                  disabled={!clientId || !clientSecret || isSaving}
+                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/10 active:scale-95 disabled:opacity-50 disabled:grayscale"
                 >
-                  Configure API Keys
+                  Login with Battle.net
                 </button>
               </div>
             ) : isError ? (

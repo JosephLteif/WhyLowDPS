@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../components/AuthContext';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import { CLASS_COLORS } from '../lib/types';
 import Link from 'next/link';
 
@@ -28,16 +28,16 @@ export default function CharactersPage() {
     (refresh = false) => {
       if (!loading && user) {
         setFetching(true);
-        fetch(`${API_URL}/api/bnet/user/characters${refresh ? '?refresh=true' : ''}`, {
-          credentials: 'include',
-        })
-          .then(async (res) => {
-            if (!res.ok) {
-              const body = await res.text();
-              throw new Error(`Failed to fetch characters: ${res.status} ${body}`);
-            }
-            return res.json();
-          })
+        const url = `${API_URL}/api/bnet/user/characters`;
+        
+        // When refreshing, we bypass the cache by using a timestamp or just non-cached fetch
+        // For simplicity, we use fetchJsonCached with a low TTL if we want to "refresh" 
+        // but fetchJson is better for explicit refreshes.
+        const promise = refresh 
+          ? fetchJson<{ characters: Character[] }>(`${url}?refresh=true`)
+          : fetchJsonCached<{ characters: Character[] }>(url, { ttl: 600000 }); // 10 min cache
+          
+        promise
           .then((data) => setCharacters(data.characters || []))
           .catch((err) => setError(err.message))
           .finally(() => setFetching(false));

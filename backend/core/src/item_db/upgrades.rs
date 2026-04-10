@@ -5,12 +5,30 @@ use std::collections::HashMap;
 
 pub fn encounter_upgrade_level(encounter_id: i64) -> Option<u64> {
     let cfg = super::season_cfg();
-    let raid_diffs = cfg.get("raidDifficulties")?.as_array()?;
-    for diff in raid_diffs {
-        let encounters = diff.get("encounters")?.as_array()?;
-        for e in encounters {
-            if e.as_i64() == Some(encounter_id) {
-                return diff.get("upgradeLevel").and_then(|v| v.as_u64());
+
+    // Current config shape: explicit encounter -> upgrade level map.
+    if let Some(map) = cfg.get("encounterUpgradeLevel").and_then(|v| v.as_object()) {
+        if let Some(level) = map
+            .get(&encounter_id.to_string())
+            .and_then(|v| v.as_u64())
+        {
+            return Some(level);
+        }
+    }
+
+    // Legacy fallback shape.
+    if let Some(raid_diffs) = cfg.get("raidDifficulties").and_then(|v| v.as_array()) {
+        for diff in raid_diffs {
+            let encounters = match diff.get("encounters").and_then(|v| v.as_array()) {
+                Some(v) => v,
+                None => continue,
+            };
+            for e in encounters {
+                if e.as_i64() == Some(encounter_id) {
+                    if let Some(level) = diff.get("upgradeLevel").and_then(|v| v.as_u64()) {
+                        return Some(level);
+                    }
+                }
             }
         }
     }
@@ -21,7 +39,9 @@ pub fn difficulty_track_name(difficulty: &str) -> Option<String> {
     let cfg = super::season_cfg();
     let raid_diffs = cfg.get("raidDifficulties")?.as_array()?;
     for diff in raid_diffs {
-        if diff.get("name").and_then(|n| n.as_str()) == Some(difficulty) {
+        let key = diff.get("key").and_then(|n| n.as_str());
+        let legacy_name = diff.get("name").and_then(|n| n.as_str());
+        if key == Some(difficulty) || legacy_name == Some(difficulty) {
             return diff
                 .get("track")
                 .and_then(|t| t.as_str())

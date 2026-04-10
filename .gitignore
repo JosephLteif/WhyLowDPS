@@ -39,3 +39,4 @@ desktop/dist/
 .vscode/
 *.swp
 *.swo
+/.codex

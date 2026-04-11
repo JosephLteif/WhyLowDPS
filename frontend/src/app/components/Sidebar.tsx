@@ -299,7 +299,7 @@ export default function Sidebar() {
                 )}
               </div>
             );
-          })}
+          })}f
         </div>
         <div className="mt-2 flex items-end justify-end">
           <button

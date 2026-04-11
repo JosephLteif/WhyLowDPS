@@ -306,13 +306,13 @@ export default function CharacterPanel({
       {/* Upper Section: Gear & Stats */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
         {/* Gear Panel */}
-        <div className="card relative min-h-[600px] overflow-hidden p-6">
+        <div className="card relative min-h-[600px] overflow-hidden p-4 sm:p-6">
           {characterMediaUrl && (
-            <div className="group absolute inset-0 z-10 flex cursor-pointer items-center justify-center">
+            <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
               <img
                 src={characterMediaUrl}
                 alt={name}
-                className="pointer-events-none mx-auto h-[120%] w-auto -translate-y-[10%] object-contain opacity-40 mix-blend-lighten transition-all duration-500 group-hover:scale-105 group-hover:opacity-70 group-hover:brightness-110"
+                className="pointer-events-none mx-auto h-56 w-auto object-contain opacity-80 sm:h-72 lg:h-[130%] lg:-translate-y-[10%] lg:opacity-55 lg:mix-blend-lighten"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = 'none';
                 }}
@@ -320,9 +320,9 @@ export default function CharacterPanel({
             </div>
           )}
 
-          <div className="relative grid grid-cols-[auto_1fr_auto] gap-x-8">
+          <div className="relative z-20 flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_240px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)]">
             {/* Left Column */}
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               {GEAR_ORDER_LEFT.map((slot) => (
                 <BlizzardGearSlot
                   key={slot}
@@ -335,10 +335,10 @@ export default function CharacterPanel({
               ))}
             </div>
 
-            <div />
+            <div className="hidden lg:block" />
 
             {/* Right Column */}
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               {GEAR_ORDER_RIGHT.map((slot) => (
                 <BlizzardGearSlot
                   key={slot}
@@ -354,7 +354,7 @@ export default function CharacterPanel({
           </div>
 
           {/* Bottom Column */}
-          <div className="relative mt-8 flex justify-center gap-8">
+          <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-8 lg:mt-8 lg:flex lg:justify-center">
             {GEAR_ORDER_BOTTOM.map((slot) => (
               <BlizzardGearSlot
                 key={slot}
@@ -431,9 +431,15 @@ function BlizzardGearSlot({
   const whData = getWowheadData(item.bonus_list, item.level?.value, enchantId, gemId);
 
   return (
-    <div className={`flex items-start gap-3 ${rtl ? 'flex-row-reverse' : ''}`}>
-      <div
-        className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105"
+      <a
+        href={getWowheadUrl(item.item.id)}
+        data-wowhead={whData}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`flex min-w-0 items-start gap-3 rounded-md px-1 py-0.5 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
+      >
+        <div
+        className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border sm:h-12 sm:w-12 transition-transform hover:scale-105"
         style={{ borderColor: `${qc}44` }}
       >
         <img src={getIconUrl(icon)} alt="" className="h-full w-full object-cover" />
@@ -443,16 +449,13 @@ function BlizzardGearSlot({
         />
       </div>
       <div className={`min-w-0 flex-1 ${rtl ? 'text-right' : ''}`}>
-        <a
-          href={getWowheadUrl(item.item.id)}
-          data-wowhead={whData}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block truncate text-[14px] font-bold leading-tight hover:underline"
+        <span
+          title={item.name}
+          className="block truncate text-[13px] font-bold leading-tight hover:underline sm:text-[14px]"
           style={{ color: qc }}
         >
           {item.name}
-        </a>
+        </span>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium text-zinc-500">
           <span className="text-zinc-400">
             {item.level?.value} {label}
@@ -461,7 +464,7 @@ function BlizzardGearSlot({
           {gem && <span className="text-sky-400/80">· {gem.name}</span>}
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 

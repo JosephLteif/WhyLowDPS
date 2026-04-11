@@ -111,7 +111,7 @@ pub async fn bnet_login(
         query.client_secret.as_ref(),
     );
 
-    let (client_id, client_secret) = match creds {
+    let (client_id, _client_secret) = match creds {
         Some(c) => c,
         None => {
             return HttpResponse::BadRequest().json(json!({

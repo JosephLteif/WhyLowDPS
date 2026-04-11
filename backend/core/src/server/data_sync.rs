@@ -168,6 +168,11 @@ async fn perform_sync(
 
                 let file_url = format!("{}/{}", base_url, file_name);
                 let file_path = dir.join(file_name);
+                if let Some(parent) = file_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        format!("Failed to create directory for {}: {}", file_name, e)
+                    })?;
+                }
 
                 let file_res = blizzard
                     .client

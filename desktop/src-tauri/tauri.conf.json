@@ -34,7 +34,6 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../backend/resources/data": "data",
       "../../backend/resources/simc": "simc"
     }
   },

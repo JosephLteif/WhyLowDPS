@@ -58,6 +58,10 @@ pub struct SimOptions {
     pub dps_plot_iterations: u32,
     #[serde(default = "default_include_timeline")]
     pub include_timeline: bool,
+    #[serde(default = "default_include_trinket_matrix")]
+    pub include_trinket_matrix: bool,
+    #[serde(default = "default_include_tier_matrix")]
+    pub include_tier_matrix: bool,
 }
 
 impl SimOptions {
@@ -81,6 +85,8 @@ impl SimOptions {
             "dps_plot_step": self.dps_plot_step,
             "dps_plot_iterations": self.dps_plot_iterations,
             "include_timeline": self.include_timeline,
+            "include_trinket_matrix": self.include_trinket_matrix,
+            "include_tier_matrix": self.include_tier_matrix,
         })
     }
 
@@ -234,5 +240,11 @@ fn default_max_time() -> u32 {
     300
 }
 fn default_include_timeline() -> bool {
+    true
+}
+fn default_include_trinket_matrix() -> bool {
+    false
+}
+fn default_include_tier_matrix() -> bool {
     true
 }

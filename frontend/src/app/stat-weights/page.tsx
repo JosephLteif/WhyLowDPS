@@ -17,7 +17,9 @@ const PLOT_STATS = [
 
 export default function StatWeightsPage() {
   const { simcInput } = useSimContext();
-  const [mode, setMode] = useState<'stat_weights' | 'stat_plot'>('stat_weights');
+  const [mode, setMode] = useState<'stat_weights' | 'stat_plot' | 'trinket_tier_heatmap'>(
+    'stat_weights'
+  );
   const [plotStats, setPlotStats] = useState<string[]>([
     'haste_rating',
     'crit_rating',
@@ -26,6 +28,8 @@ export default function StatWeightsPage() {
   const [plotRange, setPlotRange] = useState(1000);
   const [plotStep, setPlotStep] = useState(100);
   const [plotIterations, setPlotIterations] = useState(2000);
+  const [includeTrinketMatrix, setIncludeTrinketMatrix] = useState(false);
+  const [includeTierMatrix, setIncludeTierMatrix] = useState(true);
 
   const plotPoints = useMemo(() => {
     const safeStep = Math.max(1, Math.floor(plotStep));
@@ -43,9 +47,23 @@ export default function StatWeightsPage() {
             dps_plot_step: Math.max(1, Math.floor(plotStep)),
             dps_plot_iterations: Math.max(100, Math.floor(plotIterations)),
           }
+        : mode === 'trinket_tier_heatmap'
+          ? {
+              include_trinket_matrix: includeTrinketMatrix,
+              include_tier_matrix: includeTierMatrix,
+            }
         : {}),
     }),
-    [simcInput, mode, plotStats, plotPoints, plotStep, plotIterations]
+    [
+      simcInput,
+      mode,
+      plotStats,
+      plotPoints,
+      plotStep,
+      plotIterations,
+      includeTrinketMatrix,
+      includeTierMatrix,
+    ]
   );
 
   const validate = useCallback(() => {
@@ -56,8 +74,13 @@ export default function StatWeightsPage() {
       if (plotStats.length === 0) return 'Choose at least one stat to plot.';
       if (plotRange < plotStep) return 'Plot range should be greater than or equal to step size.';
     }
+    if (mode === 'trinket_tier_heatmap') {
+      if (!includeTrinketMatrix && !includeTierMatrix) {
+        return 'Enable at least one matrix option (Trinkets or Tier Sets).';
+      }
+    }
     return null;
-  }, [simcInput, mode, plotStats, plotRange, plotStep]);
+  }, [simcInput, mode, plotStats, plotRange, plotStep, includeTrinketMatrix, includeTierMatrix]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/sim',
@@ -83,7 +106,7 @@ export default function StatWeightsPage() {
       >
         <ErrorAlert message={error} />
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
           <button
             type="button"
             onClick={() => setMode('stat_weights')}
@@ -107,6 +130,20 @@ export default function StatWeightsPage() {
           >
             <div className="text-sm font-semibold">Stat Plot</div>
             <div className="mt-1 text-xs text-zinc-400">Curve DPS across a stat range.</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('trinket_tier_heatmap')}
+            className={`rounded-md border px-4 py-3 text-left transition-colors ${
+              mode === 'trinket_tier_heatmap'
+                ? 'border-gold/40 bg-gold/[0.08] text-zinc-100'
+                : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600'
+            }`}
+          >
+            <div className="text-sm font-semibold">Trinket / Tier Heatmaps</div>
+            <div className="mt-1 text-xs text-zinc-400">
+              Personalized trinket pair and tier-slot matrix sims.
+            </div>
           </button>
         </div>
 
@@ -185,6 +222,38 @@ export default function StatWeightsPage() {
           </div>
         )}
 
+        {mode === 'trinket_tier_heatmap' && (
+          <div className="space-y-3 rounded-lg border border-border bg-surface-2 p-4 text-xs text-zinc-400">
+            <p>
+              Runs matrix simulations from your current profile and renders personalized heatmaps in
+              the result page.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="group flex cursor-pointer items-center justify-between rounded-md border border-border bg-surface px-3 py-2">
+                <span className="text-zinc-300">Trinket Pair Matrix</span>
+                <input
+                  type="checkbox"
+                  checked={includeTrinketMatrix}
+                  onChange={(e) => setIncludeTrinketMatrix(e.target.checked)}
+                  className="h-4 w-4 accent-gold"
+                />
+              </label>
+              <label className="group flex cursor-pointer items-center justify-between rounded-md border border-border bg-surface px-3 py-2">
+                <span className="text-zinc-300">Tier Slot Matrix</span>
+                <input
+                  type="checkbox"
+                  checked={includeTierMatrix}
+                  onChange={(e) => setIncludeTierMatrix(e.target.checked)}
+                  className="h-4 w-4 accent-gold"
+                />
+              </label>
+            </div>
+            <p className="text-zinc-500">
+              Current default: Trinkets off, Tier Sets on.
+            </p>
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={submitting || simcInput.trim().length < 10}
@@ -193,7 +262,11 @@ export default function StatWeightsPage() {
           {submitting
             ? 'Running...'
             : buttonLabel(
-                mode === 'stat_plot' ? 'Run Stat Plot Simulation' : 'Run Stat Weights Simulation'
+                mode === 'stat_plot'
+                  ? 'Run Stat Plot Simulation'
+                  : mode === 'trinket_tier_heatmap'
+                    ? 'Run Trinket / Tier Heatmaps'
+                    : 'Run Stat Weights Simulation'
               )}
         </button>
       </form>

@@ -45,9 +45,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: frontend/.next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/src/**/*.{ts,tsx,js,jsx,css}') }}
+          key: ${{ runner.os }}-nextjs-release-${{ hashFiles('frontend/package-lock.json', 'frontend/tsconfig.json', 'frontend/tailwind.config.ts', 'frontend/next.config.js', 'frontend/next.config.mjs', 'frontend/next.config.ts') }}
           restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-
+            ${{ runner.os }}-nextjs-release-
 
       - name: Ensure bundled resource paths exist
         shell: bash

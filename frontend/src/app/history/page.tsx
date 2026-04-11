@@ -9,7 +9,8 @@ import {
   getHistoryStats,
   getConfig,
   updateConfig,
-  type HistoryStats, fetchJson,
+  type HistoryStats,
+  fetchJson,
 } from '../lib/api';
 import { simResultHref } from '../lib/routes';
 import {
@@ -55,6 +56,7 @@ const SIM_TYPE_LABELS: Record<string, string> = {
   top_gear: 'Top Gear',
   droptimizer: 'Drop Finder',
   stat_weights: 'Stat Weights',
+  stat_plot: 'Stat Plot',
 };
 
 function TrashIcon() {
@@ -405,7 +407,10 @@ export default function HistoryPage() {
         url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
       }
 
-      const [simsData, statsData] = await Promise.all([fetchJson<JobSummary[]>(url), getHistoryStats()]);
+      const [simsData, statsData] = await Promise.all([
+        fetchJson<JobSummary[]>(url),
+        getHistoryStats(),
+      ]);
       setSims(simsData);
       setStats(statsData);
     } catch (err) {
@@ -492,7 +497,13 @@ export default function HistoryPage() {
             <span className="text-xs text-zinc-500">Filter by Character:</span>
             <select
               className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
-              value={showUnlinkedOnly ? 'unlinked' : character ? `${character.name}-${character.realm}` : 'all'}
+              value={
+                showUnlinkedOnly
+                  ? 'unlinked'
+                  : character
+                    ? `${character.name}-${character.realm}`
+                    : 'all'
+              }
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === 'all') {
@@ -558,8 +569,8 @@ export default function HistoryPage() {
               : showUnlinkedOnly
                 ? 'No unlinked simulations found.'
                 : character
-                ? `No simulations found for ${character.name} on ${character.realm}.`
-                : 'No simulations yet.'}
+                  ? `No simulations found for ${character.name} on ${character.realm}.`
+                  : 'No simulations yet.'}
           </p>
         </div>
       ) : (

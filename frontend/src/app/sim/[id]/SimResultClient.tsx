@@ -9,6 +9,7 @@ import GearOverview from '../../components/GearOverview';
 import type { GearItem } from '../../components/GearOverview';
 import ResultsChart from '../../components/ResultsChart';
 import SimStatus from '../../components/SimStatus';
+import StatPlotChart from '../../components/StatPlotChart';
 import StatWeightsTable from '../../components/StatWeightsTable';
 import TopGearResults from '../../components/TopGearResults';
 import SimResultTalentsCard from '../../components/SimResultTalentsCard';
@@ -102,7 +103,7 @@ export default function SimResultClient() {
 
     const parts = window.location.pathname.split('/');
     // Sims IDs are uuid or nanoid and are generally 20+ chars
-    const foundId = parts.find(p => p.length > 20 && (p.includes('-') || /^[a-f0-9]+$/i.test(p)));
+    const foundId = parts.find((p) => p.length > 20 && (p.includes('-') || /^[a-f0-9]+$/i.test(p)));
     if (foundId) {
       id = foundId;
     }
@@ -186,7 +187,9 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function pollLogs() {
       try {
-        const data = await fetchJson<any>(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`);
+        const data = await fetchJson<any>(
+          `${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`
+        );
         if (!active) return;
         if (data.lines.length > 0) {
           setLogLines((prev) => {
@@ -292,7 +295,10 @@ export default function SimResultClient() {
 
   const r = job.result;
   const isTopGear = r.type === 'top_gear';
-  const isStatWeights = job.sim_type === 'stat_weights' || job.sim_type === 'stat-weights';
+  const isStatWeights =
+    job.sim_type === 'stat_weights' ||
+    job.sim_type === 'stat-weights' ||
+    job.sim_type === 'stat_plot';
 
   const equippedGear = r.equipped_gear as any;
   const avgIlevel = equippedGear ? calculateAverageIlevel(equippedGear) : undefined;
@@ -395,21 +401,25 @@ export default function SimResultClient() {
           <div className="card border-gold/10 bg-gold/[0.02] p-6">
             <h2 className="mb-2 text-lg font-bold text-zinc-100">Stat Weights Generated</h2>
             <p className="text-sm text-zinc-400">
-              Below are your character&apos;s current marginal stat weights. These numbers represent
-              how much DPS you stand to gain from adding exactly <strong>1 point</strong> of each
-              secondary stat. Use these values in game addons (like Pawn) to quickly evaluate gear
-              upgrades in your bags. Keep in mind that as you accumulate more of a particular stat,
-              its value generally decreases.
+              Quick Weights gives immediate marginal values for the next stat point. Stat Plot shows
+              the full DPS curve across a range so you can see diminishing returns directly.
             </p>
           </div>
+          {r.stat_plots ? (
+            <StatPlotChart
+              statPlots={r.stat_plots as Record<string, Array<{ delta: number; dps: number }>>}
+            />
+          ) : null}
           {r.stat_weights ? (
             <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />
           ) : (
-            <div className="card border-amber-500/20 bg-amber-500/[0.03] p-6 text-center">
-              <p className="text-sm font-semibold text-amber-400">
-                No stat weight data found in this simulation.
-              </p>
-            </div>
+            !r.stat_plots && (
+              <div className="card border-amber-500/20 bg-amber-500/[0.03] p-6 text-center">
+                <p className="text-sm font-semibold text-amber-400">
+                  No stat weight or plot data found in this simulation.
+                </p>
+              </div>
+            )
           )}
         </>
       ) : (

@@ -47,6 +47,15 @@ pub struct SimOptions {
     pub simc_post_combos: String,
     #[serde(default)]
     pub simc_footer: String,
+    // Stat plotting (optional)
+    #[serde(default)]
+    pub dps_plot_stat: String,
+    #[serde(default)]
+    pub dps_plot_points: u32,
+    #[serde(default)]
+    pub dps_plot_step: u32,
+    #[serde(default)]
+    pub dps_plot_iterations: u32,
 }
 
 impl SimOptions {
@@ -65,6 +74,10 @@ impl SimOptions {
             "max_time": self.max_time,
             "threads": self.threads,
             "single_actor_batch": !self.has_raid_actors(),
+            "dps_plot_stat": self.dps_plot_stat,
+            "dps_plot_points": self.dps_plot_points,
+            "dps_plot_step": self.dps_plot_step,
+            "dps_plot_iterations": self.dps_plot_iterations,
         })
     }
 

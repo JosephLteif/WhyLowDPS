@@ -43,6 +43,68 @@ fn extract_portion_aps(stat: &Value) -> f64 {
     }
 }
 
+fn normalize_plot_stat_key(key: &str) -> String {
+    key.trim().to_lowercase().replace(' ', "_")
+}
+
+fn parse_stat_plots(raw: &Value) -> Option<Value> {
+    let dps_plot = raw
+        .get("sim")
+        .and_then(|s| s.get("dps_plot"))
+        .and_then(|p| p.as_array())?;
+
+    let mut out = serde_json::Map::new();
+
+    for player_entry in dps_plot {
+        let player_data = match player_entry.get("data").and_then(|d| d.as_array()) {
+            Some(v) => v,
+            None => continue,
+        };
+        for block in player_data {
+            let block_obj = match block.as_object() {
+                Some(v) => v,
+                None => continue,
+            };
+            for (stat_name, points_value) in block_obj {
+                let points = match points_value.as_array() {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let mut parsed_points: Vec<Value> = Vec::new();
+                for p in points {
+                    let delta = p
+                        .get("rating")
+                        .or_else(|| p.get("delta"))
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let dps = p.get("dps").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    if dps <= 0.0 {
+                        continue;
+                    }
+                    parsed_points.push(json!({
+                        "delta": delta,
+                        "dps": round1(dps),
+                    }));
+                }
+                if !parsed_points.is_empty() {
+                    parsed_points.sort_by(|a, b| {
+                        let ad = a.get("delta").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let bd = b.get("delta").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        ad.partial_cmp(&bd).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    out.insert(normalize_plot_stat_key(stat_name), json!(parsed_points));
+                }
+            }
+        }
+    }
+
+    if out.is_empty() {
+        None
+    } else {
+        Some(Value::Object(out))
+    }
+}
+
 /// Extract ability stats from a player or pet stats array into the abilities list.
 /// If `pet_name` is Some, abilities are prefixed with the pet name.
 fn extract_stats_into(abilities: &mut Vec<Value>, stats: Option<&Value>, pet_name: Option<&str>) {
@@ -262,6 +324,11 @@ pub fn parse_simc_result(raw: &Value) -> Value {
             }
             result["stat_weights"] = Value::Object(map);
         }
+    }
+
+    // Stat plotting
+    if let Some(stat_plots) = parse_stat_plots(raw) {
+        result["stat_plots"] = stat_plots;
     }
 
     // Equipped gear

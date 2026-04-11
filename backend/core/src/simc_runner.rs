@@ -176,6 +176,7 @@ async fn run_simc_subprocess(
     desired_targets: u32,
     max_time: u32,
     calculate_scale_factors: bool,
+    dps_plot: Option<(String, u32, u32, u32)>,
     single_actor_batch: bool,
     stage_name: &str,
     generate_html: bool,
@@ -223,6 +224,12 @@ async fn run_simc_subprocess(
         "calculate_scale_factors={}",
         if calculate_scale_factors { "1" } else { "0" }
     ));
+    if let Some((stat, points, step, plot_iterations)) = dps_plot {
+        cmd.arg(format!("dps_plot_stat={}", stat))
+            .arg(format!("dps_plot_points={}", points))
+            .arg(format!("dps_plot_step={}", step))
+            .arg(format!("dps_plot_iterations={}", plot_iterations));
+    }
 
     if is_dungeon {
         cmd.arg(format!("desired_targets={}", desired_targets));
@@ -430,7 +437,9 @@ pub async fn run_simc(
         .get("iterations")
         .and_then(|v| v.as_u64())
         .unwrap_or(1000) as u32;
-    let s = options.get("sim_type").and_then(|v| v.as_str()) == Some("stat_weights");
+    let sim_type = options.get("sim_type").and_then(|v| v.as_str()).unwrap_or("quick");
+    let is_stat_weights = sim_type == "stat_weights";
+    let is_stat_plot = sim_type == "stat_plot";
     let t = resolve_threads(options);
     let d = options
         .get("desired_targets")
@@ -444,9 +453,52 @@ pub async fn run_simc(
         .get("single_actor_batch")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    let dps_plot = if is_stat_plot {
+        let stat = options
+            .get("dps_plot_stat")
+            .and_then(|v| v.as_str())
+            .unwrap_or("haste_rating")
+            .trim()
+            .to_string();
+        let points = options
+            .get("dps_plot_points")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10) as u32;
+        let step = options
+            .get("dps_plot_step")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as u32;
+        let plot_iterations = options
+            .get("dps_plot_iterations")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(i as u64) as u32;
+
+        if stat.is_empty() {
+            None
+        } else {
+            Some((stat, points.max(1), step.max(1), plot_iterations.max(1)))
+        }
+    } else {
+        None
+    };
 
     run_simc_subprocess(
-        simc_path, job_id, simc_input, f, e, i, t, d, m, s, b, "", true, on_p, on_l,
+        simc_path,
+        job_id,
+        simc_input,
+        f,
+        e,
+        i,
+        t,
+        d,
+        m,
+        is_stat_weights,
+        dps_plot,
+        b,
+        "",
+        true,
+        on_p,
+        on_l,
     )
     .await
 }
@@ -501,6 +553,7 @@ pub async fn run_simc_staged(
             desired,
             max_t,
             false,
+            None,
             batch,
             "direct",
             false,
@@ -547,6 +600,7 @@ pub async fn run_simc_staged(
             desired,
             max_t,
             false,
+            None,
             batch,
             &stage.name.to_lowercase(),
             false,

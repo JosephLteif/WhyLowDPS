@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import SettingsPopover from './SettingsPopover';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 
@@ -313,7 +312,6 @@ export default function Sidebar() {
       </nav>
 
       <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
-        {!isCollapsed && <SettingsPopover />}
         <div className="mt-2 px-2 text-center text-[11px] text-zinc-600">
           {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
         </div>

@@ -30,6 +30,8 @@ export default function SettingsPage() {
   const [cacheSyncStatus, setCacheSyncStatus] = useState<string>('idle');
   const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking'>('idle');
+  const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -94,6 +96,34 @@ export default function SettingsPage() {
       }),
     }).catch(() => {});
   }, [maxCombinations, performanceSaved, user]);
+
+  useEffect(() => {
+    const onUpdaterStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string; message?: string }>).detail;
+      const status = detail?.status || '';
+      const message = detail?.message || '';
+
+      if (status === 'checking') {
+        setUpdateCheckState('checking');
+        setUpdateMessage(null);
+        return;
+      }
+
+      setUpdateCheckState('idle');
+      if (status === 'available') {
+        setUpdateMessage({ type: 'success', text: message || 'Update found. Use "Update Now" in the popup.' });
+      } else if (status === 'none') {
+        setUpdateMessage({ type: 'success', text: message || 'You are on the latest version.' });
+      } else if (status === 'error') {
+        setUpdateMessage({ type: 'error', text: message || 'Failed to check for updates.' });
+      }
+    };
+
+    window.addEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
+    return () => {
+      window.removeEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
+    };
+  }, []);
 
   const testCredentials = async () => {
     setTesting(true);
@@ -222,6 +252,12 @@ export default function SettingsPage() {
       setCacheSyncing(false);
       setCacheMessage({ type: 'error', text: err?.message || 'Failed to start cache refresh.' });
     }
+  };
+
+  const checkForUpdatesNow = () => {
+    setUpdateCheckState('checking');
+    setUpdateMessage(null);
+    window.dispatchEvent(new CustomEvent('whylowdps-updater-check'));
   };
 
   const activePresetIdx = PRESETS.findIndex(
@@ -419,6 +455,34 @@ export default function SettingsPage() {
               }`}
             >
               {cacheMessage.text}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+        <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
+        <p className="mb-5 text-sm text-zinc-400">
+          Check if a newer desktop version is available.
+        </p>
+        <div className="max-w-2xl space-y-4">
+          <button
+            onClick={checkForUpdatesNow}
+            disabled={updateCheckState === 'checking'}
+            className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+          >
+            {updateCheckState === 'checking' ? 'Checking...' : 'Check for Updates'}
+          </button>
+
+          {updateMessage && (
+            <div
+              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
+                updateMessage.type === 'success'
+                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
+              }`}
+            >
+              {updateMessage.text}
             </div>
           )}
         </div>

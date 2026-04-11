@@ -24,10 +24,12 @@ export default function UpdatePrompt() {
   const [dismissed, setDismissed] = useState(false);
 
   const shouldRender = useMemo(() => {
-    if (!details) return false;
+    const isVisibleState =
+      state === 'available' || state === 'downloading' || state === 'downloaded' || state === 'error';
+    if (!isVisibleState) return false;
     if (dismissed && state !== 'downloading') return false;
-    return state === 'available' || state === 'downloading' || state === 'downloaded' || state === 'error';
-  }, [details, dismissed, state]);
+    return true;
+  }, [dismissed, state]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +113,9 @@ export default function UpdatePrompt() {
           <div>
             <p className="text-lg font-semibold text-white">Update Available</p>
             <p className="mt-1 text-sm text-zinc-300">
-              Version <span className="font-semibold text-gold">{details?.version}</span> is ready.
+              {details
+                ? <>Version <span className="font-semibold text-gold">{details.version}</span> is ready.</>
+                : 'Could not check updates automatically.'}
             </p>
           </div>
           {state !== 'downloading' && (

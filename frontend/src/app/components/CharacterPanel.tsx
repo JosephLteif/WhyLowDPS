@@ -95,6 +95,8 @@ interface CharacterPanelProps {
   statistics: any;
   specializations: any;
   professions: any;
+  mythicPlus: any;
+  raidEncounters: any;
   characterMediaUrl?: string | null;
 }
 
@@ -109,6 +111,8 @@ export default function CharacterPanel({
   statistics,
   specializations,
   professions,
+  mythicPlus,
+  raidEncounters,
   characterMediaUrl,
 }: CharacterPanelProps) {
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
@@ -192,8 +196,7 @@ export default function CharacterPanel({
           );
           const existing = selections.get(node.id);
           const nextRanks = Math.max(existing?.ranks ?? 0, t.rank ?? node.maxRanks ?? 1);
-          const nextChoice =
-            choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
+          const nextChoice = choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
           selections.set(node.id, {
             ranks: nextRanks,
             choiceIndex: nextChoice,
@@ -371,6 +374,8 @@ export default function CharacterPanel({
         {/* Stats Column */}
         <div className="flex flex-col gap-4">
           <StatsCard statistics={statistics} />
+          <MythicPlusCard mythicPlus={mythicPlus} />
+          <RaidProgressCard raidEncounters={raidEncounters} />
         </div>
       </div>
 
@@ -384,6 +389,258 @@ export default function CharacterPanel({
           tree={tree}
         />
       </div>
+    </div>
+  );
+}
+
+function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
+  const [showAll, setShowAll] = useState(false);
+  const summary = useMemo(() => {
+    if (!mythicPlus || typeof mythicPlus !== 'object') return null;
+    const isRunLike = (value: any) =>
+      value &&
+      typeof value === 'object' &&
+      (typeof value.keystone_level === 'number' ||
+        typeof value.keystoneLevel === 'number' ||
+        value.dungeon ||
+        value.completed_challenge_mode);
+
+    const collectRuns = (root: any): any[] => {
+      const out: any[] = [];
+      const stack: any[] = [root];
+      const seen = new Set<any>();
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || seen.has(current)) continue;
+        seen.add(current);
+
+        if (Array.isArray(current)) {
+          if (current.some((item) => isRunLike(item))) {
+            out.push(...current.filter((item) => isRunLike(item)));
+          } else {
+            for (const item of current) {
+              if (item && typeof item === 'object') stack.push(item);
+            }
+          }
+          continue;
+        }
+
+        if (typeof current === 'object') {
+          if (isRunLike(current)) out.push(current);
+          for (const value of Object.values(current)) {
+            if (value && typeof value === 'object') stack.push(value);
+          }
+        }
+      }
+      return out;
+    };
+
+    const combinedRuns = collectRuns(mythicPlus);
+    const byDungeon = new Map<string, any>();
+    for (const run of combinedRuns) {
+      const dungeonName =
+        run?.dungeon?.name || run?.completed_challenge_mode?.name || run?.name || 'Dungeon';
+      const key = dungeonName.trim().toLowerCase();
+      const level = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+      const existing = byDungeon.get(key);
+      const existingLevel = Number(existing?.keystone_level ?? existing?.keystoneLevel ?? 0);
+      if (!existing || level > existingLevel) {
+        byDungeon.set(key, run);
+      }
+    }
+    const bestRuns = Array.from(byDungeon.values());
+
+    const bestLevel = bestRuns.reduce((acc: number, run: any) => {
+      const lvl = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+      return Number.isFinite(lvl) ? Math.max(acc, lvl) : acc;
+    }, 0);
+
+    const bestDungeon = bestRuns.find(
+      (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0) === bestLevel
+    );
+
+    const score = Number(
+      mythicPlus.current_mythic_rating?.rating ??
+        mythicPlus.currentMythicRating?.rating ??
+        mythicPlus.current_mythic_rating?.value ??
+        0
+    );
+
+    return {
+      score: score > 0 ? Math.round(score) : null,
+      runs: Array.isArray(bestRuns) ? bestRuns.length : 0,
+      bestLevel: bestLevel > 0 ? bestLevel : null,
+      bestDungeonName:
+        bestDungeon?.dungeon?.name || bestDungeon?.completed_challenge_mode?.name || null,
+      bestRuns: Array.isArray(bestRuns)
+        ? [...bestRuns].sort((a: any, b: any) => {
+            const aLvl = Number(a?.keystone_level ?? a?.keystoneLevel ?? 0);
+            const bLvl = Number(b?.keystone_level ?? b?.keystoneLevel ?? 0);
+            return bLvl - aLvl;
+          })
+        : [],
+    };
+  }, [mythicPlus]);
+
+  return (
+    <div className="card p-5">
+      <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Mythic+</h3>
+      {summary ? (
+        <div className="space-y-2">
+          <StatRow
+            label="Current Score"
+            value={summary.score ? summary.score.toLocaleString() : '-'}
+          />
+          <StatRow label="Best Runs (Period)" value={summary.runs.toString()} />
+          <StatRow label="Highest Key" value={summary.bestLevel ? `+${summary.bestLevel}` : '-'} />
+          <StatRow label="Top Dungeon" value={summary.bestDungeonName || '-'} />
+          {summary.bestRuns.length > 0 && (
+            <>
+              <div className="my-3 h-px bg-white/5" />
+              <div className="space-y-1.5">
+                {(showAll ? summary.bestRuns : summary.bestRuns.slice(0, 3)).map(
+                  (run: any, i: number) => {
+                    const level = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+                    const dungeonName =
+                      run?.dungeon?.name || run?.completed_challenge_mode?.name || 'Dungeon';
+                    return (
+                      <div
+                        key={`${dungeonName}-${level}-${i}`}
+                        className="flex items-center justify-between text-[12px]"
+                      >
+                        <span className="truncate pr-3 text-zinc-400">{dungeonName}</span>
+                        <span className="font-mono font-bold text-zinc-200">+{level}</span>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+              {summary.bestRuns.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="mt-2 text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
+                >
+                  {showAll ? 'Show Less' : `View All (${summary.bestRuns.length})`}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px] italic text-zinc-600">Mythic+ data unavailable.</p>
+      )}
+    </div>
+  );
+}
+
+function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
+  const raids = useMemo(() => {
+    if (!raidEncounters || typeof raidEncounters !== 'object') return [];
+    const expansions = Array.isArray(raidEncounters.expansions) ? raidEncounters.expansions : [];
+    const byName = new Map<
+      string,
+      {
+        name: string;
+        normal: string;
+        heroic: string;
+        mythic: string;
+        lfr: string;
+      }
+    >();
+
+    const mergeProgress = (a: string, b: string) => {
+      const parse = (v: string) => {
+        const m = /^(\d+)\/(\d+)$/.exec(v || '');
+        if (!m) return null;
+        return { k: Number(m[1]), t: Number(m[2]) };
+      };
+      const pa = parse(a);
+      const pb = parse(b);
+      if (!pa) return b;
+      if (!pb) return a;
+      if (pb.t > pa.t) return b;
+      if (pb.t < pa.t) return a;
+      return pb.k > pa.k ? b : a;
+    };
+
+    const flattened: Array<{
+      name: string;
+      normal: string;
+      heroic: string;
+      mythic: string;
+      lfr: string;
+    }> = [];
+
+    for (const exp of expansions) {
+      const instances = Array.isArray(exp?.instances) ? exp.instances : [];
+      for (const inst of instances) {
+        const modes = Array.isArray(inst?.modes) ? inst.modes : [];
+        const getMode = (modeName: string) =>
+          modes.find((m: any) => (m?.difficulty?.type || '').toLowerCase() === modeName);
+        const fmtProgress = (mode: any) => {
+          const p = mode?.progress;
+          const k = Number(p?.encounters_defeated ?? p?.completed_count ?? 0);
+          const t = Number(p?.total_encounters ?? p?.total_count ?? 0);
+          return t > 0 ? `${k}/${t}` : '-';
+        };
+
+        flattened.push({
+          name: inst?.instance?.name || inst?.name || 'Raid',
+          normal: fmtProgress(getMode('normal')),
+          heroic: fmtProgress(getMode('heroic')),
+          mythic: fmtProgress(getMode('mythic')),
+          lfr: fmtProgress(getMode('lfr')),
+        });
+      }
+    }
+    for (const raid of flattened) {
+      const key = raid.name.trim().toLowerCase();
+      const existing = byName.get(key);
+      if (!existing) {
+        byName.set(key, raid);
+        continue;
+      }
+      existing.lfr = mergeProgress(existing.lfr, raid.lfr);
+      existing.normal = mergeProgress(existing.normal, raid.normal);
+      existing.heroic = mergeProgress(existing.heroic, raid.heroic);
+      existing.mythic = mergeProgress(existing.mythic, raid.mythic);
+    }
+
+    return Array.from(byName.values());
+  }, [raidEncounters]);
+
+  return (
+    <div className="card p-5">
+      <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-zinc-500">
+        Raid Progress
+      </h3>
+      {raids.length > 0 ? (
+        <div className="space-y-4">
+          {raids.map((raid) => (
+            <div key={raid.name} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
+              <p className="mb-2 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
+              <div className="grid grid-cols-2 gap-1 text-[11px] text-zinc-400">
+                <span>LFR: {raid.lfr}</span>
+                <span>Normal: {raid.normal}</span>
+                <span>Heroic: {raid.heroic}</span>
+                <span>Mythic: {raid.mythic}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] italic text-zinc-600">Raid progression data unavailable.</p>
+      )}
+    </div>
+  );
+}
+
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-[13px]">
+      <span className="text-zinc-400">{label}</span>
+      <span className="font-mono font-bold text-zinc-200">{value}</span>
     </div>
   );
 }
@@ -431,15 +688,15 @@ function BlizzardGearSlot({
   const whData = getWowheadData(item.bonus_list, item.level?.value, enchantId, gemId);
 
   return (
-      <a
-        href={getWowheadUrl(item.item.id)}
-        data-wowhead={whData}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`flex min-w-0 items-start gap-3 rounded-md px-1 py-0.5 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
-      >
-        <div
-        className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border sm:h-12 sm:w-12 transition-transform hover:scale-105"
+    <a
+      href={getWowheadUrl(item.item.id)}
+      data-wowhead={whData}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex min-w-0 items-start gap-3 rounded-md px-1 py-0.5 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
+    >
+      <div
+        className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105 sm:h-12 sm:w-12"
         style={{ borderColor: `${qc}44` }}
       >
         <img src={getIconUrl(icon)} alt="" className="h-full w-full object-cover" />

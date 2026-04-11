@@ -33,7 +33,6 @@ const GEAR_ORDER_RIGHT = [
   'TRINKET_1',
   'TRINKET_2',
 ];
-const GEAR_ORDER_BOTTOM = ['MAIN_HAND', 'OFF_HAND'];
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
 
 function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
@@ -307,15 +306,15 @@ export default function CharacterPanel({
       </div>
 
       {/* Upper Section: Gear & Stats */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         {/* Gear Panel */}
-        <div className="card relative min-h-[600px] overflow-hidden p-4 sm:p-6">
+        <div className="card relative flex h-full flex-col overflow-hidden p-4 sm:p-6">
           {characterMediaUrl && (
             <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
               <img
                 src={characterMediaUrl}
                 alt={name}
-                className="pointer-events-none mx-auto h-56 w-auto object-contain opacity-80 sm:h-72 lg:h-[130%] lg:-translate-y-[10%] lg:opacity-55 lg:mix-blend-lighten"
+                className="lg:opacity-62 pointer-events-none mx-auto h-64 w-auto object-contain opacity-85 sm:h-80 lg:h-[172%] lg:-translate-y-[10%] lg:mix-blend-lighten"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = 'none';
                 }}
@@ -323,7 +322,7 @@ export default function CharacterPanel({
             </div>
           )}
 
-          <div className="relative z-20 flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_240px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_280px_minmax(0,1fr)]">
+          <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_210px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_260px_minmax(0,1fr)]">
             {/* Left Column */}
             <div className="min-w-0 space-y-3">
               {GEAR_ORDER_LEFT.map((slot) => (
@@ -356,18 +355,25 @@ export default function CharacterPanel({
             </div>
           </div>
 
-          {/* Bottom Column */}
-          <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-8 lg:mt-8 lg:flex lg:justify-center">
-            {GEAR_ORDER_BOTTOM.map((slot) => (
-              <BlizzardGearSlot
-                key={slot}
-                slot={slot}
-                item={itemsBySlot[slot]}
-                itemInfoMap={itemInfoMap}
-                enchantInfoMap={enchantInfoMap}
-                gemInfoMap={gemInfoMap}
-              />
-            ))}
+          {/* Bottom Weapons Row */}
+          <div className="relative z-20 mt-auto grid grid-cols-1 gap-3 pt-8 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
+            <BlizzardGearSlot
+              slot="MAIN_HAND"
+              item={itemsBySlot.MAIN_HAND}
+              itemInfoMap={itemInfoMap}
+              enchantInfoMap={enchantInfoMap}
+              gemInfoMap={gemInfoMap}
+              align="right"
+              compactNearIcon
+            />
+            <BlizzardGearSlot
+              slot="OFF_HAND"
+              item={itemsBySlot.OFF_HAND}
+              itemInfoMap={itemInfoMap}
+              enchantInfoMap={enchantInfoMap}
+              gemInfoMap={gemInfoMap}
+              align="left"
+            />
           </div>
         </div>
 
@@ -652,6 +658,7 @@ function BlizzardGearSlot({
   enchantInfoMap,
   gemInfoMap,
   align = 'left',
+  compactNearIcon = false,
 }: {
   slot: string;
   item?: BlizzardItem;
@@ -659,6 +666,7 @@ function BlizzardGearSlot({
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
   align?: 'left' | 'right';
+  compactNearIcon?: boolean;
 }) {
   const rtl = align === 'right';
   const label = SLOT_LABELS[slot.toLowerCase()] || slot;
@@ -693,7 +701,7 @@ function BlizzardGearSlot({
       data-wowhead={whData}
       target="_blank"
       rel="noopener noreferrer"
-      className={`flex min-w-0 items-start gap-3 rounded-md px-1 py-0.5 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
+      className={`flex w-full min-w-0 items-start gap-3 rounded-md px-1 py-1 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
     >
       <div
         className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105 sm:h-12 sm:w-12"
@@ -705,7 +713,9 @@ function BlizzardGearSlot({
           style={{ boxShadow: `inset 0 0 10px ${qc}33` }}
         />
       </div>
-      <div className={`min-w-0 flex-1 ${rtl ? 'text-right' : ''}`}>
+      <div
+        className={`min-w-0 ${compactNearIcon ? 'w-auto max-w-[420px]' : 'flex-1'} ${rtl ? 'text-right' : ''}`}
+      >
         <span
           title={item.name}
           className="block truncate text-[13px] font-bold leading-tight hover:underline sm:text-[14px]"
@@ -713,7 +723,11 @@ function BlizzardGearSlot({
         >
           {item.name}
         </span>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium text-zinc-500">
+        <div
+          className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium text-zinc-500 ${
+            compactNearIcon && rtl ? 'justify-end' : ''
+          }`}
+        >
           <span className="text-zinc-400">
             {item.level?.value} {label}
           </span>

@@ -5,6 +5,7 @@ import { API_URL, fetchJson } from './api';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 import { simResultHref } from './routes';
+import { buildFightStylePayload } from './fight-style';
 
 interface UseSimSubmitOptions {
   /** API endpoint path, e.g. "/api/sim" */
@@ -174,8 +175,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
             body: JSON.stringify({
               ...sharedPayload,
               fight_style: config.fightStyle,
-              desired_targets: config.targetCount,
-              max_time: config.fightLength,
+              ...buildFightStylePayload(config.fightStyle, config.targetCount, config.fightLength),
             }),
           });
         })

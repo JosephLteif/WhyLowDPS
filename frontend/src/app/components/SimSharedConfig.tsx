@@ -7,6 +7,7 @@ import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
 import { specDisplayName } from '../lib/types';
+import { getFightStyleParamRules } from '../lib/fight-style';
 
 /** Adler-32 checksum matching the SimC addon's implementation.
  *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
@@ -150,10 +151,13 @@ function AdvancedOptions() {
   );
 
   const hasExpertContent = Object.values(expertValues).some((v) => v.trim());
+  const fightStyleRules = getFightStyleParamRules(fightStyle);
+  const showFightLength = fightStyleRules.usesFightLength;
+  const showTargetCount = fightStyleRules.usesTargetCount;
   const isDefault =
     fightStyle === 'Patchwerk' &&
-    targetCount === 1 &&
-    fightLength === 300 &&
+    (!showTargetCount || targetCount === 1) &&
+    (!showFightLength || fightLength === 300) &&
     !customApl &&
     !hasExpertContent;
   const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
@@ -199,44 +203,64 @@ function AdvancedOptions() {
       </button>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
-          <div className="grid grid-cols-3 gap-4 pt-4">
+          <div
+            className={`grid gap-4 pt-4 ${
+              showFightLength && showTargetCount
+                ? 'grid-cols-3'
+                : showFightLength || showTargetCount
+                  ? 'grid-cols-2'
+                  : 'grid-cols-1'
+            }`}
+          >
             <div className="space-y-2">
               <label className="label-text">Fight Style</label>
               <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
             </div>
-            <div className="space-y-2">
-              <label className="label-text">Fight Length</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={30}
-                  max={600}
-                  step={30}
-                  value={fightLength}
-                  onChange={(e) => setFightLength(Number(e.target.value))}
-                  className="flex-1 accent-gold"
-                />
-                <span className="w-16 text-right font-mono text-sm tabular-nums text-white">
-                  {Math.floor(fightLength / 60)}:{String(fightLength % 60).padStart(2, '0')}
-                </span>
+
+            {showFightLength && (
+              <div className="space-y-2">
+                <label className="label-text">Fight Length</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={30}
+                    max={600}
+                    step={30}
+                    value={fightLength}
+                    onChange={(e) => setFightLength(Number(e.target.value))}
+                    className="flex-1 accent-gold"
+                  />
+                  <span className="w-16 text-right font-mono text-sm tabular-nums text-white">
+                    {Math.floor(fightLength / 60)}:{String(fightLength % 60).padStart(2, '0')}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <label className="label-text">Number of Bosses</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  value={targetCount}
-                  onChange={(e) => setTargetCount(Number(e.target.value))}
-                  className="flex-1 accent-gold"
-                />
-                <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
-                  {targetCount}
-                </span>
+            )}
+
+            {showTargetCount && (
+              <div className="space-y-2">
+                <label className="label-text">Number of Bosses</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    value={targetCount}
+                    onChange={(e) => setTargetCount(Number(e.target.value))}
+                    className="flex-1 accent-gold"
+                  />
+                  <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
+                    {targetCount}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
+
+            {!showFightLength && !showTargetCount && (
+              <div className="text-[13px] text-zinc-500">
+                This fight style uses built-in timing and target scripting.
+              </div>
+            )}
           </div>
 
           <ScenarioBuilder />

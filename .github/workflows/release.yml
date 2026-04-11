@@ -49,6 +49,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-
 
+      - name: Ensure bundled resource paths exist
+        shell: bash
+        run: |
+          mkdir -p backend/resources/data
+          mkdir -p backend/resources/simc
+          touch backend/resources/data/.keep
+          touch backend/resources/simc/.keep
+
       # -- SimC Preparation --
       - name: Resolve SimC version
         id: simc-version

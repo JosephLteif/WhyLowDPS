@@ -3,15 +3,15 @@
 import { useParams, useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import GearOverview from '../../components/GearOverview';
 import type { GearItem } from '../../components/GearOverview';
 import ResultsChart from '../../components/ResultsChart';
 import SimStatus from '../../components/SimStatus';
 import StatWeightsTable from '../../components/StatWeightsTable';
-import TalentTree from '../../components/TalentTree';
 import TopGearResults from '../../components/TopGearResults';
+import SimResultTalentsCard from '../../components/SimResultTalentsCard';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import type { ResultItem, TopGearResult } from '../../lib/types';
@@ -47,6 +47,41 @@ interface JobData {
   linked_region?: string;
   linked_realm?: string;
   linked_name?: string;
+}
+
+function CollapsibleSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between border-b border-border/60 bg-white/[0.01] px-5 py-3.5 text-left transition-colors hover:bg-white/[0.03]"
+      >
+        <span className="text-xs font-medium uppercase tracking-widest text-muted">{title}</span>
+        <svg
+          className={`h-3.5 w-3.5 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {open && <div className="p-5">{children}</div>}
+    </div>
+  );
 }
 
 export default function SimResultClient() {
@@ -352,10 +387,8 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
+            talentString={r.talent_string as string | undefined}
           />
-          {typeof r.talent_string === 'string' && r.talent_string && (
-            <TalentTree talentString={r.talent_string as string} />
-          )}
         </>
       ) : isStatWeights ? (
         <>
@@ -398,28 +431,34 @@ export default function SimResultClient() {
           />
           {r.equipped_gear &&
             Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (
-              <GearOverview
-                gear={r.equipped_gear as Record<string, GearItem>}
-                characterRenderUrl={
-                  r.realm && r.player_name
-                    ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
-                    : null
-                }
-              />
+              <CollapsibleSection title="Character Panel">
+                <GearOverview
+                  gear={r.equipped_gear as Record<string, GearItem>}
+                  characterRenderUrl={
+                    r.realm && r.player_name
+                      ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
+                      : null
+                  }
+                />
+              </CollapsibleSection>
             )}
           {typeof r.talent_string === 'string' && r.talent_string && (
-            <TalentTree talentString={r.talent_string as string} />
+            <CollapsibleSection title="Talents" defaultOpen={false}>
+              <SimResultTalentsCard talentString={r.talent_string as string} />
+            </CollapsibleSection>
           )}
-          <ResultsChart
-            dps={r.dps as number}
-            abilities={
-              (r.abilities as Array<{
-                name: string;
-                portion_dps: number;
-                school: string;
-              }>) || []
-            }
-          />
+          <CollapsibleSection title="Damage Breakdown">
+            <ResultsChart
+              dps={r.dps as number}
+              abilities={
+                (r.abilities as Array<{
+                  name: string;
+                  portion_dps: number;
+                  school: string;
+                }>) || []
+              }
+            />
+          </CollapsibleSection>
           {r.stat_weights && (
             <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />
           )}

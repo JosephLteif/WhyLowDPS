@@ -26,6 +26,10 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [performanceSaved, setPerformanceSaved] = useState(false);
+  const [cacheSyncing, setCacheSyncing] = useState(false);
+  const [cacheSyncStatus, setCacheSyncStatus] = useState<string>('idle');
+  const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
+  const [cacheMessage, setCacheMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -140,6 +144,83 @@ export default function SettingsPage() {
       setMessage({ type: 'error', text: 'Failed to save settings.' });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const parseSyncStatus = (status: any): string => {
+    if (typeof status === 'string') return status;
+    if (status && typeof status === 'object') {
+      if (status.error) return `error:${String(status.error)}`;
+    }
+    return 'unknown';
+  };
+
+  const parseProgress = (str: string) => {
+    const parts = str.split(':');
+    if (parts.length < 4) return { task: '', current: 0, total: 0, details: str };
+    return {
+      task: parts[0],
+      current: parseInt(parts[1], 10),
+      total: parseInt(parts[2], 10),
+      details: parts[3],
+    };
+  };
+
+  const pollSyncStatus = async () => {
+    try {
+      const data = await fetchJson<any>(`${API_URL}/api/data/status`);
+      const status = parseSyncStatus(data.status);
+      setCacheSyncStatus(status);
+      setCacheSyncProgress(data.progress || '');
+
+      if (status === 'ready') {
+        setCacheSyncing(false);
+        setCacheMessage({ type: 'success', text: 'Game data cache refreshed successfully.' });
+        return;
+      }
+
+      if (status === 'needs_credentials') {
+        setCacheSyncing(false);
+        setCacheMessage({
+          type: 'error',
+          text: 'Cannot refresh data cache: Blizzard credentials are required.',
+        });
+        return;
+      }
+
+      if (status.startsWith('error:')) {
+        setCacheSyncing(false);
+        setCacheMessage({ type: 'error', text: status.replace(/^error:/, '') || 'Cache refresh failed.' });
+        return;
+      }
+
+      window.setTimeout(() => {
+        void pollSyncStatus();
+      }, 1500);
+    } catch (err: any) {
+      setCacheSyncing(false);
+      setCacheMessage({ type: 'error', text: err?.message || 'Failed to read sync status.' });
+    }
+  };
+
+  const refreshDataCache = async () => {
+    setCacheMessage(null);
+    setCacheSyncing(true);
+    setCacheSyncStatus('syncing');
+    setCacheSyncProgress('Initializing synchronization...');
+
+    try {
+      await fetchJson(`${API_URL}/api/data/sync?force=true`, { method: 'POST' });
+      await pollSyncStatus();
+    } catch (err: any) {
+      // 409 means a sync is already in progress; follow it instead of failing.
+      if (err?.status === 409) {
+        await pollSyncStatus();
+        return;
+      }
+
+      setCacheSyncing(false);
+      setCacheMessage({ type: 'error', text: err?.message || 'Failed to start cache refresh.' });
     }
   };
 
@@ -300,6 +381,46 @@ export default function SettingsPage() {
               className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+        <h2 className="mb-3 text-xl font-semibold text-white">Game Data Cache</h2>
+        <p className="mb-5 text-sm text-zinc-400">
+          Refetch game data and reload the backend cache used for gems, enchants, items, raids, and dungeon loot.
+        </p>
+
+        <div className="max-w-2xl space-y-4">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={refreshDataCache}
+              disabled={cacheSyncing}
+              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+            >
+              {cacheSyncing ? 'Refreshing Cache...' : 'Refresh Game Data Cache'}
+            </button>
+            {cacheSyncing && (
+              <span className="text-xs uppercase tracking-wide text-zinc-500">Sync in progress</span>
+            )}
+          </div>
+
+          {!!cacheSyncProgress && (
+            <div className="rounded-lg border border-border bg-surface-2 p-3">
+              <p className="text-sm text-zinc-200">{parseProgress(cacheSyncProgress).details || cacheSyncProgress}</p>
+            </div>
+          )}
+
+          {cacheMessage && (
+            <div
+              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
+                cacheMessage.type === 'success'
+                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
+              }`}
+            >
+              {cacheMessage.text}
+            </div>
+          )}
         </div>
       </section>
 

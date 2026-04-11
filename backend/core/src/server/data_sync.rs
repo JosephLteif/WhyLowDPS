@@ -24,6 +24,11 @@ pub struct DataSyncState {
     pub progress: Mutex<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct SyncQuery {
+    pub force: Option<bool>,
+}
+
 impl DataSyncState {
     pub fn new() -> Self {
         Self {
@@ -58,6 +63,7 @@ pub async fn get_sync_status(
 
 pub async fn trigger_sync(
     req: actix_web::HttpRequest,
+    query: web::Query<SyncQuery>,
     state: web::Data<Arc<DataSyncState>>,
     auth_state: web::Data<Arc<BlizzardAuthState>>,
     blizzard: web::Data<Arc<BlizzardState>>,
@@ -85,6 +91,7 @@ pub async fn trigger_sync(
     let state_clone = state.get_ref().clone();
     let blizzard_clone = blizzard.get_ref().clone();
     let data_dir_clone = data_dir.get_ref().clone();
+    let force_refresh = query.force.unwrap_or(false);
 
     tokio::spawn(async move {
         if let Err(e) = perform_sync(
@@ -93,6 +100,7 @@ pub async fn trigger_sync(
             client_id,
             client_secret,
             data_dir_clone,
+            force_refresh,
         )
         .await
         {
@@ -113,6 +121,7 @@ async fn perform_sync(
     client_id: String,
     client_secret: String,
     data_dir: Option<PathBuf>,
+    force_refresh: bool,
 ) -> Result<(), String> {
     // 1. Fetch from Raidbots
     let base_url = "https://www.raidbots.com/static/data/live";
@@ -136,7 +145,8 @@ async fn perform_sync(
 
     // Check if we need to sync based on metadata changes
     let mut skip_raidbots = false;
-    if let Some(ref dir) = data_dir {
+    if !force_refresh {
+        if let Some(ref dir) = data_dir {
         let local_metadata_path = dir.join("metadata.json");
         if local_metadata_path.exists() {
             if let Ok(local_metadata) = std::fs::read_to_string(&local_metadata_path) {
@@ -146,6 +156,7 @@ async fn perform_sync(
                 }
             }
         }
+    }
     }
 
     if !skip_raidbots {
@@ -195,7 +206,8 @@ async fn perform_sync(
 
     // 2. Blizzard Season Sync (Rotation Data)
     let mut skip_blizzard = false;
-    if let Some(ref dir) = data_dir {
+    if !force_refresh {
+        if let Some(ref dir) = data_dir {
         let runtime_file = dir.join("blizzard-runtime-data.json");
         if runtime_file.exists() {
             if let Ok(content) = std::fs::read_to_string(&runtime_file) {
@@ -212,6 +224,7 @@ async fn perform_sync(
                 }
             }
         }
+    }
     }
 
     if !skip_blizzard {

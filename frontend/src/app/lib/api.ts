@@ -44,7 +44,11 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     error.detail = data.detail;
     throw error;
   }
-  return res.json();
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }
 
 /** Cache for generic API requests */

@@ -79,6 +79,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     targetCount,
     fightLength,
     customApl,
+    includeTimeline,
     simcHeader,
     simcBasePlayer,
     simcRaidActors,
@@ -165,6 +166,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
         ...(simcRaidActors ? { simc_raid_actors: simcRaidActors } : {}),
         ...(simcPostCombos ? { simc_post_combos: simcPostCombos } : {}),
         ...(simcFooter ? { simc_footer: simcFooter } : {}),
+        ...(includeTimeline ? { include_timeline: true } : { include_timeline: false }),
       };
 
       const results = await Promise.allSettled(
@@ -231,6 +233,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     targetCount,
     fightLength,
     customApl,
+    includeTimeline,
     simcHeader,
     simcBasePlayer,
     simcRaidActors,

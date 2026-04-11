@@ -20,6 +20,8 @@ interface SimContextType {
   setFightLength: (v: number) => void;
   customApl: string;
   setCustomApl: (v: string) => void;
+  includeTimeline: boolean;
+  setIncludeTimeline: (v: boolean) => void;
   // Expert Mode injection points
   simcHeader: string;
   setSimcHeader: (v: string) => void;
@@ -75,6 +77,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [targetCount, setTargetCount] = useState(1);
   const [fightLength, setFightLength] = useState(300);
   const [customApl, setCustomApl] = useState('');
+  const [includeTimeline, _setIncludeTimeline] = useState(true);
   const [simcHeader, setSimcHeader] = useState('');
   const [simcBasePlayer, setSimcBasePlayer] = useState('');
   const [simcRaidActors, setSimcRaidActors] = useState('');
@@ -87,6 +90,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
     try {
       _setSimcInput(readSessionString('whylowdps_simc_input', ''));
       _setThreads(readStored('whylowdps_threads', 0));
+      _setIncludeTimeline(readStoredBool('whylowdps_include_timeline', true));
     } catch {}
   }, []);
 
@@ -130,6 +134,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const setIncludeTimeline = useCallback((v: boolean) => {
+    _setIncludeTimeline(v);
+    try {
+      localStorage.setItem('whylowdps_include_timeline', String(v));
+    } catch {}
+  }, []);
+
   return (
     <SimContext.Provider
       value={{
@@ -149,6 +160,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setFightLength,
         customApl,
         setCustomApl,
+        includeTimeline,
+        setIncludeTimeline,
         simcHeader,
         setSimcHeader,
         simcBasePlayer,

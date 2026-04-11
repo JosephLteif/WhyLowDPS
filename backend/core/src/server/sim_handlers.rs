@@ -102,7 +102,7 @@ pub(super) async fn create_sim(
         .await
         {
             Ok(output) => {
-                let mut parsed = result_parser::parse_simc_result(&output.json);
+                let mut parsed = result_parser::parse_simc_result(&output.json, true);
                 inject_realm(&mut parsed, &simc_input);
                 let result_str = serde_json::to_string(&parsed).unwrap_or_default();
                 let raw_str = serde_json::to_string(&output.json).ok();

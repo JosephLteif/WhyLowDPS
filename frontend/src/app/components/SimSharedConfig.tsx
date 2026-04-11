@@ -209,6 +209,8 @@ function AdvancedOptions() {
     setFightLength,
     customApl,
     setCustomApl,
+    includeTimeline,
+    setIncludeTimeline,
     simcHeader,
     setSimcHeader,
     simcBasePlayer,
@@ -371,6 +373,28 @@ function AdvancedOptions() {
               Override action priority lists or set expansion-specific options. Injected after the
               base actor.
             </p>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-surface-2/70 px-3.5 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Timeline &amp; APL Analyzer</p>
+              <p className="text-[13px] text-zinc-500">
+                Include action sequence, cooldown timing, and buff uptime data in sim results.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIncludeTimeline(!includeTimeline)}
+              className={`relative h-5 w-9 rounded-full transition-colors ${
+                includeTimeline ? 'bg-gold' : 'border border-border bg-surface'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
+                  includeTimeline ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
+                }`}
+              />
+            </button>
           </div>
 
           {/* Expert Mode */}

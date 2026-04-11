@@ -56,6 +56,8 @@ pub struct SimOptions {
     pub dps_plot_step: u32,
     #[serde(default)]
     pub dps_plot_iterations: u32,
+    #[serde(default = "default_include_timeline")]
+    pub include_timeline: bool,
 }
 
 impl SimOptions {
@@ -78,6 +80,7 @@ impl SimOptions {
             "dps_plot_points": self.dps_plot_points,
             "dps_plot_step": self.dps_plot_step,
             "dps_plot_iterations": self.dps_plot_iterations,
+            "include_timeline": self.include_timeline,
         })
     }
 
@@ -229,4 +232,7 @@ fn default_desired_targets() -> u32 {
 }
 fn default_max_time() -> u32 {
     300
+}
+fn default_include_timeline() -> bool {
+    true
 }

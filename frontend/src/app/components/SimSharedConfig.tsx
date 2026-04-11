@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
@@ -58,6 +58,99 @@ function parseCharacterInfo(input: string) {
     name: nameMatch[2],
     spec: specMatch?.[1] || 'unknown',
   };
+}
+
+function renderSimcLine(line: string) {
+  if (!line) return null;
+
+  if (/^\s*#\s*Checksum:/i.test(line)) {
+    return <span className="text-amber-300">{line}</span>;
+  }
+  if (/^\s*#/.test(line)) {
+    return <span className="text-zinc-500">{line}</span>;
+  }
+
+  const kv = line.match(/^(\s*)([A-Za-z0-9_.-]+)(\s*=\s*)(.*)$/);
+  if (!kv) return <span className="text-zinc-300">{line}</span>;
+
+  const [, indent, key, sep, rawValue] = kv;
+  const value =
+    /^".*"$/.test(rawValue) || /^[A-Za-z_/-]+$/.test(rawValue)
+      ? 'text-emerald-300'
+      : /^(?:\d+(?:\.\d+)?)$/.test(rawValue)
+        ? 'text-sky-300'
+        : 'text-zinc-300';
+
+  return (
+    <>
+      <span className="text-zinc-300">{indent}</span>
+      <span className="text-gold">{key}</span>
+      <span className="text-zinc-500">{sep}</span>
+      <span className={value}>{rawValue}</span>
+    </>
+  );
+}
+
+function SimcInputEditor({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const preRef = useRef<HTMLPreElement | null>(null);
+  const editorHeight = expanded ? 'h-[28rem]' : 'h-40';
+
+  const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (!preRef.current) return;
+    preRef.current.scrollTop = e.currentTarget.scrollTop;
+    preRef.current.scrollLeft = e.currentTarget.scrollLeft;
+  };
+
+  const lines = value.split('\n');
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="rounded-md border border-border px-2.5 py-1 text-[12px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+        >
+          {expanded ? 'Collapse' : 'Expand'}
+        </button>
+      </div>
+      <div className="relative w-full rounded-lg border border-border bg-surface-2 shadow-sm transition-all duration-150 focus-within:border-gold/50 focus-within:ring-2 focus-within:ring-gold/20">
+        <pre
+          ref={preRef}
+          aria-hidden
+          className={`${editorHeight} overflow-auto px-3.5 py-2.5 font-mono text-[13px] leading-relaxed`}
+        >
+          {value ? (
+            lines.map((line, idx) => (
+              <span key={idx}>
+                {renderSimcLine(line)}
+                {idx < lines.length - 1 ? '\n' : null}
+              </span>
+            ))
+          ) : (
+            <span className="text-zinc-500">{placeholder}</span>
+          )}
+        </pre>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onScroll={syncScroll}
+          placeholder={placeholder}
+          spellCheck={false}
+          className={`absolute inset-0 ${editorHeight} w-full overflow-auto bg-transparent px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-transparent caret-zinc-100 placeholder-zinc-500 focus:outline-none`}
+        />
+      </div>
+    </div>
+  );
 }
 
 const EXPERT_TABS = [
@@ -391,11 +484,10 @@ export default function SimSharedConfig() {
     <div className="mb-6 space-y-4">
       <div className="card space-y-3 p-5">
         <label className="label-text">SimC Addon Export</label>
-        <textarea
+        <SimcInputEditor
           value={simcInput}
-          onChange={(e) => setSimcInput(e.target.value)}
+          onChange={setSimcInput}
           placeholder="Paste your SimC addon export here..."
-          className="input-field h-40 resize-y font-mono text-[13px] leading-relaxed"
         />
         {checksumStatus === 'invalid' && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">

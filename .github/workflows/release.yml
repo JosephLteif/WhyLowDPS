@@ -14,7 +14,7 @@ jobs:
         include:
           - platform: 'windows'
             os: 'windows-latest'
-            args: '--config src-tauri/tauri.conf.json'
+            args: '--config src-tauri/tauri.conf.json --bundles nsis'
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -25,28 +25,29 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
 
       - name: install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libnm-dev libcloudproviders-dev librsvg2-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev liblibrsvg2-dev
-
       - name: install dependencies
-        run: npm install && npm install --prefix frontend
+        run: npm ci && npm ci --prefix frontend
 
       - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            desktop/src-tauri -> target
+
+      - name: Cache Next build cache
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            backend/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('backend/**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          path: frontend/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/src/**/*.{ts,tsx,js,jsx,css}') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-
 
       # -- SimC Preparation --
       - name: Resolve SimC version
@@ -74,33 +75,7 @@ jobs:
           find backend/resources/simc -name "simc.exe" -exec mv {} backend/resources/simc/ \;
           touch backend/resources/simc/.keep
 
-      - name: Build SimC from source (Linux)
-        if: steps.simc-cache.outputs.cache-hit != 'true' && matrix.platform == 'linux'
-        shell: bash
-        run: |
-          mkdir -p backend/resources/simc
-          git clone --depth 1 https://github.com/simulationcraft/simc.git /tmp/simc-src
-          cd /tmp/simc-src/engine
-          make -j$(nproc) OPTS="-O2" LTO=1 optimized
-          cp simc ${{ github.workspace }}/backend/resources/simc/simc
-          chmod +x ${{ github.workspace }}/backend/resources/simc/simc
-          rm -rf /tmp/simc-src
-          touch ${{ github.workspace }}/backend/resources/simc/.keep
-
-      # -- Game Data Preparation --
-      - name: Fetch game data
-        shell: bash
-        run: |
-          mkdir -p backend/resources/data-full
-          cd backend/resources/data-full
-          curl -sL -o metadata.json https://www.raidbots.com/static/data/live/metadata.json
-          # Download all required data files listed in metadata
-          node -e "const m=require('./metadata.json'); m.files.forEach(f=>console.log(f))" | xargs -I {} -P 8 curl -sL -o "{}" "https://www.raidbots.com/static/data/live/{}"
-          # Copy local season config and supplemental data
-          cp ../../core/season-config.json ./season-config.json 2>/dev/null || true
-          cd ../../..
-          node backend/scripts/compact-data.js backend/resources/data-full backend/resources/data
-          touch backend/resources/data/.keep
+      # Game data is synchronized at app launch; skip heavy data-fetch step during release builds.
 
       # -- Build and Release --
       - uses: tauri-apps/tauri-action@v0

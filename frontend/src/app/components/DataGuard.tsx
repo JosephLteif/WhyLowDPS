@@ -48,7 +48,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     console.log('[DataGuard] Initial check started');
     checkStatus();
 
-    // Start sync if ready and not syncing
+    // Always trigger sync on launch so local data stays fresh.
     fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).catch(() => {});
 
     // Poll while not ready

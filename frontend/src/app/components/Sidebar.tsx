@@ -189,9 +189,7 @@ export default function Sidebar() {
     <aside
       className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border/80 bg-surface/50 pb-6 pt-6 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
     >
-      <nav
-        className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}
-      >
+      <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
         <div className="flex-1 space-y-2 overflow-y-auto">
           {orderedNavItems.map((item) => {
             const isActive = item.matchPaths.some(
@@ -226,7 +224,7 @@ export default function Sidebar() {
                         setDraggingLabel(item.label);
                         setDragOverLabel(item.label);
                       }}
-                      className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all active:cursor-grabbing hover:bg-white/5 hover:text-zinc-300 ${
+                      className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all hover:bg-white/5 hover:text-zinc-300 active:cursor-grabbing ${
                         draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
                       }`}
                       title={`Drag to reorder ${item.label}`}
@@ -269,7 +267,9 @@ export default function Sidebar() {
                     {!isCollapsed && (
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span className="text-[15px] font-medium">{item.label}</span>
-                        <span className={`text-[12px] ${isActive ? 'text-gold/70' : 'text-zinc-500'}`}>
+                        <span
+                          className={`text-[12px] ${isActive ? 'text-gold/70' : 'text-zinc-500'}`}
+                        >
                           {item.description}
                         </span>
                       </div>

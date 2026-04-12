@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
-type UpdaterStatusEvent = 'checking' | 'available' | 'none' | 'error' | 'downloading' | 'downloaded';
+type UpdaterStatusEvent =
+  | 'checking'
+  | 'available'
+  | 'none'
+  | 'error'
+  | 'downloading'
+  | 'downloaded';
 
 type UpdateDetails = {
   version: string;
@@ -26,7 +32,9 @@ const UPDATE_STATUS_EVENT = 'whylowdps-updater-status';
 function isDesktopRuntime(): boolean {
   if (typeof window === 'undefined') return false;
   if (window.electronAPI) return true;
-  const hasTauriInternals = Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
+  const hasTauriInternals = Boolean(
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+  );
   return process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true' || hasTauriInternals;
 }
 
@@ -48,7 +56,12 @@ export default function UpdatePrompt() {
   const isModalVisible = useMemo(() => {
     if (backgroundMode && state === 'downloading') return false;
     if (dismissed && state !== 'downloading') return false;
-    return state === 'available' || state === 'downloading' || state === 'downloaded' || state === 'error';
+    return (
+      state === 'available' ||
+      state === 'downloading' ||
+      state === 'downloaded' ||
+      state === 'error'
+    );
   }, [backgroundMode, dismissed, state]);
 
   const progressPercent = useMemo(() => {
@@ -182,13 +195,14 @@ export default function UpdatePrompt() {
                   {state === 'error' ? 'Update Check Failed' : 'Update Available'}
                 </p>
                 <p className="mt-1 text-sm text-zinc-300">
-                  {details
-                    ? (
-                      <>
-                        Version <span className="font-semibold text-gold">{details.version}</span> is ready.
-                      </>
-                    )
-                    : 'Could not check updates automatically.'}
+                  {details ? (
+                    <>
+                      Version <span className="font-semibold text-gold">{details.version}</span> is
+                      ready.
+                    </>
+                  ) : (
+                    'Could not check updates automatically.'
+                  )}
                 </p>
               </div>
               {state !== 'downloading' && (
@@ -241,7 +255,10 @@ export default function UpdatePrompt() {
             <div className="mt-4 flex justify-end gap-2">
               {state === 'available' && (
                 <>
-                  <button onClick={() => setDismissed(true)} className="btn-outline px-4 py-2 text-sm">
+                  <button
+                    onClick={() => setDismissed(true)}
+                    className="btn-outline px-4 py-2 text-sm"
+                  >
                     Later
                   </button>
                   <button onClick={handleInstall} className="btn-primary px-4 py-2 text-sm">
@@ -263,7 +280,10 @@ export default function UpdatePrompt() {
               )}
 
               {(state === 'downloaded' || state === 'error') && (
-                <button onClick={() => setDismissed(true)} className="btn-outline px-4 py-2 text-sm">
+                <button
+                  onClick={() => setDismissed(true)}
+                  className="btn-outline px-4 py-2 text-sm"
+                >
                   Close
                 </button>
               )}
@@ -280,7 +300,10 @@ export default function UpdatePrompt() {
           </p>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
             {progressPercent != null ? (
-              <div className="h-full bg-gold transition-all duration-200" style={{ width: `${progressPercent}%` }} />
+              <div
+                className="h-full bg-gold transition-all duration-200"
+                style={{ width: `${progressPercent}%` }}
+              />
             ) : (
               <div className="h-full w-1/3 animate-pulse bg-gold" />
             )}
@@ -299,4 +322,3 @@ export default function UpdatePrompt() {
     </>
   );
 }
-

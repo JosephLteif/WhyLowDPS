@@ -119,7 +119,9 @@ export default function TrinketTierHeatmap({
   return (
     <div className="space-y-6">
       <div className="card border-gold/10 bg-gold/[0.02] p-5">
-        <h3 className="text-sm font-semibold text-zinc-100">Personalized Trinket / Tier Heatmaps</h3>
+        <h3 className="text-sm font-semibold text-zinc-100">
+          Personalized Trinket / Tier Heatmaps
+        </h3>
         <p className="mt-1 text-xs text-zinc-400">
           Baseline DPS: {Math.round(baseDps).toLocaleString()}.
         </p>
@@ -138,7 +140,10 @@ export default function TrinketTierHeatmap({
                     Trinket
                   </th>
                   {trinketAxes.map((label) => (
-                    <th key={label} className="border border-border bg-surface-2 px-2 py-2 text-zinc-300">
+                    <th
+                      key={label}
+                      className="border border-border bg-surface-2 px-2 py-2 text-zinc-300"
+                    >
                       {label}
                     </th>
                   ))}
@@ -153,7 +158,10 @@ export default function TrinketTierHeatmap({
                     {trinketAxes.map((colLabel) => {
                       if (rowLabel === colLabel) {
                         return (
-                          <td key={colLabel} className="border border-border bg-black/20 px-2 py-2 text-center text-zinc-600">
+                          <td
+                            key={colLabel}
+                            className="border border-border bg-black/20 px-2 py-2 text-center text-zinc-600"
+                          >
                             -
                           </td>
                         );

@@ -29,7 +29,10 @@ pub fn list_gems() -> Vec<Value> {
 
         match by_item_id.get(&item_id) {
             Some(existing) => {
-                let existing_quality = existing.get("quality").and_then(|v| v.as_u64()).unwrap_or(0);
+                let existing_quality = existing
+                    .get("quality")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
                 if quality > existing_quality {
                     by_item_id.insert(item_id, candidate);
                 }

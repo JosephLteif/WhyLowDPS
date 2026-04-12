@@ -6,10 +6,7 @@ import { useSimContext } from '../components/SimContext';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
-import {
-  OptionEntry,
-  RAID_BUFF_MATRIX_OPTIONS,
-} from '../lib/sim-options-catalog';
+import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 
 const PLOT_STATS = [
   { value: 'haste_rating', label: 'Haste' },
@@ -37,7 +34,9 @@ function useSpellIcons(spellIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) spellIconCache.set(id, data.icon);
@@ -63,9 +62,7 @@ function uniqueTokens(options: OptionEntry[]): string[] {
 }
 
 function optionLabel(opt: OptionEntry) {
-  return (opt.label || '')
-    .replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '')
-    .replace(/\s+[1-3]\s*$/i, '');
+  return (opt.label || '').replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '').replace(/\s+[1-3]\s*$/i, '');
 }
 
 function optionQualityFamily(opt: OptionEntry) {
@@ -120,18 +117,10 @@ export default function StatWeightsPage() {
   const [includeTrinketMatrix, setIncludeTrinketMatrix] = useState(false);
   const [includeTierMatrix, setIncludeTierMatrix] = useState(true);
 
-  const [matrixFlasks, setMatrixFlasks] = useState<string[]>(
-    uniqueTokens(flasks)
-  );
-  const [matrixFoods, setMatrixFoods] = useState<string[]>(
-    uniqueTokens(foods)
-  );
-  const [matrixPotions, setMatrixPotions] = useState<string[]>(
-    uniqueTokens(potions)
-  );
-  const [matrixAugments, setMatrixAugments] = useState<string[]>(
-    uniqueTokens(augments)
-  );
+  const [matrixFlasks, setMatrixFlasks] = useState<string[]>(uniqueTokens(flasks));
+  const [matrixFoods, setMatrixFoods] = useState<string[]>(uniqueTokens(foods));
+  const [matrixPotions, setMatrixPotions] = useState<string[]>(uniqueTokens(potions));
+  const [matrixAugments, setMatrixAugments] = useState<string[]>(uniqueTokens(augments));
   const [matrixTempEnchants, setMatrixTempEnchants] = useState<string[]>(
     uniqueTokens(tempEnchants)
   );
@@ -306,8 +295,16 @@ export default function StatWeightsPage() {
           {[
             ['stat_weights', 'Quick Weights', 'Fast single-point stat values.'],
             ['stat_plot', 'Stat Plot', 'Curve DPS across a stat range.'],
-            ['consumable_matrix', 'Consumable Matrix', 'Find best flask/food/potion/rune/raid buffs.'],
-            ['trinket_tier_heatmap', 'Trinket / Tier Heatmaps', 'Personalized trinket pair and tier-slot matrix sims.'],
+            [
+              'consumable_matrix',
+              'Consumable Matrix',
+              'Find best flask/food/potion/rune/raid buffs.',
+            ],
+            [
+              'trinket_tier_heatmap',
+              'Trinket / Tier Heatmaps',
+              'Personalized trinket pair and tier-slot matrix sims.',
+            ],
           ].map(([key, title, desc]) => (
             <button
               key={key}
@@ -405,7 +402,10 @@ export default function StatWeightsPage() {
                 ['Augmentation Runes', augments, matrixAugments, setMatrixAugments],
                 ['Temporary Enchants', tempEnchants, matrixTempEnchants, setMatrixTempEnchants],
               ].map(([title, options, selected, setSelected]) => (
-                <div key={title as string} className="space-y-2 rounded-md border border-border bg-surface p-3">
+                <div
+                  key={title as string}
+                  className="space-y-2 rounded-md border border-border bg-surface p-3"
+                >
                   <div className="flex items-center justify-between">
                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                       {title as string}
@@ -424,7 +424,10 @@ export default function StatWeightsPage() {
                   </div>
                   <div className="grid gap-1.5">
                     {(options as OptionEntry[]).map((opt) => (
-                      <label key={opt.key} className="flex items-center justify-between gap-2 rounded border border-border bg-surface-2 px-2 py-1.5">
+                      <label
+                        key={opt.key}
+                        className="flex items-center justify-between gap-2 rounded border border-border bg-surface-2 px-2 py-1.5"
+                      >
                         {opt.itemId ? (
                           <a
                             href={`https://www.wowhead.com/item=${opt.itemId}`}
@@ -449,7 +452,9 @@ export default function StatWeightsPage() {
                                 opt.craftingQuality,
                                 Math.max(
                                   ...(options as OptionEntry[])
-                                    .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
+                                    .filter(
+                                      (o) => optionQualityFamily(o) === optionQualityFamily(opt)
+                                    )
                                     .map((o) => o.craftingQuality || 0)
                                 )
                               )}
@@ -469,7 +474,9 @@ export default function StatWeightsPage() {
                                 opt.craftingQuality,
                                 Math.max(
                                   ...(options as OptionEntry[])
-                                    .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
+                                    .filter(
+                                      (o) => optionQualityFamily(o) === optionQualityFamily(opt)
+                                    )
                                     .map((o) => o.craftingQuality || 0)
                                 )
                               )}
@@ -511,7 +518,10 @@ export default function StatWeightsPage() {
                   {RAID_BUFF_MATRIX_OPTIONS.map((opt) => {
                     const icon = icons.get(opt.spellId || 0);
                     return (
-                      <label key={opt.key} className="flex items-center justify-between gap-2 rounded border border-border bg-surface-2 px-2 py-1.5">
+                      <label
+                        key={opt.key}
+                        className="flex items-center justify-between gap-2 rounded border border-border bg-surface-2 px-2 py-1.5"
+                      >
                         <a
                           href={`https://www.wowhead.com/spell=${opt.spellId}`}
                           target="_blank"
@@ -531,7 +541,9 @@ export default function StatWeightsPage() {
                         <input
                           type="checkbox"
                           checked={matrixRaidBuffs.includes(opt.key)}
-                          onChange={() => setMatrixRaidBuffs((prev) => toggleListValue(prev, opt.key))}
+                          onChange={() =>
+                            setMatrixRaidBuffs((prev) => toggleListValue(prev, opt.key))
+                          }
                           className="h-4 w-4 accent-gold"
                         />
                       </label>

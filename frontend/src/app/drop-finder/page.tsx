@@ -55,9 +55,15 @@ function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
   const specParam = useMemo(() => [...activeSpecs].sort().join(','), [activeSpecs]);
 
   useEffect(() => {
-    fetchJson<SeasonConfigResponse>(`${API_URL}/api/season-config`).then(setSeasonConfig).catch(() => {});
-    fetchJson<Instance[]>(`${API_URL}/api/instances`).then(setInstances).catch(() => {});
-    fetchJson<UpgradeTracks>(`${API_URL}/api/upgrade-tracks`).then(setUpgradeTracks).catch(() => {});
+    fetchJson<SeasonConfigResponse>(`${API_URL}/api/season-config`)
+      .then(setSeasonConfig)
+      .catch(() => {});
+    fetchJson<Instance[]>(`${API_URL}/api/instances`)
+      .then(setInstances)
+      .catch(() => {});
+    fetchJson<UpgradeTracks>(`${API_URL}/api/upgrade-tracks`)
+      .then(setUpgradeTracks)
+      .catch(() => {});
   }, []);
 
   const { raids, dungeonCats } = useMemo(() => {

@@ -7,7 +7,11 @@ import TopGearItemSelector from '../components/TopGearItemSelector';
 import { API_URL } from '../lib/api';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import type { ResolveGearResponse } from '../lib/types';
-import { loadTopGearSnapshot, saveTopGearSnapshot, type TopGearSnapshot } from '../lib/top-gear-snapshot';
+import {
+  loadTopGearSnapshot,
+  saveTopGearSnapshot,
+  type TopGearSnapshot,
+} from '../lib/top-gear-snapshot';
 
 export default function TopGearPage() {
   const { simcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
@@ -113,7 +117,9 @@ export default function TopGearPage() {
     const snapshot = pendingRestoreRef.current;
     if (!snapshot || !resolved) return;
     setSelectedUids(
-      Object.fromEntries(Object.entries(snapshot.selectedUids).map(([slot, arr]) => [slot, new Set(arr)]))
+      Object.fromEntries(
+        Object.entries(snapshot.selectedUids).map(([slot, arr]) => [slot, new Set(arr)])
+      )
     );
     setLocalItems(snapshot.localItems || []);
     pendingRestoreRef.current = null;

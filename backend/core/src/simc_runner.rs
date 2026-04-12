@@ -440,17 +440,19 @@ pub async fn run_simc(
         .get("iterations")
         .and_then(|v| v.as_u64())
         .unwrap_or(1000) as u32;
-    let sim_type = options.get("sim_type").and_then(|v| v.as_str()).unwrap_or("quick");
+    let sim_type = options
+        .get("sim_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("quick");
     let is_stat_weights = sim_type == "stat_weights";
     let is_stat_plot = sim_type == "stat_plot";
     let raid_buff_customized = options
         .get("raid_buff_customized")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let apply_default_overrides =
-        sim_type != "external_buff_matrix"
-            && sim_type != "consumable_matrix"
-            && !raid_buff_customized;
+    let apply_default_overrides = sim_type != "external_buff_matrix"
+        && sim_type != "consumable_matrix"
+        && !raid_buff_customized;
     let t = resolve_threads(options);
     let d = options
         .get("desired_targets")
@@ -555,10 +557,9 @@ pub async fn run_simc_staged(
         .get("raid_buff_customized")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let apply_default_overrides =
-        sim_type != "external_buff_matrix"
-            && sim_type != "consumable_matrix"
-            && !raid_buff_customized;
+    let apply_default_overrides = sim_type != "external_buff_matrix"
+        && sim_type != "consumable_matrix"
+        && !raid_buff_customized;
 
     if combo_count < 10 {
         on_p(5, "Simulating", &format!("{} combos", combo_count));

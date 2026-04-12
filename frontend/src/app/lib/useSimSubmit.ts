@@ -31,7 +31,9 @@ function normalizeRealm(realm: string): string {
     .replace(/[\s_-]+/g, '');
 }
 
-function extractSimcIdentity(simcInput: string): { name: string; realm: string; region: string } | null {
+function extractSimcIdentity(
+  simcInput: string
+): { name: string; realm: string; region: string } | null {
   const lines = simcInput.split(/\r?\n/);
   let name = '';
   let realm = '';
@@ -116,11 +118,11 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
       if (!identity) return;
 
       try {
-        const data = await fetchJson<{ characters: Array<{ name: string; realm: string; region: string }> }>(
-          `${API_URL}/api/bnet/user/characters`
-        );
-        const characters = Array.isArray((data as unknown))
-          ? ((data as unknown) as Array<{ name: string; realm: string; region: string }>)
+        const data = await fetchJson<{
+          characters: Array<{ name: string; realm: string; region: string }>;
+        }>(`${API_URL}/api/bnet/user/characters`);
+        const characters = Array.isArray(data as unknown)
+          ? (data as unknown as Array<{ name: string; realm: string; region: string }>)
           : data?.characters || [];
 
         const match = characters.find((c) => {

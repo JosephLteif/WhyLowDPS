@@ -35,7 +35,9 @@ function useSpellIcons(spellIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) iconCache.set(id, data.icon);
@@ -64,14 +66,22 @@ export default function ExternalBuffMatrixChart({
   const rows = useMemo(
     () =>
       results
-        .filter((r) => !String(r.name || '').toLowerCase().includes('currently equipped'))
+        .filter(
+          (r) =>
+            !String(r.name || '')
+              .toLowerCase()
+              .includes('currently equipped')
+        )
         .map((r) => {
           const tagged = Array.isArray(r.items)
             ? r.items.find((i) => typeof i.external_buff === 'string')
             : null;
           const buffName =
             (tagged && typeof tagged.external_buff === 'string' ? tagged.external_buff : null) ||
-            String(r.name || '').split('|').pop()?.trim() ||
+            String(r.name || '')
+              .split('|')
+              .pop()
+              ?.trim() ||
             String(r.name || 'Unknown');
           const meta = BUFF_META[buffName];
           return {
@@ -93,7 +103,8 @@ export default function ExternalBuffMatrixChart({
     <div className="card p-5">
       <h3 className="mb-2 text-sm font-semibold text-zinc-100">External Buff Matrix</h3>
       <p className="mb-4 text-xs text-zinc-400">
-        Baseline DPS: {Math.round(baseDps).toLocaleString()}. Values below are gain/loss vs baseline.
+        Baseline DPS: {Math.round(baseDps).toLocaleString()}. Values below are gain/loss vs
+        baseline.
       </p>
 
       <div className="space-y-2">

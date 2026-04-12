@@ -10,10 +10,7 @@ import { specDisplayName } from '../lib/types';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
-import {
-  OptionEntry,
-  RAID_BUFF_MATRIX_OPTIONS,
-} from '../lib/sim-options-catalog';
+import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 
 /** Adler-32 checksum matching the SimC addon's implementation.
  *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
@@ -152,7 +149,7 @@ function SimcInputEditor({
           onScroll={syncScroll}
           placeholder={placeholder}
           spellCheck={false}
-          className={`absolute inset-0 ${editorHeight} w-full overflow-auto bg-transparent px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-transparent caret-zinc-100 placeholder-zinc-500 focus:outline-none`}
+          className={`absolute inset-0 ${editorHeight} w-full overflow-auto bg-transparent px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-transparent placeholder-zinc-500 caret-zinc-100 focus:outline-none`}
         />
       </div>
     </div>
@@ -220,9 +217,7 @@ function remapQuality(quality: number | undefined, familyMax: number | undefined
 }
 
 function optionSelectLabel(opt: OptionEntry) {
-  return (opt.label || '')
-    .replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '')
-    .replace(/\s+[1-3]\s*$/i, '');
+  return (opt.label || '').replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '').replace(/\s+[1-3]\s*$/i, '');
 }
 
 function QualityBadge({ quality }: { quality?: number }) {
@@ -339,7 +334,7 @@ function ConsumableSelect({
         </button>
         {open && (
           <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-surface shadow-xl">
-            <div
+            <button
               type="button"
               onClick={() => {
                 onChange('');
@@ -349,7 +344,7 @@ function ConsumableSelect({
             >
               <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
               <span className="truncate">None</span>
-            </div>
+            </button>
             {options.map((opt) => {
               const q = remapQuality(
                 opt.craftingQuality,
@@ -479,8 +474,7 @@ function AdvancedOptions() {
 
   const hasExpertContent = Object.values(expertValues).some((v) => v.trim());
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
-  const selectedFlaskOption =
-    flasks.find((opt) => (opt.token || '') === consumableFlask) || null;
+  const selectedFlaskOption = flasks.find((opt) => (opt.token || '') === consumableFlask) || null;
   const selectedPotionOption =
     potions.find((opt) => (opt.token || '') === consumablePotion) || null;
   const selectedAugmentationOption =
@@ -671,7 +665,8 @@ function AdvancedOptions() {
             <div>
               <p className="text-sm font-medium text-zinc-200">Consumables</p>
               <p className="text-[13px] text-zinc-500">
-                Select one per category for normal sims. Use Stat Weights matrix to compare many at once.
+                Select one per category for normal sims. Use Stat Weights matrix to compare many at
+                once.
               </p>
               {lockSingleConsumableOptions && (
                 <p className="mt-1 text-[12px] text-amber-300">
@@ -737,9 +732,7 @@ function AdvancedOptions() {
               </div>
 
               <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Food
-                </p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Food</p>
                 <ConsumableSelect
                   label="Active Food Buff"
                   value={consumableFood}
@@ -809,7 +802,7 @@ function AdvancedOptions() {
                                       ? setExternalBuffSkyfury
                                       : buff.key === 'power_infusion'
                                         ? setExternalBuffPowerInfusion
-                                        : ((_: boolean) => {});
+                                        : (_: boolean) => {};
 
                 return (
                   <label
@@ -944,9 +937,8 @@ export default function SimSharedConfig() {
   const { simcInput, setSimcInput } = useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
 
-  const normalizedPath = pathname.endsWith('/') && pathname !== '/'
-    ? pathname.slice(0, -1)
-    : pathname;
+  const normalizedPath =
+    pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
 
   const showConfig =
     normalizedPath === '/quick-sim' ||

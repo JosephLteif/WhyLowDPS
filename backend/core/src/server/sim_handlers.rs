@@ -43,8 +43,7 @@ pub(super) async fn create_sim(
         return create_trinket_tier_heatmap_sim(
             simc_input,
             class_name.unwrap_or_default(),
-            req.options.include_trinket_matrix,
-            req.options.include_tier_matrix,
+            (req.options.include_trinket_matrix, req.options.include_tier_matrix),
             &req.options,
             store,
             simc_path,
@@ -185,6 +184,17 @@ struct ConsumableScenario {
     lines: Vec<String>,
 }
 
+type ComboMetadata = HashMap<String, Vec<Value>>;
+type MatrixBuildResult = Result<(String, usize, ComboMetadata), String>;
+
+struct ResolvedItemSeed {
+    name: String,
+    icon: String,
+    quality: i64,
+    ilevel: i64,
+    bonus_ids: Vec<u64>,
+}
+
 fn sanitize_matrix_token(input: &str) -> Option<String> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -221,7 +231,7 @@ fn raid_buff_line(buff_key: &str) -> Option<&'static str> {
 fn build_external_buff_matrix_input(
     simc_input: &str,
     options: &SimOptions,
-) -> Result<(String, usize, HashMap<String, Vec<Value>>), String> {
+) -> MatrixBuildResult {
     let (base_lines, equipped_gear, talents, _spec) =
         crate::profileset_generator::parser::parse_base_profile(simc_input);
 
@@ -271,18 +281,11 @@ fn build_external_buff_matrix_input(
     }
 
     let mut lines: Vec<String> = Vec::new();
-    let mut combo_metadata: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut combo_metadata: ComboMetadata = HashMap::new();
     lines.push("optimal_raid=0".to_string());
     lines.push(String::new());
     lines.push("# Base Actor".to_string());
     lines.extend(base_lines);
-    // Force matrix baseline to "no consumables" so each scenario delta is
-    // measured against a true empty-consumables profile.
-    lines.push("flask=".to_string());
-    lines.push("food=".to_string());
-    lines.push("potion=".to_string());
-    lines.push("augmentation=".to_string());
-    lines.push("temporary_enchant=".to_string());
     lines.push("### Combo 1".to_string());
     for slot in crate::types::class_data::GEAR_SLOTS {
         if let Some(gear) = equipped_gear.get(*slot) {
@@ -304,7 +307,10 @@ fn build_external_buff_matrix_input(
             lines.push(format!("profileset.\"{}\"+={}", combo_name, line));
         }
         if !talents.is_empty() {
-            lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
+            lines.push(format!(
+                "profileset.\"{}\"+=talents={}",
+                combo_name, talents
+            ));
         }
         lines.push(String::new());
 
@@ -319,13 +325,17 @@ fn build_external_buff_matrix_input(
         combo_index += 1;
     }
 
-    Ok((lines.join("\n"), combo_index.saturating_sub(2), combo_metadata))
+    Ok((
+        lines.join("\n"),
+        combo_index.saturating_sub(2),
+        combo_metadata,
+    ))
 }
 
 fn build_consumable_matrix_input(
     simc_input: &str,
     options: &SimOptions,
-) -> Result<(String, usize, HashMap<String, Vec<Value>>), String> {
+) -> MatrixBuildResult {
     let (base_lines, equipped_gear, talents, _spec) =
         crate::profileset_generator::parser::parse_base_profile(simc_input);
 
@@ -429,11 +439,18 @@ fn build_consumable_matrix_input(
     }
 
     let mut lines: Vec<String> = Vec::new();
-    let mut combo_metadata: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut combo_metadata: ComboMetadata = HashMap::new();
     lines.push("optimal_raid=0".to_string());
     lines.push(String::new());
     lines.push("# Base Actor".to_string());
     lines.extend(base_lines);
+    // Force matrix baseline to "no consumables" so each scenario delta is
+    // measured against a true empty-consumables profile.
+    lines.push("flask=".to_string());
+    lines.push("food=".to_string());
+    lines.push("potion=".to_string());
+    lines.push("augmentation=".to_string());
+    lines.push("temporary_enchant=".to_string());
     lines.push("### Combo 1".to_string());
     for slot in crate::types::class_data::GEAR_SLOTS {
         if let Some(gear) = equipped_gear.get(*slot) {
@@ -455,7 +472,10 @@ fn build_consumable_matrix_input(
             lines.push(format!("profileset.\"{}\"+={}", combo_name, line));
         }
         if !talents.is_empty() {
-            lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
+            lines.push(format!(
+                "profileset.\"{}\"+=talents={}",
+                combo_name, talents
+            ));
         }
         lines.push(String::new());
         combo_metadata.insert(
@@ -470,7 +490,11 @@ fn build_consumable_matrix_input(
         combo_index += 1;
     }
 
-    Ok((lines.join("\n"), combo_index.saturating_sub(2), combo_metadata))
+    Ok((
+        lines.join("\n"),
+        combo_index.saturating_sub(2),
+        combo_metadata,
+    ))
 }
 
 fn build_simc_item_string(item_id: u64, bonus_ids: &[u64]) -> String {
@@ -489,24 +513,20 @@ fn build_simc_item_string(item_id: u64, bonus_ids: &[u64]) -> String {
 fn make_resolved_item(
     slot: &str,
     item_id: u64,
-    name: String,
-    icon: String,
-    quality: i64,
-    ilevel: i64,
-    bonus_ids: Vec<u64>,
+    seed: ResolvedItemSeed,
     origin: crate::types::ItemOrigin,
     inventory_type: i64,
 ) -> crate::types::ResolvedItem {
-    let uid_bonus = if bonus_ids.is_empty() {
+    let uid_bonus = if seed.bonus_ids.is_empty() {
         "0".to_string()
     } else {
-        bonus_ids
+        seed.bonus_ids
             .iter()
             .map(|b| b.to_string())
             .collect::<Vec<_>>()
             .join("-")
     };
-    let simc_string = build_simc_item_string(item_id, &bonus_ids);
+    let simc_string = build_simc_item_string(item_id, &seed.bonus_ids);
     crate::types::ResolvedItem {
         uid: format!(
             "{}:{}:{}:{}",
@@ -517,16 +537,16 @@ fn make_resolved_item(
         ),
         slot: slot.to_string(),
         item_id,
-        ilevel,
+        ilevel: seed.ilevel,
         simc_string,
         origin,
-        bonus_ids,
+        bonus_ids: seed.bonus_ids,
         enchant_id: 0,
         gem_id: 0,
-        name,
-        icon,
-        quality,
-        quality_color: crate::types::class_data::quality_color(quality as u64).to_string(),
+        name: seed.name,
+        icon: seed.icon,
+        quality: seed.quality,
+        quality_color: crate::types::class_data::quality_color(seed.quality as u64).to_string(),
         tag: String::new(),
         upgrade: String::new(),
         sockets: 0,
@@ -545,7 +565,7 @@ fn build_heatmap_profileset_input(
     class_name: &str,
     include_trinket_matrix: bool,
     include_tier_matrix: bool,
-) -> Result<(String, usize, HashMap<String, Vec<Value>>), String> {
+) -> MatrixBuildResult {
     let parse_result = addon_parser::parse_simc_input(simc_input);
     let base_profile = parse_result.base_profile.clone();
     let resolved = gear_resolver::resolve_gear(&parse_result);
@@ -561,7 +581,7 @@ fn build_heatmap_profileset_input(
         crate::profileset_generator::parser::parse_base_profile(&base_profile);
 
     let mut lines: Vec<String> = Vec::new();
-    let mut combo_metadata: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut combo_metadata: ComboMetadata = HashMap::new();
 
     lines.push("# Base Actor".to_string());
     lines.extend(base_lines);
@@ -672,11 +692,13 @@ fn build_heatmap_profileset_input(
                     let item = make_resolved_item(
                         "trinket",
                         item_id,
-                        item_name.clone(),
-                        item_icon.clone(),
-                        item_quality,
-                        ilvl,
-                        if bonus_id > 0 { vec![bonus_id] } else { vec![] },
+                        ResolvedItemSeed {
+                            name: item_name.clone(),
+                            icon: item_icon.clone(),
+                            quality: item_quality,
+                            ilevel: ilvl,
+                            bonus_ids: if bonus_id > 0 { vec![bonus_id] } else { vec![] },
+                        },
                         crate::types::ItemOrigin::Bags,
                         12,
                     );
@@ -693,11 +715,13 @@ fn build_heatmap_profileset_input(
                 let item = make_resolved_item(
                     "trinket",
                     item_id,
-                    item_name.clone(),
-                    item_icon.clone(),
-                    item_quality,
-                    ilvl,
-                    vec![],
+                    ResolvedItemSeed {
+                        name: item_name.clone(),
+                        icon: item_icon.clone(),
+                        quality: item_quality,
+                        ilevel: ilvl,
+                        bonus_ids: vec![],
+                    },
                     crate::types::ItemOrigin::Bags,
                     12,
                 );
@@ -744,7 +768,10 @@ fn build_heatmap_profileset_input(
                     combo_name, t2.item.simc_string
                 ));
                 if !talents.is_empty() {
-                    lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
+                    lines.push(format!(
+                        "profileset.\"{}\"+=talents={}",
+                        combo_name, talents
+                    ));
                 }
                 lines.push(String::new());
 
@@ -769,30 +796,30 @@ fn build_heatmap_profileset_input(
     if include_tier_matrix {
         let class_id = crate::types::class_data::class_wow_id(class_name).unwrap_or(0);
         if class_id > 0 {
-        let tier_slots = ["head", "shoulder", "chest", "hands", "legs"];
-        let mut tier_options: Vec<(String, crate::types::ResolvedItem)> = Vec::new();
+            let tier_slots = ["head", "shoulder", "chest", "hands", "legs"];
+            let mut tier_options: Vec<(String, crate::types::ResolvedItem)> = Vec::new();
 
-        for slot in tier_slots {
-            let Some(slot_res) = resolved.slots.get(slot) else {
-                continue;
-            };
-            let Some(equipped) = slot_res.equipped.as_ref() else {
-                continue;
-            };
-            let inv_type = gear_resolver::slot_to_inv_type(slot).unwrap_or(0);
-            if inv_type == 0 {
-                continue;
+            for slot in tier_slots {
+                let Some(slot_res) = resolved.slots.get(slot) else {
+                    continue;
+                };
+                let Some(equipped) = slot_res.equipped.as_ref() else {
+                    continue;
+                };
+                let inv_type = gear_resolver::slot_to_inv_type(slot).unwrap_or(0);
+                if inv_type == 0 {
+                    continue;
+                }
+                let Some(tier_info) = crate::item_db::catalyst_tier_item(class_id, inv_type) else {
+                    continue;
+                };
+                let mut converted = gear_resolver::build_catalyst_item(equipped, &tier_info, slot);
+                converted.origin = crate::types::ItemOrigin::Bags;
+                if converted.item_id == 0 || converted.simc_string.is_empty() {
+                    continue;
+                }
+                tier_options.push((slot.to_string(), converted));
             }
-            let Some(tier_info) = crate::item_db::catalyst_tier_item(class_id, inv_type) else {
-                continue;
-            };
-            let mut converted = gear_resolver::build_catalyst_item(equipped, &tier_info, slot);
-            converted.origin = crate::types::ItemOrigin::Bags;
-            if converted.item_id == 0 || converted.simc_string.is_empty() {
-                continue;
-            }
-            tier_options.push((slot.to_string(), converted));
-        }
 
             let n = tier_options.len();
             if n > 0 {
@@ -819,7 +846,10 @@ fn build_heatmap_profileset_input(
                             .push(crate::profileset_generator::writer::item_meta(item, slot));
                     }
                     if !talents.is_empty() {
-                        lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
+                        lines.push(format!(
+                            "profileset.\"{}\"+=talents={}",
+                            combo_name, talents
+                        ));
                     }
                     lines.push(String::new());
 
@@ -846,28 +876,27 @@ fn build_heatmap_profileset_input(
 async fn create_trinket_tier_heatmap_sim(
     simc_input: String,
     class_name: String,
-    include_trinket_matrix: bool,
-    include_tier_matrix: bool,
+    matrix_flags: (bool, bool),
     options: &SimOptions,
     store: web::Data<Arc<dyn JobStorage>>,
     simc_path: web::Data<PathBuf>,
     log_buffer: web::Data<Arc<LogBuffer>>,
 ) -> HttpResponse {
+    let (include_trinket_matrix, include_tier_matrix) = matrix_flags;
     if !include_trinket_matrix && !include_tier_matrix {
         return HttpResponse::BadRequest().json(json!({
             "detail": "Enable at least one matrix option (Trinkets or Tier Sets)."
         }));
     }
-    let (generated_input, combo_count, combo_metadata) =
-        match build_heatmap_profileset_input(
-            &simc_input,
-            &class_name,
-            include_trinket_matrix,
-            include_tier_matrix,
-        ) {
-            Ok(v) => v,
-            Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
-        };
+    let (generated_input, combo_count, combo_metadata) = match build_heatmap_profileset_input(
+        &simc_input,
+        &class_name,
+        include_trinket_matrix,
+        include_tier_matrix,
+    ) {
+        Ok(v) => v,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
 
     let mut generated_input = inject_expert_fields(&generated_input, options);
     generated_input = apply_shared_simc_options(&generated_input, options, true);

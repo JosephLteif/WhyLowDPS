@@ -234,8 +234,8 @@ pub fn load_instances(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let data: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let data: Vec<Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
     let mut inst = INSTANCES.write().unwrap();
     *inst = data;
 }
@@ -267,8 +267,8 @@ pub fn load_season_config(data_dir: &Path) {
             Ok(f) => f,
             Err(_) => return,
         };
-        let cfg: Value = serde_json::from_reader(std::io::BufReader::new(file))
-            .unwrap_or(Value::Null);
+        let cfg: Value =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or(Value::Null);
         let mut sc = SEASON_CONFIG.write().unwrap();
         *sc = cfg;
     }
@@ -284,8 +284,8 @@ pub fn load_item_limit_categories(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let raw: HashMap<String, Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let raw: HashMap<String, Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
     let cats: HashMap<u64, u64> = raw
         .into_iter()
@@ -318,8 +318,8 @@ pub fn load_talents(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let data: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let data: Vec<Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
     let map: HashMap<u64, Value> = data
         .into_iter()
@@ -338,8 +338,8 @@ pub fn load_squish_data(data_dir: &Path) {
             Ok(f) => f,
             Err(_) => return,
         };
-        let data: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(file))
-            .unwrap_or_default();
+        let data: Vec<Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
         let map: HashMap<u64, u64> = data
             .iter()
             .filter_map(|entry| {
@@ -361,8 +361,8 @@ pub fn load_squish_data(data_dir: &Path) {
             Ok(f) => f,
             Err(_) => return,
         };
-        let data: HashMap<String, Value> = serde_json::from_reader(std::io::BufReader::new(file))
-            .unwrap_or_default();
+        let data: HashMap<String, Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
         let map: HashMap<u64, Vec<(u64, u64)>> = data
             .into_iter()
             .filter_map(|(key, val)| {
@@ -394,8 +394,8 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let data: HashMap<String, Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let data: HashMap<String, Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
     let latest_group = data.iter().filter_map(|(k, _)| k.parse::<u64>().ok()).max();
     if let Some(group_id) = latest_group {

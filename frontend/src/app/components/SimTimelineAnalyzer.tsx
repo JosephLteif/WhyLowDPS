@@ -222,10 +222,7 @@ export default function SimTimelineAnalyzer({
   const [sequenceView, setSequenceView] = useState<'lanes' | 'table'>('lanes');
   const [sequenceZoom, setSequenceZoom] = useState<1 | 2 | 4>(2);
   const events = useMemo(() => timeline.events || [], [timeline.events]);
-  const cooldownEvents = useMemo(
-    () => timeline.cooldown_events || [],
-    [timeline.cooldown_events]
-  );
+  const cooldownEvents = useMemo(() => timeline.cooldown_events || [], [timeline.cooldown_events]);
   const dpsSeries = useMemo(() => timeline.dps_series || [], [timeline.dps_series]);
   const resourceSeries = useMemo(() => timeline.resource_series || [], [timeline.resource_series]);
   const resourceSeriesMap = useMemo(() => {
@@ -439,13 +436,17 @@ export default function SimTimelineAnalyzer({
         <div className="rounded-lg border border-border/70 bg-surface-2/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-wide text-zinc-500">Avg Action Gap</p>
           <p className="mt-1 font-mono text-sm text-zinc-100">
-            {aplAnalysis?.gcd_spacing?.avg != null ? `${aplAnalysis.gcd_spacing.avg.toFixed(3)}s` : '-'}
+            {aplAnalysis?.gcd_spacing?.avg != null
+              ? `${aplAnalysis.gcd_spacing.avg.toFixed(3)}s`
+              : '-'}
           </p>
         </div>
       </div>
 
       <div className="rounded-lg border border-border/70 bg-surface-2/70 p-4">
-        <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">DPS Timeline</h4>
+        <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">
+          DPS Timeline
+        </h4>
         {dpsSeries.length > 0 ? (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -467,7 +468,10 @@ export default function SimTimelineAnalyzer({
                     color: '#f4f4f5',
                     fontSize: 12,
                   }}
-                  formatter={(value: number) => [`${Math.round(value).toLocaleString()} DPS`, 'DPS']}
+                  formatter={(value: number) => [
+                    `${Math.round(value).toLocaleString()} DPS`,
+                    'DPS',
+                  ]}
                   labelFormatter={(label) => `Time ${formatTime(Number(label))}s`}
                 />
                 <Line
@@ -497,7 +501,9 @@ export default function SimTimelineAnalyzer({
 
       {resourceKeys.length > 0 && (
         <div className="rounded-lg border border-border/70 bg-surface-2/70 p-4">
-          <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">Resource Timelines</h4>
+          <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">
+            Resource Timelines
+          </h4>
           <div className="space-y-4">
             {resourceKeys.map((resourceKey) => {
               const baseSeries = resourceSeriesMap[resourceKey] || [];
@@ -519,7 +525,10 @@ export default function SimTimelineAnalyzer({
                   </p>
                   <div className="h-40">
                     <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={series} margin={{ top: 10, right: 14, left: -8, bottom: 0 }}>
+                      <ComposedChart
+                        data={series}
+                        margin={{ top: 10, right: 14, left: -8, bottom: 0 }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
                         <XAxis
                           dataKey="t"
@@ -544,7 +553,9 @@ export default function SimTimelineAnalyzer({
                             fontSize: 12,
                           }}
                           formatter={(value: number) => [
-                            cfg.discrete ? String(Math.round(Number(value))) : Number(value).toFixed(1),
+                            cfg.discrete
+                              ? String(Math.round(Number(value)))
+                              : Number(value).toFixed(1),
                             formatResource(resourceKey),
                           ]}
                           labelFormatter={(label) => `Time ${formatTime(Number(label))}s`}
@@ -569,13 +580,18 @@ export default function SimTimelineAnalyzer({
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-border/70 bg-surface-2/70 p-4">
-          <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">Top APL Actions</h4>
+          <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">
+            Top APL Actions
+          </h4>
           {topActions.length === 0 ? (
             <p className="text-sm text-zinc-500">No action data available.</p>
           ) : (
             <div className="space-y-1.5">
               {topActions.map((action) => (
-                <div key={action.name} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-white/[0.02]">
+                <div
+                  key={action.name}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-white/[0.02]"
+                >
                   {(() => {
                     const resolved = resolveTimelineAction(action.name, action.spell_id);
                     if (resolved.kind === 'item' && resolved.item?.item_id) {
@@ -625,7 +641,9 @@ export default function SimTimelineAnalyzer({
                   <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">
                     {resolveTimelineAction(action.name, action.spell_id).label}
                   </span>
-                  <span className="w-12 text-right font-mono text-xs text-zinc-400">{action.count}</span>
+                  <span className="w-12 text-right font-mono text-xs text-zinc-400">
+                    {action.count}
+                  </span>
                   <span className="w-14 text-right font-mono text-xs text-zinc-500">
                     {action.share_pct.toFixed(1)}%
                   </span>
@@ -636,7 +654,9 @@ export default function SimTimelineAnalyzer({
         </div>
 
         <div className="rounded-lg border border-border/70 bg-surface-2/70 p-4">
-          <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">Buff Uptimes</h4>
+          <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">
+            Buff Uptimes
+          </h4>
           {buffUptimes.length === 0 ? (
             <p className="text-sm text-zinc-500">No buff uptime data available.</p>
           ) : (
@@ -657,7 +677,9 @@ export default function SimTimelineAnalyzer({
                     ) : (
                       <span className="h-5 w-5 shrink-0 rounded-[3px] bg-surface" />
                     )}
-                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">{buff.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">
+                      {buff.name}
+                    </span>
                     <span className="w-14 text-right font-mono text-xs text-zinc-400">
                       {buff.uptime_pct.toFixed(2)}%
                     </span>
@@ -677,14 +699,18 @@ export default function SimTimelineAnalyzer({
 
       <div className="rounded-lg border border-border/70 bg-surface-2/70 p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-medium uppercase tracking-widest text-muted">Action Sequence</h4>
+          <h4 className="text-xs font-medium uppercase tracking-widest text-muted">
+            Action Sequence
+          </h4>
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-md border border-border bg-surface p-0.5 text-[12px]">
               <button
                 type="button"
                 onClick={() => setSequenceView('lanes')}
                 className={`rounded px-2 py-1 transition-colors ${
-                  sequenceView === 'lanes' ? 'bg-gold/15 text-gold' : 'text-zinc-400 hover:text-zinc-200'
+                  sequenceView === 'lanes'
+                    ? 'bg-gold/15 text-gold'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 Timeline Lanes
@@ -693,7 +719,9 @@ export default function SimTimelineAnalyzer({
                 type="button"
                 onClick={() => setSequenceView('table')}
                 className={`rounded px-2 py-1 transition-colors ${
-                  sequenceView === 'table' ? 'bg-gold/15 text-gold' : 'text-zinc-400 hover:text-zinc-200'
+                  sequenceView === 'table'
+                    ? 'bg-gold/15 text-gold'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 Table
@@ -800,7 +828,8 @@ export default function SimTimelineAnalyzer({
                     style={{ width: `${laneTimelineWidth}px` }}
                   >
                     {lane.events.map((event, idx) => {
-                      const leftPct = ((event.t - laneTimeBounds.min) / laneTimeBounds.duration) * 100;
+                      const leftPct =
+                        ((event.t - laneTimeBounds.min) / laneTimeBounds.duration) * 100;
                       const nextT = lane.events[idx + 1]?.t;
                       const widthPct =
                         nextT != null
@@ -818,7 +847,10 @@ export default function SimTimelineAnalyzer({
                             title={`${lane.spellName} @ ${formatTime(event.t)}s`}
                           />
                           {(() => {
-                            const resolved = resolveTimelineAction(event.spell_name, event.spell_id);
+                            const resolved = resolveTimelineAction(
+                              event.spell_name,
+                              event.spell_id
+                            );
                             if (resolved.kind === 'item' && resolved.item?.item_id) {
                               return (
                                 <a
@@ -842,7 +874,11 @@ export default function SimTimelineAnalyzer({
                                   title={`${resolved.label} @ ${formatTime(event.t)}s`}
                                 >
                                   {resolved.item.icon ? (
-                                    <img src={getIconUrl(resolved.item.icon)} alt="" className="h-full w-full" />
+                                    <img
+                                      src={getIconUrl(resolved.item.icon)}
+                                      alt=""
+                                      className="h-full w-full"
+                                    />
                                   ) : (
                                     <span className="block h-full w-full bg-surface" />
                                   )}
@@ -902,7 +938,10 @@ export default function SimTimelineAnalyzer({
               </thead>
               <tbody>
                 {visibleEvents.map((event, idx) => (
-                  <tr key={`${event.t}_${event.spell_name}_${idx}`} className="border-t border-border/40">
+                  <tr
+                    key={`${event.t}_${event.spell_name}_${idx}`}
+                    className="border-t border-border/40"
+                  >
                     <td className="px-2 py-1.5 font-mono text-zinc-400">{formatTime(event.t)}s</td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center gap-2">
@@ -964,7 +1003,7 @@ export default function SimTimelineAnalyzer({
                           Queue Fail
                         </span>
                       ) : (
-                        <span className="rounded bg-emerald-500/12 px-1.5 py-0.5 text-[11px] text-emerald-300">
+                        <span className="bg-emerald-500/12 rounded px-1.5 py-0.5 text-[11px] text-emerald-300">
                           Cast
                         </span>
                       )}
@@ -977,7 +1016,8 @@ export default function SimTimelineAnalyzer({
         )}
         {timeline.events_truncated && (
           <p className="mt-2 text-[12px] text-zinc-500">
-            Timeline payload was capped for response size. Run with fewer iterations if you need the full sequence.
+            Timeline payload was capped for response size. Run with fewer iterations if you need the
+            full sequence.
           </p>
         )}
       </div>

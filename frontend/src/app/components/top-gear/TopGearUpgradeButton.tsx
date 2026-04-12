@@ -32,9 +32,35 @@ export default function TopGearUpgradeButton({
 }: TopGearUpgradeButtonProps) {
   if (!item.upgrade && !onCatalystConvert && !onOptimize) return null;
   const isMenuOpen = upgradeMenuFor === item.uid;
+  const upgradeLower = item.upgrade.toLowerCase();
+  const track = upgradeLower.includes('champion')
+    ? 'Champion'
+    : upgradeLower.includes('myth')
+      ? 'Mythic'
+      : upgradeLower.includes('hero')
+        ? 'Heroic'
+        : upgradeLower.includes('crafted')
+          ? 'Crafted'
+          : 'Unknown';
+  const trackColorClass =
+    track === 'Champion'
+      ? 'text-emerald-300'
+      : track === 'Mythic'
+        ? 'text-purple-300'
+        : track === 'Heroic'
+          ? 'text-sky-300'
+          : 'text-zinc-400';
+  const trackBgClass =
+    track === 'Champion'
+      ? 'border-emerald-400/40 bg-emerald-500/10'
+      : track === 'Mythic'
+        ? 'border-purple-400/40 bg-purple-500/10'
+        : track === 'Heroic'
+          ? 'border-sky-400/40 bg-sky-500/10'
+          : 'border-white/10 bg-white/[0.03]';
 
   return (
-    <div className="relative flex shrink-0 items-center gap-0.5">
+    <div className="relative flex shrink-0 items-center gap-1">
       {onOptimize && (
         <button
           type="button"
@@ -43,10 +69,10 @@ export default function TopGearUpgradeButton({
             e.preventDefault();
             onOptimize();
           }}
-          className="flex h-5 w-5 items-center justify-center rounded text-gray-600 transition-colors hover:bg-white/[0.05] hover:text-gold"
-          title="Optimize Gems/Enchants"
+          className="flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-gradient-to-br from-emerald-500/30 via-amber-400/30 to-fuchsia-500/30 text-amber-100 transition-colors hover:from-emerald-500/40 hover:via-amber-400/40 hover:to-fuchsia-500/40"
+          title="Optimize Enchants and Sockets"
         >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
+          <svg className="h-4 w-4" viewBox="0 0 16 16" fill="currentColor">
             <path d="M8 1a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 1zm3.536 2.22a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.06zM15 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0115 8zm-2.22 3.536a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0zM8 15a.75.75 0 01-.75-.75v-1.5a.75.75 0 011.5 0v1.5A.75.75 0 018 15zm-3.536-2.22a.75.75 0 01-1.06 0l-1.061-1.06a.75.75 0 011.06-1.061l1.061 1.06a.75.75 0 010 1.06zM1 8a.75.75 0 01.75-.75h1.5a.75.75 0 010 1.5h-1.5A.75.75 0 011 8zm2.22-3.536a.75.75 0 010-1.06l1.06-1.061a.75.75 0 011.061 1.06l-1.06 1.061a.75.75 0 01-1.061 0z" />
           </svg>
         </button>
@@ -60,12 +86,12 @@ export default function TopGearUpgradeButton({
             e.preventDefault();
             onUpgradeClick();
           }}
-          className={`flex h-5 w-5 items-center justify-center rounded transition-colors ${
+          className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
             isMenuOpen
-              ? 'bg-gold/20 text-gold'
-              : 'text-gray-600 hover:bg-white/[0.05] hover:text-gray-400'
+              ? 'border-gold/50 bg-gold/20 text-gold'
+              : `${trackBgClass} ${trackColorClass} hover:brightness-110`
           }`}
-          title="Add copy at different upgrade level"
+          title={`Upgrade Track: ${track}`}
         >
           <svg
             className="h-3 w-3"

@@ -20,13 +20,22 @@ interface TopGearSlotGroupProps {
   upgradeMenuFor: string | null;
   upgradeOptions: UpgradeOption[];
   loadingUpgrades: boolean;
+  showSelectionBoxes: boolean;
   onToggle: (item: ResolvedItem) => void;
   onAddClick: (slot: string) => void;
   onUpgradeClick: (item: ResolvedItem) => void;
   onUpgradeSelect: (item: ResolvedItem, opt: UpgradeOption) => void;
   onCatalystConvert: (item: ResolvedItem) => void;
   onOptimize: (item: ResolvedItem) => void;
-  itemDetails: (item: ResolvedItem) => { text: string; color?: string }[];
+  itemDetails: (item: ResolvedItem) => {
+    text: string;
+    color?: string;
+    kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+    icon?: string;
+    href?: string;
+    wowheadData?: string;
+    tooltip?: string;
+  }[];
   isItemSelected: (item: ResolvedItem) => boolean;
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
@@ -41,6 +50,7 @@ export default function TopGearSlotGroup({
   upgradeMenuFor,
   upgradeOptions,
   loadingUpgrades,
+  showSelectionBoxes,
   onToggle,
   onAddClick,
   onUpgradeClick,
@@ -55,12 +65,12 @@ export default function TopGearSlotGroup({
   return (
     <div className="card group/card space-y-1.5 p-4 transition-all hover:bg-white/[0.02]">
       <div className="flex items-center justify-between">
-        <h2 className="text-[10px] font-bold uppercase tracking-[0.25em] text-muted group-hover/card:text-gray-400">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-300 group-hover/card:text-zinc-100">
           {label}
         </h2>
         <button
           onClick={() => onAddClick(slots[0])}
-          className="flex h-5 w-5 items-center justify-center rounded-full bg-white/5 text-muted transition-all hover:bg-gold/10 hover:text-gold"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-zinc-400 transition-all hover:bg-gold/10 hover:text-gold"
           title={`Add ${label.toLowerCase()}`}
         >
           <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
@@ -73,7 +83,7 @@ export default function TopGearSlotGroup({
         </button>
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {equipped.map((item, idx) => (
           <GearItemRow
             key={`eq-${idx}`}
@@ -83,6 +93,7 @@ export default function TopGearSlotGroup({
             details={itemDetails(item)}
             ilevel={item.ilevel}
             equipped
+            showCheckbox={showSelectionBoxes}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
             optimized={item.enchant_id > 0 || item.gem_id > 0}
@@ -113,6 +124,7 @@ export default function TopGearSlotGroup({
             details={itemDetails(item)}
             ilevel={item.ilevel}
             selectable
+            showCheckbox={showSelectionBoxes}
             checked={isItemSelected(item)}
             onToggle={() => onToggle(item)}
             vault={item.origin === 'vault'}

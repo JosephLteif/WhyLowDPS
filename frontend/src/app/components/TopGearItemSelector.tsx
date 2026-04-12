@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchJsonCached } from '../lib/api';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import AddItemModal from './AddItemModal';
@@ -25,6 +25,21 @@ interface TopGearItemSelectorProps {
 interface DisplayGroup {
   label: string;
   slots: string[];
+}
+
+interface GemInfo {
+  gem_id: number;
+  name: string;
+  icon: string;
+  quality: number;
+}
+
+interface EnchantInfo {
+  enchant_id: number;
+  name: string;
+  icon: string;
+  item_id: number;
+  quality: number;
 }
 
 const DISPLAY_GROUPS: DisplayGroup[] = [
@@ -69,6 +84,15 @@ function makeUid(item: {
   return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
 }
 
+function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {
+  const match = simc.match(new RegExp(`(?:^|,)${key}=([0-9/:]+)`));
+  if (!match) return 0;
+  const rawValue = match[1].split('/')[0];
+  return Number.parseInt(rawValue, 10) || 0;
+}
+
+const SHOW_SELECTION_BOXES_KEY = 'top_gear_show_selection_boxes';
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -81,6 +105,9 @@ export default function TopGearItemSelector({
   const effectiveMaxCombinations = maxCombinations ?? 500;
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerVisible, setHeaderVisible] = useState(true);
+  const [showSelectionBoxes, setShowSelectionBoxes] = useState(false);
+  const [gemInfoById, setGemInfoById] = useState<Record<number, GemInfo>>({});
+  const [enchantInfoById, setEnchantInfoById] = useState<Record<number, EnchantInfo>>({});
 
   const {
     upgradeMenuFor,
@@ -111,7 +138,17 @@ export default function TopGearItemSelector({
     return () => obs.disconnect();
   }, []);
 
-  useWowheadTooltips([resolved]);
+  useEffect(() => {
+    const saved = localStorage.getItem(SHOW_SELECTION_BOXES_KEY);
+    if (saved == null) return;
+    setShowSelectionBoxes(saved === '1');
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(SHOW_SELECTION_BOXES_KEY, showSelectionBoxes ? '1' : '0');
+  }, [showSelectionBoxes]);
+
+  useWowheadTooltips([resolved, gemInfoById, enchantInfoById]);
 
   const convertToCatalyst = useCallback(
     async (item: ResolvedItem) => {
@@ -237,7 +274,6 @@ export default function TopGearItemSelector({
         enchant_id: enchantId,
         gem_id: firstGemId,
         simc_string: nextSimc,
-        tag: 'Opt',
       };
 
       const nextResolved = { ...resolved, slots: { ...resolved.slots } };
@@ -400,19 +436,178 @@ export default function TopGearItemSelector({
     return { vaultUids: vault, catalystUids: catalyst };
   }, [resolved]);
 
+  const { gemIds, enchantIds } = useMemo(() => {
+    const gems = new Set<number>();
+    const enchants = new Set<number>();
+
+    Object.values(resolved.slots).forEach((slotRes) => {
+      const items: ResolvedItem[] = [];
+      if (slotRes.equipped) items.push(slotRes.equipped);
+      items.push(...slotRes.alternatives);
+
+      items.forEach((item) => {
+        const gemId = item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
+        const enchantId =
+          item.enchant_id > 0
+            ? item.enchant_id
+            : parseFirstIdFromSimc(item.simc_string, 'enchant_id');
+        if (gemId > 0) gems.add(gemId);
+        if (enchantId > 0) enchants.add(enchantId);
+      });
+    });
+
+    return { gemIds: Array.from(gems), enchantIds: Array.from(enchants) };
+  }, [resolved]);
+
+  useEffect(() => {
+    const missingGemIds = gemIds.filter((id) => !gemInfoById[id]);
+    if (missingGemIds.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const fetched = await Promise.all(
+        missingGemIds.map(async (id) => {
+          try {
+            const info = await fetchJsonCached<GemInfo>(`${API_URL}/api/gem-info/${id}`, {
+              ttl: 60 * 60 * 1000,
+            });
+            return [id, info] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setGemInfoById((prev) => {
+        const next = { ...prev };
+        fetched.forEach((entry) => {
+          if (!entry) return;
+          const [id, info] = entry;
+          next[id] = info;
+        });
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [gemIds, gemInfoById]);
+
+  useEffect(() => {
+    const missingEnchantIds = enchantIds.filter((id) => !enchantInfoById[id]);
+    if (missingEnchantIds.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const fetched = await Promise.all(
+        missingEnchantIds.map(async (id) => {
+          try {
+            const info = await fetchJsonCached<EnchantInfo>(`${API_URL}/api/enchant-info/${id}`, {
+              ttl: 60 * 60 * 1000,
+            });
+            return [id, info] as const;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setEnchantInfoById((prev) => {
+        const next = { ...prev };
+        fetched.forEach((entry) => {
+          if (!entry) return;
+          const [id, info] = entry;
+          next[id] = info;
+        });
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enchantIds, enchantInfoById]);
+
   const itemDetails = (item: ResolvedItem) => {
-    const parts: { text: string; color?: string }[] = [];
-    if (item.origin === 'vault') parts.push({ text: 'Great Vault', color: 'text-amber-400/80' });
-    if (item.is_catalyst) parts.push({ text: 'Catalyst', color: 'text-purple-400/80' });
-    if (item.tag) parts.push({ text: item.tag });
-    if (item.upgrade) parts.push({ text: item.upgrade });
-    if (item.gem_name) parts.push({ text: item.gem_name, color: 'text-sky-400/70' });
-    else if (item.sockets > 0)
+    const gemIconFallback = 'inv_misc_questionmark';
+    const effectiveGemId =
+      item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
+    const effectiveEnchantId =
+      item.enchant_id > 0
+        ? item.enchant_id
+        : parseFirstIdFromSimc(item.simc_string, 'enchant_id');
+
+    const gemInfo = effectiveGemId > 0 ? gemInfoById[effectiveGemId] : undefined;
+    const enchantInfo = effectiveEnchantId > 0 ? enchantInfoById[effectiveEnchantId] : undefined;
+    const hasGem = effectiveGemId > 0 || Boolean(item.gem_name);
+    const parts: {
+      text: string;
+      color?: string;
+      kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+      icon?: string;
+      href?: string;
+      wowheadData?: string;
+      tooltip?: string;
+    }[] = [];
+
+    if (item.origin === 'vault')
+      parts.push({
+        text: 'Great Vault',
+        color: 'text-amber-300 bg-amber-500/15 border-amber-400/40',
+      });
+    if (item.is_catalyst)
+      parts.push({
+        text: 'Catalyst',
+        color: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
+      });
+    if (item.upgrade)
+      parts.push({
+        text: item.upgrade,
+        color: 'text-zinc-200 bg-white/[0.06] border-white/15',
+      });
+    if (hasGem) {
+      const gemName = gemInfo?.name || item.gem_name || 'Gem';
+      parts.push({
+        text: gemName,
+        kind: 'gemIcon',
+        icon: gemInfo?.icon || item.gem_icon || gemIconFallback,
+        href: effectiveGemId > 0 ? `https://www.wowhead.com/item=${effectiveGemId}` : undefined,
+        wowheadData: effectiveGemId > 0 ? `item=${effectiveGemId}` : undefined,
+        tooltip: gemName,
+        color: 'border-sky-400/40 bg-sky-500/10',
+      });
+    } else if (item.sockets > 0)
       parts.push({
         text: `${item.sockets} Socket${item.sockets > 1 ? 's' : ''}`,
-        color: 'text-sky-400/70',
+        color: 'text-sky-300 bg-sky-500/15 border-sky-400/40',
       });
-    if (item.enchant_name) parts.push({ text: item.enchant_name, color: 'text-emerald-400/70' });
+
+    const enchantName = item.enchant_name || enchantInfo?.name;
+    if (enchantName) {
+      const enchantItemId = enchantInfo?.item_id ?? 0;
+      parts.push({
+        text: enchantName,
+        kind: enchantInfo?.icon ? 'iconText' : 'plain',
+        icon: enchantInfo?.icon,
+        href:
+          enchantItemId > 0
+            ? `https://www.wowhead.com/item=${enchantItemId}`
+            : effectiveEnchantId > 0
+              ? `https://www.wowhead.com/spell=${effectiveEnchantId}`
+              : undefined,
+        wowheadData:
+          enchantItemId > 0
+            ? `item=${enchantItemId}`
+            : effectiveEnchantId > 0
+              ? `spell=${effectiveEnchantId}`
+              : undefined,
+        tooltip: enchantName,
+        color: 'text-emerald-400/80',
+      });
+    }
     return parts;
   };
 
@@ -463,6 +658,17 @@ export default function TopGearItemSelector({
             >
               Add
             </button>
+            <button
+              onClick={() => setShowSelectionBoxes((v) => !v)}
+              className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wider transition-colors ${
+                showSelectionBoxes
+                  ? 'border border-zinc-500/40 bg-zinc-500/10 text-zinc-200 hover:bg-zinc-500/20'
+                  : 'border border-zinc-700/50 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'
+              }`}
+              title="Show or hide row selection checkboxes"
+            >
+              Boxes {showSelectionBoxes ? 'On' : 'Off'}
+            </button>
           </div>
           {quickSelect}
         </div>
@@ -470,20 +676,31 @@ export default function TopGearItemSelector({
 
       <div ref={headerRef} className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-zinc-300">
             Select Items
           </h2>
           <button
             onClick={() => openAddItem()}
-            className="flex items-center gap-1.5 rounded-md bg-gold/10 px-2.5 py-1.5 text-[10px] font-bold tracking-wider text-gold hover:bg-gold/20"
+            className="flex items-center gap-1.5 rounded-md bg-gold/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.08em] text-gold hover:bg-gold/20"
           >
             Add Item
+          </button>
+          <button
+            onClick={() => setShowSelectionBoxes((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold tracking-[0.08em] transition-colors ${
+              showSelectionBoxes
+                ? 'border border-zinc-500/40 bg-zinc-500/10 text-zinc-200 hover:bg-zinc-500/20'
+                : 'border border-zinc-700/50 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'
+            }`}
+            title="Show or hide row selection checkboxes"
+          >
+            Boxes {showSelectionBoxes ? 'On' : 'Off'}
           </button>
         </div>
         {quickSelect}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {visibleGroups.map(({ group, equipped, alternatives }) => (
           <TopGearSlotGroup
             key={group.label}
@@ -495,6 +712,7 @@ export default function TopGearItemSelector({
             upgradeMenuFor={upgradeMenuFor}
             upgradeOptions={upgradeOptions}
             loadingUpgrades={loadingUpgrades}
+            showSelectionBoxes={showSelectionBoxes}
             onToggle={(item) => toggleItem(item, group.slots)}
             onAddClick={openAddItem}
             onUpgradeClick={openUpgradeMenu}

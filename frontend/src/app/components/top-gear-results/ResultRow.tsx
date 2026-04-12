@@ -39,7 +39,7 @@ export default function ResultRow({
   const hasTalentBuild = !!result.talent_build;
 
   const talentBadge = hasTalentBuild ? (
-    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-1.5 py-px text-[11px] font-medium">
+    <span className="inline-flex shrink-0 items-center gap-1 rounded bg-purple-500/10 px-2 py-0.5 text-[12px] font-medium">
       {result.talent_spec && (
         <span className="text-purple-300">{specDisplayName(result.talent_spec)}</span>
       )}
@@ -77,7 +77,7 @@ export default function ResultRow({
   return (
     <div
       onClick={onSelect}
-      className={`relative cursor-pointer overflow-hidden rounded-lg transition-colors hover:bg-white/[0.04] ${
+      className={`relative cursor-pointer overflow-hidden rounded-xl transition-colors hover:bg-white/[0.04] ${
         isSelected && !isBest
           ? 'bg-emerald-500/[0.04] ring-1 ring-emerald-500/50'
           : isBest
@@ -87,14 +87,11 @@ export default function ResultRow({
               : ''
       }`}
     >
-      <div
-        className="absolute inset-y-0 left-0 bg-white/[0.02]"
-        style={{ width: `${barWidth}%` }}
-      />
-      <div className="relative flex items-center justify-between gap-3 px-3 py-2">
+      <div className="absolute inset-y-0 left-0 bg-white/[0.03]" style={{ width: `${barWidth}%` }} />
+      <div className="relative flex items-center justify-between gap-4 px-4 py-2.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {rank != null && (
-            <span className="w-5 shrink-0 text-right font-mono text-[12px] tabular-nums text-gray-600">
+            <span className="w-6 shrink-0 text-right font-mono text-[13px] tabular-nums text-zinc-400">
               {rank}
             </span>
           )}
@@ -105,7 +102,7 @@ export default function ResultRow({
             if (isEquipped) {
               return (
                 <div className="flex items-center gap-2">
-                  <span className="text-[14px] text-muted">Currently Equipped</span>
+                  <span className="text-[15px] font-medium text-zinc-200">Currently Equipped</span>
                   {talentBadge}
                 </div>
               );
@@ -116,7 +113,7 @@ export default function ResultRow({
             }
 
             return (
-              <div className="flex min-w-0 flex-wrap items-center gap-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 {displayItems.map((it, i) => (
                   <ItemTag
                     key={i}
@@ -132,42 +129,42 @@ export default function ResultRow({
           })()}
 
           {isBest && (
-            <span className="shrink-0 rounded bg-gold/10 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-gold">
+            <span className="shrink-0 rounded bg-gold/10 px-2 py-0.5 text-[12px] font-bold uppercase tracking-wider text-gold">
               Best
             </span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-3">
           <span
-            className={`flex w-28 items-center justify-end gap-1.5 font-mono text-[15px] tabular-nums ${
+            className={`flex w-32 items-center justify-end gap-1.5 font-mono text-[15px] tabular-nums ${
               !isEquipped && result.delta > 0
                 ? 'text-emerald-400'
                 : !isEquipped && result.delta < 0
                   ? 'text-red-400'
-                  : 'text-muted'
+                  : 'text-zinc-400'
             }`}
           >
             <span>
               {!isEquipped && result.delta !== 0
                 ? (result.delta > 0 ? '+' : '') + Math.round(result.delta).toLocaleString()
-                : '—'}
+                : '-'}
             </span>
             {!isEquipped && result.delta !== 0 && baseDps > 0 && (
-              <span className="text-xs opacity-70">
+              <span className="text-[12px] opacity-85">
                 ({result.delta > 0 ? '+' : ''}
                 {((result.delta / baseDps) * 100).toFixed(1)}%)
               </span>
             )}
           </span>
-          <span className="w-16 text-right font-mono text-sm tabular-nums text-gray-300">
+          <span className="w-20 text-right font-mono text-[15px] tabular-nums text-zinc-200">
             {Math.round(result.dps).toLocaleString()}
           </span>
-          <div className="flex w-24 flex-col items-end gap-0.5">
-            <span className="text-[13px] tabular-nums text-gray-300">
+          <div className="flex w-28 flex-col items-end gap-0.5">
+            <span className="text-[14px] tabular-nums text-zinc-200">
               {(baseAvgIlevel + ilvlGain).toFixed(2)}
               {ilvlGain !== 0 && (
                 <span
-                  className={`ml-1 text-[11px] font-bold ${
+                  className={`ml-1 text-[12px] font-bold ${
                     ilvlGain > 0 ? 'text-emerald-400/80' : 'text-red-400/80'
                   }`}
                 >
@@ -182,3 +179,4 @@ export default function ResultRow({
     </div>
   );
 }
+

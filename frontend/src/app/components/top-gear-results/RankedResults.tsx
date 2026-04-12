@@ -59,7 +59,7 @@ export default function RankedResults({
       {hasMore && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="mt-2 w-full rounded-lg border border-border bg-surface-2 py-2 text-xs text-zinc-400 transition-all hover:border-zinc-600 hover:text-zinc-200"
+          className="mt-2 w-full rounded-lg border border-border bg-surface-2 py-2.5 text-sm text-zinc-300 transition-all hover:border-zinc-600 hover:text-zinc-100"
         >
           {expanded
             ? 'Show less'

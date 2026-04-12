@@ -23,17 +23,17 @@ export default function ItemTag({ item, info, enchant, gem }: ItemTagProps) {
 
   return (
     <div
-      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${
+      className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 ${
         kept ? 'opacity-40' : 'bg-white/[0.04]'
       }`}
     >
-      <div className="h-4 w-4 shrink-0 overflow-hidden rounded-sm">
+      <div className="h-[18px] w-[18px] shrink-0 overflow-hidden rounded-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={getIconUrl(icon)}
           alt=""
-          width={16}
-          height={16}
+          width={18}
+          height={18}
           className="h-full w-full"
           loading="lazy"
         />
@@ -41,7 +41,7 @@ export default function ItemTag({ item, info, enchant, gem }: ItemTagProps) {
       <a
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
         data-wowhead={whData}
-        className="max-w-[120px] truncate text-[13px] font-medium no-underline"
+        className="max-w-[130px] truncate text-[13px] font-medium no-underline"
         style={{ color: qc }}
         target="_blank"
         rel="noopener noreferrer"
@@ -51,19 +51,19 @@ export default function ItemTag({ item, info, enchant, gem }: ItemTagProps) {
       >
         {name}
       </a>
-      <span className="text-[11px] text-muted">({slotName})</span>
+      <span className="text-[12px] text-zinc-400">({slotName})</span>
       {item.upgrade_levels ? (
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
           +{item.upgrade_levels}
         </span>
       ) : item.origin === 'vault' ? (
-        <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-amber-400">
+        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-amber-400">
           V
         </span>
       ) : null}
       {enchant?.name && (
         <span
-          className="max-w-[70px] truncate text-[11px] text-emerald-400/70"
+          className="max-w-[80px] truncate text-[12px] text-emerald-300/80"
           title={enchant.name}
         >
           {enchant.name}

@@ -12,6 +12,8 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 whylowdps-core = { path = "../../backend/core", default-features = false, features = ["desktop", "web"] }
 url = "2.5.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+zip = "2"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -143,3 +143,25 @@ export async function updateConfig(config: Partial<AppConfig>): Promise<void> {
     body: JSON.stringify(config),
   });
 }
+
+export interface SimcStatus {
+  installed_path: string;
+  installed_exists: boolean;
+  installed_version: string | null;
+  latest_version: string | null;
+  latest_download: string | null;
+  update_available: boolean;
+  checking_failed: boolean;
+  detail: string | null;
+  is_updating: boolean;
+}
+
+export async function getSimcStatus(): Promise<SimcStatus> {
+  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/status`);
+}
+
+export async function downloadLatestSimc(): Promise<SimcStatus> {
+  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/download-latest`, {
+    method: 'POST',
+  });
+}

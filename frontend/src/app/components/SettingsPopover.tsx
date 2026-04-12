@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSimContext } from './SimContext';
-import { API_URL } from '../lib/api';
+import { API_URL, downloadLatestSimc, getSimcStatus, isDesktop, type SimcStatus } from '../lib/api';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3, desc: '30%' },
@@ -13,6 +13,10 @@ const PRESETS = [
 export default function SettingsPopover() {
   const [open, setOpen] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
+  const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
+  const [simcLoading, setSimcLoading] = useState(false);
+  const [simcUpdating, setSimcUpdating] = useState(false);
+  const [simcError, setSimcError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const { threads, setThreads, maxCombinations, setMaxCombinations } = useSimContext();
 
@@ -40,6 +44,53 @@ export default function SettingsPopover() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [open]);
 
+  const refreshSimcStatus = useCallback(async () => {
+    if (!isDesktop) return;
+    setSimcLoading(true);
+    setSimcError(null);
+    try {
+      const status = await getSimcStatus();
+      setSimcStatus(status);
+    } catch (error: any) {
+      setSimcError(error?.detail || error?.message || 'Failed to fetch SimC update status.');
+    } finally {
+      setSimcLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open || !isDesktop) return;
+    void refreshSimcStatus();
+  }, [open, refreshSimcStatus]);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    let cancelled = false;
+    void getSimcStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setSimcStatus(status);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleDownloadLatest = async () => {
+    setSimcUpdating(true);
+    setSimcError(null);
+    try {
+      const status = await downloadLatestSimc();
+      setSimcStatus(status);
+    } catch (error: any) {
+      setSimcError(error?.detail || error?.message || 'Failed to download latest SimC.');
+    } finally {
+      setSimcUpdating(false);
+    }
+  };
+
   const activePresetIdx = PRESETS.findIndex(
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
   );
@@ -65,17 +116,22 @@ export default function SettingsPopover() {
           <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
         </svg>
         <span className="text-[15px] font-medium">Settings</span>
+        {simcStatus?.update_available && (
+          <span className="ml-auto rounded border border-amber-600/40 bg-amber-900/25 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-300">
+            SimC update
+          </span>
+        )}
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-[60] mb-2 w-80 rounded-xl border border-border bg-surface p-4 shadow-xl shadow-black/40">
-          <div className="space-y-5">
+        <div className="absolute bottom-full left-0 z-[60] mb-2 w-[22rem] rounded-xl border border-border bg-surface p-5 shadow-xl shadow-black/40">
+          <div className="space-y-6">
             {/* CPU Threads */}
             {maxThreads > 0 && (
-              <div className="space-y-3">
+              <div className="space-y-3.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-[14px] font-medium text-zinc-300">CPU Threads</span>
-                  <span className="rounded border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] tabular-nums text-white">
+                  <span className="text-[15px] font-semibold text-zinc-100">CPU Threads</span>
+                  <span className="rounded border border-border bg-surface-2 px-2.5 py-1 font-mono text-[12px] tabular-nums text-zinc-100">
                     {threads}/{maxThreads}
                   </span>
                 </div>
@@ -86,14 +142,14 @@ export default function SettingsPopover() {
                       <button
                         key={p.label}
                         onClick={() => setThreads(val)}
-                        className={`flex-1 rounded-lg border py-2 text-center transition-all ${
+                        className={`flex-1 rounded-lg border py-2.5 text-center transition-all ${
                           activePresetIdx === i
                             ? 'border-white bg-white text-black'
                             : 'border-border bg-surface-2 text-zinc-400 hover:border-gray-500 hover:text-white'
                         }`}
                       >
-                        <span className="block text-[12px] font-semibold">{p.label}</span>
-                        <span className="mt-0.5 block text-[10px] opacity-70">{val} threads</span>
+                        <span className="block text-[13px] font-semibold">{p.label}</span>
+                        <span className="mt-0.5 block text-[11px] text-zinc-500">{val} threads</span>
                       </button>
                     );
                   })}
@@ -102,10 +158,10 @@ export default function SettingsPopover() {
             )}
 
             {/* Max Gear Combinations */}
-            <div className="flex items-center justify-between border-t border-border pt-4">
+            <div className="flex items-center justify-between border-t border-border pt-5">
               <div className="space-y-0.5">
-                <p className="text-[14px] font-medium text-zinc-300">Max Gear Combos</p>
-                <p className="text-[11px] text-zinc-500">Limits simulation runtime.</p>
+                <p className="text-[15px] font-semibold text-zinc-100">Max Gear Combos</p>
+                <p className="text-[12px] text-zinc-400">Limits simulation runtime.</p>
               </div>
               <input
                 type="number"
@@ -117,12 +173,76 @@ export default function SettingsPopover() {
                   const val = parseInt(e.target.value, 10);
                   if (Number.isFinite(val) && val > 0) setMaxCombinations(val);
                 }}
-                className="w-20 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                className="w-24 rounded border border-border bg-surface-2 px-2 py-1.5 text-center font-mono text-[13px] tabular-nums text-zinc-100 [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
             </div>
 
+            {isDesktop && (
+              <div className="space-y-3.5 border-t border-border pt-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <p className="text-[15px] font-semibold text-zinc-100">SimulationCraft Engine</p>
+                    <p className="text-[12px] leading-relaxed text-zinc-400">
+                      Check installed version and update from official nightly builds.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => void refreshSimcStatus()}
+                    disabled={simcLoading || simcUpdating}
+                    className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[12px] font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {simcLoading ? 'Checking...' : 'Refresh'}
+                  </button>
+                </div>
+
+                <div className="rounded-lg border border-border bg-surface-2 p-3.5 text-[13px]">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-zinc-400">Installed</span>
+                    <span className="font-mono text-zinc-100">
+                      {simcStatus?.installed_version ??
+                        (simcStatus?.installed_exists ? 'Detected' : 'Missing')}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between gap-4">
+                    <span className="text-zinc-400">Latest</span>
+                    <span className="font-mono text-zinc-100">
+                      {simcStatus?.latest_version ?? (simcLoading ? 'Checking...' : 'Unavailable')}
+                    </span>
+                  </div>
+                  {simcStatus && (
+                    <p
+                      className={`mt-2 text-[12px] font-medium ${
+                        simcStatus.update_available ? 'text-amber-300' : 'text-emerald-300'
+                      }`}
+                    >
+                      {simcStatus.update_available
+                        ? 'A newer SimC build is available.'
+                        : 'Installed SimC is up to date.'}
+                    </p>
+                  )}
+                  {(simcError || simcStatus?.detail) && (
+                    <p className="mt-2 text-[12px] text-red-300">{simcError || simcStatus?.detail}</p>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => void handleDownloadLatest()}
+                  disabled={
+                    simcLoading ||
+                    simcUpdating ||
+                    !simcStatus ||
+                    !simcStatus.latest_version ||
+                    !simcStatus.update_available
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-700/50 bg-amber-950/30 py-3 text-[14px] font-semibold text-amber-300 transition-all hover:bg-amber-900/40 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {simcUpdating ? 'Downloading latest SimC...' : 'Download Latest SimC'}
+                </button>
+              </div>
+            )}
+
             {/* Shutdown Button */}
-            <div className="border-t border-border pt-4">
+            <div className="border-t border-border pt-5">
               <button
                 onClick={() => {
                   if (confirm('Are you sure you want to shut down the simulation server?')) {
@@ -152,9 +272,9 @@ export default function SettingsPopover() {
                     document.body.appendChild(overlay);
                   }
                 }}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 py-2.5 text-[13px] font-medium text-red-400 transition-all hover:bg-red-950/40 hover:text-red-300 active:scale-[0.98]"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 py-3 text-[14px] font-medium text-red-300 transition-all hover:bg-red-950/40 hover:text-red-200 active:scale-[0.98]"
               >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"

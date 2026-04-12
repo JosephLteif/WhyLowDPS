@@ -1,13 +1,45 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
+import { downloadLatestSimc, getSimcStatus, isDesktop, type SimcStatus } from '../lib/api';
 
 export default function TopHeader() {
   const { user, loading, login, logout, checkCredentialsStatus } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
+  const [simcLoading, setSimcLoading] = useState(false);
+  const [simcUpdating, setSimcUpdating] = useState(false);
+  const [simcError, setSimcError] = useState<string | null>(null);
+
+  const refreshSimcStatus = useCallback(async () => {
+    if (!isDesktop || !user) return;
+    setSimcLoading(true);
+    setSimcError(null);
+    try {
+      const status = await getSimcStatus();
+      setSimcStatus(status);
+    } catch (err: any) {
+      setSimcError(err?.detail || err?.message || 'Failed to check SimC update status.');
+    } finally {
+      setSimcLoading(false);
+    }
+  }, [user]);
+
+  const handleSimcUpdate = async () => {
+    setSimcUpdating(true);
+    setSimcError(null);
+    try {
+      const status = await downloadLatestSimc();
+      setSimcStatus(status);
+    } catch (err: any) {
+      setSimcError(err?.detail || err?.message || 'Failed to update SimC.');
+    } finally {
+      setSimcUpdating(false);
+    }
+  };
 
   const handleLoginClick = async () => {
     const status = await checkCredentialsStatus();
@@ -22,6 +54,22 @@ export default function TopHeader() {
     setIsModalOpen(false);
     login(clientId, clientSecret);
   };
+
+  useEffect(() => {
+    if (!isDesktop || !user) {
+      setSimcStatus(null);
+      setSimcError(null);
+      return;
+    }
+
+    void refreshSimcStatus();
+
+    const interval = window.setInterval(() => {
+      void refreshSimcStatus();
+    }, 120000);
+
+    return () => window.clearInterval(interval);
+  }, [user, refreshSimcStatus]);
 
   return (
     <>
@@ -43,6 +91,20 @@ export default function TopHeader() {
               <>
                 {user ? (
                   <div className="flex items-center gap-4">
+                    {isDesktop && simcStatus?.update_available && (
+                      <div className="flex flex-col items-end">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300">
+                          SimC Update Available
+                        </span>
+                        <button
+                          onClick={() => void handleSimcUpdate()}
+                          disabled={simcUpdating || simcLoading}
+                          className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {simcUpdating ? 'Updating...' : 'Update SimC'}
+                        </button>
+                      </div>
+                    )}
                     <div className="flex flex-col items-end">
                       <span className="text-[13px] font-medium text-gold">{user.battletag}</span>
                       <Link
@@ -72,6 +134,11 @@ export default function TopHeader() {
             )}
           </div>
         </div>
+        {isDesktop && simcError && (
+          <div className="border-t border-red-900/30 bg-red-950/20 px-6 py-1.5 text-right text-[11px] text-red-300">
+            {simcError}
+          </div>
+        )}
       </header>
 
       <LoginModal

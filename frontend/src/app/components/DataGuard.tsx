@@ -44,12 +44,13 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Initial check
-    console.log('[DataGuard] Initial check started');
-    checkStatus();
-
-    // Start sync if ready and not syncing
-    fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).catch(() => {});
+    // Trigger sync first so fresh installs do not report "ready" before initial data load.
+    setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
+    fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
+      .catch(() => {})
+      .finally(() => {
+        checkStatus();
+      });
 
     // Poll while not ready
     const interval = setInterval(() => {

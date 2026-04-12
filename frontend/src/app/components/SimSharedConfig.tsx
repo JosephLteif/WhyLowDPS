@@ -1,12 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
 import { specDisplayName } from '../lib/types';
+import { getFightStyleParamRules } from '../lib/fight-style';
+import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import { useConsumableOptions } from '../lib/useConsumableOptions';
+import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 
 /** Adler-32 checksum matching the SimC addon's implementation.
  *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
@@ -59,6 +63,99 @@ function parseCharacterInfo(input: string) {
   };
 }
 
+function renderSimcLine(line: string) {
+  if (!line) return null;
+
+  if (/^\s*#\s*Checksum:/i.test(line)) {
+    return <span className="text-amber-300">{line}</span>;
+  }
+  if (/^\s*#/.test(line)) {
+    return <span className="text-zinc-500">{line}</span>;
+  }
+
+  const kv = line.match(/^(\s*)([A-Za-z0-9_.-]+)(\s*=\s*)(.*)$/);
+  if (!kv) return <span className="text-zinc-300">{line}</span>;
+
+  const [, indent, key, sep, rawValue] = kv;
+  const value =
+    /^".*"$/.test(rawValue) || /^[A-Za-z_/-]+$/.test(rawValue)
+      ? 'text-emerald-300'
+      : /^(?:\d+(?:\.\d+)?)$/.test(rawValue)
+        ? 'text-sky-300'
+        : 'text-zinc-300';
+
+  return (
+    <>
+      <span className="text-zinc-300">{indent}</span>
+      <span className="text-gold">{key}</span>
+      <span className="text-zinc-500">{sep}</span>
+      <span className={value}>{rawValue}</span>
+    </>
+  );
+}
+
+function SimcInputEditor({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const preRef = useRef<HTMLPreElement | null>(null);
+  const editorHeight = expanded ? 'h-[28rem]' : 'h-40';
+
+  const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (!preRef.current) return;
+    preRef.current.scrollTop = e.currentTarget.scrollTop;
+    preRef.current.scrollLeft = e.currentTarget.scrollLeft;
+  };
+
+  const lines = value.split('\n');
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="rounded-md border border-border px-2.5 py-1 text-[12px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+        >
+          {expanded ? 'Collapse' : 'Expand'}
+        </button>
+      </div>
+      <div className="relative w-full rounded-lg border border-border bg-surface-2 shadow-sm transition-all duration-150 focus-within:border-gold/50 focus-within:ring-2 focus-within:ring-gold/20">
+        <pre
+          ref={preRef}
+          aria-hidden
+          className={`${editorHeight} overflow-auto px-3.5 py-2.5 font-mono text-[13px] leading-relaxed`}
+        >
+          {value ? (
+            lines.map((line, idx) => (
+              <span key={idx}>
+                {renderSimcLine(line)}
+                {idx < lines.length - 1 ? '\n' : null}
+              </span>
+            ))
+          ) : (
+            <span className="text-zinc-500">{placeholder}</span>
+          )}
+        </pre>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onScroll={syncScroll}
+          placeholder={placeholder}
+          spellCheck={false}
+          className={`absolute inset-0 ${editorHeight} w-full overflow-auto bg-transparent px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-transparent placeholder-zinc-500 caret-zinc-100 focus:outline-none`}
+        />
+      </div>
+    </div>
+  );
+}
+
 const EXPERT_TABS = [
   {
     key: 'header',
@@ -103,6 +200,197 @@ function CharacterInfoBar({ info }: { info: { className: string; name: string; s
   );
 }
 
+function optionQualityFamily(opt: OptionEntry | null) {
+  const token = (opt?.token || '').replace(/^main_hand:/, '');
+  return token.replace(/_[1-3]$/i, '');
+}
+
+function remapQuality(quality: number | undefined, familyMax: number | undefined) {
+  if (!quality || quality < 1 || quality > 3) return undefined;
+  // 2-tier groups: 1=silver, 2=gold
+  if (familyMax === 2) {
+    if (quality === 1) return 2;
+    if (quality === 2) return 3;
+  }
+  // 3-tier groups: 1=bronze, 2=silver, 3=gold
+  return quality;
+}
+
+function optionSelectLabel(opt: OptionEntry) {
+  return (opt.label || '').replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '').replace(/\s+[1-3]\s*$/i, '');
+}
+
+function QualityBadge({ quality }: { quality?: number }) {
+  if (!quality || quality < 1 || quality > 3) return null;
+  const style =
+    quality === 3
+      ? 'border-amber-300/60 bg-gradient-to-b from-amber-200 to-amber-500'
+      : quality === 2
+        ? 'border-zinc-300/60 bg-gradient-to-b from-zinc-100 to-zinc-400'
+        : 'border-orange-400/60 bg-gradient-to-b from-orange-200 to-orange-500';
+  return (
+    <span
+      className={`ml-auto inline-block h-3.5 w-3.5 rotate-45 rounded-[2px] border ${style}`}
+      title={`Quality ${quality}`}
+      aria-label={`Quality ${quality}`}
+    >
+      <span className="sr-only">{quality}</span>
+    </span>
+  );
+}
+
+function ConsumableSelect({
+  label,
+  value,
+  onChange,
+  options,
+  qualityMaxByFamily,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: OptionEntry[];
+  qualityMaxByFamily: Map<string, number>;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useWowheadTooltips([open, value, options.length]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [open]);
+
+  const selected = options.find((opt) => (opt.token || '') === value) || null;
+  const selectedQuality = remapQuality(
+    selected?.craftingQuality,
+    qualityMaxByFamily.get(optionQualityFamily(selected))
+  );
+
+  return (
+    <label className="space-y-1.5 text-xs text-zinc-400">
+      <span className="block">{label}</span>
+      <div ref={rootRef} className="relative">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm ${
+            disabled ? 'cursor-not-allowed text-zinc-500 opacity-70' : 'text-zinc-200'
+          }`}
+        >
+          {selected?.icon ? (
+            <a
+              href={selected.itemId ? `https://www.wowhead.com/item=${selected.itemId}` : '#'}
+              target="_blank"
+              rel="noreferrer"
+              data-wowhead={selected.itemId ? `item=${selected.itemId}` : undefined}
+              onClick={(e) => e.preventDefault()}
+              className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
+              style={{
+                backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${selected.icon}.jpg)`,
+              }}
+            />
+          ) : (
+            <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
+          )}
+          {selected ? (
+            <a
+              href={selected.itemId ? `https://www.wowhead.com/item=${selected.itemId}` : '#'}
+              target="_blank"
+              rel="noreferrer"
+              data-wowhead={selected.itemId ? `item=${selected.itemId}` : undefined}
+              onClick={(e) => e.preventDefault()}
+              className="truncate"
+            >
+              {optionSelectLabel(selected)}
+            </a>
+          ) : (
+            <span className="truncate">None</span>
+          )}
+          <QualityBadge quality={selectedQuality} />
+          <svg
+            className={`ml-1 h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+        {open && (
+          <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-surface shadow-xl">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setOpen(false);
+              }}
+              className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
+              <span className="truncate">None</span>
+            </button>
+            {options.map((opt) => {
+              const q = remapQuality(
+                opt.craftingQuality,
+                qualityMaxByFamily.get(optionQualityFamily(opt))
+              );
+              return (
+                <div
+                  key={opt.key}
+                  onClick={() => {
+                    onChange(opt.token || '');
+                    setOpen(false);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
+                >
+                  <a
+                    href={opt.itemId ? `https://www.wowhead.com/item=${opt.itemId}` : '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-wowhead={opt.itemId ? `item=${opt.itemId}` : undefined}
+                    onClick={(e) => e.preventDefault()}
+                    className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
+                    style={{
+                      backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg)`,
+                    }}
+                  />
+                  <a
+                    href={opt.itemId ? `https://www.wowhead.com/item=${opt.itemId}` : '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-wowhead={opt.itemId ? `item=${opt.itemId}` : undefined}
+                    onClick={(e) => e.preventDefault()}
+                    className="truncate"
+                  >
+                    {optionSelectLabel(opt)}
+                  </a>
+                  <QualityBadge quality={q} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </label>
+  );
+}
+
 function AdvancedOptions() {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
@@ -115,6 +403,41 @@ function AdvancedOptions() {
     setFightLength,
     customApl,
     setCustomApl,
+    includeTimeline,
+    setIncludeTimeline,
+    externalBuffChaosBrand,
+    setExternalBuffChaosBrand,
+    externalBuffMysticTouch,
+    setExternalBuffMysticTouch,
+    externalBuffSkyfury,
+    setExternalBuffSkyfury,
+    externalBuffPowerInfusion,
+    setExternalBuffPowerInfusion,
+    raidBuffBloodlust,
+    setRaidBuffBloodlust,
+    raidBuffArcaneIntellect,
+    setRaidBuffArcaneIntellect,
+    raidBuffPowerWordFortitude,
+    setRaidBuffPowerWordFortitude,
+    raidBuffMarkOfTheWild,
+    setRaidBuffMarkOfTheWild,
+    raidBuffBattleShout,
+    setRaidBuffBattleShout,
+    raidBuffHuntersMark,
+    setRaidBuffHuntersMark,
+    raidBuffBleeding,
+    setRaidBuffBleeding,
+    consumableFlask,
+    setConsumableFlask,
+    consumableFood,
+    setConsumableFood,
+    consumablePotion,
+    setConsumablePotion,
+    consumableAugmentation,
+    setConsumableAugmentation,
+    consumableTemporaryEnchant,
+    setConsumableTemporaryEnchant,
+    lockSingleConsumableOptions,
     simcHeader,
     setSimcHeader,
     simcBasePlayer,
@@ -150,13 +473,53 @@ function AdvancedOptions() {
   );
 
   const hasExpertContent = Object.values(expertValues).some((v) => v.trim());
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+  const selectedFlaskOption = flasks.find((opt) => (opt.token || '') === consumableFlask) || null;
+  const selectedPotionOption =
+    potions.find((opt) => (opt.token || '') === consumablePotion) || null;
+  const selectedAugmentationOption =
+    augments.find((opt) => (opt.token || '') === consumableAugmentation) || null;
+  const selectedTempEnchantOption =
+    tempEnchants.find((opt) => (opt.token || '') === consumableTemporaryEnchant) || null;
+  const qualityMaxByFamily = useMemo(() => {
+    const map = new Map<string, number>();
+    const all = [...flasks, ...potions, ...augments, ...tempEnchants];
+    for (const opt of all) {
+      const family = optionQualityFamily(opt);
+      const q = opt.craftingQuality || 0;
+      map.set(family, Math.max(map.get(family) || 0, q));
+    }
+    return map;
+  }, [flasks, potions, augments, tempEnchants]);
+  const fightStyleRules = getFightStyleParamRules(fightStyle);
+  const showFightLength = fightStyleRules.usesFightLength;
+  const showTargetCount = fightStyleRules.usesTargetCount;
   const isDefault =
     fightStyle === 'Patchwerk' &&
-    targetCount === 1 &&
-    fightLength === 300 &&
+    (!showTargetCount || targetCount === 1) &&
+    (!showFightLength || fightLength === 300) &&
     !customApl &&
     !hasExpertContent;
   const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
+  useWowheadTooltips([
+    open,
+    externalBuffChaosBrand,
+    externalBuffMysticTouch,
+    externalBuffSkyfury,
+    externalBuffPowerInfusion,
+    raidBuffBloodlust,
+    raidBuffArcaneIntellect,
+    raidBuffPowerWordFortitude,
+    raidBuffMarkOfTheWild,
+    raidBuffBattleShout,
+    raidBuffHuntersMark,
+    raidBuffBleeding,
+    consumableFlask,
+    consumablePotion,
+    consumableAugmentation,
+    consumableTemporaryEnchant,
+    consumableFood,
+  ]);
 
   return (
     <div className="card overflow-hidden">
@@ -199,44 +562,64 @@ function AdvancedOptions() {
       </button>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
-          <div className="grid grid-cols-3 gap-4 pt-4">
+          <div
+            className={`grid gap-4 pt-4 ${
+              showFightLength && showTargetCount
+                ? 'grid-cols-3'
+                : showFightLength || showTargetCount
+                  ? 'grid-cols-2'
+                  : 'grid-cols-1'
+            }`}
+          >
             <div className="space-y-2">
               <label className="label-text">Fight Style</label>
               <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
             </div>
-            <div className="space-y-2">
-              <label className="label-text">Fight Length</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={30}
-                  max={600}
-                  step={30}
-                  value={fightLength}
-                  onChange={(e) => setFightLength(Number(e.target.value))}
-                  className="flex-1 accent-gold"
-                />
-                <span className="w-16 text-right font-mono text-sm tabular-nums text-white">
-                  {Math.floor(fightLength / 60)}:{String(fightLength % 60).padStart(2, '0')}
-                </span>
+
+            {showFightLength && (
+              <div className="space-y-2">
+                <label className="label-text">Fight Length</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={30}
+                    max={600}
+                    step={30}
+                    value={fightLength}
+                    onChange={(e) => setFightLength(Number(e.target.value))}
+                    className="flex-1 accent-gold"
+                  />
+                  <span className="w-16 text-right font-mono text-sm tabular-nums text-white">
+                    {Math.floor(fightLength / 60)}:{String(fightLength % 60).padStart(2, '0')}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="space-y-2">
-              <label className="label-text">Number of Bosses</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={1}
-                  max={10}
-                  value={targetCount}
-                  onChange={(e) => setTargetCount(Number(e.target.value))}
-                  className="flex-1 accent-gold"
-                />
-                <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
-                  {targetCount}
-                </span>
+            )}
+
+            {showTargetCount && (
+              <div className="space-y-2">
+                <label className="label-text">Number of Bosses</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    value={targetCount}
+                    onChange={(e) => setTargetCount(Number(e.target.value))}
+                    className="flex-1 accent-gold"
+                  />
+                  <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
+                    {targetCount}
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
+
+            {!showFightLength && !showTargetCount && (
+              <div className="text-[13px] text-zinc-500">
+                This fight style uses built-in timing and target scripting.
+              </div>
+            )}
           </div>
 
           <ScenarioBuilder />
@@ -253,6 +636,211 @@ function AdvancedOptions() {
             <p className="text-[13px] text-zinc-600">
               Override action priority lists or set expansion-specific options. Injected after the
               base actor.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-surface-2/70 px-3.5 py-2.5">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Timeline &amp; APL Analyzer</p>
+              <p className="text-[13px] text-zinc-500">
+                Include action sequence, cooldown timing, and buff uptime data in sim results.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIncludeTimeline(!includeTimeline)}
+              className={`relative h-5 w-9 rounded-full transition-colors ${
+                includeTimeline ? 'bg-gold' : 'border border-border bg-surface'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
+                  includeTimeline ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Consumables</p>
+              <p className="text-[13px] text-zinc-500">
+                Select one per category for normal sims. Use Stat Weights matrix to compare many at
+                once.
+              </p>
+              {lockSingleConsumableOptions && (
+                <p className="mt-1 text-[12px] text-amber-300">
+                  Disabled while Consumable Matrix mode is selected.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Flask
+                </p>
+                <ConsumableSelect
+                  label="Active Flask"
+                  value={consumableFlask}
+                  onChange={setConsumableFlask}
+                  options={flasks}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Potion
+                </p>
+                <ConsumableSelect
+                  label="Active Potion"
+                  value={consumablePotion}
+                  onChange={setConsumablePotion}
+                  options={potions}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Augmentation Rune
+                </p>
+                <ConsumableSelect
+                  label="Active Augmentation Rune"
+                  value={consumableAugmentation}
+                  onChange={setConsumableAugmentation}
+                  options={augments}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Temporary Enchant
+                </p>
+                <ConsumableSelect
+                  label="Main Hand Temporary Enchant"
+                  value={consumableTemporaryEnchant}
+                  onChange={setConsumableTemporaryEnchant}
+                  options={tempEnchants}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Food</p>
+                <ConsumableSelect
+                  label="Active Food Buff"
+                  value={consumableFood}
+                  onChange={setConsumableFood}
+                  options={foods}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Raid Buffs</p>
+              <p className="text-[13px] text-zinc-500">
+                Control default raid buffs for normal sims.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
+                const checked =
+                  buff.key === 'bloodlust'
+                    ? raidBuffBloodlust
+                    : buff.key === 'arcane_intellect'
+                      ? raidBuffArcaneIntellect
+                      : buff.key === 'power_word_fortitude'
+                        ? raidBuffPowerWordFortitude
+                        : buff.key === 'mark_of_the_wild'
+                          ? raidBuffMarkOfTheWild
+                          : buff.key === 'battle_shout'
+                            ? raidBuffBattleShout
+                            : buff.key === 'hunters_mark'
+                              ? raidBuffHuntersMark
+                              : buff.key === 'bleeding'
+                                ? raidBuffBleeding
+                                : buff.key === 'mystic_touch'
+                                  ? externalBuffMysticTouch
+                                  : buff.key === 'chaos_brand'
+                                    ? externalBuffChaosBrand
+                                    : buff.key === 'skyfury'
+                                      ? externalBuffSkyfury
+                                      : buff.key === 'power_infusion'
+                                        ? externalBuffPowerInfusion
+                                        : false;
+
+                const setChecked =
+                  buff.key === 'bloodlust'
+                    ? setRaidBuffBloodlust
+                    : buff.key === 'arcane_intellect'
+                      ? setRaidBuffArcaneIntellect
+                      : buff.key === 'power_word_fortitude'
+                        ? setRaidBuffPowerWordFortitude
+                        : buff.key === 'mark_of_the_wild'
+                          ? setRaidBuffMarkOfTheWild
+                          : buff.key === 'battle_shout'
+                            ? setRaidBuffBattleShout
+                            : buff.key === 'hunters_mark'
+                              ? setRaidBuffHuntersMark
+                              : buff.key === 'bleeding'
+                                ? setRaidBuffBleeding
+                                : buff.key === 'mystic_touch'
+                                  ? setExternalBuffMysticTouch
+                                  : buff.key === 'chaos_brand'
+                                    ? setExternalBuffChaosBrand
+                                    : buff.key === 'skyfury'
+                                      ? setExternalBuffSkyfury
+                                      : buff.key === 'power_infusion'
+                                        ? setExternalBuffPowerInfusion
+                                        : (_: boolean) => {};
+
+                return (
+                  <label
+                    key={buff.key}
+                    className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
+                      checked
+                        ? 'border-gold/40 bg-gold/[0.08]'
+                        : 'border-border bg-surface hover:border-zinc-600'
+                    }`}
+                  >
+                    <a
+                      href={`https://www.wowhead.com/spell=${buff.spellId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-wowhead={`spell=${buff.spellId}`}
+                      className="flex min-w-0 items-center gap-2 text-zinc-300 hover:text-zinc-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span
+                        className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
+                        style={{
+                          backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg)`,
+                        }}
+                      />
+                      <span className="truncate text-xs">{buff.label}</span>
+                    </a>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => setChecked(e.target.checked)}
+                      className="h-4 w-4 accent-gold"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              If your character provides one of these buffs, SimC may still include it.
             </p>
           </div>
 
@@ -349,9 +937,8 @@ export default function SimSharedConfig() {
   const { simcInput, setSimcInput } = useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
 
-  const normalizedPath = pathname.endsWith('/') && pathname !== '/'
-    ? pathname.slice(0, -1)
-    : pathname;
+  const normalizedPath =
+    pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
 
   const showConfig =
     normalizedPath === '/quick-sim' ||
@@ -367,11 +954,10 @@ export default function SimSharedConfig() {
     <div className="mb-6 space-y-4">
       <div className="card space-y-3 p-5">
         <label className="label-text">SimC Addon Export</label>
-        <textarea
+        <SimcInputEditor
           value={simcInput}
-          onChange={(e) => setSimcInput(e.target.value)}
+          onChange={setSimcInput}
           placeholder="Paste your SimC addon export here..."
-          className="input-field h-40 resize-y font-mono text-[13px] leading-relaxed"
         />
         {checksumStatus === 'invalid' && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">

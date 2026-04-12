@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-
 use crate::server::auth_handlers::BlizzardAuthState;
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
@@ -22,6 +21,11 @@ pub enum SyncStatus {
 pub struct DataSyncState {
     pub status: Mutex<SyncStatus>,
     pub progress: Mutex<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SyncQuery {
+    pub force: Option<bool>,
 }
 
 impl DataSyncState {
@@ -42,12 +46,9 @@ pub async fn get_sync_status(
     let status = state.status.lock().await.clone();
     let progress = state.progress.lock().await.clone();
 
-    let can_sync = BlizzardState::get_effective_credentials(
-        &req,
-        Some(auth_state.get_ref()),
-        &***store,
-    )
-    .is_some();
+    let can_sync =
+        BlizzardState::get_effective_credentials(&req, Some(auth_state.get_ref()), &***store)
+            .is_some();
 
     HttpResponse::Ok().json(json!({
         "status": status,
@@ -58,6 +59,7 @@ pub async fn get_sync_status(
 
 pub async fn trigger_sync(
     req: actix_web::HttpRequest,
+    query: web::Query<SyncQuery>,
     state: web::Data<Arc<DataSyncState>>,
     auth_state: web::Data<Arc<BlizzardAuthState>>,
     blizzard: web::Data<Arc<BlizzardState>>,
@@ -69,11 +71,8 @@ pub async fn trigger_sync(
         return HttpResponse::Conflict().json(json!({"detail": "Sync already in progress"}));
     }
 
-    let creds = BlizzardState::get_effective_credentials(
-        &req,
-        Some(auth_state.get_ref()),
-        &***store,
-    );
+    let creds =
+        BlizzardState::get_effective_credentials(&req, Some(auth_state.get_ref()), &***store);
     if creds.is_none() {
         *status = SyncStatus::NeedsCredentials;
         return HttpResponse::BadRequest()
@@ -85,6 +84,7 @@ pub async fn trigger_sync(
     let state_clone = state.get_ref().clone();
     let blizzard_clone = blizzard.get_ref().clone();
     let data_dir_clone = data_dir.get_ref().clone();
+    let force_refresh = query.force.unwrap_or(false);
 
     tokio::spawn(async move {
         if let Err(e) = perform_sync(
@@ -93,6 +93,7 @@ pub async fn trigger_sync(
             client_id,
             client_secret,
             data_dir_clone,
+            force_refresh,
         )
         .await
         {
@@ -113,6 +114,7 @@ async fn perform_sync(
     client_id: String,
     client_secret: String,
     data_dir: Option<PathBuf>,
+    force_refresh: bool,
 ) -> Result<(), String> {
     // 1. Fetch from Raidbots
     let base_url = "https://www.raidbots.com/static/data/live";
@@ -136,13 +138,15 @@ async fn perform_sync(
 
     // Check if we need to sync based on metadata changes
     let mut skip_raidbots = false;
-    if let Some(ref dir) = data_dir {
-        let local_metadata_path = dir.join("metadata.json");
-        if local_metadata_path.exists() {
-            if let Ok(local_metadata) = std::fs::read_to_string(&local_metadata_path) {
-                if local_metadata == metadata_text {
-                    println!("Raidbots metadata matches local cache. Skipping file downloads.");
-                    skip_raidbots = true;
+    if !force_refresh {
+        if let Some(ref dir) = data_dir {
+            let local_metadata_path = dir.join("metadata.json");
+            if local_metadata_path.exists() {
+                if let Ok(local_metadata) = std::fs::read_to_string(&local_metadata_path) {
+                    if local_metadata == metadata_text {
+                        println!("Raidbots metadata matches local cache. Skipping file downloads.");
+                        skip_raidbots = true;
+                    }
                 }
             }
         }
@@ -168,6 +172,11 @@ async fn perform_sync(
 
                 let file_url = format!("{}/{}", base_url, file_name);
                 let file_path = dir.join(file_name);
+                if let Some(parent) = file_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        format!("Failed to create directory for {}: {}", file_name, e)
+                    })?;
+                }
 
                 let file_res = blizzard
                     .client
@@ -190,17 +199,21 @@ async fn perform_sync(
 
     // 2. Blizzard Season Sync (Rotation Data)
     let mut skip_blizzard = false;
-    if let Some(ref dir) = data_dir {
-        let runtime_file = dir.join("blizzard-runtime-data.json");
-        if runtime_file.exists() {
-            if let Ok(content) = std::fs::read_to_string(&runtime_file) {
-                if let Ok(v) = serde_json::from_str::<Value>(&content) {
-                    if let Some(last_sync_str) = v.get("last_sync").and_then(|ls| ls.as_str()) {
-                        if let Ok(last_sync) = chrono::DateTime::parse_from_rfc3339(last_sync_str) {
-                            let now = chrono::Utc::now();
-                            if now.signed_duration_since(last_sync).num_hours() < 24 {
-                                println!("Blizzard sync performed recently. Skipping.");
-                                skip_blizzard = true;
+    if !force_refresh {
+        if let Some(ref dir) = data_dir {
+            let runtime_file = dir.join("blizzard-runtime-data.json");
+            if runtime_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&runtime_file) {
+                    if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                        if let Some(last_sync_str) = v.get("last_sync").and_then(|ls| ls.as_str()) {
+                            if let Ok(last_sync) =
+                                chrono::DateTime::parse_from_rfc3339(last_sync_str)
+                            {
+                                let now = chrono::Utc::now();
+                                if now.signed_duration_since(last_sync).num_hours() < 24 {
+                                    println!("Blizzard sync performed recently. Skipping.");
+                                    skip_blizzard = true;
+                                }
                             }
                         }
                     }
@@ -211,9 +224,10 @@ async fn perform_sync(
 
     if !skip_blizzard {
         let season_index_url = "https://us.api.blizzard.com/data/wow/mythic-keystone/season/index?namespace=dynamic-us&locale=en_US";
-        let token = BlizzardState::get_token_with_creds(&blizzard.client, &client_id, &client_secret)
-            .await
-            .ok_or("Failed to authenticate with Blizzard")?;
+        let token =
+            BlizzardState::get_token_with_creds(&blizzard.client, &client_id, &client_secret)
+                .await
+                .ok_or("Failed to authenticate with Blizzard")?;
         let res = blizzard
             .client
             .get(season_index_url)
@@ -272,13 +286,17 @@ async fn perform_sync(
                 "mplus_rotation": rotation_dungeons,
                 "last_sync": chrono::Utc::now().to_rfc3339(),
             });
-            std::fs::write(&runtime_file, serde_json::to_string_pretty(&runtime_data).unwrap()).ok();
+            std::fs::write(
+                &runtime_file,
+                serde_json::to_string_pretty(&runtime_data).unwrap(),
+            )
+            .ok();
         }
     }
 
     // Always Load/Reload data into memory at the end
     if let Some(dir) = &data_dir {
-        crate::item_db::load(&dir);
+        crate::item_db::load(dir);
         let runtime_file = dir.join("blizzard-runtime-data.json");
         if runtime_file.exists() {
             crate::item_db::hydrate_runtime_metadata(&runtime_file);

@@ -292,9 +292,7 @@ export default function TopGearItemSelector({
         : difficultyInfo?.bonus_id
           ? [difficultyInfo.bonus_id]
           : [];
-      let ilvl = overrides
-        ? overrides.ilvl
-        : difficultyInfo?.ilvl || item.ilevel;
+      let ilvl = overrides ? overrides.ilvl : difficultyInfo?.ilvl || item.ilevel;
       let upgradeStr = overrides
         ? `${overrides.track_name} ${overrides.level}`
         : difficultyInfo?.track

@@ -69,6 +69,16 @@ pub static ITEM_LIMIT_CATS: Lazy<RwLock<Arc<ItemLimitMap>>> =
 pub static SEASON_CONFIG: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_json::json!({})));
 pub static TALENT_TREES: Lazy<RwLock<Arc<HashMap<u64, Value>>>> =
     Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static FLASK_OPTIONS_RAW: Lazy<RwLock<Arc<Vec<Value>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
+pub static FOOD_OPTIONS_RAW: Lazy<RwLock<Arc<Vec<Value>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
+pub static POTION_OPTIONS_RAW: Lazy<RwLock<Arc<Vec<Value>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
+pub static AUGMENT_OPTIONS_RAW: Lazy<RwLock<Arc<Vec<Value>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
+pub static TEMP_ENCHANT_OPTIONS_RAW: Lazy<RwLock<Arc<Vec<Value>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct CatalystTierItem {

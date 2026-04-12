@@ -1,3 +1,4 @@
+import { getFightStyleParamRules } from './fight-style';
 const STORAGE_KEY = 'whylowdps_scenario_siblings';
 
 const FIGHT_STYLE_LABELS: Record<string, string> = {
@@ -18,11 +19,12 @@ export interface ScenarioSibling {
 export function formatScenarioLabel(s: ScenarioSibling): string {
   if (s.label && s.label.trim().length > 0) return s.label;
   const style = FIGHT_STYLE_LABELS[s.fightStyle] || s.fightStyle;
+  const rules = getFightStyleParamRules(s.fightStyle);
   const meta: string[] = [];
-  if (s.targetCount > 0) {
+  if (rules.usesTargetCount && s.targetCount > 0) {
     meta.push(s.targetCount === 1 ? '1 boss' : `${s.targetCount} bosses`);
   }
-  if (s.fightLength > 0) {
+  if (rules.usesFightLength && s.fightLength > 0) {
     const min = Math.floor(s.fightLength / 60);
     const sec = String(s.fightLength % 60).padStart(2, '0');
     meta.push(`${min}:${sec}`);

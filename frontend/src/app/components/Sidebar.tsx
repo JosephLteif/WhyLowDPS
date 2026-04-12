@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import SettingsPopover from './SettingsPopover';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 
@@ -190,130 +189,131 @@ export default function Sidebar() {
     <aside
       className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border/80 bg-surface/50 pb-6 pt-6 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
     >
-      <div className="mb-2 flex items-center justify-end px-4">
-        <button
-          type="button"
-          onClick={() => setIsCollapsed((v) => !v)}
-          className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white"
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? '>>' : '<<'}
-        </button>
-      </div>
-      <nav
-        className={`flex flex-col gap-2 overflow-y-auto px-4 ${draggingLabel ? 'select-none' : ''}`}
-      >
-        {orderedNavItems.map((item) => {
-          const isActive = item.matchPaths.some(
-            (p) => pathname === p || pathname.startsWith(p + '/')
-          );
-          const hasChildren = item.children && item.children.length > 0;
-          const isOpen = openMenu === item.label || isActive;
+      <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
+        <div className="flex-1 space-y-2 overflow-y-auto">
+          {orderedNavItems.map((item) => {
+            const isActive = item.matchPaths.some(
+              (p) => pathname === p || pathname.startsWith(p + '/')
+            );
+            const hasChildren = item.children && item.children.length > 0;
+            const isOpen = openMenu === item.label || isActive;
 
-          return (
-            <div
-              key={item.label}
-              data-nav-label={item.label}
-              className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
-                dragOverLabel === item.label && draggingLabel !== item.label
-                  ? 'scale-[1.01] bg-gold/[0.06] ring-1 ring-gold/40'
-                  : ''
-              }`}
-              onPointerEnter={() => {
-                if (draggingLabel && draggingLabel !== item.label) {
-                  setDragOverLabel(item.label);
-                }
-              }}
-            >
-              <div className="flex items-stretch gap-1">
-                {!isCollapsed && (
-                  <button
-                    type="button"
-                    onPointerDown={(e) => {
-                      if (e.pointerType === 'mouse' && e.button !== 0) return;
-                      e.preventDefault();
-                      dragSourceRef.current = item.label;
-                      setDraggingLabel(item.label);
-                      setDragOverLabel(item.label);
-                    }}
-                    className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all active:cursor-grabbing hover:bg-white/5 hover:text-zinc-300 ${
-                      draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
-                    }`}
-                    title={`Drag to reorder ${item.label}`}
-                    aria-label={`Drag to reorder ${item.label}`}
-                  >
-                    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
-                      <circle cx="5" cy="4" r="1.1" />
-                      <circle cx="11" cy="4" r="1.1" />
-                      <circle cx="5" cy="8" r="1.1" />
-                      <circle cx="11" cy="8" r="1.1" />
-                      <circle cx="5" cy="12" r="1.1" />
-                      <circle cx="11" cy="12" r="1.1" />
-                    </svg>
-                  </button>
-                )}
-                <Link
-                  href={item.href}
-                  onClick={() => hasChildren && setOpenMenu(isOpen ? null : item.label)}
-                  draggable={false}
-                  className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
-                    draggingLabel === item.label ? 'scale-[0.98] opacity-65 shadow-lg' : ''
-                  } ${
-                    isActive
-                      ? 'bg-gold/10 text-gold'
-                      : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
-                  }`}
-                  title={item.label}
-                >
-                  <svg
-                    className={`h-5 w-5 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d={item.icon} />
-                  </svg>
+            return (
+              <div
+                key={item.label}
+                data-nav-label={item.label}
+                className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
+                  dragOverLabel === item.label && draggingLabel !== item.label
+                    ? 'scale-[1.01] bg-gold/[0.06] ring-1 ring-gold/40'
+                    : ''
+                }`}
+                onPointerEnter={() => {
+                  if (draggingLabel && draggingLabel !== item.label) {
+                    setDragOverLabel(item.label);
+                  }
+                }}
+              >
+                <div className="flex items-stretch gap-1">
                   {!isCollapsed && (
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="text-[15px] font-medium">{item.label}</span>
-                      <span className={`text-[12px] ${isActive ? 'text-gold/70' : 'text-zinc-500'}`}>
-                        {item.description}
-                      </span>
-                    </div>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => {
+                        if (e.pointerType === 'mouse' && e.button !== 0) return;
+                        e.preventDefault();
+                        dragSourceRef.current = item.label;
+                        setDraggingLabel(item.label);
+                        setDragOverLabel(item.label);
+                      }}
+                      className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all hover:bg-white/5 hover:text-zinc-300 active:cursor-grabbing ${
+                        draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
+                      }`}
+                      title={`Drag to reorder ${item.label}`}
+                      aria-label={`Drag to reorder ${item.label}`}
+                    >
+                      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+                        <circle cx="5" cy="4" r="1.1" />
+                        <circle cx="11" cy="4" r="1.1" />
+                        <circle cx="5" cy="8" r="1.1" />
+                        <circle cx="11" cy="8" r="1.1" />
+                        <circle cx="5" cy="12" r="1.1" />
+                        <circle cx="11" cy="12" r="1.1" />
+                      </svg>
+                    </button>
                   )}
-                </Link>
-              </div>
-              {hasChildren && isOpen && !isCollapsed && (
-                <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
-                  {item.children!.map((child) => {
-                    const childActive =
-                      pathname === child.href || pathname.startsWith(child.href + '/');
-                    return (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
-                          childActive
-                            ? 'text-gold'
-                            : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
-                        }`}
-                      >
-                        <span className="text-[14px] font-medium">{child.label}</span>
-                      </Link>
-                    );
-                  })}
+                  <Link
+                    href={item.href}
+                    onClick={() => hasChildren && setOpenMenu(isOpen ? null : item.label)}
+                    draggable={false}
+                    className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
+                      draggingLabel === item.label ? 'scale-[0.98] opacity-65 shadow-lg' : ''
+                    } ${
+                      isActive
+                        ? 'bg-gold/10 text-gold'
+                        : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
+                    }`}
+                    title={item.label}
+                  >
+                    <svg
+                      className={`h-5 w-5 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d={item.icon} />
+                    </svg>
+                    {!isCollapsed && (
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="text-[15px] font-medium">{item.label}</span>
+                        <span
+                          className={`text-[12px] ${isActive ? 'text-gold/70' : 'text-zinc-500'}`}
+                        >
+                          {item.description}
+                        </span>
+                      </div>
+                    )}
+                  </Link>
                 </div>
-              )}
-            </div>
-          );
-        })}
+                {hasChildren && isOpen && !isCollapsed && (
+                  <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
+                    {item.children!.map((child) => {
+                      const childActive =
+                        pathname === child.href || pathname.startsWith(child.href + '/');
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
+                            childActive
+                              ? 'text-gold'
+                              : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-[14px] font-medium">{child.label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2 flex items-end justify-end">
+          <button
+            type="button"
+            onClick={() => setIsCollapsed((v) => !v)}
+            className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white"
+            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isCollapsed ? '>>' : '<<'}
+          </button>
+        </div>
       </nav>
 
       <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
-        {!isCollapsed && <SettingsPopover />}
         <div className="mt-2 px-2 text-center text-[11px] text-zinc-600">
           {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
         </div>

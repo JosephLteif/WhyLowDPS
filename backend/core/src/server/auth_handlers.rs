@@ -91,8 +91,12 @@ pub async fn get_credentials_status(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     let env_configured = state.client_id.is_some() && state.client_secret.is_some();
-    let system_configured = store.get_user_config("system", "blizzard_client_id").is_some()
-        && store.get_user_config("system", "blizzard_client_secret").is_some();
+    let system_configured = store
+        .get_user_config("system", "blizzard_client_id")
+        .is_some()
+        && store
+            .get_user_config("system", "blizzard_client_secret")
+            .is_some();
 
     HttpResponse::Ok().json(json!({
         "globally_configured": env_configured || system_configured
@@ -111,13 +115,11 @@ pub async fn bnet_login(
         query.client_secret.as_ref(),
     );
 
-    let (client_id, client_secret) = match creds {
+    let (client_id, _client_secret) = match creds {
         Some(c) => c,
-        None => {
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Blizzard API Client ID not configured globally and not provided in request."
-            }))
-        }
+        None => return HttpResponse::BadRequest().json(json!({
+            "error": "Blizzard API Client ID not configured globally and not provided in request."
+        })),
     };
 
     let mut builder = HttpResponse::Found();
@@ -145,7 +147,10 @@ pub async fn bnet_login(
     println!("Starting Blizzard Login for client_id: {}", client_id);
     println!("Target Redirect URI: {}", state.redirect_uri);
 
-    let flow_id = query.flow_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let flow_id = query
+        .flow_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let auth_url = format!(
         "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}&prompt=login%20consent&max_age=0",
@@ -434,8 +439,8 @@ pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
         cookie.value().to_string()
     } else if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
         let auth_str = auth_header.to_str().unwrap_or_default();
-        if auth_str.starts_with("Bearer ") {
-            auth_str[7..].to_string()
+        if let Some(stripped) = auth_str.strip_prefix("Bearer ") {
+            stripped.to_string()
         } else {
             return None;
         }
@@ -687,10 +692,18 @@ pub async fn get_user_configs(
     let has_secret = store
         .get_user_config(&claims.sub, "blizzard_client_secret")
         .is_some();
+    let sim_threads = store
+        .get_user_config(&claims.sub, "sim_threads")
+        .unwrap_or_default();
+    let max_gear_combinations = store
+        .get_user_config(&claims.sub, "max_gear_combinations")
+        .unwrap_or_default();
 
     HttpResponse::Ok().json(json!({
         "blizzard_client_id": client_id,
         "has_blizzard_client_secret": has_secret,
+        "sim_threads": sim_threads,
+        "max_gear_combinations": max_gear_combinations,
     }))
 }
 
@@ -705,7 +718,11 @@ pub async fn set_user_config(
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
 
-    if body.key != "blizzard_client_id" && body.key != "blizzard_client_secret" {
+    if body.key != "blizzard_client_id"
+        && body.key != "blizzard_client_secret"
+        && body.key != "sim_threads"
+        && body.key != "max_gear_combinations"
+    {
         return HttpResponse::BadRequest().json(json!({"error": "Invalid config key"}));
     }
 
@@ -749,15 +766,46 @@ pub async fn clear_user_configs(
 #[derive(Deserialize)]
 pub struct TestBlizzardCreds {
     pub client_id: String,
-    pub client_secret: String,
+    pub client_secret: Option<String>,
 }
 
-pub async fn test_blizzard_creds(body: web::Json<TestBlizzardCreds>) -> HttpResponse {
+pub async fn test_blizzard_creds(
+    req: HttpRequest,
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    body: web::Json<TestBlizzardCreds>,
+) -> HttpResponse {
+    let client_id = body.client_id.trim().to_string();
+    if client_id.is_empty() {
+        return HttpResponse::BadRequest()
+            .json(json!({"status": "error", "message": "Missing client_id"}));
+    }
+
+    let client_secret = body
+        .client_secret
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let claims = verify_jwt(&req, &state.jwt_secret)?;
+            store.get_user_config(&claims.sub, "blizzard_client_secret")
+        });
+
+    let client_secret = match client_secret {
+        Some(v) => v,
+        None => {
+            return HttpResponse::BadRequest().json(json!({
+                "status": "error",
+                "message": "Missing client_secret and no saved secret found"
+            }));
+        }
+    };
+
     let client = reqwest::Client::new();
     let res = crate::server::blizzard::BlizzardState::get_token_with_creds(
         &client,
-        &body.client_id,
-        &body.client_secret,
+        &client_id,
+        &client_secret,
     )
     .await;
 

@@ -27,7 +27,8 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       - DATA_DIR=/app/resources/data
       - DATABASE_URL=postgres://whylowdps:whylowdps@db:5432/whylowdps

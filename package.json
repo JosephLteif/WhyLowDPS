@@ -11,9 +11,14 @@
     "tauri": "tauri",
     "web": "docker compose up --build",
     "web:dev": "docker compose -f docker-compose.dev.yml up --build",
+    "ensure:frontend": "node scripts/ensure-frontend-deps.js",
+    "ensure:cargo": "node scripts/ensure-cargo.js",
     "backend:dev": "cd backend && cargo watch -w core/src -w server/src -w core/Cargo.toml -w server/Cargo.toml -w Cargo.toml -x 'run -p whylowdps-server'",
     "kill": "node scripts/kill-ports.js",
-    "desktop:dev": "cd desktop && cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true tauri dev --config src-tauri/tauri.conf.json",
+    "desktop:dev": "npm run ensure:frontend && npm run ensure:cargo && cd desktop && cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true tauri dev --config src-tauri/tauri.conf.json",
+    "desktop:dev:docker:up": "docker compose -f docker-compose.dev.yml up --build -d db backend frontend",
+    "desktop:dev:docker": "npm run desktop:dev:docker:up && npm run ensure:cargo && cd desktop && cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true tauri dev --config src-tauri/tauri.docker.conf.json",
+    "desktop:dev:docker:down": "docker compose -f docker-compose.dev.yml down",
     "desktop:build": "cd desktop && cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true tauri build --config src-tauri/tauri.conf.json"
   }
 }

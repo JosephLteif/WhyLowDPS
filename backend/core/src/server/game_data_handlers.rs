@@ -153,6 +153,70 @@ pub(super) async fn list_upgrade_tracks() -> HttpResponse {
     HttpResponse::Ok().json(game_data::get_upgrade_tracks())
 }
 
+pub(super) async fn list_consumable_options(
+    query: web::Query<ConsumableOptionsQuery>,
+) -> HttpResponse {
+    fn normalize(raw: &[Value], expansion_min: i64, main_hand_prefix: bool) -> Vec<Value> {
+        raw.iter()
+            .filter(|entry| {
+                entry
+                    .get("expansion")
+                    .and_then(|v| v.as_i64())
+                    .map(|exp| exp >= expansion_min)
+                    .unwrap_or(true)
+            })
+            .filter_map(|entry| {
+                let value = entry.get("value").and_then(|v| v.as_str())?;
+                let short_name = entry
+                    .get("shortName")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| entry.get("name").and_then(|v| v.as_str()))
+                    .unwrap_or(value);
+                let icon = entry.get("icon").and_then(|v| v.as_str()).unwrap_or("");
+                let item_id = entry.get("itemId").and_then(|v| v.as_u64());
+                let crafting_quality = entry.get("craftingQuality").and_then(|v| v.as_u64());
+                let token = if main_hand_prefix {
+                    format!("main_hand:{}", value)
+                } else {
+                    value.to_string()
+                };
+                let key = if main_hand_prefix {
+                    format!("main_hand_{}", value)
+                } else {
+                    value.to_string()
+                };
+                Some(json!({
+                    "key": key,
+                    "label": short_name,
+                    "token": token,
+                    "icon": icon,
+                    "itemId": item_id,
+                    "craftingQuality": crafting_quality,
+                }))
+            })
+            .collect()
+    }
+
+    let expansion_min = query.expansion_min;
+    let flasks = normalize(&crate::item_db::flask_options_raw(), expansion_min, false);
+    let foods = normalize(&crate::item_db::food_options_raw(), expansion_min, false);
+    let potions = normalize(&crate::item_db::potion_options_raw(), expansion_min, false);
+    let augments = normalize(&crate::item_db::augment_options_raw(), expansion_min, false);
+    let temp_enchants = normalize(
+        &crate::item_db::temp_enchant_options_raw(),
+        expansion_min,
+        true,
+    );
+
+    HttpResponse::Ok().json(json!({
+        "flasks": flasks,
+        "foods": foods,
+        "potions": potions,
+        "augments": augments,
+        "temp_enchants": temp_enchants,
+    }))
+}
+
 pub(super) async fn resolve_gear(req: web::Json<ResolveGearRequest>) -> HttpResponse {
     let simc_input = if req.max_upgrade {
         game_data::upgrade_simc_input(&req.simc_input)

@@ -35,6 +35,7 @@ pub fn load(data_dir: &Path) {
     loader::load_talents(data_dir);
     loader::load_squish_data(data_dir);
     loader::load_catalyst_conversions(data_dir);
+    loader::load_consumables(data_dir);
 }
 
 // ---- Accessors ----
@@ -137,6 +138,26 @@ pub fn upgrade_tracks() -> Arc<HashMap<state::UpgradeTrackKey, state::UpgradeTra
 
 pub fn season_cfg() -> Value {
     state::SEASON_CONFIG.read().unwrap().clone()
+}
+
+pub fn flask_options_raw() -> Arc<Vec<Value>> {
+    state::FLASK_OPTIONS_RAW.read().unwrap().clone()
+}
+
+pub fn food_options_raw() -> Arc<Vec<Value>> {
+    state::FOOD_OPTIONS_RAW.read().unwrap().clone()
+}
+
+pub fn potion_options_raw() -> Arc<Vec<Value>> {
+    state::POTION_OPTIONS_RAW.read().unwrap().clone()
+}
+
+pub fn augment_options_raw() -> Arc<Vec<Value>> {
+    state::AUGMENT_OPTIONS_RAW.read().unwrap().clone()
+}
+
+pub fn temp_enchant_options_raw() -> Arc<Vec<Value>> {
+    state::TEMP_ENCHANT_OPTIONS_RAW.read().unwrap().clone()
 }
 
 // Re-exports from bonuses

@@ -13,6 +13,8 @@ import StatPlotChart from '../../components/StatPlotChart';
 import StatWeightsTable from '../../components/StatWeightsTable';
 import TopGearResults from '../../components/TopGearResults';
 import TrinketTierHeatmap from '../../components/TrinketTierHeatmap';
+import ExternalBuffMatrixChart from '../../components/ExternalBuffMatrixChart';
+import ConsumableMatrixChart from '../../components/ConsumableMatrixChart';
 import SimResultTalentsCard from '../../components/SimResultTalentsCard';
 import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
 import { calculateAverageIlevel } from '../../lib/ilevel';
@@ -555,6 +557,8 @@ export default function SimResultClient() {
   const r = job.result;
   const isTopGear = r.type === 'top_gear';
   const isTrinketTierHeatmap = job.sim_type === 'trinket_tier_heatmap';
+  const isExternalBuffMatrix = job.sim_type === 'external_buff_matrix';
+  const isConsumableMatrix = job.sim_type === 'consumable_matrix';
   const isStatWeights =
     job.sim_type === 'stat_weights' ||
     job.sim_type === 'stat-weights' ||
@@ -640,6 +644,16 @@ export default function SimResultClient() {
 
       {isTopGear && isTrinketTierHeatmap ? (
         <TrinketTierHeatmap
+          baseDps={(r.base_dps as number) || 0}
+          results={(r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []}
+        />
+      ) : isTopGear && isExternalBuffMatrix ? (
+        <ExternalBuffMatrixChart
+          baseDps={(r.base_dps as number) || 0}
+          results={(r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []}
+        />
+      ) : isTopGear && isConsumableMatrix ? (
+        <ConsumableMatrixChart
           baseDps={(r.base_dps as number) || 0}
           results={(r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []}
         />

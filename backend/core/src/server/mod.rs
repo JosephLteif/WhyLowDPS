@@ -483,6 +483,10 @@ pub async fn start_with_storage_bind(
                     web::get().to(game_data_handlers::list_gem_options),
                 )
                 .route(
+                    "/api/gear/consumable-options",
+                    web::get().to(game_data_handlers::list_consumable_options),
+                )
+                .route(
                     "/api/upgrade-tracks",
                     web::get().to(game_data_handlers::list_upgrade_tracks),
                 )

@@ -22,6 +22,44 @@ interface SimContextType {
   setCustomApl: (v: string) => void;
   includeTimeline: boolean;
   setIncludeTimeline: (v: boolean) => void;
+  externalBuffChaosBrand: boolean;
+  setExternalBuffChaosBrand: (v: boolean) => void;
+  externalBuffMysticTouch: boolean;
+  setExternalBuffMysticTouch: (v: boolean) => void;
+  externalBuffSkyfury: boolean;
+  setExternalBuffSkyfury: (v: boolean) => void;
+  externalBuffPowerInfusion: boolean;
+  setExternalBuffPowerInfusion: (v: boolean) => void;
+  externalBuffBlessingOfBronze: boolean;
+  setExternalBuffBlessingOfBronze: (v: boolean) => void;
+  externalBuffAugmentation: boolean;
+  setExternalBuffAugmentation: (v: boolean) => void;
+  raidBuffBloodlust: boolean;
+  setRaidBuffBloodlust: (v: boolean) => void;
+  raidBuffArcaneIntellect: boolean;
+  setRaidBuffArcaneIntellect: (v: boolean) => void;
+  raidBuffPowerWordFortitude: boolean;
+  setRaidBuffPowerWordFortitude: (v: boolean) => void;
+  raidBuffMarkOfTheWild: boolean;
+  setRaidBuffMarkOfTheWild: (v: boolean) => void;
+  raidBuffBattleShout: boolean;
+  setRaidBuffBattleShout: (v: boolean) => void;
+  raidBuffHuntersMark: boolean;
+  setRaidBuffHuntersMark: (v: boolean) => void;
+  raidBuffBleeding: boolean;
+  setRaidBuffBleeding: (v: boolean) => void;
+  consumableFlask: string;
+  setConsumableFlask: (v: string) => void;
+  consumableFood: string;
+  setConsumableFood: (v: string) => void;
+  consumablePotion: string;
+  setConsumablePotion: (v: string) => void;
+  consumableAugmentation: string;
+  setConsumableAugmentation: (v: string) => void;
+  consumableTemporaryEnchant: string;
+  setConsumableTemporaryEnchant: (v: string) => void;
+  lockSingleConsumableOptions: boolean;
+  setLockSingleConsumableOptions: (v: boolean) => void;
   // Expert Mode injection points
   simcHeader: string;
   setSimcHeader: (v: string) => void;
@@ -64,6 +102,12 @@ function readStoredBool(key: string, fallback: boolean): boolean {
   return v === 'true';
 }
 
+function readStoredString(key: string, fallback = ''): string {
+  const v = localStorage.getItem(key);
+  if (v == null) return fallback;
+  return v;
+}
+
 function readSessionString(key: string, fallback: string): string {
   return sessionStorage.getItem(key) ?? fallback;
 }
@@ -78,6 +122,25 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [fightLength, setFightLength] = useState(300);
   const [customApl, setCustomApl] = useState('');
   const [includeTimeline, _setIncludeTimeline] = useState(true);
+  const [externalBuffChaosBrand, _setExternalBuffChaosBrand] = useState(true);
+  const [externalBuffMysticTouch, _setExternalBuffMysticTouch] = useState(true);
+  const [externalBuffSkyfury, _setExternalBuffSkyfury] = useState(true);
+  const [externalBuffPowerInfusion, _setExternalBuffPowerInfusion] = useState(false);
+  const [externalBuffBlessingOfBronze, _setExternalBuffBlessingOfBronze] = useState(false);
+  const [externalBuffAugmentation, _setExternalBuffAugmentation] = useState(false);
+  const [raidBuffBloodlust, _setRaidBuffBloodlust] = useState(true);
+  const [raidBuffArcaneIntellect, _setRaidBuffArcaneIntellect] = useState(true);
+  const [raidBuffPowerWordFortitude, _setRaidBuffPowerWordFortitude] = useState(true);
+  const [raidBuffMarkOfTheWild, _setRaidBuffMarkOfTheWild] = useState(true);
+  const [raidBuffBattleShout, _setRaidBuffBattleShout] = useState(true);
+  const [raidBuffHuntersMark, _setRaidBuffHuntersMark] = useState(true);
+  const [raidBuffBleeding, _setRaidBuffBleeding] = useState(true);
+  const [consumableFlask, _setConsumableFlask] = useState('');
+  const [consumableFood, _setConsumableFood] = useState('');
+  const [consumablePotion, _setConsumablePotion] = useState('');
+  const [consumableAugmentation, _setConsumableAugmentation] = useState('');
+  const [consumableTemporaryEnchant, _setConsumableTemporaryEnchant] = useState('');
+  const [lockSingleConsumableOptions, setLockSingleConsumableOptions] = useState(false);
   const [simcHeader, setSimcHeader] = useState('');
   const [simcBasePlayer, setSimcBasePlayer] = useState('');
   const [simcRaidActors, setSimcRaidActors] = useState('');
@@ -91,6 +154,30 @@ export function SimProvider({ children }: { children: ReactNode }) {
       _setSimcInput(readSessionString('whylowdps_simc_input', ''));
       _setThreads(readStored('whylowdps_threads', 0));
       _setIncludeTimeline(readStoredBool('whylowdps_include_timeline', true));
+      _setExternalBuffChaosBrand(readStoredBool('whylowdps_ext_buff_chaos_brand', true));
+      _setExternalBuffMysticTouch(readStoredBool('whylowdps_ext_buff_mystic_touch', true));
+      _setExternalBuffSkyfury(readStoredBool('whylowdps_ext_buff_skyfury', true));
+      _setExternalBuffPowerInfusion(readStoredBool('whylowdps_ext_buff_power_infusion', false));
+      _setExternalBuffBlessingOfBronze(
+        readStoredBool('whylowdps_ext_buff_blessing_of_bronze', false)
+      );
+      _setExternalBuffAugmentation(readStoredBool('whylowdps_ext_buff_augmentation', false));
+      _setRaidBuffBloodlust(readStoredBool('whylowdps_raid_buff_bloodlust', true));
+      _setRaidBuffArcaneIntellect(readStoredBool('whylowdps_raid_buff_arcane_intellect', true));
+      _setRaidBuffPowerWordFortitude(
+        readStoredBool('whylowdps_raid_buff_power_word_fortitude', true)
+      );
+      _setRaidBuffMarkOfTheWild(readStoredBool('whylowdps_raid_buff_mark_of_the_wild', true));
+      _setRaidBuffBattleShout(readStoredBool('whylowdps_raid_buff_battle_shout', true));
+      _setRaidBuffHuntersMark(readStoredBool('whylowdps_raid_buff_hunters_mark', true));
+      _setRaidBuffBleeding(readStoredBool('whylowdps_raid_buff_bleeding', true));
+      _setConsumableFlask(readStoredString('whylowdps_consumable_flask', ''));
+      _setConsumableFood(readStoredString('whylowdps_consumable_food', ''));
+      _setConsumablePotion(readStoredString('whylowdps_consumable_potion', ''));
+      _setConsumableAugmentation(readStoredString('whylowdps_consumable_augmentation', ''));
+      _setConsumableTemporaryEnchant(
+        readStoredString('whylowdps_consumable_temporary_enchant', '')
+      );
     } catch {}
   }, []);
 
@@ -141,6 +228,132 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const setExternalBuffChaosBrand = useCallback((v: boolean) => {
+    _setExternalBuffChaosBrand(v);
+    try {
+      localStorage.setItem('whylowdps_ext_buff_chaos_brand', String(v));
+    } catch {}
+  }, []);
+
+  const setExternalBuffMysticTouch = useCallback((v: boolean) => {
+    _setExternalBuffMysticTouch(v);
+    try {
+      localStorage.setItem('whylowdps_ext_buff_mystic_touch', String(v));
+    } catch {}
+  }, []);
+
+  const setExternalBuffSkyfury = useCallback((v: boolean) => {
+    _setExternalBuffSkyfury(v);
+    try {
+      localStorage.setItem('whylowdps_ext_buff_skyfury', String(v));
+    } catch {}
+  }, []);
+
+  const setExternalBuffPowerInfusion = useCallback((v: boolean) => {
+    _setExternalBuffPowerInfusion(v);
+    try {
+      localStorage.setItem('whylowdps_ext_buff_power_infusion', String(v));
+    } catch {}
+  }, []);
+
+  const setExternalBuffBlessingOfBronze = useCallback((v: boolean) => {
+    _setExternalBuffBlessingOfBronze(v);
+    try {
+      localStorage.setItem('whylowdps_ext_buff_blessing_of_bronze', String(v));
+    } catch {}
+  }, []);
+
+  const setExternalBuffAugmentation = useCallback((v: boolean) => {
+    _setExternalBuffAugmentation(v);
+    try {
+      localStorage.setItem('whylowdps_ext_buff_augmentation', String(v));
+    } catch {}
+  }, []);
+
+  const setRaidBuffBloodlust = useCallback((v: boolean) => {
+    _setRaidBuffBloodlust(v);
+    try {
+      localStorage.setItem('whylowdps_raid_buff_bloodlust', String(v));
+    } catch {}
+  }, []);
+
+  const setRaidBuffArcaneIntellect = useCallback((v: boolean) => {
+    _setRaidBuffArcaneIntellect(v);
+    try {
+      localStorage.setItem('whylowdps_raid_buff_arcane_intellect', String(v));
+    } catch {}
+  }, []);
+
+  const setRaidBuffPowerWordFortitude = useCallback((v: boolean) => {
+    _setRaidBuffPowerWordFortitude(v);
+    try {
+      localStorage.setItem('whylowdps_raid_buff_power_word_fortitude', String(v));
+    } catch {}
+  }, []);
+
+  const setRaidBuffMarkOfTheWild = useCallback((v: boolean) => {
+    _setRaidBuffMarkOfTheWild(v);
+    try {
+      localStorage.setItem('whylowdps_raid_buff_mark_of_the_wild', String(v));
+    } catch {}
+  }, []);
+
+  const setRaidBuffBattleShout = useCallback((v: boolean) => {
+    _setRaidBuffBattleShout(v);
+    try {
+      localStorage.setItem('whylowdps_raid_buff_battle_shout', String(v));
+    } catch {}
+  }, []);
+
+  const setRaidBuffHuntersMark = useCallback((v: boolean) => {
+    _setRaidBuffHuntersMark(v);
+    try {
+      localStorage.setItem('whylowdps_raid_buff_hunters_mark', String(v));
+    } catch {}
+  }, []);
+
+  const setRaidBuffBleeding = useCallback((v: boolean) => {
+    _setRaidBuffBleeding(v);
+    try {
+      localStorage.setItem('whylowdps_raid_buff_bleeding', String(v));
+    } catch {}
+  }, []);
+
+  const setConsumableFlask = useCallback((v: string) => {
+    _setConsumableFlask(v);
+    try {
+      localStorage.setItem('whylowdps_consumable_flask', v);
+    } catch {}
+  }, []);
+
+  const setConsumableFood = useCallback((v: string) => {
+    _setConsumableFood(v);
+    try {
+      localStorage.setItem('whylowdps_consumable_food', v);
+    } catch {}
+  }, []);
+
+  const setConsumablePotion = useCallback((v: string) => {
+    _setConsumablePotion(v);
+    try {
+      localStorage.setItem('whylowdps_consumable_potion', v);
+    } catch {}
+  }, []);
+
+  const setConsumableAugmentation = useCallback((v: string) => {
+    _setConsumableAugmentation(v);
+    try {
+      localStorage.setItem('whylowdps_consumable_augmentation', v);
+    } catch {}
+  }, []);
+
+  const setConsumableTemporaryEnchant = useCallback((v: string) => {
+    _setConsumableTemporaryEnchant(v);
+    try {
+      localStorage.setItem('whylowdps_consumable_temporary_enchant', v);
+    } catch {}
+  }, []);
+
   return (
     <SimContext.Provider
       value={{
@@ -162,6 +375,44 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setCustomApl,
         includeTimeline,
         setIncludeTimeline,
+        externalBuffChaosBrand,
+        setExternalBuffChaosBrand,
+        externalBuffMysticTouch,
+        setExternalBuffMysticTouch,
+        externalBuffSkyfury,
+        setExternalBuffSkyfury,
+        externalBuffPowerInfusion,
+        setExternalBuffPowerInfusion,
+        externalBuffBlessingOfBronze,
+        setExternalBuffBlessingOfBronze,
+        externalBuffAugmentation,
+        setExternalBuffAugmentation,
+        raidBuffBloodlust,
+        setRaidBuffBloodlust,
+        raidBuffArcaneIntellect,
+        setRaidBuffArcaneIntellect,
+        raidBuffPowerWordFortitude,
+        setRaidBuffPowerWordFortitude,
+        raidBuffMarkOfTheWild,
+        setRaidBuffMarkOfTheWild,
+        raidBuffBattleShout,
+        setRaidBuffBattleShout,
+        raidBuffHuntersMark,
+        setRaidBuffHuntersMark,
+        raidBuffBleeding,
+        setRaidBuffBleeding,
+        consumableFlask,
+        setConsumableFlask,
+        consumableFood,
+        setConsumableFood,
+        consumablePotion,
+        setConsumablePotion,
+        consumableAugmentation,
+        setConsumableAugmentation,
+        consumableTemporaryEnchant,
+        setConsumableTemporaryEnchant,
+        lockSingleConsumableOptions,
+        setLockSingleConsumableOptions,
         simcHeader,
         setSimcHeader,
         simcBasePlayer,

@@ -57,6 +57,9 @@ const SIM_TYPE_LABELS: Record<string, string> = {
   droptimizer: 'Drop Finder',
   stat_weights: 'Stat Weights',
   stat_plot: 'Stat Plot',
+  external_buff_matrix: 'External Buff Matrix',
+  consumable_matrix: 'Consumable Matrix',
+  trinket_tier_heatmap: 'Trinket / Tier Heatmaps',
 };
 
 function TrashIcon() {

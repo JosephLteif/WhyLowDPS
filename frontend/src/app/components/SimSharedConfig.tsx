@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
@@ -8,6 +8,12 @@ import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
 import { specDisplayName } from '../lib/types';
 import { getFightStyleParamRules } from '../lib/fight-style';
+import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import { useConsumableOptions } from '../lib/useConsumableOptions';
+import {
+  OptionEntry,
+  RAID_BUFF_MATRIX_OPTIONS,
+} from '../lib/sim-options-catalog';
 
 /** Adler-32 checksum matching the SimC addon's implementation.
  *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
@@ -197,6 +203,199 @@ function CharacterInfoBar({ info }: { info: { className: string; name: string; s
   );
 }
 
+function optionQualityFamily(opt: OptionEntry | null) {
+  const token = (opt?.token || '').replace(/^main_hand:/, '');
+  return token.replace(/_[1-3]$/i, '');
+}
+
+function remapQuality(quality: number | undefined, familyMax: number | undefined) {
+  if (!quality || quality < 1 || quality > 3) return undefined;
+  // 2-tier groups: 1=silver, 2=gold
+  if (familyMax === 2) {
+    if (quality === 1) return 2;
+    if (quality === 2) return 3;
+  }
+  // 3-tier groups: 1=bronze, 2=silver, 3=gold
+  return quality;
+}
+
+function optionSelectLabel(opt: OptionEntry) {
+  return (opt.label || '')
+    .replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '')
+    .replace(/\s+[1-3]\s*$/i, '');
+}
+
+function QualityBadge({ quality }: { quality?: number }) {
+  if (!quality || quality < 1 || quality > 3) return null;
+  const style =
+    quality === 3
+      ? 'border-amber-300/60 bg-gradient-to-b from-amber-200 to-amber-500'
+      : quality === 2
+        ? 'border-zinc-300/60 bg-gradient-to-b from-zinc-100 to-zinc-400'
+        : 'border-orange-400/60 bg-gradient-to-b from-orange-200 to-orange-500';
+  return (
+    <span
+      className={`ml-auto inline-block h-3.5 w-3.5 rotate-45 rounded-[2px] border ${style}`}
+      title={`Quality ${quality}`}
+      aria-label={`Quality ${quality}`}
+    >
+      <span className="sr-only">{quality}</span>
+    </span>
+  );
+}
+
+function ConsumableSelect({
+  label,
+  value,
+  onChange,
+  options,
+  qualityMaxByFamily,
+  disabled = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: OptionEntry[];
+  qualityMaxByFamily: Map<string, number>;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useWowheadTooltips([open, value, options.length]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [open]);
+
+  const selected = options.find((opt) => (opt.token || '') === value) || null;
+  const selectedQuality = remapQuality(
+    selected?.craftingQuality,
+    qualityMaxByFamily.get(optionQualityFamily(selected))
+  );
+
+  return (
+    <label className="space-y-1.5 text-xs text-zinc-400">
+      <span className="block">{label}</span>
+      <div ref={rootRef} className="relative">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm ${
+            disabled ? 'cursor-not-allowed text-zinc-500 opacity-70' : 'text-zinc-200'
+          }`}
+        >
+          {selected?.icon ? (
+            <a
+              href={selected.itemId ? `https://www.wowhead.com/item=${selected.itemId}` : '#'}
+              target="_blank"
+              rel="noreferrer"
+              data-wowhead={selected.itemId ? `item=${selected.itemId}` : undefined}
+              onClick={(e) => e.preventDefault()}
+              className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
+              style={{
+                backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${selected.icon}.jpg)`,
+              }}
+            />
+          ) : (
+            <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
+          )}
+          {selected ? (
+            <a
+              href={selected.itemId ? `https://www.wowhead.com/item=${selected.itemId}` : '#'}
+              target="_blank"
+              rel="noreferrer"
+              data-wowhead={selected.itemId ? `item=${selected.itemId}` : undefined}
+              onClick={(e) => e.preventDefault()}
+              className="truncate"
+            >
+              {optionSelectLabel(selected)}
+            </a>
+          ) : (
+            <span className="truncate">None</span>
+          )}
+          <QualityBadge quality={selectedQuality} />
+          <svg
+            className={`ml-1 h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+        {open && (
+          <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-surface shadow-xl">
+            <div
+              type="button"
+              onClick={() => {
+                onChange('');
+                setOpen(false);
+              }}
+              className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
+            >
+              <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
+              <span className="truncate">None</span>
+            </div>
+            {options.map((opt) => {
+              const q = remapQuality(
+                opt.craftingQuality,
+                qualityMaxByFamily.get(optionQualityFamily(opt))
+              );
+              return (
+                <div
+                  key={opt.key}
+                  onClick={() => {
+                    onChange(opt.token || '');
+                    setOpen(false);
+                  }}
+                  className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
+                >
+                  <a
+                    href={opt.itemId ? `https://www.wowhead.com/item=${opt.itemId}` : '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-wowhead={opt.itemId ? `item=${opt.itemId}` : undefined}
+                    onClick={(e) => e.preventDefault()}
+                    className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
+                    style={{
+                      backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg)`,
+                    }}
+                  />
+                  <a
+                    href={opt.itemId ? `https://www.wowhead.com/item=${opt.itemId}` : '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-wowhead={opt.itemId ? `item=${opt.itemId}` : undefined}
+                    onClick={(e) => e.preventDefault()}
+                    className="truncate"
+                  >
+                    {optionSelectLabel(opt)}
+                  </a>
+                  <QualityBadge quality={q} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </label>
+  );
+}
+
 function AdvancedOptions() {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
@@ -211,6 +410,39 @@ function AdvancedOptions() {
     setCustomApl,
     includeTimeline,
     setIncludeTimeline,
+    externalBuffChaosBrand,
+    setExternalBuffChaosBrand,
+    externalBuffMysticTouch,
+    setExternalBuffMysticTouch,
+    externalBuffSkyfury,
+    setExternalBuffSkyfury,
+    externalBuffPowerInfusion,
+    setExternalBuffPowerInfusion,
+    raidBuffBloodlust,
+    setRaidBuffBloodlust,
+    raidBuffArcaneIntellect,
+    setRaidBuffArcaneIntellect,
+    raidBuffPowerWordFortitude,
+    setRaidBuffPowerWordFortitude,
+    raidBuffMarkOfTheWild,
+    setRaidBuffMarkOfTheWild,
+    raidBuffBattleShout,
+    setRaidBuffBattleShout,
+    raidBuffHuntersMark,
+    setRaidBuffHuntersMark,
+    raidBuffBleeding,
+    setRaidBuffBleeding,
+    consumableFlask,
+    setConsumableFlask,
+    consumableFood,
+    setConsumableFood,
+    consumablePotion,
+    setConsumablePotion,
+    consumableAugmentation,
+    setConsumableAugmentation,
+    consumableTemporaryEnchant,
+    setConsumableTemporaryEnchant,
+    lockSingleConsumableOptions,
     simcHeader,
     setSimcHeader,
     simcBasePlayer,
@@ -246,6 +478,25 @@ function AdvancedOptions() {
   );
 
   const hasExpertContent = Object.values(expertValues).some((v) => v.trim());
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+  const selectedFlaskOption =
+    flasks.find((opt) => (opt.token || '') === consumableFlask) || null;
+  const selectedPotionOption =
+    potions.find((opt) => (opt.token || '') === consumablePotion) || null;
+  const selectedAugmentationOption =
+    augments.find((opt) => (opt.token || '') === consumableAugmentation) || null;
+  const selectedTempEnchantOption =
+    tempEnchants.find((opt) => (opt.token || '') === consumableTemporaryEnchant) || null;
+  const qualityMaxByFamily = useMemo(() => {
+    const map = new Map<string, number>();
+    const all = [...flasks, ...potions, ...augments, ...tempEnchants];
+    for (const opt of all) {
+      const family = optionQualityFamily(opt);
+      const q = opt.craftingQuality || 0;
+      map.set(family, Math.max(map.get(family) || 0, q));
+    }
+    return map;
+  }, [flasks, potions, augments, tempEnchants]);
   const fightStyleRules = getFightStyleParamRules(fightStyle);
   const showFightLength = fightStyleRules.usesFightLength;
   const showTargetCount = fightStyleRules.usesTargetCount;
@@ -256,6 +507,25 @@ function AdvancedOptions() {
     !customApl &&
     !hasExpertContent;
   const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
+  useWowheadTooltips([
+    open,
+    externalBuffChaosBrand,
+    externalBuffMysticTouch,
+    externalBuffSkyfury,
+    externalBuffPowerInfusion,
+    raidBuffBloodlust,
+    raidBuffArcaneIntellect,
+    raidBuffPowerWordFortitude,
+    raidBuffMarkOfTheWild,
+    raidBuffBattleShout,
+    raidBuffHuntersMark,
+    raidBuffBleeding,
+    consumableFlask,
+    consumablePotion,
+    consumableAugmentation,
+    consumableTemporaryEnchant,
+    consumableFood,
+  ]);
 
   return (
     <div className="card overflow-hidden">
@@ -395,6 +665,190 @@ function AdvancedOptions() {
                 }`}
               />
             </button>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Consumables</p>
+              <p className="text-[13px] text-zinc-500">
+                Select one per category for normal sims. Use Stat Weights matrix to compare many at once.
+              </p>
+              {lockSingleConsumableOptions && (
+                <p className="mt-1 text-[12px] text-amber-300">
+                  Disabled while Consumable Matrix mode is selected.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Flask
+                </p>
+                <ConsumableSelect
+                  label="Active Flask"
+                  value={consumableFlask}
+                  onChange={setConsumableFlask}
+                  options={flasks}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Potion
+                </p>
+                <ConsumableSelect
+                  label="Active Potion"
+                  value={consumablePotion}
+                  onChange={setConsumablePotion}
+                  options={potions}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Augmentation Rune
+                </p>
+                <ConsumableSelect
+                  label="Active Augmentation Rune"
+                  value={consumableAugmentation}
+                  onChange={setConsumableAugmentation}
+                  options={augments}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Temporary Enchant
+                </p>
+                <ConsumableSelect
+                  label="Main Hand Temporary Enchant"
+                  value={consumableTemporaryEnchant}
+                  onChange={setConsumableTemporaryEnchant}
+                  options={tempEnchants}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+
+              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                  Food
+                </p>
+                <ConsumableSelect
+                  label="Active Food Buff"
+                  value={consumableFood}
+                  onChange={setConsumableFood}
+                  options={foods}
+                  qualityMaxByFamily={qualityMaxByFamily}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+            <div>
+              <p className="text-sm font-medium text-zinc-200">Raid Buffs</p>
+              <p className="text-[13px] text-zinc-500">
+                Control default raid buffs for normal sims.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
+                const checked =
+                  buff.key === 'bloodlust'
+                    ? raidBuffBloodlust
+                    : buff.key === 'arcane_intellect'
+                      ? raidBuffArcaneIntellect
+                      : buff.key === 'power_word_fortitude'
+                        ? raidBuffPowerWordFortitude
+                        : buff.key === 'mark_of_the_wild'
+                          ? raidBuffMarkOfTheWild
+                          : buff.key === 'battle_shout'
+                            ? raidBuffBattleShout
+                            : buff.key === 'hunters_mark'
+                              ? raidBuffHuntersMark
+                              : buff.key === 'bleeding'
+                                ? raidBuffBleeding
+                                : buff.key === 'mystic_touch'
+                                  ? externalBuffMysticTouch
+                                  : buff.key === 'chaos_brand'
+                                    ? externalBuffChaosBrand
+                                    : buff.key === 'skyfury'
+                                      ? externalBuffSkyfury
+                                      : buff.key === 'power_infusion'
+                                        ? externalBuffPowerInfusion
+                                        : false;
+
+                const setChecked =
+                  buff.key === 'bloodlust'
+                    ? setRaidBuffBloodlust
+                    : buff.key === 'arcane_intellect'
+                      ? setRaidBuffArcaneIntellect
+                      : buff.key === 'power_word_fortitude'
+                        ? setRaidBuffPowerWordFortitude
+                        : buff.key === 'mark_of_the_wild'
+                          ? setRaidBuffMarkOfTheWild
+                          : buff.key === 'battle_shout'
+                            ? setRaidBuffBattleShout
+                            : buff.key === 'hunters_mark'
+                              ? setRaidBuffHuntersMark
+                              : buff.key === 'bleeding'
+                                ? setRaidBuffBleeding
+                                : buff.key === 'mystic_touch'
+                                  ? setExternalBuffMysticTouch
+                                  : buff.key === 'chaos_brand'
+                                    ? setExternalBuffChaosBrand
+                                    : buff.key === 'skyfury'
+                                      ? setExternalBuffSkyfury
+                                      : buff.key === 'power_infusion'
+                                        ? setExternalBuffPowerInfusion
+                                        : ((_: boolean) => {});
+
+                return (
+                  <label
+                    key={buff.key}
+                    className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
+                      checked
+                        ? 'border-gold/40 bg-gold/[0.08]'
+                        : 'border-border bg-surface hover:border-zinc-600'
+                    }`}
+                  >
+                    <a
+                      href={`https://www.wowhead.com/spell=${buff.spellId}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-wowhead={`spell=${buff.spellId}`}
+                      className="flex min-w-0 items-center gap-2 text-zinc-300 hover:text-zinc-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span
+                        className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
+                        style={{
+                          backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg)`,
+                        }}
+                      />
+                      <span className="truncate text-xs">{buff.label}</span>
+                    </a>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => setChecked(e.target.checked)}
+                      className="h-4 w-4 accent-gold"
+                    />
+                  </label>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              If your character provides one of these buffs, SimC may still include it.
+            </p>
           </div>
 
           {/* Expert Mode */}

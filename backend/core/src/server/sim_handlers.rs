@@ -53,7 +53,30 @@ pub(super) async fn create_sim(
         .await;
     }
 
+    if req.sim_type == "external_buff_matrix" {
+        return create_external_buff_matrix_sim(
+            simc_input,
+            &req.options,
+            store,
+            simc_path,
+            log_buffer,
+        )
+        .await;
+    }
+
+    if req.sim_type == "consumable_matrix" {
+        return create_consumable_matrix_sim(
+            simc_input,
+            &req.options,
+            store,
+            simc_path,
+            log_buffer,
+        )
+        .await;
+    }
+
     simc_input = inject_expert_fields(&simc_input, &req.options);
+    simc_input = apply_shared_simc_options(&simc_input, &req.options, true);
 
     let resolved_threads = if req.options.threads == 0 {
         std::thread::available_parallelism()
@@ -148,6 +171,306 @@ pub(super) async fn create_sim(
 struct HeatmapTrinketVariant {
     label: String,
     item: crate::types::ResolvedItem,
+}
+
+struct ExternalBuffScenario {
+    label: String,
+    lines: Vec<String>,
+}
+
+struct ConsumableScenario {
+    label: String,
+    category: String,
+    token: String,
+    lines: Vec<String>,
+}
+
+fn sanitize_matrix_token(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let ok = trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/' | ':' | '+'));
+    if ok {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+fn raid_buff_line(buff_key: &str) -> Option<&'static str> {
+    match buff_key {
+        "bloodlust" => Some("override.bloodlust=1"),
+        "arcane_intellect" => Some("override.arcane_intellect=1"),
+        "power_word_fortitude" => Some("override.power_word_fortitude=1"),
+        "battle_shout" => Some("override.battle_shout=1"),
+        "mark_of_the_wild" => Some("override.mark_of_the_wild=1"),
+        "hunters_mark" => Some("override.hunters_mark=1"),
+        "bleeding" => Some("override.bleeding=1"),
+        "chaos_brand" => Some("override.chaos_brand=1"),
+        "mystic_touch" => Some("override.mystic_touch=1"),
+        "skyfury" => Some("override.skyfury=1"),
+        "power_infusion" => Some("external_buffs.power_infusion=0/120/240"),
+        "blessing_of_bronze" => Some("override.blessing_of_the_bronze=1"),
+        _ => None,
+    }
+}
+
+fn build_external_buff_matrix_input(
+    simc_input: &str,
+    options: &SimOptions,
+) -> Result<(String, usize, HashMap<String, Vec<Value>>), String> {
+    let (base_lines, equipped_gear, talents, _spec) =
+        crate::profileset_generator::parser::parse_base_profile(simc_input);
+
+    let mut scenarios: Vec<ExternalBuffScenario> = Vec::new();
+    if options.external_buff_chaos_brand {
+        scenarios.push(ExternalBuffScenario {
+            label: "Chaos Brand".to_string(),
+            lines: vec!["override.chaos_brand=1".to_string()],
+        });
+    }
+    if options.external_buff_mystic_touch {
+        scenarios.push(ExternalBuffScenario {
+            label: "Mystic Touch".to_string(),
+            lines: vec!["override.mystic_touch=1".to_string()],
+        });
+    }
+    if options.external_buff_skyfury {
+        scenarios.push(ExternalBuffScenario {
+            label: "Skyfury".to_string(),
+            lines: vec!["override.skyfury=1".to_string()],
+        });
+    }
+    if options.external_buff_power_infusion {
+        scenarios.push(ExternalBuffScenario {
+            label: "Power Infusion".to_string(),
+            lines: vec!["external_buffs.power_infusion=0/120/240".to_string()],
+        });
+    }
+    if options.external_buff_blessing_of_bronze {
+        scenarios.push(ExternalBuffScenario {
+            label: "Blessing of Bronze".to_string(),
+            lines: vec!["override.blessing_of_the_bronze=1".to_string()],
+        });
+    }
+    if options.external_buff_augmentation {
+        scenarios.push(ExternalBuffScenario {
+            label: "Augmentation Evoker Buffs".to_string(),
+            lines: vec![
+                "override.blessing_of_the_bronze=1".to_string(),
+                "dragonflight.brilliance_party=1".to_string(),
+            ],
+        });
+    }
+
+    if scenarios.is_empty() {
+        return Err("Select at least one external buff for the matrix.".to_string());
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut combo_metadata: HashMap<String, Vec<Value>> = HashMap::new();
+    lines.push("optimal_raid=0".to_string());
+    lines.push(String::new());
+    lines.push("# Base Actor".to_string());
+    lines.extend(base_lines);
+    // Force matrix baseline to "no consumables" so each scenario delta is
+    // measured against a true empty-consumables profile.
+    lines.push("flask=".to_string());
+    lines.push("food=".to_string());
+    lines.push("potion=".to_string());
+    lines.push("augmentation=".to_string());
+    lines.push("temporary_enchant=".to_string());
+    lines.push("### Combo 1".to_string());
+    for slot in crate::types::class_data::GEAR_SLOTS {
+        if let Some(gear) = equipped_gear.get(*slot) {
+            lines.push(format!("{}={}", slot, gear));
+        } else if *slot == "off_hand" {
+            lines.push("off_hand=,".to_string());
+        }
+    }
+    if !talents.is_empty() {
+        lines.push(format!("talents={}", talents));
+    }
+    lines.push(String::new());
+
+    let mut combo_index = 2usize;
+    for scenario in scenarios {
+        let combo_name = format!("External Buff {} | {}", combo_index - 1, scenario.label);
+        lines.push(format!("### {}", combo_name));
+        for line in scenario.lines {
+            lines.push(format!("profileset.\"{}\"+={}", combo_name, line));
+        }
+        if !talents.is_empty() {
+            lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
+        }
+        lines.push(String::new());
+
+        combo_metadata.insert(
+            combo_name.clone(),
+            vec![json!({
+                "external_buff": scenario.label,
+                "heatmap_kind": "external_buff",
+                "is_kept": false
+            })],
+        );
+        combo_index += 1;
+    }
+
+    Ok((lines.join("\n"), combo_index.saturating_sub(2), combo_metadata))
+}
+
+fn build_consumable_matrix_input(
+    simc_input: &str,
+    options: &SimOptions,
+) -> Result<(String, usize, HashMap<String, Vec<Value>>), String> {
+    let (base_lines, equipped_gear, talents, _spec) =
+        crate::profileset_generator::parser::parse_base_profile(simc_input);
+
+    let mut scenarios: Vec<ConsumableScenario> = Vec::new();
+    let mut seen = HashSet::<String>::new();
+
+    for raw in &options.consumable_matrix_flasks {
+        if let Some(token) = sanitize_matrix_token(raw) {
+            let dedupe_key = format!("flask:{}", token);
+            if !seen.insert(dedupe_key) {
+                continue;
+            }
+            scenarios.push(ConsumableScenario {
+                label: format!("Flask: {}", token),
+                category: "flask".to_string(),
+                token: token.clone(),
+                lines: vec![format!("flask={}", token)],
+            });
+        }
+    }
+    for raw in &options.consumable_matrix_foods {
+        if let Some(token) = sanitize_matrix_token(raw) {
+            let dedupe_key = format!("food:{}", token);
+            if !seen.insert(dedupe_key) {
+                continue;
+            }
+            scenarios.push(ConsumableScenario {
+                label: format!("Food: {}", token),
+                category: "food".to_string(),
+                token: token.clone(),
+                lines: vec![format!("food={}", token)],
+            });
+        }
+    }
+    for raw in &options.consumable_matrix_potions {
+        if let Some(token) = sanitize_matrix_token(raw) {
+            let dedupe_key = format!("potion:{}", token);
+            if !seen.insert(dedupe_key) {
+                continue;
+            }
+            scenarios.push(ConsumableScenario {
+                label: format!("Potion: {}", token),
+                category: "potion".to_string(),
+                token: token.clone(),
+                lines: vec![format!("potion={}", token)],
+            });
+        }
+    }
+    for raw in &options.consumable_matrix_augmentations {
+        if let Some(token) = sanitize_matrix_token(raw) {
+            let dedupe_key = format!("augmentation:{}", token);
+            if !seen.insert(dedupe_key) {
+                continue;
+            }
+            scenarios.push(ConsumableScenario {
+                label: format!("Augmentation: {}", token),
+                category: "augmentation".to_string(),
+                token: token.clone(),
+                lines: vec![format!("augmentation={}", token)],
+            });
+        }
+    }
+    for raw in &options.consumable_matrix_temporary_enchants {
+        if let Some(token) = sanitize_matrix_token(raw) {
+            if token.starts_with("off_hand:") {
+                continue;
+            }
+            let dedupe_key = format!("temporary_enchant:{}", token);
+            if !seen.insert(dedupe_key) {
+                continue;
+            }
+            scenarios.push(ConsumableScenario {
+                label: format!("Temp Enchant: {}", token),
+                category: "temporary_enchant".to_string(),
+                token: token.clone(),
+                lines: vec![format!("temporary_enchant={}", token)],
+            });
+        }
+    }
+    for raw in &options.consumable_matrix_raid_buffs {
+        let key = raw.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if let Some(line) = raid_buff_line(key) {
+            let dedupe_key = format!("raid_buff:{}", key);
+            if !seen.insert(dedupe_key) {
+                continue;
+            }
+            scenarios.push(ConsumableScenario {
+                label: format!("Raid Buff: {}", key),
+                category: "raid_buff".to_string(),
+                token: key.to_string(),
+                lines: vec![line.to_string()],
+            });
+        }
+    }
+
+    if scenarios.is_empty() {
+        return Err("Select at least one consumable or raid buff to compare.".to_string());
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    let mut combo_metadata: HashMap<String, Vec<Value>> = HashMap::new();
+    lines.push("optimal_raid=0".to_string());
+    lines.push(String::new());
+    lines.push("# Base Actor".to_string());
+    lines.extend(base_lines);
+    lines.push("### Combo 1".to_string());
+    for slot in crate::types::class_data::GEAR_SLOTS {
+        if let Some(gear) = equipped_gear.get(*slot) {
+            lines.push(format!("{}={}", slot, gear));
+        } else if *slot == "off_hand" {
+            lines.push("off_hand=,".to_string());
+        }
+    }
+    if !talents.is_empty() {
+        lines.push(format!("talents={}", talents));
+    }
+    lines.push(String::new());
+
+    let mut combo_index = 2usize;
+    for scenario in scenarios {
+        let combo_name = format!("Consumable {} | {}", combo_index - 1, scenario.label);
+        lines.push(format!("### {}", combo_name));
+        for line in scenario.lines {
+            lines.push(format!("profileset.\"{}\"+={}", combo_name, line));
+        }
+        if !talents.is_empty() {
+            lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
+        }
+        lines.push(String::new());
+        combo_metadata.insert(
+            combo_name.clone(),
+            vec![json!({
+                "consumable_category": scenario.category,
+                "consumable_token": scenario.token,
+                "heatmap_kind": "consumable",
+                "is_kept": false
+            })],
+        );
+        combo_index += 1;
+    }
+
+    Ok((lines.join("\n"), combo_index.saturating_sub(2), combo_metadata))
 }
 
 fn build_simc_item_string(item_id: u64, bonus_ids: &[u64]) -> String {
@@ -547,6 +870,7 @@ async fn create_trinket_tier_heatmap_sim(
         };
 
     let mut generated_input = inject_expert_fields(&generated_input, options);
+    generated_input = apply_shared_simc_options(&generated_input, options, true);
 
     let resolved_threads = if options.threads == 0 {
         std::thread::available_parallelism()
@@ -584,6 +908,133 @@ async fn create_trinket_tier_heatmap_sim(
         store.get_ref().clone(),
         simc_path.get_ref().clone(),
         options.to_json_with_sim_type("trinket_tier_heatmap"),
+        job_id.clone(),
+        generated_input,
+        combo_count,
+        log_buffer.get_ref().clone(),
+    );
+
+    HttpResponse::Ok().json(SimResponse {
+        id: job_id,
+        status: "pending".to_string(),
+        created_at,
+    })
+}
+
+async fn create_external_buff_matrix_sim(
+    simc_input: String,
+    options: &SimOptions,
+    store: web::Data<Arc<dyn JobStorage>>,
+    simc_path: web::Data<PathBuf>,
+    log_buffer: web::Data<Arc<LogBuffer>>,
+) -> HttpResponse {
+    let (generated_input, combo_count, combo_metadata) =
+        match build_external_buff_matrix_input(&simc_input, options) {
+            Ok(v) => v,
+            Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+        };
+
+    let mut generated_input = inject_expert_fields(&generated_input, options);
+    generated_input = apply_shared_simc_options(&generated_input, options, false);
+    let resolved_threads = if options.threads == 0 {
+        std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(4)
+    } else {
+        options.threads
+    };
+    generated_input.push_str(&format!("\nthreads={}\n", resolved_threads));
+
+    if let Some(resp) = validate_batch(&options.batch_id, store.get_ref().as_ref()) {
+        return resp;
+    }
+
+    let mut job = Job::new(
+        generated_input.clone(),
+        "external_buff_matrix".to_string(),
+        options.iterations,
+        options.fight_style.clone(),
+        options.target_error,
+    );
+    job.batch_id = options.batch_id.clone();
+    let job_id = job.id.clone();
+    let created_at = job.created_at.clone();
+
+    let meta_json = serde_json::to_string(&json!({
+        "_combo_metadata": combo_metadata,
+        "_combo_count": combo_count,
+    }))
+    .unwrap_or_default();
+    job.combo_metadata_json = Some(meta_json);
+    store.insert(job);
+
+    spawn_staged_sim(
+        store.get_ref().clone(),
+        simc_path.get_ref().clone(),
+        options.to_json_with_sim_type("external_buff_matrix"),
+        job_id.clone(),
+        generated_input,
+        combo_count,
+        log_buffer.get_ref().clone(),
+    );
+
+    HttpResponse::Ok().json(SimResponse {
+        id: job_id,
+        status: "pending".to_string(),
+        created_at,
+    })
+}
+
+async fn create_consumable_matrix_sim(
+    simc_input: String,
+    options: &SimOptions,
+    store: web::Data<Arc<dyn JobStorage>>,
+    simc_path: web::Data<PathBuf>,
+    log_buffer: web::Data<Arc<LogBuffer>>,
+) -> HttpResponse {
+    let (generated_input, combo_count, combo_metadata) =
+        match build_consumable_matrix_input(&simc_input, options) {
+            Ok(v) => v,
+            Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+        };
+
+    let mut generated_input = inject_expert_fields(&generated_input, options);
+    let resolved_threads = if options.threads == 0 {
+        std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(4)
+    } else {
+        options.threads
+    };
+    generated_input.push_str(&format!("\nthreads={}\n", resolved_threads));
+
+    if let Some(resp) = validate_batch(&options.batch_id, store.get_ref().as_ref()) {
+        return resp;
+    }
+
+    let mut job = Job::new(
+        generated_input.clone(),
+        "consumable_matrix".to_string(),
+        options.iterations,
+        options.fight_style.clone(),
+        options.target_error,
+    );
+    job.batch_id = options.batch_id.clone();
+    let job_id = job.id.clone();
+    let created_at = job.created_at.clone();
+
+    let meta_json = serde_json::to_string(&json!({
+        "_combo_metadata": combo_metadata,
+        "_combo_count": combo_count,
+    }))
+    .unwrap_or_default();
+    job.combo_metadata_json = Some(meta_json);
+    store.insert(job);
+
+    spawn_staged_sim(
+        store.get_ref().clone(),
+        simc_path.get_ref().clone(),
+        options.to_json_with_sim_type("consumable_matrix"),
         job_id.clone(),
         generated_input,
         combo_count,
@@ -691,6 +1142,7 @@ pub(super) async fn create_top_gear_sim(
     }
 
     let mut generated_input = inject_expert_fields(&generated_input, &req.options);
+    generated_input = apply_shared_simc_options(&generated_input, &req.options, true);
 
     let resolved_threads = if req.options.threads == 0 {
         std::thread::available_parallelism()
@@ -848,6 +1300,7 @@ pub(super) async fn create_droptimizer_sim(
     }
 
     let mut generated_input = inject_expert_fields(&generated_input, &req.options);
+    generated_input = apply_shared_simc_options(&generated_input, &req.options, true);
 
     let resolved_threads = if req.options.threads == 0 {
         std::thread::available_parallelism()

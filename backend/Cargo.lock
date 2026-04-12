@@ -330,6 +330,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "bit-set"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0481a0e032742109b1133a095184ee93d88f3dc9e0d28a5d033dc77a073f44f"
+dependencies = [
+ "bit-vec",
+]
+
+[[package]]
+name = "bit-vec"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2c54ff287cfc0a34f38a6b832ea1bd8e448a330b3e40a50859e6488bee07f22"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3062,7 +3077,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-core"
-version = "0.6.1"
+version = "0.1.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -3086,7 +3101,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-launcher"
-version = "0.6.1"
+version = "0.1.0"
 dependencies = [
  "indicatif",
  "reqwest",
@@ -3098,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-server"
-version = "0.6.1"
+version = "0.1.0"
 dependencies = [
  "tokio",
  "whylowdps-core",

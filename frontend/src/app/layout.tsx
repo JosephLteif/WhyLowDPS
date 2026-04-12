@@ -3,6 +3,7 @@ import Script from 'next/script';
 import { SimProvider } from './components/SimContext';
 import SimSharedConfig from './components/SimSharedConfig';
 import Sidebar from './components/Sidebar';
+import SimcRequiredModal from './components/SimcRequiredModal';
 import TopHeader from './components/TopHeader';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
@@ -35,12 +36,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <DataGuard>
             <SimProvider>
               <TopHeader />
-              <UpdatePrompt />
+              <SimcRequiredModal />
 
               <Sidebar />
 
               <main className="ml-[var(--sidebar-width)] mt-14 min-h-[calc(100vh-3.5rem)] px-8 py-8 transition-[margin-left] duration-200 lg:px-12">
-                <div className="mx-auto max-w-5xl">
+                <div className="mx-auto max-w-8xl">
                   <SimSharedConfig />
                   {children}
                 </div>

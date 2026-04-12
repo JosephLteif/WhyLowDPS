@@ -43,7 +43,10 @@ pub(super) async fn create_sim(
         return create_trinket_tier_heatmap_sim(
             simc_input,
             class_name.unwrap_or_default(),
-            (req.options.include_trinket_matrix, req.options.include_tier_matrix),
+            (
+                req.options.include_trinket_matrix,
+                req.options.include_tier_matrix,
+            ),
             &req.options,
             store,
             simc_path,
@@ -228,10 +231,7 @@ fn raid_buff_line(buff_key: &str) -> Option<&'static str> {
     }
 }
 
-fn build_external_buff_matrix_input(
-    simc_input: &str,
-    options: &SimOptions,
-) -> MatrixBuildResult {
+fn build_external_buff_matrix_input(simc_input: &str, options: &SimOptions) -> MatrixBuildResult {
     let (base_lines, equipped_gear, talents, _spec) =
         crate::profileset_generator::parser::parse_base_profile(simc_input);
 
@@ -332,10 +332,7 @@ fn build_external_buff_matrix_input(
     ))
 }
 
-fn build_consumable_matrix_input(
-    simc_input: &str,
-    options: &SimOptions,
-) -> MatrixBuildResult {
+fn build_consumable_matrix_input(simc_input: &str, options: &SimOptions) -> MatrixBuildResult {
     let (base_lines, equipped_gear, talents, _spec) =
         crate::profileset_generator::parser::parse_base_profile(simc_input);
 

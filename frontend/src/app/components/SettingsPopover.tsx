@@ -149,7 +149,9 @@ export default function SettingsPopover() {
                         }`}
                       >
                         <span className="block text-[13px] font-semibold">{p.label}</span>
-                        <span className="mt-0.5 block text-[11px] text-zinc-500">{val} threads</span>
+                        <span className="mt-0.5 block text-[11px] text-zinc-500">
+                          {val} threads
+                        </span>
                       </button>
                     );
                   })}
@@ -176,6 +178,74 @@ export default function SettingsPopover() {
                 className="w-24 rounded border border-border bg-surface-2 px-2 py-1.5 text-center font-mono text-[13px] tabular-nums text-zinc-100 [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
             </div>
+
+            {isDesktop && (
+              <div className="space-y-3.5 border-t border-border pt-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-0.5">
+                    <p className="text-[15px] font-semibold text-zinc-100">
+                      SimulationCraft Engine
+                    </p>
+                    <p className="text-[12px] leading-relaxed text-zinc-400">
+                      Check installed version and update from official nightly builds.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => void refreshSimcStatus()}
+                    disabled={simcLoading || simcUpdating}
+                    className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[12px] font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {simcLoading ? 'Checking...' : 'Refresh'}
+                  </button>
+                </div>
+
+                <div className="rounded-lg border border-border bg-surface-2 p-3.5 text-[13px]">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-zinc-400">Installed</span>
+                    <span className="font-mono text-zinc-100">
+                      {simcStatus?.installed_version ??
+                        (simcStatus?.installed_exists ? 'Detected' : 'Missing')}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between gap-4">
+                    <span className="text-zinc-400">Latest</span>
+                    <span className="font-mono text-zinc-100">
+                      {simcStatus?.latest_version ?? (simcLoading ? 'Checking...' : 'Unavailable')}
+                    </span>
+                  </div>
+                  {simcStatus && (
+                    <p
+                      className={`mt-2 text-[12px] font-medium ${
+                        simcStatus.update_available ? 'text-amber-300' : 'text-emerald-300'
+                      }`}
+                    >
+                      {simcStatus.update_available
+                        ? 'A newer SimC build is available.'
+                        : 'Installed SimC is up to date.'}
+                    </p>
+                  )}
+                  {(simcError || simcStatus?.detail) && (
+                    <p className="mt-2 text-[12px] text-red-300">
+                      {simcError || simcStatus?.detail}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => void handleDownloadLatest()}
+                  disabled={
+                    simcLoading ||
+                    simcUpdating ||
+                    !simcStatus ||
+                    !simcStatus.latest_version ||
+                    !simcStatus.update_available
+                  }
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-700/50 bg-amber-950/30 py-3 text-[14px] font-semibold text-amber-300 transition-all hover:bg-amber-900/40 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {simcUpdating ? 'Downloading latest SimC...' : 'Download Latest SimC'}
+                </button>
+              </div>
+            )}
 
             {/* Shutdown Button */}
             <div className="border-t border-border pt-4">

@@ -40,6 +40,17 @@ const DIM = 'rgba(255,255,255,0.15)';
 const DIM_ICON = 0.3;
 const LOCKED_ICON = 0.15;
 
+function filterRenderableNodes(
+  nodes: TalentNode[],
+  selections: Map<number, NodeSelection>
+): TalentNode[] {
+  return nodes.filter((node) => {
+    const hasIcon = node.entries.some((entry) => !!entry?.icon);
+    const isSelected = selections.has(node.id);
+    return hasIcon || isSelected;
+  });
+}
+
 export default function TalentTree({
   talentString,
   editable,
@@ -208,6 +219,10 @@ export default function TalentTree({
   const sharedHeroNodes = tree.heroNodes.filter((n) => !n.subTreeId);
   const visibleHeroNodes = [...activeHeroNodes, ...sharedHeroNodes];
 
+  const classNodesForRender = filterRenderableNodes(tree.classNodes, selections);
+  const specNodesForRender = filterRenderableNodes(tree.specNodes, selections);
+  const heroNodesForRender = filterRenderableNodes(visibleHeroNodes, selections);
+
   const selectedSubTree = tree.subTreeNodes
     ?.flatMap((st) => st.entries)
     .find((e) => e.traitSubTreeId === selectedSubTreeId);
@@ -236,20 +251,50 @@ export default function TalentTree({
   const specSpent = purchasedSpent?.specPoints ?? getPointsSpent(selections, tree.specNodes);
   const heroSpent = purchasedSpent?.heroPoints ?? getPointsSpent(selections, tree.heroNodes);
 
-  const allNodesArr = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes];
+  const allNodesArr = [...classNodesForRender, ...specNodesForRender, ...heroNodesForRender];
+
+  const groups = [classNodesForRender, specNodesForRender, heroNodesForRender].filter(
+    (g) => g.length > 0
+  );
+  let sharedViewportWidth = 1;
+  let sharedViewportHeight = 1;
+  for (const group of groups) {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    for (const node of group) {
+      minX = Math.min(minX, node.posX);
+      maxX = Math.max(maxX, node.posX);
+      minY = Math.min(minY, node.posY);
+      maxY = Math.max(maxY, node.posY);
+    }
+
+    const groupWidth = maxX - minX + NODE_SIZE + PADDING * 2;
+    const groupHeight = maxY - minY + NODE_SIZE + PADDING * 2;
+    sharedViewportWidth = Math.max(sharedViewportWidth, groupWidth);
+    sharedViewportHeight = Math.max(sharedViewportHeight, groupHeight);
+  }
+  const sharedViewport = { width: sharedViewportWidth, height: sharedViewportHeight };
+
   if (mini) {
     return (
       <div className="flex h-full w-full items-stretch gap-0.5">
         <div className="min-w-0 flex-[2]">
-          <MiniTreeSvg nodes={tree.classNodes} selections={selections} allNodes={allNodesArr} />
+          <MiniTreeSvg
+            nodes={classNodesForRender}
+            selections={selections}
+            allNodes={allNodesArr}
+          />
         </div>
-        {visibleHeroNodes.length > 0 && (
+        {heroNodesForRender.length > 0 && (
           <div className="h-[45%] min-w-0 flex-1 self-center">
-            <MiniTreeSvg nodes={visibleHeroNodes} selections={selections} allNodes={allNodesArr} />
+            <MiniTreeSvg nodes={heroNodesForRender} selections={selections} allNodes={allNodesArr} />
           </div>
         )}
         <div className="min-w-0 flex-[2]">
-          <MiniTreeSvg nodes={tree.specNodes} selections={selections} allNodes={allNodesArr} />
+          <MiniTreeSvg nodes={specNodesForRender} selections={selections} allNodes={allNodesArr} />
         </div>
       </div>
     );
@@ -261,9 +306,9 @@ export default function TalentTree({
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
         <TreeSection
           label={tree.className}
-          nodes={tree.classNodes}
+          nodes={classNodesForRender}
           selections={selections}
-          allNodes={[...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]}
+          allNodes={allNodesArr}
           editable={editable}
           tree={tree}
           nodeMap={nodeMap}
@@ -271,15 +316,16 @@ export default function TalentTree({
           onNodeRightClick={handleNodeRightClick}
           onChoiceCycle={handleChoiceCycle}
           pointsDisplay={`${classSpent}/${CLASS_POINTS}`}
+          viewport={sharedViewport}
         />
-        {visibleHeroNodes.length > 0 && (
+        {heroNodesForRender.length > 0 && (
           <>
             <div className="hidden h-auto w-px bg-border lg:block" />
             <TreeSection
               label={selectedSubTree?.name ?? 'Hero'}
-              nodes={visibleHeroNodes}
+              nodes={heroNodesForRender}
               selections={selections}
-              allNodes={[...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]}
+              allNodes={allNodesArr}
               editable={editable}
               tree={tree}
               nodeMap={nodeMap}
@@ -287,15 +333,16 @@ export default function TalentTree({
               onNodeRightClick={handleNodeRightClick}
               onChoiceCycle={handleChoiceCycle}
               pointsDisplay={`${heroSpent}`}
+              viewport={sharedViewport}
             />
           </>
         )}
         <div className="hidden h-auto w-px bg-border lg:block" />
         <TreeSection
           label={tree.specName}
-          nodes={tree.specNodes}
+          nodes={specNodesForRender}
           selections={selections}
-          allNodes={[...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]}
+          allNodes={allNodesArr}
           editable={editable}
           tree={tree}
           nodeMap={nodeMap}
@@ -303,6 +350,7 @@ export default function TalentTree({
           onNodeRightClick={handleNodeRightClick}
           onChoiceCycle={handleChoiceCycle}
           pointsDisplay={`${specSpent}/${SPEC_POINTS}`}
+          viewport={sharedViewport}
         />
       </div>
     </div>
@@ -322,6 +370,7 @@ interface TreeSectionProps {
   onNodeRightClick?: (nodeId: number) => void;
   onChoiceCycle?: (nodeId: number) => void;
   pointsDisplay?: string;
+  viewport?: { width: number; height: number };
 }
 
 function TreeSection({
@@ -337,6 +386,7 @@ function TreeSection({
   onNodeRightClick,
   onChoiceCycle,
   pointsDisplay,
+  viewport,
 }: TreeSectionProps) {
   const nodeById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
 
@@ -355,10 +405,12 @@ function TreeSection({
     return { minX, maxX, minY, maxY };
   }, [nodes]);
 
-  const vbX = bounds.minX - PADDING;
-  const vbY = bounds.minY - PADDING;
-  const vbW = bounds.maxX - bounds.minX + PADDING * 2;
-  const vbH = bounds.maxY - bounds.minY + PADDING * 2;
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const vbW = viewport?.width ?? bounds.maxX - bounds.minX + NODE_SIZE + PADDING * 2;
+  const vbH = viewport?.height ?? bounds.maxY - bounds.minY + NODE_SIZE + PADDING * 2;
+  const vbX = centerX - vbW / 2;
+  const vbY = centerY - vbH / 2;
 
   const sectionNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
 
@@ -553,21 +605,21 @@ function TalentNodeSvg({
       {node.maxRanks > 1 && isSelected && selection && (
         <g>
           <rect
-            x={node.posX + half - 90}
-            y={node.posY + half - 75}
-            width={110}
-            height={70}
-            rx={16}
+            x={node.posX + half - 122}
+            y={node.posY + half - 96}
+            width={180}
+            height={108}
+            rx={18}
             fill="#0a0a0a"
             stroke={borderColor}
             strokeWidth={6}
           />
           <text
-            x={node.posX + half - 35}
-            y={node.posY + half - 28}
+            x={node.posX + half - 32}
+            y={node.posY + half - 24}
             textAnchor="middle"
             fill={selection.ranks >= node.maxRanks ? GOLD : '#999'}
-            fontSize={46}
+            fontSize={72}
             fontFamily="system-ui, sans-serif"
             fontWeight="bold"
           >

@@ -28,11 +28,11 @@ export default function FightStyleSelector({ value, onChange }: FightStyleSelect
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="input-field flex w-full items-center justify-between text-sm"
+        className="input-field flex w-full items-center justify-between text-[15px] font-medium"
       >
         <span>{activeLabel}</span>
         <svg
-          className={`h-4 w-4 text-zinc-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 text-zinc-300 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
@@ -56,7 +56,7 @@ export default function FightStyleSelector({ value, onChange }: FightStyleSelect
               className={`flex w-full px-3.5 py-2 text-left text-sm transition-colors ${
                 fs.value === value
                   ? 'bg-gold/[0.08] text-gold'
-                  : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
+                  : 'text-zinc-200 hover:bg-white/[0.04] hover:text-white'
               }`}
             >
               {fs.label}

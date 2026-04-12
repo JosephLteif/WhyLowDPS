@@ -92,7 +92,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
 
   return (
     <div className="card p-5">
-      <h3 className="mb-4 text-xs font-medium uppercase tracking-widest text-muted">
+      <h3 className="mb-4 text-sm font-medium uppercase tracking-widest text-muted">
         Damage Breakdown
       </h3>
       <div className="space-y-1">
@@ -107,7 +107,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
           return (
             <div key={i}>
               <div
-                className={`group relative flex h-7 items-center${hasChildren ? 'cursor-pointer' : ''}`}
+                className={`group relative flex h-8 items-center pr-3 ${hasChildren ? 'cursor-pointer' : ''}`}
                 onClick={
                   hasChildren
                     ? () =>
@@ -128,7 +128,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                   className="absolute bottom-1 left-0 top-1 w-[3px] rounded-full"
                   style={{ backgroundColor: color, opacity: 0.6 }}
                 />
-                <span className="relative flex flex-1 items-center gap-2 truncate pl-3 text-[14px] text-gray-300">
+                <span className="relative flex flex-1 items-center gap-2 truncate pl-3 text-sm text-zinc-200">
                   {hasChildren && (
                     <svg
                       className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
@@ -149,10 +149,10 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                   )}
                   {name}
                 </span>
-                <span className="relative w-16 shrink-0 text-right font-mono text-[13px] tabular-nums text-gray-500">
+                <span className="relative w-16 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-100">
                   {Math.round(a.portion_dps).toLocaleString()}
                 </span>
-                <span className="relative w-12 shrink-0 text-right font-mono text-[13px] tabular-nums text-gray-500">
+                <span className="relative w-12 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-100">
                   {pct.toFixed(1)}%
                 </span>
               </div>
@@ -162,7 +162,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                   const childPct = totalDps > 0 ? (child.portion_dps / totalDps) * 100 : 0;
                   const childName = child.name.replace(/_/g, ' ');
                   return (
-                    <div key={ci} className="group relative flex h-6 items-center">
+                    <div key={ci} className="group relative flex h-7 items-center pr-3">
                       <div
                         className="absolute bottom-0.5 top-0.5 w-[2px] rounded-full"
                         style={{
@@ -171,7 +171,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                           opacity: 0.3,
                         }}
                       />
-                      <span className="relative flex flex-1 items-center gap-2 truncate pl-10 text-[13px] text-gray-500">
+                      <span className="relative flex flex-1 items-center gap-2 truncate pl-10 text-sm text-zinc-200">
                         {child.spell_id && icons.get(child.spell_id) ? (
                           <SpellIcon icon={icons.get(child.spell_id)!} />
                         ) : (
@@ -179,10 +179,10 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                         )}
                         {childName}
                       </span>
-                      <span className="relative w-16 shrink-0 text-right font-mono text-[12px] tabular-nums text-gray-600">
+                      <span className="relative w-16 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-300">
                         {Math.round(child.portion_dps).toLocaleString()}
                       </span>
-                      <span className="relative w-12 shrink-0 text-right font-mono text-[12px] tabular-nums text-gray-600">
+                      <span className="relative w-12 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-300">
                         {childPct.toFixed(1)}%
                       </span>
                     </div>

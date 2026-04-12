@@ -6,6 +6,11 @@
 interface DetailPart {
   text: string;
   color?: string;
+  kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+  icon?: string;
+  href?: string;
+  wowheadData?: string;
+  tooltip?: string;
 }
 
 interface GearItemRowProps {
@@ -21,6 +26,8 @@ interface GearItemRowProps {
   ilevel?: number;
   /** Whether this row has a selectable checkbox */
   selectable?: boolean;
+  /** Whether the checkbox visuals should be displayed */
+  showCheckbox?: boolean;
   /** Current checked state (only used when selectable) */
   checked?: boolean;
   /** Checkbox change handler */
@@ -52,6 +59,7 @@ export default function GearItemRow({
   details,
   ilevel,
   selectable,
+  showCheckbox = true,
   checked,
   onToggle,
   equipped,
@@ -59,35 +67,40 @@ export default function GearItemRow({
   catalyst,
   href,
   wowheadData,
-  optimized,
+  optimized: _optimized,
   children,
 }: GearItemRowProps) {
+  const hasLeadingControl = showCheckbox && (selectable || equipped);
+  const detailsIndentClass = hasLeadingControl ? 'pl-[1.875rem]' : 'pl-0';
+
   const content = (
     <>
       {/* Checkbox or equipped indicator */}
       {selectable ? (
         <>
           <input type="checkbox" checked={checked} onChange={onToggle} className="peer sr-only" />
-          <div
-            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] border transition-all ${
-              checked ? 'border-gold bg-gold' : 'border-gray-600 group-hover:border-gray-500'
-            }`}
-          >
-            {checked && (
-              <svg className="h-3 w-3 text-black" viewBox="0 0 16 16" fill="none">
-                <path
-                  d="M12 5L6.5 10.5L4 8"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
-          </div>
+          {showCheckbox && (
+            <div
+              className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] border transition-all ${
+                checked ? 'border-gold bg-gold' : 'border-gray-600 group-hover:border-gray-500'
+              }`}
+            >
+              {checked && (
+                <svg className="h-3 w-3 text-black" viewBox="0 0 16 16" fill="none">
+                  <path
+                    d="M12 5L6.5 10.5L4 8"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              )}
+            </div>
+          )}
         </>
-      ) : equipped ? (
-        <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] bg-white/10">
+      ) : equipped && showCheckbox ? (
+        <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] bg-white/10">
           <svg className="h-3 w-3 text-white/40" viewBox="0 0 16 16" fill="none">
             <path
               d="M12 5L6.5 10.5L4 8"
@@ -101,65 +114,131 @@ export default function GearItemRow({
       ) : null}
 
       {/* Item icon */}
-      <div
-        className={`h-8 w-8 shrink-0 overflow-hidden rounded ${
-          vault
-            ? 'ring-2 ring-amber-400/70'
-            : catalyst
-              ? 'ring-2 ring-purple-400/70'
-              : 'ring-1 ring-white/5'
-        }`}
-      >
-        <img
-          src={getIconUrl(icon)}
-          alt=""
-          width={32}
-          height={32}
-          className="h-full w-full"
-          loading="lazy"
-        />
-      </div>
-
-      {/* Name + details */}
-      <div className="min-w-0 flex-1">
+      {href ? (
         <a
           href={href}
           data-wowhead={wowheadData}
-          className="block truncate text-[15px] leading-tight no-underline"
-          style={{ color: nameColor }}
+          className={`mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded ${
+            vault
+              ? 'ring-2 ring-amber-400/70'
+              : catalyst
+                ? 'ring-2 ring-purple-400/70'
+                : 'ring-1 ring-white/5'
+          }`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={href ? (e) => e.preventDefault() : undefined}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <img
+            src={getIconUrl(icon)}
+            alt={name}
+            width={32}
+            height={32}
+            className="h-full w-full"
+            loading="lazy"
+          />
+        </a>
+      ) : (
+        <div
+          className={`mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded ${
+            vault
+              ? 'ring-2 ring-amber-400/70'
+              : catalyst
+                ? 'ring-2 ring-purple-400/70'
+                : 'ring-1 ring-white/5'
+          }`}
+        >
+          <img
+            src={getIconUrl(icon)}
+            alt={name}
+            width={32}
+            height={32}
+            className="h-full w-full"
+            loading="lazy"
+          />
+        </div>
+      )}
+
+      {/* Name + details */}
+      <div className="min-w-0 flex-1">
+        <span
+          className="block whitespace-normal break-words text-[16px] leading-tight"
+          style={{ color: nameColor }}
         >
           {name}
-          {optimized && (
-            <span className="ml-1.5 inline-flex items-center rounded-sm bg-gold/20 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wider text-gold-light ring-1 ring-inset ring-gold/30">
-              Opt
-            </span>
-          )}
-        </a>
-        {details && details.length > 0 && (
-          <span className="mt-0.5 block truncate text-[13px] text-muted">
-            {details.map((p, i) => (
-              <span key={i}>
-                {i > 0 && <span className="opacity-40"> · </span>}
-                <span className={p.color || ''}>{p.text}</span>
-              </span>
-            ))}
-          </span>
-        )}
+        </span>
       </div>
 
       {/* Right side: children + ilvl */}
       {children}
       {ilevel != null && ilevel > 0 && (
-        <span className="shrink-0 font-mono text-xs tabular-nums text-muted">{ilevel}</span>
+        <span className="mt-0.5 shrink-0 font-mono text-[15px] font-semibold tabular-nums text-zinc-200">
+          {ilevel}
+        </span>
+      )}
+
+      {details && details.length > 0 && (
+        <div className={`basis-full min-w-0 pt-0.5 ${detailsIndentClass}`}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {details.map((p, i) => (
+              p.kind === 'gemIcon' && p.icon ? (
+                <a
+                  key={i}
+                  href={p.href}
+                  data-wowhead={p.wowheadData}
+                  title={p.wowheadData ? undefined : p.tooltip || p.text}
+                  className={`inline-flex h-6 w-6 items-center justify-center overflow-hidden rounded border border-sky-400/40 bg-sky-500/10 ${p.color || ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={p.href ? (e) => e.preventDefault() : undefined}
+                >
+                  <img src={getIconUrl(p.icon)} alt={p.text} width={24} height={24} className="h-full w-full" />
+                </a>
+              ) : p.kind === 'iconText' && p.icon ? (
+                <a
+                  key={i}
+                  href={p.href}
+                  data-wowhead={p.wowheadData}
+                  title={p.wowheadData ? undefined : p.tooltip || p.text}
+                  className={`inline-flex min-w-0 max-w-full items-start gap-1 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-1.5 py-0.5 text-[12px] leading-snug ${p.color || 'text-emerald-300'}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={p.href ? (e) => e.preventDefault() : undefined}
+                >
+                  <img
+                    src={getIconUrl(p.icon)}
+                    alt={p.text}
+                    width={16}
+                    height={16}
+                    className="h-4 w-4 rounded-[3px]"
+                  />
+                  <span className="min-w-0 whitespace-normal break-words leading-snug">{p.text}</span>
+                </a>
+              ) : p.kind === 'plain' ? (
+                <span key={i} className={`text-[13px] leading-snug ${p.color || 'text-zinc-300'}`} title={p.tooltip || p.text}>
+                  {p.text}
+                </span>
+              ) : (
+                <span
+                  key={i}
+                  className={`inline-flex max-w-full items-center rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[12px] leading-snug text-zinc-300 ${p.color || ''}`}
+                  title={p.tooltip || p.text}
+                >
+                  {p.text}
+                </span>
+              )
+            ))}
+          </div>
+        </div>
       )}
     </>
   );
 
   // Row styling
-  const baseClass = 'flex items-center gap-2.5 rounded-md px-2.5 py-2 transition-colors';
+  const baseClass = 'flex flex-wrap items-start gap-x-2.5 gap-y-1 rounded-md px-2.5 py-2 transition-colors';
 
   if (selectable) {
     return (
@@ -167,15 +246,15 @@ export default function GearItemRow({
         className={`group cursor-pointer ${baseClass} ${
           checked
             ? vault
-              ? 'bg-amber-400/[0.12] ring-2 ring-amber-400/50'
+              ? 'border border-transparent bg-amber-400/[0.14] ring-[1.5px] ring-inset ring-amber-300/90'
               : catalyst
-                ? 'bg-purple-400/[0.12] ring-2 ring-purple-400/50'
-                : 'bg-gold/[0.07]'
+                ? 'border border-transparent bg-purple-400/[0.14] ring-[1.5px] ring-inset ring-purple-300/90'
+                : 'border border-transparent bg-gold/[0.14] ring-[1.5px] ring-inset ring-gold-light/90'
             : vault
-              ? 'bg-amber-400/[0.04] ring-1 ring-amber-400/30 hover:bg-amber-400/[0.08] hover:ring-amber-400/50'
+              ? 'border border-zinc-600/70 bg-amber-400/[0.04] ring-1 ring-amber-400/30 hover:border-zinc-500/80 hover:bg-amber-400/[0.08] hover:ring-amber-400/50'
               : catalyst
-                ? 'bg-purple-400/[0.04] ring-1 ring-purple-400/30 hover:bg-purple-400/[0.08] hover:ring-purple-400/50'
-                : 'hover:bg-white/[0.02]'
+                ? 'border border-zinc-600/70 bg-purple-400/[0.04] ring-1 ring-purple-400/30 hover:border-zinc-500/80 hover:bg-purple-400/[0.08] hover:ring-purple-400/50'
+                : 'border border-zinc-700/80 bg-white/[0.01] hover:border-zinc-500/80 hover:bg-white/[0.03]'
         }`}
       >
         {content}

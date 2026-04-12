@@ -165,7 +165,7 @@ export default function DpsHeroCard({
           <p className="mt-4 text-5xl font-bold tabular-nums tracking-tight text-white">
             {Math.round(dps).toLocaleString()}
           </p>
-          <p className="mt-1.5 text-[12px] font-medium uppercase tracking-widest text-zinc-500">
+          <p className="mt-1.5 text-sm font-medium uppercase tracking-widest text-zinc-200">
             Damage Per Second
           </p>
           {children}
@@ -194,7 +194,7 @@ export default function DpsHeroCard({
           {dpsError != null && dpsError > 0 && (
             <MetaStat
               label="Margin of Error"
-              value={`± ${Math.round(dpsError).toLocaleString()}`}
+              value={`+/- ${Math.round(dpsError).toLocaleString()}`}
               note={dpsErrorPct != null ? `${dpsErrorPct}%` : undefined}
             />
           )}
@@ -234,11 +234,11 @@ function MetaStat({
 }) {
   return (
     <div className="flex-1 px-4 py-3 text-center">
-      <p className="text-[12px] uppercase tracking-wider text-zinc-600">{label}</p>
-      <p className="mt-0.5 text-xs font-medium tabular-nums text-zinc-300">
+      <p className="text-sm uppercase tracking-wider text-zinc-300">{label}</p>
+      <p className="mt-0.5 text-sm font-medium tabular-nums text-zinc-100">
         {value}
         {note && (
-          <span className={`ml-1 text-[12px] font-normal ${noteColor || 'text-zinc-600'}`}>
+          <span className={`ml-1 text-sm font-normal ${noteColor || 'text-zinc-300'}`}>
             {note}
           </span>
         )}

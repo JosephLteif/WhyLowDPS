@@ -21,7 +21,7 @@ const config: Config = {
           DEFAULT: '#27272a',
           light: '#3f3f46',
         },
-        muted: '#71717a',
+        muted: '#b5b7c2',
       },
       fontFamily: {
         sans: [
@@ -32,6 +32,12 @@ const config: Config = {
           'sans-serif',
         ],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+      },
+      fontSize: {
+        xs: ['0.8125rem', { lineHeight: '1.2rem' }],
+      },
+      maxWidth: {
+        '8xl': '88rem',
       },
       boxShadow: {
         glow: '0 0 20px rgba(212, 168, 67, 0.08)',

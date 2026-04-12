@@ -28,7 +28,7 @@ export default function ScenarioBuilder() {
           <button
             type="button"
             onClick={clearScenarios}
-            className="text-[13px] text-gray-500 transition-colors hover:text-gray-300"
+            className="text-sm text-zinc-300 transition-colors hover:text-zinc-100"
           >
             Clear all
           </button>
@@ -40,13 +40,13 @@ export default function ScenarioBuilder() {
           {scenarios.map((s) => (
             <div
               key={s.id}
-              className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-2.5 py-1.5 text-[14px] text-gray-300"
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-surface-2 px-3 py-2 text-[13px] text-zinc-200"
             >
               <span>{formatScenarioLabel(s)}</span>
               <button
                 type="button"
                 onClick={() => removeScenario(s.id)}
-                className="ml-0.5 text-gray-500 transition-colors hover:text-white"
+                className="ml-0.5 text-zinc-300 transition-colors hover:text-white"
               >
                 <svg
                   className="h-3 w-3"
@@ -69,11 +69,11 @@ export default function ScenarioBuilder() {
           type="button"
           onClick={addScenario}
           disabled={scenarios.length >= maxScenarios}
-          className="text-[14px] font-medium text-gold transition-colors hover:text-gold/80 disabled:cursor-not-allowed disabled:text-gray-600"
+          className="text-[13px] font-semibold text-gold transition-colors hover:text-gold/80 disabled:cursor-not-allowed disabled:text-zinc-400"
         >
           + Add current config
         </button>
-        <p className="text-[13px] text-gray-600">
+        <p className="text-sm text-zinc-300">
           Run multiple fight configurations with the same setup
         </p>
       </div>

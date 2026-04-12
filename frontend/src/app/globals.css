@@ -6,7 +6,7 @@
 
 @layer base {
   body {
-    @apply bg-bg leading-relaxed text-gray-100 antialiased;
+    @apply bg-bg text-zinc-100 antialiased;
   }
   ::selection {
     @apply bg-gold/25 text-white;
@@ -21,16 +21,16 @@
     @apply card cursor-pointer hover:border-border-light hover:shadow-card-hover;
   }
   .btn-primary {
-    @apply relative rounded-lg bg-gold px-5 py-2.5 font-semibold text-black shadow-sm transition-all duration-150 hover:bg-gold-light hover:shadow-md active:scale-[0.98] disabled:pointer-events-none disabled:bg-zinc-800 disabled:text-zinc-500 disabled:shadow-none;
+    @apply relative rounded-lg bg-gold px-5 py-2.5 font-semibold text-black shadow-sm transition-all duration-150 hover:bg-gold-light hover:shadow-md active:scale-[0.98] disabled:pointer-events-none disabled:bg-zinc-800 disabled:text-zinc-300 disabled:shadow-none;
   }
   .btn-outline {
-    @apply rounded-lg border border-border bg-transparent px-5 py-2.5 font-medium text-gray-200 transition-all duration-150 hover:border-zinc-400 hover:bg-white/[0.03] hover:text-white active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+    @apply rounded-lg border border-border bg-transparent px-5 py-2.5 text-gray-300 transition-all duration-150 hover:border-zinc-500 hover:bg-white/[0.03] hover:text-white active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
   }
   .input-field {
-    @apply w-full rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-[15px] text-gray-50 placeholder-zinc-400 shadow-sm transition-all duration-150 focus:border-gold/50 focus:outline-none focus:ring-2 focus:ring-gold/20;
+    @apply w-full rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-[15px] text-zinc-100 placeholder-zinc-400 shadow-sm transition-all duration-150 focus:border-gold/40 focus:outline-none focus:ring-1 focus:ring-gold/10;
   }
   .label-text {
-    @apply mb-1.5 block text-[14px] font-semibold uppercase tracking-wider text-zinc-300;
+    @apply mb-1.5 block text-[13px] font-semibold uppercase tracking-[0.14em] text-zinc-300;
   }
 }
 

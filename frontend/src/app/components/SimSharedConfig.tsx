@@ -93,9 +93,9 @@ function CharacterInfoBar({ info }: { info: { className: string; name: string; s
   return (
     <div className="flex items-center gap-2 rounded-lg bg-surface-2 px-3.5 py-2">
       <div className="h-2 w-2 rounded-full bg-gold/70" />
-      <p className="text-xs font-medium text-zinc-300">
+      <p className="text-sm font-medium text-zinc-100">
         {info.name}
-        <span className="ml-1.5 font-normal text-zinc-500">
+        <span className="ml-1.5 font-normal text-zinc-300">
           {specDisplayName(info.spec)} {info.className}
         </span>
       </p>
@@ -167,7 +167,7 @@ function AdvancedOptions() {
       >
         <div className="flex items-center gap-2.5">
           <svg
-            className="h-4 w-4 text-zinc-500"
+            className="h-4 w-4 text-zinc-300"
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
@@ -178,15 +178,15 @@ function AdvancedOptions() {
             <circle cx="8" cy="8" r="2" />
             <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
           </svg>
-          <span className="text-sm font-medium text-zinc-300">Advanced Options</span>
+          <span className="text-[15px] font-semibold text-zinc-100">Advanced Options</span>
           {!open && !isDefault && (
-            <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
+            <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-xs font-medium text-gold">
               Modified
             </span>
           )}
         </div>
         <svg
-          className={`h-3.5 w-3.5 text-zinc-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
@@ -216,7 +216,7 @@ function AdvancedOptions() {
                   onChange={(e) => setFightLength(Number(e.target.value))}
                   className="flex-1 accent-gold"
                 />
-                <span className="w-16 text-right font-mono text-sm tabular-nums text-white">
+                <span className="w-16 text-right font-mono text-base tabular-nums text-zinc-100">
                   {Math.floor(fightLength / 60)}:{String(fightLength % 60).padStart(2, '0')}
                 </span>
               </div>
@@ -232,7 +232,7 @@ function AdvancedOptions() {
                   onChange={(e) => setTargetCount(Number(e.target.value))}
                   className="flex-1 accent-gold"
                 />
-                <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
+                <span className="w-6 text-right font-mono text-base tabular-nums text-zinc-100">
                   {targetCount}
                 </span>
               </div>
@@ -248,9 +248,9 @@ function AdvancedOptions() {
               value={customApl}
               onChange={(e) => setCustomApl(e.target.value)}
               placeholder="Custom APL or expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list=1)..."
-              className="input-field h-28 resize-y font-mono text-xs"
+              className="input-field h-28 resize-y font-mono text-[14px] leading-relaxed"
             />
-            <p className="text-[13px] text-zinc-600">
+            <p className="text-sm text-zinc-300">
               Override action priority lists or set expansion-specific options. Injected after the
               base actor.
             </p>
@@ -304,7 +304,7 @@ function ExpertToggle({
         </div>
         <span className="text-sm font-medium text-zinc-300">Expert Mode</span>
         {!open && hasContent && (
-          <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
+          <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-xs font-medium text-gold">
             Modified
           </span>
         )}
@@ -321,7 +321,7 @@ function ExpertToggle({
                     ? 'border-gold/40 bg-gold/[0.08] text-gold'
                     : expertValues[tab.key].trim()
                       ? 'border-gold/30 bg-gold/[0.06] text-gold hover:border-gold/50'
-                      : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                      : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600 hover:text-zinc-300'
                 }`}
               >
                 {tab.label}
@@ -335,9 +335,9 @@ function ExpertToggle({
             value={expertValues[activeTab]}
             onChange={(e) => expertSetters[activeTab](e.target.value)}
             placeholder={`Paste ${activeTabInfo.label.toLowerCase()} SimC input here...`}
-            className="input-field h-32 resize-y font-mono text-xs"
+            className="input-field h-32 resize-y font-mono text-[14px] leading-relaxed"
           />
-          <p className="text-[13px] text-zinc-600">{activeTabInfo.desc}</p>
+          <p className="text-sm text-zinc-300">{activeTabInfo.desc}</p>
         </div>
       )}
     </div>
@@ -371,7 +371,7 @@ export default function SimSharedConfig() {
           value={simcInput}
           onChange={(e) => setSimcInput(e.target.value)}
           placeholder="Paste your SimC addon export here..."
-          className="input-field h-40 resize-y font-mono text-[13px] leading-relaxed"
+          className="input-field h-44 resize-y font-mono text-[14px] leading-6 tracking-[0.01em]"
         />
         {checksumStatus === 'invalid' && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">

@@ -194,7 +194,7 @@ export default function Sidebar() {
         <button
           type="button"
           onClick={() => setIsCollapsed((v) => !v)}
-          className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] font-semibold text-zinc-400 transition-colors hover:bg-white/[0.07] hover:text-white"
+          className="rounded-md border border-white/10 bg-white/[0.02] px-2 py-1 text-xs font-semibold text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white"
           title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           {isCollapsed ? '>>' : '<<'}
@@ -261,7 +261,7 @@ export default function Sidebar() {
                   } ${
                     isActive
                       ? 'bg-gold/10 text-gold'
-                      : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
+                      : 'text-zinc-300 hover:bg-surface-2 hover:text-white'
                   }`}
                   title={item.label}
                 >
@@ -279,7 +279,7 @@ export default function Sidebar() {
                   {!isCollapsed && (
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="text-[15px] font-medium">{item.label}</span>
-                      <span className={`text-[12px] ${isActive ? 'text-gold/70' : 'text-zinc-500'}`}>
+                      <span className={`text-[13px] ${isActive ? 'text-gold/80' : 'text-zinc-300'}`}>
                         {item.description}
                       </span>
                     </div>
@@ -298,10 +298,10 @@ export default function Sidebar() {
                         className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
                           childActive
                             ? 'text-gold'
-                            : 'text-zinc-400 hover:bg-surface-2 hover:text-white'
+                            : 'text-zinc-300 hover:bg-surface-2 hover:text-white'
                         }`}
                       >
-                        <span className="text-[14px] font-medium">{child.label}</span>
+                        <span className="text-[15px] font-medium">{child.label}</span>
                       </Link>
                     );
                   })}
@@ -314,7 +314,7 @@ export default function Sidebar() {
 
       <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
         {!isCollapsed && <SettingsPopover />}
-        <div className="mt-2 px-2 text-center text-[11px] text-zinc-600">
+        <div className="mt-2 px-2 text-center text-xs text-zinc-400">
           {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
         </div>
       </div>

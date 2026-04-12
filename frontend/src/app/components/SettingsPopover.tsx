@@ -149,7 +149,9 @@ export default function SettingsPopover() {
                         }`}
                       >
                         <span className="block text-[13px] font-semibold">{p.label}</span>
-                        <span className="mt-0.5 block text-[11px] text-zinc-500">{val} threads</span>
+                        <span className="mt-0.5 block text-[11px] text-zinc-500">
+                          {val} threads
+                        </span>
                       </button>
                     );
                   })}
@@ -181,7 +183,9 @@ export default function SettingsPopover() {
               <div className="space-y-3.5 border-t border-border pt-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-0.5">
-                    <p className="text-[15px] font-semibold text-zinc-100">SimulationCraft Engine</p>
+                    <p className="text-[15px] font-semibold text-zinc-100">
+                      SimulationCraft Engine
+                    </p>
                     <p className="text-[12px] leading-relaxed text-zinc-400">
                       Check installed version and update from official nightly builds.
                     </p>
@@ -221,7 +225,9 @@ export default function SettingsPopover() {
                     </p>
                   )}
                   {(simcError || simcStatus?.detail) && (
-                    <p className="mt-2 text-[12px] text-red-300">{simcError || simcStatus?.detail}</p>
+                    <p className="mt-2 text-[12px] text-red-300">
+                      {simcError || simcStatus?.detail}
+                    </p>
                   )}
                 </div>
 

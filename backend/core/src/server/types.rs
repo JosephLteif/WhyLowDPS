@@ -47,6 +47,71 @@ pub struct SimOptions {
     pub simc_post_combos: String,
     #[serde(default)]
     pub simc_footer: String,
+    // Stat plotting (optional)
+    #[serde(default)]
+    pub dps_plot_stat: String,
+    #[serde(default)]
+    pub dps_plot_points: u32,
+    #[serde(default)]
+    pub dps_plot_step: u32,
+    #[serde(default)]
+    pub dps_plot_iterations: u32,
+    #[serde(default = "default_include_timeline")]
+    pub include_timeline: bool,
+    #[serde(default = "default_include_trinket_matrix")]
+    pub include_trinket_matrix: bool,
+    #[serde(default = "default_include_tier_matrix")]
+    pub include_tier_matrix: bool,
+    #[serde(default)]
+    pub external_buff_chaos_brand: bool,
+    #[serde(default)]
+    pub external_buff_mystic_touch: bool,
+    #[serde(default)]
+    pub external_buff_skyfury: bool,
+    #[serde(default)]
+    pub external_buff_power_infusion: bool,
+    #[serde(default)]
+    pub external_buff_blessing_of_bronze: bool,
+    #[serde(default)]
+    pub external_buff_augmentation: bool,
+    #[serde(default)]
+    pub raid_buff_customized: bool,
+    #[serde(default)]
+    pub raid_buff_bloodlust: bool,
+    #[serde(default)]
+    pub raid_buff_arcane_intellect: bool,
+    #[serde(default)]
+    pub raid_buff_power_word_fortitude: bool,
+    #[serde(default)]
+    pub raid_buff_mark_of_the_wild: bool,
+    #[serde(default)]
+    pub raid_buff_battle_shout: bool,
+    #[serde(default)]
+    pub raid_buff_hunters_mark: bool,
+    #[serde(default)]
+    pub raid_buff_bleeding: bool,
+    #[serde(default)]
+    pub consumable_flask: String,
+    #[serde(default)]
+    pub consumable_food: String,
+    #[serde(default)]
+    pub consumable_potion: String,
+    #[serde(default)]
+    pub consumable_augmentation: String,
+    #[serde(default)]
+    pub consumable_temporary_enchant: String,
+    #[serde(default)]
+    pub consumable_matrix_flasks: Vec<String>,
+    #[serde(default)]
+    pub consumable_matrix_foods: Vec<String>,
+    #[serde(default)]
+    pub consumable_matrix_potions: Vec<String>,
+    #[serde(default)]
+    pub consumable_matrix_augmentations: Vec<String>,
+    #[serde(default)]
+    pub consumable_matrix_temporary_enchants: Vec<String>,
+    #[serde(default)]
+    pub consumable_matrix_raid_buffs: Vec<String>,
 }
 
 impl SimOptions {
@@ -65,6 +130,38 @@ impl SimOptions {
             "max_time": self.max_time,
             "threads": self.threads,
             "single_actor_batch": !self.has_raid_actors(),
+            "dps_plot_stat": self.dps_plot_stat,
+            "dps_plot_points": self.dps_plot_points,
+            "dps_plot_step": self.dps_plot_step,
+            "dps_plot_iterations": self.dps_plot_iterations,
+            "include_timeline": self.include_timeline,
+            "include_trinket_matrix": self.include_trinket_matrix,
+            "include_tier_matrix": self.include_tier_matrix,
+            "external_buff_chaos_brand": self.external_buff_chaos_brand,
+            "external_buff_mystic_touch": self.external_buff_mystic_touch,
+            "external_buff_skyfury": self.external_buff_skyfury,
+            "external_buff_power_infusion": self.external_buff_power_infusion,
+            "external_buff_blessing_of_bronze": self.external_buff_blessing_of_bronze,
+            "external_buff_augmentation": self.external_buff_augmentation,
+            "raid_buff_customized": self.raid_buff_customized,
+            "raid_buff_bloodlust": self.raid_buff_bloodlust,
+            "raid_buff_arcane_intellect": self.raid_buff_arcane_intellect,
+            "raid_buff_power_word_fortitude": self.raid_buff_power_word_fortitude,
+            "raid_buff_mark_of_the_wild": self.raid_buff_mark_of_the_wild,
+            "raid_buff_battle_shout": self.raid_buff_battle_shout,
+            "raid_buff_hunters_mark": self.raid_buff_hunters_mark,
+            "raid_buff_bleeding": self.raid_buff_bleeding,
+            "consumable_flask": self.consumable_flask,
+            "consumable_food": self.consumable_food,
+            "consumable_potion": self.consumable_potion,
+            "consumable_augmentation": self.consumable_augmentation,
+            "consumable_temporary_enchant": self.consumable_temporary_enchant,
+            "consumable_matrix_flasks": self.consumable_matrix_flasks,
+            "consumable_matrix_foods": self.consumable_matrix_foods,
+            "consumable_matrix_potions": self.consumable_matrix_potions,
+            "consumable_matrix_augmentations": self.consumable_matrix_augmentations,
+            "consumable_matrix_temporary_enchants": self.consumable_matrix_temporary_enchants,
+            "consumable_matrix_raid_buffs": self.consumable_matrix_raid_buffs,
         })
     }
 
@@ -153,6 +250,16 @@ pub(super) struct BonusIdsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct ConsumableOptionsQuery {
+    #[serde(default = "default_consumable_expansion_min")]
+    pub expansion_min: i64,
+}
+
+fn default_consumable_expansion_min() -> i64 {
+    10
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct ResolveGearRequest {
     pub simc_input: String,
     #[serde(default)]
@@ -216,4 +323,13 @@ fn default_desired_targets() -> u32 {
 }
 fn default_max_time() -> u32 {
     300
+}
+fn default_include_timeline() -> bool {
+    true
+}
+fn default_include_trinket_matrix() -> bool {
+    false
+}
+fn default_include_tier_matrix() -> bool {
+    true
 }

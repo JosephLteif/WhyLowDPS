@@ -121,50 +121,6 @@ export default function SettingsPopover() {
               />
             </div>
 
-            {/* Shutdown Button */}
-            <div className="border-t border-border pt-4">
-              <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to shut down the simulation server?')) {
-                    fetch(`${API_URL}/api/system/shutdown`, {
-                      method: 'POST',
-                      credentials: 'include',
-                    });
-                    setOpen(false);
-                    // Show overlay or something
-                    const overlay = document.createElement('div');
-                    overlay.style.position = 'fixed';
-                    overlay.style.top = '0';
-                    overlay.style.left = '0';
-                    overlay.style.width = '100vw';
-                    overlay.style.height = '100vh';
-                    overlay.style.backgroundColor = 'black';
-                    overlay.style.color = 'white';
-                    overlay.style.display = 'flex';
-                    overlay.style.flexDirection = 'column';
-                    overlay.style.alignItems = 'center';
-                    overlay.style.justifyContent = 'center';
-                    overlay.style.zIndex = '9999';
-                    overlay.innerHTML = `
-                      <h1 style="font-size: 24px; margin-bottom: 16px;">Shutting Down...</h1>
-                      <p style="color: #666;">You can close this tab now.</p>
-                    `;
-                    document.body.appendChild(overlay);
-                  }
-                }}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-900/50 bg-red-950/20 py-2.5 text-[13px] font-medium text-red-400 transition-all hover:bg-red-950/40 hover:text-red-300 active:scale-[0.98]"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636"
-                  />
-                </svg>
-                Shutdown Simulation Server
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -44,7 +44,7 @@ export default function QuickSimPage() {
         disabled={submitting || simcInput.trim().length < 10}
         className="btn-primary w-full py-3 text-sm"
       >
-        {submitting ? 'Running…' : buttonLabel('Run Simulation')}
+        {submitting ? 'Running...' : buttonLabel('Run Simulation')}
       </button>
     </form>
   );

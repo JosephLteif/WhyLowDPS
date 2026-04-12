@@ -488,6 +488,31 @@ pub fn load_classes(data_dir: &Path) {
     *class_data::CLASSES.write().unwrap() = Arc::new(data);
 }
 
+pub fn load_consumables(data_dir: &Path) {
+    fn read_array(path: &Path) -> Vec<Value> {
+        if !path.exists() {
+            return Vec::new();
+        }
+        let file = match fs::File::open(path) {
+            Ok(f) => f,
+            Err(_) => return Vec::new(),
+        };
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default()
+    }
+
+    let flasks = read_array(&data_dir.join("flasks.json"));
+    let foods = read_array(&data_dir.join("foods.json"));
+    let potions = read_array(&data_dir.join("potions.json"));
+    let augments = read_array(&data_dir.join("augments.json"));
+    let temp_enchants = read_array(&data_dir.join("temp-enchants.json"));
+
+    *FLASK_OPTIONS_RAW.write().unwrap() = Arc::new(flasks);
+    *FOOD_OPTIONS_RAW.write().unwrap() = Arc::new(foods);
+    *POTION_OPTIONS_RAW.write().unwrap() = Arc::new(potions);
+    *AUGMENT_OPTIONS_RAW.write().unwrap() = Arc::new(augments);
+    *TEMP_ENCHANT_OPTIONS_RAW.write().unwrap() = Arc::new(temp_enchants);
+}
+
 pub fn hydrate_runtime_metadata(runtime_path: &Path) {
     if !runtime_path.exists() {
         return;

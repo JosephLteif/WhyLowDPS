@@ -59,9 +59,7 @@ function QualityBadge({ quality }: { quality?: number }) {
 }
 
 function normalizeLabel(input: string) {
-  return input
-    .replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '')
-    .replace(/\s+[1-3]\s*$/i, '');
+  return input.replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '').replace(/\s+[1-3]\s*$/i, '');
 }
 
 export default function ConsumableMatrixChart({
@@ -72,10 +70,7 @@ export default function ConsumableMatrixChart({
   results: MatrixResult[];
 }) {
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
-  const raidBuffByKey = useMemo(
-    () => new Map(RAID_BUFF_MATRIX_OPTIONS.map((b) => [b.key, b])),
-    []
-  );
+  const raidBuffByKey = useMemo(() => new Map(RAID_BUFF_MATRIX_OPTIONS.map((b) => [b.key, b])), []);
   const optionByCategory = useMemo(
     () => ({
       flask: new Map(flasks.map((o) => [o.token || '', o])),
@@ -99,7 +94,12 @@ export default function ConsumableMatrixChart({
   }, [flasks, foods, potions, augments, tempEnchants]);
 
   const rawRows = results
-    .filter((r) => !String(r.name || '').toLowerCase().includes('currently equipped'))
+    .filter(
+      (r) =>
+        !String(r.name || '')
+          .toLowerCase()
+          .includes('currently equipped')
+    )
     .map((r) => {
       const tagged = Array.isArray(r.items)
         ? r.items.find((i) => typeof i.consumable_category === 'string')
@@ -110,7 +110,10 @@ export default function ConsumableMatrixChart({
           : 'other') || 'other';
       const token =
         (tagged && typeof tagged.consumable_token === 'string' ? tagged.consumable_token : null) ||
-        String(r.name || '').split('|').pop()?.trim() ||
+        String(r.name || '')
+          .split('|')
+          .pop()
+          ?.trim() ||
         String(r.name || 'Unknown');
       return {
         category,
@@ -151,7 +154,8 @@ export default function ConsumableMatrixChart({
     <div className="card p-5">
       <h3 className="mb-2 text-sm font-semibold text-zinc-100">Consumable Matrix</h3>
       <p className="mb-4 text-xs text-zinc-400">
-        Baseline DPS: {Math.round(baseDps).toLocaleString()}. Positive values are gains over baseline.
+        Baseline DPS: {Math.round(baseDps).toLocaleString()}. Positive values are gains over
+        baseline.
       </p>
       <div className="space-y-4">
         {categories.map((category) => (

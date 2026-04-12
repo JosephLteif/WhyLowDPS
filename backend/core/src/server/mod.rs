@@ -165,7 +165,10 @@ async fn spa_fallback(
 // ---------- Server startup ----------
 
 /// Start the HTTP server with in-memory storage (desktop default).
-pub async fn start(resource_dir: &Path, frontend_dir: Option<PathBuf>) -> (actix_web::dev::Server, u16) {
+pub async fn start(
+    resource_dir: &Path,
+    frontend_dir: Option<PathBuf>,
+) -> (actix_web::dev::Server, u16) {
     let simc_path = if cfg!(windows) {
         resource_dir.join("simc").join("simc.exe")
     } else {
@@ -291,10 +294,7 @@ pub async fn start_with_storage_bind(
                     "/api/auth/bnet/login-success",
                     web::get().to(auth_handlers::login_success),
                 )
-                .route(
-                    "/api/auth/poll",
-                    web::get().to(auth_handlers::poll_login),
-                )
+                .route("/api/auth/poll", web::get().to(auth_handlers::poll_login))
                 .route(
                     "/api/auth/bnet/callback",
                     web::get().to(auth_handlers::bnet_callback),
@@ -323,14 +323,13 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/user/blizzard/clear",
                     web::post().to(auth_handlers::clear_user_configs),
-                    )
-                    .route(
+                )
+                .route(
                     "/api/system/blizzard/credentials",
                     web::post().to(auth_handlers::set_system_blizzard_creds),
-                    )
-                    .route(
+                )
+                .route(
                     "/api/user/blizzard/test",
-
                     web::post().to(auth_handlers::test_blizzard_creds),
                 )
                 .route(

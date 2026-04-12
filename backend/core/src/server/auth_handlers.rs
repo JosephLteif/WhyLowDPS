@@ -91,8 +91,12 @@ pub async fn get_credentials_status(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     let env_configured = state.client_id.is_some() && state.client_secret.is_some();
-    let system_configured = store.get_user_config("system", "blizzard_client_id").is_some()
-        && store.get_user_config("system", "blizzard_client_secret").is_some();
+    let system_configured = store
+        .get_user_config("system", "blizzard_client_id")
+        .is_some()
+        && store
+            .get_user_config("system", "blizzard_client_secret")
+            .is_some();
 
     HttpResponse::Ok().json(json!({
         "globally_configured": env_configured || system_configured
@@ -113,11 +117,9 @@ pub async fn bnet_login(
 
     let (client_id, _client_secret) = match creds {
         Some(c) => c,
-        None => {
-            return HttpResponse::BadRequest().json(json!({
-                "error": "Blizzard API Client ID not configured globally and not provided in request."
-            }))
-        }
+        None => return HttpResponse::BadRequest().json(json!({
+            "error": "Blizzard API Client ID not configured globally and not provided in request."
+        })),
     };
 
     let mut builder = HttpResponse::Found();
@@ -145,7 +147,10 @@ pub async fn bnet_login(
     println!("Starting Blizzard Login for client_id: {}", client_id);
     println!("Target Redirect URI: {}", state.redirect_uri);
 
-    let flow_id = query.flow_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let flow_id = query
+        .flow_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let auth_url = format!(
         "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}&prompt=login%20consent&max_age=0",
@@ -434,8 +439,8 @@ pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
         cookie.value().to_string()
     } else if let Some(auth_header) = req.headers().get(header::AUTHORIZATION) {
         let auth_str = auth_header.to_str().unwrap_or_default();
-        if auth_str.starts_with("Bearer ") {
-            auth_str[7..].to_string()
+        if let Some(stripped) = auth_str.strip_prefix("Bearer ") {
+            stripped.to_string()
         } else {
             return None;
         }

@@ -107,9 +107,7 @@ export default function FightStyleSelector({ value, onChange }: FightStyleSelect
           </div>
         )}
       </div>
-      {activeDescription && (
-        <p className="text-[12px] text-zinc-500">{activeDescription}</p>
-      )}
+      {activeDescription && <p className="text-[12px] text-zinc-500">{activeDescription}</p>}
     </div>
   );
 }

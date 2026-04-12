@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         // If 401/error, consider user logged out
         if (typeof window !== 'undefined' && localStorage.getItem(TOKEN_KEY)) {
-           localStorage.removeItem(TOKEN_KEY);
+          localStorage.removeItem(TOKEN_KEY);
         }
         setUser(null);
       } finally {

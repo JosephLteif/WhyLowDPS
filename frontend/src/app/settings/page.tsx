@@ -29,9 +29,15 @@ export default function SettingsPage() {
   const [cacheSyncing, setCacheSyncing] = useState(false);
   const [cacheSyncStatus, setCacheSyncStatus] = useState<string>('idle');
   const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
-  const [cacheMessage, setCacheMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [cacheMessage, setCacheMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking'>('idle');
-  const [updateMessage, setUpdateMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [updateMessage, setUpdateMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -111,7 +117,10 @@ export default function SettingsPage() {
 
       setUpdateCheckState('idle');
       if (status === 'available') {
-        setUpdateMessage({ type: 'success', text: message || 'Update found. Use "Update Now" in the popup.' });
+        setUpdateMessage({
+          type: 'success',
+          text: message || 'Update found. Use "Update Now" in the popup.',
+        });
       } else if (status === 'none') {
         setUpdateMessage({ type: 'success', text: message || 'You are on the latest version.' });
       } else if (status === 'error') {
@@ -220,7 +229,10 @@ export default function SettingsPage() {
 
       if (status.startsWith('error:')) {
         setCacheSyncing(false);
-        setCacheMessage({ type: 'error', text: status.replace(/^error:/, '') || 'Cache refresh failed.' });
+        setCacheMessage({
+          type: 'error',
+          text: status.replace(/^error:/, '') || 'Cache refresh failed.',
+        });
         return;
       }
 
@@ -423,7 +435,8 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">Game Data Cache</h2>
         <p className="mb-5 text-sm text-zinc-400">
-          Refetch game data and reload the backend cache used for gems, enchants, items, raids, and dungeon loot.
+          Refetch game data and reload the backend cache used for gems, enchants, items, raids, and
+          dungeon loot.
         </p>
 
         <div className="max-w-2xl space-y-4">
@@ -436,13 +449,17 @@ export default function SettingsPage() {
               {cacheSyncing ? 'Refreshing Cache...' : 'Refresh Game Data Cache'}
             </button>
             {cacheSyncing && (
-              <span className="text-xs uppercase tracking-wide text-zinc-500">Sync in progress</span>
+              <span className="text-xs uppercase tracking-wide text-zinc-500">
+                Sync in progress
+              </span>
             )}
           </div>
 
           {!!cacheSyncProgress && (
             <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-sm text-zinc-200">{parseProgress(cacheSyncProgress).details || cacheSyncProgress}</p>
+              <p className="text-sm text-zinc-200">
+                {parseProgress(cacheSyncProgress).details || cacheSyncProgress}
+              </p>
             </div>
           )}
 
@@ -462,9 +479,7 @@ export default function SettingsPage() {
 
       <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
-        <p className="mb-5 text-sm text-zinc-400">
-          Check if a newer desktop version is available.
-        </p>
+        <p className="mb-5 text-sm text-zinc-400">Check if a newer desktop version is available.</p>
         <div className="max-w-2xl space-y-4">
           <button
             onClick={checkForUpdatesNow}

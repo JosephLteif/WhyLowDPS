@@ -276,8 +276,7 @@ fn parse_timeline_and_apl(player: &Value) -> Option<(Value, Value)> {
         .map(Value::Array)
         .unwrap_or_else(|| json!([]));
 
-    let dps_series =
-        parse_series_points(collected.get("timeline_dmg").and_then(|v| v.get("data")));
+    let dps_series = parse_series_points(collected.get("timeline_dmg").and_then(|v| v.get("data")));
 
     let mut cooldown_spell_ids: HashSet<u64> = HashSet::new();
     if let Some(buffs) = player.get("buffs").and_then(|v| v.as_array()) {
@@ -364,7 +363,9 @@ fn parse_timeline_and_apl(player: &Value) -> Option<(Value, Value)> {
         last_t = Some(t);
 
         if !ev_name.is_empty() {
-            let counter = action_counts.entry(ev_name.to_string()).or_insert((0, spell_id));
+            let counter = action_counts
+                .entry(ev_name.to_string())
+                .or_insert((0, spell_id));
             counter.0 += 1;
             if counter.1 == 0 && spell_id > 0 {
                 counter.1 = spell_id;
@@ -440,7 +441,11 @@ fn parse_timeline_and_apl(player: &Value) -> Option<(Value, Value)> {
         "event_count": event_count,
         "events_truncated": event_count > max_events,
     });
-    if !resource_series.as_array().map(|a| a.is_empty()).unwrap_or(true) {
+    if !resource_series
+        .as_array()
+        .map(|a| a.is_empty())
+        .unwrap_or(true)
+    {
         timeline["resource_series"] = resource_series;
     }
     if !resource_series_map.is_empty() {

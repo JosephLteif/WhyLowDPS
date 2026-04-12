@@ -12,11 +12,7 @@ interface SplashScreenProps {
   onRetry?: () => void;
 }
 
-export default function SplashScreen({
-  status,
-  progress,
-  onRetry,
-}: SplashScreenProps) {
+export default function SplashScreen({ status, progress, onRetry }: SplashScreenProps) {
   const { login, setSystemCredentials } = useAuth();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -58,7 +54,8 @@ export default function SplashScreen({
 
   const statusString = typeof status === 'string' ? status : JSON.stringify(status);
   const isError = statusString.toLowerCase().includes('error');
-  const isSyncing = statusString === 'syncing' || (typeof status === 'string' && status === 'syncing');
+  const isSyncing =
+    statusString === 'syncing' || (typeof status === 'string' && status === 'syncing');
 
   // Helper to parse: "TASK:CURRENT:TOTAL:DETAILS"
   const parseProgress = (str: string) => {
@@ -173,7 +170,8 @@ export default function SplashScreen({
 
                 <div className="text-left">
                   <p className="mb-2 text-[10px] leading-relaxed text-zinc-500">
-                    <span className="font-bold text-zinc-400">Setup Instructions:</span><br />
+                    <span className="font-bold text-zinc-400">Setup Instructions:</span>
+                    <br />
                     1. Create a client on the{' '}
                     <a
                       href="https://develop.battle.net/access/clients"
@@ -181,8 +179,13 @@ export default function SplashScreen({
                       className="text-gold hover:underline"
                     >
                       Blizzard Developer Portal
-                    </a>.<br />
-                    2. Add <code className="text-zinc-300">http://localhost:17384/api/auth/bnet/callback</code> to your **Redirect URIs**.
+                    </a>
+                    .<br />
+                    2. Add{' '}
+                    <code className="text-zinc-300">
+                      http://localhost:17384/api/auth/bnet/callback
+                    </code>{' '}
+                    to your **Redirect URIs**.
                   </p>
                 </div>
 
@@ -226,13 +229,13 @@ export default function SplashScreen({
           <div className="hidden text-[10px] uppercase tracking-[0.2em] text-zinc-500">
             Version 0.2.4-STABILITY-V2 • Production Ready
           </div>
-          
+
           <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
             Version {APP_VERSION_WITH_PREFIX} • Production Ready
           </div>
 
-          {(showDebugButton && isDesktop) && (
-            <button 
+          {showDebugButton && isDesktop && (
+            <button
               onClick={fetchDebugInfo}
               className="text-[9px] font-bold uppercase tracking-widest text-zinc-700 transition-colors hover:text-gold"
             >
@@ -243,84 +246,101 @@ export default function SplashScreen({
       </div>
 
       <div className="fixed bottom-4 left-4 z-50">
-        <span className="text-[10px] font-mono text-zinc-700 bg-black/40 px-2 py-1 rounded border border-white/5">
+        <span className="rounded border border-white/5 bg-black/40 px-2 py-1 font-mono text-[10px] text-zinc-700">
           Build: {APP_VERSION}
         </span>
       </div>
 
       {showDebug && debugInfo && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
           <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-900 p-8 shadow-2xl">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">System Diagnostics</h2>
-              <button onClick={() => setShowDebug(false)} className="text-zinc-500 hover:text-white">
+              <button
+                onClick={() => setShowDebug(false)}
+                className="text-zinc-500 hover:text-white"
+              >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
-            
+
             <div className="space-y-4 font-mono text-xs leading-relaxed">
-              <div className="rounded-lg bg-black/40 p-4 border border-white/5">
-                <p className="mb-2 text-zinc-500 uppercase tracking-widest font-bold">Data Path</p>
-                <p className={debugInfo.data_exists ? "text-emerald-400" : "text-red-400"}>
+              <div className="rounded-lg border border-white/5 bg-black/40 p-4">
+                <p className="mb-2 font-bold uppercase tracking-widest text-zinc-500">Data Path</p>
+                <p className={debugInfo.data_exists ? 'text-emerald-400' : 'text-red-400'}>
                   {debugInfo.data_dir}
                 </p>
                 <p className="mt-1 text-[10px] text-zinc-600">
-                  Exists: {debugInfo.data_exists ? "YES" : "NO (CRITICAL)"}
+                  Exists: {debugInfo.data_exists ? 'YES' : 'NO (CRITICAL)'}
                 </p>
               </div>
 
-              <div className="rounded-lg bg-black/40 p-4 border border-white/5">
-                <p className="mb-2 text-zinc-500 uppercase tracking-widest font-bold">SimC Path</p>
-                <p className={debugInfo.simc_exists ? "text-emerald-400" : "text-red-400"}>
+              <div className="rounded-lg border border-white/5 bg-black/40 p-4">
+                <p className="mb-2 font-bold uppercase tracking-widest text-zinc-500">SimC Path</p>
+                <p className={debugInfo.simc_exists ? 'text-emerald-400' : 'text-red-400'}>
                   {debugInfo.simc_dir}
                 </p>
                 <p className="mt-1 text-[10px] text-zinc-600">
-                  Exists: {debugInfo.simc_exists ? "YES" : "NO (CRITICAL)"}
+                  Exists: {debugInfo.simc_exists ? 'YES' : 'NO (CRITICAL)'}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                    <div className="flex justify-between border-b border-white/5 py-1.5">
-                      <span className="text-zinc-500">Data Directory</span>
-                      <span className="font-mono text-zinc-300">{debugInfo.data_dir}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-white/5 py-1.5">
-                      <span className="text-zinc-500">Classes Data Loaded</span>
-                      <span className={`font-mono ${debugInfo.data_valid ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {debugInfo.data_valid ? 'Valid / Found' : 'MISSING (Check installation)'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-b border-white/5 py-1.5">
-                      <span className="text-zinc-500">SimC Executable</span>
-                      <span className={`font-mono ${debugInfo.simc_valid ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {debugInfo.simc_valid ? 'Found' : 'NOT FOUND'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-b border-white/5 py-1.5">
-                      <span className="text-zinc-500">Backend Version</span>
-                      <span className="font-mono text-zinc-300">{debugInfo.version || 'Unknown'}</span>
-                    </div>
-                    <div className="flex justify-between border-b border-white/5 py-1.5">
-                      <span className="text-zinc-500">Current URL</span>
-                      <span className="font-mono text-zinc-300 text-[10px] truncate max-w-[200px]" title={typeof window !== 'undefined' ? window.location.href : ''}>
-                        {typeof window !== 'undefined' ? window.location.href : 'N/A'}
-                      </span>
-                    </div>
-                <div className="rounded-lg bg-black/40 p-4 border border-white/5 whitespace-nowrap overflow-hidden">
-                  <p className="mb-1 text-zinc-500 uppercase tracking-widest font-bold">API URL</p>
+                <div className="flex justify-between border-b border-white/5 py-1.5">
+                  <span className="text-zinc-500">Data Directory</span>
+                  <span className="font-mono text-zinc-300">{debugInfo.data_dir}</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 py-1.5">
+                  <span className="text-zinc-500">Classes Data Loaded</span>
+                  <span
+                    className={`font-mono ${debugInfo.data_valid ? 'text-emerald-400' : 'text-red-400'}`}
+                  >
+                    {debugInfo.data_valid ? 'Valid / Found' : 'MISSING (Check installation)'}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 py-1.5">
+                  <span className="text-zinc-500">SimC Executable</span>
+                  <span
+                    className={`font-mono ${debugInfo.simc_valid ? 'text-emerald-400' : 'text-red-400'}`}
+                  >
+                    {debugInfo.simc_valid ? 'Found' : 'NOT FOUND'}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 py-1.5">
+                  <span className="text-zinc-500">Backend Version</span>
+                  <span className="font-mono text-zinc-300">{debugInfo.version || 'Unknown'}</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 py-1.5">
+                  <span className="text-zinc-500">Current URL</span>
+                  <span
+                    className="max-w-[200px] truncate font-mono text-[10px] text-zinc-300"
+                    title={typeof window !== 'undefined' ? window.location.href : ''}
+                  >
+                    {typeof window !== 'undefined' ? window.location.href : 'N/A'}
+                  </span>
+                </div>
+                <div className="overflow-hidden whitespace-nowrap rounded-lg border border-white/5 bg-black/40 p-4">
+                  <p className="mb-1 font-bold uppercase tracking-widest text-zinc-500">API URL</p>
                   <p className="text-zinc-300">{API_URL}</p>
                 </div>
               </div>
 
-              <div className="rounded-lg bg-black/40 p-4 border border-white/5">
-                <p className="mb-1 text-zinc-500 uppercase tracking-widest font-bold">Executable Path</p>
-                <p className="text-[10px] text-zinc-400 break-all">{debugInfo.exe_path}</p>
+              <div className="rounded-lg border border-white/5 bg-black/40 p-4">
+                <p className="mb-1 font-bold uppercase tracking-widest text-zinc-500">
+                  Executable Path
+                </p>
+                <p className="break-all text-[10px] text-zinc-400">{debugInfo.exe_path}</p>
               </div>
             </div>
 
-            <p className="mt-6 text-center text-[10px] text-zinc-600 italic">
+            <p className="mt-6 text-center text-[10px] italic text-zinc-600">
               Please provide a screenshot of this screen if you are still experiencing issues.
             </p>
           </div>

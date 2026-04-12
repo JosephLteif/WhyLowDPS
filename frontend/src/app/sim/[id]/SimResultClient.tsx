@@ -93,7 +93,8 @@ function buildTimelineFromRaw(raw: any): { timeline: any | null; apl: any | null
   const actionSeq = collected?.action_sequence;
   const rowFormat = Array.isArray(actionSeq) ? actionSeq : null;
   const timeCol = !rowFormat && Array.isArray(actionSeq?.time) ? actionSeq.time : null;
-  const spellNameCol = !rowFormat && Array.isArray(actionSeq?.spell_name) ? actionSeq.spell_name : [];
+  const spellNameCol =
+    !rowFormat && Array.isArray(actionSeq?.spell_name) ? actionSeq.spell_name : [];
   const nameCol = !rowFormat && Array.isArray(actionSeq?.name) ? actionSeq.name : [];
   const spellIdCol = !rowFormat && Array.isArray(actionSeq?.id) ? actionSeq.id : [];
   const targetCol = !rowFormat && Array.isArray(actionSeq?.target) ? actionSeq.target : [];
@@ -131,11 +132,7 @@ function buildTimelineFromRaw(raw: any): { timeline: any | null; apl: any | null
           ? spellNameCol[i]
           : '';
     const nn =
-      typeof row?.name === 'string'
-        ? row.name
-        : typeof nameCol[i] === 'string'
-          ? nameCol[i]
-          : '';
+      typeof row?.name === 'string' ? row.name : typeof nameCol[i] === 'string' ? nameCol[i] : '';
     const evName = sn || nn || 'Unknown';
     const sid =
       typeof row?.id === 'number'
@@ -205,7 +202,9 @@ function buildTimelineFromRaw(raw: any): { timeline: any | null; apl: any | null
       .filter(([, series]) => Array.isArray(series) && series.length > 0)
   );
   const resourceSeries =
-    resourceType && Array.isArray(resourceSeriesMap[resourceType]) ? resourceSeriesMap[resourceType] : [];
+    resourceType && Array.isArray(resourceSeriesMap[resourceType])
+      ? resourceSeriesMap[resourceType]
+      : [];
 
   const buffUptimes = Array.isArray(player?.buffs)
     ? player.buffs
@@ -245,7 +244,9 @@ function buildTimelineFromRaw(raw: any): { timeline: any | null; apl: any | null
     cooldown_events: cooldownEvents,
     dps_series: dpsSeries,
     ...(resourceSeries.length > 0 ? { resource_series: resourceSeries } : {}),
-    ...(Object.keys(resourceSeriesMap).length > 0 ? { resource_series_map: resourceSeriesMap } : {}),
+    ...(Object.keys(resourceSeriesMap).length > 0
+      ? { resource_series_map: resourceSeriesMap }
+      : {}),
     ...(resourceType ? { resource_type: resourceType } : {}),
     buff_uptimes: buffUptimes,
     event_count: totalEvents,
@@ -645,17 +646,23 @@ export default function SimResultClient() {
       {isTopGear && isTrinketTierHeatmap ? (
         <TrinketTierHeatmap
           baseDps={(r.base_dps as number) || 0}
-          results={(r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []}
+          results={
+            (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
+          }
         />
       ) : isTopGear && isExternalBuffMatrix ? (
         <ExternalBuffMatrixChart
           baseDps={(r.base_dps as number) || 0}
-          results={(r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []}
+          results={
+            (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
+          }
         />
       ) : isTopGear && isConsumableMatrix ? (
         <ConsumableMatrixChart
           baseDps={(r.base_dps as number) || 0}
-          results={(r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []}
+          results={
+            (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
+          }
         />
       ) : isTopGear ? (
         <>

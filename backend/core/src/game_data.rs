@@ -157,7 +157,8 @@ pub fn get_instance_drops(
 
                 // Filter spec restrictions (items with explicit spec lists)
                 if let Some(specs) = &item.classes {
-                    if !allowed_specs.is_empty() && !allowed_specs.iter().any(|s| specs.contains(s)) {
+                    if !allowed_specs.is_empty() && !allowed_specs.iter().any(|s| specs.contains(s))
+                    {
                         continue;
                     }
                 }

@@ -3,7 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
-import { API_URL, fetchJson, isDesktop } from '../lib/api';
+import {
+  API_URL,
+  downloadLatestSimc,
+  fetchJson,
+  getSimcStatus,
+  isDesktop,
+  type SimcStatus,
+} from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 
 const PRESETS = [
@@ -108,6 +115,13 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
+  const [simcLoading, setSimcLoading] = useState(false);
+  const [simcUpdating, setSimcUpdating] = useState(false);
+  const [simcMessage, setSimcMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -203,6 +217,51 @@ export default function SettingsPage() {
       window.removeEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
     };
   }, []);
+
+  const refreshSimc = async () => {
+    if (!isDesktop) return;
+    setSimcLoading(true);
+    setSimcMessage(null);
+    try {
+      const status = await getSimcStatus();
+      setSimcStatus(status);
+    } catch (err: any) {
+      setSimcMessage({
+        type: 'error',
+        text: err?.detail || err?.message || 'Failed to fetch SimC status.',
+      });
+    } finally {
+      setSimcLoading(false);
+    }
+  };
+
+  const downloadSimc = async () => {
+    if (!isDesktop) return;
+    setSimcUpdating(true);
+    setSimcMessage(null);
+    try {
+      const status = await downloadLatestSimc();
+      setSimcStatus(status);
+      setSimcMessage({
+        type: 'success',
+        text: status.installed_exists
+          ? 'SimulationCraft updated successfully.'
+          : 'SimulationCraft download completed.',
+      });
+    } catch (err: any) {
+      setSimcMessage({
+        type: 'error',
+        text: err?.detail || err?.message || 'Failed to download latest SimC.',
+      });
+    } finally {
+      setSimcUpdating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isDesktop || !user) return;
+    void refreshSimc();
+  }, [user]);
 
   useEffect(() => {
     const derived = chooseBestUnit(dataCacheRefreshMinutes);
@@ -647,6 +706,74 @@ export default function SettingsPage() {
               className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
+
+          {isDesktop && (
+            <div className="space-y-4 border-t border-border pt-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-zinc-300">SimulationCraft Engine</p>
+                  <p className="text-[12px] text-zinc-500">
+                    Manage local SimC binary and keep it updated.
+                  </p>
+                </div>
+                <button
+                  onClick={refreshSimc}
+                  disabled={simcLoading || simcUpdating}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-50"
+                >
+                  {simcLoading ? 'Checking...' : 'Refresh'}
+                </button>
+              </div>
+
+              <div className="rounded-lg border border-border bg-surface-2 p-3 text-[12px]">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-zinc-500">Installed</span>
+                  <span className="font-mono text-zinc-100">
+                    {simcStatus?.installed_version ??
+                      (simcStatus?.installed_exists ? 'Detected' : 'Missing')}
+                  </span>
+                </div>
+                <div className="mt-1.5 flex items-center justify-between gap-4">
+                  <span className="text-zinc-500">Latest</span>
+                  <span className="font-mono text-zinc-100">
+                    {simcStatus?.latest_version || (simcLoading ? 'Checking...' : 'Unavailable')}
+                  </span>
+                </div>
+                {simcStatus && (
+                  <p
+                    className={`mt-2 font-medium ${
+                      simcStatus.update_available ? 'text-amber-300' : 'text-emerald-300'
+                    }`}
+                  >
+                    {simcStatus.update_available
+                      ? 'A newer SimC build is available.'
+                      : 'Installed SimC is up to date.'}
+                  </p>
+                )}
+                {(simcStatus?.detail || simcMessage) && (
+                  <p className="mt-2 text-red-300">
+                    {simcMessage?.type === 'error'
+                      ? simcMessage.text
+                      : simcStatus?.detail || simcMessage?.text}
+                  </p>
+                )}
+              </div>
+
+              <button
+                onClick={downloadSimc}
+                disabled={
+                  simcUpdating ||
+                  simcLoading ||
+                  !simcStatus ||
+                  !simcStatus.latest_version ||
+                  !simcStatus.update_available
+                }
+                className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
+              >
+                {simcUpdating ? 'Downloading latest SimC...' : 'Download Latest SimC'}
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

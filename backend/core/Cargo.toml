@@ -25,7 +25,7 @@ jsonwebtoken = "9"
 urlencoding = "2.1"
 thiserror = "2.0.18"
 zip = "2"
-sevenz-rust = "0.6.1"
+sevenz-rust2 = { version = "0.20", features = ["zstd", "lz4", "deflate", "brotli"] }
 
 actix-web = { version = "4", optional = true }
 actix-cors = { version = "0.7", optional = true }

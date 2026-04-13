@@ -161,7 +161,9 @@ export default function UpdatePrompt() {
     };
 
     const onCacheRefreshStatus = (event: Event) => {
-      const detail = (event as CustomEvent<{ status?: string; progress?: string; message?: string }>).detail;
+      const detail = (
+        event as CustomEvent<{ status?: string; progress?: string; message?: string }>
+      ).detail;
       const status = detail?.status || '';
       const message = detail?.message || '';
       const progressText = detail?.progress || '';

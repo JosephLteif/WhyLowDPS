@@ -336,6 +336,26 @@ pub async fn start_with_storage_bind(
                     "/api/data/status",
                     web::get().to(data_sync::get_sync_status),
                 )
+                .route(
+                    "/api/data/files",
+                    web::get().to(data_sync::get_data_file_states),
+                )
+                .route(
+                    "/api/data/files/open-directory",
+                    web::post().to(data_sync::open_data_directory),
+                )
+                .route(
+                    "/api/data/files/missing/download",
+                    web::post().to(data_sync::download_missing_data_files),
+                )
+                .route(
+                    "/api/data/files/{key}/download",
+                    web::post().to(data_sync::download_data_file),
+                )
+                .route(
+                    "/api/data/files/{key}/content",
+                    web::get().to(data_sync::get_data_file_content),
+                )
                 .route("/api/data/sync", web::post().to(data_sync::trigger_sync));
 
             #[cfg(feature = "desktop")]

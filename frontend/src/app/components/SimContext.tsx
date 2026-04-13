@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { FightScenario } from '../lib/types';
+import { API_URL, fetchJson } from '../lib/api';
 
 interface SimContextType {
   simcInput: string;
@@ -62,6 +63,8 @@ interface SimContextType {
   setLockSingleConsumableOptions: (v: boolean) => void;
   autoClipboardPasteSimc: boolean;
   setAutoClipboardPasteSimc: (v: boolean) => void;
+  dataCacheRefreshMinutes: number;
+  setDataCacheRefreshMinutes: (v: number) => void;
   // Expert Mode injection points
   simcHeader: string;
   setSimcHeader: (v: string) => void;
@@ -144,6 +147,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [consumableTemporaryEnchant, _setConsumableTemporaryEnchant] = useState('');
   const [lockSingleConsumableOptions, setLockSingleConsumableOptions] = useState(false);
   const [autoClipboardPasteSimc, _setAutoClipboardPasteSimc] = useState(true);
+  const [dataCacheRefreshMinutes, _setDataCacheRefreshMinutes] = useState(0);
   const [simcHeader, setSimcHeader] = useState('');
   const [simcBasePlayer, setSimcBasePlayer] = useState('');
   const [simcRaidActors, setSimcRaidActors] = useState('');
@@ -182,6 +186,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
         readStoredString('whylowdps_consumable_temporary_enchant', '')
       );
       _setAutoClipboardPasteSimc(readStoredBool('whylowdps_auto_clipboard_paste_simc', true));
+      _setDataCacheRefreshMinutes(readStored('whylowdps_data_cache_refresh_minutes', 0));
     } catch {}
   }, []);
 
@@ -365,6 +370,89 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const setDataCacheRefreshMinutes = useCallback((v: number) => {
+    _setDataCacheRefreshMinutes(v);
+    try {
+      if (v > 0) {
+        localStorage.setItem('whylowdps_data_cache_refresh_minutes', String(v));
+      } else {
+        localStorage.removeItem('whylowdps_data_cache_refresh_minutes');
+      }
+    } catch {}
+  }, []);
+
+  const parseSyncStatus = useCallback((status: any): string => {
+    if (typeof status === 'string') return status;
+    if (status && typeof status === 'object' && status.error) return `error:${String(status.error)}`;
+    return 'unknown';
+  }, []);
+
+  const pollCacheStatus = useCallback(async () => {
+    try {
+      const data = await fetchJson<any>(`${API_URL}/api/data/status`);
+      const status = parseSyncStatus(data.status);
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-cache-refresh-status', {
+          detail: { status, progress: data.progress || '', message: data.message || '' },
+        })
+      );
+
+      if (status === 'ready' || status.startsWith('error:') || status === 'needs_credentials') {
+        return;
+      }
+
+      window.setTimeout(() => {
+        void pollCacheStatus();
+      }, 1500);
+    } catch (err: any) {
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-cache-refresh-status', {
+          detail: { status: 'error', message: err?.message || 'Failed to read cache status.' },
+        })
+      );
+    }
+  }, [parseSyncStatus]);
+
+  useEffect(() => {
+    const onCacheRefreshStart = () => {
+      void pollCacheStatus();
+    };
+    window.addEventListener('whylowdps-cache-refresh-start', onCacheRefreshStart as EventListener);
+    return () => {
+      window.removeEventListener(
+        'whylowdps-cache-refresh-start',
+        onCacheRefreshStart as EventListener
+      );
+    };
+  }, [pollCacheStatus]);
+
+  useEffect(() => {
+    if (dataCacheRefreshMinutes <= 0) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof window.setInterval> | null = null;
+
+    const triggerRefresh = async () => {
+      try {
+        window.dispatchEvent(new CustomEvent('whylowdps-cache-refresh-start'));
+        await fetchJson(`${API_URL}/api/data/sync?force=true`, { method: 'POST' });
+      } catch (err: any) {
+        if (err?.status !== 409) {
+          console.warn('Auto cache refresh failed:', err);
+        }
+      }
+    };
+
+    timer = window.setInterval(() => {
+      if (cancelled) return;
+      void triggerRefresh();
+    }, dataCacheRefreshMinutes * 60 * 1000);
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [dataCacheRefreshMinutes, pollCacheStatus]);
+
   return (
     <SimContext.Provider
       value={{
@@ -424,8 +512,10 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setConsumableTemporaryEnchant,
         lockSingleConsumableOptions,
         setLockSingleConsumableOptions,
-        autoClipboardPasteSimc,
-        setAutoClipboardPasteSimc,
+    autoClipboardPasteSimc,
+    setAutoClipboardPasteSimc,
+    dataCacheRefreshMinutes,
+    setDataCacheRefreshMinutes,
         simcHeader,
         setSimcHeader,
         simcBasePlayer,

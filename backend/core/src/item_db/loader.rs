@@ -9,10 +9,15 @@ use crate::types::{BonusData, EnchantData, GameItem};
 use std::sync::Arc;
 
 pub fn load_items(data_dir: &Path) {
-    let path = data_dir.join("equippable-items-full.json");
-    if !path.exists() {
+    let compact = data_dir.join("equippable-items.json");
+    let full = data_dir.join("equippable-items-full.json");
+    let path = if compact.exists() {
+        compact
+    } else if full.exists() {
+        full
+    } else {
         return;
-    }
+    };
 
     let file = match fs::File::open(&path) {
         Ok(f) => f,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
+type CacheRefreshState = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
 type UpdaterStatusEvent =
   | 'checking'
   | 'available'
@@ -28,6 +29,8 @@ type TauriDownloadEvent =
 
 const UPDATE_CHECK_EVENT = 'whylowdps-updater-check';
 const UPDATE_STATUS_EVENT = 'whylowdps-updater-status';
+const CACHE_REFRESH_CHECK_EVENT = 'whylowdps-cache-refresh-start';
+const CACHE_REFRESH_STATUS_EVENT = 'whylowdps-cache-refresh-status';
 
 function isDesktopRuntime(): boolean {
   if (typeof window === 'undefined') return false;
@@ -45,11 +48,19 @@ function emitUpdaterStatus(status: UpdaterStatusEvent, message?: string) {
 
 export default function UpdatePrompt() {
   const [state, setState] = useState<UpdateState>('idle');
+  const [cacheState, setCacheState] = useState<CacheRefreshState>('idle');
   const [details, setDetails] = useState<UpdateDetails | null>(null);
+  const [cacheDetails, setCacheDetails] = useState<string>('');
   const [errorText, setErrorText] = useState<string>('');
+  const [cacheErrorText, setCacheErrorText] = useState<string>('');
   const [dismissed, setDismissed] = useState(false);
   const [backgroundMode, setBackgroundMode] = useState(false);
+  const [cacheBackgroundMode, setCacheBackgroundMode] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress>({ downloadedBytes: 0 });
+  const [cacheProgress, setCacheProgress] = useState<{ current: number; total: number }>({
+    current: 0,
+    total: 0,
+  });
   const updateRef = useRef<any>(null);
   const isCheckingRef = useRef(false);
 
@@ -68,6 +79,11 @@ export default function UpdatePrompt() {
     if (!progress.totalBytes || progress.totalBytes <= 0) return null;
     return Math.min(100, Math.round((progress.downloadedBytes / progress.totalBytes) * 100));
   }, [progress]);
+
+  const cacheProgressPercent = useMemo(() => {
+    if (!cacheProgress.total || cacheProgress.total <= 0) return null;
+    return Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100));
+  }, [cacheProgress]);
 
   const checkForUpdates = useCallback(async () => {
     if (!isDesktopRuntime() || isCheckingRef.current) return;
@@ -133,6 +149,66 @@ export default function UpdatePrompt() {
     window.addEventListener(UPDATE_CHECK_EVENT, onManualCheck as EventListener);
     return () => window.removeEventListener(UPDATE_CHECK_EVENT, onManualCheck as EventListener);
   }, [checkForUpdates]);
+
+  useEffect(() => {
+    const onCacheRefreshStart = () => {
+      setCacheState('checking');
+      setCacheDetails('Preparing cache refresh...');
+      setCacheErrorText('');
+      setCacheBackgroundMode(true);
+      setDismissed(true);
+      setCacheProgress({ current: 0, total: 0 });
+    };
+
+    const onCacheRefreshStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string; progress?: string; message?: string }>).detail;
+      const status = detail?.status || '';
+      const message = detail?.message || '';
+      const progressText = detail?.progress || '';
+
+      if (status === 'downloading' || status === 'checking' || status === 'syncing') {
+        setCacheState('downloading');
+        setCacheDetails(message || progressText || 'Refreshing game data cache...');
+        setCacheErrorText('');
+
+        const parts = progressText.split(':');
+        if (parts.length >= 4) {
+          const current = parseInt(parts[1], 10);
+          const total = parseInt(parts[2], 10);
+          if (Number.isFinite(current) && Number.isFinite(total)) {
+            setCacheProgress({ current, total });
+          }
+        }
+        return;
+      }
+
+      if (status === 'available' || status === 'ready' || status === 'done') {
+        setCacheState('downloaded');
+        setCacheDetails(message || 'Game data cache refreshed.');
+        setCacheErrorText('');
+        return;
+      }
+
+      if (status === 'error' || status.startsWith('error:') || status === 'needs_credentials') {
+        setCacheState('error');
+        const normalizedError = status.startsWith('error:') ? status.replace(/^error:/, '') : '';
+        setCacheErrorText(
+          message ||
+            normalizedError ||
+            (status === 'needs_credentials'
+              ? 'Blizzard credentials are required to refresh cache.'
+              : 'Failed to refresh game data cache.')
+        );
+      }
+    };
+
+    window.addEventListener(CACHE_REFRESH_CHECK_EVENT, onCacheRefreshStart as EventListener);
+    window.addEventListener(CACHE_REFRESH_STATUS_EVENT, onCacheRefreshStatus as EventListener);
+    return () => {
+      window.removeEventListener(CACHE_REFRESH_CHECK_EVENT, onCacheRefreshStart as EventListener);
+      window.removeEventListener(CACHE_REFRESH_STATUS_EVENT, onCacheRefreshStatus as EventListener);
+    };
+  }, []);
 
   async function handleInstall() {
     setState('downloading');
@@ -316,6 +392,72 @@ export default function UpdatePrompt() {
             className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
           >
             Open Updater
+          </button>
+        </div>
+      )}
+
+      {cacheBackgroundMode && cacheState === 'downloading' && (
+        <div className="fixed bottom-4 right-4 z-[85] w-72 rounded-lg border border-border bg-surface px-4 py-3 shadow-xl">
+          <p className="text-sm font-semibold text-white">Refreshing game data cache</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {cacheProgressPercent != null
+              ? `${cacheProgressPercent}% complete`
+              : cacheDetails || 'Running in background...'}
+          </p>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+            {cacheProgressPercent != null ? (
+              <div
+                className="h-full bg-gold transition-all duration-200"
+                style={{ width: `${cacheProgressPercent}%` }}
+              />
+            ) : (
+              <div className="h-full w-1/3 animate-pulse bg-gold" />
+            )}
+          </div>
+          <button
+            onClick={() => {
+              setCacheBackgroundMode(false);
+              setCacheState('idle');
+            }}
+            className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {cacheBackgroundMode && cacheState === 'downloaded' && (
+        <div className="fixed bottom-4 right-4 z-[85] w-72 rounded-lg border border-emerald-500/20 bg-surface px-4 py-3 shadow-xl">
+          <p className="text-sm font-semibold text-white">Game data cache refreshed</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {cacheDetails || 'Refresh completed successfully.'}
+          </p>
+          <button
+            onClick={() => {
+              setCacheBackgroundMode(false);
+              setCacheState('idle');
+            }}
+            className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {cacheBackgroundMode && cacheState === 'error' && (
+        <div className="fixed bottom-4 right-4 z-[85] w-72 rounded-lg border border-red-500/20 bg-surface px-4 py-3 shadow-xl">
+          <p className="text-sm font-semibold text-white">Cache refresh failed</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {cacheErrorText || 'Could not complete the cache refresh.'}
+          </p>
+          <button
+            onClick={() => {
+              setCacheBackgroundMode(false);
+              setCacheState('idle');
+            }}
+            className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
+          >
+            Close
           </button>
         </div>
       )}

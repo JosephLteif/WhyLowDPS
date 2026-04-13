@@ -478,7 +478,8 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
                     if runtime.exists() {
                         std::fs::metadata(runtime).ok()
                     } else {
-                        let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join(entry.relative_path);
+                        let bundled =
+                            Path::new(env!("CARGO_MANIFEST_DIR")).join(entry.relative_path);
                         std::fs::metadata(bundled).ok()
                     }
                 }
@@ -536,7 +537,9 @@ pub async fn open_data_directory(data_dir: web::Data<Option<PathBuf>>) -> HttpRe
 
 fn is_previewable_file(relative_path: &str) -> bool {
     matches!(
-        Path::new(relative_path).extension().and_then(|ext| ext.to_str()),
+        Path::new(relative_path)
+            .extension()
+            .and_then(|ext| ext.to_str()),
         Some("json" | "txt" | "lua" | "csv" | "xml" | "tsv")
     )
 }
@@ -556,11 +559,13 @@ pub async fn get_data_file_content(
     };
 
     if matches!(entry.source, DataFileSource::Directory) {
-        return HttpResponse::BadRequest().json(json!({"detail": "Directories do not have file content"}));
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Directories do not have file content"}));
     }
 
     if !is_previewable_file(entry.relative_path) {
-        return HttpResponse::BadRequest().json(json!({"detail": "This file type is not previewable"}));
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "This file type is not previewable"}));
     }
 
     let path = match entry.source {
@@ -581,7 +586,8 @@ pub async fn get_data_file_content(
     };
 
     if metadata.is_dir() {
-        return HttpResponse::BadRequest().json(json!({"detail": "Directories do not have file content"}));
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Directories do not have file content"}));
     }
 
     let content = match std::fs::read_to_string(&path) {

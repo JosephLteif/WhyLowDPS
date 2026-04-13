@@ -63,6 +63,73 @@ function parseCharacterInfo(input: string) {
   };
 }
 
+function looksLikeSimcInput(input: string) {
+  const text = input.trim();
+  if (text.length < 10) return false;
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const hasChecksum = lines.some((line) => /^#\s*Checksum:/i.test(line));
+  const hasSimcKeyValue = lines.some((line) =>
+    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name|server|region|spec|talents)\s*=/.test(
+      line
+    )
+  );
+  const hasArmoryLine = lines.some((line) => /^armory\s*=/.test(line));
+  const hasCharacterHeader = lines.some((line) => /^\w+="[^"]+"/.test(line));
+
+  return hasChecksum || hasArmoryLine || hasSimcKeyValue || hasCharacterHeader;
+}
+
+function ClipboardBanner({
+  message,
+  onDismiss,
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="pointer-events-auto w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-emerald-500/25 bg-zinc-950/95 p-4 text-sm text-emerald-100 shadow-2xl shadow-black/40 backdrop-blur-sm">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+          <svg
+            className="h-4 w-4"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6.5 8.5l1.5 1.5L11 7" />
+            <circle cx="8" cy="8" r="6" />
+          </svg>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-emerald-100">Clipboard pasted</p>
+          <p className="mt-1 text-[13px] leading-5 text-zinc-300">{message}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
+          aria-label="Dismiss notification"
+        >
+          <svg
+            className="h-4 w-4"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          >
+            <path d="M4 4l8 8M12 4l-8 8" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function renderSimcLine(line: string) {
   if (!line) return null;
 
@@ -934,8 +1001,11 @@ function ExpertToggle({
 
 export default function SimSharedConfig() {
   const pathname = usePathname();
-  const { simcInput, setSimcInput } = useSimContext();
+  const { simcInput, setSimcInput, autoClipboardPasteSimc } = useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
+  const detectedInfo = parseCharacterInfo(simcInput);
+  const [banner, setBanner] = useState<{ text: string; id: number } | null>(null);
+  const bannerTimerRef = useRef<number | null>(null);
 
   const normalizedPath =
     pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
@@ -946,12 +1016,80 @@ export default function SimSharedConfig() {
     normalizedPath === '/drop-finder' ||
     normalizedPath === '/stat-weights' ||
     normalizedPath === '/upgrade-compare';
-  if (!showConfig) return null;
 
-  const detectedInfo = parseCharacterInfo(simcInput);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!autoClipboardPasteSimc) return;
+
+    let cancelled = false;
+    let lastAppliedClipboard = '';
+
+    const readClipboardIntoSimc = async () => {
+      if (!document.hasFocus()) return;
+      if (!navigator.clipboard?.readText) return;
+
+      try {
+        const clipboardText = await navigator.clipboard.readText();
+        if (cancelled || !clipboardText) return;
+        if (clipboardText === lastAppliedClipboard) return;
+        if (clipboardText === simcInput) return;
+        if (!looksLikeSimcInput(clipboardText)) return;
+
+        lastAppliedClipboard = clipboardText;
+        setSimcInput(clipboardText);
+        const firstLine = clipboardText.split(/\r?\n/).find((line) => line.trim())?.trim() || '';
+        setBanner({ text: firstLine ? `Detected and pasted: ${firstLine}` : 'Detected and pasted SimC export.', id: Date.now() });
+      } catch {
+        // Ignore clipboard permission or platform errors.
+      }
+    };
+
+    const onFocus = () => {
+      void readClipboardIntoSimc();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void readClipboardIntoSimc();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [autoClipboardPasteSimc, setSimcInput, simcInput]);
+
+  useEffect(() => {
+    if (!banner) return;
+    if (bannerTimerRef.current != null) {
+      window.clearTimeout(bannerTimerRef.current);
+    }
+    bannerTimerRef.current = window.setTimeout(() => {
+      setBanner(null);
+      bannerTimerRef.current = null;
+    }, 3500);
+    return () => {
+      if (bannerTimerRef.current != null) {
+        window.clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = null;
+      }
+    };
+  }, [banner]);
+
+  if (!showConfig) return null;
 
   return (
     <div className="mb-6 space-y-4">
+      {banner && (
+        <div className="pointer-events-none fixed bottom-4 right-4 z-[90]">
+          <ClipboardBanner message={banner.text} onDismiss={() => setBanner(null)} />
+        </div>
+      )}
       <div className="card space-y-3 p-5">
         <label className="label-text">SimC Addon Export</label>
         <SimcInputEditor

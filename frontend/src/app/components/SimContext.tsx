@@ -60,6 +60,8 @@ interface SimContextType {
   setConsumableTemporaryEnchant: (v: string) => void;
   lockSingleConsumableOptions: boolean;
   setLockSingleConsumableOptions: (v: boolean) => void;
+  autoClipboardPasteSimc: boolean;
+  setAutoClipboardPasteSimc: (v: boolean) => void;
   // Expert Mode injection points
   simcHeader: string;
   setSimcHeader: (v: string) => void;
@@ -141,6 +143,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [consumableAugmentation, _setConsumableAugmentation] = useState('');
   const [consumableTemporaryEnchant, _setConsumableTemporaryEnchant] = useState('');
   const [lockSingleConsumableOptions, setLockSingleConsumableOptions] = useState(false);
+  const [autoClipboardPasteSimc, _setAutoClipboardPasteSimc] = useState(true);
   const [simcHeader, setSimcHeader] = useState('');
   const [simcBasePlayer, setSimcBasePlayer] = useState('');
   const [simcRaidActors, setSimcRaidActors] = useState('');
@@ -178,6 +181,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
       _setConsumableTemporaryEnchant(
         readStoredString('whylowdps_consumable_temporary_enchant', '')
       );
+      _setAutoClipboardPasteSimc(readStoredBool('whylowdps_auto_clipboard_paste_simc', true));
     } catch {}
   }, []);
 
@@ -354,6 +358,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const setAutoClipboardPasteSimc = useCallback((v: boolean) => {
+    _setAutoClipboardPasteSimc(v);
+    try {
+      localStorage.setItem('whylowdps_auto_clipboard_paste_simc', String(v));
+    } catch {}
+  }, []);
+
   return (
     <SimContext.Provider
       value={{
@@ -413,6 +424,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setConsumableTemporaryEnchant,
         lockSingleConsumableOptions,
         setLockSingleConsumableOptions,
+        autoClipboardPasteSimc,
+        setAutoClipboardPasteSimc,
         simcHeader,
         setSimcHeader,
         simcBasePlayer,

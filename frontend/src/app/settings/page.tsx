@@ -15,7 +15,14 @@ const PRESETS = [
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const { threads, setThreads, maxCombinations, setMaxCombinations } = useSimContext();
+  const {
+    threads,
+    setThreads,
+    maxCombinations,
+    setMaxCombinations,
+    autoClipboardPasteSimc,
+    setAutoClipboardPasteSimc,
+  } = useSimContext();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [secretTouched, setSecretTouched] = useState(false);
@@ -429,6 +436,38 @@ export default function SettingsPage() {
               className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+        <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
+        <p className="mb-5 text-sm text-zinc-400">
+          When the app regains focus, it can check the latest clipboard text and auto-fill the
+          SimC export box if it looks like a valid SimC string.
+        </p>
+
+        <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-zinc-200">Auto paste SimC clipboard content</p>
+            <p className="text-[13px] text-zinc-500">
+              If the newest clipboard copy looks like a SimC export, it will be pasted into the
+              main text bar automatically when you return to the app.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAutoClipboardPasteSimc(!autoClipboardPasteSimc)}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+              autoClipboardPasteSimc ? 'bg-gold' : 'border border-border bg-surface'
+            }`}
+            aria-pressed={autoClipboardPasteSimc}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+                autoClipboardPasteSimc ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+              }`}
+            />
+          </button>
         </div>
       </section>
 

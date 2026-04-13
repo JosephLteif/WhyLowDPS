@@ -27,6 +27,8 @@ interface DropSlotListProps {
   onToggle: (itemId: number) => void;
   onSelectAll: () => void;
   onClear: () => void;
+  classSpecIds: number[];
+  classId: number | null;
   difficulty: string;
   dungeonDiff: string;
   upgradeLevel: number;
@@ -40,6 +42,8 @@ export default function DropSlotList({
   onToggle,
   onSelectAll,
   onClear,
+  classSpecIds,
+  classId,
   difficulty,
   dungeonDiff,
   upgradeLevel,
@@ -47,9 +51,32 @@ export default function DropSlotList({
   headerLabel,
 }: DropSlotListProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
-  const totalItems = Object.values(drops).reduce((n, items) => n + items.length, 0);
+  const visibleDrops = useMemo(() => {
+    const next: Record<string, DropItem[]> = {};
+    for (const [slot, items] of Object.entries(drops)) {
+      const filtered = items.filter((item) => {
+        if (slot !== 'Other') return true;
+        if (item.specs && item.specs.length > 0) {
+          const hasSpecMatch =
+            classSpecIds.length > 0 && item.specs.some((id) => classSpecIds.includes(id));
+          const hasClassMatch = classId != null && item.specs.includes(classId);
+          if (hasSpecMatch || hasClassMatch) return true;
+          // If we cannot confidently map class/spec IDs, don't hide potentially valid items.
+          if (classSpecIds.length === 0 && classId == null) return item.off_spec !== true;
+          return item.off_spec !== true;
+        }
+        return true;
+      });
+      if (filtered.length > 0) {
+        next[slot] = filtered;
+      }
+    }
+    return next;
+  }, [drops, classSpecIds, classId]);
 
-  const allItems = useMemo(() => Object.values(drops).flat(), [drops]);
+  const totalItems = Object.values(visibleDrops).reduce((n, items) => n + items.length, 0);
+
+  const allItems = useMemo(() => Object.values(visibleDrops).flat(), [visibleDrops]);
 
   const instanceSorted = useMemo(() => {
     const groups = new Map<string, DropItem[]>();
@@ -64,12 +91,12 @@ export default function DropSlotList({
 
   const slotSorted = useMemo(
     () =>
-      [...Object.entries(drops)].sort(([a], [b]) => {
+      [...Object.entries(visibleDrops)].sort(([a], [b]) => {
         const ai = SLOT_ORDER.indexOf(a);
         const bi = SLOT_ORDER.indexOf(b);
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
       }),
-    [drops]
+    [visibleDrops]
   );
 
   return (

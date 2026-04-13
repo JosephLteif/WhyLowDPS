@@ -135,7 +135,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [targetCount, setTargetCount] = useState(1);
   const [fightLength, setFightLength] = useState(300);
   const [customApl, setCustomApl] = useState('');
-  const [simcChannel, _setSimcChannel] = useState('latest');
+  const [simcChannel, _setSimcChannel] = useState('weekly');
   const [includeTimeline, _setIncludeTimeline] = useState(true);
   const [externalBuffChaosBrand, _setExternalBuffChaosBrand] = useState(true);
   const [externalBuffMysticTouch, _setExternalBuffMysticTouch] = useState(true);
@@ -196,7 +196,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
       _setConsumableTemporaryEnchant(
         readStoredString('whylowdps_consumable_temporary_enchant', '')
       );
-      _setSimcChannel(readStoredString('whylowdps_simc_channel', 'latest') || 'latest');
+      _setSimcChannel(readStoredString('whylowdps_simc_channel', 'weekly') || 'weekly');
       _setAutoClipboardPasteSimc(readStoredBool('whylowdps_auto_clipboard_paste_simc', true));
       _setDataCacheRefreshMinutes(readStored('whylowdps_data_cache_refresh_minutes', 0));
     } catch {}
@@ -376,7 +376,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSimcChannel = useCallback((v: string) => {
-    const normalized = (v || 'latest').toLowerCase();
+    const normalized = (v || 'weekly').toLowerCase();
     _setSimcChannel(normalized);
     try {
       localStorage.setItem('whylowdps_simc_channel', normalized);

@@ -559,6 +559,10 @@ pub async fn start_with_storage_bind(
                     .route(
                         "/api/system/simc/download-latest",
                         web::post().to(simc_updater::download_latest_simc),
+                    )
+                    .route(
+                        "/api/system/simc/remove",
+                        web::post().to(simc_updater::remove_simc_channel),
                     );
             }
 

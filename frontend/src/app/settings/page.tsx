@@ -9,6 +9,7 @@ import {
   fetchJson,
   getSimcStatus,
   isDesktop,
+  removeSimcChannel,
   type SimcStatus,
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
@@ -64,6 +65,14 @@ interface DataFilePreviewResponse {
   truncated: boolean;
 }
 
+const SIMC_CHANNELS = [
+  { id: 'weekly', label: 'Weekly' },
+  { id: 'latest', label: 'Latest' },
+  { id: 'nightly', label: 'Nightly' },
+] as const;
+
+type SimcChannelName = (typeof SIMC_CHANNELS)[number]['id'];
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -115,10 +124,13 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
-  const [simcLoading, setSimcLoading] = useState(false);
-  const [simcUpdating, setSimcUpdating] = useState(false);
-  const [simcDownloadChannel, setSimcDownloadChannel] = useState('latest');
+  const [simcStatuses, setSimcStatuses] = useState<Record<SimcChannelName, SimcStatus | null>>({
+    latest: null,
+    weekly: null,
+    nightly: null,
+  });
+  const [simcChecking, setSimcChecking] = useState(false);
+  const [simcAction, setSimcAction] = useState<string | null>(null);
   const [simcMessage, setSimcMessage] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -142,16 +154,6 @@ export default function SettingsPage() {
         if (Number.isFinite(savedMaxCombos) && savedMaxCombos > 0) {
           setMaxCombinations(savedMaxCombos);
         }
-        const savedDownloadChannel = (data.simc_download_channel || 'latest').toLowerCase();
-        setSimcDownloadChannel(
-          ['latest', 'weekly', 'nightly'].includes(savedDownloadChannel)
-            ? savedDownloadChannel
-            : 'latest'
-        );
-        const savedSimChannel = (data.simc_sim_channel || 'latest').toLowerCase();
-        setSimcChannel(
-          ['latest', 'weekly', 'nightly'].includes(savedSimChannel) ? savedSimChannel : 'latest'
-        );
         setPerformanceSaved(true);
       })
       .catch((err) => {
@@ -161,7 +163,7 @@ export default function SettingsPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [user, router, setMaxCombinations, setSimcChannel, setThreads]);
+  }, [user, router, setMaxCombinations, setThreads]);
 
   useEffect(() => {
     fetch(`${API_URL}/health`, { credentials: 'include' })
@@ -229,53 +231,96 @@ export default function SettingsPage() {
     };
   }, []);
 
-  const refreshSimc = useCallback(
-    async (channel = simcDownloadChannel) => {
-      if (!isDesktop) return;
-      setSimcLoading(true);
-      setSimcMessage(null);
-      try {
-        const status = await getSimcStatus(channel);
-        setSimcStatus(status);
-      } catch (err: any) {
-        setSimcMessage({
-          type: 'error',
-          text: err?.detail || err?.message || 'Failed to fetch SimC status.',
-        });
-      } finally {
-        setSimcLoading(false);
-      }
-    },
-    [simcDownloadChannel]
-  );
-
-  const downloadSimc = async () => {
+  const refreshSimc = useCallback(async (channel?: SimcChannelName) => {
     if (!isDesktop) return;
-    setSimcUpdating(true);
+    setSimcChecking(true);
     setSimcMessage(null);
     try {
-      const status = await downloadLatestSimc(simcDownloadChannel);
-      setSimcStatus(status);
+      if (channel) {
+        const status = await getSimcStatus(channel);
+        setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
+      } else {
+        const channels = SIMC_CHANNELS.map((entry) => entry.id);
+        const results = await Promise.all(channels.map((id) => getSimcStatus(id)));
+        setSimcStatuses({
+          weekly: results[0],
+          latest: results[1],
+          nightly: results[2],
+        });
+      }
+    } catch (err: any) {
+      setSimcMessage({
+        type: 'error',
+        text: err?.detail || err?.message || 'Failed to fetch SimC status.',
+      });
+    } finally {
+      setSimcChecking(false);
+    }
+  }, []);
+
+  const installSimcChannel = async (channel: SimcChannelName) => {
+    if (!isDesktop) return;
+    setSimcAction(`${channel}:install`);
+    setSimcMessage(null);
+    try {
+      const status = await downloadLatestSimc(channel);
+      setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
       setSimcMessage({
         type: 'success',
-        text: status.installed_exists
-          ? 'SimulationCraft updated successfully.'
-          : 'SimulationCraft download completed.',
+        text: `SimulationCraft ${channel} channel installed/updated successfully.`,
+      });
+    } catch (err: any) {
+      const msg = err?.detail || err?.message || 'Failed to download SimC channel.';
+      const isInProgress =
+        err?.status === 409 ||
+        /already in progress/i.test(msg || '') ||
+        /already updating/i.test(msg || '');
+      if (isInProgress) {
+        setSimcMessage({
+          type: 'success',
+          text: 'A SimC update is already running. Refreshing status...',
+        });
+        await refreshSimc();
+      } else {
+        setSimcMessage({ type: 'error', text: msg });
+      }
+    } finally {
+      setSimcAction(null);
+    }
+  };
+
+  const removeInstalledSimcChannel = async (channel: SimcChannelName) => {
+    if (!isDesktop) return;
+    const targetPath =
+      simcStatuses[channel]?.channel_path || simcStatuses[channel]?.installed_path || '(unknown)';
+    const confirmed = window.confirm(
+      `Delete SimC ${channel} files from disk at:\n${targetPath}\n\nThis removes that installed channel version.`
+    );
+    if (!confirmed) return;
+
+    setSimcAction(`${channel}:remove`);
+    setSimcMessage(null);
+    try {
+      const status = await removeSimcChannel(channel);
+      setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
+      setSimcMessage({
+        type: 'success',
+        text: `Deleted SimC ${channel} files from disk.`,
       });
     } catch (err: any) {
       setSimcMessage({
         type: 'error',
-        text: err?.detail || err?.message || 'Failed to download latest SimC.',
+        text: err?.detail || err?.message || 'Failed to remove SimC channel.',
       });
     } finally {
-      setSimcUpdating(false);
+      setSimcAction(null);
     }
   };
 
   useEffect(() => {
     if (!isDesktop || !user) return;
     void refreshSimc();
-  }, [user, simcDownloadChannel, refreshSimc]);
+  }, [user, refreshSimc]);
 
   useEffect(() => {
     if (!performanceSaved || !user) return;
@@ -284,22 +329,16 @@ export default function SettingsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: 'simc_download_channel',
-        value: simcDownloadChannel,
+        value: 'weekly',
       }),
     }).catch(() => {});
-  }, [simcDownloadChannel, performanceSaved, user]);
+  }, [performanceSaved, user]);
 
   useEffect(() => {
-    if (!performanceSaved || !user) return;
-    fetchJson(`${API_URL}/api/user/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key: 'simc_sim_channel',
-        value: simcChannel || 'latest',
-      }),
-    }).catch(() => {});
-  }, [simcChannel, performanceSaved, user]);
+    try {
+      localStorage.setItem('whylowdps_simc_download_channel', 'weekly');
+    } catch {}
+  }, []);
 
   useEffect(() => {
     const derived = chooseBestUnit(dataCacheRefreshMinutes);
@@ -751,92 +790,115 @@ export default function SettingsPage() {
                 <div className="space-y-0.5">
                   <p className="text-sm font-medium text-zinc-300">SimulationCraft Engine</p>
                   <p className="text-[12px] text-zinc-500">
-                    Manage local SimC binary and keep it updated.
+                    Manage installed SimC channels and update checks.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <select
-                    value={simcDownloadChannel}
-                    onChange={(e) => setSimcDownloadChannel(e.target.value)}
-                    className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-zinc-200 focus:border-gold/50 focus:outline-none"
-                  >
-                    <option value="latest">Latest</option>
-                    <option value="weekly">Weekly</option>
-                    <option value="nightly">Nightly</option>
-                  </select>
-                  <button
-                    onClick={() => void refreshSimc()}
-                    disabled={simcLoading || simcUpdating}
-                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-50"
-                  >
-                    {simcLoading ? 'Checking...' : 'Refresh'}
-                  </button>
+                <button
+                  onClick={() => void refreshSimc()}
+                  disabled={simcChecking || !!simcAction}
+                  className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+                >
+                  {simcChecking ? 'Checking...' : 'Check for Updates'}
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-border bg-surface-2/90 p-3 text-[12px]">
+                <div className="grid grid-cols-[1fr_150px] border-b border-border/80 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  <span>Branch / Version</span>
+                  <span className="text-right">Actions</span>
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {SIMC_CHANNELS.map((entry) => {
+                    const status = simcStatuses[entry.id];
+                    const isBusy =
+                      simcChecking ||
+                      !!simcAction ||
+                      Object.values(simcStatuses).some((value) => value?.is_updating);
+                    const actionKey = simcAction ?? '';
+                    const isInstalling = actionKey === `${entry.id}:install`;
+                    const isRemoving = actionKey === `${entry.id}:remove`;
+                    const installed = !!status?.installed_exists;
+                    const hasUpdate = !!status?.update_available && !!status?.latest_version;
+
+                    let actionLabel = 'Install';
+                    let actionClass =
+                      'border-emerald-700/40 bg-emerald-950/25 text-emerald-300 hover:bg-emerald-900/30';
+                    let actionHandler = () => void installSimcChannel(entry.id);
+
+                    if (installed && hasUpdate) {
+                      actionLabel = 'Update';
+                      actionClass =
+                        'border-amber-700/40 bg-amber-950/25 text-amber-300 hover:bg-amber-900/30';
+                    } else if (installed) {
+                      actionLabel = 'Remove';
+                      actionClass =
+                        'border-red-800/40 bg-red-950/25 text-red-300 hover:bg-red-900/30';
+                      actionHandler = () => void removeInstalledSimcChannel(entry.id);
+                    }
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="grid grid-cols-[1fr_150px] items-center gap-3 rounded-lg border border-border/80 bg-surface px-3 py-2.5"
+                      >
+                        <div>
+                          <p className="text-[19px] font-semibold text-zinc-100">{entry.label}</p>
+                          <p className="text-[12px] leading-relaxed text-zinc-400">
+                            {installed
+                              ? `Installed: ${status?.installed_version ?? 'Detected'}${status?.installed_date ? ` • ${status.installed_date}` : ''}`
+                              : `Available: ${status?.latest_version ?? (simcChecking ? 'Checking...' : 'Unknown')}`}
+                          </p>
+                          <p className="text-[11px] text-zinc-500">
+                            Path: {status?.channel_path || status?.installed_path || 'Unknown'}
+                          </p>
+                          {installed && hasUpdate && (
+                            <p className="text-[11px] font-medium text-amber-300">
+                              Update available: {status?.latest_version}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={actionHandler}
+                            disabled={isBusy || (!installed && !status?.latest_version)}
+                            className={`rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${actionClass}`}
+                          >
+                            {isInstalling
+                              ? 'Installing...'
+                              : isRemoving
+                                ? 'Removing...'
+                                : actionLabel}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="rounded-lg border border-border bg-surface-2 p-3 text-[12px]">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-zinc-500">Installed</span>
-                  <span className="font-mono text-zinc-100">
-                    {simcStatus?.installed_version ??
-                      (simcStatus?.installed_exists ? 'Detected' : 'Missing')}
-                  </span>
+              {simcMessage && (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-[12px] ${
+                    simcMessage.type === 'success'
+                      ? 'border-emerald-700/40 bg-emerald-950/25 text-emerald-300'
+                      : 'border-red-700/40 bg-red-950/25 text-red-300'
+                  }`}
+                >
+                  {simcMessage.text}
                 </div>
-                <div className="mt-1.5 flex items-center justify-between gap-4">
-                  <span className="text-zinc-500">Remote ({simcDownloadChannel})</span>
-                  <span className="font-mono text-zinc-100">
-                    {simcStatus?.latest_version || (simcLoading ? 'Checking...' : 'Unavailable')}
-                  </span>
-                </div>
-                {simcStatus?.installed_channel && (
-                  <div className="mt-1.5 flex items-center justify-between gap-4">
-                    <span className="text-zinc-500">Installed Channel</span>
-                    <span className="font-mono text-zinc-100">{simcStatus.installed_channel}</span>
-                  </div>
-                )}
-                {simcStatus?.installed_path && (
-                  <div className="mt-2 rounded border border-border/70 bg-surface px-2 py-1.5 text-[11px] text-zinc-400">
-                    <span className="mr-1 text-zinc-500">Path:</span>
-                    <span className="break-all font-mono text-zinc-300">
-                      {simcStatus.installed_path}
-                    </span>
-                  </div>
-                )}
-                {simcStatus && (
-                  <p
-                    className={`mt-2 font-medium ${
-                      simcStatus.update_available ? 'text-amber-300' : 'text-emerald-300'
-                    }`}
-                  >
-                    {simcStatus.update_available
-                      ? 'A newer SimC build is available.'
-                      : 'Installed SimC is up to date.'}
-                  </p>
-                )}
-                {(simcStatus?.detail || simcMessage) && (
-                  <p className="mt-2 text-red-300">
-                    {simcMessage?.type === 'error'
-                      ? simcMessage.text
-                      : simcStatus?.detail || simcMessage?.text}
-                  </p>
-                )}
-              </div>
+              )}
 
-              <button
-                onClick={downloadSimc}
-                disabled={
-                  simcUpdating ||
-                  simcLoading ||
-                  !simcStatus ||
-                  !simcStatus.latest_version ||
-                  !simcStatus.update_available
-                }
-                className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
-              >
-                {simcUpdating
-                  ? `Downloading ${simcDownloadChannel} SimC...`
-                  : `Download ${simcDownloadChannel} SimC`}
-              </button>
+              {Object.values(simcStatuses).some((value) => value?.detail) && (
+                <div className="rounded-lg border border-red-700/30 bg-red-950/20 px-3 py-2 text-[12px] text-red-300">
+                  {Object.values(simcStatuses)
+                    .map((value) => value?.detail)
+                    .filter(Boolean)
+                    .join(' • ')}
+                </div>
+              )}
             </div>
           )}
         </div>

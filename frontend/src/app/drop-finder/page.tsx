@@ -12,9 +12,11 @@ import DropSlotList from './DropSlotList';
 import DungeonGrid from './DungeonGrid';
 import {
   detectClass,
+  getClassId,
   detectSpec,
   formatSpecName,
   getClassSpecs,
+  getSpecId,
   getTrackInfo,
   resolveUpgrade,
   type DropItem,
@@ -23,6 +25,7 @@ import {
 } from './types';
 
 type Category = 'raids' | string;
+type SimDropItem = DropItem & { slot?: string };
 
 const TRACK_SHORT: Record<string, string> = {
   Adventurer: 'Adv',
@@ -44,6 +47,37 @@ const UPGRADE_TRACK_MAX_LEVEL = 6;
 
 function getRaidDifficultyDisplayLevel(key: string): number {
   return key ? 1 : 0;
+}
+
+function slotFromInventoryType(inventoryType?: number): string | null {
+  switch (inventoryType) {
+    case 1:
+      return 'head';
+    case 3:
+      return 'shoulder';
+    case 5:
+      return 'chest';
+    case 6:
+      return 'waist';
+    case 7:
+      return 'legs';
+    case 8:
+      return 'feet';
+    case 9:
+      return 'wrist';
+    case 10:
+      return 'hands';
+    case 11:
+      return 'finger1';
+    case 16:
+      return 'back';
+    case 21:
+      return 'main_hand';
+    case 22:
+      return 'off_hand';
+    default:
+      return null;
+  }
 }
 
 const FALLBACK_SEASON_CONFIG: SeasonConfigResponse = {
@@ -251,6 +285,29 @@ export default function DropFinderPage() {
     setActiveSpecs(detectedSpec ? new Set([detectedSpec]) : new Set());
   }, [detectedSpec]);
 
+  const activeSpecIds = useMemo(
+    () =>
+      detectedClass
+        ? [...activeSpecs]
+            .map((spec) => getSpecId(detectedClass, spec))
+            .filter((id): id is number => id != null)
+        : [],
+    [detectedClass, activeSpecs]
+  );
+  const classSpecIds = useMemo(
+    () =>
+      detectedClass
+        ? getClassSpecs(detectedClass)
+            .map((spec) => getSpecId(detectedClass, spec))
+            .filter((id): id is number => id != null)
+        : [],
+    [detectedClass]
+  );
+  const classId = useMemo(
+    () => (detectedClass ? getClassId(detectedClass) : null),
+    [detectedClass]
+  );
+
   function toggleSpec(spec: string) {
     setActiveSpecs((prev) => {
       const next = new Set(prev);
@@ -358,12 +415,16 @@ export default function DropFinderPage() {
     (selectedId.startsWith('type:') ? `All ${isRaid ? 'Raids' : 'Dungeons'}` : '');
 
   // Sim submission
-  const buildPayload = useCallback(() => {
+  const buildPayload = useCallback(async () => {
     if (!drops || selected.size === 0) return null;
     const dropItems: DropItem[] = [];
-    for (const items of Object.values(drops)) {
+    for (const [slot, items] of Object.entries(drops)) {
       for (const item of items) {
         if (selected.has(item.item_id)) {
+          if (item.specs?.length && item.specs.length > 0) {
+            const matchesSpec = item.specs.some((specId) => activeSpecIds.includes(specId));
+            if (!matchesSpec) continue;
+          }
           const resolved = resolveUpgrade(
             item,
             difficulty,
@@ -371,17 +432,55 @@ export default function DropFinderPage() {
             upgradeLevel,
             upgradeTracks
           );
-          dropItems.push({
+          let simItem: SimDropItem = {
             ...item,
             ilevel: resolved.ilvl,
             quality: resolved.quality,
             bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
-          });
+            slot,
+          };
+          if (item.is_catalyst || item.can_catalyst) {
+            const convertSlot = slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slot;
+            if (convertSlot) {
+              try {
+                simItem = await fetchJson<SimDropItem>(`${API_URL}/api/catalyst/convert`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    class_name: className,
+                    slot: convertSlot,
+                    item: {
+                      ...item,
+                      ilevel: resolved.ilvl,
+                      quality: resolved.quality,
+                      bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
+                    },
+                  }),
+                });
+              } catch {
+                simItem = {
+                  ...simItem,
+                  is_catalyst: false,
+                  can_catalyst: false,
+                };
+              }
+            }
+          }
+          dropItems.push(simItem);
         }
       }
     }
     return { simc_input: simcInput, drop_items: dropItems };
-  }, [drops, selected, simcInput, difficulty, dungeonDiff, upgradeLevel, upgradeTracks]);
+  }, [
+    drops,
+    selected,
+    simcInput,
+    difficulty,
+    dungeonDiff,
+    upgradeLevel,
+    upgradeTracks,
+    activeSpecIds,
+    className,
+  ]);
 
   const validate = useCallback(() => {
     if (!drops || selected.size === 0) return 'Select at least one item to sim.';
@@ -561,6 +660,8 @@ export default function DropFinderPage() {
             }
             onSelectAll={selectAll}
             onClear={() => setSelected(new Set())}
+            classSpecIds={classSpecIds}
+            classId={classId}
             difficulty={difficulty}
             dungeonDiff={dungeonDiff}
             upgradeLevel={upgradeLevel}

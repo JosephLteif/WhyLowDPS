@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
+import { getSimcStatus, isDesktop } from '../lib/api';
 import { specDisplayName } from '../lib/types';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
@@ -80,13 +81,7 @@ function looksLikeSimcInput(input: string) {
   return hasChecksum || hasArmoryLine || hasSimcKeyValue || hasCharacterHeader;
 }
 
-function ClipboardBanner({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
+function ClipboardBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
     <div className="pointer-events-auto w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-emerald-500/25 bg-zinc-950/95 p-4 text-sm text-emerald-100 shadow-2xl shadow-black/40 backdrop-blur-sm">
       <div className="flex items-start gap-3">
@@ -458,9 +453,80 @@ function ConsumableSelect({
   );
 }
 
+const SIMC_CHANNEL_LABELS: Record<string, string> = {
+  weekly: 'Weekly',
+  latest: 'Latest',
+  nightly: 'Nightly',
+};
+
+function SimcChannelSelector({
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const activeLabel = SIMC_CHANNEL_LABELS[value] || value;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="relative" onBlur={() => setOpen(false)}>
+        <button
+          type="button"
+          onClick={() => !disabled && setOpen(!open)}
+          className={`input-field flex h-10 w-full items-center justify-between text-sm ${
+            disabled ? 'cursor-not-allowed opacity-70' : ''
+          }`}
+        >
+          <span>{activeLabel}</span>
+          <svg
+            className={`h-4 w-4 text-zinc-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+        {open && !disabled && (
+          <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface-2 py-1 shadow-lg shadow-black/40">
+            {options.map((channel) => (
+              <button
+                key={channel}
+                type="button"
+                onMouseDown={() => {
+                  onChange(channel);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center px-3.5 py-2 text-left text-sm transition-colors ${
+                  channel === value
+                    ? 'bg-gold/[0.08] text-gold'
+                    : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
+                }`}
+              >
+                {SIMC_CHANNEL_LABELS[channel] || channel}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdvancedOptions() {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
+  const [installedSimcChannels, setInstalledSimcChannels] = useState<string[]>(['weekly']);
+  const [simcChannelLoading, setSimcChannelLoading] = useState(false);
   const {
     fightStyle,
     setFightStyle,
@@ -561,6 +627,40 @@ function AdvancedOptions() {
     return map;
   }, [flasks, potions, augments, tempEnchants]);
   const fightStyleRules = getFightStyleParamRules(fightStyle);
+  const refreshInstalledSimcChannels = useCallback(async () => {
+    if (!isDesktop) {
+      setInstalledSimcChannels(['weekly', 'latest', 'nightly']);
+      return;
+    }
+    setSimcChannelLoading(true);
+    try {
+      const [weekly, latest, nightly] = await Promise.all([
+        getSimcStatus('weekly'),
+        getSimcStatus('latest'),
+        getSimcStatus('nightly'),
+      ]);
+      const installed = [
+        weekly.installed_exists ? 'weekly' : null,
+        latest.installed_exists ? 'latest' : null,
+        nightly.installed_exists ? 'nightly' : null,
+      ].filter(Boolean) as string[];
+      setInstalledSimcChannels(installed.length > 0 ? installed : ['weekly']);
+    } catch {
+      setInstalledSimcChannels(['weekly']);
+    } finally {
+      setSimcChannelLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshInstalledSimcChannels();
+  }, [refreshInstalledSimcChannels]);
+
+  useEffect(() => {
+    if (!installedSimcChannels.includes(simcChannel)) {
+      setSimcChannel(installedSimcChannels[0] || 'weekly');
+    }
+  }, [installedSimcChannels, setSimcChannel, simcChannel]);
   const showFightLength = fightStyleRules.usesFightLength;
   const showTargetCount = fightStyleRules.usesTargetCount;
   const isDefault =
@@ -647,17 +747,14 @@ function AdvancedOptions() {
 
             <div className="space-y-2">
               <label className="label-text">SimC Engine Channel</label>
-              <select
-                value={simcChannel || 'latest'}
-                onChange={(e) => setSimcChannel(e.target.value)}
-                className="input-field h-10"
-              >
-                <option value="latest">Latest</option>
-                <option value="weekly">Weekly</option>
-                <option value="nightly">Nightly</option>
-              </select>
+              <SimcChannelSelector
+                value={simcChannel || 'weekly'}
+                options={installedSimcChannels}
+                onChange={setSimcChannel}
+                disabled={simcChannelLoading}
+              />
               <p className="text-[12px] text-zinc-500">
-                Runs this simulation with the selected local SimC channel.
+                Runs this simulation with an installed local SimC channel.
               </p>
             </div>
 
@@ -1055,8 +1152,17 @@ export default function SimSharedConfig() {
 
         lastAppliedClipboard = clipboardText;
         setSimcInput(clipboardText);
-        const firstLine = clipboardText.split(/\r?\n/).find((line) => line.trim())?.trim() || '';
-        setBanner({ text: firstLine ? `Detected and pasted: ${firstLine}` : 'Detected and pasted SimC export.', id: Date.now() });
+        const firstLine =
+          clipboardText
+            .split(/\r?\n/)
+            .find((line) => line.trim())
+            ?.trim() || '';
+        setBanner({
+          text: firstLine
+            ? `Detected and pasted: ${firstLine}`
+            : 'Detected and pasted SimC export.',
+          id: Date.now(),
+        });
       } catch {
         // Ignore clipboard permission or platform errors.
       }

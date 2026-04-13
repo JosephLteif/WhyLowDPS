@@ -39,7 +39,7 @@ export default function DungeonGrid({
             .map((inst) => (
               <div
                 key={inst.id}
-                className="h-full w-full bg-center bg-no-repeat bg-cover"
+                className="h-full w-full bg-cover bg-center bg-no-repeat"
                 style={{ backgroundImage: `url(${imgSrc(inst.image_url!)})` }}
               />
             ))}
@@ -68,7 +68,7 @@ export default function DungeonGrid({
           <div className="absolute inset-0 bg-surface-2" />
           {inst.image_url && (
             <div
-              className="absolute inset-0 bg-center bg-no-repeat bg-cover bg-black/20 brightness-[0.75] saturate-[0.85] transition-all duration-300 group-hover:brightness-90"
+              className="absolute inset-0 bg-black/20 bg-cover bg-center bg-no-repeat brightness-[0.75] saturate-[0.85] transition-all duration-300 group-hover:brightness-90"
               style={{ backgroundImage: `url(${imgSrc(inst.image_url)})` }}
             />
           )}

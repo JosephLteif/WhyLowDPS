@@ -220,6 +220,8 @@ pub async fn start_with_storage_bind(
         let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
         #[cfg(feature = "desktop")]
         let simc_updater_data = web::Data::new(simc_updater::SimcUpdaterState::new());
+        #[cfg(feature = "desktop")]
+        simc_updater::migrate_legacy_channel_dirs(simc_data.get_ref());
         let frontend = frontend_dir.clone();
         let data = data_dir.clone();
 

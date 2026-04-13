@@ -13,7 +13,7 @@ const PRESETS = [
 export default function SettingsPopover() {
   const [open, setOpen] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
-  const [simcChannel, setSimcChannel] = useState('weekly');
+  const [simcChannel, setSimcChannel] = useState('stable');
   const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
   const [simcLoading, setSimcLoading] = useState(false);
   const [simcUpdating, setSimcUpdating] = useState(false);
@@ -38,11 +38,13 @@ export default function SettingsPopover() {
 
   useEffect(() => {
     try {
-      const stored = (localStorage.getItem('whylowdps_simc_download_channel') || 'weekly')
+      const stored = (localStorage.getItem('whylowdps_simc_download_channel') || 'stable')
         .toLowerCase()
         .trim();
-      if (stored === 'latest' || stored === 'weekly' || stored === 'nightly') {
-        setSimcChannel(stored);
+      // Normalize legacy values
+      const normalized = (stored === 'weekly' || stored === 'latest') ? 'stable' : stored;
+      if (normalized === 'stable' || normalized === 'nightly') {
+        setSimcChannel(normalized);
       }
     } catch {}
   }, []);

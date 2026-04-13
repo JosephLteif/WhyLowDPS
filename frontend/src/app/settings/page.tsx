@@ -10,7 +10,7 @@ import {
   getSimcStatus,
   isDesktop,
   removeSimcChannel,
-  type SimcStatus
+  type SimcStatus,
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 
@@ -66,8 +66,7 @@ interface DataFilePreviewResponse {
 }
 
 const SIMC_CHANNELS = [
-  { id: 'weekly', label: 'Weekly' },
-  { id: 'latest', label: 'Latest' },
+  { id: 'stable', label: 'Stable' },
   { id: 'nightly', label: 'Nightly' },
 ] as const;
 
@@ -125,8 +124,7 @@ export default function SettingsPage() {
     text: string;
   } | null>(null);
   const [simcStatuses, setSimcStatuses] = useState<Record<SimcChannelName, SimcStatus | null>>({
-    latest: null,
-    weekly: null,
+    stable: null,
     nightly: null,
   });
   const [simcChecking, setSimcChecking] = useState(false);
@@ -249,9 +247,8 @@ export default function SettingsPage() {
         const channels = SIMC_CHANNELS.map((entry) => entry.id);
         const results = await Promise.all(channels.map((id) => getSimcStatus(id)));
         setSimcStatuses({
-          weekly: results[0],
-          latest: results[1],
-          nightly: results[2],
+          stable: results[0],
+          nightly: results[1],
         });
       }
     } catch (err: any) {
@@ -268,9 +265,19 @@ export default function SettingsPage() {
     if (!isDesktop) return;
     setSimcAction(`${channel}:install`);
     setSimcMessage(null);
+    window.dispatchEvent(
+      new CustomEvent('whylowdps-simc-download-start', {
+        detail: { channel },
+      })
+    );
     try {
       const status = await downloadLatestSimc(channel);
       setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-simc-download-finish', {
+          detail: { channel },
+        })
+      );
       setSimcMessage({
         type: 'success',
         text: `SimulationCraft ${channel} channel installed/updated successfully.`,
@@ -286,6 +293,11 @@ export default function SettingsPage() {
           type: 'success',
           text: 'A SimC update is already running. Refreshing status...',
         });
+        window.dispatchEvent(
+          new CustomEvent('whylowdps-simc-download-start', {
+            detail: { channel },
+          })
+        );
         await refreshSimc();
       } else {
         setSimcMessage({ type: 'error', text: msg });
@@ -297,6 +309,17 @@ export default function SettingsPage() {
 
   const removeInstalledSimcChannel = async (channel: SimcChannelName) => {
     if (!isDesktop) return;
+    const installedCount = Object.values(simcStatuses).filter(
+      (value) => value?.installed_exists
+    ).length;
+    const targetInstalled = !!simcStatuses[channel]?.installed_exists;
+    if (targetInstalled && installedCount <= 1) {
+      setSimcMessage({
+        type: 'error',
+        text: 'Keep at least one SimC channel installed before removing another.',
+      });
+      return;
+    }
     const targetPath =
       simcStatuses[channel]?.channel_path || simcStatuses[channel]?.installed_path || '(unknown)';
     const confirmed = window.confirm(
@@ -335,14 +358,14 @@ export default function SettingsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: 'simc_download_channel',
-        value: 'weekly',
+        value: 'stable',
       }),
     }).catch(() => {});
   }, [performanceSaved, user]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('whylowdps_simc_download_channel', 'weekly');
+      localStorage.setItem('whylowdps_simc_download_channel', 'stable');
     } catch {}
   }, []);
 
@@ -625,6 +648,9 @@ export default function SettingsPage() {
     cacheSyncing && syncProgress.total > 0
       ? Math.max(0, Math.min(100, Math.round((syncProgress.current / syncProgress.total) * 100)))
       : 0;
+  const installedSimcChannelsCount = Object.values(simcStatuses).filter(
+    (value) => value?.installed_exists
+  ).length;
 
   const activePresetIdx = PRESETS.findIndex(
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
@@ -820,6 +846,7 @@ export default function SettingsPage() {
                     const isRemoving = actionKey === `${entry.id}:remove`;
                     const installed = !!status?.installed_exists;
                     const hasUpdate = !!status?.update_available && !!status?.latest_version;
+                    const cannotRemoveLastInstalled = installed && installedSimcChannelsCount <= 1;
 
                     let actionLabel = 'Install';
                     let actionClass =
@@ -846,7 +873,7 @@ export default function SettingsPage() {
                           <p className="text-[19px] font-semibold text-zinc-100">{entry.label}</p>
                           <p className="text-[12px] leading-relaxed text-zinc-400">
                             {installed
-                              ? `Installed: ${status?.installed_version ?? 'Detected'}${status?.installed_date ? ` • ${status.installed_date}` : ''}`
+                              ? `Installed: ${status?.installed_version ?? 'Detected'}${status?.installed_date ? ` - ${status.installed_date}` : ''}`
                               : `Available: ${status?.latest_version ?? (simcChecking ? 'Checking...' : 'Unknown')}`}
                           </p>
                           <p className="text-[11px] text-zinc-500">
@@ -857,13 +884,22 @@ export default function SettingsPage() {
                               Update available: {status?.latest_version}
                             </p>
                           )}
+                          {cannotRemoveLastInstalled && (
+                            <p className="text-[11px] text-zinc-500">
+                              At least one SimC channel must remain installed.
+                            </p>
+                          )}
                         </div>
 
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
                             onClick={actionHandler}
-                            disabled={isBusy || (!installed && !status?.latest_version)}
+                            disabled={
+                              isBusy ||
+                              (!installed && !status?.latest_version) ||
+                              (actionLabel === 'Remove' && cannotRemoveLastInstalled)
+                            }
                             className={`rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${actionClass}`}
                           >
                             {isInstalling
@@ -907,16 +943,16 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
         <p className="mb-5 text-sm text-zinc-400">
-          When the app regains focus, it can check the latest clipboard text and auto-fill the
-          SimC export box if it looks like a valid SimC string.
+          When the app regains focus, it can check the latest clipboard text and auto-fill the SimC
+          export box if it looks like a valid SimC string.
         </p>
 
         <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
           <div className="space-y-1">
             <p className="text-sm font-medium text-zinc-200">Auto paste SimC clipboard content</p>
             <p className="text-[13px] text-zinc-500">
-              If the newest clipboard copy looks like a SimC export, it will be pasted into the
-              main text bar automatically when you return to the app.
+              If the newest clipboard copy looks like a SimC export, it will be pasted into the main
+              text bar automatically when you return to the app.
             </p>
           </div>
           <button
@@ -1026,9 +1062,7 @@ export default function SettingsPage() {
 
           {!!cacheSyncProgress && (
             <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-sm text-zinc-200">
-                {syncProgress.details || cacheSyncProgress}
-              </p>
+              <p className="text-sm text-zinc-200">{syncProgress.details || cacheSyncProgress}</p>
             </div>
           )}
 
@@ -1200,12 +1234,12 @@ export default function SettingsPage() {
                                   dataActionBusyKey !== null
                                 }
                                 className="rounded-md border border-gold/30 bg-gold/10 px-2 py-1 text-[11px] font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {dataActionBusyKey === file.key
-                                    ? 'Working...'
-                                    : file.exists
-                                      ? 'Refresh'
-                                      : 'Download'}
+                              >
+                                {dataActionBusyKey === file.key
+                                  ? 'Working...'
+                                  : file.exists
+                                    ? 'Refresh'
+                                    : 'Download'}
                               </button>
                               <button
                                 onClick={() => showFileContent(file.key)}

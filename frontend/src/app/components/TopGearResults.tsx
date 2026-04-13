@@ -96,7 +96,7 @@ export default function TopGearResults({
     selectedAvgIlevel,
     upgradeSlots,
     downgradeSlots,
-    hasEncounterData,
+    hasGroupingData,
   } = useTopGearResults({ results, equippedGear, baseDps });
 
   const maxDps = results.length > 0 ? results[0].dps : baseDps;
@@ -248,12 +248,15 @@ export default function TopGearResults({
       <CollapsibleSection title="Rankings">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {hasEncounterData && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-widest text-zinc-600">
+                Group by
+              </span>
               <div className="flex gap-1">
                 {(
                   [
-                    ['rank', 'By Rank'],
-                    ['encounter', 'By Boss'],
+                    ['rank', 'Rank'],
+                    ['instance', 'Dungeon/Raid'],
                   ] as const
                 ).map(([mode, label]) => (
                   <button
@@ -269,40 +272,44 @@ export default function TopGearResults({
                   </button>
                 ))}
               </div>
-            )}
+            </div>
             <span className="font-mono text-[13px] text-muted">{results.length} results</span>
           </div>
         </div>
 
-        {groupMode === 'encounter' && groupedResults ? (
+        {groupMode === 'instance' ? (
           <div className="space-y-6">
-            {groupedResults.map(([encounter, group]) => (
-              <div key={encounter}>
-                <div className="mb-2 flex items-center gap-2 border-b border-border/50 pb-1.5">
-                  <span className="text-[14px] font-semibold text-gray-300">{encounter}</span>
-                  <span className="font-mono text-[12px] text-muted">{group.length} items</span>
+            {(groupedResults ?? [[hasGroupingData ? 'Unknown' : 'All Results', results]]).map(
+              ([instance, group]) => (
+                <div key={instance}>
+                  {instance !== '__ungrouped__' && (
+                    <div className="mb-2 flex items-center gap-2 border-b border-border/50 pb-1.5">
+                      <span className="text-[14px] font-semibold text-gray-300">{instance}</span>
+                      <span className="font-mono text-[12px] text-muted">{group.length} items</span>
+                    </div>
+                  )}
+                  <RankingsHeader />
+                  <div className="space-y-1">
+                    {group.map((result) => (
+                      <ResultRow
+                        key={result.name}
+                        result={result}
+                        maxDps={maxDps}
+                        baseDps={baseDps}
+                        equippedGear={equippedGear}
+                        baseAvgIlevel={baseAvgIlevel}
+                        isBest={result === results[0] && result.delta > 0}
+                        isSelected={result.name === (selectedResultName || results[0]?.name)}
+                        onSelect={() => setSelectedResultName(result.name)}
+                        itemInfoMap={itemInfoMap}
+                        enchantInfoMap={enchantInfoMap}
+                        gemInfoMap={gemInfoMap}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <RankingsHeader />
-                <div className="space-y-1">
-                  {group.map((result) => (
-                    <ResultRow
-                      key={result.name}
-                      result={result}
-                      maxDps={maxDps}
-                      baseDps={baseDps}
-                      equippedGear={equippedGear}
-                      baseAvgIlevel={baseAvgIlevel}
-                      isBest={result === results[0] && result.delta > 0}
-                      isSelected={result.name === (selectedResultName || results[0]?.name)}
-                      onSelect={() => setSelectedResultName(result.name)}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         ) : (
           <RankedResults

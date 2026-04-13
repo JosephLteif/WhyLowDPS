@@ -34,6 +34,7 @@ export interface DropItem {
   ilevel: number;
   encounter: string;
   instance_name?: string;
+  source_type?: string;
   inventory_type?: number;
   bonus_ids?: number[];
   difficulty_info?: Record<string, TrackInfo>;

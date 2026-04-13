@@ -40,6 +40,12 @@ const TRACK_COLORS: Record<string, { text: string; bg: string; border: string }>
   Myth: { text: 'text-amber-300', bg: 'bg-amber-300/10', border: 'border-amber-300/30' },
 };
 
+const UPGRADE_TRACK_MAX_LEVEL = 6;
+
+function getRaidDifficultyDisplayLevel(key: string): number {
+  return key ? 1 : 0;
+}
+
 const FALLBACK_SEASON_CONFIG: SeasonConfigResponse = {
   season: '',
   raid_difficulties: [
@@ -334,7 +340,7 @@ export default function DropFinderPage() {
       { key: 0, label: 'Base' },
       ...currentTrackInfo.levels.map((lvl) => ({
         key: lvl.level,
-        label: `${currentTrackInfo.name} ${lvl.level}/${lvl.max_level}`,
+        label: `${currentTrackInfo.name} ${lvl.level}/${UPGRADE_TRACK_MAX_LEVEL}`,
         sublabel: String(lvl.ilvl),
       })),
     ];
@@ -434,7 +440,7 @@ export default function DropFinderPage() {
                 const currentDiff = isRaid ? difficulty : dungeonDiff;
                 const isActive = currentDiff === d.key;
                 const trackLevels = d.track ? upgradeTracks[d.track] : null;
-                const max = trackLevels?.at(-1)?.max_level ?? d.level;
+                const displayLevel = isRaid ? getRaidDifficultyDisplayLevel(d.key) : d.level;
                 const ilvl = trackLevels?.find((t) => t.level === d.level)?.ilvl ?? d.fixedIlvl;
                 const tc = d.track ? TRACK_COLORS[d.track] : null;
                 return (
@@ -469,7 +475,9 @@ export default function DropFinderPage() {
                       <span
                         className={`mt-0.5 text-[12px] font-semibold ${tc?.text ?? 'text-zinc-400'} ${isActive ? 'opacity-100' : 'opacity-60'}`}
                       >
-                        {TRACK_SHORT[d.track] ?? d.track} {d.level}/{max}
+                        {isRaid
+                          ? d.track
+                          : `${TRACK_SHORT[d.track] ?? d.track} ${displayLevel}/${UPGRADE_TRACK_MAX_LEVEL}`}
                       </span>
                     ) : null}
                   </button>
@@ -478,7 +486,7 @@ export default function DropFinderPage() {
             </div>
           </div>
 
-          {currentTrackInfo && drops && (
+      {currentTrackInfo && drops && (
             <div>
               <label className="label-text">Upgrade Level</label>
               <ToggleButtonGroup

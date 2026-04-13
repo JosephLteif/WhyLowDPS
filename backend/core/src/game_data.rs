@@ -99,6 +99,43 @@ pub fn get_instance_drops(
         })
         .collect();
 
+    // Build encounter->level progression for all raid instances.
+    // This keeps raid loot tiers aligned with boss order even if config overrides drift.
+    let raid_progression_levels: HashMap<i64, u64> = instances
+        .iter()
+        .filter(|inst| {
+            inst.get("type").and_then(|t| t.as_str()) == Some("raid")
+                && inst.get("id").and_then(|id| id.as_i64()).unwrap_or(0) > 0
+        })
+        .flat_map(|inst| {
+            let raid_encounters = inst
+                .get("encounters")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let total = raid_encounters.len();
+            raid_encounters
+                .into_iter()
+                .enumerate()
+                .filter_map(move |(idx, e)| {
+                    let id = e.get("id")?.as_i64()?;
+                    let pos = idx + 1;
+                    let level = if total <= 1 {
+                        4
+                    } else if pos == 1 {
+                        1
+                    } else if pos <= 3 {
+                        2
+                    } else if pos <= 5 {
+                        3
+                    } else {
+                        4
+                    };
+                    Some((id, level))
+                })
+        })
+        .collect();
+
     // For meta-instances (pools), the encounter IDs are actually instance IDs.
     // Map each encounter ID to the instance name by direct ID lookup.
     let encounter_to_instance: HashMap<i64, String> = if is_meta {
@@ -201,19 +238,17 @@ pub fn get_instance_drops(
                 let slot = class_data::inventory_type_display_slot(inv_type as u64);
 
                 // Compute per-difficulty info from upgrade tracks (raids)
-                let upgrade_lvl = item_db::encounter_upgrade_level(*eid);
+                let upgrade_lvl = raid_progression_levels
+                    .get(eid)
+                    .copied()
+                    .or_else(|| item_db::encounter_upgrade_level(*eid));
                 let tracks = item_db::upgrade_tracks();
                 let tm = item_db::upgrade_track_max();
                 let mut diff_info = serde_json::Map::new();
                 for diff in &["lfr", "normal", "heroic", "mythic"] {
                     if let Some(track) = item_db::difficulty_track_name(diff) {
-                        // LFR always starts at Veteran 1/6.
-                        // If we don't have per-encounter level metadata, fall back to 1.
-                        let effective_level = if *diff == "lfr" {
-                            1
-                        } else {
-                            upgrade_lvl.unwrap_or(1)
-                        };
+                        // Use per-encounter raid progression (or configured overrides).
+                        let effective_level = upgrade_lvl.unwrap_or(1);
                         if let Some(&(ilvl, bonus_id, quality)) =
                             tracks.get(&(track.clone(), effective_level, tm))
                         {

@@ -21,28 +21,24 @@ const CHANNELS_DIR: &str = "channels";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum SimcChannel {
-    Latest,
-    Weekly,
+    Stable,
     Nightly,
 }
 
 impl SimcChannel {
     pub(super) fn as_str(self) -> &'static str {
         match self {
-            Self::Latest => "latest",
-            Self::Weekly => "weekly",
+            Self::Stable => "stable",
             Self::Nightly => "nightly",
         }
     }
 
     fn from_input(raw: &str) -> Result<Self, String> {
         match raw.trim().to_ascii_lowercase().as_str() {
-            "" => Ok(Self::Weekly),
-            "latest" => Ok(Self::Latest),
-            "weekly" => Ok(Self::Weekly),
+            "" | "stable" | "weekly" | "latest" => Ok(Self::Stable),
             "nightly" => Ok(Self::Nightly),
             other => Err(format!(
-                "Unsupported SimC channel '{}'. Use latest, weekly, or nightly.",
+                "Unsupported SimC channel '{}'. Use stable or nightly.",
                 other
             )),
         }
@@ -313,7 +309,19 @@ pub(super) async fn remove_simc_channel(
         }
     };
 
-    let result = remove_channel_install(simc_path.get_ref().as_path(), channel);
+    let root_path = simc_path.get_ref().as_path();
+    let installed_count = installed_channel_count(root_path);
+    let is_target_installed = channel_binary_path(root_path, channel)
+        .map(|bin| bin.exists())
+        .unwrap_or(false);
+    if is_target_installed && installed_count <= 1 {
+        drop(lock);
+        return HttpResponse::BadRequest().json(json!({
+            "detail": "At least one SimC channel must remain installed."
+        }));
+    }
+
+    let result = remove_channel_install(root_path, channel);
     drop(lock);
 
     match result {
@@ -332,7 +340,7 @@ pub(super) fn resolve_installed_binary_for_channel(
 ) -> Option<PathBuf> {
     let channel = requested_channel
         .and_then(|raw| SimcChannel::from_input(raw).ok())
-        .unwrap_or(SimcChannel::Weekly);
+        .unwrap_or(SimcChannel::Stable);
 
     if let Some(channel_bin) = channel_binary_path(simc_path, channel) {
         if channel_bin.exists() {
@@ -378,8 +386,7 @@ async fn build_status_response(
     match fetch_channel_assets().await {
         Ok(assets) => {
             for (name, maybe_asset) in [
-                ("latest", assets.latest.clone()),
-                ("weekly", assets.weekly.clone()),
+                ("stable", assets.stable.clone()),
                 ("nightly", assets.nightly.clone()),
             ] {
                 available_versions.insert(
@@ -580,8 +587,7 @@ fn install_from_archive(
     updater: &SimcUpdaterState,
 ) -> Result<(), String> {
     match latest.archive_kind {
-        ArchiveKind::SevenZip => sevenz_rust::decompress_file(archive_path, extract_dir)
-            .map_err(|e| format!("Failed to extract SimC 7z archive: {e}"))?,
+        ArchiveKind::SevenZip => extract_7z_archive(archive_path, extract_dir)?,
         ArchiveKind::Zip => extract_zip_archive(archive_path, extract_dir)?,
     };
 
@@ -628,16 +634,14 @@ fn install_from_archive(
 
 #[derive(Debug, Clone, Default)]
 struct ChannelAssets {
-    latest: Option<RemoteAsset>,
-    weekly: Option<RemoteAsset>,
+    stable: Option<RemoteAsset>,
     nightly: Option<RemoteAsset>,
 }
 
 impl ChannelAssets {
     fn for_channel(&self, channel: SimcChannel) -> Option<RemoteAsset> {
         match channel {
-            SimcChannel::Latest => self.latest.clone(),
-            SimcChannel::Weekly => self.weekly.clone(),
+            SimcChannel::Stable => self.stable.clone(),
             SimcChannel::Nightly => self.nightly.clone(),
         }
     }
@@ -659,7 +663,7 @@ async fn fetch_channel_assets() -> Result<ChannelAssets, String> {
         .await
         .map_err(|e| format!("Failed to read SimC nightly index body: {e}"))?;
 
-    let re = Regex::new(r#"href="(?P<file>simc-[^"]+-win64\.(?:7z|zip))""#)
+    let re = Regex::new(r#"href="(?P<file>simc-[^"]+-(win64)\.(?:7z|zip))""#)
         .map_err(|e| format!("Failed to build nightly parser regex: {e}"))?;
     let mut assets: Vec<RemoteAsset> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -691,19 +695,55 @@ async fn fetch_channel_assets() -> Result<ChannelAssets, String> {
         return Err("Could not locate a Windows nightly archive in the SimC index.".to_string());
     }
 
-    let nightly = assets.first().cloned();
-    let latest = assets
-        .iter()
-        .find(|asset| !looks_like_commit_build(&asset.version))
-        .cloned()
-        .or_else(|| nightly.clone());
-    let weekly = assets.get(1).cloned().or_else(|| nightly.clone());
+    // Both channels draw from the same nightly index — the newest win64 build.
+    // The difference is only in *when* users choose to update (nightly = always
+    // latest, stable = user-controlled / pinned on reset day).
+    let newest = assets.first().cloned();
 
     Ok(ChannelAssets {
-        latest,
-        weekly,
-        nightly,
+        stable: newest.clone(),
+        nightly: newest,
     })
+}
+
+/// Migrate legacy channel folders (weekly, latest) to the new "stable" name.
+///
+/// Called once during a download/status check so that users who had a
+/// previously installed "weekly" or "latest" channel keep their install
+/// without needing to re-download.
+pub(super) fn migrate_legacy_channel_dirs(simc_path: &Path) {
+    let Some(root) = simc_path.parent() else {
+        return;
+    };
+    let channels = root.join(CHANNELS_DIR);
+    let stable_dir = channels.join("stable");
+    if stable_dir.exists() {
+        return; // already migrated or installed
+    }
+
+    // Prefer "weekly" over "latest" — it was the default.
+    for legacy_name in ["weekly", "latest"] {
+        let legacy_dir = channels.join(legacy_name);
+        if legacy_dir.exists() {
+            if let Err(e) = std::fs::rename(&legacy_dir, &stable_dir) {
+                eprintln!(
+                    "Warning: failed to migrate SimC channel dir {} → {}: {}",
+                    legacy_dir.display(),
+                    stable_dir.display(),
+                    e
+                );
+            } else {
+                eprintln!(
+                    "Migrated legacy SimC channel '{}' → 'stable' at {}",
+                    legacy_name,
+                    stable_dir.display()
+                );
+                // Update the channel marker file
+                let _ = std::fs::write(stable_dir.join(CHANNEL_MARKER), b"stable");
+            }
+            return;
+        }
+    }
 }
 
 fn parse_version_from_filename(filename: &str) -> Option<String> {
@@ -719,15 +759,6 @@ fn parse_version_from_filename(filename: &str) -> Option<String> {
     let without_ext = filename.strip_suffix(archive_ext)?;
     let core = without_ext.strip_prefix("simc-")?.strip_suffix("-win64")?;
     Some(core.to_string())
-}
-
-fn looks_like_commit_build(version: &str) -> bool {
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() < 3 {
-        return false;
-    }
-    let tail = parts.last().copied().unwrap_or_default();
-    tail.len() >= 6 && tail.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn channel_install_dir(simc_path: &Path, channel: SimcChannel) -> Option<PathBuf> {
@@ -759,6 +790,17 @@ fn remove_channel_install(simc_path: &Path, channel: SimcChannel) -> Result<(), 
 
 fn channel_binary_path(simc_path: &Path, channel: SimcChannel) -> Option<PathBuf> {
     channel_install_dir(simc_path, channel).map(|dir| dir.join(binary_filename()))
+}
+
+fn installed_channel_count(simc_path: &Path) -> usize {
+    [
+        SimcChannel::Stable,
+        SimcChannel::Nightly,
+    ]
+    .iter()
+    .filter_map(|channel| channel_binary_path(simc_path, *channel))
+    .filter(|bin| bin.exists())
+    .count()
 }
 
 fn detect_installed_channel(simc_path: &Path, requested: SimcChannel) -> Option<String> {
@@ -884,6 +926,128 @@ fn normalize_version(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace('-', ".")
 }
 
+/// Find a working 7z.exe on the system.
+fn find_system_7z() -> Option<PathBuf> {
+    // Check PATH first
+    if let Ok(output) = Command::new("7z").arg("--help").output() {
+        if output.status.success() || !output.stdout.is_empty() {
+            return Some(PathBuf::from("7z"));
+        }
+    }
+
+    // Common install locations on Windows
+    let candidates = [
+        r"C:\Program Files\7-Zip\7z.exe",
+        r"C:\Program Files (x86)\7-Zip\7z.exe",
+    ];
+    for path in candidates {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    None
+}
+
+/// Extract a .7z archive. Tries system 7z.exe first (handles all codecs),
+/// then falls back to the sevenz-rust2 Rust crate.
+fn extract_7z_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    if let Some(seven_zip) = find_system_7z() {
+        eprintln!(
+            "Using system 7-Zip ({}) for extraction",
+            seven_zip.display()
+        );
+        let output = Command::new(&seven_zip)
+            .arg("x") // extract with full paths
+            .arg(format!("-o{}", dest.display())) // output directory
+            .arg("-y") // assume yes on all queries
+            .arg("-bso0") // suppress standard output
+            .arg("-bsp0") // suppress progress
+            .arg(archive_path.as_os_str())
+            .output()
+            .map_err(|e| {
+                format!(
+                    "Failed to run 7z.exe for extraction of {}: {}",
+                    archive_path.display(),
+                    e
+                )
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let combined = format!("{stdout}\n{stderr}").trim().to_string();
+            return Err(format!(
+                "7z.exe extraction failed (exit code {:?}) for {}:\n{}",
+                output.status.code(),
+                archive_path.display(),
+                combined
+            ));
+        }
+
+        // Clean up optional entries (e.g. WACTAC.h!ml) after system 7z extraction
+        cleanup_optional_entries_recursive(dest);
+        return Ok(());
+    }
+
+    // Fall back to the Rust crate
+    eprintln!("No system 7-Zip found, falling back to built-in extractor");
+    sevenz_rust2::decompress_file_with_extract_fn(
+        archive_path,
+        dest,
+        |entry, reader, dest_path| {
+            // DO NOT skip files entirely during extraction. In 7z solid blocks,
+            // failing to consume the reader can cause ChecksumVerificationFailed.
+            // We extract everything, then clean up the optional entries afterward.
+            sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path)
+        },
+    )
+    .and_then(|_| {
+        // Clean up optional entries (e.g. WACTAC.h!ml) after internal extraction
+        cleanup_optional_entries_recursive(dest);
+        Ok(())
+    })
+    .map_err(|e| {
+        let msg = format!("Failed to extract SimC 7z archive: {e}");
+        if msg.contains("ChecksumVerificationFailed") {
+            format!(
+                "{msg}\n\nThe built-in 7z extractor cannot handle this archive. \
+                 Please install 7-Zip (https://www.7-zip.org/download.html) \
+                 and the extraction will use it automatically."
+            )
+        } else if msg.contains("Access is denied")
+            || msg.contains("PermissionDenied")
+            || msg.contains("being used by another process")
+        {
+            format!(
+                "{msg}\n\nThis may be caused by Windows Defender flagging a file \
+                 inside the archive (e.g. WACTAC.h!ml false positive). \
+                 Try adding your SimC install/temp folder as a Defender exclusion: \
+                 Settings → Virus & threat protection → Exclusions."
+            )
+        } else {
+            msg
+        }
+    })
+}
+
+/// After system 7z extraction, walk the tree and remove any files that
+/// should have been skipped (optional HTML entries like WACTAC).
+fn cleanup_optional_entries_recursive(root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            cleanup_optional_entries_recursive(&path);
+        } else if should_skip_optional_entry(&path) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 fn extract_zip_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
     let reader = std::fs::File::open(archive_path).map_err(|e| {
         format!(
@@ -904,6 +1068,9 @@ fn extract_zip_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
         };
 
         let out = dest.join(safe_path);
+        if should_skip_optional_entry(&out) {
+            continue;
+        }
         if file.is_dir() {
             std::fs::create_dir_all(&out).map_err(|e| {
                 format!(
@@ -932,6 +1099,25 @@ fn extract_zip_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn should_skip_optional_entry(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if ext == "html" || ext == "htm" {
+        return true;
+    }
+
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .replace('!', "");
+    name.contains("wactac") && name.contains("html")
 }
 
 fn find_simc_binary(search_root: &Path) -> Option<PathBuf> {

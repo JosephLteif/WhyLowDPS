@@ -83,11 +83,11 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
         {/* Animated Logo Container */}
         <div className="relative mb-12">
           <div className="absolute inset-0 animate-pulse rounded-full bg-gold/20 blur-2xl" />
-          <div className="relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-b from-gold to-gold-dark shadow-2xl">
-            <svg className="h-12 w-12 text-black" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M3 2l10 6-10 6V2z" />
-            </svg>
-          </div>
+          <img
+            src="/icon.png"
+            alt="WhyLowDps"
+            className="relative h-24 w-24 rounded-3xl shadow-2xl ring-1 ring-white/10"
+          />
         </div>
 
         <h1 className="mb-2 text-center text-3xl font-bold tracking-tight text-gray-100">

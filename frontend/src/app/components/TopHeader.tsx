@@ -28,11 +28,11 @@ export default function TopHeader() {
       <header className="fixed top-0 z-50 w-full border-b border-border/80 bg-bg/90 backdrop-blur-xl">
         <div className="flex h-14 items-center justify-between px-6">
           <Link href="/" className="group flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-b from-gold to-gold-dark shadow-sm">
-              <svg className="h-4 w-4 text-black" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M3 2l10 6-10 6V2z" />
-              </svg>
-            </div>
+            <img
+              src="/icon.png"
+              alt="WhyLowDps"
+              className="h-8 w-8 rounded-md shadow-sm ring-1 ring-white/10"
+            />
             <span className="text-[18px] font-bold tracking-tight text-gray-100 transition-colors group-hover:text-white">
               WhyLowDps
             </span>

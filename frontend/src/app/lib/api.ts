@@ -150,9 +150,11 @@ export async function updateConfig(config: Partial<AppConfig>): Promise<void> {
 
 export interface SimcStatus {
   channel: string;
+  channel_path?: string;
   installed_path: string;
   installed_exists: boolean;
   installed_version: string | null;
+  installed_date?: string | null;
   installed_channel?: string | null;
   latest_version: string | null;
   latest_download: string | null;
@@ -162,6 +164,17 @@ export interface SimcStatus {
   checking_failed: boolean;
   detail: string | null;
   is_updating: boolean;
+  download_progress?: {
+    channel: string;
+    phase: string;
+    unit: 'bytes' | 'files';
+    bytes_downloaded: number;
+    bytes_total: number | null;
+    speed_bps: number | null;
+    percent: number | null;
+    eta_seconds: number | null;
+    elapsed_seconds: number;
+  } | null;
 }
 
 export async function getSimcStatus(channel?: string): Promise<SimcStatus> {
@@ -172,6 +185,13 @@ export async function getSimcStatus(channel?: string): Promise<SimcStatus> {
 export async function downloadLatestSimc(channel?: string): Promise<SimcStatus> {
   const suffix = channel ? `?channel=${encodeURIComponent(channel)}` : '';
   return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/download-latest${suffix}`, {
+    method: 'POST',
+  });
+}
+
+export async function removeSimcChannel(channel: string): Promise<SimcStatus> {
+  const suffix = `?channel=${encodeURIComponent(channel)}`;
+  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/remove${suffix}`, {
     method: 'POST',
   });
 }

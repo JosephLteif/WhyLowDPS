@@ -180,7 +180,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
         iterations: 10000,
         target_error: 0.1,
         threads,
-        simc_channel: simcChannel || 'latest',
+        simc_channel: simcChannel || 'weekly',
         ...(batchId ? { batch_id: batchId } : {}),
         ...(selectedTalent ? { talents: selectedTalent } : {}),
         ...(customApl ? { custom_apl: customApl } : {}),

@@ -43,49 +43,6 @@ fn seed_runtime_data_if_missing(bundled_data_dir: &PathBuf, runtime_data_dir: &P
     }
 }
 
-fn seed_runtime_simc_if_missing(bundled_simc_dir: &PathBuf, runtime_simc_dir: &PathBuf) {
-    let runtime_bin = if cfg!(windows) {
-        runtime_simc_dir.join("simc.exe")
-    } else {
-        runtime_simc_dir.join("simc")
-    };
-    if runtime_bin.exists() {
-        return;
-    }
-
-    let bundled_bin = if cfg!(windows) {
-        bundled_simc_dir.join("simc.exe")
-    } else {
-        bundled_simc_dir.join("simc")
-    };
-    if !bundled_bin.exists() {
-        return;
-    }
-
-    let mut stack: Vec<(PathBuf, PathBuf)> =
-        vec![(bundled_simc_dir.clone(), runtime_simc_dir.clone())];
-    while let Some((src_dir, dst_dir)) = stack.pop() {
-        let _ = std::fs::create_dir_all(&dst_dir);
-        let entries = match std::fs::read_dir(&src_dir) {
-            Ok(entries) => entries,
-            Err(_) => continue,
-        };
-
-        for entry in entries.flatten() {
-            let src_path = entry.path();
-            let dst_path = dst_dir.join(entry.file_name());
-            if src_path.is_dir() {
-                stack.push((src_path, dst_path));
-            } else if src_path.is_file() {
-                if let Some(parent) = dst_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let _ = std::fs::copy(&src_path, &dst_path);
-            }
-        }
-    }
-}
-
 #[tauri::command]
 async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), String> {
     // We use the Blizzard logout endpoint with a 'ref' parameter to force a session clear
@@ -139,6 +96,16 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
     } else {
         simc_dir.join("channels").join("latest").join("simc")
     };
+    let simc_exe_weekly = if cfg!(windows) {
+        simc_dir.join("channels").join("weekly").join("simc.exe")
+    } else {
+        simc_dir.join("channels").join("weekly").join("simc")
+    };
+    let simc_exe_nightly = if cfg!(windows) {
+        simc_dir.join("channels").join("nightly").join("simc.exe")
+    } else {
+        simc_dir.join("channels").join("nightly").join("simc")
+    };
 
     Ok(SystemInfo {
         os: std::env::consts::OS.to_string(),
@@ -148,7 +115,10 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
         data_dir: data_dir.to_string_lossy().to_string(),
         simc_dir: simc_dir.to_string_lossy().to_string(),
         data_valid: classes_json.exists(),
-        simc_valid: simc_exe_legacy.exists() || simc_exe_latest.exists(),
+        simc_valid: simc_exe_legacy.exists()
+            || simc_exe_latest.exists()
+            || simc_exe_weekly.exists()
+            || simc_exe_nightly.exists(),
         api_url: "http://localhost:17384".to_string(),
         version: "0.2.4-STABILITY-V2".to_string(),
     })
@@ -171,10 +141,7 @@ fn main() {
             };
 
             let bundled_data_dir = resolve_bundled_resource("data", "../../backend/resources/data");
-            let bundled_simc_dir = resolve_bundled_resource("simc", "../../backend/resources/simc");
-
             println!("Resolved bundled_data_dir: {:?}", bundled_data_dir);
-            println!("Resolved bundled_simc_dir: {:?}", bundled_simc_dir);
 
             // 2. Resolve writable runtime paths (persistent app data)
             let app_data_dir = app_handle
@@ -195,7 +162,6 @@ fn main() {
             if !runtime_simc_dir.exists() {
                 let _ = std::fs::create_dir_all(&runtime_simc_dir);
             }
-            seed_runtime_simc_if_missing(&bundled_simc_dir, &runtime_simc_dir);
 
             let simc_bin = if cfg!(windows) {
                 runtime_simc_dir.join("simc.exe")

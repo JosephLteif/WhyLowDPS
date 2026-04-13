@@ -261,6 +261,15 @@ pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
         "is_kept": item.origin == crate::types::ItemOrigin::Equipped,
         "origin": item.origin.as_str(),
     });
+    if !item.encounter.is_empty() {
+        meta["encounter"] = json!(item.encounter);
+    }
+    if !item.instance_name.is_empty() {
+        meta["instance_name"] = json!(item.instance_name);
+    }
+    if !item.source_type.is_empty() {
+        meta["source_type"] = json!(item.source_type);
+    }
     if item.is_catalyst {
         meta["is_catalyst"] = json!(true);
     }

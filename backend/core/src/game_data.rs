@@ -138,9 +138,11 @@ pub fn get_instance_drops(
 
     // For meta-instances (pools), the encounter IDs are actually instance IDs.
     // Map each encounter ID to the instance name by direct ID lookup.
-    let encounter_to_instance: HashMap<i64, String> = if is_meta {
+    let (encounter_to_instance, encounter_to_type): (HashMap<i64, String>, HashMap<i64, String>) =
+        if is_meta {
         let mut map = HashMap::new();
-        for inst in instances {
+        let mut tmap = HashMap::new();
+        for inst in &instances {
             let iid = inst.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
             if iid <= 0 {
                 continue;
@@ -151,12 +153,18 @@ pub fn get_instance_drops(
                     .and_then(|n| n.as_str())
                     .unwrap_or("")
                     .to_string();
+                let itype = inst
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 map.insert(iid, iname);
+                tmap.insert(iid, itype);
             }
         }
-        map
+        (map, tmap)
     } else {
-        HashMap::new()
+        (HashMap::new(), HashMap::new())
     };
 
     let drops_map = item_db::drops_by_encounter();
@@ -301,6 +309,15 @@ pub fn get_instance_drops(
                 } else {
                     instance_name.clone()
                 };
+                let item_source_type = if is_meta {
+                    encounter_to_type.get(eid).cloned().unwrap_or_default()
+                } else {
+                    instance
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                };
 
                 let mut item_json = serde_json::json!({
                     "item_id": item_id,
@@ -311,6 +328,7 @@ pub fn get_instance_drops(
                     "inventory_type": inv_type,
                     "encounter": encounter_ids.get(eid).cloned().unwrap_or_default(),
                     "instance_name": item_instance,
+                    "source_type": item_source_type,
                 });
 
                 if !item_specs.is_empty() {

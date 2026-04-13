@@ -173,7 +173,23 @@ pub fn generate_droptimizer_input(
             }
             lines.push(String::new());
 
-            combo_metadata.insert(c_name, json!([{"slot": slot, "item_id": item.item_id, "ilevel": item.ilevel, "name": item.name, "bonus_ids": item.bonus_ids, "enchant_id": 0, "gem_id": 0, "is_kept": false, "origin": "bags"}]));
+            combo_metadata.insert(
+                c_name,
+                json!([{
+                    "slot": slot,
+                    "item_id": item.item_id,
+                    "ilevel": item.ilevel,
+                    "name": item.name,
+                    "bonus_ids": item.bonus_ids,
+                    "enchant_id": 0,
+                    "gem_id": 0,
+                    "is_kept": false,
+                    "origin": "bags",
+                    "encounter": item.encounter,
+                    "instance_name": item.instance_name,
+                    "source_type": item.source_type
+                }]),
+            );
             combo_idx += 1;
         }
     }

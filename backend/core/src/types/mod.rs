@@ -178,6 +178,12 @@ pub struct ResolvedItem {
     /// Gem icon (empty if none).
     #[serde(default)]
     pub gem_icon: String,
+    #[serde(default)]
+    pub encounter: String,
+    #[serde(default)]
+    pub instance_name: String,
+    #[serde(default)]
+    pub source_type: String,
     /// Season ID from upgrade track (0 if none).
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub season_id: i64,

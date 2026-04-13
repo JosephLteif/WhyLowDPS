@@ -551,6 +551,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
         name: string;
         expansionKey: string;
         expansionLabel: string;
+        placeholderExpansion?: boolean;
         normal: string;
         heroic: string;
         mythic: string;
@@ -577,6 +578,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
       name: string;
       expansionKey: string;
       expansionLabel: string;
+      placeholderExpansion?: boolean;
       normal: string;
       heroic: string;
       mythic: string;

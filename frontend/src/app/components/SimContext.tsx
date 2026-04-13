@@ -429,7 +429,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (dataCacheRefreshMinutes <= 0) return;
     let cancelled = false;
-    let timer: ReturnType<typeof window.setInterval> | null = null;
+    let timer: number | null = null;
 
     const triggerRefresh = async () => {
       try {

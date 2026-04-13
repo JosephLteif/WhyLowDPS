@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { downloadLatestSimc, getSimcStatus, isDesktop, type SimcStatus } from '../lib/api';
 
 export default function SimcRequiredModal() {
@@ -8,13 +8,14 @@ export default function SimcRequiredModal() {
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const autoDownloadAttempted = useRef(false);
 
   const refreshStatus = useCallback(async () => {
     if (!isDesktop) return;
     setLoading(true);
     setError(null);
     try {
-      const next = await getSimcStatus();
+      const next = await getSimcStatus('latest');
       setStatus(next);
     } catch (err: any) {
       setError(err?.detail || err?.message || 'Failed to check SimC status.');
@@ -32,7 +33,7 @@ export default function SimcRequiredModal() {
     setDownloading(true);
     setError(null);
     try {
-      const next = await downloadLatestSimc();
+      const next = await downloadLatestSimc('latest');
       setStatus(next);
     } catch (err: any) {
       setError(err?.detail || err?.message || 'Failed to download SimC.');
@@ -47,6 +48,13 @@ export default function SimcRequiredModal() {
     return !status.installed_exists;
   }, [status]);
 
+  useEffect(() => {
+    if (!isDesktop || !isMissing || downloading) return;
+    if (!status?.latest_version || autoDownloadAttempted.current) return;
+    autoDownloadAttempted.current = true;
+    void handleDownload();
+  }, [isMissing, downloading, status?.latest_version, handleDownload]);
+
   if (!isMissing) return null;
 
   return (
@@ -57,6 +65,11 @@ export default function SimcRequiredModal() {
           SimC is missing from your local install, so simulations cannot run yet. Download the
           latest SimC build to continue.
         </p>
+        {downloading && (
+          <p className="mt-2 text-xs text-amber-200">
+            Download in progress. This modal will close automatically once SimC is ready.
+          </p>
+        )}
 
         <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/80 p-3">
           <div className="flex items-center justify-between text-xs">

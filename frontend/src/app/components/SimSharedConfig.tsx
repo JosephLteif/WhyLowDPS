@@ -403,6 +403,8 @@ function AdvancedOptions() {
     setFightLength,
     customApl,
     setCustomApl,
+    simcChannel,
+    setSimcChannel,
     includeTimeline,
     setIncludeTimeline,
     externalBuffChaosBrand,
@@ -574,6 +576,22 @@ function AdvancedOptions() {
             <div className="space-y-2">
               <label className="label-text">Fight Style</label>
               <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
+            </div>
+
+            <div className="space-y-2">
+              <label className="label-text">SimC Engine Channel</label>
+              <select
+                value={simcChannel || 'latest'}
+                onChange={(e) => setSimcChannel(e.target.value)}
+                className="input-field h-10"
+              >
+                <option value="latest">Latest</option>
+                <option value="weekly">Weekly</option>
+                <option value="nightly">Nightly</option>
+              </select>
+              <p className="text-[12px] text-zinc-500">
+                Runs this simulation with the selected local SimC channel.
+              </p>
             </div>
 
             {showFightLength && (

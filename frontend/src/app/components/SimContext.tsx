@@ -20,6 +20,8 @@ interface SimContextType {
   setFightLength: (v: number) => void;
   customApl: string;
   setCustomApl: (v: string) => void;
+  simcChannel: string;
+  setSimcChannel: (v: string) => void;
   includeTimeline: boolean;
   setIncludeTimeline: (v: boolean) => void;
   externalBuffChaosBrand: boolean;
@@ -121,6 +123,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [targetCount, setTargetCount] = useState(1);
   const [fightLength, setFightLength] = useState(300);
   const [customApl, setCustomApl] = useState('');
+  const [simcChannel, _setSimcChannel] = useState('latest');
   const [includeTimeline, _setIncludeTimeline] = useState(true);
   const [externalBuffChaosBrand, _setExternalBuffChaosBrand] = useState(true);
   const [externalBuffMysticTouch, _setExternalBuffMysticTouch] = useState(true);
@@ -178,6 +181,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
       _setConsumableTemporaryEnchant(
         readStoredString('whylowdps_consumable_temporary_enchant', '')
       );
+      _setSimcChannel(readStoredString('whylowdps_simc_channel', 'latest') || 'latest');
     } catch {}
   }, []);
 
@@ -354,6 +358,14 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const setSimcChannel = useCallback((v: string) => {
+    const normalized = (v || 'latest').toLowerCase();
+    _setSimcChannel(normalized);
+    try {
+      localStorage.setItem('whylowdps_simc_channel', normalized);
+    } catch {}
+  }, []);
+
   return (
     <SimContext.Provider
       value={{
@@ -373,6 +385,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setFightLength,
         customApl,
         setCustomApl,
+        simcChannel,
+        setSimcChannel,
         includeTimeline,
         setIncludeTimeline,
         externalBuffChaosBrand,

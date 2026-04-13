@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
@@ -22,7 +22,8 @@ const PRESETS = [
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const { threads, setThreads, maxCombinations, setMaxCombinations } = useSimContext();
+  const { threads, setThreads, maxCombinations, setMaxCombinations, simcChannel, setSimcChannel } =
+    useSimContext();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [secretTouched, setSecretTouched] = useState(false);
@@ -48,6 +49,7 @@ export default function SettingsPage() {
   const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
   const [simcLoading, setSimcLoading] = useState(false);
   const [simcUpdating, setSimcUpdating] = useState(false);
+  const [simcDownloadChannel, setSimcDownloadChannel] = useState('latest');
   const [simcMessage, setSimcMessage] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -71,6 +73,16 @@ export default function SettingsPage() {
         if (Number.isFinite(savedMaxCombos) && savedMaxCombos > 0) {
           setMaxCombinations(savedMaxCombos);
         }
+        const savedDownloadChannel = (data.simc_download_channel || 'latest').toLowerCase();
+        setSimcDownloadChannel(
+          ['latest', 'weekly', 'nightly'].includes(savedDownloadChannel)
+            ? savedDownloadChannel
+            : 'latest'
+        );
+        const savedSimChannel = (data.simc_sim_channel || 'latest').toLowerCase();
+        setSimcChannel(
+          ['latest', 'weekly', 'nightly'].includes(savedSimChannel) ? savedSimChannel : 'latest'
+        );
         setPerformanceSaved(true);
       })
       .catch((err) => {
@@ -80,7 +92,7 @@ export default function SettingsPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [user, router]);
+  }, [user, router, setMaxCombinations, setSimcChannel, setThreads]);
 
   useEffect(() => {
     fetch(`${API_URL}/health`, { credentials: 'include' })
@@ -148,29 +160,32 @@ export default function SettingsPage() {
     };
   }, []);
 
-  const refreshSimc = async () => {
-    if (!isDesktop) return;
-    setSimcLoading(true);
-    setSimcMessage(null);
-    try {
-      const status = await getSimcStatus();
-      setSimcStatus(status);
-    } catch (err: any) {
-      setSimcMessage({
-        type: 'error',
-        text: err?.detail || err?.message || 'Failed to fetch SimC status.',
-      });
-    } finally {
-      setSimcLoading(false);
-    }
-  };
+  const refreshSimc = useCallback(
+    async (channel = simcDownloadChannel) => {
+      if (!isDesktop) return;
+      setSimcLoading(true);
+      setSimcMessage(null);
+      try {
+        const status = await getSimcStatus(channel);
+        setSimcStatus(status);
+      } catch (err: any) {
+        setSimcMessage({
+          type: 'error',
+          text: err?.detail || err?.message || 'Failed to fetch SimC status.',
+        });
+      } finally {
+        setSimcLoading(false);
+      }
+    },
+    [simcDownloadChannel]
+  );
 
   const downloadSimc = async () => {
     if (!isDesktop) return;
     setSimcUpdating(true);
     setSimcMessage(null);
     try {
-      const status = await downloadLatestSimc();
+      const status = await downloadLatestSimc(simcDownloadChannel);
       setSimcStatus(status);
       setSimcMessage({
         type: 'success',
@@ -191,7 +206,31 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!isDesktop || !user) return;
     void refreshSimc();
-  }, [user]);
+  }, [user, simcDownloadChannel, refreshSimc]);
+
+  useEffect(() => {
+    if (!performanceSaved || !user) return;
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'simc_download_channel',
+        value: simcDownloadChannel,
+      }),
+    }).catch(() => {});
+  }, [simcDownloadChannel, performanceSaved, user]);
+
+  useEffect(() => {
+    if (!performanceSaved || !user) return;
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'simc_sim_channel',
+        value: simcChannel || 'latest',
+      }),
+    }).catch(() => {});
+  }, [simcChannel, performanceSaved, user]);
 
   const testCredentials = async () => {
     setTesting(true);
@@ -498,13 +537,24 @@ export default function SettingsPage() {
                     Manage local SimC binary and keep it updated.
                   </p>
                 </div>
-                <button
-                  onClick={refreshSimc}
-                  disabled={simcLoading || simcUpdating}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-50"
-                >
-                  {simcLoading ? 'Checking...' : 'Refresh'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={simcDownloadChannel}
+                    onChange={(e) => setSimcDownloadChannel(e.target.value)}
+                    className="rounded-md border border-border bg-surface-2 px-2 py-1 text-xs text-zinc-200 focus:border-gold/50 focus:outline-none"
+                  >
+                    <option value="latest">Latest</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="nightly">Nightly</option>
+                  </select>
+                  <button
+                    onClick={() => void refreshSimc()}
+                    disabled={simcLoading || simcUpdating}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {simcLoading ? 'Checking...' : 'Refresh'}
+                  </button>
+                </div>
               </div>
 
               <div className="rounded-lg border border-border bg-surface-2 p-3 text-[12px]">
@@ -516,7 +566,7 @@ export default function SettingsPage() {
                   </span>
                 </div>
                 <div className="mt-1.5 flex items-center justify-between gap-4">
-                  <span className="text-zinc-500">Latest</span>
+                  <span className="text-zinc-500">Remote ({simcDownloadChannel})</span>
                   <span className="font-mono text-zinc-100">
                     {simcStatus?.latest_version || (simcLoading ? 'Checking...' : 'Unavailable')}
                   </span>
@@ -552,7 +602,9 @@ export default function SettingsPage() {
                 }
                 className="rounded-lg border border-amber-700/50 bg-amber-950/30 px-4 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-900/40 disabled:opacity-50"
               >
-                {simcUpdating ? 'Downloading latest SimC...' : 'Download Latest SimC'}
+                {simcUpdating
+                  ? `Downloading ${simcDownloadChannel} SimC...`
+                  : `Download ${simcDownloadChannel} SimC`}
               </button>
             </div>
           )}

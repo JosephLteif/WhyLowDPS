@@ -809,6 +809,18 @@ function FightSetupOptions() {
 
 function ConsumablesAndRaidBuffsOptions() {
   const {
+    fightStyle,
+    setFightStyle,
+    targetCount,
+    setTargetCount,
+    fightLength,
+    setFightLength,
+    customApl,
+    setCustomApl,
+    simcChannel,
+    setSimcChannel,
+    includeTimeline,
+    setIncludeTimeline,
     externalBuffChaosBrand,
     setExternalBuffChaosBrand,
     externalBuffMysticTouch,

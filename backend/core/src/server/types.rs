@@ -30,6 +30,8 @@ pub struct SimOptions {
     pub talents: String,
     #[serde(default)]
     pub spec_override: String,
+    #[serde(default = "default_simc_channel")]
+    pub simc_channel: String,
     /// Custom APL and SimC expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list).
     #[serde(default)]
     pub custom_apl: String,
@@ -129,6 +131,7 @@ impl SimOptions {
             "desired_targets": self.desired_targets,
             "max_time": self.max_time,
             "threads": self.threads,
+            "simc_channel": self.simc_channel,
             "single_actor_batch": !self.has_raid_actors(),
             "dps_plot_stat": self.dps_plot_stat,
             "dps_plot_points": self.dps_plot_points,
@@ -323,6 +326,9 @@ fn default_desired_targets() -> u32 {
 }
 fn default_max_time() -> u32 {
     300
+}
+fn default_simc_channel() -> String {
+    "latest".to_string()
 }
 fn default_include_timeline() -> bool {
     true

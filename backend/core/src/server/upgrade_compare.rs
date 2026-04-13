@@ -13,6 +13,45 @@ use crate::log_buffer::LogBuffer;
 use crate::models::Job;
 use crate::profileset_generator;
 use crate::storage::JobStorage;
+
+fn resolve_simc_binary_for_request(
+    simc_path: &PathBuf,
+    options: &SimOptions,
+) -> Result<PathBuf, String> {
+    #[cfg(feature = "desktop")]
+    {
+        let requested_channel = options.simc_channel.trim().to_ascii_lowercase();
+        let requested_channel_opt = if requested_channel.is_empty() {
+            None
+        } else {
+            Some(requested_channel.as_str())
+        };
+        if let Some(path) = super::simc_updater::resolve_installed_binary_for_channel(
+            simc_path,
+            requested_channel_opt,
+        ) {
+            return Ok(path);
+        }
+        let missing_channel = if requested_channel.is_empty() {
+            "latest".to_string()
+        } else {
+            requested_channel
+        };
+        return Err(format!(
+            "SimC channel '{}' is not installed. Open Settings -> SimulationCraft Engine and download it first.",
+            missing_channel
+        ));
+    }
+
+    #[cfg(not(feature = "desktop"))]
+    {
+        if simc_path.exists() {
+            Ok(simc_path.clone())
+        } else {
+            Err(format!("simc binary not found at: {}", simc_path.display()))
+        }
+    }
+}
 use crate::types::ResolvedItem;
 
 /// Shared prep: parse SimC input, extract upgrade budget, build upgrade options per slot.
@@ -355,9 +394,14 @@ pub(super) async fn create_upgrade_compare_sim(
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);
 
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     spawn_staged_sim(
         store.get_ref().clone(),
-        simc_path.get_ref().clone(),
+        simc_binary,
         req.options.to_json(),
         job_id.clone(),
         generated_input,

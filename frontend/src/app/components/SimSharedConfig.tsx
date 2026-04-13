@@ -42,6 +42,45 @@ function validateChecksum(input: string): 'valid' | 'invalid' | null {
   return 'invalid';
 }
 
+const ICON_CACHE = new Map<number, string>();
+
+function useSpellIcons(spellIds: number[]) {
+  const [icons, setIcons] = useState<Map<number, string>>(new Map());
+  const depKey = spellIds.join(',');
+
+  useEffect(() => {
+    const missing = spellIds.filter((id) => id > 0 && !ICON_CACHE.has(id));
+    if (missing.length === 0) {
+      setIcons(new Map(ICON_CACHE));
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (id) => {
+        try {
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.icon) ICON_CACHE.set(id, data.icon);
+        } catch {
+          // Ignore fetch failures and fall back to the catalog slug.
+        }
+      })
+    ).then(() => {
+      if (!cancelled) setIcons(new Map(ICON_CACHE));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return icons;
+}
+
 type SimcClipboardInfo =
   | {
       kind: 'character';
@@ -816,6 +855,7 @@ function ConsumablesAndRaidBuffsOptions() {
     }
     return map;
   }, [flasks, potions, augments, tempEnchants]);
+  const raidBuffIcons = useSpellIcons(RAID_BUFF_MATRIX_OPTIONS.map((buff) => buff.spellId || 0));
 
   const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
     bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
@@ -970,11 +1010,18 @@ function ConsumablesAndRaidBuffsOptions() {
                   className="flex min-w-0 items-center gap-2 text-zinc-300 hover:text-zinc-100"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <span
-                    className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
-                    style={{
-                      backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg)`,
+                  <img
+                    src={`https://wow.zamimg.com/images/wow/icons/small/${
+                      raidBuffIcons.get(buff.spellId || 0) || buff.icon
+                    }.jpg`}
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (img.dataset.fallbackApplied === '1') return;
+                      img.dataset.fallbackApplied = '1';
+                      img.src = `https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg`;
                     }}
+                    alt=""
+                    className="h-4 w-4 shrink-0 rounded-[3px]"
                   />
                   <span className="truncate text-xs">{buff.label}</span>
                 </a>

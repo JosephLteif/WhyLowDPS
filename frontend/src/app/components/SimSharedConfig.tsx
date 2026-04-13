@@ -687,20 +687,89 @@ function ConsumableSelect({
   );
 }
 
-function AdvancedOptions() {
-  const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
+function FightSetupOptions() {
+  const { fightStyle, setFightStyle, targetCount, setTargetCount, fightLength, setFightLength } =
+    useSimContext();
+  const fightStyleRules = getFightStyleParamRules(fightStyle);
+  const showFightLength = fightStyleRules.usesFightLength;
+  const showTargetCount = fightStyleRules.usesTargetCount;
+
+  return (
+    <div className="card space-y-4 p-5">
+      <div>
+        <p className="text-sm font-medium text-zinc-200">Fight Setup</p>
+        <p className="text-[13px] text-zinc-500">
+          Configure fight style and scenario variants together.
+        </p>
+      </div>
+
+      <div
+        className={`grid gap-4 ${
+          showFightLength && showTargetCount
+            ? 'grid-cols-3'
+            : showFightLength || showTargetCount
+              ? 'grid-cols-2'
+              : 'grid-cols-1'
+        }`}
+      >
+        <div className="space-y-2">
+          <label className="label-text">Fight Style</label>
+          <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
+        </div>
+
+        {showFightLength && (
+          <div className="space-y-2">
+            <label className="label-text">Fight Length</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={30}
+                max={600}
+                step={30}
+                value={fightLength}
+                onChange={(e) => setFightLength(Number(e.target.value))}
+                className="flex-1 accent-gold"
+              />
+              <span className="w-16 text-right font-mono text-sm tabular-nums text-white">
+                {Math.floor(fightLength / 60)}:{String(fightLength % 60).padStart(2, '0')}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {showTargetCount && (
+          <div className="space-y-2">
+            <label className="label-text">Number of Bosses</label>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1}
+                max={10}
+                value={targetCount}
+                onChange={(e) => setTargetCount(Number(e.target.value))}
+                className="flex-1 accent-gold"
+              />
+              <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
+                {targetCount}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {!showFightLength && !showTargetCount && (
+          <div className="text-[13px] text-zinc-500">
+            This fight style uses built-in timing and target scripting.
+          </div>
+        )}
+      </div>
+
+      <ScenarioBuilder />
+    </div>
+  );
+}
+
+function ConsumablesAndRaidBuffsOptions() {
   const {
-    fightStyle,
-    setFightStyle,
-    targetCount,
-    setTargetCount,
-    fightLength,
-    setFightLength,
-    customApl,
-    setCustomApl,
-    includeTimeline,
-    setIncludeTimeline,
     externalBuffChaosBrand,
     setExternalBuffChaosBrand,
     externalBuffMysticTouch,
@@ -734,6 +803,207 @@ function AdvancedOptions() {
     consumableTemporaryEnchant,
     setConsumableTemporaryEnchant,
     lockSingleConsumableOptions,
+  } = useSimContext();
+
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+  const qualityMaxByFamily = useMemo(() => {
+    const map = new Map<string, number>();
+    const all = [...flasks, ...potions, ...augments, ...tempEnchants];
+    for (const opt of all) {
+      const family = optionQualityFamily(opt);
+      const q = opt.craftingQuality || 0;
+      map.set(family, Math.max(map.get(family) || 0, q));
+    }
+    return map;
+  }, [flasks, potions, augments, tempEnchants]);
+
+  const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
+    bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
+    arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },
+    power_word_fortitude: {
+      checked: raidBuffPowerWordFortitude,
+      setChecked: setRaidBuffPowerWordFortitude,
+    },
+    mark_of_the_wild: { checked: raidBuffMarkOfTheWild, setChecked: setRaidBuffMarkOfTheWild },
+    battle_shout: { checked: raidBuffBattleShout, setChecked: setRaidBuffBattleShout },
+    hunters_mark: { checked: raidBuffHuntersMark, setChecked: setRaidBuffHuntersMark },
+    bleeding: { checked: raidBuffBleeding, setChecked: setRaidBuffBleeding },
+    mystic_touch: { checked: externalBuffMysticTouch, setChecked: setExternalBuffMysticTouch },
+    chaos_brand: { checked: externalBuffChaosBrand, setChecked: setExternalBuffChaosBrand },
+    skyfury: { checked: externalBuffSkyfury, setChecked: setExternalBuffSkyfury },
+    power_infusion: { checked: externalBuffPowerInfusion, setChecked: setExternalBuffPowerInfusion },
+  };
+
+  useWowheadTooltips([
+    externalBuffChaosBrand,
+    externalBuffMysticTouch,
+    externalBuffSkyfury,
+    externalBuffPowerInfusion,
+    raidBuffBloodlust,
+    raidBuffArcaneIntellect,
+    raidBuffPowerWordFortitude,
+    raidBuffMarkOfTheWild,
+    raidBuffBattleShout,
+    raidBuffHuntersMark,
+    raidBuffBleeding,
+    consumableFlask,
+    consumablePotion,
+    consumableAugmentation,
+    consumableTemporaryEnchant,
+    consumableFood,
+  ]);
+
+  return (
+    <div className="card space-y-5 p-5">
+      <div>
+        <p className="text-sm font-medium text-zinc-200">Consumables &amp; Raid Buffs</p>
+        <p className="text-[13px] text-zinc-500">
+          Manage consumable picks and raid buff assumptions outside of Advanced Options.
+        </p>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+        <div>
+          <p className="text-sm font-medium text-zinc-200">Consumables</p>
+          <p className="text-[13px] text-zinc-500">
+            Select one per category for normal sims. Use Stat Weights matrix to compare many at
+            once.
+          </p>
+          {lockSingleConsumableOptions && (
+            <p className="mt-1 text-[12px] text-amber-300">
+              Disabled while Consumable Matrix mode is selected.
+            </p>
+          )}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Flask</p>
+            <ConsumableSelect
+              label="Active Flask"
+              value={consumableFlask}
+              onChange={setConsumableFlask}
+              options={flasks}
+              qualityMaxByFamily={qualityMaxByFamily}
+              disabled={lockSingleConsumableOptions}
+            />
+          </div>
+
+          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Potion</p>
+            <ConsumableSelect
+              label="Active Potion"
+              value={consumablePotion}
+              onChange={setConsumablePotion}
+              options={potions}
+              qualityMaxByFamily={qualityMaxByFamily}
+              disabled={lockSingleConsumableOptions}
+            />
+          </div>
+
+          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              Augmentation Rune
+            </p>
+            <ConsumableSelect
+              label="Active Augmentation Rune"
+              value={consumableAugmentation}
+              onChange={setConsumableAugmentation}
+              options={augments}
+              qualityMaxByFamily={qualityMaxByFamily}
+              disabled={lockSingleConsumableOptions}
+            />
+          </div>
+
+          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+              Temporary Enchant
+            </p>
+            <ConsumableSelect
+              label="Main Hand Temporary Enchant"
+              value={consumableTemporaryEnchant}
+              onChange={setConsumableTemporaryEnchant}
+              options={tempEnchants}
+              qualityMaxByFamily={qualityMaxByFamily}
+              disabled={lockSingleConsumableOptions}
+            />
+          </div>
+
+          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Food</p>
+            <ConsumableSelect
+              label="Active Food Buff"
+              value={consumableFood}
+              onChange={setConsumableFood}
+              options={foods}
+              qualityMaxByFamily={qualityMaxByFamily}
+              disabled={lockSingleConsumableOptions}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+        <div>
+          <p className="text-sm font-medium text-zinc-200">Raid Buffs</p>
+          <p className="text-[13px] text-zinc-500">Control default raid buffs for normal sims.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
+            const binding = raidBuffBindings[buff.key] || {
+              checked: false,
+              setChecked: (_: boolean) => {},
+            };
+            return (
+              <label
+                key={buff.key}
+                className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
+                  binding.checked
+                    ? 'border-gold/40 bg-gold/[0.08]'
+                    : 'border-border bg-surface hover:border-zinc-600'
+                }`}
+              >
+                <a
+                  href={`https://www.wowhead.com/spell=${buff.spellId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  data-wowhead={`spell=${buff.spellId}`}
+                  className="flex min-w-0 items-center gap-2 text-zinc-300 hover:text-zinc-100"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span
+                    className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
+                    style={{
+                      backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg)`,
+                    }}
+                  />
+                  <span className="truncate text-xs">{buff.label}</span>
+                </a>
+                <input
+                  type="checkbox"
+                  checked={binding.checked}
+                  onChange={(e) => binding.setChecked(e.target.checked)}
+                  className="h-4 w-4 accent-gold"
+                />
+              </label>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-zinc-500">
+          If your character provides one of these buffs, SimC may still include it.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function AdvancedOptions() {
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
+  const {
+    customApl,
+    setCustomApl,
+    includeTimeline,
+    setIncludeTimeline,
     simcHeader,
     setSimcHeader,
     simcBasePlayer,
@@ -769,53 +1039,8 @@ function AdvancedOptions() {
   );
 
   const hasExpertContent = Object.values(expertValues).some((v) => v.trim());
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
-  const selectedFlaskOption = flasks.find((opt) => (opt.token || '') === consumableFlask) || null;
-  const selectedPotionOption =
-    potions.find((opt) => (opt.token || '') === consumablePotion) || null;
-  const selectedAugmentationOption =
-    augments.find((opt) => (opt.token || '') === consumableAugmentation) || null;
-  const selectedTempEnchantOption =
-    tempEnchants.find((opt) => (opt.token || '') === consumableTemporaryEnchant) || null;
-  const qualityMaxByFamily = useMemo(() => {
-    const map = new Map<string, number>();
-    const all = [...flasks, ...potions, ...augments, ...tempEnchants];
-    for (const opt of all) {
-      const family = optionQualityFamily(opt);
-      const q = opt.craftingQuality || 0;
-      map.set(family, Math.max(map.get(family) || 0, q));
-    }
-    return map;
-  }, [flasks, potions, augments, tempEnchants]);
-  const fightStyleRules = getFightStyleParamRules(fightStyle);
-  const showFightLength = fightStyleRules.usesFightLength;
-  const showTargetCount = fightStyleRules.usesTargetCount;
-  const isDefault =
-    fightStyle === 'Patchwerk' &&
-    (!showTargetCount || targetCount === 1) &&
-    (!showFightLength || fightLength === 300) &&
-    !customApl &&
-    !hasExpertContent;
+  const isDefault = includeTimeline && !customApl && !hasExpertContent;
   const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
-  useWowheadTooltips([
-    open,
-    externalBuffChaosBrand,
-    externalBuffMysticTouch,
-    externalBuffSkyfury,
-    externalBuffPowerInfusion,
-    raidBuffBloodlust,
-    raidBuffArcaneIntellect,
-    raidBuffPowerWordFortitude,
-    raidBuffMarkOfTheWild,
-    raidBuffBattleShout,
-    raidBuffHuntersMark,
-    raidBuffBleeding,
-    consumableFlask,
-    consumablePotion,
-    consumableAugmentation,
-    consumableTemporaryEnchant,
-    consumableFood,
-  ]);
 
   return (
     <div className="card overflow-hidden">
@@ -858,67 +1083,7 @@ function AdvancedOptions() {
       </button>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
-          <div
-            className={`grid gap-4 pt-4 ${
-              showFightLength && showTargetCount
-                ? 'grid-cols-3'
-                : showFightLength || showTargetCount
-                  ? 'grid-cols-2'
-                  : 'grid-cols-1'
-            }`}
-          >
-            <div className="space-y-2">
-              <label className="label-text">Fight Style</label>
-              <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
-            </div>
-
-            {showFightLength && (
-              <div className="space-y-2">
-                <label className="label-text">Fight Length</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={30}
-                    max={600}
-                    step={30}
-                    value={fightLength}
-                    onChange={(e) => setFightLength(Number(e.target.value))}
-                    className="flex-1 accent-gold"
-                  />
-                  <span className="w-16 text-right font-mono text-sm tabular-nums text-white">
-                    {Math.floor(fightLength / 60)}:{String(fightLength % 60).padStart(2, '0')}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {showTargetCount && (
-              <div className="space-y-2">
-                <label className="label-text">Number of Bosses</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={1}
-                    max={10}
-                    value={targetCount}
-                    onChange={(e) => setTargetCount(Number(e.target.value))}
-                    className="flex-1 accent-gold"
-                  />
-                  <span className="w-6 text-right font-mono text-sm tabular-nums text-white">
-                    {targetCount}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {!showFightLength && !showTargetCount && (
-              <div className="text-[13px] text-zinc-500">
-                This fight style uses built-in timing and target scripting.
-              </div>
-            )}
-          </div>
-
-          <ScenarioBuilder />
+          <div className="pt-4" />
 
           {/* Custom APL */}
           <div className="space-y-2">
@@ -955,189 +1120,6 @@ function AdvancedOptions() {
                 }`}
               />
             </button>
-          </div>
-
-          <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-            <div>
-              <p className="text-sm font-medium text-zinc-200">Consumables</p>
-              <p className="text-[13px] text-zinc-500">
-                Select one per category for normal sims. Use Stat Weights matrix to compare many at
-                once.
-              </p>
-              {lockSingleConsumableOptions && (
-                <p className="mt-1 text-[12px] text-amber-300">
-                  Disabled while Consumable Matrix mode is selected.
-                </p>
-              )}
-            </div>
-            <div className="grid gap-3 lg:grid-cols-2">
-              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Flask
-                </p>
-                <ConsumableSelect
-                  label="Active Flask"
-                  value={consumableFlask}
-                  onChange={setConsumableFlask}
-                  options={flasks}
-                  qualityMaxByFamily={qualityMaxByFamily}
-                  disabled={lockSingleConsumableOptions}
-                />
-              </div>
-
-              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Potion
-                </p>
-                <ConsumableSelect
-                  label="Active Potion"
-                  value={consumablePotion}
-                  onChange={setConsumablePotion}
-                  options={potions}
-                  qualityMaxByFamily={qualityMaxByFamily}
-                  disabled={lockSingleConsumableOptions}
-                />
-              </div>
-
-              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Augmentation Rune
-                </p>
-                <ConsumableSelect
-                  label="Active Augmentation Rune"
-                  value={consumableAugmentation}
-                  onChange={setConsumableAugmentation}
-                  options={augments}
-                  qualityMaxByFamily={qualityMaxByFamily}
-                  disabled={lockSingleConsumableOptions}
-                />
-              </div>
-
-              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                  Temporary Enchant
-                </p>
-                <ConsumableSelect
-                  label="Main Hand Temporary Enchant"
-                  value={consumableTemporaryEnchant}
-                  onChange={setConsumableTemporaryEnchant}
-                  options={tempEnchants}
-                  qualityMaxByFamily={qualityMaxByFamily}
-                  disabled={lockSingleConsumableOptions}
-                />
-              </div>
-
-              <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Food</p>
-                <ConsumableSelect
-                  label="Active Food Buff"
-                  value={consumableFood}
-                  onChange={setConsumableFood}
-                  options={foods}
-                  qualityMaxByFamily={qualityMaxByFamily}
-                  disabled={lockSingleConsumableOptions}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-            <div>
-              <p className="text-sm font-medium text-zinc-200">Raid Buffs</p>
-              <p className="text-[13px] text-zinc-500">
-                Control default raid buffs for normal sims.
-              </p>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
-                const checked =
-                  buff.key === 'bloodlust'
-                    ? raidBuffBloodlust
-                    : buff.key === 'arcane_intellect'
-                      ? raidBuffArcaneIntellect
-                      : buff.key === 'power_word_fortitude'
-                        ? raidBuffPowerWordFortitude
-                        : buff.key === 'mark_of_the_wild'
-                          ? raidBuffMarkOfTheWild
-                          : buff.key === 'battle_shout'
-                            ? raidBuffBattleShout
-                            : buff.key === 'hunters_mark'
-                              ? raidBuffHuntersMark
-                              : buff.key === 'bleeding'
-                                ? raidBuffBleeding
-                                : buff.key === 'mystic_touch'
-                                  ? externalBuffMysticTouch
-                                  : buff.key === 'chaos_brand'
-                                    ? externalBuffChaosBrand
-                                    : buff.key === 'skyfury'
-                                      ? externalBuffSkyfury
-                                      : buff.key === 'power_infusion'
-                                        ? externalBuffPowerInfusion
-                                        : false;
-
-                const setChecked =
-                  buff.key === 'bloodlust'
-                    ? setRaidBuffBloodlust
-                    : buff.key === 'arcane_intellect'
-                      ? setRaidBuffArcaneIntellect
-                      : buff.key === 'power_word_fortitude'
-                        ? setRaidBuffPowerWordFortitude
-                        : buff.key === 'mark_of_the_wild'
-                          ? setRaidBuffMarkOfTheWild
-                          : buff.key === 'battle_shout'
-                            ? setRaidBuffBattleShout
-                            : buff.key === 'hunters_mark'
-                              ? setRaidBuffHuntersMark
-                              : buff.key === 'bleeding'
-                                ? setRaidBuffBleeding
-                                : buff.key === 'mystic_touch'
-                                  ? setExternalBuffMysticTouch
-                                  : buff.key === 'chaos_brand'
-                                    ? setExternalBuffChaosBrand
-                                    : buff.key === 'skyfury'
-                                      ? setExternalBuffSkyfury
-                                      : buff.key === 'power_infusion'
-                                        ? setExternalBuffPowerInfusion
-                                        : (_: boolean) => {};
-
-                return (
-                  <label
-                    key={buff.key}
-                    className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
-                      checked
-                        ? 'border-gold/40 bg-gold/[0.08]'
-                        : 'border-border bg-surface hover:border-zinc-600'
-                    }`}
-                  >
-                    <a
-                      href={`https://www.wowhead.com/spell=${buff.spellId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      data-wowhead={`spell=${buff.spellId}`}
-                      className="flex min-w-0 items-center gap-2 text-zinc-300 hover:text-zinc-100"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <span
-                        className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
-                        style={{
-                          backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg)`,
-                        }}
-                      />
-                      <span className="truncate text-xs">{buff.label}</span>
-                    </a>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => setChecked(e.target.checked)}
-                      className="h-4 w-4 accent-gold"
-                    />
-                  </label>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-zinc-500">
-              If your character provides one of these buffs, SimC may still include it.
-            </p>
           </div>
 
           {/* Expert Mode */}
@@ -1375,6 +1357,8 @@ export default function SimSharedConfig() {
         {detectedDungeonInfo && <DungeonInfoBar info={detectedDungeonInfo} />}
       </div>
       <TalentPicker />
+      <FightSetupOptions />
+      <ConsumablesAndRaidBuffsOptions />
       <AdvancedOptions />
     </div>
   );

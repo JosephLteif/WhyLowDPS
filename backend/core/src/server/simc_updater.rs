@@ -1,8 +1,9 @@
 use actix_web::{web, HttpResponse};
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -12,6 +13,49 @@ use tokio::sync::Mutex;
 const NIGHTLY_INDEX_URL: &str = "http://downloads.simulationcraft.org/nightly/?C=M;O=D";
 const NIGHTLY_BASE_URL: &str = "http://downloads.simulationcraft.org/nightly/";
 const VERSION_MARKER: &str = ".simc-version";
+const CHANNEL_MARKER: &str = ".simc-channel";
+const CHANNELS_DIR: &str = "channels";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum SimcChannel {
+    Latest,
+    Weekly,
+    Nightly,
+}
+
+impl SimcChannel {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Latest => "latest",
+            Self::Weekly => "weekly",
+            Self::Nightly => "nightly",
+        }
+    }
+
+    fn from_input(raw: &str) -> Result<Self, String> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "" | "latest" => Ok(Self::Latest),
+            "weekly" => Ok(Self::Weekly),
+            "nightly" => Ok(Self::Nightly),
+            other => Err(format!(
+                "Unsupported SimC channel '{}'. Use latest, weekly, or nightly.",
+                other
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct SimcChannelQuery {
+    #[serde(default)]
+    pub channel: String,
+}
+
+impl SimcChannelQuery {
+    fn resolve_channel(&self) -> Result<SimcChannel, String> {
+        SimcChannel::from_input(&self.channel)
+    }
+}
 
 #[derive(Clone)]
 pub(super) struct SimcUpdaterState {
@@ -49,11 +93,15 @@ struct ParsedVersion {
 
 #[derive(Serialize)]
 struct SimcStatusResponse {
+    channel: String,
     installed_path: String,
     installed_exists: bool,
     installed_version: Option<String>,
+    installed_channel: Option<String>,
     latest_version: Option<String>,
     latest_download: Option<String>,
+    available_versions: HashMap<String, Option<String>>,
+    available_downloads: HashMap<String, Option<String>>,
     update_available: bool,
     checking_failed: bool,
     detail: Option<String>,
@@ -63,57 +111,38 @@ struct SimcStatusResponse {
 pub(super) async fn simc_status(
     simc_path: web::Data<PathBuf>,
     updater: web::Data<SimcUpdaterState>,
+    query: web::Query<SimcChannelQuery>,
 ) -> HttpResponse {
-    let simc_path = simc_path.get_ref().clone();
-    let installed_exists = simc_path.exists();
-    let installed_version = detect_installed_version(&simc_path);
-
-    let mut checking_failed = false;
-    let mut detail = None;
-    let mut latest_version = None;
-    let mut latest_download = None;
-    let mut update_available = !installed_exists;
-
-    match fetch_latest_windows_asset().await {
-        Ok(latest) => {
-            latest_version = Some(latest.version.clone());
-            latest_download = Some(latest.url.clone());
-            update_available = !installed_exists
-                || installed_version
-                    .as_deref()
-                    .map(|v| is_update_available(v, &latest.version))
-                    .unwrap_or(true);
+    let channel = match query.resolve_channel() {
+        Ok(value) => value,
+        Err(detail) => {
+            return HttpResponse::BadRequest().json(json!({ "detail": detail }));
         }
-        Err(err) => {
-            checking_failed = true;
-            detail = Some(err);
-        }
-    }
+    };
 
     let is_updating = updater.lock.try_lock().is_err();
+    let status = build_status_response(simc_path.get_ref().clone(), channel, is_updating).await;
 
-    HttpResponse::Ok().json(SimcStatusResponse {
-        installed_path: simc_path.to_string_lossy().to_string(),
-        installed_exists,
-        installed_version,
-        latest_version,
-        latest_download,
-        update_available,
-        checking_failed,
-        detail,
-        is_updating,
-    })
+    HttpResponse::Ok().json(status)
 }
 
 pub(super) async fn download_latest_simc(
     simc_path: web::Data<PathBuf>,
     updater: web::Data<SimcUpdaterState>,
+    query: web::Query<SimcChannelQuery>,
 ) -> HttpResponse {
     if !cfg!(windows) {
         return HttpResponse::BadRequest().json(json!({
             "detail": "Automatic SimC updates are currently supported only on Windows desktop builds."
         }));
     }
+
+    let channel = match query.resolve_channel() {
+        Ok(value) => value,
+        Err(detail) => {
+            return HttpResponse::BadRequest().json(json!({ "detail": detail }));
+        }
+    };
 
     let lock = match updater.lock.try_lock() {
         Ok(lock) => lock,
@@ -124,23 +153,131 @@ pub(super) async fn download_latest_simc(
         }
     };
 
-    let result = do_download_latest(simc_path.get_ref().clone()).await;
+    let result = do_download_channel(simc_path.get_ref().clone(), channel).await;
     drop(lock);
 
     match result {
-        Ok(()) => simc_status(simc_path, updater).await,
+        Ok(()) => HttpResponse::Ok()
+            .json(build_status_response(simc_path.get_ref().clone(), channel, false).await),
         Err(err) => HttpResponse::InternalServerError().json(json!({
             "detail": err
         })),
     }
 }
 
-async fn do_download_latest(simc_path: PathBuf) -> Result<(), String> {
-    let latest = fetch_latest_windows_asset().await?;
+pub(super) fn resolve_installed_binary_for_channel(
+    simc_path: &Path,
+    requested_channel: Option<&str>,
+) -> Option<PathBuf> {
+    let channel = requested_channel
+        .and_then(|raw| SimcChannel::from_input(raw).ok())
+        .unwrap_or(SimcChannel::Latest);
 
-    let install_dir = simc_path
-        .parent()
-        .map(Path::to_path_buf)
+    if let Some(channel_bin) = channel_binary_path(simc_path, channel) {
+        if channel_bin.exists() {
+            return Some(channel_bin);
+        }
+    }
+
+    if simc_path.exists() {
+        return Some(simc_path.to_path_buf());
+    }
+
+    None
+}
+
+async fn build_status_response(
+    simc_path: PathBuf,
+    channel: SimcChannel,
+    is_updating: bool,
+) -> SimcStatusResponse {
+    let requested_channel_bin =
+        channel_binary_path(&simc_path, channel).unwrap_or(simc_path.clone());
+    let mut effective_installed_path = requested_channel_bin.clone();
+    let mut installed_exists = effective_installed_path.exists();
+
+    if !installed_exists && simc_path.exists() {
+        effective_installed_path = simc_path.clone();
+        installed_exists = true;
+    }
+
+    let installed_version = detect_installed_version(&effective_installed_path);
+    let installed_channel = detect_installed_channel(&effective_installed_path, channel);
+
+    let mut checking_failed = false;
+    let mut detail = None;
+    let mut latest_version = None;
+    let mut latest_download = None;
+    let mut available_versions: HashMap<String, Option<String>> = HashMap::new();
+    let mut available_downloads: HashMap<String, Option<String>> = HashMap::new();
+    let mut update_available = !installed_exists;
+
+    match fetch_channel_assets().await {
+        Ok(assets) => {
+            for (name, maybe_asset) in [
+                ("latest", assets.latest.clone()),
+                ("weekly", assets.weekly.clone()),
+                ("nightly", assets.nightly.clone()),
+            ] {
+                available_versions.insert(
+                    name.to_string(),
+                    maybe_asset.as_ref().map(|a| a.version.clone()),
+                );
+                available_downloads.insert(
+                    name.to_string(),
+                    maybe_asset.as_ref().map(|a| a.url.clone()),
+                );
+            }
+
+            if let Some(latest_asset) = assets.for_channel(channel) {
+                latest_version = Some(latest_asset.version.clone());
+                latest_download = Some(latest_asset.url.clone());
+                update_available = !installed_exists
+                    || installed_version
+                        .as_deref()
+                        .map(|v| is_update_available(v, &latest_asset.version))
+                        .unwrap_or(true);
+            } else {
+                checking_failed = true;
+                detail = Some(format!(
+                    "No Windows SimC archive found for '{}' channel.",
+                    channel.as_str()
+                ));
+            }
+        }
+        Err(err) => {
+            checking_failed = true;
+            detail = Some(err);
+        }
+    }
+
+    SimcStatusResponse {
+        channel: channel.as_str().to_string(),
+        installed_path: effective_installed_path.to_string_lossy().to_string(),
+        installed_exists,
+        installed_version,
+        installed_channel,
+        latest_version,
+        latest_download,
+        available_versions,
+        available_downloads,
+        update_available,
+        checking_failed,
+        detail,
+        is_updating,
+    }
+}
+
+async fn do_download_channel(simc_path: PathBuf, channel: SimcChannel) -> Result<(), String> {
+    let assets = fetch_channel_assets().await?;
+    let latest = assets.for_channel(channel).ok_or_else(|| {
+        format!(
+            "No downloadable Windows SimC archive found for '{}' channel.",
+            channel.as_str()
+        )
+    })?;
+
+    let install_dir = channel_install_dir(&simc_path, channel)
         .ok_or_else(|| "Invalid SimC path (missing parent directory)".to_string())?;
     std::fs::create_dir_all(&install_dir).map_err(|e| {
         format!(
@@ -200,7 +337,7 @@ async fn do_download_latest(simc_path: PathBuf) -> Result<(), String> {
         let extract_dir = extract_dir.clone();
         let install_dir = install_dir.clone();
         let latest = latest.clone();
-        move || install_from_archive(&archive_path, &extract_dir, &install_dir, &latest)
+        move || install_from_archive(&archive_path, &extract_dir, &install_dir, &latest, channel)
     })
     .await
     .map_err(|e| format!("SimC installation task failed to complete: {e}"))?;
@@ -225,6 +362,7 @@ fn install_from_archive(
     extract_dir: &Path,
     install_dir: &Path,
     latest: &RemoteAsset,
+    channel: SimcChannel,
 ) -> Result<(), String> {
     match latest.archive_kind {
         ArchiveKind::SevenZip => sevenz_rust::decompress_file(archive_path, extract_dir)
@@ -257,11 +395,33 @@ fn install_from_archive(
 
     std::fs::write(install_dir.join(VERSION_MARKER), latest.version.as_bytes())
         .map_err(|e| format!("Failed to persist installed SimC version marker: {e}"))?;
+    std::fs::write(
+        install_dir.join(CHANNEL_MARKER),
+        channel.as_str().as_bytes(),
+    )
+    .map_err(|e| format!("Failed to persist installed SimC channel marker: {e}"))?;
 
     Ok(())
 }
 
-async fn fetch_latest_windows_asset() -> Result<RemoteAsset, String> {
+#[derive(Debug, Clone, Default)]
+struct ChannelAssets {
+    latest: Option<RemoteAsset>,
+    weekly: Option<RemoteAsset>,
+    nightly: Option<RemoteAsset>,
+}
+
+impl ChannelAssets {
+    fn for_channel(&self, channel: SimcChannel) -> Option<RemoteAsset> {
+        match channel {
+            SimcChannel::Latest => self.latest.clone(),
+            SimcChannel::Weekly => self.weekly.clone(),
+            SimcChannel::Nightly => self.nightly.clone(),
+        }
+    }
+}
+
+async fn fetch_channel_assets() -> Result<ChannelAssets, String> {
     let body = reqwest::Client::builder()
         .timeout(Duration::from_secs(45))
         .user_agent("whylowdps-desktop/0.3")
@@ -279,27 +439,48 @@ async fn fetch_latest_windows_asset() -> Result<RemoteAsset, String> {
 
     let re = Regex::new(r#"href="(?P<file>simc-[^"]+-win64\.(?:7z|zip))""#)
         .map_err(|e| format!("Failed to build nightly parser regex: {e}"))?;
-    let filename = re
-        .captures_iter(&body)
-        .find_map(|caps| caps.name("file").map(|m| m.as_str().to_string()))
-        .ok_or_else(|| {
-            "Could not locate a Windows nightly archive in the SimC index.".to_string()
-        })?;
+    let mut assets: Vec<RemoteAsset> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    let archive_kind = if filename.to_ascii_lowercase().ends_with(".7z") {
-        ArchiveKind::SevenZip
-    } else {
-        ArchiveKind::Zip
-    };
+    for caps in re.captures_iter(&body) {
+        let Some(matched) = caps.name("file").map(|m| m.as_str().to_string()) else {
+            continue;
+        };
+        if !seen.insert(matched.clone()) {
+            continue;
+        }
 
-    let version = parse_version_from_filename(&filename).unwrap_or_else(|| filename.clone());
-    let url = format!("{}{}", NIGHTLY_BASE_URL, filename);
+        let archive_kind = if matched.to_ascii_lowercase().ends_with(".7z") {
+            ArchiveKind::SevenZip
+        } else {
+            ArchiveKind::Zip
+        };
+        let version = parse_version_from_filename(&matched).unwrap_or_else(|| matched.clone());
 
-    Ok(RemoteAsset {
-        version,
-        filename,
-        url,
-        archive_kind,
+        assets.push(RemoteAsset {
+            version,
+            filename: matched.clone(),
+            url: format!("{}{}", NIGHTLY_BASE_URL, matched),
+            archive_kind,
+        });
+    }
+
+    if assets.is_empty() {
+        return Err("Could not locate a Windows nightly archive in the SimC index.".to_string());
+    }
+
+    let nightly = assets.first().cloned();
+    let latest = assets
+        .iter()
+        .find(|asset| !looks_like_commit_build(&asset.version))
+        .cloned()
+        .or_else(|| nightly.clone());
+    let weekly = assets.get(1).cloned().or_else(|| nightly.clone());
+
+    Ok(ChannelAssets {
+        latest,
+        weekly,
+        nightly,
     })
 }
 
@@ -316,6 +497,57 @@ fn parse_version_from_filename(filename: &str) -> Option<String> {
     let without_ext = filename.strip_suffix(archive_ext)?;
     let core = without_ext.strip_prefix("simc-")?.strip_suffix("-win64")?;
     Some(core.to_string())
+}
+
+fn looks_like_commit_build(version: &str) -> bool {
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() < 3 {
+        return false;
+    }
+    let tail = parts.last().copied().unwrap_or_default();
+    tail.len() >= 6 && tail.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn channel_install_dir(simc_path: &Path, channel: SimcChannel) -> Option<PathBuf> {
+    simc_path
+        .parent()
+        .map(|root| root.join(CHANNELS_DIR).join(channel.as_str()))
+}
+
+fn channel_binary_path(simc_path: &Path, channel: SimcChannel) -> Option<PathBuf> {
+    channel_install_dir(simc_path, channel).map(|dir| dir.join(binary_filename()))
+}
+
+fn detect_installed_channel(simc_path: &Path, requested: SimcChannel) -> Option<String> {
+    if !simc_path.exists() {
+        return None;
+    }
+
+    let marker = simc_path.parent()?.join(CHANNEL_MARKER);
+    if marker.exists() {
+        if let Ok(raw) = std::fs::read_to_string(marker) {
+            let trimmed = raw.trim().to_ascii_lowercase();
+            if !trimmed.is_empty() {
+                return Some(trimmed);
+            }
+        }
+    }
+
+    let parent = simc_path.parent()?;
+    let comps: Vec<String> = parent
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().to_ascii_lowercase())
+        .collect();
+    let requested_str = requested.as_str().to_string();
+    let is_channel_path = comps.windows(2).any(|pair| {
+        pair.first().is_some_and(|value| value == CHANNELS_DIR)
+            && pair.get(1).is_some_and(|value| value == &requested_str)
+    });
+    if is_channel_path {
+        return Some(requested.as_str().to_string());
+    }
+
+    Some("legacy".to_string())
 }
 
 fn detect_installed_version(simc_path: &Path) -> Option<String> {

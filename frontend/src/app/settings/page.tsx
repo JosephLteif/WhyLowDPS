@@ -571,6 +571,20 @@ export default function SettingsPage() {
                     {simcStatus?.latest_version || (simcLoading ? 'Checking...' : 'Unavailable')}
                   </span>
                 </div>
+                {simcStatus?.installed_channel && (
+                  <div className="mt-1.5 flex items-center justify-between gap-4">
+                    <span className="text-zinc-500">Installed Channel</span>
+                    <span className="font-mono text-zinc-100">{simcStatus.installed_channel}</span>
+                  </div>
+                )}
+                {simcStatus?.installed_path && (
+                  <div className="mt-2 rounded border border-border/70 bg-surface px-2 py-1.5 text-[11px] text-zinc-400">
+                    <span className="mr-1 text-zinc-500">Path:</span>
+                    <span className="break-all font-mono text-zinc-300">
+                      {simcStatus.installed_path}
+                    </span>
+                  </div>
+                )}
                 {simcStatus && (
                   <p
                     className={`mt-2 font-medium ${

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import Link from 'next/link';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
@@ -41,26 +42,135 @@ function validateChecksum(input: string): 'valid' | 'invalid' | null {
   return 'invalid';
 }
 
-function parseCharacterInfo(input: string) {
+type SimcClipboardInfo =
+  | {
+      kind: 'character';
+      className: string;
+      name: string;
+      spec: string;
+      level: string | null;
+      race: string | null;
+      region: string | null;
+      server: string | null;
+      role: string | null;
+      professions: string | null;
+      lootSpec: string | null;
+      addonVersion: string | null;
+      wowVersion: string | null;
+      requiresVersion: string | null;
+      talentsCount: number;
+      savedLoadouts: number;
+      checksum: string | null;
+    }
+  | {
+      kind: 'dungeon';
+      title: string;
+      dungeon: string | null;
+      level: string | null;
+      maxTime: string | null;
+      pullCount: number | null;
+      extras: string[];
+    };
+
+function parseCharacterInfo(input: string): SimcClipboardInfo | null {
   if (!input) return null;
+
   const nameMatch = input.match(/^(\w+)="(.+)"$/m);
   const specMatch = input.match(/^spec=(\w+)/m);
-  if (!nameMatch) return null;
-  // Save last character to localStorage for history page
+  const characterLevelMatch = input.match(/^level=(.+)$/m);
+  const raceMatch = input.match(/^race=(.+)$/m);
+  const classKeyMatch = input.match(
+    /^(warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker)\s*=\s*"?([^"\n,]+)"?/im
+  );
   const realmMatch = input.match(/^server=(.+)$/m);
-  if (nameMatch[2] && realmMatch?.[1]) {
-    try {
-      localStorage.setItem(
-        'whylowdps_last_character',
-        JSON.stringify({ name: nameMatch[2], realm: realmMatch[1] })
-      );
-    } catch {}
+  const regionMatch = input.match(/^region=(.+)$/m);
+  const roleMatch = input.match(/^role=(.+)$/m);
+  const professionsMatch = input.match(/^professions=(.+)$/m);
+  const lootSpecMatch = input.match(/^#\s*loot_spec=(.+)$/m);
+  const addonVersionMatch = input.match(/^#\s*SimC Addon\s+(.+)$/m);
+  const wowVersionMatch = input.match(/^#\s*WoW\s+(.+)$/m);
+  const requiresVersionMatch = input.match(/^#\s*Requires SimulationCraft\s+(.+)$/m);
+  const checksumMatch = input.match(/^#\s*Checksum:\s*([0-9a-fA-F]+)/m);
+  const talentsCount = (input.match(/^talents=/gim) || []).length;
+  const savedLoadouts = (input.match(/^#\s*Saved Loadout:/gim) || []).length;
+  const routeMatch = input.match(
+    /^(?:dungeon_route|route|mythic_plus_route|mplus_route)\s*=\s*"?([^"\n]+)"?/im
+  );
+  const fightStyleMatch = input.match(/^fight_style\s*=\s*"?([^"\n]+)"?/im);
+  const enemyMatch = input.match(/^enemy\s*=\s*"([^"]+)"/im);
+  const dungeonMatch = input.match(
+    /^(?:dungeon|instance|mythic_plus_dungeon|keystone_dungeon)\s*=\s*"?([^"\n,]+)"?/im
+  );
+  const levelMatch = input.match(
+    /^(?:keystone_level|level|mythic_plus_level)\s*=\s*"?([^"\n,]+)"?/im
+  );
+  const maxTimeMatch = input.match(/^max_time\s*=\s*"?([^"\n,]+)"?/im);
+  const affixMatch = input.match(/^(?:affix|affixes)\s*=\s*"?([^"\n,]+)"?/im);
+  const seasonMatch = input.match(/^(?:season|dungeon_season)\s*=\s*"?([^"\n,]+)"?/im);
+  const keyNameMatch = input.match(/^(?:route_name|name)\s*=\s*"?([^"\n,]+)"?/im);
+  const titleMatch = input.match(/^#\s*(.+)$/m);
+  const dungeonTitleMatch = input.match(/^#\s*(?:dungeon|route|mythic\s*\+)\s*[:\-]\s*(.+)$/im);
+
+  if (nameMatch && classKeyMatch) {
+    // Save last character to localStorage for history page
+    if (nameMatch[2] && realmMatch?.[1]) {
+      try {
+        localStorage.setItem(
+          'whylowdps_last_character',
+          JSON.stringify({ name: nameMatch[2], realm: realmMatch[1], region: regionMatch?.[1] })
+        );
+      } catch {}
+    }
+
+    return {
+      kind: 'character',
+      className: classKeyMatch[1],
+      name: nameMatch[2],
+      spec: specMatch?.[1] || 'unknown',
+      level: characterLevelMatch?.[1] || null,
+      race: raceMatch?.[1] || null,
+      region: regionMatch?.[1] || null,
+      server: realmMatch?.[1] || null,
+      role: roleMatch?.[1] || null,
+      professions: professionsMatch?.[1] || null,
+      lootSpec: lootSpecMatch?.[1] || null,
+      addonVersion: addonVersionMatch?.[1] || null,
+      wowVersion: wowVersionMatch?.[1] || null,
+      requiresVersion: requiresVersionMatch?.[1] || null,
+      talentsCount,
+      savedLoadouts,
+      checksum: checksumMatch?.[1] || null,
+    };
   }
-  return {
-    className: nameMatch[1],
-    name: nameMatch[2],
-    spec: specMatch?.[1] || 'unknown',
-  };
+
+  if (routeMatch || dungeonMatch || input.toLowerCase().includes('dungeon')) {
+    const enemyName = enemyMatch?.[1]?.trim() || null;
+    const dungeonFromEnemy = enemyName?.match(/^(.+?)\s*-\s*(.+?)\s*\([^)]*\)\s*$/)?.[2] || null;
+    const dungeon =
+      dungeonMatch?.[1] || dungeonFromEnemy || dungeonTitleMatch?.[1] || titleMatch?.[1] || enemyName;
+    const pullCount = (input.match(/^raid_events\+=\/pull,/gim) || []).length || null;
+    const extras = [
+      fightStyleMatch?.[1] ? `fight_style=${fightStyleMatch[1]}` : null,
+      levelMatch?.[1] ? `+${levelMatch[1]}` : null,
+      maxTimeMatch?.[1] ? `max_time=${maxTimeMatch[1]}` : null,
+      pullCount ? `${pullCount} pulls` : null,
+      affixMatch?.[1] || null,
+      seasonMatch?.[1] || null,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.trim());
+    return {
+      kind: 'dungeon',
+      title: dungeon || 'Dungeon route',
+      dungeon,
+      level: levelMatch?.[1] || null,
+      maxTime: maxTimeMatch?.[1] || null,
+      pullCount,
+      extras,
+    };
+  }
+
+  return null;
 }
 
 function looksLikeSimcInput(input: string) {
@@ -76,8 +186,13 @@ function looksLikeSimcInput(input: string) {
   );
   const hasArmoryLine = lines.some((line) => /^armory\s*=/.test(line));
   const hasCharacterHeader = lines.some((line) => /^\w+="[^"]+"/.test(line));
+  const hasDungeonRoute = lines.some((line) =>
+    /^(?:dungeon_route|route|mythic_plus_route|mplus_route|dungeon|instance|keystone_level|mythic_plus_level)\s*=/.test(
+      line
+    )
+  );
 
-  return hasChecksum || hasArmoryLine || hasSimcKeyValue || hasCharacterHeader;
+  return hasChecksum || hasArmoryLine || hasSimcKeyValue || hasCharacterHeader || hasDungeonRoute;
 }
 
 function ClipboardBanner({
@@ -253,15 +368,129 @@ const EXPERT_TABS = [
 
 type ExpertTabKey = (typeof EXPERT_TABS)[number]['key'];
 
-function CharacterInfoBar({ info }: { info: { className: string; name: string; spec: string } }) {
+function CharacterInfoBar({
+  info,
+}: {
+  info: {
+    className: string;
+    name: string;
+    spec: string;
+    level: string | null;
+    race: string | null;
+    region: string | null;
+    server: string | null;
+    role: string | null;
+    professions: string | null;
+    lootSpec: string | null;
+    addonVersion: string | null;
+    wowVersion: string | null;
+    requiresVersion: string | null;
+    talentsCount: number;
+    savedLoadouts: number;
+    checksum: string | null;
+  };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const profileUrl =
+    info.region && info.server && info.name
+      ? `/character/${info.region.toLowerCase()}/${info.server
+          .toLowerCase()
+          .replace(/'/g, '')
+          .replace(/\s+/g, '-')}/${info.name.toLowerCase()}`
+      : null;
+  const summaryBits = [
+    info.level ? `lvl ${info.level}` : null,
+    info.race ? info.race : null,
+    info.region && info.server ? `${info.region.toUpperCase()}/${info.server}` : null,
+    info.role ? info.role : null,
+  ].filter((v): v is string => Boolean(v));
+
+  const detailBits = [
+    info.professions ? `professions ${info.professions}` : null,
+    info.lootSpec ? `loot ${info.lootSpec}` : null,
+    info.addonVersion ? `addon ${info.addonVersion}` : null,
+    info.wowVersion ? `wow ${info.wowVersion}` : null,
+    info.requiresVersion ? `requires ${info.requiresVersion}` : null,
+    info.talentsCount > 0 ? `${info.talentsCount} talent block${info.talentsCount === 1 ? '' : 's'}` : null,
+    info.savedLoadouts > 0 ? `${info.savedLoadouts} saved loadout${info.savedLoadouts === 1 ? '' : 's'}` : null,
+    info.checksum ? `checksum ${info.checksum}` : null,
+  ].filter((v): v is string => Boolean(v));
+
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-surface-2 px-3.5 py-2">
-      <div className="h-2 w-2 rounded-full bg-gold/70" />
-      <p className="text-xs font-medium text-zinc-300">
-        {info.name}
-        <span className="ml-1.5 font-normal text-zinc-500">
-          {specDisplayName(info.spec)} {info.className}
-        </span>
+    <div className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3.5 py-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="h-2 w-2 rounded-full bg-gold/70" />
+          <p className="text-xs font-medium text-zinc-300">
+            {info.name}
+            <span className="ml-1.5 font-normal text-zinc-500">
+              {specDisplayName(info.spec)} {info.className}
+            </span>
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {profileUrl && (
+            <Link
+              href={profileUrl}
+              className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              View Profile
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+            aria-expanded={expanded}
+          >
+            {expanded ? 'Collapse' : 'Expand'}
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-zinc-500">
+        {summaryBits.map((bit) => (
+          <span key={bit} className="rounded-full bg-black/20 px-2 py-0.5">
+            {bit}
+          </span>
+        ))}
+      </div>
+      {expanded && detailBits.length > 0 && (
+        <div className="grid gap-1.5 pt-1 text-[11px] text-zinc-600 sm:grid-cols-2">
+          {detailBits.map((bit) => (
+            <div key={bit} className="rounded-md bg-black/20 px-2 py-1 leading-4">
+              {bit}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DungeonInfoBar({
+  info,
+}: {
+  info: {
+    title: string;
+    dungeon: string | null;
+    level: string | null;
+    maxTime: string | null;
+    pullCount: number | null;
+    extras: string[];
+  };
+}) {
+  return (
+    <div className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3.5 py-2">
+      <div className="flex items-center gap-2">
+        <div className="h-2 w-2 rounded-full bg-sky-400/70" />
+        <p className="text-xs font-medium text-zinc-300">{info.title}</p>
+      </div>
+      <p className="text-[11px] text-zinc-500">
+        {info.dungeon ? info.dungeon : 'Dungeon route import'}
+        {info.level ? ` · +${info.level}` : ''}
+        {info.maxTime ? ` · ${Math.round(Number(info.maxTime) / 60)}m` : ''}
+        {info.pullCount ? ` · ${info.pullCount} pulls` : ''}
+        {info.extras.length > 0 ? ` · ${info.extras.join(' · ')}` : ''}
       </p>
     </div>
   );
@@ -1001,9 +1230,17 @@ function ExpertToggle({
 
 export default function SimSharedConfig() {
   const pathname = usePathname();
-  const { simcInput, setSimcInput, autoClipboardPasteSimc } = useSimContext();
+  const { simcInput, setSimcInput, simcFooter, setSimcFooter, autoClipboardPasteSimc } =
+    useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
-  const detectedInfo = parseCharacterInfo(simcInput);
+  const detectedCharacterInfo = useMemo(() => {
+    const info = parseCharacterInfo(simcInput);
+    return info?.kind === 'character' ? info : null;
+  }, [simcInput]);
+  const detectedDungeonInfo = useMemo(() => {
+    const info = parseCharacterInfo(simcFooter);
+    return info?.kind === 'dungeon' ? info : null;
+  }, [simcFooter]);
   const [banner, setBanner] = useState<{ text: string; id: number } | null>(null);
   const bannerTimerRef = useRef<number | null>(null);
 
@@ -1035,10 +1272,29 @@ export default function SimSharedConfig() {
         if (clipboardText === simcInput) return;
         if (!looksLikeSimcInput(clipboardText)) return;
 
+        const detected = parseCharacterInfo(clipboardText);
         lastAppliedClipboard = clipboardText;
-        setSimcInput(clipboardText);
-        const firstLine = clipboardText.split(/\r?\n/).find((line) => line.trim())?.trim() || '';
-        setBanner({ text: firstLine ? `Detected and pasted: ${firstLine}` : 'Detected and pasted SimC export.', id: Date.now() });
+
+        if (detected?.kind === 'dungeon') {
+          setSimcFooter(clipboardText);
+          const summaryParts = [detected.dungeon || detected.title];
+          if (detected.level) summaryParts.push(`+${detected.level}`);
+          if (detected.maxTime) summaryParts.push(`${Math.round(Number(detected.maxTime) / 60)}m`);
+          if (detected.pullCount) summaryParts.push(`${detected.pullCount} pulls`);
+          setBanner({
+            text: `Detected dungeon route and pasted to Footer: ${summaryParts.join(' · ')}`,
+            id: Date.now(),
+          });
+        } else {
+          setSimcInput(clipboardText);
+          const firstLine = clipboardText.split(/\r?\n/).find((line) => line.trim())?.trim() || '';
+          setBanner({
+            text: firstLine
+              ? `Detected and pasted: ${firstLine}`
+              : 'Detected and pasted SimC export.',
+            id: Date.now(),
+          });
+        }
       } catch {
         // Ignore clipboard permission or platform errors.
       }
@@ -1062,7 +1318,7 @@ export default function SimSharedConfig() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [autoClipboardPasteSimc, setSimcInput, simcInput]);
+  }, [autoClipboardPasteSimc, setSimcFooter, setSimcInput, simcInput]);
 
   useEffect(() => {
     if (!banner) return;
@@ -1115,7 +1371,8 @@ export default function SimSharedConfig() {
             </p>
           </div>
         )}
-        {detectedInfo && <CharacterInfoBar info={detectedInfo} />}
+        {detectedCharacterInfo && <CharacterInfoBar info={detectedCharacterInfo} />}
+        {detectedDungeonInfo && <DungeonInfoBar info={detectedDungeonInfo} />}
       </div>
       <TalentPicker />
       <AdvancedOptions />

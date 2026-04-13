@@ -29,6 +29,8 @@ const RAID_TRACK_BY_DIFFICULTY: Record<string, string> = {
   mythic: 'Myth',
 };
 
+const UPGRADE_TRACK_MAX_LEVEL = 6;
+
 const getMappedTrackName = (
   selectedDifficulty: string,
   info: { track?: string } | null | undefined
@@ -390,7 +392,7 @@ export default function AddItemModal({
                               <div className="mt-3 pl-16 pr-1">
                                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-400">
                                   <span>
-                                    Selected: {tier.track} {tier.level}/{tier.maxLevel}
+                                    Selected: {tier.track} {tier.level}/{UPGRADE_TRACK_MAX_LEVEL}
                                   </span>
                                   <span className="font-mono text-blue-300/90">
                                     {tier.ilvl} ilvl

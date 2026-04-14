@@ -9,7 +9,6 @@ import {
   fetchJson,
   getSimcStatus,
   isDesktop,
-  removeSimcChannel,
   type SimcStatus,
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
@@ -293,45 +292,6 @@ export default function SettingsPage() {
       } else {
         setSimcMessage({ type: 'error', text: msg });
       }
-    } finally {
-      setSimcAction(null);
-    }
-  };
-
-  const removeInstalledSimcChannel = async (channel: SimcChannelName) => {
-    if (!isDesktop) return;
-    const installedCount = Object.values(simcStatuses).filter(
-      (value) => value?.installed_exists
-    ).length;
-    const targetInstalled = !!simcStatuses[channel]?.installed_exists;
-    if (targetInstalled && installedCount <= 1) {
-      setSimcMessage({
-        type: 'error',
-        text: 'Keep at least one SimC channel installed before removing another.',
-      });
-      return;
-    }
-    const targetPath =
-      simcStatuses[channel]?.channel_path || simcStatuses[channel]?.installed_path || '(unknown)';
-    const confirmed = window.confirm(
-      `Delete SimC ${channel} files from disk at:\n${targetPath}\n\nThis removes that installed channel version.`
-    );
-    if (!confirmed) return;
-
-    setSimcAction(`${channel}:remove`);
-    setSimcMessage(null);
-    try {
-      const status = await removeSimcChannel();
-      setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
-      setSimcMessage({
-        type: 'success',
-        text: `Deleted SimC ${channel} files from disk.`,
-      });
-    } catch (err: any) {
-      setSimcMessage({
-        type: 'error',
-        text: err?.detail || err?.message || 'Failed to remove SimC channel.',
-      });
     } finally {
       setSimcAction(null);
     }
@@ -645,11 +605,9 @@ export default function SettingsPage() {
     cacheSyncing && syncProgress.total > 0
       ? Math.max(0, Math.min(100, Math.round((syncProgress.current / syncProgress.total) * 100)))
       : 0;
-  const installedSimcChannelsCount = Object.values(simcStatuses).filter(
-    (value) => value?.installed_exists
-  ).length;
 
   const activePresetIdx = PRESETS.findIndex(
+
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
   );
 
@@ -843,22 +801,21 @@ export default function SettingsPage() {
                     const isRemoving = actionKey === `${entry.id}:remove`;
                     const installed = !!status?.installed_exists;
                     const hasUpdate = !!status?.update_available && !!status?.latest_version;
-                    const cannotRemoveLastInstalled = installed && installedSimcChannelsCount <= 1;
 
-                    let actionLabel = 'Install';
-                    let actionClass =
-                      'border-emerald-700/40 bg-emerald-950/25 text-emerald-300 hover:bg-emerald-900/30';
-                    let actionHandler = () => void installSimcChannel(entry.id);
+                    let actionLabel = '';
+                    let actionClass = '';
+                    let actionHandler = () => {};
 
-                    if (installed && hasUpdate) {
+                    if (!installed) {
+                      actionLabel = 'Install';
+                      actionClass =
+                        'border-emerald-700/40 bg-emerald-950/25 text-emerald-300 hover:bg-emerald-900/30';
+                      actionHandler = () => void installSimcChannel(entry.id);
+                    } else if (hasUpdate) {
                       actionLabel = 'Update';
                       actionClass =
                         'border-amber-700/40 bg-amber-950/25 text-amber-300 hover:bg-amber-900/30';
-                    } else if (installed) {
-                      actionLabel = 'Remove';
-                      actionClass =
-                        'border-red-800/40 bg-red-950/25 text-red-300 hover:bg-red-900/30';
-                      actionHandler = () => void removeInstalledSimcChannel(entry.id);
+                      actionHandler = () => void installSimcChannel(entry.id);
                     }
 
                     return (
@@ -881,34 +838,24 @@ export default function SettingsPage() {
                               Update available: {status?.latest_version}
                             </p>
                           )}
-                          {cannotRemoveLastInstalled && (
-                            <p className="text-[11px] text-zinc-500">
-                              At least one SimC channel must remain installed.
-                            </p>
-                          )}
                         </div>
 
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={actionHandler}
-                            disabled={
-                              isBusy ||
-                              (!installed && !status?.latest_version) ||
-                              (actionLabel === 'Remove' && cannotRemoveLastInstalled)
-                            }
-                            className={`rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${actionClass}`}
-                          >
-                            {isInstalling
-                              ? 'Installing...'
-                              : isRemoving
-                                ? 'Removing...'
-                                : actionLabel}
-                          </button>
+                          {actionLabel && (
+                            <button
+                              type="button"
+                              onClick={actionHandler}
+                              disabled={isBusy || (!installed && !status?.latest_version)}
+                              className={`rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${actionClass}`}
+                            >
+                              {isInstalling ? 'Installing...' : isRemoving ? 'Removing...' : actionLabel}
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
-                  })}
+                    })}
+
                 </div>
               </div>
 

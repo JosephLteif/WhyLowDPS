@@ -121,7 +121,7 @@ export default function TopHeader() {
   }, [user, refreshSimcStatus, simcFastPolling, simcStatus?.is_updating, simcUpdating]);
 
   useEffect(() => {
-    const onSimcDownloadStart = (event: Event) => {
+    const onSimcDownloadStart = (_: Event) => {
       setSimcUpdating(true);
       setSimcFastPolling(true);
       setSimcToastDismissed(false);
@@ -174,11 +174,9 @@ export default function TopHeader() {
   }, [refreshSimcStatus]);
 
   const simcProgress = simcStatus?.download_progress;
-  const simcIsUnpacking = simcProgress?.phase === 'extracting_archive';
   const simcIsIndeterminate =
     !simcProgress ||
     simcProgress.percent == null ||
-    simcIsUnpacking ||
     (simcProgress.bytes_total ?? 0) <= 0;
   const showSimcToast =
     isDesktop &&
@@ -279,8 +277,8 @@ export default function TopHeader() {
                 {simcStatus?.is_updating || simcUpdating
                   ? simcProgress?.phase === 'extracting_archive'
                     ? 'Unpacking archive...'
-                    : simcProgress?.phase === 'installing_files'
-                      ? 'Installing files...'
+                    : simcProgress?.phase === 'installing_files' || simcProgress?.phase === 'extracting_data'
+                      ? 'Extracting data files...'
                       : 'Downloading...'
                   : `Remote: ${simcStatus?.latest_version || 'Unknown'}`}
               </p>
@@ -317,21 +315,17 @@ export default function TopHeader() {
                   />
                 )}
               </div>
-              {!simcIsUnpacking && (
-                <div className="mt-0.5 text-[11px] text-zinc-500">
-                  {simcProgress?.unit === 'files'
-                    ? `${simcProgress?.bytes_downloaded ?? 0}${simcProgress?.bytes_total ? ` / ${simcProgress.bytes_total}` : ''} files`
-                    : `${formatBytes(simcProgress?.bytes_downloaded ?? null)}${simcProgress?.bytes_total ? ` / ${formatBytes(simcProgress.bytes_total)}` : ''}`}
-                </div>
-              )}
-              {!simcIsUnpacking && (
-                <div className="mt-0.5 text-[11px] text-zinc-500">
-                  {simcProgress?.unit === 'files'
-                    ? `Speed: ${simcProgress?.speed_bps != null ? `${simcProgress.speed_bps.toFixed(1)} files/s` : 'Unknown'}`
-                    : `Speed: ${formatBytes(simcProgress?.speed_bps ?? null)}/s`}
-                </div>
-              )}
-              {!simcIsIndeterminate && !simcIsUnpacking && (
+              <div className="mt-0.5 text-[11px] text-zinc-500">
+                {simcProgress?.unit === 'files'
+                  ? `${simcProgress?.bytes_downloaded ?? 0}${simcProgress?.bytes_total ? ` / ${simcProgress.bytes_total}` : ''} files`
+                  : `${formatBytes(simcProgress?.bytes_downloaded ?? null)}${simcProgress?.bytes_total ? ` / ${formatBytes(simcProgress.bytes_total)}` : ''}`}
+              </div>
+              <div className="mt-0.5 text-[11px] text-zinc-500">
+                {simcProgress?.unit === 'files'
+                  ? `Speed: ${simcProgress?.speed_bps != null ? `${simcProgress.speed_bps.toFixed(1)} files/s` : 'Unknown'}`
+                  : `Speed: ${formatBytes(simcProgress?.speed_bps ?? null)}/s`}
+              </div>
+              {!simcIsIndeterminate && (
                 <div className="mt-0.5 text-[11px] text-zinc-500">
                   ETA: {formatEta(simcProgress?.eta_seconds ?? null)}
                 </div>
@@ -342,19 +336,17 @@ export default function TopHeader() {
           {!!simcError && <p className="mt-2 text-[11px] text-red-300">{simcError}</p>}
 
           <div className="mt-3 flex gap-2">
-            {!simcIsUnpacking && (
-              <button
-                onClick={() => void refreshSimcStatus()}
-                disabled={simcLoading || simcUpdating || !!simcStatus?.is_updating}
-                className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Check
-              </button>
-            )}
+            <button
+              onClick={() => void refreshSimcStatus()}
+              disabled={simcLoading || simcUpdating || !!simcStatus?.is_updating}
+              className="rounded-md border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] font-semibold text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Check
+            </button>
             {simcStatus?.update_available && (
               <button
                 onClick={() => void handleSimcUpdate()}
-                disabled={simcUpdating || simcLoading || !!simcStatus?.is_updating}
+                disabled={simcUpdating || simcLoading || simcStatus?.is_updating}
                 className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {simcUpdating || simcStatus?.is_updating ? 'Downloading...' : 'Update SimC'}

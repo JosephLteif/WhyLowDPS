@@ -84,19 +84,6 @@ export default function SimcRequiredModal() {
     }
   }, [refreshStatuses]);
 
-  const handleRetryCheck = useCallback(async () => {
-    await refreshStatuses();
-    const status = await getSimcStatus().catch(() => null);
-    if (status) {
-      setStatuses((prev) => ({ ...prev, nightly: status }));
-    }
-    const stillMissing = !status?.installed_exists;
-    const canAttempt = !!status?.latest_version;
-    if (!downloading && !status?.is_updating && stillMissing && canAttempt) {
-      await handleDownload();
-    }
-  }, [downloading, handleDownload, refreshStatuses]);
-
   const anyInstalled = useMemo(() => {
     return Object.values(statuses).some((status) => status?.installed_exists);
   }, [statuses]);
@@ -110,7 +97,6 @@ export default function SimcRequiredModal() {
   const isIndeterminate =
     !progress ||
     progress.percent == null ||
-    progress.phase === 'extracting_archive' ||
     (progress.bytes_total ?? 0) <= 0;
 
   const formatBytes = (bytes?: number | null) => {
@@ -179,8 +165,8 @@ export default function SimcRequiredModal() {
               <span>
                 {progress?.phase === 'extracting_archive'
                   ? 'Unpacking archive...'
-                  : progress?.phase === 'installing_files'
-                    ? 'Installing files...'
+                  : progress?.phase === 'installing_files' || progress?.phase === 'extracting_data'
+                    ? 'Extracting data files...'
                     : 'Downloading...'}
               </span>
               <span>{isIndeterminate ? '...' : `${progress?.percent?.toFixed(1)}%`}</span>
@@ -241,13 +227,6 @@ export default function SimcRequiredModal() {
         </div>
 
         <div className="mt-5 flex gap-2">
-          <button
-            onClick={() => void handleRetryCheck()}
-            disabled={loading || downloading || isUpdating}
-            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? 'Checking...' : 'Retry Check'}
-          </button>
           <button
             onClick={() => void handleDownload()}
             disabled={downloading || loading || isUpdating || !selectedStatus?.latest_version}

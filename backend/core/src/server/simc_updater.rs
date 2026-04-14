@@ -522,8 +522,6 @@ async fn do_download_channel(
         )
     })?;
 
-    updater.set_phase("extracting_archive", ProgressUnit::Files, None);
-
     let install_result = tokio::task::spawn_blocking({
         let archive_path = archive_path.clone();
         let extract_dir = extract_dir.clone();
@@ -572,8 +570,8 @@ fn install_from_archive(
     updater: &SimcUpdaterState,
 ) -> Result<(), String> {
     match latest.archive_kind {
-        ArchiveKind::SevenZip => extract_7z_archive(archive_path, extract_dir)?,
-        ArchiveKind::Zip => extract_zip_archive(archive_path, extract_dir)?,
+        ArchiveKind::SevenZip => extract_7z_archive(archive_path, extract_dir, updater)?,
+        ArchiveKind::Zip => extract_zip_archive(archive_path, extract_dir, updater)?,
     };
 
     let extracted_bin = find_simc_binary(extract_dir).ok_or_else(|| {
@@ -583,14 +581,11 @@ fn install_from_archive(
         )
     })?;
 
-    let source_dir = extracted_bin
-        .parent()
-        .map(Path::to_path_buf)
-        .ok_or_else(|| "Failed to resolve extracted SimC folder".to_string())?;
+    let source_dir = find_source_root(extract_dir, &extracted_bin);
 
     let files_to_copy = gather_files(&source_dir)?;
     updater.set_phase(
-        "installing_files",
+        "extracting_data",
         ProgressUnit::Files,
         Some(files_to_copy.len() as u64),
     );
@@ -954,7 +949,19 @@ fn find_system_7z() -> Option<PathBuf> {
 
 /// Extract a .7z archive. Tries system 7z.exe first (handles all codecs),
 /// then falls back to the sevenz-rust2 Rust crate.
-fn extract_7z_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
+fn extract_7z_archive(
+    archive_path: &Path,
+    dest: &Path,
+    updater: &SimcUpdaterState,
+) -> Result<(), String> {
+    let total_entries = std::fs::File::open(archive_path)
+        .ok()
+        .and_then(|mut file| {
+            sevenz_rust2::Archive::read(&mut file, &sevenz_rust2::Password::empty()).ok()
+        })
+        .map(|archive| archive.files.len() as u64);
+
+    updater.set_phase("extracting_archive", ProgressUnit::Files, total_entries);
     if let Some(seven_zip) = find_system_7z() {
         eprintln!(
             "Using system 7-Zip ({}) for extraction",
@@ -988,6 +995,12 @@ fn extract_7z_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
             ));
         }
 
+        // When using system 7z, we can't easily track progress per file,
+        // so we just jump to total if we have it.
+        if let Some(total) = total_entries {
+            updater.update_downloaded(total);
+        }
+
         // Clean up optional entries (e.g. WACTAC.h!ml) after system 7z extraction
         cleanup_optional_entries_recursive(dest);
         return Ok(());
@@ -995,6 +1008,7 @@ fn extract_7z_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
 
     // Fall back to the Rust crate
     eprintln!("No system 7-Zip found, falling back to built-in extractor");
+    let mut files_extracted = 0;
     sevenz_rust2::decompress_file_with_extract_fn(
         archive_path,
         dest,
@@ -1002,7 +1016,10 @@ fn extract_7z_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
             // DO NOT skip files entirely during extraction. In 7z solid blocks,
             // failing to consume the reader can cause ChecksumVerificationFailed.
             // We extract everything, then clean up the optional entries afterward.
-            sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path)
+            let res = sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path);
+            files_extracted += 1;
+            updater.update_downloaded(files_extracted);
+            res
         },
     )
     .and_then(|_| {
@@ -1050,7 +1067,11 @@ fn cleanup_optional_entries_recursive(root: &Path) {
     }
 }
 
-fn extract_zip_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
+fn extract_zip_archive(
+    archive_path: &Path,
+    dest: &Path,
+    updater: &SimcUpdaterState,
+) -> Result<(), String> {
     let reader = std::fs::File::open(archive_path).map_err(|e| {
         format!(
             "Failed to open zip archive {}: {}",
@@ -1061,7 +1082,14 @@ fn extract_zip_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
     let mut archive =
         zip::ZipArchive::new(reader).map_err(|e| format!("Failed to parse zip archive: {e}"))?;
 
-    for idx in 0..archive.len() {
+    let total_entries = archive.len();
+    updater.set_phase(
+        "extracting_archive",
+        ProgressUnit::Files,
+        Some(total_entries as u64),
+    );
+
+    for idx in 0..total_entries {
         let mut file = archive
             .by_index(idx)
             .map_err(|e| format!("Failed reading zip entry {idx}: {e}"))?;
@@ -1081,6 +1109,7 @@ fn extract_zip_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
                     e
                 )
             })?;
+            updater.update_downloaded(idx as u64 + 1);
             continue;
         }
 
@@ -1098,6 +1127,8 @@ fn extract_zip_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
             .map_err(|e| format!("Failed creating extracted file {}: {}", out.display(), e))?;
         std::io::copy(&mut file, &mut out_file)
             .map_err(|e| format!("Failed writing extracted file {}: {}", out.display(), e))?;
+
+        updater.update_downloaded(idx as u64 + 1);
     }
 
     Ok(())
@@ -1120,6 +1151,40 @@ fn should_skip_optional_entry(path: &Path) -> bool {
         .to_ascii_lowercase()
         .replace('!', "");
     name.contains("wactac") && name.contains("html")
+}
+
+fn find_source_root(extract_dir: &Path, binary_path: &Path) -> PathBuf {
+    let mut current = binary_path.to_path_buf();
+    // Start with the binary's parent
+    if let Some(parent) = current.parent() {
+        current = parent.to_path_buf();
+    } else {
+        return extract_dir.to_path_buf();
+    }
+
+    let mut best_root = current.clone();
+
+    // Climb up from binary parent towards extract_dir
+    let mut temp = current;
+    while temp != extract_dir {
+        // If this folder has scdata, it's a very strong candidate for the package root
+        if temp.join("scdata").exists() {
+            best_root = temp.clone();
+        }
+
+        if let Some(parent) = temp.parent() {
+            temp = parent.to_path_buf();
+        } else {
+            break;
+        }
+    }
+
+    // Check extract_dir itself too
+    if extract_dir.join("scdata").exists() {
+        best_root = extract_dir.to_path_buf();
+    }
+
+    best_root
 }
 
 fn find_simc_binary(search_root: &Path) -> Option<PathBuf> {

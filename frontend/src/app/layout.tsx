@@ -7,9 +7,8 @@ import SimcRequiredModal from './components/SimcRequiredModal';
 import TopHeader from './components/TopHeader';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
-import UpdatePrompt from './components/UpdatePrompt';
 import './globals.css';
-import packageJson from '../../package.json';
+import React from 'react';
 
 export const metadata: Metadata = {
   title: 'WhyLowDps',

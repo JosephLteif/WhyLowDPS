@@ -59,6 +59,7 @@ interface OptimizeItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   item: ResolvedItem | null;
+  className?: string | null;
   onApply: (enchantId: number, gemIds: number[]) => void;
 }
 
@@ -121,6 +122,7 @@ export default function OptimizeItemModal({
   isOpen,
   onClose,
   item,
+  className,
   onApply,
 }: OptimizeItemModalProps) {
   const [rawEnchants, setRawEnchants] = useState<RawEnchant[]>([]);
@@ -143,14 +145,17 @@ export default function OptimizeItemModal({
       setSearchTerm('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, item]);
+  }, [isOpen, item, className]);
 
   async function fetchOptions() {
     if (!item) return;
     setLoading(true);
     try {
       const [enchantsRes, gemsRes] = await Promise.all([
-        fetch(`${API_URL}/api/gear/enchant-options?slot=${item.slot}`, { credentials: 'include' }),
+        fetch(
+          `${API_URL}/api/gear/enchant-options?slot=${item.slot}${className ? `&class_name=${encodeURIComponent(className)}` : ''}`,
+          { credentials: 'include' }
+        ),
         fetch(`${API_URL}/api/gear/gem-options`, { credentials: 'include' }),
       ]);
       if (enchantsRes.ok) {

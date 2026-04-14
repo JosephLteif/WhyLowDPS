@@ -111,7 +111,18 @@ pub(super) async fn list_enchant_options(query: web::Query<EnchantOptionsQuery>)
                 .json(json!({"detail": "Invalid slot for enchantments"}))
         }
     };
-    let options = crate::item_db::list_enchants_for_slot(inv_type);
+    let mut options = crate::item_db::list_enchants_for_slot(inv_type);
+    let is_death_knight = matches!(
+        query.class_name.trim().to_ascii_lowercase().as_str(),
+        "death_knight" | "deathknight" | "dk"
+    );
+    if !is_death_knight {
+        options.retain(|opt| {
+            opt.get("categoryName")
+                .and_then(|v| v.as_str())
+                .is_none_or(|category| !category.eq_ignore_ascii_case("runes"))
+        });
+    }
     HttpResponse::Ok().json(options)
 }
 

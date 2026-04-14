@@ -637,6 +637,7 @@ export default function TopGearItemSelector({
         isOpen={isOptimizeOpen}
         onClose={() => setOptimizeOpen(false)}
         item={optimizeItem}
+        className={resolved.character.class_name}
         onApply={handleOptimize}
       />
 

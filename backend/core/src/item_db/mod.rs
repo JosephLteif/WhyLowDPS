@@ -320,6 +320,7 @@ pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
                 "name": name,
                 "displayName": e.display_name,
                 "baseDisplayName": e.base_display_name,
+                "categoryName": e.category_name,
                 "itemId": e.item_id,
                 "itemName": e.item_name,
                 "itemIcon": e.item_icon,

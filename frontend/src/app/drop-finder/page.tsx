@@ -403,11 +403,8 @@ export default function DropFinderPage() {
     ];
   }, [currentTrackInfo]);
 
-  function selectAll() {
-    if (!drops) return;
-    const all = new Set<number>();
-    for (const items of Object.values(drops)) for (const item of items) all.add(item.item_id);
-    setSelected(all);
+  function selectAll(itemIds: number[]) {
+    setSelected(new Set(itemIds));
   }
 
   const headerLabel =
@@ -422,8 +419,9 @@ export default function DropFinderPage() {
       for (const item of items) {
         if (selected.has(item.item_id)) {
           if (item.specs?.length && item.specs.length > 0) {
-            const matchesSpec = item.specs.some((specId) => activeSpecIds.includes(specId));
-            if (!matchesSpec) continue;
+            const matchesSpec = item.specs.some((id) => activeSpecIds.includes(id));
+            const matchesClass = classId != null && item.specs.includes(classId);
+            if (!matchesSpec && !matchesClass) continue;
           }
           const resolved = resolveUpgrade(
             item,
@@ -443,7 +441,7 @@ export default function DropFinderPage() {
             const convertSlot = slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slot;
             if (convertSlot) {
               try {
-                simItem = await fetchJson<SimDropItem>(`${API_URL}/api/catalyst/convert`, {
+                simItem = await fetchJson<SimDropItem>(`${API_URL}/api/gear/catalyst-convert`, {
                   method: 'POST',
                   body: JSON.stringify({
                     class_name: className,
@@ -479,6 +477,7 @@ export default function DropFinderPage() {
     upgradeLevel,
     upgradeTracks,
     activeSpecIds,
+    classId,
     className,
   ]);
 

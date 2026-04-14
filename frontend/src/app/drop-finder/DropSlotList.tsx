@@ -25,7 +25,7 @@ interface DropSlotListProps {
   drops: Record<string, DropItem[]>;
   selected: Set<number>;
   onToggle: (itemId: number) => void;
-  onSelectAll: () => void;
+  onSelectAll: (itemIds: number[]) => void;
   onClear: () => void;
   classSpecIds: number[];
   classId: number | null;
@@ -99,6 +99,11 @@ export default function DropSlotList({
     [visibleDrops]
   );
 
+  const visibleItemIds = useMemo(
+    () => [...new Set(Object.values(visibleDrops).flat().map((item) => item.item_id))],
+    [visibleDrops]
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -130,7 +135,7 @@ export default function DropSlotList({
             ))}
           </div>
           <button
-            onClick={onSelectAll}
+            onClick={() => onSelectAll(visibleItemIds)}
             className="text-[13px] text-gray-500 transition-colors hover:text-white"
           >
             Select all

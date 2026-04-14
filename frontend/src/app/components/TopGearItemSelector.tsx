@@ -91,8 +91,6 @@ function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): numbe
   return Number.parseInt(rawValue, 10) || 0;
 }
 
-const SHOW_SELECTION_BOXES_KEY = 'top_gear_show_selection_boxes';
-
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -105,7 +103,6 @@ export default function TopGearItemSelector({
   const effectiveMaxCombinations = maxCombinations ?? 500;
   const headerRef = useRef<HTMLDivElement>(null);
   const [headerVisible, setHeaderVisible] = useState(true);
-  const [showSelectionBoxes, setShowSelectionBoxes] = useState(false);
   const [gemInfoById, setGemInfoById] = useState<Record<number, GemInfo>>({});
   const [enchantInfoById, setEnchantInfoById] = useState<Record<number, EnchantInfo>>({});
 
@@ -137,16 +134,6 @@ export default function TopGearItemSelector({
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(SHOW_SELECTION_BOXES_KEY);
-    if (saved == null) return;
-    setShowSelectionBoxes(saved === '1');
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem(SHOW_SELECTION_BOXES_KEY, showSelectionBoxes ? '1' : '0');
-  }, [showSelectionBoxes]);
 
   useWowheadTooltips([resolved, gemInfoById, enchantInfoById]);
 
@@ -658,17 +645,6 @@ export default function TopGearItemSelector({
             >
               Add
             </button>
-            <button
-              onClick={() => setShowSelectionBoxes((v) => !v)}
-              className={`rounded-md px-2 py-1 text-[10px] font-bold tracking-wider transition-colors ${
-                showSelectionBoxes
-                  ? 'border border-zinc-500/40 bg-zinc-500/10 text-zinc-200 hover:bg-zinc-500/20'
-                  : 'border border-zinc-700/50 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'
-              }`}
-              title="Show or hide row selection checkboxes"
-            >
-              Boxes {showSelectionBoxes ? 'On' : 'Off'}
-            </button>
           </div>
           {quickSelect}
         </div>
@@ -684,17 +660,6 @@ export default function TopGearItemSelector({
             className="flex items-center gap-1.5 rounded-md bg-gold/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.08em] text-gold hover:bg-gold/20"
           >
             Add Item
-          </button>
-          <button
-            onClick={() => setShowSelectionBoxes((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-bold tracking-[0.08em] transition-colors ${
-              showSelectionBoxes
-                ? 'border border-zinc-500/40 bg-zinc-500/10 text-zinc-200 hover:bg-zinc-500/20'
-                : 'border border-zinc-700/50 bg-white/[0.03] text-zinc-400 hover:bg-white/[0.06]'
-            }`}
-            title="Show or hide row selection checkboxes"
-          >
-            Boxes {showSelectionBoxes ? 'On' : 'Off'}
           </button>
         </div>
         {quickSelect}
@@ -712,7 +677,6 @@ export default function TopGearItemSelector({
             upgradeMenuFor={upgradeMenuFor}
             upgradeOptions={upgradeOptions}
             loadingUpgrades={loadingUpgrades}
-            showSelectionBoxes={showSelectionBoxes}
             onToggle={(item) => toggleItem(item, group.slots)}
             onAddClick={openAddItem}
             onUpgradeClick={openUpgradeMenu}

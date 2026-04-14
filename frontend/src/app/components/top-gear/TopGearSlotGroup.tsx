@@ -20,7 +20,6 @@ interface TopGearSlotGroupProps {
   upgradeMenuFor: string | null;
   upgradeOptions: UpgradeOption[];
   loadingUpgrades: boolean;
-  showSelectionBoxes: boolean;
   onToggle: (item: ResolvedItem) => void;
   onAddClick: (slot: string) => void;
   onUpgradeClick: (item: ResolvedItem) => void;
@@ -50,7 +49,6 @@ export default function TopGearSlotGroup({
   upgradeMenuFor,
   upgradeOptions,
   loadingUpgrades,
-  showSelectionBoxes,
   onToggle,
   onAddClick,
   onUpgradeClick,
@@ -93,7 +91,7 @@ export default function TopGearSlotGroup({
             details={itemDetails(item)}
             ilevel={item.ilevel}
             equipped
-            showCheckbox={showSelectionBoxes}
+            showCheckbox={false}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
             optimized={item.enchant_id > 0 || item.gem_id > 0}
@@ -124,7 +122,7 @@ export default function TopGearSlotGroup({
             details={itemDetails(item)}
             ilevel={item.ilevel}
             selectable
-            showCheckbox={showSelectionBoxes}
+            showCheckbox={false}
             checked={isItemSelected(item)}
             onToggle={() => onToggle(item)}
             vault={item.origin === 'vault'}

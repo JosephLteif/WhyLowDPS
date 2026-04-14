@@ -15,7 +15,7 @@ export const TOKEN_KEY = 'whylowdps_auth_token';
 /** Fetch JSON with consistent error handling. Throws on non-ok responses. */
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = { ...init?.headers } as Record<string, string>;
-  
+
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
@@ -30,12 +30,12 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     }
   }
 
-  const finalInit = { 
-    ...init, 
+  const finalInit = {
+    ...init,
     headers,
-    credentials: 'include' as RequestCredentials 
+    credentials: 'include' as RequestCredentials,
   };
-  
+
   const res = await fetch(url, finalInit);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -44,26 +44,30 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     error.detail = data.detail;
     throw error;
   }
-  return res.json();
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+  return JSON.parse(text) as T;
 }
 
 /** Cache for generic API requests */
 const memoryCache: Record<string, { data: any; expiry: number }> = {};
 
-/** 
+/**
  * Fetches JSON and caches it in memory or localStorage.
  * Only caches GET requests.
  */
 export async function fetchJsonCached<T>(
-  url: string, 
-  options?: { 
-    ttl?: number; 
+  url: string,
+  options?: {
+    ttl?: number;
     usePersistentCache?: boolean;
     init?: RequestInit;
   }
 ): Promise<T> {
   const { ttl = 300000, usePersistentCache = false, init } = options || {};
-  
+
   if (init?.method && init.method !== 'GET') {
     return fetchJson<T>(url, init);
   }
@@ -95,7 +99,7 @@ export async function fetchJsonCached<T>(
 
   // 3. Fetch Fresh
   const data = await fetchJson<T>(url, init);
-  
+
   // 4. Update Caches
   const cacheEntry = { data, expiry: now + ttl };
   memoryCache[cacheKey] = cacheEntry;

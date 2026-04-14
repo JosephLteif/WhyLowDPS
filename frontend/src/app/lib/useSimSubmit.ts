@@ -5,6 +5,7 @@ import { API_URL, fetchJson } from './api';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 import { simResultHref } from './routes';
+import { buildFightStylePayload } from './fight-style';
 
 interface UseSimSubmitOptions {
   /** API endpoint path, e.g. "/api/sim" */
@@ -30,7 +31,9 @@ function normalizeRealm(realm: string): string {
     .replace(/[\s_-]+/g, '');
 }
 
-function extractSimcIdentity(simcInput: string): { name: string; realm: string; region: string } | null {
+function extractSimcIdentity(
+  simcInput: string
+): { name: string; realm: string; region: string } | null {
   const lines = simcInput.split(/\r?\n/);
   let name = '';
   let realm = '';
@@ -78,6 +81,25 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     targetCount,
     fightLength,
     customApl,
+    includeTimeline,
+    externalBuffChaosBrand,
+    externalBuffMysticTouch,
+    externalBuffSkyfury,
+    externalBuffPowerInfusion,
+    externalBuffBlessingOfBronze,
+    externalBuffAugmentation,
+    raidBuffBloodlust,
+    raidBuffArcaneIntellect,
+    raidBuffPowerWordFortitude,
+    raidBuffMarkOfTheWild,
+    raidBuffBattleShout,
+    raidBuffHuntersMark,
+    raidBuffBleeding,
+    consumableFlask,
+    consumableFood,
+    consumablePotion,
+    consumableAugmentation,
+    consumableTemporaryEnchant,
     simcHeader,
     simcBasePlayer,
     simcRaidActors,
@@ -96,11 +118,11 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
       if (!identity) return;
 
       try {
-        const data = await fetchJson<{ characters: Array<{ name: string; realm: string; region: string }> }>(
-          `${API_URL}/api/bnet/user/characters`
-        );
-        const characters = Array.isArray((data as unknown))
-          ? ((data as unknown) as Array<{ name: string; realm: string; region: string }>)
+        const data = await fetchJson<{
+          characters: Array<{ name: string; realm: string; region: string }>;
+        }>(`${API_URL}/api/bnet/user/characters`);
+        const characters = Array.isArray(data as unknown)
+          ? (data as unknown as Array<{ name: string; realm: string; region: string }>)
           : data?.characters || [];
 
         const match = characters.find((c) => {
@@ -141,6 +163,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
 
     const pagePayload = buildPayload();
     if (pagePayload === null) return;
+    const isConsumableMatrix = pagePayload.sim_type === 'consumable_matrix';
 
     setSubmitting(true);
     clearScenarioSiblings();
@@ -164,6 +187,36 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
         ...(simcRaidActors ? { simc_raid_actors: simcRaidActors } : {}),
         ...(simcPostCombos ? { simc_post_combos: simcPostCombos } : {}),
         ...(simcFooter ? { simc_footer: simcFooter } : {}),
+        ...(includeTimeline ? { include_timeline: true } : { include_timeline: false }),
+        ...(externalBuffChaosBrand ? { external_buff_chaos_brand: true } : {}),
+        ...(externalBuffMysticTouch ? { external_buff_mystic_touch: true } : {}),
+        ...(externalBuffSkyfury ? { external_buff_skyfury: true } : {}),
+        ...(externalBuffPowerInfusion ? { external_buff_power_infusion: true } : {}),
+        ...(externalBuffBlessingOfBronze ? { external_buff_blessing_of_bronze: true } : {}),
+        ...(externalBuffAugmentation ? { external_buff_augmentation: true } : {}),
+        raid_buff_customized: true,
+        raid_buff_bloodlust: raidBuffBloodlust,
+        raid_buff_arcane_intellect: raidBuffArcaneIntellect,
+        raid_buff_power_word_fortitude: raidBuffPowerWordFortitude,
+        raid_buff_mark_of_the_wild: raidBuffMarkOfTheWild,
+        raid_buff_battle_shout: raidBuffBattleShout,
+        raid_buff_hunters_mark: raidBuffHuntersMark,
+        raid_buff_bleeding: raidBuffBleeding,
+        ...(!isConsumableMatrix && consumableFlask.trim()
+          ? { consumable_flask: consumableFlask.trim() }
+          : {}),
+        ...(!isConsumableMatrix && consumableFood.trim()
+          ? { consumable_food: consumableFood.trim() }
+          : {}),
+        ...(!isConsumableMatrix && consumablePotion.trim()
+          ? { consumable_potion: consumablePotion.trim() }
+          : {}),
+        ...(!isConsumableMatrix && consumableAugmentation.trim()
+          ? { consumable_augmentation: consumableAugmentation.trim() }
+          : {}),
+        ...(!isConsumableMatrix && consumableTemporaryEnchant.trim()
+          ? { consumable_temporary_enchant: consumableTemporaryEnchant.trim() }
+          : {}),
       };
 
       const results = await Promise.allSettled(
@@ -174,8 +227,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
             body: JSON.stringify({
               ...sharedPayload,
               fight_style: config.fightStyle,
-              desired_targets: config.targetCount,
-              max_time: config.fightLength,
+              ...buildFightStylePayload(config.fightStyle, config.targetCount, config.fightLength),
             }),
           });
         })
@@ -231,6 +283,25 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     targetCount,
     fightLength,
     customApl,
+    includeTimeline,
+    externalBuffChaosBrand,
+    externalBuffMysticTouch,
+    externalBuffSkyfury,
+    externalBuffPowerInfusion,
+    externalBuffBlessingOfBronze,
+    externalBuffAugmentation,
+    raidBuffBloodlust,
+    raidBuffArcaneIntellect,
+    raidBuffPowerWordFortitude,
+    raidBuffMarkOfTheWild,
+    raidBuffBattleShout,
+    raidBuffHuntersMark,
+    raidBuffBleeding,
+    consumableFlask,
+    consumableFood,
+    consumablePotion,
+    consumableAugmentation,
+    consumableTemporaryEnchant,
     simcHeader,
     simcBasePlayer,
     simcRaidActors,

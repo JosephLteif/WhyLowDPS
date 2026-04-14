@@ -21,6 +21,150 @@ pub(super) fn sanitize_custom_simc(input: &str) -> String {
         .join("\n")
 }
 
+fn sanitize_simc_token(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let ok = trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/' | ':' | '+'));
+    if ok {
+        Some(trimmed.to_string())
+    } else {
+        None
+    }
+}
+
+pub(super) fn apply_shared_simc_options(
+    simc_input: &str,
+    options: &SimOptions,
+    include_external_buffs: bool,
+) -> String {
+    let mut extra_lines: Vec<String> = Vec::new();
+
+    if include_external_buffs {
+        if options.raid_buff_customized {
+            extra_lines.push(format!(
+                "override.bloodlust={}",
+                if options.raid_buff_bloodlust { 1 } else { 0 }
+            ));
+            extra_lines.push(format!(
+                "override.arcane_intellect={}",
+                if options.raid_buff_arcane_intellect {
+                    1
+                } else {
+                    0
+                }
+            ));
+            extra_lines.push(format!(
+                "override.power_word_fortitude={}",
+                if options.raid_buff_power_word_fortitude {
+                    1
+                } else {
+                    0
+                }
+            ));
+            extra_lines.push(format!(
+                "override.battle_shout={}",
+                if options.raid_buff_battle_shout { 1 } else { 0 }
+            ));
+            extra_lines.push(format!(
+                "override.mark_of_the_wild={}",
+                if options.raid_buff_mark_of_the_wild {
+                    1
+                } else {
+                    0
+                }
+            ));
+            extra_lines.push(format!(
+                "override.hunters_mark={}",
+                if options.raid_buff_hunters_mark { 1 } else { 0 }
+            ));
+            extra_lines.push(format!(
+                "override.bleeding={}",
+                if options.raid_buff_bleeding { 1 } else { 0 }
+            ));
+            extra_lines.push(format!(
+                "override.mystic_touch={}",
+                if options.external_buff_mystic_touch {
+                    1
+                } else {
+                    0
+                }
+            ));
+            extra_lines.push(format!(
+                "override.chaos_brand={}",
+                if options.external_buff_chaos_brand {
+                    1
+                } else {
+                    0
+                }
+            ));
+            extra_lines.push(format!(
+                "override.skyfury={}",
+                if options.external_buff_skyfury { 1 } else { 0 }
+            ));
+            extra_lines.push(format!(
+                "override.blessing_of_the_bronze={}",
+                if options.external_buff_blessing_of_bronze {
+                    1
+                } else {
+                    0
+                }
+            ));
+        } else {
+            if options.external_buff_chaos_brand {
+                extra_lines.push("override.chaos_brand=1".to_string());
+            }
+            if options.external_buff_mystic_touch {
+                extra_lines.push("override.mystic_touch=1".to_string());
+            }
+            if options.external_buff_skyfury {
+                extra_lines.push("override.skyfury=1".to_string());
+            }
+            if options.external_buff_blessing_of_bronze {
+                extra_lines.push("override.blessing_of_the_bronze=1".to_string());
+            }
+        }
+
+        if options.external_buff_power_infusion {
+            extra_lines.push("external_buffs.power_infusion=0/120/240".to_string());
+        }
+        if options.external_buff_augmentation {
+            extra_lines.push("dragonflight.brilliance_party=1".to_string());
+        }
+    }
+
+    if let Some(v) = sanitize_simc_token(&options.consumable_flask) {
+        extra_lines.push(format!("flask={}", v));
+    }
+    if let Some(v) = sanitize_simc_token(&options.consumable_food) {
+        extra_lines.push(format!("food={}", v));
+    }
+    if let Some(v) = sanitize_simc_token(&options.consumable_potion) {
+        extra_lines.push(format!("potion={}", v));
+    }
+    if let Some(v) = sanitize_simc_token(&options.consumable_augmentation) {
+        extra_lines.push(format!("augmentation={}", v));
+    }
+    if let Some(v) = sanitize_simc_token(&options.consumable_temporary_enchant) {
+        if !v.starts_with("off_hand:") {
+            extra_lines.push(format!("temporary_enchant={}", v));
+        }
+    }
+
+    if extra_lines.is_empty() {
+        return simc_input.to_string();
+    }
+
+    let mut out = simc_input.to_string();
+    out.push_str("\n# Shared Sim Options\n");
+    out.push_str(&extra_lines.join("\n"));
+    out.push('\n');
+    out
+}
+
 /// Inject expert mode fields at the correct positions in the SimC profile.
 ///
 /// For profileset sims (has `# Base Actor` and `### Combo` markers):

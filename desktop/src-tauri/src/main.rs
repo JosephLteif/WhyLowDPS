@@ -10,6 +10,41 @@ use whylowdps_core::game_data;
 use whylowdps_core::server;
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
 
+fn seed_runtime_data_if_missing(bundled_data_dir: &PathBuf, runtime_data_dir: &PathBuf) {
+    let runtime_classes = runtime_data_dir.join("classes.json");
+    if runtime_classes.exists() {
+        return;
+    }
+
+    let bundled_classes = bundled_data_dir.join("classes.json");
+    if !bundled_classes.exists() {
+        return;
+    }
+
+    let mut stack: Vec<(PathBuf, PathBuf)> =
+        vec![(bundled_data_dir.clone(), runtime_data_dir.clone())];
+    while let Some((src_dir, dst_dir)) = stack.pop() {
+        let _ = std::fs::create_dir_all(&dst_dir);
+        let entries = match std::fs::read_dir(&src_dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+
+        for entry in entries.flatten() {
+            let src_path = entry.path();
+            let dst_path = dst_dir.join(entry.file_name());
+            if src_path.is_dir() {
+                stack.push((src_path, dst_path));
+            } else if src_path.is_file() {
+                if let Some(parent) = dst_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::copy(&src_path, &dst_path);
+            }
+        }
+    }
+}
+
 #[tauri::command]
 async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), String> {
     // We use the Blizzard logout endpoint with a 'ref' parameter to force a session clear
@@ -45,15 +80,18 @@ struct SystemInfo {
 
 #[tauri::command]
 async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
-    let resolve_resource = |path: &str| {
+    let resolve_bundled_resource = |path: &str| {
         app.path()
             .resolve(path, BaseDirectory::Resource)
             .unwrap_or_else(|_| PathBuf::from(format!("./{}", path)))
     };
 
-    let data_dir = resolve_resource("data");
-    let simc_dir = resolve_resource("simc");
-
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_else(|_| PathBuf::from("./"));
+    let data_dir = app_data_dir.join("data");
+    let simc_dir = resolve_bundled_resource("simc");
     // Specifically check for critical files
     let classes_json = data_dir.join("classes.json");
     let simc_exe = if cfg!(windows) {
@@ -159,17 +197,16 @@ fn main() {
         .setup(|app| {
             let app_handle = app.handle().clone();
 
-            // 1. Resolve Resource Paths (simc, data)
-            // With flattened mapping, these are now at the root of the resource bundle
-            let resolve_resource = |path: &str, dev_fallback: &str| {
+            // 1. Resolve bundled resources
+            let resolve_bundled_resource = |path: &str, dev_fallback: &str| {
                 app_handle
                     .path()
                     .resolve(path, BaseDirectory::Resource)
                     .unwrap_or_else(|_| PathBuf::from(dev_fallback))
             };
 
-            let data_dir = resolve_resource("data", "../../backend/resources/data");
-            let simc_dir = resolve_resource("simc", "../../backend/resources/simc");
+            let bundled_data_dir = resolve_bundled_resource("data", "../../backend/resources/data");
+            let simc_dir = resolve_bundled_resource("simc", "../../backend/resources/simc");
 
             let simc_bin = if cfg!(windows) {
                 simc_dir.join("simc.exe")
@@ -177,18 +214,14 @@ fn main() {
                 simc_dir.join("simc")
             };
 
-            println!("Resolved data_dir: {:?}", data_dir);
+            println!("Resolved bundled_data_dir: {:?}", bundled_data_dir);
             println!("Resolved simc_dir: {:?}", simc_dir);
             println!("Resolved simc_bin: {:?}", simc_bin);
-
-            if !data_dir.exists() {
-                eprintln!("CRITICAL: data_dir does not exist at {:?}", data_dir);
-            }
             if !simc_bin.exists() {
                 eprintln!("CRITICAL: simc_bin does not exist at {:?}", simc_bin);
             }
 
-            // 2. Resolve Database Path (persistent SQLite)
+            // 2. Resolve writable runtime paths (persistent app data)
             let app_data_dir = app_handle
                 .path()
                 .app_data_dir()
@@ -196,6 +229,13 @@ fn main() {
             if !app_data_dir.exists() {
                 let _ = std::fs::create_dir_all(&app_data_dir);
             }
+
+            let data_dir = app_data_dir.join("data");
+            if !data_dir.exists() {
+                let _ = std::fs::create_dir_all(&data_dir);
+            }
+            seed_runtime_data_if_missing(&bundled_data_dir, &data_dir);
+
             let db_path = app_data_dir.join("whylowdps.db");
             let db_path_str = db_path.to_string_lossy().to_string();
 

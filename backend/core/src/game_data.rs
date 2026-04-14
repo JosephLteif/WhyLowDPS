@@ -20,6 +20,41 @@ pub use crate::types::class_data::{quality_name, QUALITY_NAMES};
 
 pub fn get_instances() -> Vec<Value> {
     item_db::instances()
+        .into_iter()
+        .map(|mut inst| {
+            if let Some(obj) = inst.as_object_mut() {
+                let image_url = obj
+                    .get("image_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        obj.get("image_background")
+                            .and_then(|v| v.as_str())
+                            .map(|slug| {
+                                format!(
+                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
+                                    slug
+                                )
+                            })
+                    })
+                    .or_else(|| {
+                        obj.get("image_button")
+                            .and_then(|v| v.as_str())
+                            .map(|slug| {
+                                format!(
+                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
+                                    slug
+                                )
+                            })
+                    });
+
+                if let Some(url) = image_url {
+                    obj.insert("image_url".to_string(), Value::String(url));
+                }
+            }
+            inst
+        })
+        .collect()
 }
 
 // ---- Drop Resolver ----
@@ -157,7 +192,8 @@ pub fn get_instance_drops(
 
                 // Filter spec restrictions (items with explicit spec lists)
                 if let Some(specs) = &item.classes {
-                    if !allowed_specs.is_empty() && !allowed_specs.iter().any(|s| specs.contains(s)) {
+                    if !allowed_specs.is_empty() && !allowed_specs.iter().any(|s| specs.contains(s))
+                    {
                         continue;
                     }
                 }

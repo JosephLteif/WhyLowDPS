@@ -340,6 +340,26 @@ pub async fn start_with_storage_bind(
                     "/api/data/status",
                     web::get().to(data_sync::get_sync_status),
                 )
+                .route(
+                    "/api/data/files",
+                    web::get().to(data_sync::get_data_file_states),
+                )
+                .route(
+                    "/api/data/files/open-directory",
+                    web::post().to(data_sync::open_data_directory),
+                )
+                .route(
+                    "/api/data/files/missing/download",
+                    web::post().to(data_sync::download_missing_data_files),
+                )
+                .route(
+                    "/api/data/files/{key}/download",
+                    web::post().to(data_sync::download_data_file),
+                )
+                .route(
+                    "/api/data/files/{key}/content",
+                    web::get().to(data_sync::get_data_file_content),
+                )
                 .route("/api/data/sync", web::post().to(data_sync::trigger_sync));
 
             #[cfg(feature = "desktop")]
@@ -450,6 +470,14 @@ pub async fn start_with_storage_bind(
                     "/api/blizzard/character/{realm}/{name}/professions",
                     web::get().to(blizzard::proxy_character_professions),
                 )
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/mythic-keystone-profile",
+                    web::get().to(blizzard::proxy_character_mythic_keystone_profile),
+                )
+                .route(
+                    "/api/blizzard/character/{realm}/{name}/encounters/raids",
+                    web::get().to(blizzard::proxy_character_raid_encounters),
+                )
                 // Game data routes
                 .route(
                     "/api/item-info/{id}",
@@ -478,6 +506,10 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/gear/gem-options",
                     web::get().to(game_data_handlers::list_gem_options),
+                )
+                .route(
+                    "/api/gear/consumable-options",
+                    web::get().to(game_data_handlers::list_consumable_options),
                 )
                 .route(
                     "/api/upgrade-tracks",

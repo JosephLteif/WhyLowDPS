@@ -1,6 +1,6 @@
 use regex::Regex;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::types::class_data::title_case;
 
@@ -41,6 +41,438 @@ fn extract_portion_aps(stat: &Value) -> f64 {
         Some(v) => v.as_f64().unwrap_or(0.0),
         None => 0.0,
     }
+}
+
+fn normalize_plot_stat_key(key: &str) -> String {
+    key.trim().to_lowercase().replace(' ', "_")
+}
+
+fn parse_stat_plots(raw: &Value) -> Option<Value> {
+    let dps_plot = raw
+        .get("sim")
+        .and_then(|s| s.get("dps_plot"))
+        .and_then(|p| p.as_array())?;
+
+    let mut out = serde_json::Map::new();
+
+    for player_entry in dps_plot {
+        let player_data = match player_entry.get("data").and_then(|d| d.as_array()) {
+            Some(v) => v,
+            None => continue,
+        };
+        for block in player_data {
+            let block_obj = match block.as_object() {
+                Some(v) => v,
+                None => continue,
+            };
+            for (stat_name, points_value) in block_obj {
+                let points = match points_value.as_array() {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let mut parsed_points: Vec<Value> = Vec::new();
+                for p in points {
+                    let delta = p
+                        .get("rating")
+                        .or_else(|| p.get("delta"))
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let dps = p.get("dps").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    if dps <= 0.0 {
+                        continue;
+                    }
+                    parsed_points.push(json!({
+                        "delta": delta,
+                        "dps": round1(dps),
+                    }));
+                }
+                if !parsed_points.is_empty() {
+                    parsed_points.sort_by(|a, b| {
+                        let ad = a.get("delta").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let bd = b.get("delta").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        ad.partial_cmp(&bd).unwrap_or(std::cmp::Ordering::Equal)
+                    });
+                    out.insert(normalize_plot_stat_key(stat_name), json!(parsed_points));
+                }
+            }
+        }
+    }
+
+    if out.is_empty() {
+        None
+    } else {
+        Some(Value::Object(out))
+    }
+}
+
+fn parse_series_points(value: Option<&Value>) -> Vec<Value> {
+    let points = match value.and_then(|v| v.as_array()) {
+        Some(v) => v,
+        None => return Vec::new(),
+    };
+
+    points
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, point)| {
+            if let Some(v) = point.as_f64() {
+                return Some(json!({
+                    "t": round2(idx as f64),
+                    "v": round1(v),
+                }));
+            }
+
+            let obj = point.as_object()?;
+            let time = obj
+                .get("x")
+                .or_else(|| obj.get("time"))
+                .and_then(|v| v.as_f64())
+                .unwrap_or(idx as f64);
+            let value = obj
+                .get("v")
+                .or_else(|| obj.get("value"))
+                .or_else(|| obj.get("dps"))
+                .and_then(|v| v.as_f64())?;
+            Some(json!({
+                "t": round2(time),
+                "v": round1(value),
+            }))
+        })
+        .collect()
+}
+
+fn parse_buff_uptimes(player: &Value) -> Vec<Value> {
+    let buffs = match player.get("buffs").and_then(|v| v.as_array()) {
+        Some(v) => v,
+        None => return Vec::new(),
+    };
+
+    let mut out = Vec::new();
+    for buff in buffs {
+        let uptime = buff.get("uptime").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        if uptime <= 0.0 {
+            continue;
+        }
+        let mut entry = json!({
+            "name": buff
+                .get("spell_name")
+                .or_else(|| buff.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown"),
+            "uptime_pct": round2(uptime),
+        });
+        if let Some(spell_id) = buff.get("spell").and_then(|v| v.as_u64()) {
+            if spell_id > 0 {
+                entry["spell_id"] = json!(spell_id);
+            }
+        }
+        if buff.get("cooldown").is_some() {
+            entry["is_cooldown"] = json!(true);
+        }
+        out.push(entry);
+    }
+
+    out.sort_by(|a, b| {
+        let av = a.get("uptime_pct").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let bv = b.get("uptime_pct").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        bv.partial_cmp(&av).unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    out
+}
+
+fn pick_resource_key(resource_timelines: &Value) -> Option<String> {
+    let obj = resource_timelines.as_object()?;
+    if obj.is_empty() {
+        return None;
+    }
+
+    let preferred = [
+        "mana",
+        "energy",
+        "rage",
+        "focus",
+        "runic_power",
+        "insanity",
+        "soul_shard",
+        "holy_power",
+        "combo_points",
+        "maelstrom",
+        "fury",
+        "astral_power",
+        "chi",
+    ];
+
+    for key in preferred {
+        if obj.contains_key(key) {
+            return Some(key.to_string());
+        }
+    }
+
+    obj.keys().next().cloned()
+}
+
+fn parse_timeline_and_apl(player: &Value) -> Option<(Value, Value)> {
+    let collected = player.get("collected_data")?;
+    let action_seq = collected.get("action_sequence")?;
+    let action_obj = action_seq.as_object();
+    let action_rows = action_seq.as_array();
+
+    let time_col = action_obj
+        .and_then(|obj| obj.get("time"))
+        .and_then(|v| v.as_array());
+    let spell_name_col = action_obj
+        .and_then(|obj| obj.get("spell_name"))
+        .and_then(|v| v.as_array());
+    let name_col = action_obj
+        .and_then(|obj| obj.get("name"))
+        .and_then(|v| v.as_array());
+    let id_col = action_obj
+        .and_then(|obj| obj.get("id"))
+        .and_then(|v| v.as_array());
+    let target_col = action_obj
+        .and_then(|obj| obj.get("target"))
+        .and_then(|v| v.as_array());
+    let queue_failed_col = action_obj
+        .and_then(|obj| obj.get("queue_failed"))
+        .and_then(|v| v.as_array());
+    let resources_col = action_obj
+        .and_then(|obj| obj.get("resources"))
+        .and_then(|v| v.as_array());
+    let resources_max_col = action_obj
+        .and_then(|obj| obj.get("resources_max"))
+        .and_then(|v| v.as_array());
+
+    let event_count = if let Some(times) = time_col {
+        times.len()
+    } else if let Some(rows) = action_rows {
+        rows.len()
+    } else {
+        0
+    };
+
+    if event_count == 0 {
+        return None;
+    }
+
+    let resource_timelines = collected
+        .get("resource_timelines")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let mut resource_series_map = serde_json::Map::new();
+    for (key, value) in &resource_timelines {
+        let series = parse_series_points(value.get("data"));
+        if !series.is_empty() {
+            resource_series_map.insert(key.clone(), json!(series));
+        }
+    }
+    let resource_key = pick_resource_key(&Value::Object(resource_timelines.clone()));
+    let resource_series = resource_key
+        .as_ref()
+        .and_then(|k| resource_series_map.get(k))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .map(Value::Array)
+        .unwrap_or_else(|| json!([]));
+
+    let dps_series = parse_series_points(collected.get("timeline_dmg").and_then(|v| v.get("data")));
+
+    let mut cooldown_spell_ids: HashSet<u64> = HashSet::new();
+    if let Some(buffs) = player.get("buffs").and_then(|v| v.as_array()) {
+        for buff in buffs {
+            if buff.get("cooldown").is_some() {
+                if let Some(spell_id) = buff.get("spell").and_then(|v| v.as_u64()) {
+                    if spell_id > 0 {
+                        cooldown_spell_ids.insert(spell_id);
+                    }
+                }
+            }
+        }
+    }
+
+    let max_events = 2000usize;
+    let mut events: Vec<Value> = Vec::new();
+    let mut cooldown_events: Vec<Value> = Vec::new();
+    let mut action_counts: HashMap<String, (u64, u64)> = HashMap::new();
+    let mut queue_failures = 0u64;
+    let mut deltas: Vec<f64> = Vec::new();
+    let mut last_t: Option<f64> = None;
+
+    for idx in 0..event_count.min(max_events) {
+        let row_obj = action_rows
+            .and_then(|rows| rows.get(idx))
+            .and_then(|row| row.as_object());
+
+        let t = row_obj
+            .and_then(|row| row.get("time"))
+            .and_then(|v| v.as_f64())
+            .or_else(|| time_col.and_then(|a| a.get(idx)).and_then(|v| v.as_f64()))
+            .unwrap_or(0.0);
+
+        let ev_name = row_obj
+            .and_then(|row| row.get("spell_name"))
+            .or_else(|| row_obj.and_then(|row| row.get("name")))
+            .and_then(|v| v.as_str())
+            .or_else(|| {
+                spell_name_col
+                    .and_then(|a| a.get(idx))
+                    .or_else(|| name_col.and_then(|a| a.get(idx)))
+                    .and_then(|v| v.as_str())
+            })
+            .unwrap_or("Unknown");
+
+        let spell_id = row_obj
+            .and_then(|row| row.get("id"))
+            .and_then(|v| v.as_u64())
+            .or_else(|| id_col.and_then(|a| a.get(idx)).and_then(|v| v.as_u64()))
+            .unwrap_or(0);
+
+        let ev_target = row_obj
+            .and_then(|row| row.get("target"))
+            .and_then(|v| v.as_str())
+            .or_else(|| target_col.and_then(|a| a.get(idx)).and_then(|v| v.as_str()))
+            .unwrap_or("");
+
+        let q_failed = row_obj
+            .and_then(|row| row.get("queue_failed"))
+            .and_then(|v| v.as_bool())
+            .or_else(|| {
+                queue_failed_col
+                    .and_then(|a| a.get(idx))
+                    .and_then(|v| v.as_bool())
+            })
+            .unwrap_or(false);
+
+        let resources_entry = row_obj
+            .and_then(|row| row.get("resources"))
+            .or_else(|| resources_col.and_then(|a| a.get(idx)));
+        let resources_max_entry = row_obj
+            .and_then(|row| row.get("resources_max"))
+            .or_else(|| resources_max_col.and_then(|a| a.get(idx)));
+
+        if q_failed {
+            queue_failures += 1;
+        }
+        if let Some(prev_t) = last_t {
+            let delta = t - prev_t;
+            if delta > 0.0 {
+                deltas.push(delta);
+            }
+        }
+        last_t = Some(t);
+
+        if !ev_name.is_empty() {
+            let counter = action_counts
+                .entry(ev_name.to_string())
+                .or_insert((0, spell_id));
+            counter.0 += 1;
+            if counter.1 == 0 && spell_id > 0 {
+                counter.1 = spell_id;
+            }
+        }
+
+        let mut event = json!({
+            "t": round2(t),
+            "spell_name": ev_name,
+            "target": ev_target,
+            "queue_failed": q_failed,
+        });
+        if spell_id > 0 {
+            event["spell_id"] = json!(spell_id);
+        }
+
+        if let Some(resource_name) = resource_key.as_ref() {
+            let resource_val = resources_entry
+                .and_then(|v| v.get(resource_name))
+                .and_then(|v| v.as_f64());
+            let resource_max_val = resources_max_entry
+                .and_then(|v| v.get(resource_name))
+                .and_then(|v| v.as_f64());
+            if let Some(v) = resource_val {
+                event["resource"] = json!({
+                    "type": resource_name,
+                    "value": round1(v),
+                    "max": round1(resource_max_val.unwrap_or(0.0)),
+                });
+            }
+        }
+
+        if spell_id > 0 && cooldown_spell_ids.contains(&spell_id) {
+            cooldown_events.push(event.clone());
+        }
+        events.push(event);
+    }
+
+    let total_actions = events.len() as u64;
+    let unique_actions = action_counts.len() as u64;
+    let mut top_actions: Vec<Value> = action_counts
+        .into_iter()
+        .map(|(name, (count, spell_id))| {
+            let mut entry = json!({
+                "name": name,
+                "count": count,
+                "share_pct": if total_actions > 0 {
+                    round2((count as f64 / total_actions as f64) * 100.0)
+                } else {
+                    0.0
+                },
+            });
+            if spell_id > 0 {
+                entry["spell_id"] = json!(spell_id);
+            }
+            entry
+        })
+        .collect();
+    top_actions.sort_by(|a, b| {
+        let av = a.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+        let bv = b.get("count").and_then(|v| v.as_u64()).unwrap_or(0);
+        bv.cmp(&av)
+    });
+    if top_actions.len() > 10 {
+        top_actions.truncate(10);
+    }
+
+    let mut timeline = json!({
+        "events": events,
+        "cooldown_events": cooldown_events,
+        "dps_series": dps_series,
+        "buff_uptimes": parse_buff_uptimes(player),
+        "event_count": event_count,
+        "events_truncated": event_count > max_events,
+    });
+    if !resource_series
+        .as_array()
+        .map(|a| a.is_empty())
+        .unwrap_or(true)
+    {
+        timeline["resource_series"] = resource_series;
+    }
+    if !resource_series_map.is_empty() {
+        timeline["resource_series_map"] = Value::Object(resource_series_map);
+    }
+    if let Some(resource_name) = resource_key {
+        timeline["resource_type"] = json!(resource_name);
+    }
+
+    let mut apl_analysis = json!({
+        "total_actions": total_actions,
+        "unique_actions": unique_actions,
+        "queue_failures": queue_failures,
+        "top_actions": top_actions,
+    });
+    if !deltas.is_empty() {
+        let avg = deltas.iter().sum::<f64>() / deltas.len() as f64;
+        let min = deltas.iter().copied().fold(f64::INFINITY, f64::min);
+        let max = deltas.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        apl_analysis["gcd_spacing"] = json!({
+            "avg": round3(avg),
+            "min": round3(min),
+            "max": round3(max),
+        });
+    }
+
+    Some((timeline, apl_analysis))
 }
 
 /// Extract ability stats from a player or pet stats array into the abilities list.
@@ -151,7 +583,7 @@ fn extract_stats_into(abilities: &mut Vec<Value>, stats: Option<&Value>, pet_nam
 }
 
 /// Extract key metrics from raw simc JSON output.
-pub fn parse_simc_result(raw: &Value) -> Value {
+pub fn parse_simc_result(raw: &Value, include_timeline: bool) -> Value {
     let empty = json!({});
     let sim = raw.get("sim").unwrap_or(&empty);
     let players = sim.get("players").and_then(|p| p.as_array());
@@ -261,6 +693,18 @@ pub fn parse_simc_result(raw: &Value) -> Value {
                 map.insert(k, json!(v));
             }
             result["stat_weights"] = Value::Object(map);
+        }
+    }
+
+    // Stat plotting
+    if let Some(stat_plots) = parse_stat_plots(raw) {
+        result["stat_plots"] = stat_plots;
+    }
+
+    if include_timeline {
+        if let Some((timeline, apl_analysis)) = parse_timeline_and_apl(player) {
+            result["timeline"] = timeline;
+            result["apl_analysis"] = apl_analysis;
         }
     }
 
@@ -570,6 +1014,10 @@ fn round1(v: f64) -> f64 {
 
 fn round2(v: f64) -> f64 {
     (v * 100.0).round() / 100.0
+}
+
+fn round3(v: f64) -> f64 {
+    (v * 1000.0).round() / 1000.0
 }
 
 fn round4(v: f64) -> f64 {

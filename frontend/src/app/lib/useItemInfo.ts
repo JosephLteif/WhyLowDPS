@@ -85,9 +85,9 @@ export function useItemInfo(queries: ItemQuery[]): Record<number, ItemInfo> {
             params.set('bonus_ids', q.bonus_ids.join(','));
           }
           const url = `${API_URL}/api/item-info/${q.item_id}?${params}`;
-          const info = await fetchJsonCached<ItemInfo>(url, { 
-            usePersistentCache: true, 
-            ttl: 86400000 // 24 hours
+          const info = await fetchJsonCached<ItemInfo>(url, {
+            usePersistentCache: true,
+            ttl: 86400000, // 24 hours
           });
           if (cancelled) return;
 
@@ -150,7 +150,7 @@ export function useEnchantInfo(enchantIds: number[]): Record<number, EnchantInfo
         try {
           const info = await fetchJsonCached<EnchantInfo>(`${API_URL}/api/enchant-info/${id}`, {
             usePersistentCache: true,
-            ttl: 86400000
+            ttl: 86400000,
           });
           if (cancelled || !info.name) return;
           enchantCache[id] = info;
@@ -213,7 +213,7 @@ export function useGemInfo(gemIds: number[]): Record<number, GemInfo> {
         try {
           const info = await fetchJsonCached<GemInfo>(`${API_URL}/api/gem-info/${id}`, {
             usePersistentCache: true,
-            ttl: 86400000
+            ttl: 86400000,
           });
           if (cancelled || !info.name) return;
           gemCache[id] = info;

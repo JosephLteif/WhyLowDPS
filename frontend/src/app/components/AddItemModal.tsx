@@ -362,7 +362,10 @@ export default function AddItemModal({
                             key={`${item.item_id}-${item.encounter}`}
                             className="group relative rounded-2xl border border-white/5 bg-white/[0.03] p-3 shadow-sm transition-all hover:border-white/10 hover:bg-white/[0.06] hover:shadow-blue-900/10"
                           >
-                            <div className="flex cursor-pointer items-center gap-4" onClick={() => handleAdd(item)}>
+                            <div
+                              className="flex cursor-pointer items-center gap-4"
+                              onClick={() => handleAdd(item)}
+                            >
                               <img
                                 src={`https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg`}
                                 className="h-12 w-12 rounded-xl border border-white/10 shadow-lg"
@@ -389,7 +392,9 @@ export default function AddItemModal({
                                   <span>
                                     Selected: {tier.track} {tier.level}/{tier.maxLevel}
                                   </span>
-                                  <span className="font-mono text-blue-300/90">{tier.ilvl} ilvl</span>
+                                  <span className="font-mono text-blue-300/90">
+                                    {tier.ilvl} ilvl
+                                  </span>
                                 </div>
                                 <input
                                   type="range"

@@ -9,10 +9,15 @@ use crate::types::{BonusData, EnchantData, GameItem};
 use std::sync::Arc;
 
 pub fn load_items(data_dir: &Path) {
-    let path = data_dir.join("equippable-items-full.json");
-    if !path.exists() {
+    let compact = data_dir.join("equippable-items.json");
+    let full = data_dir.join("equippable-items-full.json");
+    let path = if compact.exists() {
+        compact
+    } else if full.exists() {
+        full
+    } else {
         return;
-    }
+    };
 
     let file = match fs::File::open(&path) {
         Ok(f) => f,
@@ -234,8 +239,8 @@ pub fn load_instances(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let data: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let data: Vec<Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
     let mut inst = INSTANCES.write().unwrap();
     *inst = data;
 }
@@ -267,8 +272,8 @@ pub fn load_season_config(data_dir: &Path) {
             Ok(f) => f,
             Err(_) => return,
         };
-        let cfg: Value = serde_json::from_reader(std::io::BufReader::new(file))
-            .unwrap_or(Value::Null);
+        let cfg: Value =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or(Value::Null);
         let mut sc = SEASON_CONFIG.write().unwrap();
         *sc = cfg;
     }
@@ -284,8 +289,8 @@ pub fn load_item_limit_categories(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let raw: HashMap<String, Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let raw: HashMap<String, Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
     let cats: HashMap<u64, u64> = raw
         .into_iter()
@@ -318,8 +323,8 @@ pub fn load_talents(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let data: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let data: Vec<Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
     let map: HashMap<u64, Value> = data
         .into_iter()
@@ -338,8 +343,8 @@ pub fn load_squish_data(data_dir: &Path) {
             Ok(f) => f,
             Err(_) => return,
         };
-        let data: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(file))
-            .unwrap_or_default();
+        let data: Vec<Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
         let map: HashMap<u64, u64> = data
             .iter()
             .filter_map(|entry| {
@@ -361,8 +366,8 @@ pub fn load_squish_data(data_dir: &Path) {
             Ok(f) => f,
             Err(_) => return,
         };
-        let data: HashMap<String, Value> = serde_json::from_reader(std::io::BufReader::new(file))
-            .unwrap_or_default();
+        let data: HashMap<String, Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
         let map: HashMap<u64, Vec<(u64, u64)>> = data
             .into_iter()
             .filter_map(|(key, val)| {
@@ -394,8 +399,8 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let data: HashMap<String, Value> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_default();
+    let data: HashMap<String, Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
     let latest_group = data.iter().filter_map(|(k, _)| k.parse::<u64>().ok()).max();
     if let Some(group_id) = latest_group {
@@ -486,6 +491,31 @@ pub fn load_classes(data_dir: &Path) {
         });
 
     *class_data::CLASSES.write().unwrap() = Arc::new(data);
+}
+
+pub fn load_consumables(data_dir: &Path) {
+    fn read_array(path: &Path) -> Vec<Value> {
+        if !path.exists() {
+            return Vec::new();
+        }
+        let file = match fs::File::open(path) {
+            Ok(f) => f,
+            Err(_) => return Vec::new(),
+        };
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default()
+    }
+
+    let flasks = read_array(&data_dir.join("flasks.json"));
+    let foods = read_array(&data_dir.join("foods.json"));
+    let potions = read_array(&data_dir.join("potions.json"));
+    let augments = read_array(&data_dir.join("augments.json"));
+    let temp_enchants = read_array(&data_dir.join("temp-enchants.json"));
+
+    *FLASK_OPTIONS_RAW.write().unwrap() = Arc::new(flasks);
+    *FOOD_OPTIONS_RAW.write().unwrap() = Arc::new(foods);
+    *POTION_OPTIONS_RAW.write().unwrap() = Arc::new(potions);
+    *AUGMENT_OPTIONS_RAW.write().unwrap() = Arc::new(augments);
+    *TEMP_ENCHANT_OPTIONS_RAW.write().unwrap() = Arc::new(temp_enchants);
 }
 
 pub fn hydrate_runtime_metadata(runtime_path: &Path) {

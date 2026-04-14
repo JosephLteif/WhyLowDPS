@@ -6,12 +6,13 @@ import GearOverview from './GearOverview';
 import { useItemInfo, useEnchantInfo, useGemInfo } from '../lib/useItemInfo';
 import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
-import { useMemo } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { TopGearResult, ResultItem } from '../lib/types';
 import { useTopGearResults } from './top-gear-results/useTopGearResults';
 import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
+import SimResultTalentsCard from './SimResultTalentsCard';
 
 interface TopGearResultsProps {
   playerName: string;
@@ -28,6 +29,42 @@ interface TopGearResultsProps {
   iterations?: number;
   targetError?: number;
   elapsedTime?: number;
+  talentString?: string;
+}
+
+function CollapsibleSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between border-b border-border/60 bg-white/[0.01] px-5 py-3.5 text-left transition-colors hover:bg-white/[0.03]"
+      >
+        <span className="text-xs font-medium uppercase tracking-widest text-muted">{title}</span>
+        <svg
+          className={`h-3.5 w-3.5 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {open && <div className="p-5">{children}</div>}
+    </div>
+  );
 }
 
 export default function TopGearResults({
@@ -45,6 +82,7 @@ export default function TopGearResults({
   iterations,
   targetError,
   elapsedTime,
+  talentString,
 }: TopGearResultsProps) {
   const {
     groupMode,
@@ -186,22 +224,29 @@ export default function TopGearResults({
       </DpsHeroCard>
 
       {hasGearOverview && (
-        <GearOverview
-          gear={bestGearSet}
-          title={
-            selectedResultName && selectedResultName !== results[0]?.name
-              ? 'Selected Gear'
-              : 'Best Gear'
-          }
-          characterRenderUrl={characterRenderUrl}
-          upgradeSlots={upgradeSlots}
-          downgradeSlots={downgradeSlots}
-        />
+        <CollapsibleSection title="Character Panel">
+          <GearOverview
+            gear={bestGearSet}
+            title={
+              selectedResultName && selectedResultName !== results[0]?.name
+                ? 'Selected Gear'
+                : 'Best Gear'
+            }
+            characterRenderUrl={characterRenderUrl}
+            upgradeSlots={upgradeSlots}
+            downgradeSlots={downgradeSlots}
+          />
+        </CollapsibleSection>
       )}
 
-      <div className="card p-5">
+      {talentString && (
+        <CollapsibleSection title="Talents" defaultOpen={false}>
+          <SimResultTalentsCard talentString={talentString} />
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection title="Rankings">
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-widest text-muted">Rankings</p>
           <div className="flex items-center gap-3">
             {hasEncounterData && (
               <div className="flex gap-1">
@@ -273,7 +318,7 @@ export default function TopGearResults({
             onSelectResult={setSelectedResultName}
           />
         )}
-      </div>
+      </CollapsibleSection>
     </div>
   );
 }

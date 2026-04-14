@@ -98,6 +98,9 @@ export default function UpgradeComparePage() {
   const { data, loading } = useUpgradeData(simcInput);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [comboCount, setComboCount] = useState(0);
+  const [upgradeMode, setUpgradeMode] = useState<'highest_only' | 'all_levels' | 'max_affordability'>(
+    'max_affordability'
+  );
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const currencies = useMemo(() => data?.currencies ?? {}, [data]);
@@ -134,6 +137,7 @@ export default function UpgradeComparePage() {
           body: JSON.stringify({
             simc_input: simcInput,
             selected_slots: [...selectedSlots],
+            upgrade_mode: upgradeMode,
             max_combinations: maxCombinations,
           }),
         });
@@ -145,7 +149,7 @@ export default function UpgradeComparePage() {
     }, 300);
 
     return () => clearTimeout(comboTimer.current);
-  }, [simcInput, selectedSlots, maxCombinations]);
+  }, [simcInput, selectedSlots, maxCombinations, upgradeMode]);
 
   // Sim submission
   const buildPayload = useCallback(() => {
@@ -153,9 +157,10 @@ export default function UpgradeComparePage() {
     return {
       simc_input: simcInput,
       selected_slots: [...selectedSlots],
+      upgrade_mode: upgradeMode,
       max_combinations: maxCombinations,
     };
-  }, [simcInput, selectedSlots, maxCombinations]);
+  }, [simcInput, selectedSlots, maxCombinations, upgradeMode]);
 
   const validate = useCallback(() => {
     if (selectedSlots.size === 0) return 'Select at least one upgradeable item.';
@@ -199,6 +204,13 @@ export default function UpgradeComparePage() {
   }, [candidates, currencies]);
 
   const hasCharacter = simcInput.trim().length >= 10;
+  const displayComboCount = selectedSlots.size > 0 ? comboCount + 1 : 0;
+  const modeLabel =
+    upgradeMode === 'highest_only'
+      ? 'Highest Only'
+      : upgradeMode === 'all_levels'
+        ? 'All Levels'
+        : 'Max Affordability';
 
   const toggleGroup = (groupCandidates: PrepareCandidate[]) => {
     const slots = groupCandidates.map((c) => c.slot);
@@ -223,7 +235,7 @@ export default function UpgradeComparePage() {
     ? 'No upgrade currencies found'
     : selectedSlots.size === 0
       ? 'Select items to upgrade'
-      : buttonLabel(`Sim Upgrades (${comboCount} combos)`);
+      : buttonLabel(`Sim Upgrades (${displayComboCount} combos, ${modeLabel})`);
 
   return (
     <div className="space-y-6">
@@ -235,6 +247,28 @@ export default function UpgradeComparePage() {
           which equipped items to consider, and WhyLowDps will test every valid upgrade combination
           within your budget to find which gives the most DPS.
         </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {[
+          ['max_affordability', 'Max Affordability', 'Best spend within budget.'],
+          ['highest_only', 'Highest Only', 'Only the top upgrade tier per item.'],
+          ['all_levels', 'All Levels', 'Every valid upgrade step.'],
+        ].map(([key, label, desc]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setUpgradeMode(key as typeof upgradeMode)}
+            className={`rounded-md border px-3 py-2 text-left transition-colors ${
+              upgradeMode === key
+                ? 'border-gold/40 bg-gold/[0.08] text-zinc-100'
+                : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600'
+            }`}
+          >
+            <div className="text-xs font-semibold">{label}</div>
+            <div className="mt-0.5 text-[10px] text-zinc-400">{desc}</div>
+          </button>
+        ))}
       </div>
 
       {/* Currency Budget */}
@@ -269,9 +303,9 @@ export default function UpgradeComparePage() {
           <p className="text-xs font-medium uppercase tracking-widest text-muted">
             Select Items to Upgrade
           </p>
-          {comboCount > 0 && (
+          {displayComboCount > 0 && (
             <span className="rounded-md bg-surface-2 px-2.5 py-1 font-mono text-xs text-white">
-              {comboCount.toLocaleString()} combo{comboCount !== 1 ? 's' : ''}
+              {displayComboCount.toLocaleString()} combo{displayComboCount !== 1 ? 's' : ''}
             </span>
           )}
         </div>

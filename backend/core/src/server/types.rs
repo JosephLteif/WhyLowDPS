@@ -222,10 +222,16 @@ pub struct DroptimizerRequest {
 pub struct UpgradeCompareRequest {
     pub simc_input: String,
     pub selected_slots: Vec<String>,
+    #[serde(default = "default_upgrade_mode")]
+    pub upgrade_mode: String,
     #[serde(default)]
     pub max_combinations: Option<usize>,
     #[serde(flatten)]
     pub options: SimOptions,
+}
+
+fn default_upgrade_mode() -> String {
+    "max_affordability".to_string()
 }
 
 #[derive(Debug, Serialize)]

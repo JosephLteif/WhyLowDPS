@@ -70,6 +70,7 @@ pub fn get_instance_drops(
         .find(|i| i.get("id").and_then(|id| id.as_i64()) == Some(instance_id))?;
 
     let allowed_weapons = class_name.and_then(class_data::class_allowed_weapons);
+    let allowed_class_id = class_name.and_then(class_data::class_wow_id);
     let active_spec_names: Vec<&str> = spec_name
         .map(|s| s.split(',').map(|s| s.trim()).collect())
         .unwrap_or_default();
@@ -237,8 +238,10 @@ pub fn get_instance_drops(
 
                 // Filter spec restrictions (items with explicit spec lists)
                 if let Some(specs) = &item.classes {
-                    if !allowed_specs.is_empty() && !allowed_specs.iter().any(|s| specs.contains(s))
-                    {
+                    let spec_match =
+                        !allowed_specs.is_empty() && allowed_specs.iter().any(|s| specs.contains(s));
+                    let class_match = allowed_class_id.is_some_and(|cid| specs.contains(&cid));
+                    if !spec_match && !class_match {
                         continue;
                     }
                 }
@@ -343,10 +346,12 @@ pub fn get_instance_drops(
                     let mut main_can_use = true;
 
                     // Check spec restrictions (if item has a specs list)
-                    if !item_specs.is_empty()
-                        && !main_spec_ids.iter().any(|id| item_specs.contains(id))
-                    {
-                        main_can_use = false;
+                    if !item_specs.is_empty() {
+                        let spec_match = main_spec_ids.iter().any(|id| item_specs.contains(id));
+                        let class_match = allowed_class_id.is_some_and(|cid| item_specs.contains(&cid));
+                        if !spec_match && !class_match {
+                            main_can_use = false;
+                        }
                     }
 
                     // Check weapon/shield/offhand eligibility

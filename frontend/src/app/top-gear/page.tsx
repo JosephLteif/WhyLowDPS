@@ -7,11 +7,6 @@ import TopGearItemSelector from '../components/TopGearItemSelector';
 import { API_URL } from '../lib/api';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import type { ResolveGearResponse } from '../lib/types';
-import {
-  loadTopGearSnapshot,
-  saveTopGearSnapshot,
-  type TopGearSnapshot,
-} from '../lib/top-gear-snapshot';
 
 export default function TopGearPage() {
   const { simcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
@@ -30,18 +25,6 @@ export default function TopGearPage() {
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
-  const pendingRestoreRef = useRef<TopGearSnapshot | null>(null);
-
-  useEffect(() => {
-    const snapshot = loadTopGearSnapshot();
-    if (!snapshot) return;
-    if (snapshot.simcInput.trim() !== simcInput.trim()) return;
-    pendingRestoreRef.current = snapshot;
-    setMaxUpgrade(snapshot.maxUpgrade);
-    setCopyEnchants(snapshot.copyEnchants);
-    setCatalyst(snapshot.catalyst);
-    setCatalystCharges(snapshot.catalystCharges);
-  }, [simcInput]);
 
   // Resolve gear when simc input, maxUpgrade, or catalyst changes
   useEffect(() => {
@@ -112,18 +95,6 @@ export default function TopGearPage() {
     );
     return () => clearTimeout(timer);
   }, [simcInput, maxUpgrade, catalyst]);
-
-  useEffect(() => {
-    const snapshot = pendingRestoreRef.current;
-    if (!snapshot || !resolved) return;
-    setSelectedUids(
-      Object.fromEntries(
-        Object.entries(snapshot.selectedUids).map(([slot, arr]) => [slot, new Set(arr)])
-      )
-    );
-    setLocalItems(snapshot.localItems || []);
-    pendingRestoreRef.current = null;
-  }, [resolved]);
 
   const buildSubmitInput = useCallback((): string => {
     let result = simcInput;
@@ -287,27 +258,8 @@ export default function TopGearPage() {
   });
 
   const handleSubmit = useCallback(() => {
-    const selectedJson = buildSelectedUidsJson();
-    const snapshot: TopGearSnapshot = {
-      simcInput,
-      selectedUids: selectedJson,
-      localItems,
-      maxUpgrade,
-      copyEnchants,
-      catalyst,
-      catalystCharges,
-      savedAt: Date.now(),
-    };
-    saveTopGearSnapshot(snapshot);
     void submit();
   }, [
-    buildSelectedUidsJson,
-    simcInput,
-    localItems,
-    maxUpgrade,
-    copyEnchants,
-    catalyst,
-    catalystCharges,
     submit,
   ]);
 

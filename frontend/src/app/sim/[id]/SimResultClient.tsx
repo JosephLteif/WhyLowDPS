@@ -34,6 +34,7 @@ interface JobData {
   id: string;
   status: string;
   sim_type?: string;
+  simc_input?: string;
   progress: number;
   progress_stage?: string;
   progress_detail?: string;
@@ -626,14 +627,6 @@ export default function SimResultClient() {
           <div />
         )}
         <div className="flex items-center gap-3">
-          {isTopGear && (
-            <Link
-              href="/top-gear"
-              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.08] hover:text-white"
-            >
-              Sim Again
-            </Link>
-          )}
           <CharacterLinkButton
             jobId={id}
             currentLinkedName={job.linked_name}

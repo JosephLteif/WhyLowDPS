@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { API_URL } from '../lib/api';
 import type { ResolvedItem } from '../lib/types';
+import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 /** Raw enchant shape returned by the backend (straight from enchantments.json). */
 interface RawEnchant {
@@ -42,6 +43,7 @@ interface EnchantDisplay {
   name: string;
   icon: string;
   quality: number;
+  itemId: number;
 }
 
 /** Deduplicated gem for display — highest crafting quality per base gem. */
@@ -86,6 +88,7 @@ function deduplicateEnchants(raw: RawEnchant[]): EnchantDisplay[] {
       name: e.itemName || e.displayName || e.name || 'Unknown',
       icon: e.itemIcon || e.spellIcon || 'inv_misc_questionmark',
       quality: e.quality ?? 3,
+      itemId: e.itemId ?? 0,
     }))
     .filter((e) => e.enchantId > 0);
 }
@@ -130,6 +133,7 @@ export default function OptimizeItemModal({
   // Derive display lists from raw data
   const enchants = useMemo(() => deduplicateEnchants(rawEnchants), [rawEnchants]);
   const gems = useMemo(() => deduplicateGems(rawGems), [rawGems]);
+  useWowheadTooltips([isOpen, enchants.length, gems.length, searchTerm]);
 
   useEffect(() => {
     if (isOpen && item) {
@@ -254,11 +258,25 @@ export default function OptimizeItemModal({
                           : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
                       }`}
                     >
-                      <img
-                        src={`https://render.worldofwarcraft.com/icons/56/${e.icon}.jpg`}
-                        alt=""
-                        className="h-8 w-8 rounded border border-white/10"
-                      />
+                      <a
+                        href={
+                          e.itemId > 0
+                            ? `https://www.wowhead.com/item=${e.itemId}`
+                            : `https://www.wowhead.com/spell=${e.enchantId}`
+                        }
+                        data-wowhead={e.itemId > 0 ? `item=${e.itemId}` : `spell=${e.enchantId}`}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center"
+                        onClick={(evt) => {
+                          evt.preventDefault();
+                          evt.stopPropagation();
+                        }}
+                      >
+                        <img
+                          src={`https://render.worldofwarcraft.com/icons/56/${e.icon}.jpg`}
+                          alt=""
+                          className="h-8 w-8 rounded border border-white/10"
+                        />
+                      </a>
                       <div className="line-clamp-1 text-[13px] font-bold leading-tight">
                         {e.name}
                       </div>
@@ -335,11 +353,21 @@ export default function OptimizeItemModal({
                           : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
                       }`}
                     >
-                      <img
-                        src={`https://render.worldofwarcraft.com/icons/56/${g.icon}.jpg`}
-                        alt=""
-                        className="h-8 w-8 rounded border border-white/10"
-                      />
+                      <a
+                        href={`https://www.wowhead.com/item=${g.gemItemId}`}
+                        data-wowhead={`item=${g.gemItemId}`}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center"
+                        onClick={(evt) => {
+                          evt.preventDefault();
+                          evt.stopPropagation();
+                        }}
+                      >
+                        <img
+                          src={`https://render.worldofwarcraft.com/icons/56/${g.icon}.jpg`}
+                          alt=""
+                          className="h-8 w-8 rounded border border-white/10"
+                        />
+                      </a>
                       <div>
                         <div className="line-clamp-1 text-[13px] font-bold leading-tight">
                           {g.name}

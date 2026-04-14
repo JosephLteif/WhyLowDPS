@@ -34,6 +34,13 @@ pub fn build_catalyst_item(
     slot: &str,
 ) -> ResolvedItem {
     let tier_item_id = tier_info.item_id;
+    // Catalyst outputs are alternatives; if source was equipped, mark as Bags
+    // so Top Gear does not treat converted gear as baseline.
+    let catalyst_origin = if source.origin == ItemOrigin::Equipped {
+        ItemOrigin::Bags
+    } else {
+        source.origin
+    };
 
     // Build catalyst bonus_ids: keep only ilevel-related bonuses from the source,
     // then add the tier set marker bonus for tier set items.
@@ -84,7 +91,7 @@ pub fn build_catalyst_item(
         "{}:{}:{}:{}",
         tier_item_id,
         bonus_key,
-        source.origin.as_str(),
+        catalyst_origin.as_str(),
         slot
     );
 
@@ -94,7 +101,7 @@ pub fn build_catalyst_item(
         item_id: tier_item_id,
         ilevel: source.ilevel,
         simc_string: new_simc,
-        origin: source.origin,
+        origin: catalyst_origin,
         bonus_ids: catalyst_bonus_ids,
         enchant_id: source.enchant_id,
         gem_id: source.gem_id,

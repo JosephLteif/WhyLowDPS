@@ -26,8 +26,12 @@ fn prepare_upgrade_compare(
     simc_input: &str,
     selected_slots: &[String],
     upgrade_mode: &str,
+    upgrade_budget_override: &HashMap<u64, u64>,
 ) -> Result<PreparedUpgradeCompare, HttpResponse> {
-    let upgrade_budget = addon_parser::parse_upgrade_currencies(simc_input);
+    let mut upgrade_budget = addon_parser::parse_upgrade_currencies(simc_input);
+    for (cid, amount) in upgrade_budget_override {
+        upgrade_budget.insert(*cid, *amount);
+    }
     if upgrade_budget.is_empty() {
         return Err(HttpResponse::BadRequest().json(json!({
             "detail": "No upgrade_currencies found in SimC addon export."
@@ -77,9 +81,14 @@ fn prepare_upgrade_compare(
             .iter()
             .filter(|opt| opt.level > current_level)
             .filter(|opt| {
-                opt.cumulative_costs
-                    .keys()
-                    .any(|k| upgrade_currency_ids.contains(k))
+                !opt.cumulative_costs.is_empty()
+                    && opt
+                        .cumulative_costs
+                        .iter()
+                        .any(|(cid, amt)| upgrade_currency_ids.contains(cid) && *amt > 0)
+                    && opt.cumulative_costs.iter().all(|(cid, amt)| {
+                        upgrade_budget.get(cid).copied().unwrap_or(0) >= *amt
+                    })
             })
             .collect();
 
@@ -272,7 +281,12 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &req.options.talents,
     ));
 
-    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots, &req.upgrade_mode) {
+    let prepared = match prepare_upgrade_compare(
+        &simc_input,
+        &req.selected_slots,
+        &req.upgrade_mode,
+        &req.upgrade_budget_override,
+    ) {
         Ok(v) => v,
         Err(resp) => return resp,
     };
@@ -309,7 +323,12 @@ pub(super) async fn create_upgrade_compare_sim(
         &req.options.talents,
     ));
 
-    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots, &req.upgrade_mode) {
+    let prepared = match prepare_upgrade_compare(
+        &simc_input,
+        &req.selected_slots,
+        &req.upgrade_mode,
+        &req.upgrade_budget_override,
+    ) {
         Ok(v) => v,
         Err(resp) => return resp,
     };

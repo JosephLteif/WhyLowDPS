@@ -460,9 +460,9 @@ function CharacterInfoBar({
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-gold/70" />
-          <p className="text-xs font-medium text-zinc-300">
+          <p className="text-sm font-medium text-zinc-100">
             {info.name}
-            <span className="ml-1.5 font-normal text-zinc-500">
+            <span className="ml-1.5 font-normal text-zinc-300">
               {specDisplayName(info.spec)} {info.className}
             </span>
           </p>
@@ -614,7 +614,7 @@ function ConsumableSelect({
   );
 
   return (
-    <label className="space-y-1.5 text-xs text-zinc-400">
+    <label className="space-y-1.5 text-[13px] text-zinc-300">
       <span className="block">{label}</span>
       <div ref={rootRef} className="relative">
         <button
@@ -736,8 +736,8 @@ function FightSetupOptions() {
   return (
     <div className="card space-y-4 p-5">
       <div>
-        <p className="text-sm font-medium text-zinc-200">Fight Setup</p>
-        <p className="text-[13px] text-zinc-500">
+        <p className="text-[15px] font-medium text-zinc-100">Fight Setup</p>
+        <p className="text-[14px] text-zinc-300">
           Configure fight style and scenario variants together.
         </p>
       </div>
@@ -796,7 +796,7 @@ function FightSetupOptions() {
         )}
 
         {!showFightLength && !showTargetCount && (
-          <div className="text-[13px] text-zinc-500">
+          <div className="text-[14px] text-zinc-300">
             This fight style uses built-in timing and target scripting.
           </div>
         )}
@@ -896,28 +896,28 @@ function ConsumablesAndRaidBuffsOptions() {
   return (
     <div className="card space-y-5 p-5">
       <div>
-        <p className="text-sm font-medium text-zinc-200">Consumables &amp; Raid Buffs</p>
-        <p className="text-[13px] text-zinc-500">
+        <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
+        <p className="text-[14px] text-zinc-300">
           Manage consumable picks and raid buff assumptions outside of Advanced Options.
         </p>
       </div>
 
       <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
         <div>
-          <p className="text-sm font-medium text-zinc-200">Consumables</p>
-          <p className="text-[13px] text-zinc-500">
+          <p className="text-[15px] font-medium text-zinc-100">Consumables</p>
+          <p className="text-[14px] text-zinc-300">
             Select one per category for normal sims. Use Stat Weights matrix to compare many at
             once.
           </p>
           {lockSingleConsumableOptions && (
-            <p className="mt-1 text-[12px] text-amber-300">
+            <p className="mt-1 text-[13px] text-amber-300">
               Disabled while Consumable Matrix mode is selected.
             </p>
           )}
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Flask</p>
+            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Flask</p>
             <ConsumableSelect
               label="Active Flask"
               value={consumableFlask}
@@ -929,7 +929,7 @@ function ConsumablesAndRaidBuffsOptions() {
           </div>
 
           <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Potion</p>
+            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Potion</p>
             <ConsumableSelect
               label="Active Potion"
               value={consumablePotion}
@@ -941,7 +941,7 @@ function ConsumablesAndRaidBuffsOptions() {
           </div>
 
           <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
               Augmentation Rune
             </p>
             <ConsumableSelect
@@ -955,7 +955,7 @@ function ConsumablesAndRaidBuffsOptions() {
           </div>
 
           <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
               Temporary Enchant
             </p>
             <ConsumableSelect
@@ -969,7 +969,7 @@ function ConsumablesAndRaidBuffsOptions() {
           </div>
 
           <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Food</p>
+            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Food</p>
             <ConsumableSelect
               label="Active Food Buff"
               value={consumableFood}
@@ -984,8 +984,8 @@ function ConsumablesAndRaidBuffsOptions() {
 
       <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
         <div>
-          <p className="text-sm font-medium text-zinc-200">Raid Buffs</p>
-          <p className="text-[13px] text-zinc-500">Control default raid buffs for normal sims.</p>
+          <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
+          <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
@@ -1007,7 +1007,7 @@ function ConsumablesAndRaidBuffsOptions() {
                   target="_blank"
                   rel="noreferrer"
                   data-wowhead={`spell=${buff.spellId}`}
-                  className="flex min-w-0 items-center gap-2 text-zinc-300 hover:text-zinc-100"
+                  className="flex min-w-0 items-center gap-2 text-zinc-100 hover:text-white"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <img
@@ -1023,7 +1023,7 @@ function ConsumablesAndRaidBuffsOptions() {
                     alt=""
                     className="h-4 w-4 shrink-0 rounded-[3px]"
                   />
-                  <span className="truncate text-xs">{buff.label}</span>
+                  <span className="truncate text-[14px]">{buff.label}</span>
                 </a>
                 <input
                   type="checkbox"
@@ -1035,7 +1035,7 @@ function ConsumablesAndRaidBuffsOptions() {
             );
           })}
         </div>
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-[12px] text-zinc-300">
           If your character provides one of these buffs, SimC may still include it.
         </p>
       </div>
@@ -1098,7 +1098,7 @@ function AdvancedOptions() {
       >
         <div className="flex items-center gap-2.5">
           <svg
-            className="h-4 w-4 text-zinc-500"
+            className="h-4 w-4 text-zinc-400"
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
@@ -1109,7 +1109,7 @@ function AdvancedOptions() {
             <circle cx="8" cy="8" r="2" />
             <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
           </svg>
-          <span className="text-sm font-medium text-zinc-300">Advanced Options</span>
+          <span className="text-[15px] font-medium text-zinc-100">Advanced Options</span>
           {!open && !isDefault && (
             <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
               Modified
@@ -1117,7 +1117,7 @@ function AdvancedOptions() {
           )}
         </div>
         <svg
-          className={`h-3.5 w-3.5 text-zinc-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
@@ -1139,9 +1139,9 @@ function AdvancedOptions() {
               value={customApl}
               onChange={(e) => setCustomApl(e.target.value)}
               placeholder="Custom APL or expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list=1)..."
-              className="input-field h-28 resize-y font-mono text-xs"
+              className="input-field h-28 resize-y font-mono text-[14px] leading-relaxed"
             />
-            <p className="text-[13px] text-zinc-600">
+            <p className="text-[14px] text-zinc-300">
               Override action priority lists or set expansion-specific options. Injected after the
               base actor.
             </p>
@@ -1149,8 +1149,8 @@ function AdvancedOptions() {
 
           <div className="flex items-center justify-between rounded-lg border border-border/70 bg-surface-2/70 px-3.5 py-2.5">
             <div>
-              <p className="text-sm font-medium text-zinc-200">Timeline &amp; APL Analyzer</p>
-              <p className="text-[13px] text-zinc-500">
+              <p className="text-[15px] font-medium text-zinc-100">Timeline &amp; APL Analyzer</p>
+              <p className="text-[14px] text-zinc-300">
                 Include action sequence, cooldown timing, and buff uptime data in sim results.
               </p>
             </div>
@@ -1215,9 +1215,9 @@ function ExpertToggle({
             }`}
           />
         </div>
-        <span className="text-sm font-medium text-zinc-300">Expert Mode</span>
+        <span className="text-[15px] font-medium text-zinc-100">Expert Mode</span>
         {!open && hasContent && (
-          <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
+          <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-xs font-medium text-gold">
             Modified
           </span>
         )}
@@ -1229,12 +1229,12 @@ function ExpertToggle({
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-150 ${
+                className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-all duration-150 ${
                   activeTab === tab.key
                     ? 'border-gold/40 bg-gold/[0.08] text-gold'
                     : expertValues[tab.key].trim()
                       ? 'border-gold/30 bg-gold/[0.06] text-gold hover:border-gold/50'
-                      : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                      : 'border-border bg-surface-2 text-zinc-200 hover:border-zinc-500 hover:text-white'
                 }`}
               >
                 {tab.label}
@@ -1248,9 +1248,9 @@ function ExpertToggle({
             value={expertValues[activeTab]}
             onChange={(e) => expertSetters[activeTab](e.target.value)}
             placeholder={`Paste ${activeTabInfo.label.toLowerCase()} SimC input here...`}
-            className="input-field h-32 resize-y font-mono text-xs"
+            className="input-field h-32 resize-y font-mono text-[14px] leading-relaxed"
           />
-          <p className="text-[13px] text-zinc-600">{activeTabInfo.desc}</p>
+          <p className="text-[14px] text-zinc-200">{activeTabInfo.desc}</p>
         </div>
       )}
     </div>

@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::fs;
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
@@ -90,7 +92,6 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
         .unwrap_or_else(|_| PathBuf::from("./"));
     let data_dir = app_data_dir.join("data");
     let simc_dir = resolve_bundled_resource("simc");
-
     // Specifically check for critical files
     let classes_json = data_dir.join("classes.json");
     let simc_exe = if cfg!(windows) {
@@ -111,6 +112,81 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
         api_url: "http://localhost:17384".to_string(),
         version: "0.2.4-STABILITY-V2".to_string(),
     })
+}
+
+async fn bootstrap_simc(simc_dir: &std::path::Path) -> Result<(), String> {
+    fs::create_dir_all(simc_dir).map_err(|e| e.to_string())?;
+
+    if !cfg!(windows) {
+        return Err(
+            "Automatic SimC download is only supported on Windows in desktop mode".to_string(),
+        );
+    }
+
+    let url =
+        "https://github.com/simulationcraft/simc/releases/download/v1100-01/simc-1100-01-win64.zip";
+    println!("SimC not found locally. Downloading from: {}", url);
+
+    let response = reqwest::get(url)
+        .await
+        .map_err(|e| format!("Failed to download SimC: {}", e))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read SimC download body: {}", e))?;
+
+    let cursor = Cursor::new(bytes);
+    let mut archive =
+        zip::ZipArchive::new(cursor).map_err(|e| format!("Failed to open SimC archive: {}", e))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("Failed to read zip entry {}: {}", i, e))?;
+        let Some(safe_path) = file.enclosed_name().map(|p| p.to_path_buf()) else {
+            continue;
+        };
+        let outpath = simc_dir.join(safe_path);
+        if file.is_dir() {
+            fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+        } else {
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+            }
+            let mut outfile = fs::File::create(&outpath).map_err(|e| e.to_string())?;
+            std::io::copy(&mut file, &mut outfile).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+fn find_simc_binary(simc_dir: &std::path::Path) -> Option<PathBuf> {
+    let target_name = if cfg!(windows) { "simc.exe" } else { "simc" };
+    let direct = simc_dir.join(target_name);
+    if direct.exists() {
+        return Some(direct);
+    }
+
+    let mut stack = vec![simc_dir.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path
+                .file_name()
+                .and_then(|f| f.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case(target_name))
+            {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
 
 fn main() {
@@ -165,6 +241,16 @@ fn main() {
 
             // 3. Start Server
             tauri::async_runtime::spawn(async move {
+                let simc_bin = if simc_bin.exists() {
+                    simc_bin
+                } else {
+                    if let Err(e) = bootstrap_simc(&simc_dir).await {
+                        eprintln!("CRITICAL: failed to bootstrap SimC: {}", e);
+                    }
+                    find_simc_binary(&simc_dir).unwrap_or(simc_bin)
+                };
+                println!("Using simc binary at {:?}", simc_bin);
+
                 println!("Loading game data from {:?}", data_dir);
                 game_data::load(&data_dir);
 

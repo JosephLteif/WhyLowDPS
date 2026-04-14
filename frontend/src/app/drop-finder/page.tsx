@@ -530,10 +530,10 @@ export default function DropFinderPage() {
       ) : null}
 
       {(isRaid || isDungeon) && selectedId && activeDifficulties.length > 0 && (
-        <div className="card space-y-4 p-5">
+        <div className="card space-y-4 p-6">
           <div>
             <label className="label-text">Difficulty</label>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-2">
               {activeDifficulties.map((d) => {
                 const currentDiff = isRaid ? difficulty : dungeonDiff;
                 const isActive = currentDiff === d.key;
@@ -549,7 +549,7 @@ export default function DropFinderPage() {
                       else setDungeonDiff(d.key);
                       setUpgradeLevel(0);
                     }}
-                    className={`flex min-w-[4.5rem] flex-col items-center rounded-lg border px-3 py-2 text-center transition-all duration-150 ${
+                    className={`flex min-w-[5.25rem] flex-col items-center rounded-lg border px-3.5 py-2.5 text-center transition-all duration-150 ${
                       isActive && tc
                         ? `${tc.border} ${tc.bg}`
                         : isActive
@@ -564,14 +564,14 @@ export default function DropFinderPage() {
                     </span>
                     {ilvl && (
                       <span
-                        className={`mt-1 font-mono text-[13px] font-medium tabular-nums ${isActive ? 'text-zinc-300' : 'text-zinc-500'}`}
+                        className={`mt-1.5 text-[13px] font-semibold tracking-wide tabular-nums ${isActive ? 'text-zinc-100' : 'text-zinc-300'}`}
                       >
                         ilvl {ilvl}
                       </span>
                     )}
                     {d.track ? (
                       <span
-                        className={`mt-0.5 text-[12px] font-semibold ${tc?.text ?? 'text-zinc-400'} ${isActive ? 'opacity-100' : 'opacity-60'}`}
+                        className={`mt-1 text-xs font-semibold ${tc?.text ?? 'text-zinc-300'} ${isActive ? 'opacity-100' : 'opacity-90'}`}
                       >
                         {isRaid
                           ? d.track
@@ -600,9 +600,9 @@ export default function DropFinderPage() {
 
       {className ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-xs text-zinc-400">
+          <p className="text-sm text-zinc-300">
             Showing loot for{' '}
-            <span className="font-medium text-gold">{className.replace('_', ' ')}</span>
+            <span className="font-semibold text-gold">{className.replace('_', ' ')}</span>
           </p>
           {allSpecs.length > 1 && (
             <>
@@ -615,14 +615,14 @@ export default function DropFinderPage() {
                     <button
                       key={spec}
                       onClick={() => toggleSpec(spec)}
-                      className={`rounded-md border px-2 py-0.5 text-[13px] font-medium transition-all duration-150 ${
+                      className={`rounded-md border px-2.5 py-1.5 text-sm font-medium transition-all duration-150 ${
                         isActive
                           ? 'border-gold/40 bg-gold/[0.08] text-gold'
-                          : 'border-border bg-surface-2 text-zinc-600 hover:border-zinc-600 hover:text-zinc-400'
+                          : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
                       }`}
                     >
                       {formatSpecName(spec)}
-                      {isMain && <span className="ml-1 text-[11px] opacity-50">main</span>}
+                      {isMain && <span className="ml-1 text-sm opacity-70">main</span>}
                     </button>
                   );
                 })}
@@ -631,7 +631,7 @@ export default function DropFinderPage() {
           )}
         </div>
       ) : (
-        <p className="text-xs text-muted">
+        <p className="text-sm text-muted">
           Paste a SimC export above to filter drops for your class.
         </p>
       )}

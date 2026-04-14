@@ -107,14 +107,14 @@ export default function DropSlotList({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-muted">
+        <p className="text-sm text-muted">
           {headerLabel} &mdash; {totalItems} items
           {selected.size > 0 && (
             <span className="ml-1.5 text-gold">({selected.size} selected)</span>
           )}
         </p>
         <div className="flex items-center gap-3">
-          <div className="flex gap-1">
+          <div className="flex gap-1.5">
             {(
               [
                 ['instance', 'By Instance'],
@@ -124,10 +124,10 @@ export default function DropSlotList({
               <button
                 key={mode}
                 onClick={() => setGroupMode(mode)}
-                className={`rounded border px-2.5 py-1 text-[13px] font-medium transition-all ${
+                className={`rounded border px-3 py-1.5 text-sm font-medium transition-all ${
                   groupMode === mode
                     ? 'border-white bg-white text-black'
-                    : 'border-border bg-surface-2 text-gray-400 hover:border-gray-500 hover:text-white'
+                    : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
                 }`}
               >
                 {label}
@@ -136,13 +136,13 @@ export default function DropSlotList({
           </div>
           <button
             onClick={() => onSelectAll(visibleItemIds)}
-            className="text-[13px] text-gray-500 transition-colors hover:text-white"
+            className="text-sm text-zinc-300 transition-colors hover:text-zinc-100"
           >
             Select all
           </button>
           <button
             onClick={onClear}
-            className="text-[13px] text-gray-500 transition-colors hover:text-white"
+            className="text-sm text-zinc-300 transition-colors hover:text-zinc-100"
           >
             Clear
           </button>
@@ -151,9 +151,9 @@ export default function DropSlotList({
 
       {(groupMode === 'instance' ? instanceSorted : slotSorted).map(([groupLabel, items]) => (
         <div key={groupLabel} className="card p-4">
-          <h3 className="mb-3 text-[13px] font-semibold uppercase tracking-widest text-muted">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-widest text-muted">
             {groupLabel}
-            <span className="ml-1.5 font-normal normal-case tracking-normal text-gray-600">
+            <span className="ml-1.5 font-medium normal-case tracking-normal text-zinc-300">
               ({items.length})
             </span>
           </h3>
@@ -201,7 +201,7 @@ function DropItemCard({
   return (
     <button
       onClick={onToggle}
-      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition-all ${
+      className={`flex items-start gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-all ${
         isSelected
           ? 'border-gold/40 bg-gold/10'
           : 'border-border bg-surface-2 hover:border-gray-500'
@@ -211,35 +211,37 @@ function DropItemCard({
         <img
           src={`https://render.worldofwarcraft.com/icons/56/${item.icon}.jpg`}
           alt=""
-          className={`h-6 w-6 rounded ${isOffSpec ? 'opacity-60' : ''}`}
+          className={`h-8 w-8 rounded ${isOffSpec ? 'opacity-70' : ''}`}
         />
         {isOffSpec && (
           <div
-            className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-black"
+            className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold text-black"
             title="Off-spec: may not drop for your main spec"
           >
             !
           </div>
         )}
       </div>
-      <div className={`min-w-0 ${isOffSpec ? 'opacity-60' : ''}`}>
+      <div className={`min-w-0 ${isOffSpec ? 'opacity-70' : ''}`}>
         <a
           href={`https://www.wowhead.com/item=${item.item_id}`}
           data-wowhead={`item=${item.item_id}${effectiveBonusId ? `&bonus=${effectiveBonusId}` : ''}`}
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className={`block text-[14px] font-medium leading-tight ${QUALITY_COLORS[resolved.quality] || 'text-gray-400'}`}
+          className={`block text-sm font-semibold leading-tight ${QUALITY_COLORS[resolved.quality] || 'text-gray-300'}`}
         >
           {item.name}
         </a>
-        {item.encounter && <span className="text-[12px] text-zinc-500">{item.encounter}</span>}
+        {item.encounter && <span className="text-sm text-zinc-300">{item.encounter}</span>}
       </div>
-      <span
-        className={`shrink-0 text-[13px] tabular-nums text-gray-600 ${isOffSpec ? 'opacity-60' : ''}`}
-      >
-        {resolved.ilvl}
-      </span>
+      <div className="ml-1 shrink-0">
+        <span
+          className={`block text-base font-semibold tracking-tight tabular-nums text-zinc-100 ${isOffSpec ? 'opacity-70' : ''}`}
+        >
+          {resolved.ilvl}
+        </span>
+      </div>
     </button>
   );
 }

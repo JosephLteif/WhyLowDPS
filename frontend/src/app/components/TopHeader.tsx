@@ -80,7 +80,7 @@ export default function TopHeader() {
                       <span className="text-[13px] font-medium text-gold">{user.battletag}</span>
                       <Link
                         href="/characters"
-                        className="text-[11px] text-zinc-400 transition-colors hover:text-white"
+                        className="text-[13px] text-zinc-300 transition-colors hover:text-white"
                       >
                         My Characters
                       </Link>
@@ -88,7 +88,7 @@ export default function TopHeader() {
                     <div className="h-6 w-px bg-border" />
                     <button
                       onClick={() => logout(true)}
-                      className="text-[13px] font-medium text-zinc-400 transition-colors hover:text-white"
+                      className="text-[14px] font-medium text-zinc-300 transition-colors hover:text-white"
                     >
                       Logout
                     </button>

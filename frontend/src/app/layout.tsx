@@ -37,7 +37,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <SimProvider>
               <TopHeader />
               <SimcRequiredModal />
-              <SimcRequiredModal />
 
               <Sidebar />
 

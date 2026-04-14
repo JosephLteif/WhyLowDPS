@@ -798,7 +798,6 @@ export default function SettingsPage() {
                       Object.values(simcStatuses).some((value) => value?.is_updating);
                     const actionKey = simcAction ?? '';
                     const isInstalling = actionKey === `${entry.id}:install`;
-                    const isRemoving = actionKey === `${entry.id}:remove`;
                     const installed = !!status?.installed_exists;
                     const hasUpdate = !!status?.update_available && !!status?.latest_version;
 
@@ -817,6 +816,9 @@ export default function SettingsPage() {
                         'border-amber-700/40 bg-amber-950/25 text-amber-300 hover:bg-amber-900/30';
                       actionHandler = () => void installSimcChannel(entry.id);
                     }
+
+                    // If we are currently installing, always show the button regardless of detected status
+                    const showButton = actionLabel || isInstalling;
 
                     return (
                       <div
@@ -841,14 +843,14 @@ export default function SettingsPage() {
                         </div>
 
                         <div className="flex items-center justify-end gap-2">
-                          {actionLabel && (
+                          {showButton && (
                             <button
                               type="button"
                               onClick={actionHandler}
                               disabled={isBusy || (!installed && !status?.latest_version)}
                               className={`rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${actionClass}`}
                             >
-                              {isInstalling ? 'Installing...' : isRemoving ? 'Removing...' : actionLabel}
+                              {isInstalling ? 'Installing...' : actionLabel}
                             </button>
                           )}
                         </div>

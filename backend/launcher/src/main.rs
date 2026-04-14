@@ -26,6 +26,8 @@ async fn main() {
         simc_dir.join("simc")
     };
 
+    // Disabled: SimC is now downloaded on demand via the web UI / backend updater.
+    /*
     if !simc_bin.exists() {
         println!("(!) SimulationCraft not found. Bootstrapping...");
         if let Err(e) = bootstrap_simc(simc_dir).await {
@@ -37,6 +39,7 @@ async fn main() {
             println!("(+) SimulationCraft installed successfully.");
         }
     }
+    */
 
     // 2. Start WhyLowDps Server
     println!("Starting Simulation Server...");
@@ -102,38 +105,9 @@ async fn main() {
     }
 }
 
+/*
 async fn bootstrap_simc(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    fs::create_dir_all(dir)?;
-
-    let url = if cfg!(windows) {
-        "https://github.com/simulationcraft/simc/releases/download/v1100-01/simc-1100-01-win64.zip"
-    } else {
-        // Fallback or Linux URL if needed
-        return Err("Automatic download only supported for Windows currently. Please install SimC in resources/simc manually.".into());
-    };
-
-    println!("Downloading from GitHub...");
-    let response = reqwest::get(url).await?;
-    let content = response.bytes().await?;
-
-    println!("Extracting...");
-    let mut archive = zip::ZipArchive::new(Cursor::new(content))?;
-
-    // Extract everything to the dir
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let outpath = dir.join(file.name());
-
-        if file.name().ends_with('/') {
-            fs::create_dir_all(&outpath)?;
-        } else {
-            if let Some(p) = outpath.parent() {
-                fs::create_dir_all(p)?;
-            }
-            let mut outfile = fs::File::create(&outpath)?;
-            std::io::copy(&mut file, &mut outfile)?;
-        }
-    }
-
+...
     Ok(())
 }
+*/

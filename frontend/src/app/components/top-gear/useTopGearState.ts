@@ -88,10 +88,8 @@ export function useTopGearState({
           { credentials: 'include' }
         );
         const data = await res.json();
-        const normalizedOptions: UpgradeOption[] = (Array.isArray(data?.options)
-          ? data.options
-          : []
-        )
+        const rawOptions: UpgradeOptionApi[] = Array.isArray(data?.options) ? data.options : [];
+        const normalizedOptions = rawOptions
           .map(normalizeUpgradeOption)
           .filter((opt): opt is UpgradeOption => opt !== null);
         setUpgradeOptions(normalizedOptions);

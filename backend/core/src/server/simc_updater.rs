@@ -35,29 +35,10 @@ impl SimcChannel {
             Self::Nightly => "nightly",
         }
     }
-
-    fn from_input(raw: &str) -> Result<Self, String> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "" | "nightly" => Ok(Self::Nightly),
-            other => Err(format!(
-                "Unsupported SimC channel '{}'. Use nightly.",
-                other
-            )),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct SimcChannelQuery {
-    #[serde(default)]
-    pub channel: String,
-}
-
-impl SimcChannelQuery {
-    fn resolve_channel(&self) -> Result<SimcChannel, String> {
-        SimcChannel::from_input(&self.channel)
-    }
-}
+pub(super) struct SimcChannelQuery {}
 
 #[derive(Clone)]
 pub(super) struct SimcUpdaterState {
@@ -178,14 +159,12 @@ struct DownloadProgressResponse {
 #[derive(Debug, Clone, Copy)]
 enum ProgressUnit {
     Bytes,
-    Files,
 }
 
 impl ProgressUnit {
     fn as_str(self) -> &'static str {
         match self {
             Self::Bytes => "bytes",
-            Self::Files => "files",
         }
     }
 }
@@ -1082,10 +1061,9 @@ fn extract_7z_archive(
             res
         },
     )
-    .and_then(|_| {
+    .map(|_| {
         // Clean up optional entries (e.g. WACTAC.h!ml) after internal extraction
         cleanup_optional_entries_recursive(dest);
-        Ok(())
     })
     .map_err(|e| {
         let msg = format!("Failed to extract SimC 7z archive: {e}");
@@ -1295,46 +1273,6 @@ fn find_simc_binary(search_root: &Path) -> Option<PathBuf> {
     }
 
     None
-}
-
-fn clear_directory(dir: &Path) -> Result<(), String> {
-    if !dir.exists() {
-        std::fs::create_dir_all(dir).map_err(|e| {
-            format!(
-                "Failed to create install directory {}: {}",
-                dir.display(),
-                e
-            )
-        })?;
-        return Ok(());
-    }
-
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read install directory {}: {}", dir.display(), e))?;
-    for entry in entries {
-        let entry =
-            entry.map_err(|e| format!("Failed to enumerate install directory entries: {e}"))?;
-        let path = entry.path();
-        if path.is_dir() {
-            std::fs::remove_dir_all(&path).map_err(|e| {
-                format!(
-                    "Failed to remove old SimC directory {} (is a simulation still running?): {}",
-                    path.display(),
-                    e
-                )
-            })?;
-        } else {
-            std::fs::remove_file(&path).map_err(|e| {
-                format!(
-                    "Failed to remove old SimC file {} (is a simulation still running?): {}",
-                    path.display(),
-                    e
-                )
-            })?;
-        }
-    }
-
-    Ok(())
 }
 
 fn gather_files(root: &Path) -> Result<Vec<PathBuf>, String> {

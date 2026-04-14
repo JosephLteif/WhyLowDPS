@@ -46,19 +46,19 @@ async fn main() {
     println!("Loading game data from {:?}", data_dir);
     game_data::load(&data_dir);
 
-    let db_url = env_or("DATABASE_URL", "whylowdps.db");
+    let _db_url = env_or("DATABASE_URL", "whylowdps.db");
     println!("Starting WhyLowDps server on {}:{}", bind_host, port);
 
     let storage: Arc<dyn JobStorage> = {
         #[cfg(feature = "postgres")]
-        if db_url.starts_with("postgres://") || db_url.starts_with("postgresql://") {
+        if _db_url.starts_with("postgres://") || _db_url.starts_with("postgresql://") {
             println!("Using PostgreSQL storage");
-            Arc::new(whylowdps_core::storage::postgres::PostgresStorage::new(&db_url).await)
+            Arc::new(whylowdps_core::storage::postgres::PostgresStorage::new(&_db_url).await)
         } else {
             #[cfg(feature = "web")]
             {
-                println!("Using SQLite storage: {}", db_url);
-                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&db_url))
+                println!("Using SQLite storage: {}", _db_url);
+                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&_db_url))
             }
             #[cfg(not(feature = "web"))]
             {
@@ -71,8 +71,8 @@ async fn main() {
         {
             #[cfg(feature = "web")]
             {
-                println!("Using SQLite storage: {}", db_url);
-                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&db_url))
+                println!("Using SQLite storage: {}", _db_url);
+                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&_db_url))
             }
             #[cfg(not(feature = "web"))]
             {

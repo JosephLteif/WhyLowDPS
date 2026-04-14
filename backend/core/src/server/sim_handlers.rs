@@ -16,6 +16,34 @@ use crate::result_parser;
 use crate::simc_runner;
 use crate::storage::JobStorage;
 
+fn resolve_simc_binary_for_request(
+    simc_path: &PathBuf,
+    _options: &SimOptions,
+) -> Result<PathBuf, String> {
+    #[cfg(feature = "desktop")]
+    {
+        if let Some(path) = super::simc_updater::resolve_installed_binary_for_channel(
+            simc_path,
+            None,
+        ) {
+            return Ok(path);
+        }
+
+        return Err(format!(
+            "SimC nightly is not installed. Open Settings -> SimulationCraft Engine and install/update it first."
+        ));
+    }
+
+    #[cfg(not(feature = "desktop"))]
+    {
+        if simc_path.exists() {
+            Ok(simc_path.clone())
+        } else {
+            Err(format!("simc binary not found at: {}", simc_path.display()))
+        }
+    }
+}
+
 pub(super) async fn create_sim(
     req: web::Json<SimRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
@@ -43,7 +71,10 @@ pub(super) async fn create_sim(
         return create_trinket_tier_heatmap_sim(
             simc_input,
             class_name.unwrap_or_default(),
-            (req.options.include_trinket_matrix, req.options.include_tier_matrix),
+            (
+                req.options.include_trinket_matrix,
+                req.options.include_tier_matrix,
+            ),
             &req.options,
             store,
             simc_path,
@@ -90,6 +121,11 @@ pub(super) async fn create_sim(
         return resp;
     }
 
+    let simc = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     let mut job = Job::new(
         simc_input.clone(),
         req.sim_type.clone(),
@@ -104,7 +140,6 @@ pub(super) async fn create_sim(
 
     // Spawn background task
     let store_clone = store.get_ref().clone();
-    let simc = simc_path.get_ref().clone();
     let options = req.options.to_json_with_sim_type(&req.sim_type);
     let job_id_clone = job_id.clone();
     let logs = log_buffer.get_ref().clone();
@@ -228,10 +263,7 @@ fn raid_buff_line(buff_key: &str) -> Option<&'static str> {
     }
 }
 
-fn build_external_buff_matrix_input(
-    simc_input: &str,
-    options: &SimOptions,
-) -> MatrixBuildResult {
+fn build_external_buff_matrix_input(simc_input: &str, options: &SimOptions) -> MatrixBuildResult {
     let (base_lines, equipped_gear, talents, _spec) =
         crate::profileset_generator::parser::parse_base_profile(simc_input);
 
@@ -332,10 +364,7 @@ fn build_external_buff_matrix_input(
     ))
 }
 
-fn build_consumable_matrix_input(
-    simc_input: &str,
-    options: &SimOptions,
-) -> MatrixBuildResult {
+fn build_consumable_matrix_input(simc_input: &str, options: &SimOptions) -> MatrixBuildResult {
     let (base_lines, equipped_gear, talents, _spec) =
         crate::profileset_generator::parser::parse_base_profile(simc_input);
 
@@ -936,9 +965,14 @@ async fn create_trinket_tier_heatmap_sim(
     job.combo_metadata_json = Some(meta_json);
     store.insert(job);
 
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     spawn_staged_sim(
         store.get_ref().clone(),
-        simc_path.get_ref().clone(),
+        simc_binary,
         options.to_json_with_sim_type("trinket_tier_heatmap"),
         job_id.clone(),
         generated_input,
@@ -1000,9 +1034,14 @@ async fn create_external_buff_matrix_sim(
     job.combo_metadata_json = Some(meta_json);
     store.insert(job);
 
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     spawn_staged_sim(
         store.get_ref().clone(),
-        simc_path.get_ref().clone(),
+        simc_binary,
         options.to_json_with_sim_type("external_buff_matrix"),
         job_id.clone(),
         generated_input,
@@ -1063,9 +1102,14 @@ async fn create_consumable_matrix_sim(
     job.combo_metadata_json = Some(meta_json);
     store.insert(job);
 
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     spawn_staged_sim(
         store.get_ref().clone(),
-        simc_path.get_ref().clone(),
+        simc_binary,
         options.to_json_with_sim_type("consumable_matrix"),
         job_id.clone(),
         generated_input,
@@ -1211,9 +1255,14 @@ pub(super) async fn create_top_gear_sim(
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);
 
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     spawn_staged_sim(
         store.get_ref().clone(),
-        simc_path.get_ref().clone(),
+        simc_binary,
         req.options.to_json(),
         job_id.clone(),
         generated_input,
@@ -1368,9 +1417,14 @@ pub(super) async fn create_droptimizer_sim(
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);
 
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     spawn_staged_sim(
         store.get_ref().clone(),
-        simc_path.get_ref().clone(),
+        simc_binary,
         req.options.to_json(),
         job_id.clone(),
         generated_input,

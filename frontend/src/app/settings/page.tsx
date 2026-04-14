@@ -1,9 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
-import { API_URL, fetchJson, isDesktop } from '../lib/api';
+import {
+  API_URL,
+  downloadLatestSimc,
+  fetchJson,
+  getSimcStatus,
+  isDesktop,
+  type SimcStatus,
+} from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 
 const PRESETS = [
@@ -57,6 +64,12 @@ interface DataFilePreviewResponse {
   truncated: boolean;
 }
 
+const SIMC_CHANNELS = [
+  { id: 'nightly', label: 'Nightly' },
+] as const;
+
+type SimcChannelName = (typeof SIMC_CHANNELS)[number]['id'];
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -108,6 +121,15 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [simcStatuses, setSimcStatuses] = useState<Record<SimcChannelName, SimcStatus | null>>({
+    nightly: null,
+  });
+  const [simcChecking, setSimcChecking] = useState(false);
+  const [simcAction, setSimcAction] = useState<string | null>(null);
+  const [simcMessage, setSimcMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -136,7 +158,7 @@ export default function SettingsPage() {
       .finally(() => {
         setLoading(false);
       });
-  }, [user, router]);
+  }, [user, router, setMaxCombinations, setThreads]);
 
   useEffect(() => {
     fetch(`${API_URL}/health`, { credentials: 'include' })
@@ -202,6 +224,100 @@ export default function SettingsPage() {
     return () => {
       window.removeEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
     };
+  }, []);
+
+  const refreshSimc = useCallback(async (channel?: SimcChannelName) => {
+    if (!isDesktop) return;
+    setSimcChecking(true);
+    setSimcMessage(null);
+    try {
+      if (channel) {
+        const status = await getSimcStatus();
+        setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
+      } else {
+        const channels = SIMC_CHANNELS.map((entry) => entry.id);
+        const results = await Promise.all(channels.map(() => getSimcStatus()));
+        setSimcStatuses({
+          nightly: results[0],
+        });
+      }
+    } catch (err: any) {
+      setSimcMessage({
+        type: 'error',
+        text: err?.detail || err?.message || 'Failed to fetch SimC status.',
+      });
+    } finally {
+      setSimcChecking(false);
+    }
+  }, []);
+
+  const installSimcChannel = async (channel: SimcChannelName) => {
+    if (!isDesktop) return;
+    setSimcAction(`${channel}:install`);
+    setSimcMessage(null);
+    window.dispatchEvent(
+      new CustomEvent('whylowdps-simc-download-start', {
+        detail: { channel },
+      })
+    );
+    try {
+      const status = await downloadLatestSimc();
+      setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-simc-download-finish', {
+          detail: { channel },
+        })
+      );
+      setSimcMessage({
+        type: 'success',
+        text: `SimulationCraft ${channel} channel installed/updated successfully.`,
+      });
+    } catch (err: any) {
+      const msg = err?.detail || err?.message || 'Failed to download SimC channel.';
+      const isInProgress =
+        err?.status === 409 ||
+        /already in progress/i.test(msg || '') ||
+        /already updating/i.test(msg || '');
+      if (isInProgress) {
+        setSimcMessage({
+          type: 'success',
+          text: 'A SimC update is already running. Refreshing status...',
+        });
+        window.dispatchEvent(
+          new CustomEvent('whylowdps-simc-download-start', {
+            detail: { channel },
+          })
+        );
+        await refreshSimc();
+      } else {
+        setSimcMessage({ type: 'error', text: msg });
+      }
+    } finally {
+      setSimcAction(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!isDesktop || !user) return;
+    void refreshSimc();
+  }, [user, refreshSimc]);
+
+  useEffect(() => {
+    if (!performanceSaved || !user) return;
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        key: 'simc_download_channel',
+        value: 'nightly',
+      }),
+    }).catch(() => {});
+  }, [performanceSaved, user]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('whylowdps_simc_download_channel', 'nightly');
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -491,6 +607,7 @@ export default function SettingsPage() {
       : 0;
 
   const activePresetIdx = PRESETS.findIndex(
+
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
   );
 
@@ -647,22 +764,139 @@ export default function SettingsPage() {
               className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
           </div>
+
+          {isDesktop && (
+            <div className="space-y-4 border-t border-border pt-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium text-zinc-300">SimulationCraft Engine</p>
+                  <p className="text-[12px] text-zinc-500">
+                    Manage installed SimC channels and update checks.
+                  </p>
+                </div>
+                <button
+                  onClick={() => void refreshSimc()}
+                  disabled={simcChecking || !!simcAction}
+                  className="rounded-lg border border-gold/40 bg-gold/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+                >
+                  {simcChecking ? 'Checking...' : 'Check for Updates'}
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-border bg-surface-2/90 p-3 text-[12px]">
+                <div className="grid grid-cols-[1fr_150px] border-b border-border/80 px-2 pb-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                  <span>Branch / Version</span>
+                  <span className="text-right">Actions</span>
+                </div>
+
+                <div className="mt-2 space-y-2">
+                  {SIMC_CHANNELS.map((entry) => {
+                    const status = simcStatuses[entry.id];
+                    const isBusy =
+                      simcChecking ||
+                      !!simcAction ||
+                      Object.values(simcStatuses).some((value) => value?.is_updating);
+                    const actionKey = simcAction ?? '';
+                    const isInstalling = actionKey === `${entry.id}:install`;
+                    const isRemoving = actionKey === `${entry.id}:remove`;
+                    const installed = !!status?.installed_exists;
+                    const hasUpdate = !!status?.update_available && !!status?.latest_version;
+
+                    let actionLabel = '';
+                    let actionClass = '';
+                    let actionHandler = () => {};
+
+                    if (!installed) {
+                      actionLabel = 'Install';
+                      actionClass =
+                        'border-emerald-700/40 bg-emerald-950/25 text-emerald-300 hover:bg-emerald-900/30';
+                      actionHandler = () => void installSimcChannel(entry.id);
+                    } else if (hasUpdate) {
+                      actionLabel = 'Update';
+                      actionClass =
+                        'border-amber-700/40 bg-amber-950/25 text-amber-300 hover:bg-amber-900/30';
+                      actionHandler = () => void installSimcChannel(entry.id);
+                    }
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="grid grid-cols-[1fr_150px] items-center gap-3 rounded-lg border border-border/80 bg-surface px-3 py-2.5"
+                      >
+                        <div>
+                          <p className="text-[19px] font-semibold text-zinc-100">{entry.label}</p>
+                          <p className="text-[12px] leading-relaxed text-zinc-400">
+                            {installed
+                              ? `Installed: ${status?.installed_version ?? 'Detected'}${status?.installed_date ? ` - ${status.installed_date}` : ''}`
+                              : `Available: ${status?.latest_version ?? (simcChecking ? 'Checking...' : 'Unknown')}`}
+                          </p>
+                          <p className="text-[11px] text-zinc-500">
+                            Path: {status?.channel_path || status?.installed_path || 'Unknown'}
+                          </p>
+                          {installed && hasUpdate && (
+                            <p className="text-[11px] font-medium text-amber-300">
+                              Update available: {status?.latest_version}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2">
+                          {actionLabel && (
+                            <button
+                              type="button"
+                              onClick={actionHandler}
+                              disabled={isBusy || (!installed && !status?.latest_version)}
+                              className={`rounded-md border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${actionClass}`}
+                            >
+                              {isInstalling ? 'Installing...' : isRemoving ? 'Removing...' : actionLabel}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                    })}
+
+                </div>
+              </div>
+
+              {simcMessage && (
+                <div
+                  className={`rounded-lg border px-3 py-2 text-[12px] ${
+                    simcMessage.type === 'success'
+                      ? 'border-emerald-700/40 bg-emerald-950/25 text-emerald-300'
+                      : 'border-red-700/40 bg-red-950/25 text-red-300'
+                  }`}
+                >
+                  {simcMessage.text}
+                </div>
+              )}
+
+              {Object.values(simcStatuses).some((value) => value?.detail) && (
+                <div className="rounded-lg border border-red-700/30 bg-red-950/20 px-3 py-2 text-[12px] text-red-300">
+                  {Object.values(simcStatuses)
+                    .map((value) => value?.detail)
+                    .filter(Boolean)
+                    .join(' • ')}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
       <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
         <p className="mb-5 text-sm text-zinc-400">
-          When the app regains focus, it can check the latest clipboard text and auto-fill the
-          SimC export box if it looks like a valid SimC string.
+          When the app regains focus, it can check the latest clipboard text and auto-fill the SimC
+          export box if it looks like a valid SimC string.
         </p>
 
         <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
           <div className="space-y-1">
             <p className="text-sm font-medium text-zinc-200">Auto paste SimC clipboard content</p>
             <p className="text-[13px] text-zinc-500">
-              If the newest clipboard copy looks like a SimC export, it will be pasted into the
-              main text bar automatically when you return to the app.
+              If the newest clipboard copy looks like a SimC export, it will be pasted into the main
+              text bar automatically when you return to the app.
             </p>
           </div>
           <button
@@ -772,9 +1006,7 @@ export default function SettingsPage() {
 
           {!!cacheSyncProgress && (
             <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-sm text-zinc-200">
-                {syncProgress.details || cacheSyncProgress}
-              </p>
+              <p className="text-sm text-zinc-200">{syncProgress.details || cacheSyncProgress}</p>
             </div>
           )}
 
@@ -946,12 +1178,12 @@ export default function SettingsPage() {
                                   dataActionBusyKey !== null
                                 }
                                 className="rounded-md border border-gold/30 bg-gold/10 px-2 py-1 text-[11px] font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                  {dataActionBusyKey === file.key
-                                    ? 'Working...'
-                                    : file.exists
-                                      ? 'Refresh'
-                                      : 'Download'}
+                              >
+                                {dataActionBusyKey === file.key
+                                  ? 'Working...'
+                                  : file.exists
+                                    ? 'Refresh'
+                                    : 'Download'}
                               </button>
                               <button
                                 onClick={() => showFileContent(file.key)}

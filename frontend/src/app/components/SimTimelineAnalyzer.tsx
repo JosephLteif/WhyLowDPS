@@ -661,8 +661,8 @@ export default function SimTimelineAnalyzer({
             <p className="text-sm text-zinc-500">No buff uptime data available.</p>
           ) : (
             <div className="space-y-2">
-              {buffUptimes.slice(0, 14).map((buff) => (
-                <div key={buff.name}>
+              {buffUptimes.slice(0, 14).map((buff, idx) => (
+                <div key={`${buff.name || 'buff'}:${buff.spell_id || 0}:${idx}`}>
                   <div className="mb-1 flex items-center gap-2">
                     {buff.spell_id && icons.get(buff.spell_id) ? (
                       <a

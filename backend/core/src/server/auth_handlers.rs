@@ -698,12 +698,20 @@ pub async fn get_user_configs(
     let max_gear_combinations = store
         .get_user_config(&claims.sub, "max_gear_combinations")
         .unwrap_or_default();
+    let simc_download_channel = store
+        .get_user_config(&claims.sub, "simc_download_channel")
+        .unwrap_or_default();
+    let simc_sim_channel = store
+        .get_user_config(&claims.sub, "simc_sim_channel")
+        .unwrap_or_default();
 
     HttpResponse::Ok().json(json!({
         "blizzard_client_id": client_id,
         "has_blizzard_client_secret": has_secret,
         "sim_threads": sim_threads,
         "max_gear_combinations": max_gear_combinations,
+        "simc_download_channel": simc_download_channel,
+        "simc_sim_channel": simc_sim_channel,
     }))
 }
 
@@ -722,6 +730,8 @@ pub async fn set_user_config(
         && body.key != "blizzard_client_secret"
         && body.key != "sim_threads"
         && body.key != "max_gear_combinations"
+        && body.key != "simc_download_channel"
+        && body.key != "simc_sim_channel"
     {
         return HttpResponse::BadRequest().json(json!({"error": "Invalid config key"}));
     }

@@ -160,14 +160,20 @@ pub fn apply_copy_enchants_to_map(
             let gname_str: &str = gname;
             for item in list {
                 if item.origin != crate::types::ItemOrigin::Equipped {
-                    item.enchant_id = eid;
-                    item.gem_id = gid;
-                    item.enchant_name = ename_str.to_string();
-                    item.gem_name = gname_str.to_string();
+                    // Only copy from equipped when the target item is missing data.
+                    // This preserves explicit enchant/gem choices made by the user.
+                    if item.enchant_id == 0 && eid > 0 {
+                        item.enchant_id = eid;
+                        item.enchant_name = ename_str.to_string();
+                    }
+                    if item.gem_id == 0 && gid > 0 {
+                        item.gem_id = gid;
+                        item.gem_name = gname_str.to_string();
+                    }
 
                     // Update simc_string
                     item.simc_string = apply_copy_enchants(
-                        &format!(",enchant_id={},gem_id={}", eid, gid),
+                        &format!(",enchant_id={},gem_id={}", item.enchant_id, item.gem_id),
                         &item.simc_string,
                     );
                 }

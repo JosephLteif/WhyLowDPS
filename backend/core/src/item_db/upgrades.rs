@@ -136,7 +136,9 @@ pub fn get_upgrade_options(bonus_ids: &[u64]) -> Vec<UpgradeOption> {
     };
 
     let mut options = Vec::new();
-    for l in (current_level + 1)..=max_level {
+    // Include the current level as the first option so UIs can identify
+    // which existing bonus_id should be replaced when applying an upgrade.
+    for l in current_level..=max_level {
         if let Some(&(ilvl, bonus_id, quality)) = tracks.get(&(track_name.clone(), l, max_level)) {
             // Calculate cumulative costs from current_level to l
             let mut cumulative_costs = HashMap::new();

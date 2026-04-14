@@ -297,6 +297,8 @@ pub struct EnchantData {
     pub quality: Option<u64>,
     #[serde(rename = "craftingQuality")]
     pub crafting_quality: Option<u64>,
+    #[serde(rename = "categoryName")]
+    pub category_name: Option<String>,
     #[serde(rename = "equipRequirements")]
     pub requirements: Option<EnchantRequirements>,
 }

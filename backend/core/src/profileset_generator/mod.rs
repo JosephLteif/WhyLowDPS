@@ -276,6 +276,7 @@ pub fn generate_upgrade_compare_input(
     upgraded_options_by_slot: &HashMap<String, Vec<ResolvedItem>>,
     upgrade_budget: &HashMap<u64, u64>,
     max_combos_override: Option<usize>,
+    upgrade_mode: &str,
 ) -> ProfilesetResult {
     let (base_lines, equipped_gear, talents_string, _spec) =
         parser::parse_base_profile(base_profile);
@@ -312,6 +313,7 @@ pub fn generate_upgrade_compare_input(
         retained: Vec::new(),
         spent: HashMap::new(),
         current: Vec::new(),
+        retain_all: upgrade_mode == "all_levels",
     };
     ctx.dfs(0);
 

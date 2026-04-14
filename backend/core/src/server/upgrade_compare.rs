@@ -25,6 +25,7 @@ struct PreparedUpgradeCompare {
 fn prepare_upgrade_compare(
     simc_input: &str,
     selected_slots: &[String],
+    upgrade_mode: &str,
 ) -> Result<PreparedUpgradeCompare, HttpResponse> {
     let upgrade_budget = addon_parser::parse_upgrade_currencies(simc_input);
     if upgrade_budget.is_empty() {
@@ -72,24 +73,28 @@ fn prepare_upgrade_compare(
             .unwrap_or(0);
 
         let mut slot_upgrades: Vec<ResolvedItem> = Vec::new();
-        for opt in &options {
-            if opt.level <= current_level {
-                continue;
-            }
+        let mut candidate_opts: Vec<&game_data::UpgradeOption> = options
+            .iter()
+            .filter(|opt| opt.level > current_level)
+            .filter(|opt| {
+                opt.cumulative_costs
+                    .keys()
+                    .any(|k| upgrade_currency_ids.contains(k))
+            })
+            .collect();
 
-            // Only include if costs involve our upgrade currencies
-            let has_relevant_cost = opt
-                .cumulative_costs
-                .keys()
-                .any(|k| upgrade_currency_ids.contains(k));
+        if candidate_opts.is_empty() {
+            continue;
+        }
 
-            if !has_relevant_cost {
-                continue;
-            }
+        if upgrade_mode == "highest_only" {
+            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
+        } else if upgrade_mode != "all_levels" && upgrade_mode != "max_affordability" {
+            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
+        }
 
-            // Build upgraded item
+        for opt in candidate_opts {
             let mut new_bonus_ids = equipped.bonus_ids.clone();
-            // Replace the upgrade bonus_id
             for bid in &mut new_bonus_ids {
                 if bonuses_in_same_group(*bid, opt.bonus_id) {
                     *bid = opt.bonus_id;
@@ -101,7 +106,6 @@ fn prepare_upgrade_compare(
             upgraded.bonus_ids = new_bonus_ids.clone();
             upgraded.ilevel = opt.ilevel as i64;
 
-            // Update simc_string with new bonus_ids
             let new_simc = bonus_re
                 .replace(&equipped.simc_string, |caps: &regex::Captures| {
                     let raw = &caps[1];
@@ -268,7 +272,7 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &req.options.talents,
     ));
 
-    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots) {
+    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots, &req.upgrade_mode) {
         Ok(v) => v,
         Err(resp) => return resp,
     };
@@ -278,6 +282,7 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &prepared.upgraded_options_by_slot,
         &prepared.upgrade_budget,
         req.max_combinations,
+        &req.upgrade_mode,
     ) {
         Ok((_, count, _)) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {
@@ -304,7 +309,7 @@ pub(super) async fn create_upgrade_compare_sim(
         &req.options.talents,
     ));
 
-    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots) {
+    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots, &req.upgrade_mode) {
         Ok(v) => v,
         Err(resp) => return resp,
     };
@@ -315,6 +320,7 @@ pub(super) async fn create_upgrade_compare_sim(
             &prepared.upgraded_options_by_slot,
             &prepared.upgrade_budget,
             req.max_combinations,
+            &req.upgrade_mode,
         ) {
             Ok(result) => result,
             Err(e) => {

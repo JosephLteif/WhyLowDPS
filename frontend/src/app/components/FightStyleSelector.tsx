@@ -94,10 +94,10 @@ export default function FightStyleSelector({ value, onChange }: FightStyleSelect
                     : 'text-zinc-200 hover:bg-white/[0.04] hover:text-white'
                 }`}
               >
-                <span className="text-sm">{fs.label}</span>
+                <span className="text-[15px]">{fs.label}</span>
                 <span
-                  className={`mt-0.5 text-[12px] ${
-                    fs.value === value ? 'text-gold/80' : 'text-zinc-500'
+                  className={`mt-0.5 text-[13px] ${
+                    fs.value === value ? 'text-gold/90' : 'text-zinc-300'
                   }`}
                 >
                   {fs.desc}
@@ -107,7 +107,7 @@ export default function FightStyleSelector({ value, onChange }: FightStyleSelect
           </div>
         )}
       </div>
-      {activeDescription && <p className="text-[12px] text-zinc-500">{activeDescription}</p>}
+      {activeDescription && <p className="text-[13px] text-zinc-300">{activeDescription}</p>}
     </div>
   );
 }

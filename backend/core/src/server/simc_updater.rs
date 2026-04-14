@@ -13,6 +13,9 @@ use std::time::Instant;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
+const NIGHTLY_LINK_WIN64_URL: &str =
+    "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/master/simc-nightly-win64-midnight.zip";
+const NIGHTLY_LINK_WIN64_FILENAME: &str = "simc-nightly-win64-midnight.zip";
 const NIGHTLY_INDEX_URL: &str = "http://downloads.simulationcraft.org/nightly/?C=M;O=D";
 const NIGHTLY_BASE_URL: &str = "http://downloads.simulationcraft.org/nightly/";
 const VERSION_MARKER: &str = ".simc-version";
@@ -35,10 +38,9 @@ impl SimcChannel {
 
     fn from_input(raw: &str) -> Result<Self, String> {
         match raw.trim().to_ascii_lowercase().as_str() {
-            "" | "stable" | "weekly" | "latest" => Ok(Self::Stable),
-            "nightly" => Ok(Self::Nightly),
+            "" | "nightly" => Ok(Self::Nightly),
             other => Err(format!(
-                "Unsupported SimC channel '{}'. Use stable or nightly.",
+                "Unsupported SimC channel '{}'. Use nightly.",
                 other
             )),
         }
@@ -232,14 +234,9 @@ struct SimcStatusResponse {
 pub(super) async fn simc_status(
     simc_path: web::Data<PathBuf>,
     updater: web::Data<SimcUpdaterState>,
-    query: web::Query<SimcChannelQuery>,
+    _query: web::Query<SimcChannelQuery>,
 ) -> HttpResponse {
-    let channel = match query.resolve_channel() {
-        Ok(value) => value,
-        Err(detail) => {
-            return HttpResponse::BadRequest().json(json!({ "detail": detail }));
-        }
-    };
+    let channel = SimcChannel::Nightly;
 
     let is_updating = updater.lock.try_lock().is_err();
     let status =
@@ -251,7 +248,7 @@ pub(super) async fn simc_status(
 pub(super) async fn download_latest_simc(
     simc_path: web::Data<PathBuf>,
     updater: web::Data<SimcUpdaterState>,
-    query: web::Query<SimcChannelQuery>,
+    _query: web::Query<SimcChannelQuery>,
 ) -> HttpResponse {
     if !cfg!(windows) {
         return HttpResponse::BadRequest().json(json!({
@@ -259,12 +256,7 @@ pub(super) async fn download_latest_simc(
         }));
     }
 
-    let channel = match query.resolve_channel() {
-        Ok(value) => value,
-        Err(detail) => {
-            return HttpResponse::BadRequest().json(json!({ "detail": detail }));
-        }
-    };
+    let channel = SimcChannel::Nightly;
 
     let lock = match updater.lock.try_lock() {
         Ok(lock) => lock,
@@ -291,14 +283,9 @@ pub(super) async fn download_latest_simc(
 pub(super) async fn remove_simc_channel(
     simc_path: web::Data<PathBuf>,
     updater: web::Data<SimcUpdaterState>,
-    query: web::Query<SimcChannelQuery>,
+    _query: web::Query<SimcChannelQuery>,
 ) -> HttpResponse {
-    let channel = match query.resolve_channel() {
-        Ok(value) => value,
-        Err(detail) => {
-            return HttpResponse::BadRequest().json(json!({ "detail": detail }));
-        }
-    };
+    let channel = SimcChannel::Nightly;
 
     let lock = match updater.lock.try_lock() {
         Ok(lock) => lock,
@@ -336,11 +323,9 @@ pub(super) async fn remove_simc_channel(
 
 pub(super) fn resolve_installed_binary_for_channel(
     simc_path: &Path,
-    requested_channel: Option<&str>,
+    _requested_channel: Option<&str>,
 ) -> Option<PathBuf> {
-    let channel = requested_channel
-        .and_then(|raw| SimcChannel::from_input(raw).ok())
-        .unwrap_or(SimcChannel::Stable);
+    let channel = SimcChannel::Nightly;
 
     if let Some(channel_bin) = channel_binary_path(simc_path, channel) {
         if channel_bin.exists() {
@@ -648,11 +633,44 @@ impl ChannelAssets {
 }
 
 async fn fetch_channel_assets() -> Result<ChannelAssets, String> {
-    let body = reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(45))
         .user_agent("whylowdps-desktop/0.3")
         .build()
-        .map_err(|e| format!("Failed to initialize HTTP client: {e}"))?
+        .map_err(|e| format!("Failed to initialize HTTP client: {e}"))?;
+
+    // Primary source: nightly.link ZIP (matches CI flow when available).
+    if let Ok(resp) = client.head(NIGHTLY_LINK_WIN64_URL).send().await {
+        if resp.status().is_success() {
+            let version = resp
+                .headers()
+                .get(reqwest::header::ETAG)
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim_matches('"').to_string())
+                .or_else(|| {
+                    resp.headers()
+                        .get(reqwest::header::LAST_MODIFIED)
+                        .and_then(|v| v.to_str().ok())
+                        .map(|s| s.to_string())
+                })
+                .unwrap_or_else(|| "nightly-link-win64-midnight".to_string());
+
+            let newest = Some(RemoteAsset {
+                version,
+                filename: NIGHTLY_LINK_WIN64_FILENAME.to_string(),
+                url: NIGHTLY_LINK_WIN64_URL.to_string(),
+                archive_kind: ArchiveKind::Zip,
+            });
+
+            return Ok(ChannelAssets {
+                stable: newest.clone(),
+                nightly: newest,
+            });
+        }
+    }
+
+    // Fallback source: SimC nightly directory listing.
+    let body = client
         .get(NIGHTLY_INDEX_URL)
         .send()
         .await
@@ -681,7 +699,7 @@ async fn fetch_channel_assets() -> Result<ChannelAssets, String> {
         } else {
             ArchiveKind::Zip
         };
-        let version = parse_version_from_filename(&matched).unwrap_or_else(|| matched.clone());
+        let version = matched.clone();
 
         assets.push(RemoteAsset {
             version,
@@ -692,12 +710,12 @@ async fn fetch_channel_assets() -> Result<ChannelAssets, String> {
     }
 
     if assets.is_empty() {
-        return Err("Could not locate a Windows nightly archive in the SimC index.".to_string());
+        return Err(
+            "No downloadable Windows nightly archive found (nightly.link and index fallback both failed)."
+                .to_string(),
+        );
     }
 
-    // Both channels draw from the same nightly index — the newest win64 build.
-    // The difference is only in *when* users choose to update (nightly = always
-    // latest, stable = user-controlled / pinned on reset day).
     let newest = assets.first().cloned();
 
     Ok(ChannelAssets {
@@ -705,7 +723,6 @@ async fn fetch_channel_assets() -> Result<ChannelAssets, String> {
         nightly: newest,
     })
 }
-
 /// Migrate legacy channel folders (weekly, latest) to the new "stable" name.
 ///
 /// Called once during a download/status check so that users who had a
@@ -744,21 +761,6 @@ pub(super) fn migrate_legacy_channel_dirs(simc_path: &Path) {
             return;
         }
     }
-}
-
-fn parse_version_from_filename(filename: &str) -> Option<String> {
-    let lower = filename.to_ascii_lowercase();
-    let archive_ext = if lower.ends_with(".7z") {
-        ".7z"
-    } else if lower.ends_with(".zip") {
-        ".zip"
-    } else {
-        return None;
-    };
-
-    let without_ext = filename.strip_suffix(archive_ext)?;
-    let core = without_ext.strip_prefix("simc-")?.strip_suffix("-win64")?;
-    Some(core.to_string())
 }
 
 fn channel_install_dir(simc_path: &Path, channel: SimcChannel) -> Option<PathBuf> {

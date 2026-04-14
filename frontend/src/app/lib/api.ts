@@ -177,21 +177,18 @@ export interface SimcStatus {
   } | null;
 }
 
-export async function getSimcStatus(channel?: string): Promise<SimcStatus> {
-  const suffix = channel ? `?channel=${encodeURIComponent(channel)}` : '';
-  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/status${suffix}`);
+export async function getSimcStatus(): Promise<SimcStatus> {
+  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/status`);
 }
 
-export async function downloadLatestSimc(channel?: string): Promise<SimcStatus> {
-  const suffix = channel ? `?channel=${encodeURIComponent(channel)}` : '';
-  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/download-latest${suffix}`, {
+export async function downloadLatestSimc(): Promise<SimcStatus> {
+  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/download-latest`, {
     method: 'POST',
   });
 }
 
-export async function removeSimcChannel(channel: string): Promise<SimcStatus> {
-  const suffix = `?channel=${encodeURIComponent(channel)}`;
-  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/remove${suffix}`, {
+export async function removeSimcChannel(): Promise<SimcStatus> {
+  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/remove`, {
     method: 'POST',
   });
 }

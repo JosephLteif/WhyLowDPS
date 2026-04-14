@@ -3,20 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { downloadLatestSimc, getSimcStatus, isDesktop, type SimcStatus } from '../lib/api';
 
-const CHANNELS = [
-  { id: 'stable', label: 'Stable (Recommended)' },
-  { id: 'nightly', label: 'Nightly' },
-] as const;
-
-type SimcChannel = (typeof CHANNELS)[number]['id'];
-type StatusMap = Record<SimcChannel, SimcStatus | null>;
+type StatusMap = { nightly: SimcStatus | null };
 
 export default function SimcRequiredModal() {
   const [statuses, setStatuses] = useState<StatusMap>({
-    stable: null,
     nightly: null,
   });
-  const [selectedChannel, setSelectedChannel] = useState<SimcChannel>('stable');
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +21,8 @@ export default function SimcRequiredModal() {
       setError(null);
     }
     try {
-      const [stable, nightly] = await Promise.all([
-        getSimcStatus('stable'),
-        getSimcStatus('nightly'),
-      ]);
-      setStatuses({ stable, nightly });
+      const [nightly] = await Promise.all([getSimcStatus()]);
+      setStatuses({ nightly });
       setInitialized(true);
     } catch (err: any) {
       if (!silent) {
@@ -56,22 +45,22 @@ export default function SimcRequiredModal() {
     setDownloading(true);
     setError(null);
     window.dispatchEvent(
-      new CustomEvent('whylowdps-simc-download-start', {
-        detail: { channel: selectedChannel },
-      })
+        new CustomEvent('whylowdps-simc-download-start', {
+          detail: { channel: 'nightly' },
+        })
     );
     void refreshStatuses(true);
     try {
-      const next = await downloadLatestSimc(selectedChannel);
-      setStatuses((prev) => ({ ...prev, [selectedChannel]: next }));
+      const next = await downloadLatestSimc();
+      setStatuses((prev) => ({ ...prev, nightly: next }));
       window.dispatchEvent(
         new CustomEvent('whylowdps-simc-download-finish', {
-          detail: { channel: selectedChannel },
+          detail: { channel: 'nightly' },
         })
       );
       try {
-        localStorage.setItem('whylowdps_simc_download_channel', selectedChannel);
-        localStorage.setItem('whylowdps_simc_channel', selectedChannel);
+        localStorage.setItem('whylowdps_simc_download_channel', 'nightly');
+        localStorage.setItem('whylowdps_simc_channel', 'nightly');
       } catch {}
     } catch (err: any) {
       const msg = err?.detail || err?.message || 'Failed to download SimC.';
@@ -83,7 +72,7 @@ export default function SimcRequiredModal() {
         setError(null);
         window.dispatchEvent(
           new CustomEvent('whylowdps-simc-download-start', {
-            detail: { channel: selectedChannel },
+            detail: { channel: 'nightly' },
           })
         );
         void refreshStatuses(true);
@@ -93,33 +82,28 @@ export default function SimcRequiredModal() {
     } finally {
       setDownloading(false);
     }
-  }, [refreshStatuses, selectedChannel]);
+  }, [refreshStatuses]);
 
   const handleRetryCheck = useCallback(async () => {
     await refreshStatuses();
-    const status = await getSimcStatus(selectedChannel).catch(() => null);
+    const status = await getSimcStatus().catch(() => null);
     if (status) {
-      setStatuses((prev) => ({ ...prev, [selectedChannel]: status }));
+      setStatuses((prev) => ({ ...prev, nightly: status }));
     }
     const stillMissing = !status?.installed_exists;
     const canAttempt = !!status?.latest_version;
     if (!downloading && !status?.is_updating && stillMissing && canAttempt) {
       await handleDownload();
     }
-  }, [downloading, handleDownload, refreshStatuses, selectedChannel]);
+  }, [downloading, handleDownload, refreshStatuses]);
 
   const anyInstalled = useMemo(() => {
     return Object.values(statuses).some((status) => status?.installed_exists);
   }, [statuses]);
 
-  const activeChannel = useMemo(() => {
-    const channelInProgress = (Object.entries(statuses) as [SimcChannel, SimcStatus | null][]).find(
-      ([, status]) => status?.is_updating
-    )?.[0];
-    return channelInProgress || selectedChannel;
-  }, [selectedChannel, statuses]);
+  const activeChannel = 'nightly';
   const activeStatus = statuses[activeChannel];
-  const selectedStatus = statuses[selectedChannel];
+  const selectedStatus = statuses.nightly;
   const progress = activeStatus?.download_progress;
   const isUpdating = Object.values(statuses).some((status) => !!status?.is_updating);
   const showProgress = downloading || isUpdating;
@@ -243,27 +227,9 @@ export default function SimcRequiredModal() {
           </div>
         )}
 
-        <div className="mt-4 space-y-2">
-          <label className="block text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-            Install Channel
-          </label>
-          <select
-            value={selectedChannel}
-            onChange={(e) => setSelectedChannel(e.target.value as SimcChannel)}
-            disabled={downloading || isUpdating}
-            className="input-field h-10"
-          >
-            {CHANNELS.map((channel) => (
-              <option key={channel.id} value={channel.id}>
-                {channel.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/80 p-3">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-500">Remote ({selectedChannel})</span>
+            <span className="text-zinc-500">Remote (nightly)</span>
             <span className="font-mono text-zinc-200">
               {selectedStatus?.latest_version || (loading ? 'Checking...' : 'Unavailable')}
             </span>
@@ -287,7 +253,7 @@ export default function SimcRequiredModal() {
             disabled={downloading || loading || isUpdating || !selectedStatus?.latest_version}
             className="flex-1 rounded-lg border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-sm font-semibold text-amber-200 transition-colors hover:bg-amber-900/40 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {downloading || isUpdating ? 'Installing...' : `Install ${selectedChannel}`}
+            {downloading || isUpdating ? 'Installing...' : 'Install nightly'}
           </button>
         </div>
       </div>

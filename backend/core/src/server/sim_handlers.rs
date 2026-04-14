@@ -18,32 +18,19 @@ use crate::storage::JobStorage;
 
 fn resolve_simc_binary_for_request(
     simc_path: &PathBuf,
-    options: &SimOptions,
+    _options: &SimOptions,
 ) -> Result<PathBuf, String> {
     #[cfg(feature = "desktop")]
     {
-        let requested_channel = options.simc_channel.trim().to_ascii_lowercase();
-        let requested_channel_opt = if requested_channel.is_empty() {
-            None
-        } else {
-            Some(requested_channel.as_str())
-        };
-
         if let Some(path) = super::simc_updater::resolve_installed_binary_for_channel(
             simc_path,
-            requested_channel_opt,
+            None,
         ) {
             return Ok(path);
         }
 
-        let missing_channel = if requested_channel.is_empty() {
-            "latest".to_string()
-        } else {
-            requested_channel
-        };
         return Err(format!(
-            "SimC channel '{}' is not installed. Open Settings -> SimulationCraft Engine and download it first.",
-            missing_channel
+            "SimC nightly is not installed. Open Settings -> SimulationCraft Engine and install/update it first."
         ));
     }
 

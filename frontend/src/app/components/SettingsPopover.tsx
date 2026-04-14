@@ -13,7 +13,6 @@ const PRESETS = [
 export default function SettingsPopover() {
   const [open, setOpen] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
-  const [simcChannel, setSimcChannel] = useState('stable');
   const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
   const [simcLoading, setSimcLoading] = useState(false);
   const [simcUpdating, setSimcUpdating] = useState(false);
@@ -37,19 +36,6 @@ export default function SettingsPopover() {
   }, [threads, setThreads]);
 
   useEffect(() => {
-    try {
-      const stored = (localStorage.getItem('whylowdps_simc_download_channel') || 'stable')
-        .toLowerCase()
-        .trim();
-      // Normalize legacy values
-      const normalized = (stored === 'weekly' || stored === 'latest') ? 'stable' : stored;
-      if (normalized === 'stable' || normalized === 'nightly') {
-        setSimcChannel(normalized);
-      }
-    } catch {}
-  }, []);
-
-  useEffect(() => {
     if (!open) return;
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -63,14 +49,14 @@ export default function SettingsPopover() {
     setSimcLoading(true);
     setSimcError(null);
     try {
-      const status = await getSimcStatus(simcChannel);
+      const status = await getSimcStatus();
       setSimcStatus(status);
     } catch (error: any) {
       setSimcError(error?.detail || error?.message || 'Failed to fetch SimC update status.');
     } finally {
       setSimcLoading(false);
     }
-  }, [simcChannel]);
+  }, []);
 
   useEffect(() => {
     if (!open || !isDesktop) return;
@@ -80,7 +66,7 @@ export default function SettingsPopover() {
   useEffect(() => {
     if (!isDesktop) return;
     let cancelled = false;
-    void getSimcStatus(simcChannel)
+    void getSimcStatus()
       .then((status) => {
         if (!cancelled) {
           setSimcStatus(status);
@@ -90,13 +76,13 @@ export default function SettingsPopover() {
     return () => {
       cancelled = true;
     };
-  }, [simcChannel]);
+  }, []);
 
   const handleDownloadLatest = async () => {
     setSimcUpdating(true);
     setSimcError(null);
     try {
-      const status = await downloadLatestSimc(simcChannel);
+      const status = await downloadLatestSimc();
       setSimcStatus(status);
     } catch (error: any) {
       const msg = error?.detail || error?.message || 'Failed to download latest SimC.';
@@ -267,8 +253,8 @@ export default function SettingsPopover() {
                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-700/50 bg-amber-950/30 py-3 text-[14px] font-semibold text-amber-300 transition-all hover:bg-amber-900/40 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {simcUpdating
-                    ? `Downloading ${simcChannel} SimC...`
-                    : `Download ${simcChannel} SimC`}
+                    ? 'Downloading nightly SimC...'
+                    : 'Download nightly SimC'}
                 </button>
               </div>
             )}

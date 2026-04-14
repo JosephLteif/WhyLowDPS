@@ -11,7 +11,6 @@ export default function TopHeader() {
   const router = useRouter();
   const { user, loading, login, logout, checkCredentialsStatus } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [simcChannel, setSimcChannel] = useState('weekly');
   const [simcStatus, setSimcStatus] = useState<SimcStatus | null>(null);
   const [simcLoading, setSimcLoading] = useState(false);
   const [simcUpdating, setSimcUpdating] = useState(false);
@@ -24,7 +23,7 @@ export default function TopHeader() {
     setSimcLoading(true);
     setSimcError(null);
     try {
-      const status = await getSimcStatus(simcChannel);
+      const status = await getSimcStatus();
       setSimcStatus(status);
       if (!status.is_updating && !status.update_available) {
         setSimcUpdating(false);
@@ -35,14 +34,14 @@ export default function TopHeader() {
     } finally {
       setSimcLoading(false);
     }
-  }, [user, simcChannel]);
+  }, [user]);
 
   const handleSimcUpdate = async () => {
     setSimcUpdating(true);
     setSimcFastPolling(true);
     setSimcError(null);
     try {
-      const status = await downloadLatestSimc(simcChannel);
+      const status = await downloadLatestSimc();
       setSimcStatus(status);
     } catch (err: any) {
       const msg = err?.detail || err?.message || 'Failed to update SimC.';
@@ -109,19 +108,6 @@ export default function TopHeader() {
       return;
     }
 
-    try {
-      const stored = (localStorage.getItem('whylowdps_simc_download_channel') || 'weekly')
-        .toLowerCase()
-        .trim();
-      if (stored === 'latest' || stored === 'weekly' || stored === 'nightly') {
-        setSimcChannel(stored);
-      } else {
-        setSimcChannel('weekly');
-      }
-    } catch {
-      setSimcChannel('weekly');
-    }
-
     void refreshSimcStatus();
 
     const interval = window.setInterval(
@@ -136,11 +122,6 @@ export default function TopHeader() {
 
   useEffect(() => {
     const onSimcDownloadStart = (event: Event) => {
-      const detail = (event as CustomEvent<{ channel?: string }>).detail;
-      const channel = (detail?.channel || 'weekly').toLowerCase().trim();
-      if (channel === 'latest' || channel === 'weekly' || channel === 'nightly') {
-        setSimcChannel(channel);
-      }
       setSimcUpdating(true);
       setSimcFastPolling(true);
       setSimcToastDismissed(false);
@@ -291,8 +272,8 @@ export default function TopHeader() {
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300">
                 {simcStatus?.is_updating || simcUpdating
-                  ? `SimC ${simcProgress?.channel || simcChannel} Downloading`
-                  : `SimC ${simcChannel} Update Available`}
+                  ? `SimC ${simcProgress?.channel || 'nightly'} Downloading`
+                  : 'SimC nightly Update Available'}
               </p>
               <p className="mt-1 text-xs text-zinc-300">
                 {simcStatus?.is_updating || simcUpdating

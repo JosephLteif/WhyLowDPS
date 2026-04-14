@@ -225,6 +225,8 @@ pub struct UpgradeCompareRequest {
     #[serde(default = "default_upgrade_mode")]
     pub upgrade_mode: String,
     #[serde(default)]
+    pub upgrade_budget_override: HashMap<u64, u64>,
+    #[serde(default)]
     pub max_combinations: Option<usize>,
     #[serde(flatten)]
     pub options: SimOptions,

@@ -101,15 +101,34 @@ export default function UpgradeComparePage() {
   const [upgradeMode, setUpgradeMode] = useState<'highest_only' | 'all_levels' | 'max_affordability'>(
     'max_affordability'
   );
+  const [budgetOverride, setBudgetOverride] = useState<Record<string, string>>({});
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const currencies = useMemo(() => data?.currencies ?? {}, [data]);
   const hasCurrencies = Object.keys(currencies).length > 0;
+  const effectiveCurrencies = useMemo(() => {
+    const out = { ...currencies };
+    for (const [cid, raw] of Object.entries(budgetOverride)) {
+      const parsed = parseInt(raw, 10);
+      if (!Number.isFinite(parsed) || parsed < 0 || !out[cid]) continue;
+      out[cid] = { ...out[cid], amount: parsed };
+    }
+    return out;
+  }, [currencies, budgetOverride]);
+  const budgetOverridePayload = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const [cid, raw] of Object.entries(budgetOverride)) {
+      const parsed = parseInt(raw, 10);
+      if (Number.isFinite(parsed) && parsed >= 0) out[cid] = parsed;
+    }
+    return out;
+  }, [budgetOverride]);
 
   // Reset selection when candidates change
   useEffect(() => {
     setSelectedSlots(new Set());
     setComboCount(0);
+    setBudgetOverride({});
   }, [data]);
 
   // Item info for display
@@ -138,6 +157,7 @@ export default function UpgradeComparePage() {
             simc_input: simcInput,
             selected_slots: [...selectedSlots],
             upgrade_mode: upgradeMode,
+            upgrade_budget_override: budgetOverridePayload,
             max_combinations: maxCombinations,
           }),
         });
@@ -149,7 +169,7 @@ export default function UpgradeComparePage() {
     }, 300);
 
     return () => clearTimeout(comboTimer.current);
-  }, [simcInput, selectedSlots, maxCombinations, upgradeMode]);
+  }, [simcInput, selectedSlots, maxCombinations, upgradeMode, budgetOverridePayload]);
 
   // Sim submission
   const buildPayload = useCallback(() => {
@@ -158,9 +178,10 @@ export default function UpgradeComparePage() {
       simc_input: simcInput,
       selected_slots: [...selectedSlots],
       upgrade_mode: upgradeMode,
+      upgrade_budget_override: budgetOverridePayload,
       max_combinations: maxCombinations,
     };
-  }, [simcInput, selectedSlots, maxCombinations, upgradeMode]);
+  }, [simcInput, selectedSlots, maxCombinations, upgradeMode, budgetOverridePayload]);
 
   const validate = useCallback(() => {
     if (selectedSlots.size === 0) return 'Select at least one upgradeable item.';
@@ -271,6 +292,45 @@ export default function UpgradeComparePage() {
         ))}
       </div>
 
+      {hasCurrencies && (
+        <div className="card space-y-3 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted">
+              Override Budget
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              Leave blank to use the parsed export amounts.
+            </p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {Object.values(currencies)
+              .filter((c) => c.name)
+              .sort((a, b) => a.id - b.id)
+              .map((c) => (
+                <label
+                  key={c.id}
+                  className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-300">
+                    {c.name}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={budgetOverride[String(c.id)] ?? ''}
+                    onChange={(e) =>
+                      setBudgetOverride((prev) => ({ ...prev, [String(c.id)]: e.target.value }))
+                    }
+                    placeholder={String(c.amount)}
+                    className="w-24 rounded border border-border bg-surface px-2 py-1 text-right font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                </label>
+              ))}
+          </div>
+        </div>
+      )}
+
       {/* Currency Budget */}
       {hasCurrencies && (
         <div className="flex flex-wrap items-center gap-2">
@@ -291,7 +351,9 @@ export default function UpgradeComparePage() {
                   className="h-4 w-4 shrink-0 rounded-sm"
                 />
                 <span className="text-[13px] text-gray-400">{c.name}</span>
-                <span className="font-mono text-[13px] tabular-nums text-white">{c.amount}</span>
+                <span className="font-mono text-[13px] tabular-nums text-white">
+                  {effectiveCurrencies[String(c.id)]?.amount ?? c.amount}
+                </span>
               </div>
             ))}
         </div>
@@ -368,7 +430,10 @@ export default function UpgradeComparePage() {
                         details={[
                           { text: SLOT_LABELS[c.slot] || c.slot },
                           { text: `${c.ilevel} → ${c.target_ilevel}` },
-                          { text: formatCosts(c.costs, currencies), color: 'text-gold/70' },
+                          {
+                            text: formatCosts(c.costs, effectiveCurrencies),
+                            color: 'text-gold/70',
+                          },
                         ]}
                         ilevel={c.ilevel}
                         selectable

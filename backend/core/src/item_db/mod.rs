@@ -255,15 +255,35 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
 }
 
 pub fn get_enchant_info(enchant_id: u64) -> Option<Value> {
-    let enchants = enchants();
-    let enchant = enchants.get(&enchant_id)?;
-    let name = enchant
-        .item_name
-        .as_ref()
-        .or(enchant.display_name.as_ref())
-        .cloned()
-        .unwrap_or_default();
-    Some(serde_json::json!({ "enchant_id": enchant_id, "name": name }))
+    let build = |id: u64, enchant: &EnchantData| {
+        let name = enchant
+            .item_name
+            .as_ref()
+            .or(enchant.display_name.as_ref())
+            .cloned()
+            .unwrap_or_default();
+        let icon = enchant
+            .item_icon
+            .clone()
+            .or(enchant.spell_icon.clone())
+            .unwrap_or_else(|| "inv_misc_questionmark".to_string());
+
+        serde_json::json!({
+            "enchant_id": id,
+            "name": name,
+            "icon": icon,
+            "item_id": enchant.item_id.unwrap_or(0),
+            "quality": enchant.quality.unwrap_or(3),
+        })
+    };
+
+    if let Some(enchant) = enchants().get(&enchant_id).cloned() {
+        return Some(build(enchant_id, &enchant));
+    }
+    if let Some(enchant) = enchants_by_item_id().get(&enchant_id).cloned() {
+        return Some(build(enchant_id, &enchant));
+    }
+    None
 }
 
 pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {

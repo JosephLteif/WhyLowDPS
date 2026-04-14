@@ -722,8 +722,6 @@ function ConsumableSelect({
 }
 
 const SIMC_CHANNEL_LABELS: Record<string, string> = {
-  weekly: 'Weekly',
-  latest: 'Latest',
   nightly: 'Nightly',
 };
 
@@ -790,11 +788,6 @@ function SimcChannelSelector({
   );
 }
 
-function AdvancedOptions() {
-  const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
-  const [installedSimcChannels, setInstalledSimcChannels] = useState<string[]>(['weekly']);
-  const [simcChannelLoading, setSimcChannelLoading] = useState(false);
 function FightSetupOptions() {
   const { fightStyle, setFightStyle, targetCount, setTargetCount, fightLength, setFightLength } =
     useSimContext();
@@ -877,673 +870,651 @@ function FightSetupOptions() {
 }
 
 function ConsumablesAndRaidBuffsOptions() {
-  const {
-    fightStyle,
-    setFightStyle,
-    targetCount,
-    setTargetCount,
-    fightLength,
-    setFightLength,
-    customApl,
-    setCustomApl,
-    simcChannel,
-    setSimcChannel,
-    includeTimeline,
-    setIncludeTimeline,
-    externalBuffChaosBrand,
-    setExternalBuffChaosBrand,
-    externalBuffMysticTouch,
-    setExternalBuffMysticTouch,
-    externalBuffSkyfury,
-    setExternalBuffSkyfury,
-    externalBuffPowerInfusion,
-    setExternalBuffPowerInfusion,
-    raidBuffBloodlust,
-    setRaidBuffBloodlust,
-    raidBuffArcaneIntellect,
-    setRaidBuffArcaneIntellect,
-    raidBuffPowerWordFortitude,
-    setRaidBuffPowerWordFortitude,
-    raidBuffMarkOfTheWild,
-    setRaidBuffMarkOfTheWild,
-    raidBuffBattleShout,
-    setRaidBuffBattleShout,
-    raidBuffHuntersMark,
-    setRaidBuffHuntersMark,
-    raidBuffBleeding,
-    setRaidBuffBleeding,
-    consumableFlask,
-    setConsumableFlask,
-    consumableFood,
-    setConsumableFood,
-    consumablePotion,
-    setConsumablePotion,
-    consumableAugmentation,
-    setConsumableAugmentation,
-    consumableTemporaryEnchant,
-    setConsumableTemporaryEnchant,
-    lockSingleConsumableOptions,
-  } = useSimContext();
+    const {
+      fightStyle,
+      setFightStyle,
+      targetCount,
+      setTargetCount,
+      fightLength,
+      setFightLength,
+      customApl,
+      setCustomApl,
+      simcChannel,
+      setSimcChannel,
+      includeTimeline,
+      setIncludeTimeline,
+      externalBuffChaosBrand,
+      setExternalBuffChaosBrand,
+      externalBuffMysticTouch,
+      setExternalBuffMysticTouch,
+      externalBuffSkyfury,
+      setExternalBuffSkyfury,
+      externalBuffPowerInfusion,
+      setExternalBuffPowerInfusion,
+      raidBuffBloodlust,
+      setRaidBuffBloodlust,
+      raidBuffArcaneIntellect,
+      setRaidBuffArcaneIntellect,
+      raidBuffPowerWordFortitude,
+      setRaidBuffPowerWordFortitude,
+      raidBuffMarkOfTheWild,
+      setRaidBuffMarkOfTheWild,
+      raidBuffBattleShout,
+      setRaidBuffBattleShout,
+      raidBuffHuntersMark,
+      setRaidBuffHuntersMark,
+      raidBuffBleeding,
+      setRaidBuffBleeding,
+      consumableFlask,
+      setConsumableFlask,
+      consumableFood,
+      setConsumableFood,
+      consumablePotion,
+      setConsumablePotion,
+      consumableAugmentation,
+      setConsumableAugmentation,
+      consumableTemporaryEnchant,
+      setConsumableTemporaryEnchant,
+      lockSingleConsumableOptions,
+    } = useSimContext();
+    const [installedSimcChannels, setInstalledSimcChannels] = useState<string[]>(['nightly']);
+    const [simcChannelLoading, setSimcChannelLoading] = useState(false);
 
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
-  const qualityMaxByFamily = useMemo(() => {
-    const map = new Map<string, number>();
-    const all = [...flasks, ...potions, ...augments, ...tempEnchants];
-    for (const opt of all) {
-      const family = optionQualityFamily(opt);
-      const q = opt.craftingQuality || 0;
-      map.set(family, Math.max(map.get(family) || 0, q));
-    }
-    return map;
-  }, [flasks, potions, augments, tempEnchants]);
-  const fightStyleRules = getFightStyleParamRules(fightStyle);
-  const refreshInstalledSimcChannels = useCallback(async () => {
-    if (!isDesktop) {
-      setInstalledSimcChannels(['weekly', 'latest', 'nightly']);
-      return;
-    }
-    setSimcChannelLoading(true);
-    try {
-      const [weekly, latest, nightly] = await Promise.all([
-        getSimcStatus('weekly'),
-        getSimcStatus('latest'),
-        getSimcStatus('nightly'),
-      ]);
-      const installed = [
-        weekly.installed_exists ? 'weekly' : null,
-        latest.installed_exists ? 'latest' : null,
-        nightly.installed_exists ? 'nightly' : null,
-      ].filter(Boolean) as string[];
-      setInstalledSimcChannels(installed.length > 0 ? installed : ['weekly']);
-    } catch {
-      setInstalledSimcChannels(['weekly']);
-    } finally {
-      setSimcChannelLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshInstalledSimcChannels();
-  }, [refreshInstalledSimcChannels]);
-
-  useEffect(() => {
-    if (!installedSimcChannels.includes(simcChannel)) {
-      setSimcChannel(installedSimcChannels[0] || 'weekly');
-    }
-  }, [installedSimcChannels, setSimcChannel, simcChannel]);
-  const showFightLength = fightStyleRules.usesFightLength;
-  const showTargetCount = fightStyleRules.usesTargetCount;
-  const isDefault =
-    fightStyle === 'Patchwerk' &&
-    (!showTargetCount || targetCount === 1) &&
-    (!showFightLength || fightLength === 300) &&
-    !customApl &&
-    !hasExpertContent;
-  const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
-  const raidBuffIcons = useSpellIcons(RAID_BUFF_MATRIX_OPTIONS.map((buff) => buff.spellId || 0));
-
-  const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
-    bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
-    arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },
-    power_word_fortitude: {
-      checked: raidBuffPowerWordFortitude,
-      setChecked: setRaidBuffPowerWordFortitude,
-    },
-    mark_of_the_wild: { checked: raidBuffMarkOfTheWild, setChecked: setRaidBuffMarkOfTheWild },
-    battle_shout: { checked: raidBuffBattleShout, setChecked: setRaidBuffBattleShout },
-    hunters_mark: { checked: raidBuffHuntersMark, setChecked: setRaidBuffHuntersMark },
-    bleeding: { checked: raidBuffBleeding, setChecked: setRaidBuffBleeding },
-    mystic_touch: { checked: externalBuffMysticTouch, setChecked: setExternalBuffMysticTouch },
-    chaos_brand: { checked: externalBuffChaosBrand, setChecked: setExternalBuffChaosBrand },
-    skyfury: { checked: externalBuffSkyfury, setChecked: setExternalBuffSkyfury },
-    power_infusion: { checked: externalBuffPowerInfusion, setChecked: setExternalBuffPowerInfusion },
-  };
-
-  useWowheadTooltips([
-    externalBuffChaosBrand,
-    externalBuffMysticTouch,
-    externalBuffSkyfury,
-    externalBuffPowerInfusion,
-    raidBuffBloodlust,
-    raidBuffArcaneIntellect,
-    raidBuffPowerWordFortitude,
-    raidBuffMarkOfTheWild,
-    raidBuffBattleShout,
-    raidBuffHuntersMark,
-    raidBuffBleeding,
-    consumableFlask,
-    consumablePotion,
-    consumableAugmentation,
-    consumableTemporaryEnchant,
-    consumableFood,
-  ]);
-
-  return (
-    <div className="card space-y-5 p-5">
-      <div>
-        <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
-        <p className="text-[14px] text-zinc-300">
-          Manage consumable picks and raid buff assumptions outside of Advanced Options.
-        </p>
-      </div>
-
-      <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-        <div>
-          <p className="text-[15px] font-medium text-zinc-100">Consumables</p>
-          <p className="text-[14px] text-zinc-300">
-            Select one per category for normal sims. Use Stat Weights matrix to compare many at
-            once.
-          </p>
-          {lockSingleConsumableOptions && (
-            <p className="mt-1 text-[13px] text-amber-300">
-              Disabled while Consumable Matrix mode is selected.
-            </p>
-          )}
-        </div>
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Flask</p>
-            <ConsumableSelect
-              label="Active Flask"
-              value={consumableFlask}
-              onChange={setConsumableFlask}
-              options={flasks}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
-
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Potion</p>
-            <ConsumableSelect
-              label="Active Potion"
-              value={consumablePotion}
-              onChange={setConsumablePotion}
-              options={potions}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
-
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
-              Augmentation Rune
-            </p>
-            <ConsumableSelect
-              label="Active Augmentation Rune"
-              value={consumableAugmentation}
-              onChange={setConsumableAugmentation}
-              options={augments}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
-
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
-              Temporary Enchant
-            </p>
-            <ConsumableSelect
-              label="Main Hand Temporary Enchant"
-              value={consumableTemporaryEnchant}
-              onChange={setConsumableTemporaryEnchant}
-              options={tempEnchants}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
-
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Food</p>
-            <ConsumableSelect
-              label="Active Food Buff"
-              value={consumableFood}
-              onChange={setConsumableFood}
-              options={foods}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-        <div>
-          <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
-          <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
-            const binding = raidBuffBindings[buff.key] || {
-              checked: false,
-              setChecked: (_: boolean) => {},
-            };
-            return (
-              <label
-                key={buff.key}
-                className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
-                  binding.checked
-                    ? 'border-gold/40 bg-gold/[0.08]'
-                    : 'border-border bg-surface hover:border-zinc-600'
-                }`}
-              >
-                <a
-                  href={`https://www.wowhead.com/spell=${buff.spellId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  data-wowhead={`spell=${buff.spellId}`}
-                  className="flex min-w-0 items-center gap-2 text-zinc-100 hover:text-white"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <img
-                    src={`https://wow.zamimg.com/images/wow/icons/small/${
-                      raidBuffIcons.get(buff.spellId || 0) || buff.icon
-                    }.jpg`}
-                    onError={(e) => {
-                      const img = e.currentTarget;
-                      if (img.dataset.fallbackApplied === '1') return;
-                      img.dataset.fallbackApplied = '1';
-                      img.src = `https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg`;
-                    }}
-                    alt=""
-                    className="h-4 w-4 shrink-0 rounded-[3px]"
-                  />
-                  <span className="truncate text-[14px]">{buff.label}</span>
-                </a>
-                <input
-                  type="checkbox"
-                  checked={binding.checked}
-                  onChange={(e) => binding.setChecked(e.target.checked)}
-                  className="h-4 w-4 accent-gold"
-                />
-              </label>
-            );
-          })}
-        </div>
-        <p className="text-[12px] text-zinc-300">
-          If your character provides one of these buffs, SimC may still include it.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function AdvancedOptions() {
-  const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
-  const {
-    customApl,
-    setCustomApl,
-    includeTimeline,
-    setIncludeTimeline,
-    simcHeader,
-    setSimcHeader,
-    simcBasePlayer,
-    setSimcBasePlayer,
-    simcRaidActors,
-    setSimcRaidActors,
-    simcPostCombos,
-    setSimcPostCombos,
-    simcFooter,
-    setSimcFooter,
-  } = useSimContext();
-
-  const expertValues: Record<ExpertTabKey, string> = useMemo(
-    () => ({
-      header: simcHeader,
-      base_player: simcBasePlayer,
-      raid_actors: simcRaidActors,
-      post_combos: simcPostCombos,
-      footer: simcFooter,
-    }),
-    [simcHeader, simcBasePlayer, simcRaidActors, simcPostCombos, simcFooter]
-  );
-
-  const expertSetters: Record<ExpertTabKey, (v: string) => void> = useMemo(
-    () => ({
-      header: setSimcHeader,
-      base_player: setSimcBasePlayer,
-      raid_actors: setSimcRaidActors,
-      post_combos: setSimcPostCombos,
-      footer: setSimcFooter,
-    }),
-    [setSimcHeader, setSimcBasePlayer, setSimcRaidActors, setSimcPostCombos, setSimcFooter]
-  );
-
-  const hasExpertContent = Object.values(expertValues).some((v) => v.trim());
-  const isDefault = includeTimeline && !customApl && !hasExpertContent;
-  const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
-
-  return (
-    <div className="card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between px-5 py-3.5 transition-colors hover:bg-white/[0.02]"
-      >
-        <div className="flex items-center gap-2.5">
-          <svg
-            className="h-4 w-4 text-zinc-400"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="8" cy="8" r="2" />
-            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
-          </svg>
-          <span className="text-[15px] font-medium text-zinc-100">Advanced Options</span>
-          {!open && !isDefault && (
-            <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
-              Modified
-            </span>
-          )}
-        </div>
-        <svg
-          className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4 6l4 4 4-4" />
-        </svg>
-      </button>
-      {open && (
-        <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
-          <div className="pt-4" />
-
-          {/* Custom APL */}
-          <div className="space-y-2">
-            <label className="label-text">Custom APL / SimC Options</label>
-            <textarea
-              value={customApl}
-              onChange={(e) => setCustomApl(e.target.value)}
-              placeholder="Custom APL or expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list=1)..."
-              className="input-field h-28 resize-y font-mono text-[14px] leading-relaxed"
-            />
-            <p className="text-[14px] text-zinc-300">
-              Override action priority lists or set expansion-specific options. Injected after the
-              base actor.
-            </p>
-          </div>
-
-          <div className="flex items-center justify-between rounded-lg border border-border/70 bg-surface-2/70 px-3.5 py-2.5">
-            <div>
-              <p className="text-[15px] font-medium text-zinc-100">Timeline &amp; APL Analyzer</p>
-              <p className="text-[14px] text-zinc-300">
-                Include action sequence, cooldown timing, and buff uptime data in sim results.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIncludeTimeline(!includeTimeline)}
-              className={`relative h-5 w-9 rounded-full transition-colors ${
-                includeTimeline ? 'bg-gold' : 'border border-border bg-surface'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
-                  includeTimeline ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Expert Mode */}
-          <ExpertToggle
-            hasContent={hasExpertContent}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            expertValues={expertValues}
-            expertSetters={expertSetters}
-            activeTabInfo={activeTabInfo}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ExpertToggle({
-  hasContent,
-  activeTab,
-  setActiveTab,
-  expertValues,
-  expertSetters,
-  activeTabInfo,
-}: {
-  hasContent: boolean;
-  activeTab: ExpertTabKey;
-  setActiveTab: (v: ExpertTabKey) => void;
-  expertValues: Record<ExpertTabKey, string>;
-  expertSetters: Record<ExpertTabKey, (v: string) => void>;
-  activeTabInfo: (typeof EXPERT_TABS)[number];
-}) {
-  const [open, setOpen] = useState(hasContent);
-
-  return (
-    <div className="space-y-3 border-t border-border/60 pt-3">
-      <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-2.5">
-        <div
-          className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-            open ? 'bg-gold' : 'border border-border bg-surface-2'
-          }`}
-        >
-          <div
-            className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
-              open ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
-            }`}
-          />
-        </div>
-        <span className="text-[15px] font-medium text-zinc-100">Expert Mode</span>
-        {!open && hasContent && (
-          <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-xs font-medium text-gold">
-            Modified
-          </span>
-        )}
-      </button>
-      {open && (
-        <div className="space-y-3">
-          <div className="flex gap-1 overflow-x-auto">
-            {EXPERT_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-all duration-150 ${
-                  activeTab === tab.key
-                    ? 'border-gold/40 bg-gold/[0.08] text-gold'
-                    : expertValues[tab.key].trim()
-                      ? 'border-gold/30 bg-gold/[0.06] text-gold hover:border-gold/50'
-                      : 'border-border bg-surface-2 text-zinc-200 hover:border-zinc-500 hover:text-white'
-                }`}
-              >
-                {tab.label}
-                {expertValues[tab.key].trim() && activeTab !== tab.key && (
-                  <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-gold" />
-                )}
-              </button>
-            ))}
-          </div>
-          <textarea
-            value={expertValues[activeTab]}
-            onChange={(e) => expertSetters[activeTab](e.target.value)}
-            placeholder={`Paste ${activeTabInfo.label.toLowerCase()} SimC input here...`}
-            className="input-field h-32 resize-y font-mono text-[14px] leading-relaxed"
-          />
-          <p className="text-[14px] text-zinc-200">{activeTabInfo.desc}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function SimSharedConfig() {
-  const pathname = usePathname();
-  const { simcInput, setSimcInput, simcFooter, setSimcFooter, autoClipboardPasteSimc } =
-    useSimContext();
-  const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
-  const detectedCharacterInfo = useMemo(() => {
-    const info = parseCharacterInfo(simcInput);
-    return info?.kind === 'character' ? info : null;
-  }, [simcInput]);
-  const detectedDungeonInfo = useMemo(() => {
-    const info = parseCharacterInfo(simcFooter);
-    return info?.kind === 'dungeon' ? info : null;
-  }, [simcFooter]);
-  const [banner, setBanner] = useState<{ text: string; id: number } | null>(null);
-  const bannerTimerRef = useRef<number | null>(null);
-
-  const normalizedPath =
-    pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
-
-  const showConfig =
-    normalizedPath === '/quick-sim' ||
-    normalizedPath === '/top-gear' ||
-    normalizedPath === '/drop-finder' ||
-    normalizedPath === '/stat-weights' ||
-    normalizedPath === '/upgrade-compare';
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!autoClipboardPasteSimc) return;
-
-    let cancelled = false;
-    let lastAppliedClipboard = '';
-
-    const readClipboardIntoSimc = async () => {
-      if (!document.hasFocus()) return;
-      if (!navigator.clipboard?.readText) return;
-
+    const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+    const qualityMaxByFamily = useMemo(() => {
+      const map = new Map<string, number>();
+      const all = [...flasks, ...potions, ...augments, ...tempEnchants];
+      for (const opt of all) {
+        const family = optionQualityFamily(opt);
+        const q = opt.craftingQuality || 0;
+        map.set(family, Math.max(map.get(family) || 0, q));
+      }
+      return map;
+    }, [flasks, potions, augments, tempEnchants]);
+    const fightStyleRules = getFightStyleParamRules(fightStyle);
+    const refreshInstalledSimcChannels = useCallback(async () => {
+      if (!isDesktop) {
+        setInstalledSimcChannels(['nightly']);
+        return;
+      }
+      setSimcChannelLoading(true);
       try {
-        const clipboardText = await navigator.clipboard.readText();
-        if (cancelled || !clipboardText) return;
-        if (clipboardText === lastAppliedClipboard) return;
-        if (clipboardText === simcInput) return;
-        if (!looksLikeSimcInput(clipboardText)) return;
-
-        const detected = parseCharacterInfo(clipboardText);
-        lastAppliedClipboard = clipboardText;
-
-        if (detected?.kind === 'dungeon') {
-          setSimcFooter(clipboardText);
-          const summaryParts = [detected.dungeon || detected.title];
-          if (detected.level) summaryParts.push(`+${detected.level}`);
-          if (detected.maxTime) summaryParts.push(`${Math.round(Number(detected.maxTime) / 60)}m`);
-          if (detected.pullCount) summaryParts.push(`${detected.pullCount} pulls`);
-          setBanner({
-            text: `Detected dungeon route and pasted to Footer: ${summaryParts.join(' · ')}`,
-            id: Date.now(),
-          });
-        } else {
-          setSimcInput(clipboardText);
-          const firstLine = clipboardText.split(/\r?\n/).find((line) => line.trim())?.trim() || '';
-          setBanner({
-            text: firstLine
-              ? `Detected and pasted: ${firstLine}`
-              : 'Detected and pasted SimC export.',
-            id: Date.now(),
-          });
-        }
-        setSimcInput(clipboardText);
-        const firstLine =
-          clipboardText
-            .split(/\r?\n/)
-            .find((line) => line.trim())
-            ?.trim() || '';
-        setBanner({
-          text: firstLine
-            ? `Detected and pasted: ${firstLine}`
-            : 'Detected and pasted SimC export.',
-          id: Date.now(),
-        });
+        const nightly = await getSimcStatus();
+        const installed = [
+          nightly.installed_exists ? 'nightly' : null,
+        ].filter(Boolean) as string[];
+        setInstalledSimcChannels(installed.length > 0 ? installed : ['nightly']);
       } catch {
-        // Ignore clipboard permission or platform errors.
+        setInstalledSimcChannels(['nightly']);
+      } finally {
+        setSimcChannelLoading(false);
       }
-    };
+    }, []);
 
-    const onFocus = () => {
-      void readClipboardIntoSimc();
-    };
+    useEffect(() => {
+      void refreshInstalledSimcChannels();
+    }, [refreshInstalledSimcChannels]);
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void readClipboardIntoSimc();
+    useEffect(() => {
+      if (!installedSimcChannels.includes(simcChannel)) {
+        setSimcChannel(installedSimcChannels[0] || 'nightly');
       }
+    }, [installedSimcChannels, setSimcChannel, simcChannel]);
+    const raidBuffIcons = useSpellIcons(RAID_BUFF_MATRIX_OPTIONS.map((buff) => buff.spellId || 0));
+
+    const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
+      bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
+      arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },
+      power_word_fortitude: {
+        checked: raidBuffPowerWordFortitude,
+        setChecked: setRaidBuffPowerWordFortitude,
+      },
+      mark_of_the_wild: { checked: raidBuffMarkOfTheWild, setChecked: setRaidBuffMarkOfTheWild },
+      battle_shout: { checked: raidBuffBattleShout, setChecked: setRaidBuffBattleShout },
+      hunters_mark: { checked: raidBuffHuntersMark, setChecked: setRaidBuffHuntersMark },
+      bleeding: { checked: raidBuffBleeding, setChecked: setRaidBuffBleeding },
+      mystic_touch: { checked: externalBuffMysticTouch, setChecked: setExternalBuffMysticTouch },
+      chaos_brand: { checked: externalBuffChaosBrand, setChecked: setExternalBuffChaosBrand },
+      skyfury: { checked: externalBuffSkyfury, setChecked: setExternalBuffSkyfury },
+      power_infusion: { checked: externalBuffPowerInfusion, setChecked: setExternalBuffPowerInfusion },
     };
 
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    useWowheadTooltips([
+      externalBuffChaosBrand,
+      externalBuffMysticTouch,
+      externalBuffSkyfury,
+      externalBuffPowerInfusion,
+      raidBuffBloodlust,
+      raidBuffArcaneIntellect,
+      raidBuffPowerWordFortitude,
+      raidBuffMarkOfTheWild,
+      raidBuffBattleShout,
+      raidBuffHuntersMark,
+      raidBuffBleeding,
+      consumableFlask,
+      consumablePotion,
+      consumableAugmentation,
+      consumableTemporaryEnchant,
+      consumableFood,
+    ]);
 
-    return () => {
-      cancelled = true;
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-    };
-  }, [autoClipboardPasteSimc, setSimcFooter, setSimcInput, simcInput]);
-
-  useEffect(() => {
-    if (!banner) return;
-    if (bannerTimerRef.current != null) {
-      window.clearTimeout(bannerTimerRef.current);
-    }
-    bannerTimerRef.current = window.setTimeout(() => {
-      setBanner(null);
-      bannerTimerRef.current = null;
-    }, 3500);
-    return () => {
-      if (bannerTimerRef.current != null) {
-        window.clearTimeout(bannerTimerRef.current);
-        bannerTimerRef.current = null;
-      }
-    };
-  }, [banner]);
-
-  if (!showConfig) return null;
-
-  return (
-    <div className="mb-6 space-y-4">
-      {banner && (
-        <div className="pointer-events-none fixed bottom-4 right-4 z-[90]">
-          <ClipboardBanner message={banner.text} onDismiss={() => setBanner(null)} />
+    return (
+      <div className="card space-y-5 p-5">
+        <div>
+          <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
+          <p className="text-[14px] text-zinc-300">
+            Manage consumable picks and raid buff assumptions outside of Advanced Options.
+          </p>
         </div>
-      )}
-      <div className="card space-y-3 p-5">
-        <label className="label-text">SimC Addon Export</label>
-        <SimcInputEditor
-          value={simcInput}
-          onChange={setSimcInput}
-          placeholder="Paste your SimC addon export here..."
-        />
-        {checksumStatus === 'invalid' && (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+
+        <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+          <div>
+            <p className="text-[15px] font-medium text-zinc-100">Consumables</p>
+            <p className="text-[14px] text-zinc-300">
+              Select one per category for normal sims. Use Stat Weights matrix to compare many at
+              once.
+            </p>
+            {lockSingleConsumableOptions && (
+              <p className="mt-1 text-[13px] text-amber-300">
+                Disabled while Consumable Matrix mode is selected.
+              </p>
+            )}
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Flask</p>
+              <ConsumableSelect
+                label="Active Flask"
+                value={consumableFlask}
+                onChange={setConsumableFlask}
+                options={flasks}
+                qualityMaxByFamily={qualityMaxByFamily}
+                disabled={lockSingleConsumableOptions}
+              />
+            </div>
+
+            <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Potion</p>
+              <ConsumableSelect
+                label="Active Potion"
+                value={consumablePotion}
+                onChange={setConsumablePotion}
+                options={potions}
+                qualityMaxByFamily={qualityMaxByFamily}
+                disabled={lockSingleConsumableOptions}
+              />
+            </div>
+
+            <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
+                Augmentation Rune
+              </p>
+              <ConsumableSelect
+                label="Active Augmentation Rune"
+                value={consumableAugmentation}
+                onChange={setConsumableAugmentation}
+                options={augments}
+                qualityMaxByFamily={qualityMaxByFamily}
+                disabled={lockSingleConsumableOptions}
+              />
+            </div>
+
+            <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
+                Temporary Enchant
+              </p>
+              <ConsumableSelect
+                label="Main Hand Temporary Enchant"
+                value={consumableTemporaryEnchant}
+                onChange={setConsumableTemporaryEnchant}
+                options={tempEnchants}
+                qualityMaxByFamily={qualityMaxByFamily}
+                disabled={lockSingleConsumableOptions}
+              />
+            </div>
+
+            <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+              <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Food</p>
+              <ConsumableSelect
+                label="Active Food Buff"
+                value={consumableFood}
+                onChange={setConsumableFood}
+                options={foods}
+                qualityMaxByFamily={qualityMaxByFamily}
+                disabled={lockSingleConsumableOptions}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+          <div>
+            <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
+            <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
+              const binding = raidBuffBindings[buff.key] || {
+                checked: false,
+                setChecked: (_: boolean) => {
+                },
+              };
+              return (
+                <label
+                  key={buff.key}
+                  className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
+                    binding.checked
+                      ? 'border-gold/40 bg-gold/[0.08]'
+                      : 'border-border bg-surface hover:border-zinc-600'
+                  }`}
+                >
+                  <a
+                    href={`https://www.wowhead.com/spell=${buff.spellId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-wowhead={`spell=${buff.spellId}`}
+                    className="flex min-w-0 items-center gap-2 text-zinc-100 hover:text-white"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <img
+                      src={`https://wow.zamimg.com/images/wow/icons/small/${
+                        raidBuffIcons.get(buff.spellId || 0) || buff.icon
+                      }.jpg`}
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        if (img.dataset.fallbackApplied === '1') return;
+                        img.dataset.fallbackApplied = '1';
+                        img.src = `https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg`;
+                      }}
+                      alt=""
+                      className="h-4 w-4 shrink-0 rounded-[3px]"
+                    />
+                    <span className="truncate text-[14px]">{buff.label}</span>
+                  </a>
+                  <input
+                    type="checkbox"
+                    checked={binding.checked}
+                    onChange={(e) => binding.setChecked(e.target.checked)}
+                    className="h-4 w-4 accent-gold"
+                  />
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-[12px] text-zinc-300">
+            If your character provides one of these buffs, SimC may still include it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  function AdvancedOptions() {
+    const [open, setOpen] = useState(false);
+    const [activeTab, setActiveTab] = useState<ExpertTabKey>('footer');
+    const {
+      customApl,
+      setCustomApl,
+      includeTimeline,
+      setIncludeTimeline,
+      simcHeader,
+      setSimcHeader,
+      simcBasePlayer,
+      setSimcBasePlayer,
+      simcRaidActors,
+      setSimcRaidActors,
+      simcPostCombos,
+      setSimcPostCombos,
+      simcFooter,
+      setSimcFooter,
+    } = useSimContext();
+
+    const expertValues: Record<ExpertTabKey, string> = useMemo(
+      () => ({
+        header: simcHeader,
+        base_player: simcBasePlayer,
+        raid_actors: simcRaidActors,
+        post_combos: simcPostCombos,
+        footer: simcFooter,
+      }),
+      [simcHeader, simcBasePlayer, simcRaidActors, simcPostCombos, simcFooter]
+    );
+
+    const expertSetters: Record<ExpertTabKey, (v: string) => void> = useMemo(
+      () => ({
+        header: setSimcHeader,
+        base_player: setSimcBasePlayer,
+        raid_actors: setSimcRaidActors,
+        post_combos: setSimcPostCombos,
+        footer: setSimcFooter,
+      }),
+      [setSimcHeader, setSimcBasePlayer, setSimcRaidActors, setSimcPostCombos, setSimcFooter]
+    );
+
+    const hasExpertContent = Object.values(expertValues).some((v) => v.trim());
+    const isDefault = includeTimeline && !customApl && !hasExpertContent;
+    const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
+
+    return (
+      <div className="card overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex w-full items-center justify-between px-5 py-3.5 transition-colors hover:bg-white/[0.02]"
+        >
+          <div className="flex items-center gap-2.5">
             <svg
-              className="h-4 w-4 shrink-0 text-amber-400"
+              className="h-4 w-4 text-zinc-400"
               viewBox="0 0 16 16"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
               strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              <path d="M8 1L1 14h14L8 1zM8 6v4M8 12v.5" />
+              <circle cx="8" cy="8" r="2" />
+              <path
+                d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
             </svg>
-            <p className="text-[14px] text-amber-300">
-              This input appears to have been manually edited. Results may not reflect your actual
-              in-game character.
-            </p>
+            <span className="text-[15px] font-medium text-zinc-100">Advanced Options</span>
+            {!open && !isDefault && (
+              <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
+              Modified
+            </span>
+            )}
+          </div>
+          <svg
+            className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+        {open && (
+          <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
+            <div className="pt-4" />
+
+            {/* Custom APL */}
+            <div className="space-y-2">
+              <label className="label-text">Custom APL / SimC Options</label>
+              <textarea
+                value={customApl}
+                onChange={(e) => setCustomApl(e.target.value)}
+                placeholder="Custom APL or expansion options (e.g., actions=..., midnight.*, use_blizzard_action_list=1)..."
+                className="input-field h-28 resize-y font-mono text-[14px] leading-relaxed"
+              />
+              <p className="text-[14px] text-zinc-300">
+                Override action priority lists or set expansion-specific options. Injected after the
+                base actor.
+              </p>
+            </div>
+
+            <div
+              className="flex items-center justify-between rounded-lg border border-border/70 bg-surface-2/70 px-3.5 py-2.5">
+              <div>
+                <p className="text-[15px] font-medium text-zinc-100">Timeline &amp; APL Analyzer</p>
+                <p className="text-[14px] text-zinc-300">
+                  Include action sequence, cooldown timing, and buff uptime data in sim results.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIncludeTimeline(!includeTimeline)}
+                className={`relative h-5 w-9 rounded-full transition-colors ${
+                  includeTimeline ? 'bg-gold' : 'border border-border bg-surface'
+                }`}
+              >
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
+                  includeTimeline ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
+                }`}
+              />
+              </button>
+            </div>
+
+            {/* Expert Mode */}
+            <ExpertToggle
+              hasContent={hasExpertContent}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              expertValues={expertValues}
+              expertSetters={expertSetters}
+              activeTabInfo={activeTabInfo}
+            />
           </div>
         )}
-        {detectedCharacterInfo && <CharacterInfoBar info={detectedCharacterInfo} />}
-        {detectedDungeonInfo && <DungeonInfoBar info={detectedDungeonInfo} />}
       </div>
-      <TalentPicker />
-      <FightSetupOptions />
-      <ConsumablesAndRaidBuffsOptions />
-      <AdvancedOptions />
-    </div>
-  );
-}
+    );
+  }
+
+  function ExpertToggle({
+                          hasContent,
+                          activeTab,
+                          setActiveTab,
+                          expertValues,
+                          expertSetters,
+                          activeTabInfo,
+                        }: {
+    hasContent: boolean;
+    activeTab: ExpertTabKey;
+    setActiveTab: (v: ExpertTabKey) => void;
+    expertValues: Record<ExpertTabKey, string>;
+    expertSetters: Record<ExpertTabKey, (v: string) => void>;
+    activeTabInfo: (typeof EXPERT_TABS)[number];
+  }) {
+    const [open, setOpen] = useState(hasContent);
+
+    return (
+      <div className="space-y-3 border-t border-border/60 pt-3">
+        <button type="button" onClick={() => setOpen(!open)} className="flex items-center gap-2.5">
+          <div
+            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+              open ? 'bg-gold' : 'border border-border bg-surface-2'
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
+                open ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
+              }`}
+            />
+          </div>
+          <span className="text-[15px] font-medium text-zinc-100">Expert Mode</span>
+          {!open && hasContent && (
+            <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-xs font-medium text-gold">
+            Modified
+          </span>
+          )}
+        </button>
+        {open && (
+          <div className="space-y-3">
+            <div className="flex gap-1 overflow-x-auto">
+              {EXPERT_TABS.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`whitespace-nowrap rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-all duration-150 ${
+                    activeTab === tab.key
+                      ? 'border-gold/40 bg-gold/[0.08] text-gold'
+                      : expertValues[tab.key].trim()
+                        ? 'border-gold/30 bg-gold/[0.06] text-gold hover:border-gold/50'
+                        : 'border-border bg-surface-2 text-zinc-200 hover:border-zinc-500 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                  {expertValues[tab.key].trim() && activeTab !== tab.key && (
+                    <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-gold" />
+                  )}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={expertValues[activeTab]}
+              onChange={(e) => expertSetters[activeTab](e.target.value)}
+              placeholder={`Paste ${activeTabInfo.label.toLowerCase()} SimC input here...`}
+              className="input-field h-32 resize-y font-mono text-[14px] leading-relaxed"
+            />
+            <p className="text-[14px] text-zinc-200">{activeTabInfo.desc}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  export default function SimSharedConfig() {
+    const pathname = usePathname();
+    const { simcInput, setSimcInput, simcFooter, setSimcFooter, autoClipboardPasteSimc } =
+      useSimContext();
+    const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
+    const detectedCharacterInfo = useMemo(() => {
+      const info = parseCharacterInfo(simcInput);
+      return info?.kind === 'character' ? info : null;
+    }, [simcInput]);
+    const detectedDungeonInfo = useMemo(() => {
+      const info = parseCharacterInfo(simcFooter);
+      return info?.kind === 'dungeon' ? info : null;
+    }, [simcFooter]);
+    const [banner, setBanner] = useState<{ text: string; id: number } | null>(null);
+    const bannerTimerRef = useRef<number | null>(null);
+
+    const normalizedPath =
+      pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+
+    const showConfig =
+      normalizedPath === '/quick-sim' ||
+      normalizedPath === '/top-gear' ||
+      normalizedPath === '/drop-finder' ||
+      normalizedPath === '/stat-weights' ||
+      normalizedPath === '/upgrade-compare';
+
+    useEffect(() => {
+      if (typeof window === 'undefined') return;
+      if (!autoClipboardPasteSimc) return;
+
+      let cancelled = false;
+      let lastAppliedClipboard = '';
+
+      const readClipboardIntoSimc = async () => {
+        if (!document.hasFocus()) return;
+        if (!navigator.clipboard?.readText) return;
+
+        try {
+          const clipboardText = await navigator.clipboard.readText();
+          if (cancelled || !clipboardText) return;
+          if (clipboardText === lastAppliedClipboard) return;
+          if (clipboardText === simcInput) return;
+          if (!looksLikeSimcInput(clipboardText)) return;
+
+          const detected = parseCharacterInfo(clipboardText);
+          lastAppliedClipboard = clipboardText;
+
+          if (detected?.kind === 'dungeon') {
+            setSimcFooter(clipboardText);
+            const summaryParts = [detected.dungeon || detected.title];
+            if (detected.level) summaryParts.push(`+${detected.level}`);
+            if (detected.maxTime) summaryParts.push(`${Math.round(Number(detected.maxTime) / 60)}m`);
+            if (detected.pullCount) summaryParts.push(`${detected.pullCount} pulls`);
+            setBanner({
+              text: `Detected dungeon route and pasted to Footer: ${summaryParts.join(' · ')}`,
+              id: Date.now(),
+            });
+          } else {
+            setSimcInput(clipboardText);
+            const firstLine = clipboardText.split(/\r?\n/).find((line) => line.trim())?.trim() || '';
+            setBanner({
+              text: firstLine
+                ? `Detected and pasted: ${firstLine}`
+                : 'Detected and pasted SimC export.',
+              id: Date.now(),
+            });
+          }
+        } catch {
+          // Ignore clipboard permission or platform errors.
+        }
+      };
+
+      const onFocus = () => {
+        void readClipboardIntoSimc();
+      };
+
+      const onVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          void readClipboardIntoSimc();
+        }
+      };
+
+      window.addEventListener('focus', onFocus);
+      document.addEventListener('visibilitychange', onVisibilityChange);
+
+      return () => {
+        cancelled = true;
+        window.removeEventListener('focus', onFocus);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      };
+    }, [autoClipboardPasteSimc, setSimcFooter, setSimcInput, simcInput]);
+
+    useEffect(() => {
+      if (!banner) return;
+      if (bannerTimerRef.current != null) {
+        window.clearTimeout(bannerTimerRef.current);
+      }
+      bannerTimerRef.current = window.setTimeout(() => {
+        setBanner(null);
+        bannerTimerRef.current = null;
+      }, 3500);
+      return () => {
+        if (bannerTimerRef.current != null) {
+          window.clearTimeout(bannerTimerRef.current);
+          bannerTimerRef.current = null;
+        }
+      };
+    }, [banner]);
+
+    if (!showConfig) return null;
+
+    return (
+      <div className="mb-6 space-y-4">
+        {banner && (
+          <div className="pointer-events-none fixed bottom-4 right-4 z-[90]">
+            <ClipboardBanner message={banner.text} onDismiss={() => setBanner(null)} />
+          </div>
+        )}
+        <div className="card space-y-3 p-5">
+          <label className="label-text">SimC Addon Export</label>
+          <SimcInputEditor
+            value={simcInput}
+            onChange={setSimcInput}
+            placeholder="Paste your SimC addon export here..."
+          />
+          {checksumStatus === 'invalid' && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+              <svg
+                className="h-4 w-4 shrink-0 text-amber-400"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <path d="M8 1L1 14h14L8 1zM8 6v4M8 12v.5" />
+              </svg>
+              <p className="text-[14px] text-amber-300">
+                This input appears to have been manually edited. Results may not reflect your actual
+                in-game character.
+              </p>
+            </div>
+          )}
+          {detectedCharacterInfo && <CharacterInfoBar info={detectedCharacterInfo} />}
+          {detectedDungeonInfo && <DungeonInfoBar info={detectedDungeonInfo} />}
+        </div>
+        <TalentPicker />
+        <FightSetupOptions />
+        <ConsumablesAndRaidBuffsOptions />
+        <AdvancedOptions />
+      </div>
+    );
+  }

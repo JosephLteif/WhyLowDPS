@@ -66,7 +66,6 @@ interface DataFilePreviewResponse {
 }
 
 const SIMC_CHANNELS = [
-  { id: 'stable', label: 'Stable' },
   { id: 'nightly', label: 'Nightly' },
 ] as const;
 
@@ -124,7 +123,6 @@ export default function SettingsPage() {
     text: string;
   } | null>(null);
   const [simcStatuses, setSimcStatuses] = useState<Record<SimcChannelName, SimcStatus | null>>({
-    stable: null,
     nightly: null,
   });
   const [simcChecking, setSimcChecking] = useState(false);
@@ -235,14 +233,13 @@ export default function SettingsPage() {
     setSimcMessage(null);
     try {
       if (channel) {
-        const status = await getSimcStatus(channel);
+        const status = await getSimcStatus();
         setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
       } else {
         const channels = SIMC_CHANNELS.map((entry) => entry.id);
-        const results = await Promise.all(channels.map((id) => getSimcStatus(id)));
+        const results = await Promise.all(channels.map(() => getSimcStatus()));
         setSimcStatuses({
-          stable: results[0],
-          nightly: results[1],
+          nightly: results[0],
         });
       }
     } catch (err: any) {
@@ -265,7 +262,7 @@ export default function SettingsPage() {
       })
     );
     try {
-      const status = await downloadLatestSimc(channel);
+      const status = await downloadLatestSimc();
       setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
       window.dispatchEvent(
         new CustomEvent('whylowdps-simc-download-finish', {
@@ -324,7 +321,7 @@ export default function SettingsPage() {
     setSimcAction(`${channel}:remove`);
     setSimcMessage(null);
     try {
-      const status = await removeSimcChannel(channel);
+      const status = await removeSimcChannel();
       setSimcStatuses((prev) => ({ ...prev, [channel]: status }));
       setSimcMessage({
         type: 'success',
@@ -352,14 +349,14 @@ export default function SettingsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: 'simc_download_channel',
-        value: 'stable',
+        value: 'nightly',
       }),
     }).catch(() => {});
   }, [performanceSaved, user]);
 
   useEffect(() => {
     try {
-      localStorage.setItem('whylowdps_simc_download_channel', 'stable');
+      localStorage.setItem('whylowdps_simc_download_channel', 'nightly');
     } catch {}
   }, []);
 

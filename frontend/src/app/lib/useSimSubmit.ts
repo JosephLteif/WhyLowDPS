@@ -14,7 +14,7 @@ interface UseSimSubmitOptions {
    * Build per-page payload fields (merged into the shared payload).
    * Return null to abort submission.
    */
-  buildPayload: () => Record<string, unknown> | null;
+  buildPayload: () => Record<string, unknown> | Promise<Record<string, unknown> | null> | null;
   /** Optional pre-submit validation. Return an error string to abort. */
   validate?: () => string | null;
 }
@@ -161,7 +161,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
       }
     }
 
-    const pagePayload = buildPayload();
+    const pagePayload = await buildPayload();
     if (pagePayload === null) return;
     const isConsumableMatrix = pagePayload.sim_type === 'consumable_matrix';
 

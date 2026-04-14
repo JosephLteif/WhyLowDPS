@@ -116,7 +116,57 @@ pub fn generate_droptimizer_input(
     base_profile: &str,
     drop_items: &[ResolvedItem],
 ) -> (String, usize, HashMap<String, Value>) {
+    fn infer_token_slot(item_name: &str) -> Option<&'static str> {
+        let n = item_name.to_lowercase();
+        if n.contains("hungering") {
+            Some("hands")
+        } else if n.contains("unraveled") {
+            Some("shoulder")
+        } else if n.contains("corrupted") {
+            Some("legs")
+        } else if n.contains("fanatical") {
+            Some("head")
+        } else {
+            None
+        }
+    }
+
+    fn build_item_simc_string(item: &ResolvedItem) -> String {
+        let mut simc = if !item.simc_string.trim().is_empty() {
+            let raw = item.simc_string.trim().to_string();
+            if raw.starts_with(',') {
+                raw
+            } else {
+                format!(",{}", raw)
+            }
+        } else {
+            if item.item_id == 0 {
+                return String::new();
+            }
+            if item.bonus_ids.is_empty() {
+                format!(",id={}", item.item_id)
+            } else {
+                let joined = item
+                    .bonus_ids
+                    .iter()
+                    .map(|b| b.to_string())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                format!(",id={},bonus_id={}", item.item_id, joined)
+            }
+        };
+
+        // Enforce the resolved ilvl from drop finder so SimC does not downgrade
+        // items that lack explicit ilvl in their serialized form.
+        if item.ilevel > 0 && !simc.contains("ilevel=") {
+            simc.push_str(&format!(",ilevel={}", item.ilevel));
+        }
+        simc
+    }
+
     let (base_lines, equipped_gear, talents, spec) = parser::parse_base_profile(base_profile);
+    let class_id = crate::types::class_data::detect_class(base_profile)
+        .and_then(|c| crate::types::class_data::class_wow_id(&c));
     let mut lines = Vec::new();
     let mut combo_metadata = HashMap::new();
 
@@ -142,6 +192,7 @@ pub fn generate_droptimizer_input(
 
     let mut combo_idx = 2;
     for item in drop_items {
+        let mut candidates: Vec<(String, ResolvedItem)> = Vec::new();
         let mut slots =
             crate::types::class_data::inv_type_to_slots(item.inventory_type as u64, &spec);
 
@@ -149,23 +200,46 @@ pub fn generate_droptimizer_input(
             slots.retain(|s| *s != "off_hand");
         }
 
-        if slots.is_empty() {
-            continue;
+        if !slots.is_empty() {
+            for slot in &slots {
+                candidates.push(((*slot).to_string(), item.clone()));
+            }
+        } else if let Some(cid) = class_id {
+            // Some drop-finder entries (e.g. tier tokens in "Other") do not provide
+            // an equippable inventory_type. Infer the single token slot from the item name
+            // and simulate only that resulting tier piece.
+            if let Some(slot) = infer_token_slot(&item.name) {
+                if let Some(inv_type) = crate::gear_resolver::slot_to_inv_type(slot) {
+                    if let Some(tier_info) = crate::item_db::catalyst_tier_item(cid, inv_type) {
+                        let converted =
+                            crate::gear_resolver::build_catalyst_item(item, &tier_info, slot);
+                        candidates.push((slot.to_string(), converted));
+                    }
+                }
+            }
         }
 
-        for slot in &slots {
-            let mut simc = item.simc_string.clone();
-            if let Some(eq) = equipped_gear.get(*slot) {
-                // Restore enchants from equipped gear
-                if let Some(idx) = eq.find(",enchant_id=") {
-                    simc.push_str(&eq[idx..]);
+        for (slot, candidate_item) in candidates {
+            let mut simc = build_item_simc_string(&candidate_item);
+            if simc.is_empty() {
+                continue;
+            }
+            if let Some(eq) = equipped_gear.get(slot.as_str()) {
+                // Restore only enchant/gem IDs from equipped gear.
+                // Do NOT append the whole suffix because it may include old bonus_id values.
+                for part in eq.split(',') {
+                    let p = part.trim();
+                    if p.starts_with("enchant_id=") || p.starts_with("gem_id=") {
+                        simc.push(',');
+                        simc.push_str(p);
+                    }
                 }
             }
 
             let c_name = format!("Combo {}", combo_idx);
             lines.push(format!("### {}", c_name));
             lines.push(format!("profileset.\"{}\"+={}={}", c_name, slot, simc));
-            if item.inventory_type == 17 && *slot == "main_hand" && spec != "fury" {
+            if candidate_item.inventory_type == 17 && slot == "main_hand" && spec != "fury" {
                 lines.push(format!("profileset.\"{}\"+=off_hand=,", c_name));
             }
             if !talents.is_empty() {
@@ -173,7 +247,23 @@ pub fn generate_droptimizer_input(
             }
             lines.push(String::new());
 
-            combo_metadata.insert(c_name, json!([{"slot": slot, "item_id": item.item_id, "ilevel": item.ilevel, "name": item.name, "bonus_ids": item.bonus_ids, "enchant_id": 0, "gem_id": 0, "is_kept": false, "origin": "bags"}]));
+            combo_metadata.insert(
+                c_name,
+                json!([{
+                    "slot": slot,
+                    "item_id": candidate_item.item_id,
+                    "ilevel": candidate_item.ilevel,
+                    "name": candidate_item.name,
+                    "bonus_ids": candidate_item.bonus_ids,
+                    "enchant_id": 0,
+                    "gem_id": 0,
+                    "is_kept": false,
+                    "origin": "bags",
+                    "encounter": candidate_item.encounter,
+                    "instance_name": candidate_item.instance_name,
+                    "source_type": candidate_item.source_type
+                }]),
+            );
             combo_idx += 1;
         }
     }
@@ -186,6 +276,8 @@ pub fn generate_upgrade_compare_input(
     upgraded_options_by_slot: &HashMap<String, Vec<ResolvedItem>>,
     upgrade_budget: &HashMap<u64, u64>,
     max_combos_override: Option<usize>,
+    _upgrade_depth: &str,
+    budget_mode: &str,
 ) -> ProfilesetResult {
     let (base_lines, equipped_gear, talents_string, _spec) =
         parser::parse_base_profile(base_profile);
@@ -222,6 +314,7 @@ pub fn generate_upgrade_compare_input(
         retained: Vec::new(),
         spent: HashMap::new(),
         current: Vec::new(),
+        retain_all: budget_mode != "max_affordability",
     };
     ctx.dfs(0);
 

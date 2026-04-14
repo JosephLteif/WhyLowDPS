@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { useSimSubmit } from '../lib/useSimSubmit';
@@ -273,6 +273,12 @@ export default function StatWeightsPage() {
     validate,
   });
 
+  const handleSubmit = useCallback(() => {
+    submit();
+  }, [
+    submit,
+  ]);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="space-y-1">
@@ -285,7 +291,7 @@ export default function StatWeightsPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          submit();
+          handleSubmit();
         }}
         className="space-y-6"
       >

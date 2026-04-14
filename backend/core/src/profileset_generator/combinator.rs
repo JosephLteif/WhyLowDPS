@@ -208,6 +208,7 @@ pub struct UpgradeDfsCtx<'a> {
     pub retained: Vec<UpgradeCombo>,
     pub spent: HashMap<u64, u64>,
     pub current: Vec<(String, usize)>,
+    pub retain_all: bool,
 }
 
 impl UpgradeDfsCtx<'_> {
@@ -220,15 +221,21 @@ impl UpgradeDfsCtx<'_> {
 
     pub fn dfs(&mut self, idx: usize) {
         if idx == self.slots.len() {
-            let total: u64 = self.spent.values().sum();
-            if total > self.best_spend {
-                self.best_spend = total;
-                self.retained.clear();
-            }
-            if total >= self.best_spend {
+            if self.retain_all {
                 self.retained.push(UpgradeCombo {
                     choices: self.current.clone(),
                 });
+            } else {
+                let total: u64 = self.spent.values().sum();
+                if total > self.best_spend {
+                    self.best_spend = total;
+                    self.retained.clear();
+                }
+                if total >= self.best_spend {
+                    self.retained.push(UpgradeCombo {
+                        choices: self.current.clone(),
+                    });
+                }
             }
             return;
         }

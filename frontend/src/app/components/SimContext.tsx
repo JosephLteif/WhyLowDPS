@@ -107,6 +107,13 @@ function readStoredBool(key: string, fallback: boolean): boolean {
   return v === 'true';
 }
 
+function readStoredOptionalNumber(key: string): number | undefined {
+  const v = localStorage.getItem(key);
+  if (v == null) return undefined;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 function readStoredString(key: string, fallback = ''): string {
   const v = localStorage.getItem(key);
   if (v == null) return fallback;
@@ -160,6 +167,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
     try {
       _setSimcInput(readSessionString('whylowdps_simc_input', ''));
       _setThreads(readStored('whylowdps_threads', 0));
+      _setMaxCombinations(readStoredOptionalNumber('whylowdps_max_combinations'));
       _setIncludeTimeline(readStoredBool('whylowdps_include_timeline', true));
       _setExternalBuffChaosBrand(readStoredBool('whylowdps_ext_buff_chaos_brand', true));
       _setExternalBuffMysticTouch(readStoredBool('whylowdps_ext_buff_mystic_touch', true));
@@ -429,7 +437,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (dataCacheRefreshMinutes <= 0) return;
     let cancelled = false;
-    let timer: ReturnType<typeof window.setInterval> | null = null;
+    let timer: number | null = null;
 
     const triggerRefresh = async () => {
       try {

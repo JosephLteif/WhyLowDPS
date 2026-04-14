@@ -17,6 +17,7 @@ interface DpsHeroCardProps {
   iterations?: number;
   targetError?: number;
   elapsedTime?: number;
+  stageTimings?: Array<{ name: string; elapsed: number }>;
   avgIlevel?: number;
   avgIlevelGain?: number;
   /** Optional content rendered between the DPS number and the metadata bar */
@@ -84,6 +85,7 @@ export default function DpsHeroCard({
   targetError,
   desiredTargets,
   elapsedTime,
+  stageTimings,
   avgIlevel,
   avgIlevelGain,
   children,
@@ -214,7 +216,17 @@ export default function DpsHeroCard({
               note={targetError != null && targetError > 0 ? 'Smart Sim' : undefined}
             />
           )}
-          {elapsedTime != null && <MetaStat label="Time" value={formatElapsed(elapsedTime)} />}
+          {elapsedTime != null && (
+            <MetaStat
+              label="Time"
+              value={formatElapsed(elapsedTime)}
+              tooltip={
+                stageTimings && stageTimings.length > 0
+                  ? stageTimings.map((s) => `${s.name}: ${formatElapsed(s.elapsed)}`).join('\n')
+                  : undefined
+              }
+            />
+          )}
         </div>
       )}
     </div>
@@ -226,14 +238,23 @@ function MetaStat({
   value,
   note,
   noteColor,
+  tooltip,
 }: {
   label: string;
   value: string;
   note?: string;
   noteColor?: string;
+  tooltip?: string;
 }) {
+  const tooltipLines = tooltip
+    ? tooltip
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : [];
+
   return (
-    <div className="flex-1 px-4 py-3 text-center">
+    <div className="group relative flex-1 px-4 py-3 text-center">
       <p className="text-sm uppercase tracking-wider text-zinc-300">{label}</p>
       <p className="mt-0.5 text-sm font-medium tabular-nums text-zinc-100">
         {value}
@@ -243,6 +264,18 @@ function MetaStat({
           </span>
         )}
       </p>
+      {tooltipLines.length > 0 && (
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-max max-w-[320px] -translate-x-1/2 rounded-lg border border-border bg-surface px-3 py-2 text-left shadow-xl group-hover:block">
+          <p className="mb-1 text-[10px] uppercase tracking-widest text-zinc-500">Stage Times</p>
+          <div className="space-y-1">
+            {tooltipLines.map((line, idx) => (
+              <p key={idx} className="font-mono text-[12px] leading-tight text-zinc-200">
+                {line}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useItemInfo,
   useEnchantInfo,
@@ -20,7 +20,6 @@ import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
 import { decodeHeader } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { generateSimcString } from '../lib/simc-generator';
-import { useState } from 'react';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -541,6 +540,8 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
 }
 
 function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
+  const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
+
   const raids = useMemo(() => {
     if (!raidEncounters || typeof raidEncounters !== 'object') return [];
     const expansions = Array.isArray(raidEncounters.expansions) ? raidEncounters.expansions : [];
@@ -548,6 +549,9 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
       string,
       {
         name: string;
+        expansionKey: string;
+        expansionLabel: string;
+        placeholderExpansion?: boolean;
         normal: string;
         heroic: string;
         mythic: string;
@@ -572,13 +576,47 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
 
     const flattened: Array<{
       name: string;
+      expansionKey: string;
+      expansionLabel: string;
+      placeholderExpansion?: boolean;
       normal: string;
       heroic: string;
       mythic: string;
       lfr: string;
     }> = [];
 
+    const normalize = (value: any) =>
+      String(value ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_]+/g, '-');
+
+    const canonicalExpansionKey = (value: string | null) => {
+      const lower = (value || '').trim().toLowerCase();
+      if (lower === 'current season' || lower === 'current expansion') return 'midnight';
+      return normalize(value);
+    };
+
+    const canonicalExpansionLabel = (value: string | null) => {
+      const raw = (value || '').trim();
+      if (!raw) return 'Unknown expansion';
+      const lower = raw.toLowerCase();
+      if (lower === 'current season' || lower === 'current expansion') return 'Midnight';
+      return raw;
+    };
+
+    const isPlaceholderExpansion = (value: string | null) => {
+      const lower = (value || '').trim().toLowerCase();
+      return lower === 'current season' || lower === 'current expansion';
+    };
+
     for (const exp of expansions) {
+      const rawExpansionLabel =
+        exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || null;
+      const expansionLabel = canonicalExpansionLabel(rawExpansionLabel);
+      // Keep filtering stable even when backend keys/slugs are inconsistent:
+      // use the same canonical label for both display and grouping/filter keys.
+      const expansionKey = normalize(expansionLabel) || canonicalExpansionKey(rawExpansionLabel);
       const instances = Array.isArray(exp?.instances) ? exp.instances : [];
       for (const inst of instances) {
         const modes = Array.isArray(inst?.modes) ? inst.modes : [];
@@ -593,6 +631,10 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
 
         flattened.push({
           name: inst?.instance?.name || inst?.name || 'Raid',
+          expansionKey: expansionKey || 'unknown-expansion',
+          expansionLabel: expansionLabel || 'Unknown expansion',
+          // Track whether this row came from a generic "current season/expansion" bucket.
+          placeholderExpansion: isPlaceholderExpansion(rawExpansionLabel),
           normal: fmtProgress(getMode('normal')),
           heroic: fmtProgress(getMode('heroic')),
           mythic: fmtProgress(getMode('mythic')),
@@ -600,8 +642,19 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
         });
       }
     }
-    for (const raid of flattened) {
-      const key = raid.name.trim().toLowerCase();
+    const byRaidNameHasConcrete = new Set(
+      flattened
+        .filter((r: any) => !r.placeholderExpansion && r.expansionKey !== 'unknown-expansion')
+        .map((r: any) => r.name.trim().toLowerCase().replace(/\s+/g, ' '))
+    );
+
+    for (const raid of flattened as Array<any>) {
+      const normalizedRaidName = raid.name.trim().toLowerCase().replace(/\s+/g, ' ');
+      if (raid.placeholderExpansion && byRaidNameHasConcrete.has(normalizedRaidName)) {
+        // Prefer concrete expansion labels over generic current-season placeholders.
+        continue;
+      }
+      const key = `${raid.expansionKey}::${normalizedRaidName}`;
       const existing = byName.get(key);
       if (!existing) {
         byName.set(key, raid);
@@ -616,16 +669,60 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
     return Array.from(byName.values());
   }, [raidEncounters]);
 
+  const expansionOptions = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string }
+    >();
+    for (const raid of raids) {
+      if (!map.has(raid.expansionKey)) {
+        map.set(raid.expansionKey, { key: raid.expansionKey, label: raid.expansionLabel });
+      }
+    }
+    return Array.from(map.values());
+  }, [raids]);
+
+  const visibleRaids = useMemo(() => {
+    return raids.filter((raid) => {
+      const expansionOk = selectedExpansion === 'all' || raid.expansionKey === selectedExpansion;
+      return expansionOk;
+    });
+  }, [raids, selectedExpansion]);
+
   return (
     <div className="card p-5">
-      <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-zinc-500">
-        Raid Progress
-      </h3>
-      {raids.length > 0 ? (
+      <div className="mb-4 flex flex-col gap-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Raid Progress</h3>
+        {expansionOptions.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 text-[11px] font-bold uppercase tracking-wider text-zinc-600">
+              <span className="block">Expansion</span>
+              <select
+                value={selectedExpansion}
+                onChange={(e) => {
+                  setSelectedExpansion(e.target.value);
+                }}
+                className="input-field w-full text-sm"
+              >
+                <option value="all">All expansions</option>
+                {expansionOptions.map((exp) => (
+                  <option key={exp.key} value={exp.key}>
+                    {exp.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+      </div>
+      {visibleRaids.length > 0 ? (
         <div className="space-y-4">
-          {raids.map((raid) => (
+          {visibleRaids.map((raid) => (
             <div key={raid.name} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-              <p className="mb-2 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
+              <p className="mb-1 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
+              <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">
+                {raid.expansionLabel}
+              </p>
               <div className="grid grid-cols-2 gap-1 text-[11px] text-zinc-400">
                 <span>LFR: {raid.lfr}</span>
                 <span>Normal: {raid.normal}</span>
@@ -636,7 +733,9 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
           ))}
         </div>
       ) : (
-        <p className="text-[11px] italic text-zinc-600">Raid progression data unavailable.</p>
+        <p className="text-[11px] italic text-zinc-600">
+          Raid progression data unavailable for the selected filter.
+        </p>
       )}
     </div>
   );

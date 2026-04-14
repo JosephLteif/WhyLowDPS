@@ -3,12 +3,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '../lib/api';
 
+interface StageTiming {
+  name: string;
+  elapsed: number;
+}
+
 interface SimStatusProps {
   status: string;
   progress: number;
   progressStage?: string;
   progressDetail?: string;
+  createdAt?: string;
   stagesCompleted?: string[];
+  stageTimings?: StageTiming[];
+  activeStageElapsed?: number;
   jobId?: string;
   onCancelled?: () => void;
   logLines?: string[];
@@ -24,11 +32,6 @@ interface SimStatusProps {
   fightStyle?: string;
 }
 
-/**
- * Tracks server-reported progress. Only advances when the backend
- * reports a higher value (i.e. a profileset or stage actually completed).
- * The CSS transition on the bar handles visual smoothing.
- */
 function useSmoothedProgress(serverProgress: number): number {
   const [display, setDisplay] = useState(serverProgress);
 
@@ -43,6 +46,16 @@ function formatBytes(bytes: number) {
   if (!bytes) return '0 MB';
   const mb = bytes / 1024 / 1024;
   return `${mb.toFixed(1)} MB`;
+}
+
+function formatElapsed(seconds: number): string {
+  const safe = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function classifyLine(line: string): string {
@@ -88,9 +101,7 @@ function LogConsole({ lines }: { lines: string[] }) {
             SimC Output
           </span>
         </div>
-        <span className="font-mono text-sm tabular-nums text-zinc-300">
-          {lines.length} lines
-        </span>
+        <span className="font-mono text-sm tabular-nums text-zinc-300">{lines.length} lines</span>
       </div>
       <div
         ref={containerRef}
@@ -112,7 +123,10 @@ export default function SimStatus({
   progress,
   progressStage,
   progressDetail,
+  createdAt,
   stagesCompleted,
+  stageTimings = [],
+  activeStageElapsed,
   jobId,
   onCancelled,
   logLines,
@@ -130,9 +144,28 @@ export default function SimStatus({
   const isRunning = status === 'running';
   const isPending = status === 'pending';
   const [cancelling, setCancelling] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const displayProgress = useSmoothedProgress(progress);
   const title = progressStage || (isPending ? 'Queued' : 'Simulating');
   const hasStages = stagesCompleted && stagesCompleted.length > 0;
+
+  useEffect(() => {
+    if (!createdAt || !isRunning) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const started = new Date(createdAt).getTime();
+    if (!Number.isFinite(started)) {
+      setElapsedSeconds(0);
+      return;
+    }
+
+    const update = () => setElapsedSeconds((Date.now() - started) / 1000);
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [createdAt, isRunning]);
 
   async function handleCancel() {
     if (!jobId || cancelling) return;
@@ -146,6 +179,9 @@ export default function SimStatus({
       setCancelling(false);
     }
   }
+
+  const runningStageElapsed =
+    activeStageElapsed != null ? Math.max(0, activeStageElapsed) : elapsedSeconds;
 
   return (
     <div className="flex flex-col items-center justify-center space-y-6 py-16">
@@ -186,6 +222,12 @@ export default function SimStatus({
 
       {isRunning && (
         <div className="flex w-80 flex-wrap justify-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
+          <div className="flex flex-col items-center">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+              Elapsed
+            </span>
+            <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatElapsed(elapsedSeconds)}</span>
+          </div>
           {cpuPct !== undefined && cpuPct > 0 && (
             <div className="flex flex-col items-center">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
@@ -207,9 +249,7 @@ export default function SimStatus({
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                 Memory
               </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">
-                {formatBytes(memBytes)}
-              </span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatBytes(memBytes)}</span>
             </div>
           )}
           {iterations && (
@@ -217,9 +257,7 @@ export default function SimStatus({
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                 Iterations
               </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">
-                {(iterations / 1000).toFixed(0)}k
-              </span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{(iterations / 1000).toFixed(0)}k</span>
             </div>
           )}
           {fightStyle && (
@@ -280,7 +318,12 @@ export default function SimStatus({
               >
                 <path d="M12 5L6.5 10.5L4 8" />
               </svg>
-              <span className="text-sm text-zinc-300">{stage}</span>
+              <span className="text-sm text-zinc-300">
+                {stage}
+                {stageTimings[i] && (
+                  <span className="text-gray-500"> took {formatElapsed(stageTimings[i].elapsed)}</span>
+                )}
+              </span>
             </div>
           ))}
           {progressStage && (
@@ -290,6 +333,7 @@ export default function SimStatus({
               </div>
               <span className="text-sm text-zinc-300">
                 {progressStage}
+                <span className="text-gray-500"> - {formatElapsed(runningStageElapsed)}</span>
                 {progressDetail && <span className="text-zinc-300"> - {progressDetail}</span>}
               </span>
             </div>

@@ -34,6 +34,8 @@ interface JobData {
   id: string;
   status: string;
   sim_type?: string;
+  simc_input?: string;
+  created_at?: string;
   progress: number;
   progress_stage?: string;
   progress_detail?: string;
@@ -65,6 +67,11 @@ interface TimelineEvent {
   spell_id?: number;
   target?: string;
   queue_failed?: boolean;
+}
+
+interface StageTiming {
+  name: string;
+  elapsed: number;
 }
 
 function parseSeriesPoints(input: unknown): TimelinePoint[] {
@@ -341,9 +348,70 @@ export default function SimResultClient() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
+  const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
+  const [activeStageElapsed, setActiveStageElapsed] = useState(0);
+  const activeStageNameRef = useRef<string | null>(null);
+  const activeStageStartedAtRef = useRef<number | null>(null);
+  const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const appendStageTiming = useCallback((name: string, elapsed: number) => {
+    setStageTimings((prev) => {
+      if (prev.some((entry) => entry.name === name)) return prev;
+      const next = [...prev, { name, elapsed: Math.max(0, elapsed) }];
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`sim_stage_timings_${id}`, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, [id]);
 
   useEffect(() => {
     setSiblings(getScenarioSiblings());
+  }, []);
+
+  useEffect(() => {
+    activeStageNameRef.current = null;
+    activeStageStartedAtRef.current = null;
+    setActiveStageElapsed(0);
+    if (stageTickRef.current) {
+      clearInterval(stageTickRef.current);
+      stageTickRef.current = null;
+    }
+    if (typeof window === 'undefined' || !id || id === '_') {
+      setStageTimings([]);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(`sim_stage_timings_${id}`);
+      if (!raw) {
+        setStageTimings([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setStageTimings(
+          parsed
+            .map((entry) => ({
+              name: String(entry?.name ?? ''),
+              elapsed: Number(entry?.elapsed ?? 0),
+            }))
+            .filter((entry) => entry.name)
+        );
+      } else {
+        setStageTimings([]);
+      }
+    } catch {
+      setStageTimings([]);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    return () => {
+      if (stageTickRef.current) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -439,6 +507,58 @@ export default function SimResultClient() {
   }, [showLogs, id, job?.status]);
 
   useEffect(() => {
+    if (!job) return;
+    const isActive = job.status === 'running' || job.status === 'pending';
+    const stage = job.progress_stage?.trim();
+    const now = Date.now();
+
+    if (!isActive) {
+      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
+        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        appendStageTiming(activeStageNameRef.current, elapsed);
+      }
+      activeStageNameRef.current = null;
+      activeStageStartedAtRef.current = null;
+      setActiveStageElapsed(0);
+      if (stageTickRef.current) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+      return;
+    }
+
+    if (!stage) return;
+
+    if (!activeStageNameRef.current) {
+      activeStageNameRef.current = stage;
+      activeStageStartedAtRef.current = now;
+      setActiveStageElapsed(0);
+    } else if (activeStageNameRef.current !== stage) {
+      if (activeStageStartedAtRef.current) {
+        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        appendStageTiming(activeStageNameRef.current, elapsed);
+      }
+      activeStageNameRef.current = stage;
+      activeStageStartedAtRef.current = now;
+      setActiveStageElapsed(0);
+    }
+
+    if (!stageTickRef.current) {
+      stageTickRef.current = setInterval(() => {
+        if (!activeStageStartedAtRef.current) return;
+        setActiveStageElapsed((Date.now() - activeStageStartedAtRef.current) / 1000);
+      }, 1000);
+    }
+
+    return () => {
+      if (stageTickRef.current && !isActive) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+    };
+  }, [job, appendStageTiming]);
+
+  useEffect(() => {
     if (!id || id === '_' || !job?.result) return;
     if (job.status !== 'done') return;
     if (job.result.timeline || job.result.apl_analysis) return;
@@ -528,13 +648,16 @@ export default function SimResultClient() {
 
   if (job.status === 'pending' || job.status === 'running') {
     return (
-      <SimStatus
-        status={job.status}
-        progress={job.progress}
-        progressStage={job.progress_stage}
-        progressDetail={job.progress_detail}
-        stagesCompleted={job.stages_completed}
-        jobId={id}
+        <SimStatus
+          status={job.status}
+          progress={job.progress}
+          progressStage={job.progress_stage}
+          progressDetail={job.progress_detail}
+          createdAt={job.created_at}
+          stagesCompleted={job.stages_completed}
+          stageTimings={stageTimings}
+          activeStageElapsed={activeStageElapsed}
+          jobId={id}
         onCancelled={() => setJob({ ...job, status: 'cancelled' })}
         logLines={logLines}
         showLogs={showLogs}
@@ -626,14 +749,6 @@ export default function SimResultClient() {
           <div />
         )}
         <div className="flex items-center gap-3">
-          {isTopGear && (
-            <Link
-              href="/top-gear"
-              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.08] hover:text-white"
-            >
-              Sim Again
-            </Link>
-          )}
           <CharacterLinkButton
             jobId={id}
             currentLinkedName={job.linked_name}
@@ -681,6 +796,7 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
+            stageTimings={stageTimings}
             talentString={r.talent_string as string | undefined}
           />
         </>
@@ -725,6 +841,7 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
+            stageTimings={stageTimings}
             avgIlevel={avgIlevel}
           />
           {r.equipped_gear &&

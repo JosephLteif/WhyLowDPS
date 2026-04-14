@@ -222,8 +222,10 @@ pub struct DroptimizerRequest {
 pub struct UpgradeCompareRequest {
     pub simc_input: String,
     pub selected_slots: Vec<String>,
-    #[serde(default = "default_upgrade_mode")]
-    pub upgrade_mode: String,
+    #[serde(default = "default_upgrade_depth")]
+    pub upgrade_depth: String,
+    #[serde(default = "default_budget_mode")]
+    pub budget_mode: String,
     #[serde(default)]
     pub upgrade_budget_override: HashMap<u64, u64>,
     #[serde(default)]
@@ -232,7 +234,11 @@ pub struct UpgradeCompareRequest {
     pub options: SimOptions,
 }
 
-fn default_upgrade_mode() -> String {
+fn default_upgrade_depth() -> String {
+    "highest_only".to_string()
+}
+
+fn default_budget_mode() -> String {
     "max_affordability".to_string()
 }
 

@@ -25,7 +25,8 @@ struct PreparedUpgradeCompare {
 fn prepare_upgrade_compare(
     simc_input: &str,
     selected_slots: &[String],
-    upgrade_mode: &str,
+    upgrade_depth: &str,
+    budget_mode: &str,
     upgrade_budget_override: &HashMap<u64, u64>,
 ) -> Result<PreparedUpgradeCompare, HttpResponse> {
     let mut upgrade_budget = addon_parser::parse_upgrade_currencies(simc_input);
@@ -80,7 +81,20 @@ fn prepare_upgrade_compare(
         let mut candidate_opts: Vec<&game_data::UpgradeOption> = options
             .iter()
             .filter(|opt| opt.level > current_level)
-            .filter(|opt| {
+            .collect();
+
+        if candidate_opts.is_empty() {
+            continue;
+        }
+
+        if upgrade_depth == "highest_only" {
+            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
+        } else if upgrade_depth != "all_levels" {
+            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
+        }
+
+        if budget_mode != "ignore_budget" {
+            candidate_opts.retain(|opt| {
                 !opt.cumulative_costs.is_empty()
                     && opt
                         .cumulative_costs
@@ -89,17 +103,7 @@ fn prepare_upgrade_compare(
                     && opt.cumulative_costs.iter().all(|(cid, amt)| {
                         upgrade_budget.get(cid).copied().unwrap_or(0) >= *amt
                     })
-            })
-            .collect();
-
-        if candidate_opts.is_empty() {
-            continue;
-        }
-
-        if upgrade_mode == "highest_only" {
-            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
-        } else if upgrade_mode != "all_levels" && upgrade_mode != "max_affordability" {
-            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
+            });
         }
 
         for opt in candidate_opts {
@@ -284,7 +288,8 @@ pub(super) async fn get_upgrade_compare_combo_count(
     let prepared = match prepare_upgrade_compare(
         &simc_input,
         &req.selected_slots,
-        &req.upgrade_mode,
+        &req.upgrade_depth,
+        &req.budget_mode,
         &req.upgrade_budget_override,
     ) {
         Ok(v) => v,
@@ -296,7 +301,8 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &prepared.upgraded_options_by_slot,
         &prepared.upgrade_budget,
         req.max_combinations,
-        &req.upgrade_mode,
+        &req.upgrade_depth,
+        &req.budget_mode,
     ) {
         Ok((_, count, _)) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {
@@ -326,7 +332,8 @@ pub(super) async fn create_upgrade_compare_sim(
     let prepared = match prepare_upgrade_compare(
         &simc_input,
         &req.selected_slots,
-        &req.upgrade_mode,
+        &req.upgrade_depth,
+        &req.budget_mode,
         &req.upgrade_budget_override,
     ) {
         Ok(v) => v,
@@ -339,7 +346,8 @@ pub(super) async fn create_upgrade_compare_sim(
             &prepared.upgraded_options_by_slot,
             &prepared.upgrade_budget,
             req.max_combinations,
-            &req.upgrade_mode,
+            &req.upgrade_depth,
+            &req.budget_mode,
         ) {
             Ok(result) => result,
             Err(e) => {

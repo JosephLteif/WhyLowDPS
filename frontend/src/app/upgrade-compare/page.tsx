@@ -98,9 +98,9 @@ export default function UpgradeComparePage() {
   const { data, loading } = useUpgradeData(simcInput);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [comboCount, setComboCount] = useState(0);
-  const [upgradeMode, setUpgradeMode] = useState<'highest_only' | 'all_levels' | 'max_affordability'>(
-    'max_affordability'
-  );
+  const [upgradeMode, setUpgradeMode] = useState<
+    'highest_affordable' | 'all_affordable' | 'highest_any' | 'all_any'
+  >('highest_affordable');
   const [budgetOverride, setBudgetOverride] = useState<Record<string, string>>({});
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
@@ -156,7 +156,8 @@ export default function UpgradeComparePage() {
           body: JSON.stringify({
             simc_input: simcInput,
             selected_slots: [...selectedSlots],
-            upgrade_mode: upgradeMode,
+            upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
+            budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
             upgrade_budget_override: budgetOverridePayload,
             max_combinations: maxCombinations,
           }),
@@ -177,7 +178,8 @@ export default function UpgradeComparePage() {
     return {
       simc_input: simcInput,
       selected_slots: [...selectedSlots],
-      upgrade_mode: upgradeMode,
+      upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
+      budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
       upgrade_budget_override: budgetOverridePayload,
       max_combinations: maxCombinations,
     };
@@ -227,11 +229,13 @@ export default function UpgradeComparePage() {
   const hasCharacter = simcInput.trim().length >= 10;
   const displayComboCount = selectedSlots.size > 0 ? comboCount + 1 : 0;
   const modeLabel =
-    upgradeMode === 'highest_only'
-      ? 'Highest Only'
-      : upgradeMode === 'all_levels'
-        ? 'All Levels'
-        : 'Max Affordability';
+    upgradeMode === 'highest_affordable'
+      ? 'Highest Affordable'
+      : upgradeMode === 'all_affordable'
+        ? 'All Affordable'
+        : upgradeMode === 'highest_any'
+          ? 'Highest Regardless'
+          : 'All Regardless';
 
   const toggleGroup = (groupCandidates: PrepareCandidate[]) => {
     const slots = groupCandidates.map((c) => c.slot);
@@ -270,26 +274,32 @@ export default function UpgradeComparePage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {[
-          ['max_affordability', 'Max Affordability', 'Best spend within budget.'],
-          ['highest_only', 'Highest Only', 'Only the top upgrade tier per item.'],
-          ['all_levels', 'All Levels', 'Every valid upgrade step.'],
-        ].map(([key, label, desc]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setUpgradeMode(key as typeof upgradeMode)}
-            className={`rounded-md border px-3 py-2 text-left transition-colors ${
-              upgradeMode === key
-                ? 'border-gold/40 bg-gold/[0.08] text-zinc-100'
-                : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600'
-            }`}
-          >
-            <div className="text-xs font-semibold">{label}</div>
-            <div className="mt-0.5 text-[10px] text-zinc-400">{desc}</div>
-          </button>
-        ))}
+      <div className="space-y-2">
+        <p className="text-[12px] font-medium uppercase tracking-widest text-muted">
+          Upgrade Mode
+        </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          {[
+            ['highest_affordable', 'Highest Affordable', 'Only the highest tier you can afford.'],
+            ['all_affordable', 'All Affordable', 'Every upgrade tier you can afford.'],
+            ['highest_any', 'Highest Regardless', 'Only the highest tier, even if unaffordable.'],
+            ['all_any', 'All Regardless', 'Every tier, even if unaffordable.'],
+          ].map(([key, label, desc]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setUpgradeMode(key as typeof upgradeMode)}
+              className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                upgradeMode === key
+                  ? 'border-gold/40 bg-gold/[0.08] text-zinc-100'
+                  : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600'
+              }`}
+            >
+              <div className="text-xs font-semibold">{label}</div>
+              <div className="mt-0.5 text-[10px] text-zinc-400">{desc}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       {hasCurrencies && (

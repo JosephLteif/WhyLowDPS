@@ -152,7 +152,7 @@ export default function TopGearUpgradeButton({
                       }`}
                     >
                       <span className="truncate">{opt.fullName}</span>
-                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted group-hover:text-white/60">
+                      <span className="shrink-0 font-mono text-[14px] font-semibold tabular-nums text-zinc-300 group-hover:text-zinc-100">
                         {opt.itemLevel}
                       </span>
                     </button>

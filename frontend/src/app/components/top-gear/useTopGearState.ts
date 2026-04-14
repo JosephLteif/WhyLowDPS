@@ -11,6 +11,17 @@ interface UpgradeOption {
   itemLevel: number;
 }
 
+interface UpgradeOptionApi {
+  bonus_id?: number;
+  level?: number;
+  max?: number;
+  max_level?: number;
+  name?: string;
+  fullName?: string;
+  itemLevel?: number;
+  ilevel?: number;
+}
+
 interface TopGearStateProps {
   resolved: ResolveGearResponse;
   selectedUids: Record<string, Set<string>>;
@@ -33,6 +44,25 @@ export function useTopGearState({
   const [addItemSlot, setAddItemSlot] = useState<string | null>(null);
   const [isOptimizeOpen, setOptimizeOpen] = useState(false);
   const [optimizeItem, setOptimizeItem] = useState<ResolvedItem | null>(null);
+
+  const normalizeUpgradeOption = useCallback((opt: UpgradeOptionApi): UpgradeOption | null => {
+    const bonusId = Number(opt.bonus_id ?? 0);
+    if (!Number.isFinite(bonusId) || bonusId <= 0) return null;
+
+    const level = Number(opt.level ?? 0);
+    const max = Number(opt.max ?? opt.max_level ?? 0);
+    const itemLevel = Number(opt.itemLevel ?? opt.ilevel ?? 0);
+    const fullName = String(opt.fullName || opt.name || '').trim();
+
+    return {
+      bonus_id: bonusId,
+      level: Number.isFinite(level) ? level : 0,
+      max: Number.isFinite(max) ? max : 0,
+      name: String(opt.name || fullName || '').trim(),
+      fullName,
+      itemLevel: Number.isFinite(itemLevel) ? itemLevel : 0,
+    };
+  }, []);
 
   const openAddItem = useCallback((slot?: string) => {
     setAddItemSlot(slot || null);
@@ -58,13 +88,19 @@ export function useTopGearState({
           { credentials: 'include' }
         );
         const data = await res.json();
-        setUpgradeOptions(data.options || []);
+        const normalizedOptions: UpgradeOption[] = (Array.isArray(data?.options)
+          ? data.options
+          : []
+        )
+          .map(normalizeUpgradeOption)
+          .filter((opt): opt is UpgradeOption => opt !== null);
+        setUpgradeOptions(normalizedOptions);
       } catch {
         setUpgradeOptions([]);
       }
       setLoadingUpgrades(false);
     },
-    [upgradeMenuFor]
+    [normalizeUpgradeOption, upgradeMenuFor]
   );
 
   const deselectAll = useCallback(() => onSelectionChange({}), [onSelectionChange]);

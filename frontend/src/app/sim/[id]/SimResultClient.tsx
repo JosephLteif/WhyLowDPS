@@ -35,6 +35,7 @@ interface JobData {
   status: string;
   sim_type?: string;
   simc_input?: string;
+  created_at?: string;
   progress: number;
   progress_stage?: string;
   progress_detail?: string;
@@ -529,13 +530,14 @@ export default function SimResultClient() {
 
   if (job.status === 'pending' || job.status === 'running') {
     return (
-      <SimStatus
-        status={job.status}
-        progress={job.progress}
-        progressStage={job.progress_stage}
-        progressDetail={job.progress_detail}
-        stagesCompleted={job.stages_completed}
-        jobId={id}
+        <SimStatus
+          status={job.status}
+          progress={job.progress}
+          progressStage={job.progress_stage}
+          progressDetail={job.progress_detail}
+          createdAt={job.created_at}
+          stagesCompleted={job.stages_completed}
+          jobId={id}
         onCancelled={() => setJob({ ...job, status: 'cancelled' })}
         logLines={logLines}
         showLogs={showLogs}

@@ -262,6 +262,9 @@ export default function TopGearItemSelector({
         uid,
         enchant_id: enchantId,
         gem_id: firstGemId,
+        enchant_name: enchantId > 0 ? (enchantInfoById[enchantId]?.name || '') : '',
+        gem_name: firstGemId > 0 ? (gemInfoById[firstGemId]?.name || '') : '',
+        gem_icon: firstGemId > 0 ? (gemInfoById[firstGemId]?.icon || '') : '',
         simc_string: nextSimc,
       };
 
@@ -286,6 +289,8 @@ export default function TopGearItemSelector({
       selectedUids,
       onSelectionChange,
       setOptimizeOpen,
+      enchantInfoById,
+      gemInfoById,
     ]
   );
 
@@ -572,7 +577,7 @@ export default function TopGearItemSelector({
         color: 'text-sky-300 bg-sky-500/15 border-sky-400/40',
       });
 
-    const enchantName = item.enchant_name || enchantInfo?.name;
+    const enchantName = enchantInfo?.name || item.enchant_name;
     if (enchantName) {
       const enchantItemId = enchantInfo?.item_id ?? 0;
       parts.push({

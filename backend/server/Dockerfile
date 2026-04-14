@@ -6,7 +6,6 @@ WORKDIR /build
 COPY Cargo.toml ./
 COPY core/ core/
 COPY server/ server/
-COPY launcher/ launcher/
 
 RUN cargo build --release -p whylowdps-server ${CARGO_FEATURES:+--features $CARGO_FEATURES}
 

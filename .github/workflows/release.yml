@@ -85,6 +85,11 @@ jobs:
 
       # Game data is synchronized at app launch; skip heavy data-fetch step during release builds.
 
+      - name: Enable Updater Artifacts
+        shell: bash
+        run: |
+          sed -i 's/"createUpdaterArtifacts": false/"createUpdaterArtifacts": true/g' desktop/src-tauri/tauri.conf.json
+
       # -- Build and Release --
       - uses: tauri-apps/tauri-action@v0
         env:

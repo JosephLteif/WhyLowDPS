@@ -2,7 +2,6 @@
 members = [
     "backend/core",
     "backend/server",
-    "backend/launcher",
     "desktop/src-tauri",
 ]
 resolver = "2"

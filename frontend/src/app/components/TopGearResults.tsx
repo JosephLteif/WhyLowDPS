@@ -29,6 +29,7 @@ interface TopGearResultsProps {
   iterations?: number;
   targetError?: number;
   elapsedTime?: number;
+  stageTimings?: Array<{ name: string; elapsed: number }>;
   talentString?: string;
 }
 
@@ -82,6 +83,7 @@ export default function TopGearResults({
   iterations,
   targetError,
   elapsedTime,
+  stageTimings,
   talentString,
 }: TopGearResultsProps) {
   const {
@@ -182,6 +184,7 @@ export default function TopGearResults({
         iterations={iterations}
         targetError={targetError}
         elapsedTime={elapsedTime}
+        stageTimings={stageTimings}
         avgIlevel={selectedAvgIlevel}
         avgIlevelGain={selectedAvgIlevel - baseAvgIlevel}
       >

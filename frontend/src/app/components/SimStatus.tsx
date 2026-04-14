@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '../lib/api';
 
+interface StageTiming {
+  name: string;
+  elapsed: number;
+}
+
 interface SimStatusProps {
   status: string;
   progress: number;
@@ -10,6 +15,8 @@ interface SimStatusProps {
   progressDetail?: string;
   createdAt?: string;
   stagesCompleted?: string[];
+  stageTimings?: StageTiming[];
+  activeStageElapsed?: number;
   jobId?: string;
   onCancelled?: () => void;
   logLines?: string[];
@@ -25,11 +32,6 @@ interface SimStatusProps {
   fightStyle?: string;
 }
 
-/**
- * Tracks server-reported progress. Only advances when the backend
- * reports a higher value (i.e. a profileset or stage actually completed).
- * The CSS transition on the bar handles visual smoothing.
- */
 function useSmoothedProgress(serverProgress: number): number {
   const [display, setDisplay] = useState(serverProgress);
 
@@ -99,9 +101,7 @@ function LogConsole({ lines }: { lines: string[] }) {
             SimC Output
           </span>
         </div>
-        <span className="font-mono text-[12px] tabular-nums text-gray-600">
-          {lines.length} lines
-        </span>
+        <span className="font-mono text-[12px] tabular-nums text-gray-600">{lines.length} lines</span>
       </div>
       <div
         ref={containerRef}
@@ -125,6 +125,8 @@ export default function SimStatus({
   progressDetail,
   createdAt,
   stagesCompleted,
+  stageTimings = [],
+  activeStageElapsed,
   jobId,
   onCancelled,
   logLines,
@@ -159,9 +161,7 @@ export default function SimStatus({
       return;
     }
 
-    const update = () => {
-      setElapsedSeconds((Date.now() - started) / 1000);
-    };
+    const update = () => setElapsedSeconds((Date.now() - started) / 1000);
     update();
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
@@ -179,6 +179,9 @@ export default function SimStatus({
       setCancelling(false);
     }
   }
+
+  const runningStageElapsed =
+    activeStageElapsed != null ? Math.max(0, activeStageElapsed) : elapsedSeconds;
 
   return (
     <div className="flex flex-col items-center justify-center space-y-6 py-16">
@@ -223,9 +226,7 @@ export default function SimStatus({
             <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
               Elapsed
             </span>
-            <span className="mt-1 font-mono text-[13px] text-zinc-200">
-              {formatElapsed(elapsedSeconds)}
-            </span>
+            <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatElapsed(elapsedSeconds)}</span>
           </div>
           {cpuPct !== undefined && cpuPct > 0 && (
             <div className="flex flex-col items-center">
@@ -248,9 +249,7 @@ export default function SimStatus({
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                 Memory
               </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">
-                {formatBytes(memBytes)}
-              </span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatBytes(memBytes)}</span>
             </div>
           )}
           {iterations && (
@@ -258,9 +257,7 @@ export default function SimStatus({
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                 Iterations
               </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">
-                {(iterations / 1000).toFixed(0)}k
-              </span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">{(iterations / 1000).toFixed(0)}k</span>
             </div>
           )}
           {fightStyle && (
@@ -321,7 +318,12 @@ export default function SimStatus({
               >
                 <path d="M12 5L6.5 10.5L4 8" />
               </svg>
-              <span className="text-[13px] text-gray-400">{stage}</span>
+              <span className="text-[13px] text-gray-400">
+                {stage}
+                {stageTimings[i] && (
+                  <span className="text-gray-500"> took {formatElapsed(stageTimings[i].elapsed)}</span>
+                )}
+              </span>
             </div>
           ))}
           {progressStage && (
@@ -331,7 +333,8 @@ export default function SimStatus({
               </div>
               <span className="text-[13px] text-gray-400">
                 {progressStage}
-                {progressDetail && <span className="text-gray-500"> · {progressDetail}</span>}
+                <span className="text-gray-500"> - {formatElapsed(runningStageElapsed)}</span>
+                {progressDetail && <span className="text-gray-500"> - {progressDetail}</span>}
               </span>
             </div>
           )}

@@ -272,7 +272,6 @@ function Spinner() {
 
 export default function DropFinderPage() {
   const { simcInput } = useSimContext();
-
   // Spec selection: main spec on by default, off-specs toggleable
   const detectedClass = useMemo(() => detectClass(simcInput), [simcInput]);
   const detectedSpec = useMemo(() => detectSpec(simcInput), [simcInput]);
@@ -281,9 +280,6 @@ export default function DropFinderPage() {
     [detectedClass]
   );
   const [activeSpecs, setActiveSpecs] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    setActiveSpecs(detectedSpec ? new Set([detectedSpec]) : new Set());
-  }, [detectedSpec]);
 
   const activeSpecIds = useMemo(
     () =>
@@ -342,6 +338,10 @@ export default function DropFinderPage() {
   const [dungeonDiff, setDungeonDiff] = useState('mythic+10');
   const [upgradeLevel, setUpgradeLevel] = useState(0);
   const [category, setCategory] = useState<Category | ''>('');
+
+  useEffect(() => {
+    setActiveSpecs(detectedSpec ? new Set([detectedSpec]) : new Set());
+  }, [detectedSpec]);
 
   useEffect(() => {
     setSelected(new Set());

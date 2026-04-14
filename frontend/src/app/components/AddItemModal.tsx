@@ -29,6 +29,8 @@ const RAID_TRACK_BY_DIFFICULTY: Record<string, string> = {
   mythic: 'Myth',
 };
 
+const UPGRADE_TRACK_MAX_LEVEL = 6;
+
 const getMappedTrackName = (
   selectedDifficulty: string,
   info: { track?: string } | null | undefined
@@ -362,7 +364,10 @@ export default function AddItemModal({
                             key={`${item.item_id}-${item.encounter}`}
                             className="group relative rounded-2xl border border-white/5 bg-white/[0.03] p-3 shadow-sm transition-all hover:border-white/10 hover:bg-white/[0.06] hover:shadow-blue-900/10"
                           >
-                            <div className="flex cursor-pointer items-center gap-4" onClick={() => handleAdd(item)}>
+                            <div
+                              className="flex cursor-pointer items-center gap-4"
+                              onClick={() => handleAdd(item)}
+                            >
                               <img
                                 src={`https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg`}
                                 className="h-12 w-12 rounded-xl border border-white/10 shadow-lg"
@@ -387,9 +392,11 @@ export default function AddItemModal({
                               <div className="mt-3 pl-16 pr-1">
                                 <div className="mb-1 flex items-center justify-between text-[10px] font-semibold text-slate-400">
                                   <span>
-                                    Selected: {tier.track} {tier.level}/{tier.maxLevel}
+                                    Selected: {tier.track} {tier.level}/{UPGRADE_TRACK_MAX_LEVEL}
                                   </span>
-                                  <span className="font-mono text-blue-300/90">{tier.ilvl} ilvl</span>
+                                  <span className="font-mono text-blue-300/90">
+                                    {tier.ilvl} ilvl
+                                  </span>
                                 </div>
                                 <input
                                   type="range"

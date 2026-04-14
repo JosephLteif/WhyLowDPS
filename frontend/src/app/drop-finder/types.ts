@@ -34,6 +34,9 @@ export interface DropItem {
   ilevel: number;
   encounter: string;
   instance_name?: string;
+  source_type?: string;
+  is_catalyst?: boolean;
+  can_catalyst?: boolean;
   inventory_type?: number;
   bonus_ids?: number[];
   difficulty_info?: Record<string, TrackInfo>;
@@ -157,6 +160,24 @@ const SPEC_IDS: Record<string, number> = {
   augmentation: 1473,
 };
 
+const CLASS_IDS: Record<string, number> = {
+  warrior: 1,
+  paladin: 2,
+  hunter: 3,
+  rogue: 4,
+  priest: 5,
+  death_knight: 6,
+  deathknight: 6,
+  shaman: 7,
+  mage: 8,
+  warlock: 9,
+  monk: 10,
+  druid: 11,
+  demon_hunter: 12,
+  demonhunter: 12,
+  evoker: 13,
+};
+
 export function getSpecId(className: string, specName: string): number | null {
   // Handle ambiguous spec names using class context
   const key = (() => {
@@ -174,6 +195,10 @@ export function getSpecId(className: string, specName: string): number | null {
     }
   })();
   return SPEC_IDS[key] ?? null;
+}
+
+export function getClassId(className: string): number | null {
+  return CLASS_IDS[className] ?? null;
 }
 
 export function formatSpecName(spec: string): string {

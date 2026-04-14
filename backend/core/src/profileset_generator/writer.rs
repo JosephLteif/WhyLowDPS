@@ -79,14 +79,7 @@ pub fn write_all_profilesets(
         }
 
         for gear_set in valid_combos {
-            write_combo(
-                &mut ctx,
-                combo_number,
-                &t_name,
-                &t_str,
-                gear_set,
-                false,
-            );
+            write_combo(&mut ctx, combo_number, &t_name, &t_str, gear_set, false);
             combo_number += 1;
         }
     }
@@ -106,9 +99,11 @@ pub fn write_combo(
     if is_baseline_gear {
         for slot in GEAR_SLOTS {
             if let Some(val) = ctx.equipped_gear.get(*slot) {
-                ctx.lines.push(format!("profileset.\"{}\"+={}={}", combo_name, slot, val));
+                ctx.lines
+                    .push(format!("profileset.\"{}\"+={}={}", combo_name, slot, val));
             } else if *slot == "off_hand" {
-                ctx.lines.push(format!("profileset.\"{}\"+=off_hand=,", combo_name));
+                ctx.lines
+                    .push(format!("profileset.\"{}\"+=off_hand=,", combo_name));
             }
         }
     } else {
@@ -116,7 +111,8 @@ pub fn write_combo(
             crate::profileset::validation::main_hand_is_two_hand(gear_set, ctx.original_spec);
         for slot in GEAR_SLOTS {
             if *slot == "off_hand" && mh_is_2h {
-                ctx.lines.push(format!("profileset.\"{}\"+=off_hand=,", combo_name));
+                ctx.lines
+                    .push(format!("profileset.\"{}\"+=off_hand=,", combo_name));
                 continue;
             }
             if let Some(item) = gear_set.get(*slot) {
@@ -125,7 +121,8 @@ pub fn write_combo(
                     combo_name, slot, item.simc_string
                 ));
             } else if *slot == "off_hand" {
-                ctx.lines.push(format!("profileset.\"{}\"+=off_hand=,", combo_name));
+                ctx.lines
+                    .push(format!("profileset.\"{}\"+=off_hand=,", combo_name));
             }
         }
     }
@@ -264,6 +261,15 @@ pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
         "is_kept": item.origin == crate::types::ItemOrigin::Equipped,
         "origin": item.origin.as_str(),
     });
+    if !item.encounter.is_empty() {
+        meta["encounter"] = json!(item.encounter);
+    }
+    if !item.instance_name.is_empty() {
+        meta["instance_name"] = json!(item.instance_name);
+    }
+    if !item.source_type.is_empty() {
+        meta["source_type"] = json!(item.source_type);
+    }
     if item.is_catalyst {
         meta["is_catalyst"] = json!(true);
     }

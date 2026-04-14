@@ -80,12 +80,14 @@ function deduplicateEnchants(raw: RawEnchant[]): EnchantDisplay[] {
       byBase.set(baseName, e);
     }
   }
-  return Array.from(byBase.values()).map((e) => ({
-    enchantId: e.enchant_id ?? e.id ?? 0,
-    name: e.itemName || e.displayName || e.name || 'Unknown',
-    icon: e.itemIcon || e.spellIcon || 'inv_misc_questionmark',
-    quality: e.quality ?? 3,
-  })).filter((e) => e.enchantId > 0);
+  return Array.from(byBase.values())
+    .map((e) => ({
+      enchantId: e.enchant_id ?? e.id ?? 0,
+      name: e.itemName || e.displayName || e.name || 'Unknown',
+      icon: e.itemIcon || e.spellIcon || 'inv_misc_questionmark',
+      quality: e.quality ?? 3,
+    }))
+    .filter((e) => e.enchantId > 0);
 }
 
 /**
@@ -101,13 +103,15 @@ function deduplicateGems(raw: RawGem[]): GemDisplay[] {
       byBase.set(baseName, g);
     }
   }
-  return Array.from(byBase.values()).map((g) => ({
-    gemItemId: g.item_id ?? g.itemId ?? g.id ?? 0,
-    enchantId: g.id ?? 0,
-    name: g.itemName || g.displayName || g.name || 'Unknown',
-    icon: g.itemIcon || g.icon || 'inv_misc_questionmark',
-    quality: g.quality ?? 3,
-  })).filter((g) => g.gemItemId > 0);
+  return Array.from(byBase.values())
+    .map((g) => ({
+      gemItemId: g.item_id ?? g.itemId ?? g.id ?? 0,
+      enchantId: g.id ?? 0,
+      name: g.itemName || g.displayName || g.name || 'Unknown',
+      icon: g.itemIcon || g.icon || 'inv_misc_questionmark',
+      quality: g.quality ?? 3,
+    }))
+    .filter((g) => g.gemItemId > 0);
 }
 
 export default function OptimizeItemModal({

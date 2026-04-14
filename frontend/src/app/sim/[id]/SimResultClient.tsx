@@ -3,15 +3,20 @@
 import { useParams, useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import GearOverview from '../../components/GearOverview';
 import type { GearItem } from '../../components/GearOverview';
 import ResultsChart from '../../components/ResultsChart';
 import SimStatus from '../../components/SimStatus';
+import StatPlotChart from '../../components/StatPlotChart';
 import StatWeightsTable from '../../components/StatWeightsTable';
-import TalentTree from '../../components/TalentTree';
 import TopGearResults from '../../components/TopGearResults';
+import TrinketTierHeatmap from '../../components/TrinketTierHeatmap';
+import ExternalBuffMatrixChart from '../../components/ExternalBuffMatrixChart';
+import ConsumableMatrixChart from '../../components/ConsumableMatrixChart';
+import SimResultTalentsCard from '../../components/SimResultTalentsCard';
+import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import type { ResultItem, TopGearResult } from '../../lib/types';
@@ -29,6 +34,8 @@ interface JobData {
   id: string;
   status: string;
   sim_type?: string;
+  simc_input?: string;
+  created_at?: string;
   progress: number;
   progress_stage?: string;
   progress_detail?: string;
@@ -49,6 +56,264 @@ interface JobData {
   linked_name?: string;
 }
 
+interface TimelinePoint {
+  t: number;
+  v: number;
+}
+
+interface TimelineEvent {
+  t: number;
+  spell_name: string;
+  spell_id?: number;
+  target?: string;
+  queue_failed?: boolean;
+}
+
+interface StageTiming {
+  name: string;
+  elapsed: number;
+}
+
+function parseSeriesPoints(input: unknown): TimelinePoint[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((entry, idx) => {
+      if (typeof entry === 'number') {
+        return { t: idx, v: entry };
+      }
+      if (!entry || typeof entry !== 'object') return null;
+      const obj = entry as Record<string, unknown>;
+      const tRaw = obj.x ?? obj.time;
+      const vRaw = obj.v ?? obj.value ?? obj.dps;
+      if (typeof vRaw !== 'number') return null;
+      return {
+        t: typeof tRaw === 'number' ? tRaw : idx,
+        v: vRaw,
+      };
+    })
+    .filter((v): v is TimelinePoint => v !== null);
+}
+
+function buildTimelineFromRaw(raw: any): { timeline: any | null; apl: any | null } {
+  const player = raw?.sim?.players?.[0];
+  const collected = player?.collected_data;
+  const actionSeq = collected?.action_sequence;
+  const rowFormat = Array.isArray(actionSeq) ? actionSeq : null;
+  const timeCol = !rowFormat && Array.isArray(actionSeq?.time) ? actionSeq.time : null;
+  const spellNameCol =
+    !rowFormat && Array.isArray(actionSeq?.spell_name) ? actionSeq.spell_name : [];
+  const nameCol = !rowFormat && Array.isArray(actionSeq?.name) ? actionSeq.name : [];
+  const spellIdCol = !rowFormat && Array.isArray(actionSeq?.id) ? actionSeq.id : [];
+  const targetCol = !rowFormat && Array.isArray(actionSeq?.target) ? actionSeq.target : [];
+  const queueFailedCol =
+    !rowFormat && Array.isArray(actionSeq?.queue_failed) ? actionSeq.queue_failed : [];
+
+  const totalEvents = rowFormat ? rowFormat.length : (timeCol?.length ?? 0);
+  if (totalEvents === 0) return { timeline: null, apl: null };
+
+  const maxEvents = 2000;
+  const events: TimelineEvent[] = [];
+  const cooldownEvents: TimelineEvent[] = [];
+  const actionCounts = new Map<string, { count: number; spellId?: number }>();
+  let queueFailures = 0;
+  let lastT: number | null = null;
+  const deltas: number[] = [];
+
+  const cooldownSpellIds = new Set<number>();
+  if (Array.isArray(player?.buffs)) {
+    for (const buff of player.buffs) {
+      if (buff?.cooldown && typeof buff?.spell === 'number' && buff.spell > 0) {
+        cooldownSpellIds.add(buff.spell);
+      }
+    }
+  }
+
+  for (let i = 0; i < Math.min(totalEvents, maxEvents); i += 1) {
+    const row = rowFormat?.[i];
+    const t =
+      typeof row?.time === 'number' ? row.time : typeof timeCol?.[i] === 'number' ? timeCol[i] : 0;
+    const sn =
+      typeof row?.spell_name === 'string'
+        ? row.spell_name
+        : typeof spellNameCol[i] === 'string'
+          ? spellNameCol[i]
+          : '';
+    const nn =
+      typeof row?.name === 'string' ? row.name : typeof nameCol[i] === 'string' ? nameCol[i] : '';
+    const evName = sn || nn || 'Unknown';
+    const sid =
+      typeof row?.id === 'number'
+        ? row.id
+        : typeof spellIdCol[i] === 'number'
+          ? spellIdCol[i]
+          : undefined;
+    const tgt =
+      typeof row?.target === 'string'
+        ? row.target
+        : typeof targetCol[i] === 'string'
+          ? targetCol[i]
+          : '';
+    const qf = row?.queue_failed === true || queueFailedCol[i] === true;
+
+    if (qf) queueFailures += 1;
+    if (lastT !== null && t > lastT) deltas.push(t - lastT);
+    lastT = t;
+
+    const existing = actionCounts.get(evName);
+    if (existing) {
+      existing.count += 1;
+      if (!existing.spellId && sid) existing.spellId = sid;
+    } else {
+      actionCounts.set(evName, { count: 1, spellId: sid });
+    }
+
+    const event: TimelineEvent = {
+      t,
+      spell_name: evName,
+      target: tgt,
+      queue_failed: qf,
+      ...(sid ? { spell_id: sid } : {}),
+    };
+    events.push(event);
+    if (sid && cooldownSpellIds.has(sid)) {
+      cooldownEvents.push(event);
+    }
+  }
+
+  const dpsSeries = parseSeriesPoints(collected?.timeline_dmg?.data);
+
+  const resourceTimelines =
+    collected?.resource_timelines && typeof collected.resource_timelines === 'object'
+      ? (collected.resource_timelines as Record<string, any>)
+      : {};
+  const resourceOrder = [
+    'mana',
+    'energy',
+    'rage',
+    'focus',
+    'runic_power',
+    'insanity',
+    'soul_shard',
+    'holy_power',
+    'combo_points',
+    'maelstrom',
+    'fury',
+    'astral_power',
+    'chi',
+  ];
+  const resourceType =
+    resourceOrder.find((k) => resourceTimelines[k]) || Object.keys(resourceTimelines)[0] || null;
+  const resourceSeriesMap = Object.fromEntries(
+    Object.entries(resourceTimelines)
+      .map(([key, value]) => [key, parseSeriesPoints((value as any)?.data)])
+      .filter(([, series]) => Array.isArray(series) && series.length > 0)
+  );
+  const resourceSeries =
+    resourceType && Array.isArray(resourceSeriesMap[resourceType])
+      ? resourceSeriesMap[resourceType]
+      : [];
+
+  const buffUptimes = Array.isArray(player?.buffs)
+    ? player.buffs
+        .map((buff: any) => {
+          const uptime = typeof buff?.uptime === 'number' ? buff.uptime : 0;
+          if (uptime <= 0) return null;
+          return {
+            name:
+              (typeof buff?.spell_name === 'string' && buff.spell_name) ||
+              (typeof buff?.name === 'string' && buff.name) ||
+              'Unknown',
+            uptime_pct: uptime,
+            ...(typeof buff?.spell === 'number' && buff.spell > 0 ? { spell_id: buff.spell } : {}),
+            ...(buff?.cooldown ? { is_cooldown: true } : {}),
+          };
+        })
+        .filter((b: any) => b !== null)
+        .sort((a: any, b: any) => b.uptime_pct - a.uptime_pct)
+    : [];
+
+  const totalActions = events.length;
+  const topActions = [...actionCounts.entries()]
+    .map(([actionName, info]) => ({
+      name: actionName,
+      count: info.count,
+      share_pct: totalActions > 0 ? (info.count / totalActions) * 100 : 0,
+      ...(info.spellId ? { spell_id: info.spellId } : {}),
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const avgDelta =
+    deltas.length > 0 ? deltas.reduce((sum, v) => sum + v, 0) / deltas.length : undefined;
+
+  const timeline = {
+    events,
+    cooldown_events: cooldownEvents,
+    dps_series: dpsSeries,
+    ...(resourceSeries.length > 0 ? { resource_series: resourceSeries } : {}),
+    ...(Object.keys(resourceSeriesMap).length > 0
+      ? { resource_series_map: resourceSeriesMap }
+      : {}),
+    ...(resourceType ? { resource_type: resourceType } : {}),
+    buff_uptimes: buffUptimes,
+    event_count: totalEvents,
+    events_truncated: totalEvents > maxEvents,
+  };
+
+  const apl = {
+    total_actions: totalActions,
+    unique_actions: actionCounts.size,
+    queue_failures: queueFailures,
+    top_actions: topActions,
+    ...(avgDelta != null
+      ? {
+          gcd_spacing: {
+            avg: avgDelta,
+            min: Math.min(...deltas),
+            max: Math.max(...deltas),
+          },
+        }
+      : {}),
+  };
+
+  return { timeline, apl };
+}
+
+function CollapsibleSection({
+  title,
+  defaultOpen = true,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between border-b border-border/60 bg-white/[0.01] px-5 py-3.5 text-left transition-colors hover:bg-white/[0.03]"
+      >
+        <span className="text-xs font-medium uppercase tracking-widest text-muted">{title}</span>
+        <svg
+          className={`h-3.5 w-3.5 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M4 6l4 4 4-4" />
+        </svg>
+      </button>
+      {open && <div className="p-5">{children}</div>}
+    </div>
+  );
+}
+
 export default function SimResultClient() {
   const router = useRouter();
   const params = useParams();
@@ -67,7 +332,7 @@ export default function SimResultClient() {
 
     const parts = window.location.pathname.split('/');
     // Sims IDs are uuid or nanoid and are generally 20+ chars
-    const foundId = parts.find(p => p.length > 20 && (p.includes('-') || /^[a-f0-9]+$/i.test(p)));
+    const foundId = parts.find((p) => p.length > 20 && (p.includes('-') || /^[a-f0-9]+$/i.test(p)));
     if (foundId) {
       id = foundId;
     }
@@ -78,11 +343,75 @@ export default function SimResultClient() {
   const [logLines, setLogLines] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(true);
   const logCursorRef = useRef(0);
+  const [timelineFallback, setTimelineFallback] = useState<any | null>(null);
+  const [aplFallback, setAplFallback] = useState<any | null>(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
+  const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
+  const [activeStageElapsed, setActiveStageElapsed] = useState(0);
+  const activeStageNameRef = useRef<string | null>(null);
+  const activeStageStartedAtRef = useRef<number | null>(null);
+  const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const appendStageTiming = useCallback((name: string, elapsed: number) => {
+    setStageTimings((prev) => {
+      if (prev.some((entry) => entry.name === name)) return prev;
+      const next = [...prev, { name, elapsed: Math.max(0, elapsed) }];
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`sim_stage_timings_${id}`, JSON.stringify(next));
+      }
+      return next;
+    });
+  }, [id]);
 
   useEffect(() => {
     setSiblings(getScenarioSiblings());
+  }, []);
+
+  useEffect(() => {
+    activeStageNameRef.current = null;
+    activeStageStartedAtRef.current = null;
+    setActiveStageElapsed(0);
+    if (stageTickRef.current) {
+      clearInterval(stageTickRef.current);
+      stageTickRef.current = null;
+    }
+    if (typeof window === 'undefined' || !id || id === '_') {
+      setStageTimings([]);
+      return;
+    }
+    try {
+      const raw = sessionStorage.getItem(`sim_stage_timings_${id}`);
+      if (!raw) {
+        setStageTimings([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setStageTimings(
+          parsed
+            .map((entry) => ({
+              name: String(entry?.name ?? ''),
+              elapsed: Number(entry?.elapsed ?? 0),
+            }))
+            .filter((entry) => entry.name)
+        );
+      } else {
+        setStageTimings([]);
+      }
+    } catch {
+      setStageTimings([]);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    return () => {
+      if (stageTickRef.current) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -123,6 +452,9 @@ export default function SimResultClient() {
     if (!id || id === '_') return;
     setJob(null); // Reset when ID changes
     setFetchError('');
+    setTimelineFallback(null);
+    setAplFallback(null);
+    setTimelineLoading(false);
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
@@ -151,7 +483,9 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function pollLogs() {
       try {
-        const data = await fetchJson<any>(`${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`);
+        const data = await fetchJson<any>(
+          `${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`
+        );
         if (!active) return;
         if (data.lines.length > 0) {
           setLogLines((prev) => {
@@ -171,6 +505,92 @@ export default function SimResultClient() {
       clearTimeout(timer);
     };
   }, [showLogs, id, job?.status]);
+
+  useEffect(() => {
+    if (!job) return;
+    const isActive = job.status === 'running' || job.status === 'pending';
+    const stage = job.progress_stage?.trim();
+    const now = Date.now();
+
+    if (!isActive) {
+      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
+        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        appendStageTiming(activeStageNameRef.current, elapsed);
+      }
+      activeStageNameRef.current = null;
+      activeStageStartedAtRef.current = null;
+      setActiveStageElapsed(0);
+      if (stageTickRef.current) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+      return;
+    }
+
+    if (!stage) return;
+
+    if (!activeStageNameRef.current) {
+      activeStageNameRef.current = stage;
+      activeStageStartedAtRef.current = now;
+      setActiveStageElapsed(0);
+    } else if (activeStageNameRef.current !== stage) {
+      if (activeStageStartedAtRef.current) {
+        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        appendStageTiming(activeStageNameRef.current, elapsed);
+      }
+      activeStageNameRef.current = stage;
+      activeStageStartedAtRef.current = now;
+      setActiveStageElapsed(0);
+    }
+
+    if (!stageTickRef.current) {
+      stageTickRef.current = setInterval(() => {
+        if (!activeStageStartedAtRef.current) return;
+        setActiveStageElapsed((Date.now() - activeStageStartedAtRef.current) / 1000);
+      }, 1000);
+    }
+
+    return () => {
+      if (stageTickRef.current && !isActive) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+    };
+  }, [job, appendStageTiming]);
+
+  useEffect(() => {
+    if (!id || id === '_' || !job?.result) return;
+    if (job.status !== 'done') return;
+    if (job.result.timeline || job.result.apl_analysis) return;
+    if (
+      job.sim_type === 'stat_weights' ||
+      job.sim_type === 'stat-weights' ||
+      job.sim_type === 'stat_plot'
+    ) {
+      return;
+    }
+    if (job.result.type === 'top_gear') return;
+
+    let active = true;
+    (async () => {
+      setTimelineLoading(true);
+      try {
+        const raw = await fetchJson<any>(`${API_URL}/api/sim/${id}/raw`);
+        if (!active) return;
+        const { timeline, apl } = buildTimelineFromRaw(raw);
+        if (timeline) setTimelineFallback(timeline);
+        if (apl) setAplFallback(apl);
+      } catch {
+        // ignore fallback failures
+      } finally {
+        if (active) setTimelineLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [id, job]);
 
   const handleToggleLogs = useCallback(() => setShowLogs((v) => !v), []);
   const navigateToScenario = useCallback(
@@ -228,13 +648,16 @@ export default function SimResultClient() {
 
   if (job.status === 'pending' || job.status === 'running') {
     return (
-      <SimStatus
-        status={job.status}
-        progress={job.progress}
-        progressStage={job.progress_stage}
-        progressDetail={job.progress_detail}
-        stagesCompleted={job.stages_completed}
-        jobId={id}
+        <SimStatus
+          status={job.status}
+          progress={job.progress}
+          progressStage={job.progress_stage}
+          progressDetail={job.progress_detail}
+          createdAt={job.created_at}
+          stagesCompleted={job.stages_completed}
+          stageTimings={stageTimings}
+          activeStageElapsed={activeStageElapsed}
+          jobId={id}
         onCancelled={() => setJob({ ...job, status: 'cancelled' })}
         logLines={logLines}
         showLogs={showLogs}
@@ -257,10 +680,18 @@ export default function SimResultClient() {
 
   const r = job.result;
   const isTopGear = r.type === 'top_gear';
-  const isStatWeights = job.sim_type === 'stat_weights' || job.sim_type === 'stat-weights';
+  const isTrinketTierHeatmap = job.sim_type === 'trinket_tier_heatmap';
+  const isExternalBuffMatrix = job.sim_type === 'external_buff_matrix';
+  const isConsumableMatrix = job.sim_type === 'consumable_matrix';
+  const isStatWeights =
+    job.sim_type === 'stat_weights' ||
+    job.sim_type === 'stat-weights' ||
+    job.sim_type === 'stat_plot';
 
   const equippedGear = r.equipped_gear as any;
   const avgIlevel = equippedGear ? calculateAverageIlevel(equippedGear) : undefined;
+  const timelineData = (r.timeline as Record<string, unknown> | undefined) || timelineFallback;
+  const aplData = (r.apl_analysis as Record<string, unknown> | undefined) || aplFallback;
 
   return (
     <div className="space-y-6">
@@ -318,14 +749,6 @@ export default function SimResultClient() {
           <div />
         )}
         <div className="flex items-center gap-3">
-          {isTopGear && (
-            <Link
-              href="/top-gear"
-              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.08] hover:text-white"
-            >
-              Sim Again
-            </Link>
-          )}
           <CharacterLinkButton
             jobId={id}
             currentLinkedName={job.linked_name}
@@ -335,7 +758,28 @@ export default function SimResultClient() {
         </div>
       </div>
 
-      {isTopGear ? (
+      {isTopGear && isTrinketTierHeatmap ? (
+        <TrinketTierHeatmap
+          baseDps={(r.base_dps as number) || 0}
+          results={
+            (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
+          }
+        />
+      ) : isTopGear && isExternalBuffMatrix ? (
+        <ExternalBuffMatrixChart
+          baseDps={(r.base_dps as number) || 0}
+          results={
+            (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
+          }
+        />
+      ) : isTopGear && isConsumableMatrix ? (
+        <ConsumableMatrixChart
+          baseDps={(r.base_dps as number) || 0}
+          results={
+            (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
+          }
+        />
+      ) : isTopGear ? (
         <>
           <TopGearResults
             playerName={r.player_name as string}
@@ -352,31 +796,34 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
+            stageTimings={stageTimings}
+            talentString={r.talent_string as string | undefined}
           />
-          {typeof r.talent_string === 'string' && r.talent_string && (
-            <TalentTree talentString={r.talent_string as string} />
-          )}
         </>
       ) : isStatWeights ? (
         <>
           <div className="card border-gold/10 bg-gold/[0.02] p-6">
             <h2 className="mb-2 text-lg font-bold text-zinc-100">Stat Weights Generated</h2>
             <p className="text-sm text-zinc-400">
-              Below are your character&apos;s current marginal stat weights. These numbers represent
-              how much DPS you stand to gain from adding exactly <strong>1 point</strong> of each
-              secondary stat. Use these values in game addons (like Pawn) to quickly evaluate gear
-              upgrades in your bags. Keep in mind that as you accumulate more of a particular stat,
-              its value generally decreases.
+              Quick Weights gives immediate marginal values for the next stat point. Stat Plot shows
+              the full DPS curve across a range so you can see diminishing returns directly.
             </p>
           </div>
+          {r.stat_plots ? (
+            <StatPlotChart
+              statPlots={r.stat_plots as Record<string, Array<{ delta: number; dps: number }>>}
+            />
+          ) : null}
           {r.stat_weights ? (
             <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />
           ) : (
-            <div className="card border-amber-500/20 bg-amber-500/[0.03] p-6 text-center">
-              <p className="text-sm font-semibold text-amber-400">
-                No stat weight data found in this simulation.
-              </p>
-            </div>
+            !r.stat_plots && (
+              <div className="card border-amber-500/20 bg-amber-500/[0.03] p-6 text-center">
+                <p className="text-sm font-semibold text-amber-400">
+                  No stat weight or plot data found in this simulation.
+                </p>
+              </div>
+            )
           )}
         </>
       ) : (
@@ -394,32 +841,54 @@ export default function SimResultClient() {
             iterations={r.iterations as number | undefined}
             targetError={r.target_error as number | undefined}
             elapsedTime={r.elapsed_time_seconds as number | undefined}
+            stageTimings={stageTimings}
             avgIlevel={avgIlevel}
           />
           {r.equipped_gear &&
             Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (
-              <GearOverview
-                gear={r.equipped_gear as Record<string, GearItem>}
-                characterRenderUrl={
-                  r.realm && r.player_name
-                    ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
-                    : null
-                }
-              />
+              <CollapsibleSection title="Character Panel">
+                <GearOverview
+                  gear={r.equipped_gear as Record<string, GearItem>}
+                  characterRenderUrl={
+                    r.realm && r.player_name
+                      ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
+                      : null
+                  }
+                />
+              </CollapsibleSection>
             )}
           {typeof r.talent_string === 'string' && r.talent_string && (
-            <TalentTree talentString={r.talent_string as string} />
+            <CollapsibleSection title="Talents" defaultOpen={false}>
+              <SimResultTalentsCard talentString={r.talent_string as string} />
+            </CollapsibleSection>
           )}
-          <ResultsChart
-            dps={r.dps as number}
-            abilities={
-              (r.abilities as Array<{
-                name: string;
-                portion_dps: number;
-                school: string;
-              }>) || []
-            }
-          />
+          <CollapsibleSection title="Damage Breakdown">
+            <ResultsChart
+              dps={r.dps as number}
+              abilities={
+                (r.abilities as Array<{
+                  name: string;
+                  portion_dps: number;
+                  school: string;
+                }>) || []
+              }
+            />
+          </CollapsibleSection>
+          <CollapsibleSection title="Timeline & APL Analyzer">
+            {timelineData || aplData ? (
+              <SimTimelineAnalyzer
+                timeline={(timelineData || {}) as any}
+                aplAnalysis={aplData as any}
+                equippedGear={r.equipped_gear as any}
+              />
+            ) : timelineLoading ? (
+              <p className="text-sm text-zinc-500">Loading timeline data...</p>
+            ) : (
+              <p className="text-sm text-zinc-500">
+                Timeline data is not available for this result. Run this sim again after updating.
+              </p>
+            )}
+          </CollapsibleSection>
           {r.stat_weights && (
             <StatWeightsTable statWeights={r.stat_weights as Record<string, number>} />
           )}
@@ -428,23 +897,6 @@ export default function SimResultClient() {
 
       {/* Footer links */}
       <div className="flex items-center justify-center gap-3 pb-4 text-xs text-muted">
-        {typeof r.simc_version === 'string' && (
-          <>
-            {typeof r.simc_git_revision === 'string' && r.simc_git_revision ? (
-              <a
-                href={`https://github.com/simulationcraft/simc/commit/${r.simc_git_revision}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="transition-colors hover:text-white"
-              >
-                {r.simc_version as string}
-              </a>
-            ) : (
-              <span>{r.simc_version as string}</span>
-            )}
-            <span className="h-3 w-px bg-border" />
-          </>
-        )}
         <a
           href={`${API_URL}/api/sim/${id}/raw`}
           target="_blank"

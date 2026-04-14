@@ -13,6 +13,33 @@ use crate::log_buffer::LogBuffer;
 use crate::models::Job;
 use crate::profileset_generator;
 use crate::storage::JobStorage;
+
+fn resolve_simc_binary_for_request(
+    simc_path: &PathBuf,
+    _options: &SimOptions,
+) -> Result<PathBuf, String> {
+    #[cfg(feature = "desktop")]
+    {
+        if let Some(path) = super::simc_updater::resolve_installed_binary_for_channel(
+            simc_path,
+            None,
+        ) {
+            return Ok(path);
+        }
+        return Err(format!(
+            "SimC nightly is not installed. Open Settings -> SimulationCraft Engine and install/update it first."
+        ));
+    }
+
+    #[cfg(not(feature = "desktop"))]
+    {
+        if simc_path.exists() {
+            Ok(simc_path.clone())
+        } else {
+            Err(format!("simc binary not found at: {}", simc_path.display()))
+        }
+    }
+}
 use crate::types::ResolvedItem;
 
 /// Shared prep: parse SimC input, extract upgrade budget, build upgrade options per slot.
@@ -25,8 +52,14 @@ struct PreparedUpgradeCompare {
 fn prepare_upgrade_compare(
     simc_input: &str,
     selected_slots: &[String],
+    upgrade_depth: &str,
+    budget_mode: &str,
+    upgrade_budget_override: &HashMap<u64, u64>,
 ) -> Result<PreparedUpgradeCompare, HttpResponse> {
-    let upgrade_budget = addon_parser::parse_upgrade_currencies(simc_input);
+    let mut upgrade_budget = addon_parser::parse_upgrade_currencies(simc_input);
+    for (cid, amount) in upgrade_budget_override {
+        upgrade_budget.insert(*cid, *amount);
+    }
     if upgrade_budget.is_empty() {
         return Err(HttpResponse::BadRequest().json(json!({
             "detail": "No upgrade_currencies found in SimC addon export."
@@ -72,24 +105,36 @@ fn prepare_upgrade_compare(
             .unwrap_or(0);
 
         let mut slot_upgrades: Vec<ResolvedItem> = Vec::new();
-        for opt in &options {
-            if opt.level <= current_level {
-                continue;
-            }
+        let mut candidate_opts: Vec<&game_data::UpgradeOption> = options
+            .iter()
+            .filter(|opt| opt.level > current_level)
+            .collect();
 
-            // Only include if costs involve our upgrade currencies
-            let has_relevant_cost = opt
-                .cumulative_costs
-                .keys()
-                .any(|k| upgrade_currency_ids.contains(k));
+        if candidate_opts.is_empty() {
+            continue;
+        }
 
-            if !has_relevant_cost {
-                continue;
-            }
+        if upgrade_depth == "highest_only" {
+            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
+        } else if upgrade_depth != "all_levels" {
+            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
+        }
 
-            // Build upgraded item
+        if budget_mode != "ignore_budget" {
+            candidate_opts.retain(|opt| {
+                !opt.cumulative_costs.is_empty()
+                    && opt
+                        .cumulative_costs
+                        .iter()
+                        .any(|(cid, amt)| upgrade_currency_ids.contains(cid) && *amt > 0)
+                    && opt.cumulative_costs.iter().all(|(cid, amt)| {
+                        upgrade_budget.get(cid).copied().unwrap_or(0) >= *amt
+                    })
+            });
+        }
+
+        for opt in candidate_opts {
             let mut new_bonus_ids = equipped.bonus_ids.clone();
-            // Replace the upgrade bonus_id
             for bid in &mut new_bonus_ids {
                 if bonuses_in_same_group(*bid, opt.bonus_id) {
                     *bid = opt.bonus_id;
@@ -101,7 +146,6 @@ fn prepare_upgrade_compare(
             upgraded.bonus_ids = new_bonus_ids.clone();
             upgraded.ilevel = opt.ilevel as i64;
 
-            // Update simc_string with new bonus_ids
             let new_simc = bonus_re
                 .replace(&equipped.simc_string, |caps: &regex::Captures| {
                     let raw = &caps[1];
@@ -268,7 +312,13 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &req.options.talents,
     ));
 
-    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots) {
+    let prepared = match prepare_upgrade_compare(
+        &simc_input,
+        &req.selected_slots,
+        &req.upgrade_depth,
+        &req.budget_mode,
+        &req.upgrade_budget_override,
+    ) {
         Ok(v) => v,
         Err(resp) => return resp,
     };
@@ -278,6 +328,8 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &prepared.upgraded_options_by_slot,
         &prepared.upgrade_budget,
         req.max_combinations,
+        &req.upgrade_depth,
+        &req.budget_mode,
     ) {
         Ok((_, count, _)) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {
@@ -304,7 +356,13 @@ pub(super) async fn create_upgrade_compare_sim(
         &req.options.talents,
     ));
 
-    let prepared = match prepare_upgrade_compare(&simc_input, &req.selected_slots) {
+    let prepared = match prepare_upgrade_compare(
+        &simc_input,
+        &req.selected_slots,
+        &req.upgrade_depth,
+        &req.budget_mode,
+        &req.upgrade_budget_override,
+    ) {
         Ok(v) => v,
         Err(resp) => return resp,
     };
@@ -315,6 +373,8 @@ pub(super) async fn create_upgrade_compare_sim(
             &prepared.upgraded_options_by_slot,
             &prepared.upgrade_budget,
             req.max_combinations,
+            &req.upgrade_depth,
+            &req.budget_mode,
         ) {
             Ok(result) => result,
             Err(e) => {
@@ -355,9 +415,14 @@ pub(super) async fn create_upgrade_compare_sim(
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);
 
+    let simc_binary = match resolve_simc_binary_for_request(simc_path.get_ref(), &req.options) {
+        Ok(path) => path,
+        Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
+    };
+
     spawn_staged_sim(
         store.get_ref().clone(),
-        simc_path.get_ref().clone(),
+        simc_binary,
         req.options.to_json(),
         job_id.clone(),
         generated_input,

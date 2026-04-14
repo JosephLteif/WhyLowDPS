@@ -176,7 +176,9 @@ async fn run_simc_subprocess(
     desired_targets: u32,
     max_time: u32,
     calculate_scale_factors: bool,
+    dps_plot: Option<(String, u32, u32, u32)>,
     single_actor_batch: bool,
+    apply_default_overrides: bool,
     stage_name: &str,
     generate_html: bool,
     on_p: impl Fn(usize, usize),
@@ -223,6 +225,12 @@ async fn run_simc_subprocess(
         "calculate_scale_factors={}",
         if calculate_scale_factors { "1" } else { "0" }
     ));
+    if let Some((stat, points, step, plot_iterations)) = dps_plot {
+        cmd.arg(format!("dps_plot_stat={}", stat))
+            .arg(format!("dps_plot_points={}", points))
+            .arg(format!("dps_plot_step={}", step))
+            .arg(format!("dps_plot_iterations={}", plot_iterations));
+    }
 
     if is_dungeon {
         cmd.arg(format!("desired_targets={}", desired_targets));
@@ -230,8 +238,10 @@ async fn run_simc_subprocess(
         cmd.arg(format!("fight_style={}", fight_style))
             .arg(format!("desired_targets={}", desired_targets))
             .arg(format!("max_time={}", max_time));
-        for opt in OVERRIDES {
-            cmd.arg(*opt);
+        if apply_default_overrides {
+            for opt in OVERRIDES {
+                cmd.arg(*opt);
+            }
         }
     }
     for opt in SIM_OPTIONS {
@@ -430,7 +440,19 @@ pub async fn run_simc(
         .get("iterations")
         .and_then(|v| v.as_u64())
         .unwrap_or(1000) as u32;
-    let s = options.get("sim_type").and_then(|v| v.as_str()) == Some("stat_weights");
+    let sim_type = options
+        .get("sim_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("quick");
+    let is_stat_weights = sim_type == "stat_weights";
+    let is_stat_plot = sim_type == "stat_plot";
+    let raid_buff_customized = options
+        .get("raid_buff_customized")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let apply_default_overrides = sim_type != "external_buff_matrix"
+        && sim_type != "consumable_matrix"
+        && !raid_buff_customized;
     let t = resolve_threads(options);
     let d = options
         .get("desired_targets")
@@ -444,9 +466,53 @@ pub async fn run_simc(
         .get("single_actor_batch")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    let dps_plot = if is_stat_plot {
+        let stat = options
+            .get("dps_plot_stat")
+            .and_then(|v| v.as_str())
+            .unwrap_or("haste_rating")
+            .trim()
+            .to_string();
+        let points = options
+            .get("dps_plot_points")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10) as u32;
+        let step = options
+            .get("dps_plot_step")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100) as u32;
+        let plot_iterations = options
+            .get("dps_plot_iterations")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(i as u64) as u32;
+
+        if stat.is_empty() {
+            None
+        } else {
+            Some((stat, points.max(1), step.max(1), plot_iterations.max(1)))
+        }
+    } else {
+        None
+    };
 
     run_simc_subprocess(
-        simc_path, job_id, simc_input, f, e, i, t, d, m, s, b, "", true, on_p, on_l,
+        simc_path,
+        job_id,
+        simc_input,
+        f,
+        e,
+        i,
+        t,
+        d,
+        m,
+        is_stat_weights,
+        dps_plot,
+        b,
+        apply_default_overrides,
+        "",
+        true,
+        on_p,
+        on_l,
     )
     .await
 }
@@ -483,6 +549,17 @@ pub async fn run_simc_staged(
         .get("single_actor_batch")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
+    let sim_type = options
+        .get("sim_type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("top_gear");
+    let raid_buff_customized = options
+        .get("raid_buff_customized")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let apply_default_overrides = sim_type != "external_buff_matrix"
+        && sim_type != "consumable_matrix"
+        && !raid_buff_customized;
 
     if combo_count < 10 {
         on_p(5, "Simulating", &format!("{} combos", combo_count));
@@ -501,7 +578,9 @@ pub async fn run_simc_staged(
             desired,
             max_t,
             false,
+            None,
             batch,
+            apply_default_overrides,
             "direct",
             false,
             |c, t| {
@@ -547,7 +626,9 @@ pub async fn run_simc_staged(
             desired,
             max_t,
             false,
+            None,
             batch,
+            apply_default_overrides,
             &stage.name.to_lowercase(),
             false,
             |c, t| {

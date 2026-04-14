@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   useItemInfo,
   useEnchantInfo,
@@ -20,7 +20,6 @@ import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
 import { decodeHeader } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { generateSimcString } from '../lib/simc-generator';
-import { useState } from 'react';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -33,7 +32,6 @@ const GEAR_ORDER_RIGHT = [
   'TRINKET_1',
   'TRINKET_2',
 ];
-const GEAR_ORDER_BOTTOM = ['MAIN_HAND', 'OFF_HAND'];
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
 
 function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
@@ -95,6 +93,8 @@ interface CharacterPanelProps {
   statistics: any;
   specializations: any;
   professions: any;
+  mythicPlus: any;
+  raidEncounters: any;
   characterMediaUrl?: string | null;
 }
 
@@ -109,6 +109,8 @@ export default function CharacterPanel({
   statistics,
   specializations,
   professions,
+  mythicPlus,
+  raidEncounters,
   characterMediaUrl,
 }: CharacterPanelProps) {
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
@@ -192,8 +194,7 @@ export default function CharacterPanel({
           );
           const existing = selections.get(node.id);
           const nextRanks = Math.max(existing?.ranks ?? 0, t.rank ?? node.maxRanks ?? 1);
-          const nextChoice =
-            choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
+          const nextChoice = choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
           selections.set(node.id, {
             ranks: nextRanks,
             choiceIndex: nextChoice,
@@ -304,15 +305,15 @@ export default function CharacterPanel({
       </div>
 
       {/* Upper Section: Gear & Stats */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         {/* Gear Panel */}
-        <div className="card relative min-h-[600px] overflow-hidden p-6">
+        <div className="card relative flex h-full flex-col overflow-hidden p-4 sm:p-6">
           {characterMediaUrl && (
-            <div className="group absolute inset-0 z-10 flex cursor-pointer items-center justify-center">
+            <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
               <img
                 src={characterMediaUrl}
                 alt={name}
-                className="pointer-events-none mx-auto h-[120%] w-auto -translate-y-[10%] object-contain opacity-40 mix-blend-lighten transition-all duration-500 group-hover:scale-105 group-hover:opacity-70 group-hover:brightness-110"
+                className="lg:opacity-62 pointer-events-none mx-auto h-64 w-auto object-contain opacity-85 sm:h-80 lg:h-[172%] lg:-translate-y-[10%] lg:mix-blend-lighten"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = 'none';
                 }}
@@ -320,9 +321,9 @@ export default function CharacterPanel({
             </div>
           )}
 
-          <div className="relative grid grid-cols-[auto_1fr_auto] gap-x-8">
+          <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_210px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_260px_minmax(0,1fr)]">
             {/* Left Column */}
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               {GEAR_ORDER_LEFT.map((slot) => (
                 <BlizzardGearSlot
                   key={slot}
@@ -335,10 +336,10 @@ export default function CharacterPanel({
               ))}
             </div>
 
-            <div />
+            <div className="hidden lg:block" />
 
             {/* Right Column */}
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               {GEAR_ORDER_RIGHT.map((slot) => (
                 <BlizzardGearSlot
                   key={slot}
@@ -353,24 +354,33 @@ export default function CharacterPanel({
             </div>
           </div>
 
-          {/* Bottom Column */}
-          <div className="relative mt-8 flex justify-center gap-8">
-            {GEAR_ORDER_BOTTOM.map((slot) => (
-              <BlizzardGearSlot
-                key={slot}
-                slot={slot}
-                item={itemsBySlot[slot]}
-                itemInfoMap={itemInfoMap}
-                enchantInfoMap={enchantInfoMap}
-                gemInfoMap={gemInfoMap}
-              />
-            ))}
+          {/* Bottom Weapons Row */}
+          <div className="relative z-20 mt-auto grid grid-cols-1 gap-3 pt-8 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
+            <BlizzardGearSlot
+              slot="MAIN_HAND"
+              item={itemsBySlot.MAIN_HAND}
+              itemInfoMap={itemInfoMap}
+              enchantInfoMap={enchantInfoMap}
+              gemInfoMap={gemInfoMap}
+              align="right"
+              compactNearIcon
+            />
+            <BlizzardGearSlot
+              slot="OFF_HAND"
+              item={itemsBySlot.OFF_HAND}
+              itemInfoMap={itemInfoMap}
+              enchantInfoMap={enchantInfoMap}
+              gemInfoMap={gemInfoMap}
+              align="left"
+            />
           </div>
         </div>
 
         {/* Stats Column */}
         <div className="flex flex-col gap-4">
           <StatsCard statistics={statistics} />
+          <MythicPlusCard mythicPlus={mythicPlus} />
+          <RaidProgressCard raidEncounters={raidEncounters} />
         </div>
       </div>
 
@@ -388,6 +398,358 @@ export default function CharacterPanel({
   );
 }
 
+function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
+  const [showAll, setShowAll] = useState(false);
+  const summary = useMemo(() => {
+    if (!mythicPlus || typeof mythicPlus !== 'object') return null;
+    const isRunLike = (value: any) =>
+      value &&
+      typeof value === 'object' &&
+      (typeof value.keystone_level === 'number' ||
+        typeof value.keystoneLevel === 'number' ||
+        value.dungeon ||
+        value.completed_challenge_mode);
+
+    const collectRuns = (root: any): any[] => {
+      const out: any[] = [];
+      const stack: any[] = [root];
+      const seen = new Set<any>();
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || seen.has(current)) continue;
+        seen.add(current);
+
+        if (Array.isArray(current)) {
+          if (current.some((item) => isRunLike(item))) {
+            out.push(...current.filter((item) => isRunLike(item)));
+          } else {
+            for (const item of current) {
+              if (item && typeof item === 'object') stack.push(item);
+            }
+          }
+          continue;
+        }
+
+        if (typeof current === 'object') {
+          if (isRunLike(current)) out.push(current);
+          for (const value of Object.values(current)) {
+            if (value && typeof value === 'object') stack.push(value);
+          }
+        }
+      }
+      return out;
+    };
+
+    const combinedRuns = collectRuns(mythicPlus);
+    const byDungeon = new Map<string, any>();
+    for (const run of combinedRuns) {
+      const dungeonName =
+        run?.dungeon?.name || run?.completed_challenge_mode?.name || run?.name || 'Dungeon';
+      const key = dungeonName.trim().toLowerCase();
+      const level = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+      const existing = byDungeon.get(key);
+      const existingLevel = Number(existing?.keystone_level ?? existing?.keystoneLevel ?? 0);
+      if (!existing || level > existingLevel) {
+        byDungeon.set(key, run);
+      }
+    }
+    const bestRuns = Array.from(byDungeon.values());
+
+    const bestLevel = bestRuns.reduce((acc: number, run: any) => {
+      const lvl = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+      return Number.isFinite(lvl) ? Math.max(acc, lvl) : acc;
+    }, 0);
+
+    const bestDungeon = bestRuns.find(
+      (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0) === bestLevel
+    );
+
+    const score = Number(
+      mythicPlus.current_mythic_rating?.rating ??
+        mythicPlus.currentMythicRating?.rating ??
+        mythicPlus.current_mythic_rating?.value ??
+        0
+    );
+
+    return {
+      score: score > 0 ? Math.round(score) : null,
+      runs: Array.isArray(bestRuns) ? bestRuns.length : 0,
+      bestLevel: bestLevel > 0 ? bestLevel : null,
+      bestDungeonName:
+        bestDungeon?.dungeon?.name || bestDungeon?.completed_challenge_mode?.name || null,
+      bestRuns: Array.isArray(bestRuns)
+        ? [...bestRuns].sort((a: any, b: any) => {
+            const aLvl = Number(a?.keystone_level ?? a?.keystoneLevel ?? 0);
+            const bLvl = Number(b?.keystone_level ?? b?.keystoneLevel ?? 0);
+            return bLvl - aLvl;
+          })
+        : [],
+    };
+  }, [mythicPlus]);
+
+  return (
+    <div className="card p-5">
+      <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Mythic+</h3>
+      {summary ? (
+        <div className="space-y-2">
+          <StatRow
+            label="Current Score"
+            value={summary.score ? summary.score.toLocaleString() : '-'}
+          />
+          <StatRow label="Best Runs (Period)" value={summary.runs.toString()} />
+          <StatRow label="Highest Key" value={summary.bestLevel ? `+${summary.bestLevel}` : '-'} />
+          <StatRow label="Top Dungeon" value={summary.bestDungeonName || '-'} />
+          {summary.bestRuns.length > 0 && (
+            <>
+              <div className="my-3 h-px bg-white/5" />
+              <div className="space-y-1.5">
+                {(showAll ? summary.bestRuns : summary.bestRuns.slice(0, 3)).map(
+                  (run: any, i: number) => {
+                    const level = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+                    const dungeonName =
+                      run?.dungeon?.name || run?.completed_challenge_mode?.name || 'Dungeon';
+                    return (
+                      <div
+                        key={`${dungeonName}-${level}-${i}`}
+                        className="flex items-center justify-between text-[12px]"
+                      >
+                        <span className="truncate pr-3 text-zinc-400">{dungeonName}</span>
+                        <span className="font-mono font-bold text-zinc-200">+{level}</span>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+              {summary.bestRuns.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="mt-2 text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
+                >
+                  {showAll ? 'Show Less' : `View All (${summary.bestRuns.length})`}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+        <p className="text-[11px] italic text-zinc-600">Mythic+ data unavailable.</p>
+      )}
+    </div>
+  );
+}
+
+function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
+  const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
+
+  const raids = useMemo(() => {
+    if (!raidEncounters || typeof raidEncounters !== 'object') return [];
+    const expansions = Array.isArray(raidEncounters.expansions) ? raidEncounters.expansions : [];
+    const byName = new Map<
+      string,
+      {
+        name: string;
+        expansionKey: string;
+        expansionLabel: string;
+        placeholderExpansion?: boolean;
+        normal: string;
+        heroic: string;
+        mythic: string;
+        lfr: string;
+      }
+    >();
+
+    const mergeProgress = (a: string, b: string) => {
+      const parse = (v: string) => {
+        const m = /^(\d+)\/(\d+)$/.exec(v || '');
+        if (!m) return null;
+        return { k: Number(m[1]), t: Number(m[2]) };
+      };
+      const pa = parse(a);
+      const pb = parse(b);
+      if (!pa) return b;
+      if (!pb) return a;
+      if (pb.t > pa.t) return b;
+      if (pb.t < pa.t) return a;
+      return pb.k > pa.k ? b : a;
+    };
+
+    const flattened: Array<{
+      name: string;
+      expansionKey: string;
+      expansionLabel: string;
+      placeholderExpansion?: boolean;
+      normal: string;
+      heroic: string;
+      mythic: string;
+      lfr: string;
+    }> = [];
+
+    const normalize = (value: any) =>
+      String(value ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_]+/g, '-');
+
+    const canonicalExpansionKey = (value: string | null) => {
+      const lower = (value || '').trim().toLowerCase();
+      if (lower === 'current season' || lower === 'current expansion') return 'midnight';
+      return normalize(value);
+    };
+
+    const canonicalExpansionLabel = (value: string | null) => {
+      const raw = (value || '').trim();
+      if (!raw) return 'Unknown expansion';
+      const lower = raw.toLowerCase();
+      if (lower === 'current season' || lower === 'current expansion') return 'Midnight';
+      return raw;
+    };
+
+    const isPlaceholderExpansion = (value: string | null) => {
+      const lower = (value || '').trim().toLowerCase();
+      return lower === 'current season' || lower === 'current expansion';
+    };
+
+    for (const exp of expansions) {
+      const rawExpansionLabel =
+        exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || null;
+      const expansionLabel = canonicalExpansionLabel(rawExpansionLabel);
+      // Keep filtering stable even when backend keys/slugs are inconsistent:
+      // use the same canonical label for both display and grouping/filter keys.
+      const expansionKey = normalize(expansionLabel) || canonicalExpansionKey(rawExpansionLabel);
+      const instances = Array.isArray(exp?.instances) ? exp.instances : [];
+      for (const inst of instances) {
+        const modes = Array.isArray(inst?.modes) ? inst.modes : [];
+        const getMode = (modeName: string) =>
+          modes.find((m: any) => (m?.difficulty?.type || '').toLowerCase() === modeName);
+        const fmtProgress = (mode: any) => {
+          const p = mode?.progress;
+          const k = Number(p?.encounters_defeated ?? p?.completed_count ?? 0);
+          const t = Number(p?.total_encounters ?? p?.total_count ?? 0);
+          return t > 0 ? `${k}/${t}` : '-';
+        };
+
+        flattened.push({
+          name: inst?.instance?.name || inst?.name || 'Raid',
+          expansionKey: expansionKey || 'unknown-expansion',
+          expansionLabel: expansionLabel || 'Unknown expansion',
+          // Track whether this row came from a generic "current season/expansion" bucket.
+          placeholderExpansion: isPlaceholderExpansion(rawExpansionLabel),
+          normal: fmtProgress(getMode('normal')),
+          heroic: fmtProgress(getMode('heroic')),
+          mythic: fmtProgress(getMode('mythic')),
+          lfr: fmtProgress(getMode('lfr')),
+        });
+      }
+    }
+    const byRaidNameHasConcrete = new Set(
+      flattened
+        .filter((r: any) => !r.placeholderExpansion && r.expansionKey !== 'unknown-expansion')
+        .map((r: any) => r.name.trim().toLowerCase().replace(/\s+/g, ' '))
+    );
+
+    for (const raid of flattened as Array<any>) {
+      const normalizedRaidName = raid.name.trim().toLowerCase().replace(/\s+/g, ' ');
+      if (raid.placeholderExpansion && byRaidNameHasConcrete.has(normalizedRaidName)) {
+        // Prefer concrete expansion labels over generic current-season placeholders.
+        continue;
+      }
+      const key = `${raid.expansionKey}::${normalizedRaidName}`;
+      const existing = byName.get(key);
+      if (!existing) {
+        byName.set(key, raid);
+        continue;
+      }
+      existing.lfr = mergeProgress(existing.lfr, raid.lfr);
+      existing.normal = mergeProgress(existing.normal, raid.normal);
+      existing.heroic = mergeProgress(existing.heroic, raid.heroic);
+      existing.mythic = mergeProgress(existing.mythic, raid.mythic);
+    }
+
+    return Array.from(byName.values());
+  }, [raidEncounters]);
+
+  const expansionOptions = useMemo(() => {
+    const map = new Map<
+      string,
+      { key: string; label: string }
+    >();
+    for (const raid of raids) {
+      if (!map.has(raid.expansionKey)) {
+        map.set(raid.expansionKey, { key: raid.expansionKey, label: raid.expansionLabel });
+      }
+    }
+    return Array.from(map.values());
+  }, [raids]);
+
+  const visibleRaids = useMemo(() => {
+    return raids.filter((raid) => {
+      const expansionOk = selectedExpansion === 'all' || raid.expansionKey === selectedExpansion;
+      return expansionOk;
+    });
+  }, [raids, selectedExpansion]);
+
+  return (
+    <div className="card p-5">
+      <div className="mb-4 flex flex-col gap-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Raid Progress</h3>
+        {expansionOptions.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 text-[11px] font-bold uppercase tracking-wider text-zinc-600">
+              <span className="block">Expansion</span>
+              <select
+                value={selectedExpansion}
+                onChange={(e) => {
+                  setSelectedExpansion(e.target.value);
+                }}
+                className="input-field w-full text-sm"
+              >
+                <option value="all">All expansions</option>
+                {expansionOptions.map((exp) => (
+                  <option key={exp.key} value={exp.key}>
+                    {exp.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
+      </div>
+      {visibleRaids.length > 0 ? (
+        <div className="space-y-4">
+          {visibleRaids.map((raid) => (
+            <div key={raid.name} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
+              <p className="mb-1 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
+              <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">
+                {raid.expansionLabel}
+              </p>
+              <div className="grid grid-cols-2 gap-1 text-[11px] text-zinc-400">
+                <span>LFR: {raid.lfr}</span>
+                <span>Normal: {raid.normal}</span>
+                <span>Heroic: {raid.heroic}</span>
+                <span>Mythic: {raid.mythic}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] italic text-zinc-600">
+          Raid progression data unavailable for the selected filter.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-[13px]">
+      <span className="text-zinc-400">{label}</span>
+      <span className="font-mono font-bold text-zinc-200">{value}</span>
+    </div>
+  );
+}
+
 function BlizzardGearSlot({
   slot,
   item,
@@ -395,6 +757,7 @@ function BlizzardGearSlot({
   enchantInfoMap,
   gemInfoMap,
   align = 'left',
+  compactNearIcon = false,
 }: {
   slot: string;
   item?: BlizzardItem;
@@ -402,6 +765,7 @@ function BlizzardGearSlot({
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
   align?: 'left' | 'right';
+  compactNearIcon?: boolean;
 }) {
   const rtl = align === 'right';
   const label = SLOT_LABELS[slot.toLowerCase()] || slot;
@@ -431,9 +795,15 @@ function BlizzardGearSlot({
   const whData = getWowheadData(item.bonus_list, item.level?.value, enchantId, gemId);
 
   return (
-    <div className={`flex items-start gap-3 ${rtl ? 'flex-row-reverse' : ''}`}>
+    <a
+      href={getWowheadUrl(item.item.id)}
+      data-wowhead={whData}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex w-full min-w-0 items-start gap-3 rounded-md px-1 py-1 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
+    >
       <div
-        className="group relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105"
+        className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105 sm:h-12 sm:w-12"
         style={{ borderColor: `${qc}44` }}
       >
         <img src={getIconUrl(icon)} alt="" className="h-full w-full object-cover" />
@@ -442,18 +812,21 @@ function BlizzardGearSlot({
           style={{ boxShadow: `inset 0 0 10px ${qc}33` }}
         />
       </div>
-      <div className={`min-w-0 flex-1 ${rtl ? 'text-right' : ''}`}>
-        <a
-          href={getWowheadUrl(item.item.id)}
-          data-wowhead={whData}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block truncate text-[14px] font-bold leading-tight hover:underline"
+      <div
+        className={`min-w-0 ${compactNearIcon ? 'w-auto max-w-[420px]' : 'flex-1'} ${rtl ? 'text-right' : ''}`}
+      >
+        <span
+          title={item.name}
+          className="block truncate text-[13px] font-bold leading-tight hover:underline sm:text-[14px]"
           style={{ color: qc }}
         >
           {item.name}
-        </a>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] font-medium text-zinc-500">
+        </span>
+        <div
+          className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium text-zinc-500 ${
+            compactNearIcon && rtl ? 'justify-end' : ''
+          }`}
+        >
           <span className="text-zinc-400">
             {item.level?.value} {label}
           </span>
@@ -461,7 +834,7 @@ function BlizzardGearSlot({
           {gem && <span className="text-sky-400/80">· {gem.name}</span>}
         </div>
       </div>
-    </div>
+    </a>
   );
 }
 

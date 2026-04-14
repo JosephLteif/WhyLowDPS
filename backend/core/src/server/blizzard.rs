@@ -514,3 +514,131 @@ pub async fn proxy_character_professions(
         _ => HttpResponse::Ok().json(serde_json::json!({})),
     }
 }
+
+pub async fn proxy_character_mythic_keystone_profile(
+    req: actix_web::HttpRequest,
+    state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    path: web::Path<(String, String)>,
+    query: web::Query<ProxyQuery>,
+) -> HttpResponse {
+    let (realm, name) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+
+    let cache_key = format!(
+        "char_mplus_{}_{}_{}",
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
+    if !query.refresh.unwrap_or(false) {
+        if let Some(cached) = store.get_cache(&cache_key) {
+            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
+                return HttpResponse::Ok().json(json_val);
+            }
+        }
+    }
+
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let url = format!(
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/mythic-keystone-profile?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
+    );
+
+    let res = state
+        .client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            store.set_cache(&cache_key, data.to_string());
+            HttpResponse::Ok().json(data)
+        }
+        _ => HttpResponse::Ok().json(serde_json::json!({})),
+    }
+}
+
+pub async fn proxy_character_raid_encounters(
+    req: actix_web::HttpRequest,
+    state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    path: web::Path<(String, String)>,
+    query: web::Query<ProxyQuery>,
+) -> HttpResponse {
+    let (realm, name) = path.into_inner();
+    let region = query.region.as_deref().unwrap_or("us");
+    let namespace = format!("profile-{}", region);
+    let realm_slug = realm.to_lowercase().replace("'", "").replace(" ", "-");
+
+    let cache_key = format!(
+        "char_raid_prog_{}_{}_{}",
+        region,
+        realm_slug,
+        name.to_lowercase()
+    );
+    if !query.refresh.unwrap_or(false) {
+        if let Some(cached) = store.get_cache(&cache_key) {
+            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&cached) {
+                return HttpResponse::Ok().json(json_val);
+            }
+        }
+    }
+
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let url = format!(
+        "https://{}.api.blizzard.com/profile/wow/character/{}/{}/encounters/raids?namespace={}&locale=en_US",
+        region,
+        realm_slug,
+        name.to_lowercase(),
+        namespace
+    );
+
+    let res = state
+        .client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            store.set_cache(&cache_key, data.to_string());
+            HttpResponse::Ok().json(data)
+        }
+        _ => HttpResponse::Ok().json(serde_json::json!({})),
+    }
+}

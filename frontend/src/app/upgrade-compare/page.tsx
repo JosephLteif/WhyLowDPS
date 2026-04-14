@@ -98,15 +98,37 @@ export default function UpgradeComparePage() {
   const { data, loading } = useUpgradeData(simcInput);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [comboCount, setComboCount] = useState(0);
+  const [upgradeMode, setUpgradeMode] = useState<
+    'highest_affordable' | 'all_affordable' | 'highest_any' | 'all_any'
+  >('highest_affordable');
+  const [budgetOverride, setBudgetOverride] = useState<Record<string, string>>({});
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const currencies = useMemo(() => data?.currencies ?? {}, [data]);
   const hasCurrencies = Object.keys(currencies).length > 0;
+  const effectiveCurrencies = useMemo(() => {
+    const out = { ...currencies };
+    for (const [cid, raw] of Object.entries(budgetOverride)) {
+      const parsed = parseInt(raw, 10);
+      if (!Number.isFinite(parsed) || parsed < 0 || !out[cid]) continue;
+      out[cid] = { ...out[cid], amount: parsed };
+    }
+    return out;
+  }, [currencies, budgetOverride]);
+  const budgetOverridePayload = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const [cid, raw] of Object.entries(budgetOverride)) {
+      const parsed = parseInt(raw, 10);
+      if (Number.isFinite(parsed) && parsed >= 0) out[cid] = parsed;
+    }
+    return out;
+  }, [budgetOverride]);
 
   // Reset selection when candidates change
   useEffect(() => {
     setSelectedSlots(new Set());
     setComboCount(0);
+    setBudgetOverride({});
   }, [data]);
 
   // Item info for display
@@ -134,6 +156,9 @@ export default function UpgradeComparePage() {
           body: JSON.stringify({
             simc_input: simcInput,
             selected_slots: [...selectedSlots],
+            upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
+            budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
+            upgrade_budget_override: budgetOverridePayload,
             max_combinations: maxCombinations,
           }),
         });
@@ -145,7 +170,7 @@ export default function UpgradeComparePage() {
     }, 300);
 
     return () => clearTimeout(comboTimer.current);
-  }, [simcInput, selectedSlots, maxCombinations]);
+  }, [simcInput, selectedSlots, maxCombinations, upgradeMode, budgetOverridePayload]);
 
   // Sim submission
   const buildPayload = useCallback(() => {
@@ -153,9 +178,12 @@ export default function UpgradeComparePage() {
     return {
       simc_input: simcInput,
       selected_slots: [...selectedSlots],
+      upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
+      budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
+      upgrade_budget_override: budgetOverridePayload,
       max_combinations: maxCombinations,
     };
-  }, [simcInput, selectedSlots, maxCombinations]);
+  }, [simcInput, selectedSlots, maxCombinations, upgradeMode, budgetOverridePayload]);
 
   const validate = useCallback(() => {
     if (selectedSlots.size === 0) return 'Select at least one upgradeable item.';
@@ -199,6 +227,15 @@ export default function UpgradeComparePage() {
   }, [candidates, currencies]);
 
   const hasCharacter = simcInput.trim().length >= 10;
+  const displayComboCount = selectedSlots.size > 0 ? comboCount + 1 : 0;
+  const modeLabel =
+    upgradeMode === 'highest_affordable'
+      ? 'Highest Affordable'
+      : upgradeMode === 'all_affordable'
+        ? 'All Affordable'
+        : upgradeMode === 'highest_any'
+          ? 'Highest Regardless'
+          : 'All Regardless';
 
   const toggleGroup = (groupCandidates: PrepareCandidate[]) => {
     const slots = groupCandidates.map((c) => c.slot);
@@ -223,7 +260,7 @@ export default function UpgradeComparePage() {
     ? 'No upgrade currencies found'
     : selectedSlots.size === 0
       ? 'Select items to upgrade'
-      : buttonLabel(`Sim Upgrades (${comboCount} combos)`);
+      : buttonLabel(`Sim Upgrades (${displayComboCount} combos, ${modeLabel})`);
 
   return (
     <div className="space-y-6">
@@ -236,6 +273,73 @@ export default function UpgradeComparePage() {
           within your budget to find which gives the most DPS.
         </p>
       </div>
+
+      <div className="space-y-2">
+        <p className="text-[12px] font-medium uppercase tracking-widest text-muted">
+          Upgrade Mode
+        </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          {[
+            ['highest_affordable', 'Highest Affordable', 'Only the highest tier you can afford.'],
+            ['all_affordable', 'All Affordable', 'Every upgrade tier you can afford.'],
+            ['highest_any', 'Highest Regardless', 'Only the highest tier, even if unaffordable.'],
+            ['all_any', 'All Regardless', 'Every tier, even if unaffordable.'],
+          ].map(([key, label, desc]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setUpgradeMode(key as typeof upgradeMode)}
+              className={`rounded-md border px-3 py-2 text-left transition-colors ${
+                upgradeMode === key
+                  ? 'border-gold/40 bg-gold/[0.08] text-zinc-100'
+                  : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600'
+              }`}
+            >
+              <div className="text-xs font-semibold">{label}</div>
+              <div className="mt-0.5 text-[10px] text-zinc-400">{desc}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {hasCurrencies && (
+        <div className="card space-y-3 p-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted">
+              Override Budget
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              Leave blank to use the parsed export amounts.
+            </p>
+          </div>
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {Object.values(currencies)
+              .filter((c) => c.name)
+              .sort((a, b) => a.id - b.id)
+              .map((c) => (
+                <label
+                  key={c.id}
+                  className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-300">
+                    {c.name}
+                  </span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={budgetOverride[String(c.id)] ?? ''}
+                    onChange={(e) =>
+                      setBudgetOverride((prev) => ({ ...prev, [String(c.id)]: e.target.value }))
+                    }
+                    placeholder={String(c.amount)}
+                    className="w-24 rounded border border-border bg-surface px-2 py-1 text-right font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  />
+                </label>
+              ))}
+          </div>
+        </div>
+      )}
 
       {/* Currency Budget */}
       {hasCurrencies && (
@@ -257,7 +361,9 @@ export default function UpgradeComparePage() {
                   className="h-4 w-4 shrink-0 rounded-sm"
                 />
                 <span className="text-[13px] text-gray-400">{c.name}</span>
-                <span className="font-mono text-[13px] tabular-nums text-white">{c.amount}</span>
+                <span className="font-mono text-[13px] tabular-nums text-white">
+                  {effectiveCurrencies[String(c.id)]?.amount ?? c.amount}
+                </span>
               </div>
             ))}
         </div>
@@ -269,9 +375,9 @@ export default function UpgradeComparePage() {
           <p className="text-xs font-medium uppercase tracking-widest text-muted">
             Select Items to Upgrade
           </p>
-          {comboCount > 0 && (
+          {displayComboCount > 0 && (
             <span className="rounded-md bg-surface-2 px-2.5 py-1 font-mono text-xs text-white">
-              {comboCount.toLocaleString()} combo{comboCount !== 1 ? 's' : ''}
+              {displayComboCount.toLocaleString()} combo{displayComboCount !== 1 ? 's' : ''}
             </span>
           )}
         </div>
@@ -334,7 +440,10 @@ export default function UpgradeComparePage() {
                         details={[
                           { text: SLOT_LABELS[c.slot] || c.slot },
                           { text: `${c.ilevel} → ${c.target_ilevel}` },
-                          { text: formatCosts(c.costs, currencies), color: 'text-gold/70' },
+                          {
+                            text: formatCosts(c.costs, effectiveCurrencies),
+                            color: 'text-gold/70',
+                          },
                         ]}
                         ilevel={c.ilevel}
                         selectable

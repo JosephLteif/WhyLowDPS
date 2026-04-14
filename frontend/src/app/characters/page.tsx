@@ -152,7 +152,8 @@ export default function CharactersPage() {
       if (classFilter !== 'all' && char.class !== classFilter) return false;
       if (realmFilter !== 'all' && char.realm !== realmFilter) return false;
       if (!query) return true;
-      const haystack = `${char.name} ${char.realm} ${char.class} ${char.race} ${char.region}`.toLowerCase();
+      const haystack =
+        `${char.name} ${char.realm} ${char.class} ${char.race} ${char.region}`.toLowerCase();
       return haystack.includes(query);
     });
   }, [characters, search, regionFilter, classFilter, realmFilter]);
@@ -271,7 +272,7 @@ export default function CharactersPage() {
               <span className="text-xs text-zinc-500">{allianceCharacters.length} characters</span>
             </div>
             {allianceCharacters.length === 0 ? (
-              <div className="rounded-lg border border-white/8 bg-white/[0.02] px-4 py-6 text-sm text-zinc-500">
+              <div className="border-white/8 rounded-lg border bg-white/[0.02] px-4 py-6 text-sm text-zinc-500">
                 No Alliance characters in current filters.
               </div>
             ) : (
@@ -293,7 +294,7 @@ export default function CharactersPage() {
               <span className="text-xs text-zinc-500">{hordeCharacters.length} characters</span>
             </div>
             {hordeCharacters.length === 0 ? (
-              <div className="rounded-lg border border-white/8 bg-white/[0.02] px-4 py-6 text-sm text-zinc-500">
+              <div className="border-white/8 rounded-lg border bg-white/[0.02] px-4 py-6 text-sm text-zinc-500">
                 No Horde characters in current filters.
               </div>
             ) : (

@@ -12,9 +12,11 @@ import DropSlotList from './DropSlotList';
 import DungeonGrid from './DungeonGrid';
 import {
   detectClass,
+  getClassId,
   detectSpec,
   formatSpecName,
   getClassSpecs,
+  getSpecId,
   getTrackInfo,
   resolveUpgrade,
   type DropItem,
@@ -23,6 +25,7 @@ import {
 } from './types';
 
 type Category = 'raids' | string;
+type SimDropItem = DropItem & { slot?: string };
 
 const TRACK_SHORT: Record<string, string> = {
   Adventurer: 'Adv',
@@ -40,11 +43,102 @@ const TRACK_COLORS: Record<string, { text: string; bg: string; border: string }>
   Myth: { text: 'text-amber-300', bg: 'bg-amber-300/10', border: 'border-amber-300/30' },
 };
 
+const UPGRADE_TRACK_MAX_LEVEL = 6;
+
+function getRaidDifficultyDisplayLevel(key: string): number {
+  return key ? 1 : 0;
+}
+
+function slotFromInventoryType(inventoryType?: number): string | null {
+  switch (inventoryType) {
+    case 1:
+      return 'head';
+    case 3:
+      return 'shoulder';
+    case 5:
+      return 'chest';
+    case 6:
+      return 'waist';
+    case 7:
+      return 'legs';
+    case 8:
+      return 'feet';
+    case 9:
+      return 'wrist';
+    case 10:
+      return 'hands';
+    case 11:
+      return 'finger1';
+    case 16:
+      return 'back';
+    case 21:
+      return 'main_hand';
+    case 22:
+      return 'off_hand';
+    default:
+      return null;
+  }
+}
+
+const FALLBACK_SEASON_CONFIG: SeasonConfigResponse = {
+  season: '',
+  raid_difficulties: [
+    { key: 'lfr', label: 'Raid Finder', track: 'Veteran', level: 1, sortOrder: 1 },
+    { key: 'normal', label: 'Normal', track: 'Champion', level: 2, sortOrder: 2 },
+    { key: 'heroic', label: 'Heroic', track: 'Hero', level: 3, sortOrder: 3 },
+    { key: 'mythic', label: 'Mythic', track: 'Myth', level: 4, sortOrder: 4 },
+  ],
+  dungeon_categories: [
+    {
+      key: 'mplus',
+      label: 'Mythic+',
+      poolInstanceId: -1,
+      defaultDifficulty: 'mythic+10',
+      difficulties: [
+        { key: 'heroic', label: 'Heroic', track: 'Adventurer', level: 2, sortOrder: 1 },
+        { key: 'mythic', label: 'Mythic 0', track: 'Champion', level: 1, sortOrder: 2 },
+        { key: 'mythic+2', label: '+2', track: 'Champion', level: 2, sortOrder: 3 },
+        { key: 'mythic+3', label: '+3', track: 'Champion', level: 2, sortOrder: 4 },
+        { key: 'mythic+4', label: '+4', track: 'Champion', level: 3, sortOrder: 5 },
+        { key: 'mythic+5', label: '+5', track: 'Champion', level: 4, sortOrder: 6 },
+        { key: 'mythic+6', label: '+6', track: 'Champion', level: 5, sortOrder: 7 },
+        { key: 'mythic+7', label: '+7', track: 'Hero', level: 1, sortOrder: 8 },
+        { key: 'mythic+8', label: '+8', track: 'Hero', level: 2, sortOrder: 9 },
+        { key: 'mythic+9', label: '+9', track: 'Hero', level: 2, sortOrder: 10 },
+        { key: 'mythic+10', label: '+10', track: 'Hero', level: 3, sortOrder: 11 },
+        { key: 'vault+7-9', label: 'Vault +7-9', track: 'Hero', level: 4, sortOrder: 12 },
+        { key: 'vault+10', label: 'Vault +10', track: 'Myth', level: 1, sortOrder: 13 },
+      ],
+    },
+    {
+      key: 'normal-dungeons',
+      label: 'Dungeons',
+      poolInstanceId: -32,
+      defaultDifficulty: 'heroic',
+      difficulties: [
+        {
+          key: 'normal',
+          label: 'Normal',
+          track: null,
+          level: 0,
+          sortOrder: 1,
+          fixedIlvl: 214,
+          fixedQuality: 3,
+        },
+        { key: 'heroic', label: 'Heroic', track: 'Adventurer', level: 2, sortOrder: 2 },
+        { key: 'mythic', label: 'Mythic', track: 'Champion', level: 1, sortOrder: 3 },
+      ],
+    },
+  ],
+};
+
 // --- Data loading hook ---
 
 function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [seasonConfig, setSeasonConfig] = useState<SeasonConfigResponse | null>(null);
+  const [seasonConfig, setSeasonConfig] = useState<SeasonConfigResponse | null>(
+    FALLBACK_SEASON_CONFIG
+  );
   const [upgradeTracks, setUpgradeTracks] = useState<UpgradeTracks>({});
   const [selectedId, setSelectedId] = useState('');
   const [drops, setDrops] = useState<Record<string, DropItem[]> | null>(null);
@@ -55,9 +149,33 @@ function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
   const specParam = useMemo(() => [...activeSpecs].sort().join(','), [activeSpecs]);
 
   useEffect(() => {
-    fetchJson<SeasonConfigResponse>(`${API_URL}/api/season-config`).then(setSeasonConfig).catch(() => {});
-    fetchJson<Instance[]>(`${API_URL}/api/instances`).then(setInstances).catch(() => {});
-    fetchJson<UpgradeTracks>(`${API_URL}/api/upgrade-tracks`).then(setUpgradeTracks).catch(() => {});
+    let cancelled = false;
+
+    const loadSeasonConfig = async () => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const data = await fetchJson<SeasonConfigResponse>(`${API_URL}/api/season-config`);
+          if (!cancelled) setSeasonConfig(data);
+          return;
+        } catch {
+          if (attempt < 2) {
+            await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+          }
+        }
+      }
+    };
+
+    void loadSeasonConfig();
+    fetchJson<Instance[]>(`${API_URL}/api/instances`)
+      .then(setInstances)
+      .catch(() => {});
+    fetchJson<UpgradeTracks>(`${API_URL}/api/upgrade-tracks`)
+      .then(setUpgradeTracks)
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const { raids, dungeonCats } = useMemo(() => {
@@ -154,7 +272,6 @@ function Spinner() {
 
 export default function DropFinderPage() {
   const { simcInput } = useSimContext();
-
   // Spec selection: main spec on by default, off-specs toggleable
   const detectedClass = useMemo(() => detectClass(simcInput), [simcInput]);
   const detectedSpec = useMemo(() => detectSpec(simcInput), [simcInput]);
@@ -163,13 +280,29 @@ export default function DropFinderPage() {
     [detectedClass]
   );
   const [activeSpecs, setActiveSpecs] = useState<Set<string>>(new Set());
-  const [prevSpec, setPrevSpec] = useState<string | null>(null);
 
-  // Reset active specs when detected spec changes (sync, not effect)
-  if (detectedSpec !== prevSpec) {
-    setPrevSpec(detectedSpec);
-    setActiveSpecs(detectedSpec ? new Set([detectedSpec]) : new Set());
-  }
+  const activeSpecIds = useMemo(
+    () =>
+      detectedClass
+        ? [...activeSpecs]
+            .map((spec) => getSpecId(detectedClass, spec))
+            .filter((id): id is number => id != null)
+        : [],
+    [detectedClass, activeSpecs]
+  );
+  const classSpecIds = useMemo(
+    () =>
+      detectedClass
+        ? getClassSpecs(detectedClass)
+            .map((spec) => getSpecId(detectedClass, spec))
+            .filter((id): id is number => id != null)
+        : [],
+    [detectedClass]
+  );
+  const classId = useMemo(
+    () => (detectedClass ? getClassId(detectedClass) : null),
+    [detectedClass]
+  );
 
   function toggleSpec(spec: string) {
     setActiveSpecs((prev) => {
@@ -205,6 +338,10 @@ export default function DropFinderPage() {
   const [dungeonDiff, setDungeonDiff] = useState('mythic+10');
   const [upgradeLevel, setUpgradeLevel] = useState(0);
   const [category, setCategory] = useState<Category | ''>('');
+
+  useEffect(() => {
+    setActiveSpecs(detectedSpec ? new Set([detectedSpec]) : new Set());
+  }, [detectedSpec]);
 
   useEffect(() => {
     setSelected(new Set());
@@ -260,17 +397,14 @@ export default function DropFinderPage() {
       { key: 0, label: 'Base' },
       ...currentTrackInfo.levels.map((lvl) => ({
         key: lvl.level,
-        label: `${currentTrackInfo.name} ${lvl.level}/${lvl.max_level}`,
+        label: `${currentTrackInfo.name} ${lvl.level}/${UPGRADE_TRACK_MAX_LEVEL}`,
         sublabel: String(lvl.ilvl),
       })),
     ];
   }, [currentTrackInfo]);
 
-  function selectAll() {
-    if (!drops) return;
-    const all = new Set<number>();
-    for (const items of Object.values(drops)) for (const item of items) all.add(item.item_id);
-    setSelected(all);
+  function selectAll(itemIds: number[]) {
+    setSelected(new Set(itemIds));
   }
 
   const headerLabel =
@@ -278,12 +412,17 @@ export default function DropFinderPage() {
     (selectedId.startsWith('type:') ? `All ${isRaid ? 'Raids' : 'Dungeons'}` : '');
 
   // Sim submission
-  const buildPayload = useCallback(() => {
+  const buildPayload = useCallback(async () => {
     if (!drops || selected.size === 0) return null;
     const dropItems: DropItem[] = [];
-    for (const items of Object.values(drops)) {
+    for (const [slot, items] of Object.entries(drops)) {
       for (const item of items) {
         if (selected.has(item.item_id)) {
+          if (item.specs?.length && item.specs.length > 0) {
+            const matchesSpec = item.specs.some((id) => activeSpecIds.includes(id));
+            const matchesClass = classId != null && item.specs.includes(classId);
+            if (!matchesSpec && !matchesClass) continue;
+          }
           const resolved = resolveUpgrade(
             item,
             difficulty,
@@ -291,17 +430,56 @@ export default function DropFinderPage() {
             upgradeLevel,
             upgradeTracks
           );
-          dropItems.push({
+          let simItem: SimDropItem = {
             ...item,
             ilevel: resolved.ilvl,
             quality: resolved.quality,
             bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
-          });
+            slot,
+          };
+          if (item.is_catalyst || item.can_catalyst) {
+            const convertSlot = slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slot;
+            if (convertSlot) {
+              try {
+                simItem = await fetchJson<SimDropItem>(`${API_URL}/api/gear/catalyst-convert`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    class_name: className,
+                    slot: convertSlot,
+                    item: {
+                      ...item,
+                      ilevel: resolved.ilvl,
+                      quality: resolved.quality,
+                      bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
+                    },
+                  }),
+                });
+              } catch {
+                simItem = {
+                  ...simItem,
+                  is_catalyst: false,
+                  can_catalyst: false,
+                };
+              }
+            }
+          }
+          dropItems.push(simItem);
         }
       }
     }
     return { simc_input: simcInput, drop_items: dropItems };
-  }, [drops, selected, simcInput, difficulty, dungeonDiff, upgradeLevel, upgradeTracks]);
+  }, [
+    drops,
+    selected,
+    simcInput,
+    difficulty,
+    dungeonDiff,
+    upgradeLevel,
+    upgradeTracks,
+    activeSpecIds,
+    classId,
+    className,
+  ]);
 
   const validate = useCallback(() => {
     if (!drops || selected.size === 0) return 'Select at least one item to sim.';
@@ -360,7 +538,7 @@ export default function DropFinderPage() {
                 const currentDiff = isRaid ? difficulty : dungeonDiff;
                 const isActive = currentDiff === d.key;
                 const trackLevels = d.track ? upgradeTracks[d.track] : null;
-                const max = trackLevels?.at(-1)?.max_level ?? d.level;
+                const displayLevel = isRaid ? getRaidDifficultyDisplayLevel(d.key) : d.level;
                 const ilvl = trackLevels?.find((t) => t.level === d.level)?.ilvl ?? d.fixedIlvl;
                 const tc = d.track ? TRACK_COLORS[d.track] : null;
                 return (
@@ -395,7 +573,9 @@ export default function DropFinderPage() {
                       <span
                         className={`mt-1 text-xs font-semibold ${tc?.text ?? 'text-zinc-300'} ${isActive ? 'opacity-100' : 'opacity-90'}`}
                       >
-                        {TRACK_SHORT[d.track] ?? d.track} {d.level}/{max}
+                        {isRaid
+                          ? d.track
+                          : `${TRACK_SHORT[d.track] ?? d.track} ${displayLevel}/${UPGRADE_TRACK_MAX_LEVEL}`}
                       </span>
                     ) : null}
                   </button>
@@ -404,7 +584,7 @@ export default function DropFinderPage() {
             </div>
           </div>
 
-          {currentTrackInfo && drops && (
+      {currentTrackInfo && drops && (
             <div>
               <label className="label-text">Upgrade Level</label>
               <ToggleButtonGroup
@@ -479,6 +659,8 @@ export default function DropFinderPage() {
             }
             onSelectAll={selectAll}
             onClear={() => setSelected(new Set())}
+            classSpecIds={classSpecIds}
+            classId={classId}
             difficulty={difficulty}
             dungeonDiff={dungeonDiff}
             upgradeLevel={upgradeLevel}

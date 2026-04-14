@@ -23,8 +23,6 @@ services:
       - "8000:8000"
     depends_on:
       - db
-    env_file:
-      - .env
     environment:
       - DATA_DIR=/app/resources/data
       - DATABASE_URL=postgres://whylowdps:whylowdps@db:5432/whylowdps

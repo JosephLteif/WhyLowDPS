@@ -8,11 +8,16 @@ import TopHeader from './components/TopHeader';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
 import './globals.css';
-import packageJson from '../../package.json';
+import React from 'react';
 
 export const metadata: Metadata = {
   title: 'WhyLowDps',
   description: 'Run SimulationCraft simulations from your browser',
+  icons: {
+    icon: '/icon.png',
+    shortcut: '/icon.png',
+    apple: '/icon.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -34,8 +39,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <Sidebar />
 
-              <main className="mt-14 ml-[var(--sidebar-width)] min-h-[calc(100vh-3.5rem)] px-8 py-8 transition-[margin-left] duration-200 lg:px-12">
-                <div className="mx-auto max-w-8xl">
+              <main className="ml-[var(--sidebar-width)] mt-14 min-h-[calc(100vh-3.5rem)] px-8 py-8 transition-[margin-left] duration-200 lg:px-12">
+                <div className="max-w-8xl mx-auto">
                   <SimSharedConfig />
                   {children}
                 </div>

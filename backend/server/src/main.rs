@@ -29,10 +29,12 @@ async fn main() {
     let frontend_dir = std::env::var("FRONTEND_DIR").ok().map(PathBuf::from);
 
     let bind_host = env_or("BIND_HOST", "0.0.0.0");
-    
+
     // Check for --port <port> in arguments
     let mut args = std::env::args().skip(1);
-    let mut port: u16 = env_or("PORT", "8000").parse().expect("PORT must be a number");
+    let mut port: u16 = env_or("PORT", "8000")
+        .parse()
+        .expect("PORT must be a number");
     while let Some(arg) = args.next() {
         if arg == "--port" {
             if let Some(p) = args.next().and_then(|s| s.parse().ok()) {

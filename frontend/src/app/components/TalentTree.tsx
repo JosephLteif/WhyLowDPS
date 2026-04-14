@@ -126,7 +126,12 @@ export default function TalentTree({
 
   const purchasedFromString = useMemo(() => {
     if (!header || !decodeMeta || editable) return null;
-    return decodeNodeSelections(header.bits, header.offset, decodeMeta.orderedIds, decodeMeta.maxRanks);
+    return decodeNodeSelections(
+      header.bits,
+      header.offset,
+      decodeMeta.orderedIds,
+      decodeMeta.maxRanks
+    );
   }, [header, decodeMeta, editable]);
 
   // Editable state — initialized from decoded string once

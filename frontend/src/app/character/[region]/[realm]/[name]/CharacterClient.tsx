@@ -9,11 +9,11 @@ import { generateSimcString } from '../../../../lib/simc-generator';
 export default function CharacterClient() {
   const params = useParams();
   const searchParams = useSearchParams();
-  
+
   // Robust resolution from params or URL path
-  let region = (searchParams.get('region') || params.region as string || 'us').toLowerCase();
-  let realm = (searchParams.get('realm') || params.realm as string || '').toLowerCase();
-  let name = (searchParams.get('name') || params.name as string || '').toLowerCase();
+  let region = (searchParams.get('region') || (params.region as string) || 'us').toLowerCase();
+  let realm = (searchParams.get('realm') || (params.realm as string) || '').toLowerCase();
+  let name = (searchParams.get('name') || (params.name as string) || '').toLowerCase();
 
   const usingPlaceholderSegments = realm === 'realm' && name === 'name';
 
@@ -53,16 +53,33 @@ export default function CharacterClient() {
         const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
         const baseUrl = `${API_URL}/api/blizzard/character/${realm}/${name}`;
 
-        const [profile, equipment, statistics, specializations, professions] =
-          await Promise.all([
-            fetchJson<any>(`${baseUrl}/profile${query}`),
-            fetchJson<any>(`${baseUrl}/equipment${query}`).catch(() => ({ equipped_items: [] })),
-            fetchJson<any>(`${baseUrl}/statistics${query}`).catch(() => ({})),
-            fetchJson<any>(`${baseUrl}/specializations${query}`).catch(() => ({})),
-            fetchJson<any>(`${baseUrl}/professions${query}`).catch(() => ({})),
-          ]);
+        const [
+          profile,
+          equipment,
+          statistics,
+          specializations,
+          professions,
+          mythicPlus,
+          raidEncounters,
+        ] = await Promise.all([
+          fetchJson<any>(`${baseUrl}/profile${query}`),
+          fetchJson<any>(`${baseUrl}/equipment${query}`).catch(() => ({ equipped_items: [] })),
+          fetchJson<any>(`${baseUrl}/statistics${query}`).catch(() => ({})),
+          fetchJson<any>(`${baseUrl}/specializations${query}`).catch(() => ({})),
+          fetchJson<any>(`${baseUrl}/professions${query}`).catch(() => ({})),
+          fetchJson<any>(`${baseUrl}/mythic-keystone-profile${query}`).catch(() => ({})),
+          fetchJson<any>(`${baseUrl}/encounters/raids${query}`).catch(() => ({})),
+        ]);
 
-        setData({ profile, equipment, statistics, specializations, professions });
+        setData({
+          profile,
+          equipment,
+          statistics,
+          specializations,
+          professions,
+          mythicPlus,
+          raidEncounters,
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch character');
       } finally {
@@ -172,6 +189,8 @@ export default function CharacterClient() {
         statistics={data.statistics}
         specializations={data.specializations}
         professions={data.professions}
+        mythicPlus={data.mythicPlus}
+        raidEncounters={data.raidEncounters}
         characterMediaUrl={characterMediaUrl}
       />
     </div>

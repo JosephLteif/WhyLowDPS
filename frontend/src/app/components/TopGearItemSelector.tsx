@@ -59,6 +59,8 @@ const DISPLAY_GROUPS: DisplayGroup[] = [
   { label: 'Off Hand', slots: ['off_hand'] },
 ];
 
+const UPGRADE_TRACK_MAX_LEVEL = 6;
+
 function getWowheadUrl(itemId: number): string {
   return `https://www.wowhead.com/item=${itemId}`;
 }
@@ -315,13 +317,11 @@ export default function TopGearItemSelector({
         : difficultyInfo?.bonus_id
           ? [difficultyInfo.bonus_id]
           : [];
-      let ilvl = overrides
-        ? overrides.ilvl
-        : difficultyInfo?.ilvl || item.ilevel;
+      let ilvl = overrides ? overrides.ilvl : difficultyInfo?.ilvl || item.ilevel;
       let upgradeStr = overrides
         ? `${overrides.track_name} ${overrides.level}`
         : difficultyInfo?.track
-          ? `${difficultyInfo.track} ${difficultyInfo.level}/${difficultyInfo.max_level}`
+          ? `${difficultyInfo.track} ${difficultyInfo.level}/${UPGRADE_TRACK_MAX_LEVEL}`
           : '';
 
       const uid = makeUid({ item_id: item.item_id, bonus_ids: bonusIds, origin: 'bags', slot });

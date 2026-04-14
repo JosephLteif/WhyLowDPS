@@ -88,7 +88,7 @@ export function useTalentTree(specId: number | null): TalentTreeData | null {
     let cancelled = false;
     fetchJsonCached<TalentTreeData>(`${API_URL}/api/talent-tree/${specId}`, {
       usePersistentCache: true,
-      ttl: 86400000 // 24 hours
+      ttl: 86400000, // 24 hours
     })
       .then((data: TalentTreeData) => {
         cache[specId] = data;

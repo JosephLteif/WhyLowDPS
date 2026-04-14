@@ -20,6 +20,41 @@ pub use crate::types::class_data::{quality_name, QUALITY_NAMES};
 
 pub fn get_instances() -> Vec<Value> {
     item_db::instances()
+        .into_iter()
+        .map(|mut inst| {
+            if let Some(obj) = inst.as_object_mut() {
+                let image_url = obj
+                    .get("image_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        obj.get("image_background")
+                            .and_then(|v| v.as_str())
+                            .map(|slug| {
+                                format!(
+                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
+                                    slug
+                                )
+                            })
+                    })
+                    .or_else(|| {
+                        obj.get("image_button")
+                            .and_then(|v| v.as_str())
+                            .map(|slug| {
+                                format!(
+                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
+                                    slug
+                                )
+                            })
+                    });
+
+                if let Some(url) = image_url {
+                    obj.insert("image_url".to_string(), Value::String(url));
+                }
+            }
+            inst
+        })
+        .collect()
 }
 
 // ---- Drop Resolver ----
@@ -35,6 +70,7 @@ pub fn get_instance_drops(
         .find(|i| i.get("id").and_then(|id| id.as_i64()) == Some(instance_id))?;
 
     let allowed_weapons = class_name.and_then(class_data::class_allowed_weapons);
+    let allowed_class_id = class_name.and_then(class_data::class_wow_id);
     let active_spec_names: Vec<&str> = spec_name
         .map(|s| s.split(',').map(|s| s.trim()).collect())
         .unwrap_or_default();
@@ -64,11 +100,50 @@ pub fn get_instance_drops(
         })
         .collect();
 
+    // Build encounter->level progression for all raid instances.
+    // This keeps raid loot tiers aligned with boss order even if config overrides drift.
+    let raid_progression_levels: HashMap<i64, u64> = instances
+        .iter()
+        .filter(|inst| {
+            inst.get("type").and_then(|t| t.as_str()) == Some("raid")
+                && inst.get("id").and_then(|id| id.as_i64()).unwrap_or(0) > 0
+        })
+        .flat_map(|inst| {
+            let raid_encounters = inst
+                .get("encounters")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let total = raid_encounters.len();
+            raid_encounters
+                .into_iter()
+                .enumerate()
+                .filter_map(move |(idx, e)| {
+                    let id = e.get("id")?.as_i64()?;
+                    let pos = idx + 1;
+                    let level = if total <= 1 {
+                        4
+                    } else if pos == 1 {
+                        1
+                    } else if pos <= 3 {
+                        2
+                    } else if pos <= 5 {
+                        3
+                    } else {
+                        4
+                    };
+                    Some((id, level))
+                })
+        })
+        .collect();
+
     // For meta-instances (pools), the encounter IDs are actually instance IDs.
     // Map each encounter ID to the instance name by direct ID lookup.
-    let encounter_to_instance: HashMap<i64, String> = if is_meta {
+    let (encounter_to_instance, encounter_to_type): (HashMap<i64, String>, HashMap<i64, String>) =
+        if is_meta {
         let mut map = HashMap::new();
-        for inst in instances {
+        let mut tmap = HashMap::new();
+        for inst in &instances {
             let iid = inst.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
             if iid <= 0 {
                 continue;
@@ -79,12 +154,18 @@ pub fn get_instance_drops(
                     .and_then(|n| n.as_str())
                     .unwrap_or("")
                     .to_string();
+                let itype = inst
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 map.insert(iid, iname);
+                tmap.insert(iid, itype);
             }
         }
-        map
+        (map, tmap)
     } else {
-        HashMap::new()
+        (HashMap::new(), HashMap::new())
     };
 
     let drops_map = item_db::drops_by_encounter();
@@ -157,7 +238,10 @@ pub fn get_instance_drops(
 
                 // Filter spec restrictions (items with explicit spec lists)
                 if let Some(specs) = &item.classes {
-                    if !allowed_specs.is_empty() && !allowed_specs.iter().any(|s| specs.contains(s)) {
+                    let spec_match =
+                        !allowed_specs.is_empty() && allowed_specs.iter().any(|s| specs.contains(s));
+                    let class_match = allowed_class_id.is_some_and(|cid| specs.contains(&cid));
+                    if !spec_match && !class_match {
                         continue;
                     }
                 }
@@ -165,19 +249,17 @@ pub fn get_instance_drops(
                 let slot = class_data::inventory_type_display_slot(inv_type as u64);
 
                 // Compute per-difficulty info from upgrade tracks (raids)
-                let upgrade_lvl = item_db::encounter_upgrade_level(*eid);
+                let upgrade_lvl = raid_progression_levels
+                    .get(eid)
+                    .copied()
+                    .or_else(|| item_db::encounter_upgrade_level(*eid));
                 let tracks = item_db::upgrade_tracks();
                 let tm = item_db::upgrade_track_max();
                 let mut diff_info = serde_json::Map::new();
                 for diff in &["lfr", "normal", "heroic", "mythic"] {
                     if let Some(track) = item_db::difficulty_track_name(diff) {
-                        // LFR always starts at Veteran 1/6.
-                        // If we don't have per-encounter level metadata, fall back to 1.
-                        let effective_level = if *diff == "lfr" {
-                            1
-                        } else {
-                            upgrade_lvl.unwrap_or(1)
-                        };
+                        // Use per-encounter raid progression (or configured overrides).
+                        let effective_level = upgrade_lvl.unwrap_or(1);
                         if let Some(&(ilvl, bonus_id, quality)) =
                             tracks.get(&(track.clone(), effective_level, tm))
                         {
@@ -230,6 +312,15 @@ pub fn get_instance_drops(
                 } else {
                     instance_name.clone()
                 };
+                let item_source_type = if is_meta {
+                    encounter_to_type.get(eid).cloned().unwrap_or_default()
+                } else {
+                    instance
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                };
 
                 let mut item_json = serde_json::json!({
                     "item_id": item_id,
@@ -240,6 +331,7 @@ pub fn get_instance_drops(
                     "inventory_type": inv_type,
                     "encounter": encounter_ids.get(eid).cloned().unwrap_or_default(),
                     "instance_name": item_instance,
+                    "source_type": item_source_type,
                 });
 
                 if !item_specs.is_empty() {
@@ -254,10 +346,12 @@ pub fn get_instance_drops(
                     let mut main_can_use = true;
 
                     // Check spec restrictions (if item has a specs list)
-                    if !item_specs.is_empty()
-                        && !main_spec_ids.iter().any(|id| item_specs.contains(id))
-                    {
-                        main_can_use = false;
+                    if !item_specs.is_empty() {
+                        let spec_match = main_spec_ids.iter().any(|id| item_specs.contains(id));
+                        let class_match = allowed_class_id.is_some_and(|cid| item_specs.contains(&cid));
+                        if !spec_match && !class_match {
+                            main_can_use = false;
+                        }
                     }
 
                     // Check weapon/shield/offhand eligibility

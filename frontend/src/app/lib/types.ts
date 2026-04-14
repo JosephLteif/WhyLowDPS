@@ -23,6 +23,9 @@ export interface ResolvedItem {
   enchant_name: string;
   gem_name: string;
   gem_icon: string;
+  encounter?: string;
+  instance_name?: string;
+  source_type?: string;
   is_catalyst?: boolean;
   can_catalyst?: boolean;
   inventory_type?: number;

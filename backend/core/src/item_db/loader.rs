@@ -471,26 +471,54 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
 }
 
 pub fn load_classes(data_dir: &Path) {
-    let path = data_dir.join("classes.json");
-    if !path.exists() {
-        return;
+    class_data::set_class_trait_spec_ids(HashMap::new());
+
+    // Primary source: class-traits.json (contains authoritative class -> spec ID mapping).
+    let traits_path = data_dir.join("class-traits.json");
+    if traits_path.exists() {
+        let trait_map = fs::read_to_string(&traits_path)
+            .ok()
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|root| root.as_array().cloned())
+            .map(|rows| {
+                let mut out: HashMap<String, Vec<u64>> = HashMap::new();
+                for row in rows {
+                    let class_name = row
+                        .get("className")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_lowercase().replace(' ', "_"));
+                    let Some(class_name) = class_name else {
+                        continue;
+                    };
+                    let specs = row
+                        .get("specs")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect::<Vec<_>>())
+                        .unwrap_or_default();
+                    if specs.is_empty() {
+                        continue;
+                    }
+                    let entry = out.entry(class_name).or_default();
+                    for spec_id in specs {
+                        if !entry.contains(&spec_id) {
+                            entry.push(spec_id);
+                        }
+                    }
+                }
+                out
+            })
+            .unwrap_or_default();
+        if !trait_map.is_empty() {
+            println!(
+                "Loaded class trait spec map for {} classes",
+                trait_map.len()
+            );
+            class_data::set_class_trait_spec_ids(trait_map);
+        }
     }
 
-    let file = match fs::File::open(&path) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Failed to open classes file {}: {}", path.display(), e);
-            return;
-        }
-    };
-
-    let data: Vec<class_data::ClassDef> = serde_json::from_reader(std::io::BufReader::new(file))
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to deserialize classes JSON: {}", e);
-            Vec::new()
-        });
-
-    *class_data::CLASSES.write().unwrap() = Arc::new(data);
+    // Legacy class metadata file is intentionally not used anymore.
+    *class_data::CLASSES.write().unwrap() = Arc::new(Vec::new());
 }
 
 pub fn load_consumables(data_dir: &Path) {

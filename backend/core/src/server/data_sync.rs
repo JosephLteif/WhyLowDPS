@@ -69,7 +69,7 @@ struct DataFileEntry {
     source: DataFileSource,
 }
 
-fn data_file_catalog() -> [DataFileEntry; 47] {
+fn data_file_catalog() -> [DataFileEntry; 46] {
     [
         DataFileEntry {
             key: "metadata",
@@ -288,14 +288,6 @@ fn data_file_catalog() -> [DataFileEntry; 47] {
             source: DataFileSource::Raidbots,
         },
         DataFileEntry {
-            key: "classes",
-            label: "Classes",
-            section: "Classes",
-            relative_path: "classes.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
             key: "season_config",
             label: "Season Config",
             section: "Static Config",
@@ -352,11 +344,11 @@ fn data_file_catalog() -> [DataFileEntry; 47] {
             source: DataFileSource::Raidbots,
         },
         DataFileEntry {
-            key: "classes_json",
+            key: "class_traits_json",
             label: "Class Traits",
             section: "Classes",
             relative_path: "class-traits.json",
-            required: false,
+            required: true,
             source: DataFileSource::Raidbots,
         },
         DataFileEntry {

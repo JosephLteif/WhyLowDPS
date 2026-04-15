@@ -531,7 +531,7 @@ function DungeonInfoBar({
 }
 
 function optionQualityFamily(opt: OptionEntry | null) {
-  const token = (opt?.token || '').replace(/^main_hand:/, '');
+  const token = (opt?.token || opt?.key || '').replace(/^main_hand:/, '');
   return token.replace(/_[1-3]$/i, '');
 }
 
@@ -554,18 +554,16 @@ function QualityBadge({ quality }: { quality?: number }) {
   if (!quality || quality < 1 || quality > 3) return null;
   const style =
     quality === 3
-      ? 'border-amber-300/60 bg-gradient-to-b from-amber-200 to-amber-500'
+      ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
       : quality === 2
-        ? 'border-zinc-300/60 bg-gradient-to-b from-zinc-100 to-zinc-400'
-        : 'border-orange-400/60 bg-gradient-to-b from-orange-200 to-orange-500';
+        ? 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
+        : 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]';
   return (
     <span
-      className={`ml-auto inline-block h-3.5 w-3.5 rotate-45 rounded-[2px] border ${style}`}
+      className={`h-3 w-3 shrink-0 rounded-[2px] border ${style}`}
       title={`Quality ${quality}`}
       aria-label={`Quality ${quality}`}
-    >
-      <span className="sr-only">{quality}</span>
-    </span>
+    />
   );
 }
 
@@ -608,8 +606,29 @@ function ConsumableSelect({
     qualityMaxByFamily.get(optionQualityFamily(selected))
   );
 
+  const groups = useMemo(() => {
+    const map = new Map<
+      string,
+      { label: string; icon: string; itemId?: number; items: OptionEntry[]; familyMax: number }
+    >();
+    for (const opt of options) {
+      const family = optionQualityFamily(opt);
+      if (!map.has(family)) {
+        map.set(family, {
+          label: optionSelectLabel(opt),
+          icon: opt.icon || '',
+          itemId: opt.itemId,
+          items: [],
+          familyMax: qualityMaxByFamily.get(family) || 0,
+        });
+      }
+      map.get(family)!.items.push(opt);
+    }
+    return Array.from(map.values());
+  }, [options, qualityMaxByFamily]);
+
   return (
-    <label className="space-y-1.5 text-[13px] text-zinc-300">
+    <div className="space-y-1.5 text-[13px] text-zinc-300">
       <span className="block">{label}</span>
       <div ref={rootRef} className="relative">
         <button
@@ -621,37 +640,20 @@ function ConsumableSelect({
           }`}
         >
           {selected?.icon ? (
-            <a
-              href={selected.itemId ? `https://www.wowhead.com/item=${selected.itemId}` : '#'}
-              target="_blank"
-              rel="noreferrer"
-              data-wowhead={selected.itemId ? `item=${selected.itemId}` : undefined}
-              onClick={(e) => e.preventDefault()}
-              className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
-              style={{
-                backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${selected.icon}.jpg)`,
-              }}
+            <img
+              src={`https://wow.zamimg.com/images/wow/icons/small/${selected.icon}.jpg`}
+              alt=""
+              className="h-4 w-4 shrink-0 rounded-[3px]"
             />
           ) : (
             <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
           )}
-          {selected ? (
-            <a
-              href={selected.itemId ? `https://www.wowhead.com/item=${selected.itemId}` : '#'}
-              target="_blank"
-              rel="noreferrer"
-              data-wowhead={selected.itemId ? `item=${selected.itemId}` : undefined}
-              onClick={(e) => e.preventDefault()}
-              className="truncate"
-            >
-              {optionSelectLabel(selected)}
-            </a>
-          ) : (
-            <span className="truncate">None</span>
-          )}
-          <QualityBadge quality={selectedQuality} />
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate">{selected ? optionSelectLabel(selected) : 'None'}</span>
+            <QualityBadge quality={selectedQuality} />
+          </div>
           <svg
-            className={`ml-1 h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
+            className={`ml-auto h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
@@ -663,61 +665,87 @@ function ConsumableSelect({
           </svg>
         </button>
         {open && (
-          <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-border bg-surface shadow-xl">
+          <div className="absolute z-30 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-xl">
             <button
               type="button"
               onClick={() => {
                 onChange('');
                 setOpen(false);
               }}
-              className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
+              className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
             >
               <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
               <span className="truncate">None</span>
             </button>
-            {options.map((opt) => {
-              const q = remapQuality(
-                opt.craftingQuality,
-                qualityMaxByFamily.get(optionQualityFamily(opt))
-              );
+            <div className="my-1 h-px bg-border/50" />
+            {groups.map((group) => {
+              const hasQuality = group.familyMax > 0;
+              const isSelectedFamily = selected && optionQualityFamily(selected) === optionQualityFamily(group.items[0]);
+
               return (
                 <div
-                  key={opt.key}
+                  key={group.label}
+                  className={`flex items-center justify-between gap-2 rounded px-2.5 py-2 text-sm transition-colors ${
+                    !hasQuality ? 'cursor-pointer hover:bg-white/[0.04]' : ''
+                  } ${isSelectedFamily && !hasQuality ? 'bg-gold/[0.08] text-white' : 'text-zinc-300'}`}
                   onClick={() => {
-                    onChange(opt.token || '');
-                    setOpen(false);
+                    if (!hasQuality) {
+                      onChange(group.items[0].token || '');
+                      setOpen(false);
+                    }
                   }}
-                  className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
                 >
-                  <a
-                    href={opt.itemId ? `https://www.wowhead.com/item=${opt.itemId}` : '#'}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-wowhead={opt.itemId ? `item=${opt.itemId}` : undefined}
-                    onClick={(e) => e.preventDefault()}
-                    className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
-                    style={{
-                      backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg)`,
-                    }}
-                  />
-                  <a
-                    href={opt.itemId ? `https://www.wowhead.com/item=${opt.itemId}` : '#'}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-wowhead={opt.itemId ? `item=${opt.itemId}` : undefined}
-                    onClick={(e) => e.preventDefault()}
-                    className="truncate"
-                  >
-                    {optionSelectLabel(opt)}
-                  </a>
-                  <QualityBadge quality={q} />
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <img
+                      src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
+                      alt=""
+                      className="h-4 w-4 shrink-0 rounded-[3px]"
+                    />
+                    <span className="truncate">{group.label}</span>
+                  </div>
+                  {hasQuality && (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {group.items
+                        .sort((a, b) => (a.craftingQuality || 0) - (b.craftingQuality || 0))
+                        .map((opt) => {
+                          const q = remapQuality(opt.craftingQuality, group.familyMax);
+                          const isOptSelected = value === opt.token;
+                          const qStyle =
+                            q === 3
+                              ? isOptSelected
+                                ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
+                                : 'border-amber-300/30 bg-amber-500/10 hover:border-amber-300/60 hover:bg-amber-500/20'
+                              : q === 2
+                                ? isOptSelected
+                                  ? 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
+                                  : 'border-zinc-300/30 bg-zinc-400/10 hover:border-zinc-300/60 hover:bg-zinc-400/20'
+                                : isOptSelected
+                                  ? 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]'
+                                  : 'border-orange-400/30 bg-orange-600/10 hover:border-orange-400/60 hover:bg-orange-600/20';
+
+                          return (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              title={`Quality ${q}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onChange(opt.token || '');
+                                setOpen(false);
+                              }}
+                              className={`h-3.5 w-3.5 rounded-[2px] border transition-all ${qStyle}`}
+                            />
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         )}
       </div>
-    </label>
+    </div>
   );
 }
 

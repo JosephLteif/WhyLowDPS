@@ -66,7 +66,7 @@ function optionLabel(opt: OptionEntry) {
 }
 
 function optionQualityFamily(opt: OptionEntry) {
-  const token = (opt.token || '').replace(/^main_hand:/, '');
+  const token = (opt.token || opt.key || '').replace(/^main_hand:/, '');
   return token.replace(/_[1-3]$/i, '');
 }
 
@@ -77,25 +77,6 @@ function remapQuality(quality: number | undefined, familyMax: number | undefined
     if (quality === 2) return 3;
   }
   return quality;
-}
-
-function QualityBadge({ quality }: { quality?: number }) {
-  if (!quality || quality < 1 || quality > 3) return null;
-  const style =
-    quality === 3
-      ? 'border-amber-300/60 bg-gradient-to-b from-amber-200 to-amber-500'
-      : quality === 2
-        ? 'border-zinc-300/60 bg-gradient-to-b from-zinc-100 to-zinc-400'
-        : 'border-orange-400/60 bg-gradient-to-b from-orange-200 to-orange-500';
-  return (
-    <span
-      className={`ml-auto inline-block h-3.5 w-3.5 rotate-45 rounded-[2px] border ${style}`}
-      title={`Quality ${quality}`}
-      aria-label={`Quality ${quality}`}
-    >
-      <span className="sr-only">{quality}</span>
-    </span>
-  );
 }
 
 export default function StatWeightsPage() {
@@ -134,14 +115,7 @@ export default function StatWeightsPage() {
     matrixPotions.length +
     matrixAugments.length +
     matrixTempEnchants.length +
-    (mode === 'consumable_matrix' ? 0 : matrixRaidBuffs.length);
-
-  // Clear raid buffs when entering consumable matrix mode as they are disabled there
-  useEffect(() => {
-    if (mode === 'consumable_matrix' && matrixRaidBuffs.length > 0) {
-      setMatrixRaidBuffs([]);
-    }
-  }, [mode, matrixRaidBuffs.length]);
+    matrixRaidBuffs.length;
 
   const icons = useSpellIcons(
     RAID_BUFF_MATRIX_OPTIONS.map((b) => b.spellId || 0).filter((v) => v > 0)
@@ -414,6 +388,7 @@ export default function StatWeightsPage() {
                 ['Potions', potions, matrixPotions, setMatrixPotions],
                 ['Augmentation Runes', augments, matrixAugments, setMatrixAugments],
                 ['Temporary Enchants', tempEnchants, matrixTempEnchants, setMatrixTempEnchants],
+                ['Raid Buffs', RAID_BUFF_MATRIX_OPTIONS, matrixRaidBuffs, setMatrixRaidBuffs],
               ].map(([title, options, selected, setSelected]) => (
                 <div
                   key={title as string}
@@ -426,11 +401,10 @@ export default function StatWeightsPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() =>
-                          (setSelected as (v: string[]) => void)(
-                            uniqueTokens(options as OptionEntry[])
-                          )
-                        }
+                        onClick={() => {
+                          const all = (options as OptionEntry[]).map((o) => o.token || o.key);
+                          (setSelected as (v: string[]) => void)(all);
+                        }}
                         className="text-[11px] text-zinc-500 hover:text-zinc-300"
                         title="Select All"
                       >
@@ -444,141 +418,250 @@ export default function StatWeightsPage() {
                       >
                         Clear
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const tokens = uniqueTokens(
-                            (options as OptionEntry[]).filter((opt) => {
-                              const max = Math.max(
-                                ...(options as OptionEntry[])
-                                  .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
-                                  .map((o) => o.craftingQuality || 0)
+                      {title !== 'Raid Buffs' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const tokens = uniqueTokens(
+                                (options as OptionEntry[]).filter((opt) => {
+                                  const max = Math.max(
+                                    ...(options as OptionEntry[])
+                                      .filter(
+                                        (o) => optionQualityFamily(o) === optionQualityFamily(opt)
+                                      )
+                                      .map((o) => o.craftingQuality || 0)
+                                  );
+                                  return remapQuality(opt.craftingQuality, max) === 3;
+                                })
                               );
-                              return remapQuality(opt.craftingQuality, max) === 3;
-                            })
-                          );
-                          (setSelected as (v: string[]) => void)(tokens);
-                        }}
-                        className="text-[11px] text-amber-500 hover:text-amber-300"
-                        title="Select All Gold"
-                      >
-                        Gold
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const tokens = uniqueTokens(
-                            (options as OptionEntry[]).filter((opt) => {
-                              const max = Math.max(
-                                ...(options as OptionEntry[])
-                                  .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
-                                  .map((o) => o.craftingQuality || 0)
+                              (setSelected as (v: string[]) => void)(tokens);
+                            }}
+                            className="text-[11px] text-amber-500 hover:text-amber-300"
+                            title="Select All Gold"
+                          >
+                            Gold
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const tokens = uniqueTokens(
+                                (options as OptionEntry[]).filter((opt) => {
+                                  const max = Math.max(
+                                    ...(options as OptionEntry[])
+                                      .filter(
+                                        (o) => optionQualityFamily(o) === optionQualityFamily(opt)
+                                      )
+                                      .map((o) => o.craftingQuality || 0)
+                                  );
+                                  return remapQuality(opt.craftingQuality, max) === 2;
+                                })
                               );
-                              return remapQuality(opt.craftingQuality, max) === 2;
-                            })
-                          );
-                          (setSelected as (v: string[]) => void)(tokens);
-                        }}
-                        className="text-[11px] text-zinc-300 hover:text-white"
-                        title="Select All Silver"
-                      >
-                        Silver
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const tokens = uniqueTokens(
-                            (options as OptionEntry[]).filter((opt) => {
-                              const max = Math.max(
-                                ...(options as OptionEntry[])
-                                  .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
-                                  .map((o) => o.craftingQuality || 0)
+                              (setSelected as (v: string[]) => void)(tokens);
+                            }}
+                            className="text-[11px] text-zinc-300 hover:text-white"
+                            title="Select All Silver"
+                          >
+                            Silver
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const tokens = uniqueTokens(
+                                (options as OptionEntry[]).filter((opt) => {
+                                  const max = Math.max(
+                                    ...(options as OptionEntry[])
+                                      .filter(
+                                        (o) => optionQualityFamily(o) === optionQualityFamily(opt)
+                                      )
+                                      .map((o) => o.craftingQuality || 0)
+                                  );
+                                  return remapQuality(opt.craftingQuality, max) === 1;
+                                })
                               );
-                              return remapQuality(opt.craftingQuality, max) === 1;
-                            })
-                          );
-                          (setSelected as (v: string[]) => void)(tokens);
-                        }}
-                        className="text-[11px] text-orange-400 hover:text-orange-300"
-                        title="Select All Bronze"
-                      >
-                        Bronze
-                      </button>
+                              (setSelected as (v: string[]) => void)(tokens);
+                            }}
+                            className="text-[11px] text-orange-400 hover:text-orange-300"
+                            title="Select All Bronze"
+                          >
+                            Bronze
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="grid gap-1.5">
-                    {(options as OptionEntry[]).map((opt) => (
-                      <label
-                        key={opt.key}
-                        className="flex items-center justify-between gap-2 rounded border border-border bg-surface-2 px-2 py-1.5"
-                      >
-                        {opt.itemId ? (
-                          <a
-                            href={`https://www.wowhead.com/item=${opt.itemId}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            data-wowhead={`item=${opt.itemId}`}
-                            className="flex min-w-0 items-center gap-2 text-zinc-300 hover:text-zinc-100"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
+                  <div className="grid gap-1">
+                    {(() => {
+                      const groups = new Map<
+                        string,
+                        {
+                          label: string;
+                          icon: string;
+                          itemId?: number;
+                          spellId?: number;
+                          items: OptionEntry[];
+                          familyMax: number;
+                        }
+                      >();
+                      for (const opt of options as OptionEntry[]) {
+                        const familyKey = optionQualityFamily(opt);
+                        if (!groups.has(familyKey)) {
+                          groups.set(familyKey, {
+                            label: optionLabel(opt),
+                            icon: opt.icon || '',
+                            itemId: opt.itemId,
+                            spellId: opt.spellId,
+                            items: [],
+                            familyMax: 0,
+                          });
+                        }
+                        const group = groups.get(familyKey)!;
+                        group.items.push(opt);
+                        group.familyMax = Math.max(group.familyMax, opt.craftingQuality || 0);
+                      }
+
+                      return Array.from(groups.values()).map((group) => {
+                        const sortedItems = [...group.items].sort(
+                          (a, b) => (a.craftingQuality || 0) - (b.craftingQuality || 0)
+                        );
+                        const hasQuality = group.familyMax > 0;
+                        const isSingleNoQuality = sortedItems.length === 1 && !hasQuality;
+                        const isSelected =
+                          isSingleNoQuality &&
+                          (selected as string[]).includes(sortedItems[0].token || sortedItems[0].key);
+
+                        return (
+                          <div
+                            key={group.label}
+                            onClick={() => {
+                              if (isSingleNoQuality) {
+                                (setSelected as (v: string[]) => void)(
+                                  toggleListValue(
+                                    selected as string[],
+                                    sortedItems[0].token || sortedItems[0].key
+                                  )
+                                );
+                              }
                             }}
+                            className={`flex items-center justify-between gap-3 rounded border px-2.5 py-1.5 transition-colors ${
+                              isSingleNoQuality ? 'cursor-pointer' : ''
+                            } ${
+                              isSelected
+                                ? 'border-gold/40 bg-gold/[0.08]'
+                                : 'border-border bg-surface-2 hover:border-zinc-700'
+                            }`}
                           >
-                            <span
-                              className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
-                              style={{
-                                backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg)`,
-                              }}
-                            />
-                            <span className="truncate text-xs">{optionLabel(opt)}</span>
-                            <QualityBadge
-                              quality={remapQuality(
-                                opt.craftingQuality,
-                                Math.max(
-                                  ...(options as OptionEntry[])
-                                    .filter(
-                                      (o) => optionQualityFamily(o) === optionQualityFamily(opt)
-                                    )
-                                    .map((o) => o.craftingQuality || 0)
-                                )
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              {group.itemId || group.spellId ? (
+                                <a
+                                  href={
+                                    group.itemId
+                                      ? `https://www.wowhead.com/item=${group.itemId}`
+                                      : `https://www.wowhead.com/spell=${group.spellId}`
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  data-wowhead={
+                                    group.itemId ? `item=${group.itemId}` : `spell=${group.spellId}`
+                                  }
+                                  className={`flex min-w-0 items-center gap-2 hover:text-zinc-100 ${
+                                    isSelected ? 'text-white' : 'text-zinc-300'
+                                  }`}
+                                  onClick={(e) => {
+                                    if (!isSingleNoQuality) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                    }
+                                  }}
+                                >
+                                  <img
+                                    src={`https://wow.zamimg.com/images/wow/icons/small/${icons.get(group.spellId || 0) || group.icon}.jpg`}
+                                    alt=""
+                                    className="h-4 w-4 shrink-0 rounded-[3px]"
+                                  />
+                                  <span className="truncate text-[12px]">{group.label}</span>
+                                </a>
+                              ) : (
+                                <span
+                                  className={`flex min-w-0 items-center gap-2 ${
+                                    isSelected ? 'text-white' : 'text-zinc-300'
+                                  }`}
+                                >
+                                  <img
+                                    src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
+                                    alt=""
+                                    className="h-4 w-4 shrink-0 rounded-[3px]"
+                                  />
+                                  <span className="truncate text-[12px]">{group.label}</span>
+                                </span>
                               )}
-                            />
-                          </a>
-                        ) : (
-                          <span className="flex min-w-0 items-center gap-2 text-zinc-300">
-                            <span
-                              className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
-                              style={{
-                                backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg)`,
-                              }}
-                            />
-                            <span className="truncate text-xs">{optionLabel(opt)}</span>
-                            <QualityBadge
-                              quality={remapQuality(
-                                opt.craftingQuality,
-                                Math.max(
-                                  ...(options as OptionEntry[])
-                                    .filter(
-                                      (o) => optionQualityFamily(o) === optionQualityFamily(opt)
-                                    )
-                                    .map((o) => o.craftingQuality || 0)
-                                )
-                              )}
-                            />
-                          </span>
-                        )}
-                        <input
-                          type="checkbox"
-                          checked={(selected as string[]).includes(opt.token || '')}
-                          onChange={() =>
-                            (setSelected as (v: string[]) => void)(
-                              toggleListValue(selected as string[], opt.token || '')
-                            )
-                          }
-                          className="h-4 w-4 accent-gold"
-                        />
-                      </label>
-                    ))}
+                            </div>
+
+                            {hasQuality ? (
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                {sortedItems.map((opt) => {
+                                  const q = remapQuality(opt.craftingQuality, group.familyMax);
+                                  const isOptSelected = (selected as string[]).includes(
+                                    opt.token || opt.key
+                                  );
+                                  const style =
+                                    q === 3
+                                      ? isOptSelected
+                                        ? 'border-amber-300/60 bg-amber-500 text-black shadow-[0_0_8px_rgba(251,191,36,0.3)]'
+                                        : 'border-amber-300/30 bg-amber-500/10 text-amber-300/60 hover:border-amber-300/60 hover:bg-amber-500/20'
+                                      : q === 2
+                                        ? isOptSelected
+                                          ? 'border-zinc-300/60 bg-zinc-400 text-black shadow-[0_0_8px_rgba(161,161,170,0.3)]'
+                                          : 'border-zinc-300/30 bg-zinc-400/10 text-zinc-400/60 hover:border-zinc-300/60 hover:bg-zinc-400/20'
+                                        : isOptSelected
+                                          ? 'border-orange-400/60 bg-orange-600 text-black shadow-[0_0_8px_rgba(234,88,12,0.3)]'
+                                          : 'border-orange-400/30 bg-orange-600/10 text-orange-400/60 hover:border-orange-400/60 hover:bg-orange-600/20';
+
+                                  return (
+                                    <button
+                                      key={opt.key}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        (setSelected as (v: string[]) => void)(
+                                          toggleListValue(selected as string[], opt.token || opt.key)
+                                        );
+                                      }}
+                                      title={`Quality ${q}`}
+                                      className={`flex h-4 w-4 items-center justify-center rounded-[3px] border transition-all ${style}`}
+                                    >
+                                      <span className="sr-only">{q}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div
+                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border transition-all ${
+                                  isSelected
+                                    ? 'border-gold bg-gold shadow-[0_0_8px_rgba(212,175,55,0.3)]'
+                                    : 'border-zinc-700 bg-surface hover:border-zinc-500'
+                                }`}
+                              >
+                                {isSelected && (
+                                  <svg
+                                    className="h-2.5 w-2.5 text-black"
+                                    viewBox="0 0 12 12"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="3"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <polyline points="2 6.5 4.5 9 10 3" />
+                                  </svg>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
               ))}

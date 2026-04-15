@@ -18,6 +18,8 @@ const PLOT_STATS = [
   { value: 'strength', label: 'Strength' },
 ];
 
+const HEATMAP_ILEVEL_OPTIONS = [289, 282, 276, 269, 263, 256, 250, 243, 240];
+
 const spellIconCache = new Map<number, string>();
 
 function useSpellIcons(spellIds: number[]) {
@@ -116,6 +118,7 @@ export default function StatWeightsPage() {
   const [plotIterations, setPlotIterations] = useState(2000);
   const [includeTrinketMatrix, setIncludeTrinketMatrix] = useState(false);
   const [includeTierMatrix, setIncludeTierMatrix] = useState(true);
+  const [heatmapTargetIlevel, setHeatmapTargetIlevel] = useState(289);
 
   const [matrixFlasks, setMatrixFlasks] = useState<string[]>(uniqueTokens(flasks));
   const [matrixFoods, setMatrixFoods] = useState<string[]>(uniqueTokens(foods));
@@ -209,6 +212,7 @@ export default function StatWeightsPage() {
           ? {
               include_trinket_matrix: includeTrinketMatrix,
               include_tier_matrix: includeTierMatrix,
+              heatmap_target_ilevel: Math.max(1, Math.floor(heatmapTargetIlevel || 289)),
             }
           : mode === 'consumable_matrix'
             ? {
@@ -230,6 +234,7 @@ export default function StatWeightsPage() {
       plotIterations,
       includeTrinketMatrix,
       includeTierMatrix,
+      heatmapTargetIlevel,
       matrixFlasks,
       matrixFoods,
       matrixPotions,
@@ -584,6 +589,24 @@ export default function StatWeightsPage() {
                 />
               </label>
             </div>
+            <label className="block space-y-1.5 text-xs text-zinc-400">
+              <span className="block">Target Trinket iLvl</span>
+              <select
+                value={heatmapTargetIlevel}
+                onChange={(e) => setHeatmapTargetIlevel(Number(e.target.value) || 289)}
+                className="w-full rounded-md border border-border bg-surface px-2.5 py-2 text-sm text-zinc-200 focus:border-gold focus:outline-none"
+              >
+                {HEATMAP_ILEVEL_OPTIONS.map((ilvl) => (
+                  <option key={ilvl} value={ilvl}>
+                    {ilvl}
+                  </option>
+                ))}
+              </select>
+              <span className="block text-[11px] text-zinc-500">
+                One variant per trinket is selected at this ilvl when possible; otherwise it falls
+                back to the closest valid ilvl at or below your target.
+              </span>
+            </label>
           </div>
         )}
 

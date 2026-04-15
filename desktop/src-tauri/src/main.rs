@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::path::BaseDirectory;
 use tauri::Manager;
@@ -8,7 +8,7 @@ use whylowdps_core::game_data;
 use whylowdps_core::server;
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
 
-fn seed_runtime_data_if_missing(bundled_data_dir: &PathBuf, runtime_data_dir: &PathBuf) {
+fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path) {
     let runtime_classes = runtime_data_dir.join("classes.json");
     if runtime_classes.exists() {
         return;
@@ -20,7 +20,7 @@ fn seed_runtime_data_if_missing(bundled_data_dir: &PathBuf, runtime_data_dir: &P
     }
 
     let mut stack: Vec<(PathBuf, PathBuf)> =
-        vec![(bundled_data_dir.clone(), runtime_data_dir.clone())];
+        vec![(bundled_data_dir.to_path_buf(), runtime_data_dir.to_path_buf())];
     while let Some((src_dir, dst_dir)) = stack.pop() {
         let _ = std::fs::create_dir_all(&dst_dir);
         let entries = match std::fs::read_dir(&src_dir) {

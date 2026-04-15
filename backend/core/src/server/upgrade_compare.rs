@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::helpers::*;
@@ -15,7 +15,7 @@ use crate::profileset_generator;
 use crate::storage::JobStorage;
 
 fn resolve_simc_binary_for_request(
-    simc_path: &PathBuf,
+    simc_path: &Path,
     _options: &SimOptions,
 ) -> Result<PathBuf, String> {
     #[cfg(feature = "desktop")]
@@ -25,9 +25,9 @@ fn resolve_simc_binary_for_request(
         {
             return Ok(path);
         }
-        return Err(format!(
-            "SimC nightly is not installed. Open Settings -> SimulationCraft Engine and install/update it first."
-        ));
+        Err(
+            "SimC nightly is not installed. Open Settings -> SimulationCraft Engine and install/update it first.".to_string()
+        )
     }
 
     #[cfg(not(feature = "desktop"))]
@@ -113,9 +113,7 @@ fn prepare_upgrade_compare(
             continue;
         }
 
-        if upgrade_depth == "highest_only" {
-            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
-        } else if upgrade_depth != "all_levels" {
+        if upgrade_depth == "highest_only" || upgrade_depth != "all_levels" {
             candidate_opts = vec![candidate_opts.last().copied().unwrap()];
         }
 

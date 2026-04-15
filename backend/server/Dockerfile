@@ -6,9 +6,7 @@ WORKDIR /build
 COPY Cargo.toml ./
 COPY core/ core/
 COPY server/ server/
-COPY launcher/ launcher/
 
-ARG CARGO_FEATURES=
 RUN cargo build --release -p whylowdps-server ${CARGO_FEATURES:+--features $CARGO_FEATURES}
 
 # --- Fetch game data from Raidbots and compact ---
@@ -27,29 +25,29 @@ COPY scripts/compact-data.js /compact-data.js
 COPY core/season-config.json /data/full/season-config.json
 RUN node /compact-data.js /data/full /data/compact
 
-# --- Build SimulationCraft from source ---
-FROM debian:bookworm-slim AS simc-builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    libcurl4-openssl-dev \
-    libssl-dev \
-    git \
-    g++ \
-    make \
-    && rm -rf /var/lib/apt/lists/*
-
-# Pin to a specific commit — Docker caches this layer until the hash changes.
-# Update SIMC_VERSION to rebuild with a newer SimC version.
-ARG SIMC_VERSION=HEAD
-RUN git clone --depth 1 https://github.com/simulationcraft/simc.git /tmp/simc \
-    && cd /tmp/simc \
-    && if [ "$SIMC_VERSION" != "HEAD" ]; then git fetch --depth 1 origin "$SIMC_VERSION" && git checkout FETCH_HEAD; fi \
-    && cd engine \
-    && make LTO=1 NO_DEBUG=1 SC_NO_NETWORKING=1 -j$(nproc) OPTS="-ffast-math -fomit-frame-pointer" \
-    && cp simc /usr/local/bin/simc \
-    && rm -rf /tmp/simc
+# --- Build SimulationCraft from source (Disabled: App now downloads SimC on demand) ---
+# FROM debian:bookworm-slim AS simc-builder
+#
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     ca-certificates \
+#     curl \
+#     libcurl4-openssl-dev \
+#     libssl-dev \
+#     git \
+#     g++ \
+#     make \
+#     && rm -rf /var/lib/apt/lists/*
+#
+# # Pin to a specific commit — Docker caches this layer until the hash changes.
+# # Update SIMC_VERSION to rebuild with a newer SimC version.
+# ARG SIMC_VERSION=HEAD
+# RUN git clone --depth 1 https://github.com/simulationcraft/simc.git /tmp/simc \
+#     && cd /tmp/simc \
+#     && if [ "$SIMC_VERSION" != "HEAD" ]; then git fetch --depth 1 origin "$SIMC_VERSION" && git checkout FETCH_HEAD; fi \
+#     && cd engine \
+#     && make LTO=1 NO_DEBUG=1 SC_NO_NETWORKING=1 -j$(nproc) OPTS="-ffast-math -fomit-frame-pointer" \
+#     && cp simc /usr/local/bin/simc \
+#     && rm -rf /tmp/simc
 
 # --- Runtime ---
 FROM debian:bookworm-slim
@@ -59,7 +57,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 ENV LANG=en_US.UTF-8
 
 COPY --from=builder /build/target/release/whylowdps-server /usr/local/bin/whylowdps-server
-COPY --from=simc-builder /usr/local/bin/simc /usr/local/bin/simc
+# COPY --from=simc-builder /usr/local/bin/simc /usr/local/bin/simc
 COPY --from=fetcher /data/compact /app/resources/data
 
 WORKDIR /app

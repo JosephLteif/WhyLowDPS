@@ -1,8 +1,8 @@
 [workspace]
-members = ["core", "server", "launcher"]
+members = ["core", "server"]
 resolver = "2"
 
 [workspace.package]
-version = "0.7.0"
+version = "0.8.0"
 authors = ["Joseph Lteif"]
 edition = "2021"

@@ -57,33 +57,38 @@ jobs:
           touch backend/resources/data/.keep
           touch backend/resources/simc/.keep
 
-      # -- SimC Preparation --
-      - name: Resolve SimC version
-        id: simc-version
-        shell: bash
-        run: |
-          HASH=$(git ls-remote https://github.com/simulationcraft/simc.git HEAD | cut -f1)
-          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+      # -- SimC Preparation (Disabled: App now downloads SimC on demand) --
+      # - name: Resolve SimC version
+      #   id: simc-version
+      #   shell: bash
+      #   run: |
+      #     HASH=$(git ls-remote https://github.com/simulationcraft/simc.git HEAD | cut -f1)
+      #     echo "hash=$HASH" >> "$GITHUB_OUTPUT"
 
-      - name: Cache SimC binary
-        id: simc-cache
-        uses: actions/cache@v4
-        with:
-          path: backend/resources/simc
-          key: ${{ runner.os }}-simc-${{ steps.simc-version.outputs.hash }}
+      # - name: Cache SimC binary
+      #   id: simc-cache
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: backend/resources/simc
+      #     key: ${{ runner.os }}-simc-${{ steps.simc-version.outputs.hash }}
 
-      - name: Download SimC binary (Windows)
-        if: steps.simc-cache.outputs.cache-hit != 'true' && matrix.platform == 'windows'
-        shell: bash
-        run: |
-          mkdir -p backend/resources/simc
-          curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/master/simc-nightly-win64-midnight.zip" -o simc_win.zip
-          unzip simc_win.zip -d backend/resources/simc/
-          find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
-          find backend/resources/simc -name "simc.exe" -exec mv {} backend/resources/simc/ \;
-          touch backend/resources/simc/.keep
+      # - name: Download SimC binary (Windows)
+      #   if: steps.simc-cache.outputs.cache-hit != 'true' && matrix.platform == 'windows'
+      #   shell: bash
+      #   run: |
+      #     mkdir -p backend/resources/simc
+      #     curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/master/simc-nightly-win64-midnight.zip" -o simc_win.zip
+      #     unzip simc_win.zip -d backend/resources/simc/
+      #     find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
+      #     find backend/resources/simc -name "simc.exe" -exec mv {} backend/resources/simc/ \;
+      #     touch backend/resources/simc/.keep
 
       # Game data is synchronized at app launch; skip heavy data-fetch step during release builds.
+
+      - name: Enable Updater Artifacts
+        shell: bash
+        run: |
+          sed -i 's/"createUpdaterArtifacts": false/"createUpdaterArtifacts": true/g' desktop/src-tauri/tauri.conf.json
 
       # -- Build and Release --
       - uses: tauri-apps/tauri-action@v0

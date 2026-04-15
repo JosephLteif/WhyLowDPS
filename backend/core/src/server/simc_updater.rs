@@ -35,29 +35,10 @@ impl SimcChannel {
             Self::Nightly => "nightly",
         }
     }
-
-    fn from_input(raw: &str) -> Result<Self, String> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "" | "nightly" => Ok(Self::Nightly),
-            other => Err(format!(
-                "Unsupported SimC channel '{}'. Use nightly.",
-                other
-            )),
-        }
-    }
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct SimcChannelQuery {
-    #[serde(default)]
-    pub channel: String,
-}
-
-impl SimcChannelQuery {
-    fn resolve_channel(&self) -> Result<SimcChannel, String> {
-        SimcChannel::from_input(&self.channel)
-    }
-}
+pub(super) struct SimcChannelQuery {}
 
 #[derive(Clone)]
 pub(super) struct SimcUpdaterState {
@@ -178,14 +159,12 @@ struct DownloadProgressResponse {
 #[derive(Debug, Clone, Copy)]
 enum ProgressUnit {
     Bytes,
-    Files,
 }
 
 impl ProgressUnit {
     fn as_str(self) -> &'static str {
         match self {
             Self::Bytes => "bytes",
-            Self::Files => "files",
         }
     }
 }
@@ -543,6 +522,7 @@ async fn do_download_channel(
     .map_err(|e| format!("SimC installation task failed to complete: {e}"))?;
 
     let cleanup_err = std::fs::remove_dir_all(&temp_root).err();
+    let _ = std::fs::remove_file(&archive_path); // Cleanup archive
 
     if let Err(err) = install_result {
         updater.clear_progress();
@@ -584,30 +564,84 @@ fn install_from_archive(
     let source_dir = find_source_root(extract_dir, &extracted_bin);
 
     let files_to_copy = gather_files(&source_dir)?;
-    updater.set_phase(
-        "extracting_data",
-        ProgressUnit::Files,
-        Some(files_to_copy.len() as u64),
-    );
+    let total_bytes: u64 = files_to_copy
+        .iter()
+        .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+        .sum();
 
-    clear_directory(install_dir)?;
-    copy_files_with_progress(&source_dir, install_dir, &files_to_copy, updater)?;
+    updater.set_phase("extracting_data", ProgressUnit::Bytes, Some(total_bytes));
 
-    let expected_bin = install_dir.join(binary_filename());
-    if !expected_bin.exists() {
-        return Err(format!(
-            "Installation finished but {} is missing",
-            expected_bin.display()
-        ));
+    let backup_dir = install_dir.with_extension("backup");
+    if install_dir.exists() {
+        if let Err(e) = std::fs::rename(install_dir, &backup_dir) {
+            eprintln!("Warning: failed to create backup directory: {e}");
+        }
     }
 
-    std::fs::write(install_dir.join(VERSION_MARKER), latest.version.as_bytes())
-        .map_err(|e| format!("Failed to persist installed SimC version marker: {e}"))?;
-    std::fs::write(
-        install_dir.join(CHANNEL_MARKER),
-        channel.as_str().as_bytes(),
-    )
-    .map_err(|e| format!("Failed to persist installed SimC channel marker: {e}"))?;
+    let install_res = (|| -> Result<(), String> {
+        std::fs::create_dir_all(install_dir).map_err(|e| format!("Failed to create install dir: {e}"))?;
+        copy_files_with_progress(&source_dir, install_dir, &files_to_copy, updater)?;
+
+        let expected_bin = install_dir.join(binary_filename());
+        if !expected_bin.exists() {
+            return Err(format!(
+                "Installation finished but {} is missing",
+                expected_bin.display()
+            ));
+        }
+
+        validate_simc_installation(&expected_bin)?;
+
+        std::fs::write(install_dir.join(VERSION_MARKER), latest.version.as_bytes())
+            .map_err(|e| format!("Failed to persist installed SimC version marker: {e}"))?;
+        std::fs::write(
+            install_dir.join(CHANNEL_MARKER),
+            channel.as_str().as_bytes(),
+        )
+        .map_err(|e| format!("Failed to persist installed SimC channel marker: {e}"))?;
+
+        Ok(())
+    })();
+
+    if let Err(e) = install_res {
+        if backup_dir.exists() {
+            let _ = std::fs::remove_dir_all(install_dir);
+            let _ = std::fs::rename(&backup_dir, install_dir);
+        }
+        return Err(e);
+    }
+
+    if backup_dir.exists() {
+        let _ = std::fs::remove_dir_all(&backup_dir);
+    }
+
+    Ok(())
+}
+
+fn validate_simc_installation(bin_path: &Path) -> Result<(), String> {
+    // Run with 'help=1' which is a standard SimC way to show help/version and exit.
+    let output = Command::new(bin_path)
+        .arg("help=1")
+        .output()
+        .map_err(|e| format!("Failed to execute SimC for validation: {e}"))?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let combined = format!("{stdout}\n{stderr}");
+
+    // Even if SimC returns a non-zero exit code (some versions do if no simulation is run),
+    // seeing the version header confirms the binary is valid and all dependencies (DLLs) are met.
+    if combined.contains("SimulationCraft") && combined.contains("World of Warcraft") {
+        return Ok(());
+    }
+
+    if !output.status.success() {
+        return Err(format!(
+            "SimC validation failed (exit code {:?}). The binary might be corrupted or missing dependencies.\n\nOutput:\n{}",
+            output.status.code(),
+            combined.trim()
+        ));
+    }
 
     Ok(())
 }
@@ -951,14 +985,18 @@ fn extract_7z_archive(
     dest: &Path,
     updater: &SimcUpdaterState,
 ) -> Result<(), String> {
-    let total_entries = std::fs::File::open(archive_path)
+    let total_uncompressed_bytes = std::fs::File::open(archive_path)
         .ok()
         .and_then(|mut file| {
             sevenz_rust2::Archive::read(&mut file, &sevenz_rust2::Password::empty()).ok()
         })
-        .map(|archive| archive.files.len() as u64);
+        .map(|archive| archive.files.iter().map(|f| f.size).sum::<u64>());
 
-    updater.set_phase("extracting_archive", ProgressUnit::Files, total_entries);
+    updater.set_phase(
+        "extracting_archive",
+        ProgressUnit::Bytes,
+        total_uncompressed_bytes,
+    );
     if let Some(seven_zip) = find_system_7z() {
         eprintln!(
             "Using system 7-Zip ({}) for extraction",
@@ -994,7 +1032,7 @@ fn extract_7z_archive(
 
         // When using system 7z, we can't easily track progress per file,
         // so we just jump to total if we have it.
-        if let Some(total) = total_entries {
+        if let Some(total) = total_uncompressed_bytes {
             updater.update_downloaded(total);
         }
 
@@ -1005,20 +1043,20 @@ fn extract_7z_archive(
 
     // Fall back to the Rust crate
     eprintln!("No system 7-Zip found, falling back to built-in extractor");
-    let mut files_extracted = 0;
+    let mut extracted_bytes = 0;
     sevenz_rust2::decompress_file_with_extract_fn(archive_path, dest, |entry, reader, dest_path| {
         // DO NOT skip files entirely during extraction. In 7z solid blocks,
         // failing to consume the reader can cause ChecksumVerificationFailed.
         // We extract everything, then clean up the optional entries afterward.
-        let res = sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path);
-        files_extracted += 1;
-        updater.update_downloaded(files_extracted);
+        let uncompressed_size = entry.size;
+            letres = sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path);
+        extracted_bytes += uncompressed_size;
+        updater.update_downloaded(extracted_bytes);
         res
     })
-    .and_then(|_| {
+    .map(|_| {
         // Clean up optional entries (e.g. WACTAC.h!ml) after internal extraction
         cleanup_optional_entries_recursive(dest);
-        Ok(())
     })
     .map_err(|e| {
         let msg = format!("Failed to extract SimC 7z archive: {e}");
@@ -1075,25 +1113,39 @@ fn extract_zip_archive(
     let mut archive =
         zip::ZipArchive::new(reader).map_err(|e| format!("Failed to parse zip archive: {e}"))?;
 
-    let total_entries = archive.len();
+    let mut total_uncompressed_bytes = 0;
+    for i in 0..archive.len() {
+        if let Ok(file) = archive.by_index(i) {
+            total_uncompressed_bytes += file.size();
+        }
+    }
+
     updater.set_phase(
         "extracting_archive",
-        ProgressUnit::Files,
-        Some(total_entries as u64),
+        ProgressUnit::Bytes,
+        Some(total_uncompressed_bytes),
     );
 
-    for idx in 0..total_entries {
+    let mut extracted_bytes = 0;
+    for idx in 0..archive.len() {
         let mut file = archive
             .by_index(idx)
             .map_err(|e| format!("Failed reading zip entry {idx}: {e}"))?;
+
+        let uncompressed_size = file.size();
         let Some(safe_path) = file.enclosed_name().map(|path| path.to_path_buf()) else {
+            extracted_bytes += uncompressed_size;
+            updater.update_downloaded(extracted_bytes);
             continue;
         };
 
         let out = dest.join(safe_path);
         if should_skip_optional_entry(&out) {
+            extracted_bytes += uncompressed_size;
+            updater.update_downloaded(extracted_bytes);
             continue;
         }
+
         if file.is_dir() {
             std::fs::create_dir_all(&out).map_err(|e| {
                 format!(
@@ -1102,7 +1154,8 @@ fn extract_zip_archive(
                     e
                 )
             })?;
-            updater.update_downloaded(idx as u64 + 1);
+            extracted_bytes += uncompressed_size;
+            updater.update_downloaded(extracted_bytes);
             continue;
         }
 
@@ -1121,7 +1174,8 @@ fn extract_zip_archive(
         std::io::copy(&mut file, &mut out_file)
             .map_err(|e| format!("Failed writing extracted file {}: {}", out.display(), e))?;
 
-        updater.update_downloaded(idx as u64 + 1);
+        extracted_bytes += uncompressed_size;
+        updater.update_downloaded(extracted_bytes);
     }
 
     Ok(())
@@ -1214,46 +1268,6 @@ fn find_simc_binary(search_root: &Path) -> Option<PathBuf> {
     None
 }
 
-fn clear_directory(dir: &Path) -> Result<(), String> {
-    if !dir.exists() {
-        std::fs::create_dir_all(dir).map_err(|e| {
-            format!(
-                "Failed to create install directory {}: {}",
-                dir.display(),
-                e
-            )
-        })?;
-        return Ok(());
-    }
-
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("Failed to read install directory {}: {}", dir.display(), e))?;
-    for entry in entries {
-        let entry =
-            entry.map_err(|e| format!("Failed to enumerate install directory entries: {e}"))?;
-        let path = entry.path();
-        if path.is_dir() {
-            std::fs::remove_dir_all(&path).map_err(|e| {
-                format!(
-                    "Failed to remove old SimC directory {} (is a simulation still running?): {}",
-                    path.display(),
-                    e
-                )
-            })?;
-        } else {
-            std::fs::remove_file(&path).map_err(|e| {
-                format!(
-                    "Failed to remove old SimC file {} (is a simulation still running?): {}",
-                    path.display(),
-                    e
-                )
-            })?;
-        }
-    }
-
-    Ok(())
-}
-
 fn gather_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     let mut queue = vec![root.to_path_buf()];
@@ -1292,7 +1306,9 @@ fn copy_files_with_progress(
         )
     })?;
 
-    for (idx, source_path) in files.iter().enumerate() {
+    let mut copied_bytes = 0;
+    for source_path in files {
+        let size = std::fs::metadata(source_path).map(|m| m.len()).unwrap_or(0);
         let relative = source_path.strip_prefix(root).map_err(|e| {
             format!(
                 "Failed resolving relative path for {}: {}",
@@ -1318,7 +1334,8 @@ fn copy_files_with_progress(
                 e
             )
         })?;
-        updater.update_downloaded((idx + 1) as u64);
+        copied_bytes += size;
+        updater.update_downloaded(copied_bytes);
     }
 
     Ok(())

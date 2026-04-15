@@ -91,8 +91,9 @@ pub(super) async fn get_item_info_batch(req: web::Json<ItemInfoBatchRequest>) ->
 
 pub(super) async fn get_enchant_info(path: web::Path<u64>) -> HttpResponse {
     let enchant_id = path.into_inner();
-    let result = game_data::get_enchant_info(enchant_id)
-        .unwrap_or_else(|| json!({"enchant_id": enchant_id, "name": "", "icon": "", "item_id": 0, "quality": 3}));
+    let result = game_data::get_enchant_info(enchant_id).unwrap_or_else(
+        || json!({"enchant_id": enchant_id, "name": "", "icon": "", "item_id": 0, "quality": 3}),
+    );
     HttpResponse::Ok().json(result)
 }
 

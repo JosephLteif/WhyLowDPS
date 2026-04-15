@@ -100,7 +100,7 @@ function QualityBadge({ quality }: { quality?: number }) {
 
 export default function StatWeightsPage() {
   const { simcInput, setLockSingleConsumableOptions } = useSimContext();
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
 
   const [mode, setMode] = useState<
     'stat_weights' | 'stat_plot' | 'consumable_matrix' | 'trinket_tier_heatmap'
@@ -134,7 +134,14 @@ export default function StatWeightsPage() {
     matrixPotions.length +
     matrixAugments.length +
     matrixTempEnchants.length +
-    matrixRaidBuffs.length;
+    (mode === 'consumable_matrix' ? 0 : matrixRaidBuffs.length);
+
+  // Clear raid buffs when entering consumable matrix mode as they are disabled there
+  useEffect(() => {
+    if (mode === 'consumable_matrix' && matrixRaidBuffs.length > 0) {
+      setMatrixRaidBuffs([]);
+    }
+  }, [mode, matrixRaidBuffs.length]);
 
   const icons = useSpellIcons(
     RAID_BUFF_MATRIX_OPTIONS.map((b) => b.spellId || 0).filter((v) => v > 0)
@@ -416,17 +423,88 @@ export default function StatWeightsPage() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                       {title as string}
                     </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        (setSelected as (v: string[]) => void)(
-                          uniqueTokens(options as OptionEntry[])
-                        )
-                      }
-                      className="text-[11px] text-zinc-500 hover:text-zinc-300"
-                    >
-                      All
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          (setSelected as (v: string[]) => void)(
+                            uniqueTokens(options as OptionEntry[])
+                          )
+                        }
+                        className="text-[11px] text-zinc-500 hover:text-zinc-300"
+                        title="Select All"
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => (setSelected as (v: string[]) => void)([])}
+                        className="text-[11px] text-zinc-500 hover:text-zinc-300"
+                        title="Clear"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tokens = uniqueTokens(
+                            (options as OptionEntry[]).filter((opt) => {
+                              const max = Math.max(
+                                ...(options as OptionEntry[])
+                                  .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
+                                  .map((o) => o.craftingQuality || 0)
+                              );
+                              return remapQuality(opt.craftingQuality, max) === 3;
+                            })
+                          );
+                          (setSelected as (v: string[]) => void)(tokens);
+                        }}
+                        className="text-[11px] text-amber-500 hover:text-amber-300"
+                        title="Select All Gold"
+                      >
+                        Gold
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tokens = uniqueTokens(
+                            (options as OptionEntry[]).filter((opt) => {
+                              const max = Math.max(
+                                ...(options as OptionEntry[])
+                                  .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
+                                  .map((o) => o.craftingQuality || 0)
+                              );
+                              return remapQuality(opt.craftingQuality, max) === 2;
+                            })
+                          );
+                          (setSelected as (v: string[]) => void)(tokens);
+                        }}
+                        className="text-[11px] text-zinc-300 hover:text-white"
+                        title="Select All Silver"
+                      >
+                        Silver
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tokens = uniqueTokens(
+                            (options as OptionEntry[]).filter((opt) => {
+                              const max = Math.max(
+                                ...(options as OptionEntry[])
+                                  .filter((o) => optionQualityFamily(o) === optionQualityFamily(opt))
+                                  .map((o) => o.craftingQuality || 0)
+                              );
+                              return remapQuality(opt.craftingQuality, max) === 1;
+                            })
+                          );
+                          (setSelected as (v: string[]) => void)(tokens);
+                        }}
+                        className="text-[11px] text-orange-400 hover:text-orange-300"
+                        title="Select All Bronze"
+                      >
+                        Bronze
+                      </button>
+                    </div>
                   </div>
                   <div className="grid gap-1.5">
                     {(options as OptionEntry[]).map((opt) => (
@@ -504,59 +582,7 @@ export default function StatWeightsPage() {
                   </div>
                 </div>
               ))}
-              <div className="space-y-2 rounded-md border border-border bg-surface p-3 lg:col-span-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                    Raid Buffs
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setMatrixRaidBuffs(RAID_BUFF_MATRIX_OPTIONS.map((o) => o.key))}
-                    className="text-[11px] text-zinc-500 hover:text-zinc-300"
-                  >
-                    All
-                  </button>
-                </div>
-                <p className="text-[11px] text-zinc-500">
-                  If your character provides one of these buffs, SimC may still include it.
-                </p>
-                <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
-                  {RAID_BUFF_MATRIX_OPTIONS.map((opt) => {
-                    const icon = icons.get(opt.spellId || 0);
-                    return (
-                      <label
-                        key={opt.key}
-                        className="flex items-center justify-between gap-2 rounded border border-border bg-surface-2 px-2 py-1.5"
-                      >
-                        <a
-                          href={`https://www.wowhead.com/spell=${opt.spellId}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          data-wowhead={`spell=${opt.spellId}`}
-                          className="flex min-w-0 items-center gap-2 text-zinc-300"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <span
-                            className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
-                            style={{
-                              backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${icon || opt.icon}.jpg)`,
-                            }}
-                          />
-                          <span className="truncate text-xs">{opt.label}</span>
-                        </a>
-                        <input
-                          type="checkbox"
-                          checked={matrixRaidBuffs.includes(opt.key)}
-                          onChange={() =>
-                            setMatrixRaidBuffs((prev) => toggleListValue(prev, opt.key))
-                          }
-                          className="h-4 w-4 accent-gold"
-                        />
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
+              {/* Raid Buffs section removed for Consumable Matrix mode as requested */}
             </div>
           </div>
         )}

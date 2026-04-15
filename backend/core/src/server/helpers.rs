@@ -158,11 +158,19 @@ pub(super) fn apply_shared_simc_options(
         return simc_input.to_string();
     }
 
-    let mut out = simc_input.to_string();
-    out.push_str("\n# Shared Sim Options\n");
-    out.push_str(&extra_lines.join("\n"));
-    out.push('\n');
-    out
+    let shared_opts = format!("\n# Shared Sim Options\n{}\n", extra_lines.join("\n"));
+    
+    if let Some(idx) = simc_input.find("### Combo 1") {
+        let mut out = String::new();
+        out.push_str(&simc_input[..idx]);
+        out.push_str(&shared_opts);
+        out.push_str(&simc_input[idx..]);
+        out
+    } else {
+        let mut out = simc_input.to_string();
+        out.push_str(&shared_opts);
+        out
+    }
 }
 
 /// Inject expert mode fields at the correct positions in the SimC profile.

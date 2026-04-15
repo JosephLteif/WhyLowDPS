@@ -30,7 +30,7 @@ function dedupeOptions(options: OptionEntry[]): OptionEntry[] {
   return out;
 }
 
-export function useConsumableOptions(expansionMin = 10) {
+export function useConsumableOptions(expansionMin = 11) {
   const [flasks, setFlasks] = useState<OptionEntry[]>(FLASK_OPTIONS);
   const [foods, setFoods] = useState<OptionEntry[]>(FOOD_OPTIONS);
   const [potions, setPotions] = useState<OptionEntry[]>(POTION_OPTIONS);

@@ -69,7 +69,7 @@ export default function ConsumableMatrixChart({
   baseDps: number;
   results: MatrixResult[];
 }) {
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
   const raidBuffByKey = useMemo(() => new Map(RAID_BUFF_MATRIX_OPTIONS.map((b) => [b.key, b])), []);
   const optionByCategory = useMemo(
     () => ({

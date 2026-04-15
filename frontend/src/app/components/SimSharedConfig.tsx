@@ -920,7 +920,7 @@ function ConsumablesAndRaidBuffsOptions() {
     const [installedSimcChannels, setInstalledSimcChannels] = useState<string[]>(['nightly']);
     const [simcChannelLoading, setSimcChannelLoading] = useState(false);
 
-    const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+    const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
     const qualityMaxByFamily = useMemo(() => {
       const map = new Map<string, number>();
       const all = [...flasks, ...potions, ...augments, ...tempEnchants];
@@ -998,6 +998,10 @@ function ConsumablesAndRaidBuffsOptions() {
       consumableFood,
     ]);
 
+    if (lockSingleConsumableOptions) {
+      return null;
+    }
+
     return (
       <div className="card space-y-5 p-5">
         <div>
@@ -1014,11 +1018,6 @@ function ConsumablesAndRaidBuffsOptions() {
               Select one per category for normal sims. Use Stat Weights matrix to compare many at
               once.
             </p>
-            {lockSingleConsumableOptions && (
-              <p className="mt-1 text-[13px] text-amber-300">
-                Disabled while Consumable Matrix mode is selected.
-              </p>
-            )}
           </div>
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">

@@ -30,6 +30,11 @@ interface TopGearStateProps {
   onItemAdded: (slot: string, simcString: string, origin: string) => void;
 }
 
+function makeIdentity(item: ResolvedItem): string {
+  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+}
+
 export function useTopGearState({
   resolved,
   selectedUids,
@@ -129,6 +134,8 @@ export function useTopGearState({
         ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
       };
 
+      const identity = makeIdentity(item);
+
       if (slots.length === 1) {
         const slot = item.slot;
         if (!updated[slot]) updated[slot] = new Set();
@@ -142,14 +149,16 @@ export function useTopGearState({
         const isSelected = slots.some((s) => {
           const slotRes = resolved.slots[s];
           if (!slotRes) return false;
-          const matching = slotRes.alternatives.find((a) => a.uid === item.uid);
-          return matching ? selectedUids[s]?.has(matching.uid) : false;
+          return Array.from(selectedUids[s] || []).some((uid) => {
+            const match = slotRes.alternatives.find((a) => a.uid === uid);
+            return match && makeIdentity(match) === identity;
+          });
         });
 
         for (const slot of slots) {
           const slotRes = resolved.slots[slot];
           if (!slotRes) continue;
-          const matching = slotRes.alternatives.find((a) => a.uid === item.uid);
+          const matching = slotRes.alternatives.find((a) => makeIdentity(a) === identity);
           if (!matching) continue;
           if (!updated[slot]) updated[slot] = new Set();
           if (isSelected) {

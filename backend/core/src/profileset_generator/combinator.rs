@@ -145,27 +145,48 @@ pub fn is_baseline_gear_set(gs: &HashMap<String, ResolvedItem>) -> bool {
 }
 
 pub fn gear_set_identity_key(gs: &HashMap<String, ResolvedItem>) -> String {
-    GEAR_SLOTS
-        .iter()
-        .map(|slot| {
-            if let Some(i) = gs.get(*slot) {
-                let mut bids = i.bonus_ids.clone();
-                bids.sort();
-                let b_key = bids
-                    .iter()
-                    .map(|b| b.to_string())
-                    .collect::<Vec<_>>()
-                    .join(":");
-                format!(
-                    "{}={}:{}:e{}:g{}",
-                    slot, i.item_id, b_key, i.enchant_id, i.gem_id
-                )
-            } else {
-                format!("{}=none", slot)
+    let mut parts: Vec<String> = Vec::new();
+
+    // Group paired slots together to make identity position-independent
+    let mut finger_items: Vec<String> = Vec::new();
+    let mut trinket_items: Vec<String> = Vec::new();
+
+    for slot in GEAR_SLOTS {
+        if let Some(i) = gs.get(*slot) {
+            let mut bids = i.bonus_ids.clone();
+            bids.sort();
+            let b_key = bids
+                .iter()
+                .map(|b| b.to_string())
+                .collect::<Vec<_>>()
+                .join(":");
+            let item_key = format!(
+                "{}:{}:e{}:g{}",
+                i.item_id, b_key, i.enchant_id, i.gem_id
+            );
+
+            match *slot {
+                "finger1" | "finger2" => finger_items.push(item_key),
+                "trinket1" | "trinket2" => trinket_items.push(item_key),
+                _ => parts.push(format!("{}={}", slot, item_key)),
             }
-        })
-        .collect::<Vec<_>>()
-        .join("|")
+        } else {
+            match *slot {
+                "finger1" | "finger2" => finger_items.push("none".to_string()),
+                "trinket1" | "trinket2" => trinket_items.push("none".to_string()),
+                _ => parts.push(format!("{}=none", slot)),
+            }
+        }
+    }
+
+    finger_items.sort();
+    trinket_items.sort();
+
+    parts.push(format!("finger={}", finger_items.join(",")));
+    parts.push(format!("trinket={}", trinket_items.join(",")));
+
+    parts.sort();
+    parts.join("|")
 }
 
 fn apply_armor_filtering(profile: &str, slot_item_lists: &mut HashMap<String, Vec<ResolvedItem>>) {

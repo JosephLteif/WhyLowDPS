@@ -86,6 +86,17 @@ function makeUid(item: {
   return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
 }
 
+function makeIdentity(item: {
+  item_id: number;
+  bonus_ids: number[];
+  origin: string;
+  enchant_id?: number;
+  gem_id?: number;
+}): string {
+  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+}
+
 function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {
   const match = simc.match(new RegExp(`(?:^|,)${key}=([0-9/:]+)`));
   if (!match) return 0;
@@ -399,15 +410,31 @@ export default function TopGearItemSelector({
     return DISPLAY_GROUPS.map((group) => {
       const equipped: ResolvedItem[] = [];
       const alternatives: ResolvedItem[] = [];
-      const seenAltKeys = new Set<string>();
+      const seenEquippedIdentities = new Set<string>();
+      const seenAltIdentities = new Set<string>();
+
       group.slots.forEach((slot) => {
         const slotRes = resolved.slots[slot];
         if (!slotRes) return;
-        if (slotRes.equipped) equipped.push(slotRes.equipped);
+        if (slotRes.equipped) {
+          const identity = makeIdentity(slotRes.equipped);
+          if (!seenEquippedIdentities.has(identity)) {
+            seenEquippedIdentities.add(identity);
+            equipped.push(slotRes.equipped);
+          }
+        }
+      });
+
+      group.slots.forEach((slot) => {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) return;
         slotRes.alternatives.forEach((alt) => {
-          const key = makeUid(alt);
-          if (!seenAltKeys.has(key)) {
-            seenAltKeys.add(key);
+          const identity = makeIdentity(alt);
+          // If already in equipped for this group, skip
+          if (seenEquippedIdentities.has(identity)) return;
+
+          if (!seenAltIdentities.has(identity)) {
+            seenAltIdentities.add(identity);
             alternatives.push(alt);
           }
         });
@@ -690,14 +717,19 @@ export default function TopGearItemSelector({
             onCatalystConvert={convertToCatalyst}
             onOptimize={openOptimize}
             itemDetails={itemDetails}
-            isItemSelected={(item) =>
-              group.slots.some((s) => {
+            isItemSelected={(item) => {
+              const identity = makeIdentity(item);
+              return group.slots.some((s) => {
+                const selected = selectedUids[s];
+                if (!selected) return false;
                 const slotRes = resolved.slots[s];
                 if (!slotRes) return false;
-                const match = slotRes.alternatives.find((a) => a.uid === item.uid);
-                return match ? selectedUids[s]?.has(match.uid) : false;
-              })
-            }
+                return Array.from(selected).some((uid) => {
+                  const match = slotRes.alternatives.find((a) => a.uid === uid);
+                  return match && makeIdentity(match) === identity;
+                });
+              });
+            }}
             getWowheadUrl={getWowheadUrl}
             getWowheadData={getWowheadData}
           />

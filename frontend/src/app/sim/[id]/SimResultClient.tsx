@@ -761,6 +761,7 @@ export default function SimResultClient() {
       {isTopGear && isTrinketTierHeatmap ? (
         <TrinketTierHeatmap
           baseDps={(r.base_dps as number) || 0}
+          elapsedSeconds={(r.elapsed_time_seconds as number) || 0}
           results={
             (r.results as Array<{ name: string; dps: number; delta: number; items: any[] }>) || []
           }

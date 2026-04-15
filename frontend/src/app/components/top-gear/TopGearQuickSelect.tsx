@@ -1,3 +1,5 @@
+import ComboPill from '../ComboPill';
+
 interface TopGearQuickSelectProps {
   comboCount: number;
   maxCombinations: number;
@@ -23,14 +25,6 @@ export default function TopGearQuickSelect({
   onToggleCatalyst,
   onClear,
 }: TopGearQuickSelectProps) {
-  const comboLabel = `${comboCount.toLocaleString()} combo${comboCount !== 1 ? 's' : ''}`;
-  const comboColorClass =
-    comboCount > maxCombinations
-      ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-      : comboCount > 0
-        ? 'bg-surface-2 text-white border border-white/5'
-        : 'bg-surface-2 text-muted border border-white/5';
-
   return (
     <div className="flex items-center gap-2">
       <div className="flex items-center gap-1">
@@ -70,14 +64,7 @@ export default function TopGearQuickSelect({
           </button>
         )}
       </div>
-      <span
-        className={`flex items-center gap-1.5 rounded-md px-3 py-1 font-mono text-xs font-medium shadow-inner ${comboColorClass}`}
-      >
-        <span
-          className={`h-1.5 w-1.5 rounded-full ${comboCount > maxCombinations ? 'bg-red-500' : comboCount > 0 ? 'bg-emerald-500' : 'bg-gray-600'}`}
-        />
-        {comboLabel}
-      </span>
+      <ComboPill comboCount={comboCount} maxCombinations={maxCombinations} />
     </div>
   );
 }

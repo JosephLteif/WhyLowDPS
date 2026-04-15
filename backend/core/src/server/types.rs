@@ -66,6 +66,14 @@ pub struct SimOptions {
     pub include_tier_matrix: bool,
     #[serde(default = "default_heatmap_target_ilevel")]
     pub heatmap_target_ilevel: i64,
+    #[serde(default = "default_heatmap_trinket_sources")]
+    pub heatmap_trinket_sources: String,
+    #[serde(default = "default_heatmap_lock_trinket_slot")]
+    pub heatmap_lock_trinket_slot: String,
+    #[serde(default = "default_heatmap_role_pools")]
+    pub heatmap_role_pools: String,
+    #[serde(default)]
+    pub heatmap_ignore_spec_restrictions: bool,
     #[serde(default)]
     pub external_buff_chaos_brand: bool,
     #[serde(default)]
@@ -360,4 +368,13 @@ fn default_include_tier_matrix() -> bool {
 }
 fn default_heatmap_target_ilevel() -> i64 {
     289
+}
+fn default_heatmap_trinket_sources() -> String {
+    "all".to_string()
+}
+fn default_heatmap_lock_trinket_slot() -> String {
+    "".to_string()
+}
+fn default_heatmap_role_pools() -> String {
+    "auto".to_string()
 }

@@ -664,7 +664,117 @@ fn resolve_active_spec_id(class_name: &str, spec_name: &str) -> Option<u64> {
     fallback_spec_id_by_name(spec_name)
 }
 
-fn item_specs_match_active_spec(specs: &[u64], active_spec_id: Option<u64>) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum TrinketRolePool {
+    Dps,
+    Tank,
+    Healer,
+}
+
+fn spec_id_to_role_pool(spec_id: u64) -> TrinketRolePool {
+    match spec_id {
+        66 | 73 | 104 | 250 | 268 | 581 => TrinketRolePool::Tank,
+        65 | 105 | 257 | 264 | 270 | 1468 => TrinketRolePool::Healer,
+        _ => TrinketRolePool::Dps,
+    }
+}
+
+fn class_id_supports_role_pool(class_id: u64, role: TrinketRolePool) -> bool {
+    match class_id {
+        1 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Tank), // Warrior
+        2 => true, // Paladin
+        3 => matches!(role, TrinketRolePool::Dps), // Hunter
+        4 => matches!(role, TrinketRolePool::Dps), // Rogue
+        5 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Healer), // Priest
+        6 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Tank), // Death Knight
+        7 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Healer), // Shaman
+        8 => matches!(role, TrinketRolePool::Dps), // Mage
+        9 => matches!(role, TrinketRolePool::Dps), // Warlock
+        10 => true, // Monk
+        11 => true, // Druid
+        12 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Tank), // Demon Hunter
+        13 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Healer), // Evoker
+        _ => true,
+    }
+}
+
+fn selected_heatmap_role_pools(
+    role_pools: &str,
+    active_spec_id: Option<u64>,
+) -> HashSet<TrinketRolePool> {
+    let mut explicit: HashSet<TrinketRolePool> = HashSet::new();
+    let mut has_auto = false;
+    for token in role_pools.split(',') {
+        match token.trim().to_lowercase().as_str() {
+            "all" | "any" => {
+                explicit.insert(TrinketRolePool::Dps);
+                explicit.insert(TrinketRolePool::Tank);
+                explicit.insert(TrinketRolePool::Healer);
+            }
+            "dps" => {
+                explicit.insert(TrinketRolePool::Dps);
+            }
+            "tank" => {
+                explicit.insert(TrinketRolePool::Tank);
+            }
+            "healer" | "heal" => {
+                explicit.insert(TrinketRolePool::Healer);
+            }
+            "auto" | "" => {
+                has_auto = true;
+            }
+            _ => {}
+        }
+    }
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    if has_auto {
+        return HashSet::from([spec_id_to_role_pool(active_spec_id.unwrap_or(0))]);
+    }
+    HashSet::from([TrinketRolePool::Dps, TrinketRolePool::Tank, TrinketRolePool::Healer])
+}
+
+fn item_specs_match_role_pools(
+    specs: &[u64],
+    selected_pools: &HashSet<TrinketRolePool>,
+) -> bool {
+    if selected_pools.is_empty() || specs.is_empty() {
+        return true;
+    }
+
+    let spec_entries: Vec<u64> = specs.iter().copied().filter(|id| *id > 13).collect();
+    if !spec_entries.is_empty() {
+        return spec_entries
+            .iter()
+            .any(|sid| selected_pools.contains(&spec_id_to_role_pool(*sid)));
+    }
+
+    const KNOWN_CLASS_IDS: &[u64] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+    let class_entries: Vec<u64> = specs
+        .iter()
+        .copied()
+        .filter(|id| KNOWN_CLASS_IDS.contains(id))
+        .collect();
+    if class_entries.is_empty() {
+        return true;
+    }
+
+    class_entries.iter().any(|class_id| {
+        selected_pools
+            .iter()
+            .any(|pool| class_id_supports_role_pool(*class_id, *pool))
+    })
+}
+
+fn item_specs_match_active_spec(
+    specs: &[u64],
+    active_spec_id: Option<u64>,
+    ignore_spec_restrictions: bool,
+) -> bool {
+    if ignore_spec_restrictions {
+        return true;
+    }
     if specs.is_empty() {
         return true;
     }
@@ -694,7 +804,12 @@ fn item_specs_match_active_spec(specs: &[u64], active_spec_id: Option<u64>) -> b
     })
 }
 
-fn trinket_json_matches_active_spec(trinket: &Value, active_spec_id: Option<u64>) -> bool {
+fn trinket_json_matches_active_spec(
+    trinket: &Value,
+    active_spec_id: Option<u64>,
+    ignore_spec_restrictions: bool,
+    selected_role_pools: &HashSet<TrinketRolePool>,
+) -> bool {
     let Some(specs) = trinket.get("specs").and_then(|v| v.as_array()) else {
         return true;
     };
@@ -705,26 +820,37 @@ fn trinket_json_matches_active_spec(trinket: &Value, active_spec_id: Option<u64>
     if parsed_specs.len() != specs.len() {
         return true;
     }
-    item_specs_match_active_spec(&parsed_specs, active_spec_id)
+    item_specs_match_active_spec(&parsed_specs, active_spec_id, ignore_spec_restrictions)
+        && item_specs_match_role_pools(&parsed_specs, selected_role_pools)
 }
 
-fn item_id_matches_active_spec(item_id: u64, active_spec_id: Option<u64>) -> bool {
+fn item_id_matches_active_spec(
+    item_id: u64,
+    active_spec_id: Option<u64>,
+    ignore_spec_restrictions: bool,
+) -> bool {
+    if ignore_spec_restrictions {
+        return true;
+    }
     let Some(raw) = crate::item_db::get_raw_item(item_id) else {
         return true;
     };
     let item_specs = raw.restriction_ids();
-    item_specs_match_active_spec(&item_specs, active_spec_id)
+    item_specs_match_active_spec(&item_specs, active_spec_id, ignore_spec_restrictions)
 }
 
 fn item_id_matches_active_spec_with_lookup(
     item_id: u64,
     active_spec_id: Option<u64>,
     drop_specs_by_item: &HashMap<u64, Vec<u64>>,
+    ignore_spec_restrictions: bool,
+    selected_role_pools: &HashSet<TrinketRolePool>,
 ) -> bool {
     if let Some(specs) = drop_specs_by_item.get(&item_id) {
-        return item_specs_match_active_spec(specs, active_spec_id);
+        return item_specs_match_active_spec(specs, active_spec_id, ignore_spec_restrictions)
+            && item_specs_match_role_pools(specs, selected_role_pools);
     }
-    item_id_matches_active_spec(item_id, active_spec_id)
+    item_id_matches_active_spec(item_id, active_spec_id, ignore_spec_restrictions)
 }
 
 fn mplus_rotation_instance_ids() -> HashSet<i64> {
@@ -749,10 +875,69 @@ fn item_has_mplus_rotation_source(item: &crate::types::GameItem, mplus_ids: &Has
     })
 }
 
+fn selected_heatmap_source_types(scope: &str) -> Vec<&'static str> {
+    let mut picked: HashSet<&'static str> = HashSet::new();
+    for token in scope.split(',') {
+        match token.trim().to_lowercase().as_str() {
+            "all" => {
+                picked.insert("raid");
+                picked.insert("dungeon");
+                picked.insert("delve");
+                picked.insert("pvp");
+                picked.insert("profession");
+            }
+            "raid" | "raids" => {
+                picked.insert("raid");
+            }
+            "dungeon" | "dungeons" => {
+                picked.insert("dungeon");
+            }
+            "delve" | "delves" => {
+                picked.insert("delve");
+            }
+            "pvp" => {
+                picked.insert("pvp");
+            }
+            "profession" | "professions" => {
+                picked.insert("profession");
+            }
+            _ => {}
+        }
+    }
+    if picked.is_empty() {
+        picked.insert("raid");
+        picked.insert("dungeon");
+        picked.insert("delve");
+        picked.insert("pvp");
+        picked.insert("profession");
+    }
+    let mut out: Vec<&'static str> = picked.into_iter().collect();
+    out.sort_unstable();
+    out
+}
+
+fn normalized_locked_trinket_slot(raw: &str) -> Option<&'static str> {
+    match raw.trim().to_lowercase().as_str() {
+        "trinket1" => Some("trinket1"),
+        "trinket2" => Some("trinket2"),
+        _ => None,
+    }
+}
+
 fn append_fallback_trinkets_from_encounter_drops(
     merged_drop_trinkets: &mut Vec<Value>,
     active_spec_id: Option<u64>,
+    source_scope: &str,
+    ignore_spec_restrictions: bool,
+    selected_role_pools: &HashSet<TrinketRolePool>,
 ) {
+    let selected_sources = selected_heatmap_source_types(source_scope);
+    let include_raid = selected_sources.contains(&"raid");
+    let include_dungeon = selected_sources.contains(&"dungeon");
+    if !include_raid && !include_dungeon {
+        return;
+    }
+
     let instances = crate::item_db::instances();
     let mut raid_dungeon_encounters: HashSet<i64> = HashSet::new();
     let mut encounter_is_dungeon: HashMap<i64, bool> = HashMap::new();
@@ -760,6 +945,12 @@ fn append_fallback_trinkets_from_encounter_drops(
     for inst in instances {
         let itype = inst.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if itype != "raid" && itype != "dungeon" {
+            continue;
+        }
+        if itype == "raid" && !include_raid {
+            continue;
+        }
+        if itype == "dungeon" && !include_dungeon {
             continue;
         }
         if let Some(encs) = inst.get("encounters").and_then(|v| v.as_array()) {
@@ -795,7 +986,10 @@ fn append_fallback_trinkets_from_encounter_drops(
                 continue;
             }
             let specs = item.restriction_ids();
-            if !item_specs_match_active_spec(&specs, active_spec_id) {
+            if !item_specs_match_active_spec(&specs, active_spec_id, ignore_spec_restrictions) {
+                continue;
+            }
+            if !item_specs_match_role_pools(&specs, selected_role_pools) {
                 continue;
             }
             merged_drop_trinkets.push(json!({
@@ -816,6 +1010,10 @@ fn build_heatmap_profileset_input(
     include_trinket_matrix: bool,
     include_tier_matrix: bool,
     heatmap_target_ilevel: i64,
+    heatmap_trinket_sources: &str,
+    heatmap_lock_trinket_slot: &str,
+    heatmap_role_pools: &str,
+    heatmap_ignore_spec_restrictions: bool,
 ) -> MatrixBuildResult {
     let parse_result = addon_parser::parse_simc_input(simc_input);
     let base_profile = parse_result.base_profile.clone();
@@ -879,8 +1077,9 @@ fn build_heatmap_profileset_input(
                     .to_string(),
             );
         }
+        let selected_role_pools = selected_heatmap_role_pools(heatmap_role_pools, active_spec_id);
 
-        for source in ["raid", "dungeon"] {
+        for source in selected_heatmap_source_types(heatmap_trinket_sources) {
             if let Some(drops) = game_data::get_drops_by_type(source, Some(class_name), None) {
                 if let Some(arr) = drops.get("Trinket").and_then(|v| v.as_array()) {
                     for v in arr {
@@ -889,7 +1088,13 @@ fn build_heatmap_profileset_input(
                 }
             }
         }
-        append_fallback_trinkets_from_encounter_drops(&mut merged_drop_trinkets, active_spec_id);
+        append_fallback_trinkets_from_encounter_drops(
+            &mut merged_drop_trinkets,
+            active_spec_id,
+            heatmap_trinket_sources,
+            heatmap_ignore_spec_restrictions,
+            &selected_role_pools,
+        );
 
         let mut drop_specs_by_item: HashMap<u64, Vec<u64>> = HashMap::new();
         for trinket in &merged_drop_trinkets {
@@ -915,7 +1120,14 @@ fn build_heatmap_profileset_input(
         if cfg!(debug_assertions) {
             let eligible_drop_count = merged_drop_trinkets
                 .iter()
-                .filter(|t| trinket_json_matches_active_spec(t, active_spec_id))
+                .filter(|t| {
+                    trinket_json_matches_active_spec(
+                        t,
+                        active_spec_id,
+                        heatmap_ignore_spec_restrictions,
+                        &selected_role_pools,
+                    )
+                })
                 .count();
             println!(
                 "[heatmap] class={} spec={} active_spec_id={:?} merged_drops={} eligible_drops={}",
@@ -935,6 +1147,8 @@ fn build_heatmap_profileset_input(
                 item.item_id,
                 active_spec_id,
                 &drop_specs_by_item,
+                heatmap_ignore_spec_restrictions,
+                &selected_role_pools,
             ) {
                 return;
             }
@@ -957,20 +1171,16 @@ fn build_heatmap_profileset_input(
             });
         };
 
-        // Include currently resolved trinkets first so user-relevant items are always present.
-        for slot in ["trinket1", "trinket2"] {
-            if let Some(slot_res) = resolved.slots.get(slot) {
-                if let Some(eq) = slot_res.equipped.as_ref() {
-                    add_variant(eq.clone());
-                }
-                for alt in &slot_res.alternatives {
-                    add_variant(alt.clone());
-                }
-            }
-        }
+        // Intentionally do NOT inject owned/equipped trinkets into this pool.
+        // Upgrade Trinkets should reflect the selected drop-source pool only.
 
         for trinket in merged_drop_trinkets {
-            if !trinket_json_matches_active_spec(&trinket, active_spec_id) {
+            if !trinket_json_matches_active_spec(
+                &trinket,
+                active_spec_id,
+                heatmap_ignore_spec_restrictions,
+                &selected_role_pools,
+            ) {
                 continue;
             }
             let item_id = trinket.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -1110,6 +1320,8 @@ fn build_heatmap_profileset_input(
                 variant.item.item_id,
                 active_spec_id,
                 &drop_specs_by_item,
+                heatmap_ignore_spec_restrictions,
+                &selected_role_pools,
             )
         });
         if cfg!(debug_assertions) {
@@ -1172,7 +1384,11 @@ fn build_heatmap_profileset_input(
             }
         }
 
-        if trinket_variants.len() < 2 {
+        let locked_slot = normalized_locked_trinket_slot(heatmap_lock_trinket_slot);
+
+        if (locked_slot.is_none() && trinket_variants.len() < 2)
+            || (locked_slot.is_some() && trinket_variants.is_empty())
+        {
             return Err(
                 "Not enough trinket variants were found for a heatmap with this character input."
                     .to_string(),
@@ -1187,16 +1403,33 @@ fn build_heatmap_profileset_input(
         });
         trinket_variants.truncate(24);
 
-        // Temporary debug cap to keep validation runs fast.
-        const MAX_TRINKET_COMBOS_DEBUG: usize = 20;
-        let mut trinket_combo_count = 0usize;
-        for i in 0..trinket_variants.len() {
-            for j in (i + 1)..trinket_variants.len() {
-                if trinket_combo_count >= MAX_TRINKET_COMBOS_DEBUG {
-                    break;
+        if let Some(slot) = locked_slot {
+            let Some(fixed_item) = resolved
+                .slots
+                .get(slot)
+                .and_then(|slot_res| slot_res.equipped.clone())
+            else {
+                return Err(format!(
+                    "Could not resolve equipped {} for locked-slot trinket simulation.",
+                    slot
+                ));
+            };
+            let fixed = HeatmapTrinketVariant {
+                label: format!("{} ({})", fixed_item.name, fixed_item.ilevel),
+                item: fixed_item,
+            };
+
+            for cand in &trinket_variants {
+                if cand.item.item_id == fixed.item.item_id {
+                    continue;
                 }
-                let t1 = &trinket_variants[i];
-                let t2 = &trinket_variants[j];
+
+                let (t1, t2) = if slot == "trinket1" {
+                    (&fixed, cand)
+                } else {
+                    (cand, &fixed)
+                };
+
                 let combo_name = format!(
                     "Heatmap Trinket {} | {} + {}",
                     combo_index - 1,
@@ -1213,10 +1446,7 @@ fn build_heatmap_profileset_input(
                     combo_name, t2.item.simc_string
                 ));
                 if !talents.is_empty() {
-                    lines.push(format!(
-                        "profileset.\"{}\"+=talents={}",
-                        combo_name, talents
-                    ));
+                    lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
                 }
                 lines.push(String::new());
 
@@ -1229,10 +1459,45 @@ fn build_heatmap_profileset_input(
                     ],
                 );
                 combo_index += 1;
-                trinket_combo_count += 1;
             }
-            if trinket_combo_count >= MAX_TRINKET_COMBOS_DEBUG {
-                break;
+        } else {
+            for i in 0..trinket_variants.len() {
+                for j in (i + 1)..trinket_variants.len() {
+                    let t1 = &trinket_variants[i];
+                    let t2 = &trinket_variants[j];
+                    let combo_name = format!(
+                        "Heatmap Trinket {} | {} + {}",
+                        combo_index - 1,
+                        t1.label,
+                        t2.label
+                    );
+                    lines.push(format!("### {}", combo_name));
+                    lines.push(format!(
+                        "profileset.\"{}\"+=trinket1={}",
+                        combo_name, t1.item.simc_string
+                    ));
+                    lines.push(format!(
+                        "profileset.\"{}\"+=trinket2={}",
+                        combo_name, t2.item.simc_string
+                    ));
+                    if !talents.is_empty() {
+                        lines.push(format!(
+                            "profileset.\"{}\"+=talents={}",
+                            combo_name, talents
+                        ));
+                    }
+                    lines.push(String::new());
+
+                    combo_metadata.insert(
+                        combo_name.clone(),
+                        vec![
+                            crate::profileset_generator::writer::item_meta(&t1.item, "trinket1"),
+                            crate::profileset_generator::writer::item_meta(&t2.item, "trinket2"),
+                            json!({"heatmap_kind":"trinket"}),
+                        ],
+                    );
+                    combo_index += 1;
+                }
             }
         }
     }
@@ -1339,6 +1604,10 @@ async fn create_trinket_tier_heatmap_sim(
         include_trinket_matrix,
         include_tier_matrix,
         options.heatmap_target_ilevel,
+        &options.heatmap_trinket_sources,
+        &options.heatmap_lock_trinket_slot,
+        &options.heatmap_role_pools,
+        options.heatmap_ignore_spec_restrictions,
     ) {
         Ok(v) => v,
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),

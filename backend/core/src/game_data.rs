@@ -141,32 +141,43 @@ pub fn get_instance_drops(
     // Map each encounter ID to the instance name by direct ID lookup.
     let (encounter_to_instance, encounter_to_type): (HashMap<i64, String>, HashMap<i64, String>) =
         if is_meta {
-        let mut map = HashMap::new();
-        let mut tmap = HashMap::new();
-        for inst in &instances {
-            let iid = inst.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
-            if iid <= 0 {
-                continue;
+            let mut map = HashMap::new();
+            let mut tmap = HashMap::new();
+            for inst in &instances {
+                let iid = inst.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+                if iid <= 0 {
+                    continue;
+                }
+                if encounter_ids.contains_key(&iid) {
+                    let iname = inst
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let itype = inst
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    map.insert(iid, iname);
+                    tmap.insert(iid, itype);
+                }
             }
-            if encounter_ids.contains_key(&iid) {
-                let iname = inst
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let itype = inst
-                    .get("type")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                map.insert(iid, iname);
-                tmap.insert(iid, itype);
-            }
-        }
-        (map, tmap)
-    } else {
-        (HashMap::new(), HashMap::new())
-    };
+            (map, tmap)
+        } else {
+            (HashMap::new(), HashMap::new())
+        };
+
+    // Current Mythic+ rotation pool is encoded as the encounter list on instance -1,
+    // where each encounter id is a dungeon instance id.
+    let mplus_pool_instance_ids: std::collections::HashSet<i64> = instances
+        .iter()
+        .find(|inst| inst.get("id").and_then(|v| v.as_i64()) == Some(-1))
+        .and_then(|inst| inst.get("encounters").and_then(|v| v.as_array()).cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|e| e.get("id").and_then(|v| v.as_i64()))
+        .collect();
 
     let drops_map = item_db::drops_by_encounter();
     let armor_slot_types = class_data::ARMOR_INVENTORY_TYPES;
@@ -183,6 +194,14 @@ pub fn get_instance_drops(
 
                 let inv_type = item.inventory_type.unwrap_or(0);
                 let item_class = item.class.unwrap_or(0);
+                let has_mplus_source = item.sources.as_ref().is_some_and(|sources| {
+                    sources.iter().any(|src| {
+                        src.instance_id == Some(-1)
+                            || src
+                                .instance_id
+                                .is_some_and(|iid| mplus_pool_instance_ids.contains(&iid))
+                    })
+                });
 
                 // Filter by armor type
                 if let Some(cn) = class_name {
@@ -236,17 +255,36 @@ pub fn get_instance_drops(
                     }
                 }
 
-                // Filter spec restrictions (items with explicit spec lists)
-                if let Some(specs) = &item.classes {
-                    let spec_match =
-                        !allowed_specs.is_empty() && allowed_specs.iter().any(|s| specs.contains(s));
-                    let class_match = allowed_class_id.is_some_and(|cid| specs.contains(&cid));
+                // Filter spec/class restrictions when present on the item.
+                let item_restrictions = item.restriction_ids();
+                if !item_restrictions.is_empty() {
+                    let spec_match = !allowed_specs.is_empty()
+                        && allowed_specs.iter().any(|s| item_restrictions.contains(s));
+                    let class_match =
+                        allowed_class_id.is_some_and(|cid| item_restrictions.contains(&cid));
                     if !spec_match && !class_match {
                         continue;
                     }
                 }
 
                 let slot = class_data::inventory_type_display_slot(inv_type as u64);
+
+                let source_instance_name = if is_meta {
+                    encounter_to_instance.get(eid).cloned().unwrap_or_default()
+                } else {
+                    instance_name.clone()
+                };
+                let source_type_name = if is_meta {
+                    encounter_to_type.get(eid).cloned().unwrap_or_default()
+                } else {
+                    instance
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                };
+                let is_world_boss_source =
+                    source_instance_name.to_lowercase().contains("world boss");
 
                 // Compute per-difficulty info from upgrade tracks (raids)
                 let upgrade_lvl = raid_progression_levels
@@ -256,20 +294,45 @@ pub fn get_instance_drops(
                 let tracks = item_db::upgrade_tracks();
                 let tm = item_db::upgrade_track_max();
                 let mut diff_info = serde_json::Map::new();
-                for diff in &["lfr", "normal", "heroic", "mythic"] {
-                    if let Some(track) = item_db::difficulty_track_name(diff) {
-                        // Use per-encounter raid progression (or configured overrides).
-                        let effective_level = upgrade_lvl.unwrap_or(1);
-                        if let Some(&(ilvl, bonus_id, quality)) =
-                            tracks.get(&(track.clone(), effective_level, tm))
-                        {
-                            diff_info.insert(
-                                diff.to_string(),
-                                serde_json::json!({
-                                    "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
-                                    "track": track, "level": effective_level, "max_level": tm,
-                                }),
-                            );
+                if is_world_boss_source {
+                    // World bosses are capped lower than full raid difficulty tiers.
+                    // Prefer config overrides when present; default to Champion 1.
+                    let cfg = item_db::season_cfg();
+                    let wb_track = cfg
+                        .get("worldBossTrack")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Champion")
+                        .to_string();
+                    let wb_level = cfg
+                        .get("worldBossLevel")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1);
+                    if let Some(&(ilvl, bonus_id, quality)) = tracks.get(&(wb_track.clone(), wb_level, tm))
+                    {
+                        diff_info.insert(
+                            "normal".to_string(),
+                            serde_json::json!({
+                                "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
+                                "track": wb_track, "level": wb_level, "max_level": tm,
+                            }),
+                        );
+                    }
+                } else {
+                    for diff in &["lfr", "normal", "heroic", "mythic"] {
+                        if let Some(track) = item_db::difficulty_track_name(diff) {
+                            // Use per-encounter raid progression (or configured overrides).
+                            let effective_level = upgrade_lvl.unwrap_or(1);
+                            if let Some(&(ilvl, bonus_id, quality)) =
+                                tracks.get(&(track.clone(), effective_level, tm))
+                            {
+                                diff_info.insert(
+                                    diff.to_string(),
+                                    serde_json::json!({
+                                        "ilvl": ilvl, "bonus_id": bonus_id, "quality": quality,
+                                        "track": track, "level": effective_level, "max_level": tm,
+                                    }),
+                                );
+                            }
                         }
                     }
                 }
@@ -287,6 +350,13 @@ pub fn get_instance_drops(
                         .and_then(|v| v.as_object())
                     {
                         for (diff_key, entry) in ddt {
+                            // Non-rotation dungeons should not receive M+ / vault tiers.
+                            if !has_mplus_source
+                                && diff_key != "heroic"
+                                && diff_key != "mythic"
+                            {
+                                continue;
+                            }
                             let track = entry.get("track").and_then(|v| v.as_str()).unwrap_or("");
                             let level = entry.get("level").and_then(|v| v.as_u64()).unwrap_or(0);
                             if let Some(&(ilvl, bonus_id, quality)) =
@@ -305,22 +375,7 @@ pub fn get_instance_drops(
                 }
 
                 // Include item's spec restriction list (if any) for frontend off-spec indicators
-                let item_specs: Vec<u64> = item.classes.clone().unwrap_or_default();
-
-                let item_instance = if is_meta {
-                    encounter_to_instance.get(eid).cloned().unwrap_or_default()
-                } else {
-                    instance_name.clone()
-                };
-                let item_source_type = if is_meta {
-                    encounter_to_type.get(eid).cloned().unwrap_or_default()
-                } else {
-                    instance
-                        .get("type")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                };
+                let item_specs: Vec<u64> = item.restriction_ids();
 
                 let mut item_json = serde_json::json!({
                     "item_id": item_id,
@@ -330,9 +385,15 @@ pub fn get_instance_drops(
                     "ilevel": item.base_ilevel.unwrap_or(0),
                     "inventory_type": inv_type,
                     "encounter": encounter_ids.get(eid).cloned().unwrap_or_default(),
-                    "instance_name": item_instance,
-                    "source_type": item_source_type,
+                    "instance_name": source_instance_name,
+                    "source_type": source_type_name,
                 });
+
+                if has_mplus_source {
+                    item_json["mplus_rotation"] = serde_json::json!(true);
+                } else if source_type_name == "dungeon" || source_type_name == "expansion-dungeon" {
+                    item_json["mplus_rotation"] = serde_json::json!(false);
+                }
 
                 if !item_specs.is_empty() {
                     item_json["specs"] = serde_json::json!(item_specs);
@@ -348,7 +409,8 @@ pub fn get_instance_drops(
                     // Check spec restrictions (if item has a specs list)
                     if !item_specs.is_empty() {
                         let spec_match = main_spec_ids.iter().any(|id| item_specs.contains(id));
-                        let class_match = allowed_class_id.is_some_and(|cid| item_specs.contains(&cid));
+                        let class_match =
+                            allowed_class_id.is_some_and(|cid| item_specs.contains(&cid));
                         if !spec_match && !class_match {
                             main_can_use = false;
                         }

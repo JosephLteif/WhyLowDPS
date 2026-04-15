@@ -64,6 +64,8 @@ pub struct SimOptions {
     pub include_trinket_matrix: bool,
     #[serde(default = "default_include_tier_matrix")]
     pub include_tier_matrix: bool,
+    #[serde(default = "default_heatmap_target_ilevel")]
+    pub heatmap_target_ilevel: i64,
     #[serde(default)]
     pub external_buff_chaos_brand: bool,
     #[serde(default)]
@@ -140,6 +142,7 @@ impl SimOptions {
             "include_timeline": self.include_timeline,
             "include_trinket_matrix": self.include_trinket_matrix,
             "include_tier_matrix": self.include_tier_matrix,
+            "heatmap_target_ilevel": self.heatmap_target_ilevel,
             "external_buff_chaos_brand": self.external_buff_chaos_brand,
             "external_buff_mystic_touch": self.external_buff_mystic_touch,
             "external_buff_skyfury": self.external_buff_skyfury,
@@ -354,4 +357,7 @@ fn default_include_trinket_matrix() -> bool {
 }
 fn default_include_tier_matrix() -> bool {
     true
+}
+fn default_heatmap_target_ilevel() -> i64 {
+    289
 }

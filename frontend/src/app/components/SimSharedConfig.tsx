@@ -1389,6 +1389,7 @@ function ConsumablesAndRaidBuffsOptions() {
       normalizedPath === '/top-gear' ||
       normalizedPath === '/drop-finder' ||
       normalizedPath === '/stat-weights' ||
+      normalizedPath === '/upgrade/trinkets' ||
       normalizedPath === '/upgrade-compare';
 
     useEffect(() => {

@@ -1153,9 +1153,32 @@ function ConsumablesAndRaidBuffsOptions() {
       </div>
 
       <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-        <div>
-          <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
-          <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
+            <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                Object.values(raidBuffBindings).forEach((b) => b.setChecked(true));
+              }}
+              className="text-[12px] font-bold text-gold/80 transition-colors hover:text-gold"
+            >
+              Select All
+            </button>
+            <span className="h-3 w-px bg-zinc-700" />
+            <button
+              type="button"
+              onClick={() => {
+                Object.values(raidBuffBindings).forEach((b) => b.setChecked(false));
+              }}
+              className="text-[12px] font-bold text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              Clear
+            </button>
+          </div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {

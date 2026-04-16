@@ -19,6 +19,7 @@ const PLOT_STATS = [
 ];
 
 const spellIconCache = new Map<number, string>();
+const itemIconCache = new Map<number, string>();
 
 function useSpellIcons(spellIds: number[]) {
   const [icons, setIcons] = useState<Map<number, string>>(new Map());
@@ -34,9 +35,7 @@ function useSpellIcons(spellIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`
-          );
+          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) spellIconCache.set(id, data.icon);
@@ -49,7 +48,36 @@ function useSpellIcons(spellIds: number[]) {
       cancelled = true;
     };
   }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  return icons;
+}
 
+function useItemIcons(itemIds: number[]) {
+  const [icons, setIcons] = useState<Map<number, string>>(new Map());
+  const depKey = itemIds.join(',');
+
+  useEffect(() => {
+    const missing = itemIds.filter((id) => id > 0 && !itemIconCache.has(id));
+    if (missing.length === 0) {
+      setIcons(new Map(itemIconCache));
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (id) => {
+        try {
+          const res = await fetch(`https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.icon) itemIconCache.set(id, data.icon);
+        } catch {}
+      })
+    ).then(() => {
+      if (!cancelled) setIcons(new Map(itemIconCache));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
   return icons;
 }
 
@@ -120,9 +148,16 @@ export default function StatWeightsPage() {
   const icons = useSpellIcons(
     RAID_BUFF_MATRIX_OPTIONS.map((b) => b.spellId || 0).filter((v) => v > 0)
   );
+  const allItemIds = useMemo(() => {
+    const all = [...flasks, ...foods, ...potions, ...augments, ...tempEnchants];
+    return all.map((o) => o.itemId).filter((id): id is number => !!id);
+  }, [flasks, foods, potions, augments, tempEnchants]);
+  const itemIcons = useItemIcons(allItemIds);
+
   useWowheadTooltips([
     mode,
     icons,
+    itemIcons,
     consumableCount,
     flasks.length,
     foods.length,
@@ -504,9 +539,10 @@ export default function StatWeightsPage() {
                       for (const opt of options as OptionEntry[]) {
                         const familyKey = optionQualityFamily(opt);
                         if (!groups.has(familyKey)) {
+                          const icon = (opt.itemId && itemIcons.get(opt.itemId)) || opt.icon || '';
                           groups.set(familyKey, {
                             label: optionLabel(opt),
-                            icon: opt.icon || '',
+                            icon,
                             itemId: opt.itemId,
                             spellId: opt.spellId,
                             items: [],

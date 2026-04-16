@@ -3,7 +3,7 @@
 import { useParams, useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import GearOverview from '../../components/GearOverview';
 import type { GearItem } from '../../components/GearOverview';
@@ -20,6 +20,17 @@ import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import type { ResultItem, TopGearResult } from '../../lib/types';
+import {
+  AUGMENT_RUNE_OPTIONS,
+  EXTERNAL_BUFF_OPTIONS,
+  FLASK_OPTIONS,
+  FOOD_OPTIONS,
+  POTION_OPTIONS,
+  RAID_BUFF_MATRIX_OPTIONS,
+  TEMP_ENCHANT_OPTIONS,
+} from '../../lib/sim-options-catalog';
+import { parseCharacterInfo, parseSimcBuffs } from '../../../lib/simc-parser';
+import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
 import { API_URL, fetchJson } from '../../lib/api';
 import { useSimContext } from '../../components/SimContext';
@@ -67,6 +78,56 @@ interface TimelineEvent {
   spell_id?: number;
   target?: string;
   queue_failed?: boolean;
+}
+
+const iconCache = new Map<string, string>();
+
+function useIcons(entries: { type: 'spell' | 'item'; id: number }[]) {
+  const [icons, setIcons] = useState<Map<string, string>>(new Map());
+  const depKey = entries.map((e) => `${e.type}:${e.id}`).join(',');
+
+  useEffect(() => {
+    const missing = entries.filter((e) => e.id > 0 && !iconCache.has(`${e.type}:${e.id}`));
+    if (missing.length === 0) {
+      setIcons(new Map(iconCache));
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (entry) => {
+        try {
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/${entry.type}/${entry.id}?dataEnv=1&locale=0`
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.icon) iconCache.set(`${entry.type}:${entry.id}`, data.icon);
+        } catch {
+          // ignore
+        }
+      })
+    ).then(() => {
+      if (!cancelled) setIcons(new Map(iconCache));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]);
+
+  return icons;
+}
+
+function SpellIcon({ icon, size = 'small' }: { icon: string; size?: 'small' | 'large' }) {
+  const s = size === 'small' ? 'h-5 w-5' : 'h-10 w-10';
+  return (
+    <img
+      src={`https://wow.zamimg.com/images/wow/icons/small/${icon}.jpg`}
+      alt=""
+      className={`${s} shrink-0 rounded-[3px] border border-black/50`}
+    />
+  );
 }
 
 interface StageTiming {
@@ -354,6 +415,12 @@ export default function SimResultClient() {
   const activeStageStartedAtRef = useRef<number | null>(null);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const r = job?.result as any;
+  const timelineFallbackData = timelineFallback;
+  const aplFallbackData = aplFallback;
+  const timelineData = (r?.timeline as Record<string, unknown> | undefined) || timelineFallbackData;
+  const aplData = (r?.apl_analysis as Record<string, unknown> | undefined) || aplFallbackData;
+
   const info = useMemo(() => {
     if (!job?.simc_input) return null;
     try {
@@ -362,6 +429,121 @@ export default function SimResultClient() {
       return null;
     }
   }, [job?.simc_input]);
+
+  const activeBuffs = useMemo(() => {
+    if (!job) return [];
+    
+    // 1. Get base buffs from simc_input parser (mostly for consumables/others)
+    const baseBuffs = job.simc_input ? parseSimcBuffs(job.simc_input) : [];
+    
+    // 2. Overlay or override from job.options (the source of truth for checkboxes)
+    const options = (job as any).options || {};
+    const finalBuffs: SimcBuff[] = [];
+
+    // If options.raid_buff_customized is false, everything is "enabled" by default in backend.
+    // If true, we check specific flags.
+    const customized = options.raid_buff_customized === true;
+
+    if (!customized) {
+      // Default set
+      finalBuffs.push({ name: 'Bloodlust', category: 'raid_buff', spellId: 2825 });
+      finalBuffs.push({ name: 'Arcane Intellect', category: 'raid_buff', spellId: 1459 });
+      finalBuffs.push({ name: 'Power Word: Fortitude', category: 'raid_buff', spellId: 21562 });
+      finalBuffs.push({ name: 'Mark of the Wild', category: 'raid_buff', spellId: 1126 });
+      finalBuffs.push({ name: 'Battle Shout', category: 'raid_buff', spellId: 6673 });
+      finalBuffs.push({ name: 'Mystic Touch', category: 'raid_buff', spellId: 8647 });
+      finalBuffs.push({ name: 'Chaos Brand', category: 'raid_buff', spellId: 1490 });
+    } else {
+      if (options.raid_buff_bloodlust) finalBuffs.push({ name: 'Bloodlust', category: 'raid_buff', spellId: 2825 });
+      if (options.raid_buff_arcane_intellect) finalBuffs.push({ name: 'Arcane Intellect', category: 'raid_buff', spellId: 1459 });
+      if (options.raid_buff_power_word_fortitude) finalBuffs.push({ name: 'Power Word: Fortitude', category: 'raid_buff', spellId: 21562 });
+      if (options.raid_buff_mark_of_the_wild) finalBuffs.push({ name: 'Mark of the Wild', category: 'raid_buff', spellId: 1126 });
+      if (options.raid_buff_battle_shout) finalBuffs.push({ name: 'Battle Shout', category: 'raid_buff', spellId: 6673 });
+      if (options.external_buff_mystic_touch) finalBuffs.push({ name: 'Mystic Touch', category: 'raid_buff', spellId: 8647 });
+      if (options.external_buff_chaos_brand) finalBuffs.push({ name: 'Chaos Brand', category: 'raid_buff', spellId: 1490 });
+      if (options.external_buff_skyfury) finalBuffs.push({ name: 'Skyfury', category: 'raid_buff', spellId: 462854 });
+      if (options.external_buff_power_infusion) finalBuffs.push({ name: 'Power Infusion', category: 'raid_buff', spellId: 10060 });
+      if (options.external_buff_augmentation) finalBuffs.push({ name: 'Ebon Might (Aug)', category: 'raid_buff', spellId: 395152 });
+    }
+
+    // Add consumables from options or base
+    const allCatalog = [
+      ...FLASK_OPTIONS,
+      ...FOOD_OPTIONS,
+      ...POTION_OPTIONS,
+      ...AUGMENT_RUNE_OPTIONS,
+      ...TEMP_ENCHANT_OPTIONS,
+    ];
+
+    const consumables = baseBuffs
+      .filter((b) => b.category !== 'raid_buff')
+      .map((b) => {
+        // Normalize name: lowercase and underscore for better matching
+        let normName = b.name.toLowerCase().replace(/\s+/g, '_');
+        // Handle rank suffixes often used in SimC
+        normName = normName.replace(/_rank([0-9])/, '_$1');
+        
+        // Try to find exact match on token or loose match on name/label
+        const match = allCatalog.find(
+          (c) =>
+            (c.token && (
+              normName === c.token.toLowerCase() || 
+              c.token.toLowerCase().endsWith(normName) ||
+              c.token.toLowerCase().includes(normName) ||
+              normName.endsWith(c.token.toLowerCase()) ||
+              normName.includes(c.token.toLowerCase())
+            )) ||
+            b.name.toLowerCase() === c.label.toLowerCase() ||
+            b.name.toLowerCase().includes(c.label.toLowerCase()) ||
+            c.label.toLowerCase().includes(b.name.toLowerCase()) ||
+            // Special case for flask/potion/food/etc prefixes
+            (b.category === 'flask' && c.key.includes(normName)) ||
+            (b.category === 'potion' && c.key.includes(normName))
+        );
+
+        if (match) {
+          return {
+            ...b,
+            name: match.label,
+            icon: match.icon,
+            spellId: b.spellId || match.spellId,
+            itemId: match.itemId,
+          };
+        }
+        return b;
+      });
+    finalBuffs.push(...consumables);
+
+    return finalBuffs.map((buff) => {
+      // For raid buffs, also try to find icon from catalog if not present
+      if (buff.category === 'raid_buff' && !buff.icon) {
+        const raidCatalog = [...RAID_BUFF_MATRIX_OPTIONS, ...EXTERNAL_BUFF_OPTIONS];
+        const match = raidCatalog.find(
+          (c) =>
+            (c.spellId && buff.spellId === c.spellId) ||
+            buff.name.toLowerCase() === c.label.toLowerCase() ||
+            c.label.toLowerCase().includes(buff.name.toLowerCase())
+        );
+        if (match) {
+          return { ...buff, icon: match.icon };
+        }
+      }
+      return buff;
+    });
+  }, [job]);
+
+  const activeBuffIconsParams = useMemo(() => {
+    return activeBuffs
+      .map((b) => {
+        if (b.spellId && b.spellId > 0) return { type: 'spell' as const, id: b.spellId };
+        if (b.itemId && b.itemId > 0) return { type: 'item' as const, id: b.itemId };
+        return null;
+      })
+      .filter((e): e is { type: 'spell' | 'item'; id: number } => !!e);
+  }, [activeBuffs]);
+
+  const iconsMap = useIcons(activeBuffIconsParams);
+  useWowheadTooltips([activeBuffs, job]);
 
   const appendStageTiming = useCallback(
     (name: string, elapsed: number) => {
@@ -690,7 +872,6 @@ export default function SimResultClient() {
     return <p className="text-sm text-muted">No result data available.</p>;
   }
 
-  const r = job.result;
   const isTopGear = r.type === 'top_gear';
   const isTrinketTierHeatmap = job.sim_type === 'trinket_tier_heatmap';
   const isExternalBuffMatrix = job.sim_type === 'external_buff_matrix';
@@ -702,8 +883,6 @@ export default function SimResultClient() {
 
   const equippedGear = r.equipped_gear as any;
   const avgIlevel = equippedGear ? calculateAverageIlevel(equippedGear) : undefined;
-  const timelineData = (r.timeline as Record<string, unknown> | undefined) || timelineFallback;
-  const aplData = (r.apl_analysis as Record<string, unknown> | undefined) || aplFallback;
 
   return (
     <div className="space-y-6">
@@ -914,6 +1093,126 @@ export default function SimResultClient() {
           {typeof r.talent_string === 'string' && r.talent_string && (
             <CollapsibleSection title="Talents" defaultOpen={false}>
               <SimResultTalentsCard talentString={r.talent_string as string} />
+            </CollapsibleSection>
+          )}
+
+          {activeBuffs.length > 0 && (
+            <CollapsibleSection title="Buffs & Consumables">
+              <div className="space-y-6">
+                {[
+                  { title: 'Raid Buffs', category: 'raid_buff' },
+                  { title: 'Consumables', category: 'consumable' },
+                ].map((group) => {
+                  const items =
+                    group.category === 'raid_buff'
+                      ? activeBuffs.filter((b) => b.category === 'raid_buff')
+                      : activeBuffs.filter((b) => b.category !== 'raid_buff');
+
+                  if (items.length === 0) return null;
+
+                  return (
+                    <div key={group.title}>
+                      <h3 className="mb-3 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                        {group.title}
+                      </h3>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {items.map((buff: any, idx) => {
+                          const iconKey = buff.spellId
+                            ? `spell:${buff.spellId}`
+                            : buff.itemId
+                              ? `item:${buff.itemId}`
+                              : null;
+                          const cachedIcon = iconKey ? iconsMap.get(iconKey) : null;
+                          const iconUrl = cachedIcon
+                            ? `https://wow.zamimg.com/images/wow/icons/small/${cachedIcon}.jpg`
+                            : buff.icon
+                              ? `https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg`
+                              : null;
+
+                          return (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-2 text-zinc-200"
+                            >
+                              <div className="shrink-0">
+                                {buff.spellId || buff.itemId ? (
+                                  <a
+                                    href={`https://www.wowhead.com/${buff.spellId ? 'spell' : 'item'}=${buff.spellId || buff.itemId}`}
+                                    data-wowhead={`${buff.spellId ? 'spell' : 'item'}=${buff.spellId || buff.itemId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.preventDefault()}
+                                  >
+                                    {iconUrl ? (
+                                      <img
+                                        src={iconUrl}
+                                        alt=""
+                                        className="h-7 w-7 rounded-[4px] border border-white/10"
+                                      />
+                                    ) : (
+                                      <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
+                                        <svg className="h-4 w-4 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <circle cx="12" cy="12" r="10" />
+                                          <path d="M12 16v-4M12 8h.01" />
+                                        </svg>
+                                      </div>
+                                    )}
+                                  </a>
+                                ) : iconUrl ? (
+                                  <img
+                                    src={iconUrl}
+                                    alt=""
+                                    className="h-7 w-7 rounded-[4px] border border-white/10"
+                                  />
+                                ) : (
+                                  <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
+                                    <svg className="h-4 w-4 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <circle cx="12" cy="12" r="10" />
+                                      <path d="M12 16v-4M12 8h.01" />
+                                    </svg>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate text-[14px] font-bold capitalize leading-tight">
+{(() => {
+                                    const rawName = buff.name.replace(/_/g, ' ');
+                                    return rawName.replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '').replace(/\s+\d+\s*$/i, '');
+                                  })()}
+                                </p>
+{(() => {
+                                  const match = buff.name.match(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i) || buff.name.match(/\s+(\d+)\s*$/i);
+                                  if (!match) return null;
+                                  const tierStr = match[1].toLowerCase();
+                                  const isNumericTier = /^\d+$/.test(match[1]);
+                                  const style = isNumericTier
+                                    ? (match[1] === '3' || match[1] === '2'
+                                        ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
+                                        : 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]')
+                                    : tierStr === 'gold' || tierStr === 'tier 3'
+                                      ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
+                                      : tierStr === 'silver' || tierStr === 'tier 2'
+                                        ? 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
+                                        : 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]';
+                                    return (
+                                      <span
+                                        className={`h-3 w-3 shrink-0 rounded-[2px] border ${style}`}
+                                        title={`Quality: ${isNumericTier ? (match[1] === '3' ? 'Gold' : match[1] === '2' ? 'Gold' : 'Silver') : match[1]}`}
+                                        aria-label={`Quality: ${isNumericTier ? (match[1] === '3' ? 'Gold' : match[1] === '2' ? 'Gold' : 'Silver') : match[1]}`}
+                                      />
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </CollapsibleSection>
           )}
           <CollapsibleSection title="Damage Breakdown">

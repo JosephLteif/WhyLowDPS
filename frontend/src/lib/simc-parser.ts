@@ -208,3 +208,94 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
 
   return null;
 }
+
+export type SimcBuff = {
+  name: string;
+  category: 'flask' | 'food' | 'potion' | 'augment' | 'raid_buff' | 'other';
+  value?: string;
+  spellId?: number;
+};
+
+export function parseSimcBuffs(input: string): SimcBuff[] {
+  if (!input) return [];
+  const buffs: SimcBuff[] = [];
+
+  const lines = input.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#') && !trimmed.includes('=')) continue;
+
+    // Remove comments for matching but keep the line if it has an assignment
+    const cleanLine = trimmed.replace(/^#\s*/, '');
+
+    const flaskMatch = cleanLine.match(/^flask=([^,\n]+)/i);
+    if (flaskMatch) {
+      const name = flaskMatch[1].replace(/_/g, ' ');
+      buffs.push({ name, category: 'flask' });
+    }
+
+    const foodMatch = cleanLine.match(/^food=([^,\n]+)/i);
+    if (foodMatch) {
+      const name = foodMatch[1].replace(/_/g, ' ');
+      buffs.push({ name, category: 'food' });
+    }
+
+    const potionMatch = cleanLine.match(/^potion=([^,\n]+)/i);
+    if (potionMatch) {
+      const name = potionMatch[1].replace(/_/g, ' ');
+      buffs.push({ name, category: 'potion' });
+    }
+
+    const augmentMatch =
+      cleanLine.match(/^augmentation=([^,\n]+)/i) || cleanLine.match(/^augments=([^,\n]+)/i);
+    if (augmentMatch) {
+      const name = augmentMatch[1].replace(/_/g, ' ');
+      buffs.push({ name, category: 'augment' });
+    }
+
+    // Common raid buffs in raid_events or direct assignments
+    const lowerLine = cleanLine.toLowerCase();
+    if (lowerLine.includes('bloodlust') || lowerLine.includes('heroism') || lowerLine.includes('time_warp')) {
+      buffs.push({ name: 'Bloodlust', category: 'raid_buff', spellId: 2825 });
+    }
+    if (lowerLine.includes('power_infusion')) {
+      buffs.push({ name: 'Power Infusion', category: 'raid_buff', spellId: 10060 });
+    }
+    if (lowerLine.includes('windfury_totem')) {
+      buffs.push({ name: 'Windfury Totem', category: 'raid_buff', spellId: 382440 });
+    }
+    if (lowerLine.includes('mana_tide_totem')) {
+      buffs.push({ name: 'Mana Tide Totem', category: 'raid_buff', spellId: 16191 });
+    }
+    if (lowerLine.includes('battle_shout')) {
+      buffs.push({ name: 'Battle Shout', category: 'raid_buff', spellId: 6673 });
+    }
+    if (lowerLine.includes('arcane_intellect')) {
+      buffs.push({ name: 'Arcane Intellect', category: 'raid_buff', spellId: 1459 });
+    }
+    if (lowerLine.includes('power_word_fortitude')) {
+      buffs.push({ name: 'Power Word: Fortitude', category: 'raid_buff', spellId: 21562 });
+    }
+    if (lowerLine.includes('mark_of_the_wild')) {
+      buffs.push({ name: 'Mark of the Wild', category: 'raid_buff', spellId: 1126 });
+    }
+    if (lowerLine.includes('mystic_touch')) {
+      buffs.push({ name: 'Mystic Touch', category: 'raid_buff', spellId: 8647 });
+    }
+    if (lowerLine.includes('chaos_brand')) {
+      buffs.push({ name: 'Chaos Brand', category: 'raid_buff', spellId: 1490 });
+    }
+    if (lowerLine.includes('skyfury')) {
+      buffs.push({ name: 'Skyfury', category: 'raid_buff', spellId: 462854 });
+    }
+    if (lowerLine.includes('vampiric_touch')) {
+        // usually PI logic or similar
+    }
+  }
+
+  // Deduplicate
+  return buffs.filter(
+    (buff, index, self) =>
+      index === self.findIndex((b) => b.name === buff.name && b.category === buff.category)
+  );
+}

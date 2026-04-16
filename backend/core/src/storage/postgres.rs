@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use tokio_postgres::{Client, NoTls};
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
+use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute};
 
 pub struct PostgresStorage {
     client: Mutex<Client>,
@@ -45,6 +45,7 @@ impl PostgresStorage {
                 status TEXT NOT NULL DEFAULT 'pending',
                 sim_type TEXT NOT NULL,
                 simc_input TEXT NOT NULL,
+                options TEXT,
                 result_json TEXT,
                 combo_metadata_json TEXT,
                 error_message TEXT,
@@ -71,6 +72,17 @@ impl PostgresStorage {
                 key TEXT NOT NULL,
                 value TEXT NOT NULL,
                 PRIMARY KEY (user_id, key)
+            );
+            CREATE TABLE IF NOT EXISTS dungeon_routes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                dungeon TEXT NOT NULL,
+                level INTEGER,
+                pull_count INTEGER,
+                timer_seconds INTEGER,
+                affixes TEXT,
+                route_data TEXT NOT NULL,
+                created_at TEXT NOT NULL
             );",
             )
             .await;
@@ -80,6 +92,7 @@ impl PostgresStorage {
             .batch_execute(
                 "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS html_report TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS text_output TEXT;
+             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS options TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS raw_json TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS batch_id TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_region TEXT;
@@ -139,34 +152,37 @@ impl PostgresStorage {
 
     fn row_to_job(row: &tokio_postgres::Row) -> Job {
         let status_str: String = row.get(1);
-        let stages_str: String = row.get(10);
+        let stages_str: String = row.get(11);
         let stages: Vec<String> = serde_json::from_str(&stages_str).unwrap_or_default();
-        let progress_pct: i32 = row.get(7);
-        let iterations: i32 = row.get(11);
+        let progress_pct: i32 = row.get(8);
+        let iterations: i32 = row.get(12);
+        let options_json: Option<String> = row.get(4);
+        let options = options_json.and_then(|s| serde_json::from_str(&s).ok());
 
         Job {
             id: row.get(0),
             status: Self::str_to_status(&status_str),
             sim_type: row.get(2),
             simc_input: row.get(3),
-            result_json: row.get(4),
-            combo_metadata_json: row.get(5),
-            error_message: row.get(6),
+            options,
+            result_json: row.get(5),
+            combo_metadata_json: row.get(6),
+            error_message: row.get(7),
             progress_pct: progress_pct as u8,
-            progress_stage: row.get(8),
-            progress_detail: row.get(9),
+            progress_stage: row.get(9),
+            progress_detail: row.get(10),
             stages_completed: stages,
             iterations: iterations as u32,
-            fight_style: row.get(12),
-            target_error: row.get(13),
-            created_at: row.get(14),
-            raw_json: row.get(15),
-            html_report: row.get(16),
-            text_output: row.get(17),
-            batch_id: row.get(18),
-            linked_region: row.get(19),
-            linked_realm: row.get(20),
-            linked_name: row.get(21),
+            fight_style: row.get(13),
+            target_error: row.get(14),
+            created_at: row.get(15),
+            raw_json: row.get(16),
+            html_report: row.get(17),
+            text_output: row.get(18),
+            batch_id: row.get(19),
+            linked_region: row.get(20),
+            linked_realm: row.get(21),
+            linked_name: row.get(22),
         }
     }
 }
@@ -174,19 +190,21 @@ impl PostgresStorage {
 impl JobStorage for PostgresStorage {
     fn insert(&self, job: Job) {
         let stages_json = serde_json::to_string(&job.stages_completed).unwrap();
+        let options_json = job.options.as_ref().map(|o| serde_json::to_string(o).unwrap());
         let limit = *self.max_jobs.lock().unwrap();
         self.blocking(|client| {
             self.rt.block_on(async {
                 if let Err(e) = client.execute(
-                    "INSERT INTO jobs (id, status, sim_type, simc_input, result_json, combo_metadata_json,
+                    "INSERT INTO jobs (id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
                      error_message, progress_pct, progress_stage, progress_detail, stages_completed,
                      iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)",
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)",
                     &[
                         &job.id,
                         &Self::status_to_str(&job.status),
                         &job.sim_type,
                         &job.simc_input,
+                        &options_json,
                         &job.result_json,
                         &job.combo_metadata_json,
                         &job.error_message,
@@ -223,10 +241,11 @@ impl JobStorage for PostgresStorage {
         self.blocking(|client| {
             self.rt.block_on(async {
                 client.query_opt(
-                    "SELECT id, status, sim_type, simc_input, result_json, combo_metadata_json,
+                    "SELECT id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
                      error_message, progress_pct, progress_stage, progress_detail, stages_completed,
                      iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name
                      FROM jobs WHERE id = $1",
+
                     &[&id],
                 ).await.ok().flatten().map(|row| Self::row_to_job(&row))
             })
@@ -612,6 +631,70 @@ impl JobStorage for PostgresStorage {
                         "DELETE FROM user_configs WHERE user_id = $1 AND key = $2",
                         &[&user_id, &key],
                     )
+                    .await
+                    .ok();
+            });
+        });
+    }
+
+    fn save_route(&self, route: SavedRoute) {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute(
+                    "INSERT INTO dungeon_routes (id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                     ON CONFLICT (id) DO UPDATE SET name = $2, dungeon = $3, level = $4, pull_count = $5, timer_seconds = $6, affixes = $7, route_data = $8",
+                    &[
+                        &route.id,
+                        &route.name,
+                        &route.dungeon,
+                        &route.level,
+                        &route.pull_count,
+                        &route.timer_seconds,
+                        &route.affixes,
+                        &route.route_data,
+                        &route.created_at,
+                    ],
+                ).await.ok();
+            });
+        });
+    }
+
+    fn list_routes(&self) -> Vec<SavedRoute> {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client
+                    .query(
+                        "SELECT id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at FROM dungeon_routes ORDER BY created_at DESC",
+                        &[],
+                    )
+                    .await
+                    .ok()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|row| SavedRoute {
+                        id: row.get(0),
+                        name: row.get(1),
+                        dungeon: row.get(2),
+                        level: row.get(3),
+                        pull_count: row.get(4),
+                        timer_seconds: row.get(5),
+                        affixes: row.get(6),
+                        route_data: row.get(7),
+                        created_at: row.get(8),
+                    })
+                    .collect()
+            })
+        })
+        .unwrap_or_default()
+    }
+
+    fn delete_route(&self, id: &str) {
+        let id = id.to_string();
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client
+                    .execute("DELETE FROM dungeon_routes WHERE id = $1", &[&id])
                     .await
                     .ok();
             });

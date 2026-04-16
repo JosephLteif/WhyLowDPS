@@ -47,16 +47,17 @@ function validateChecksum(input: string): 'valid' | 'invalid' | null {
   return 'invalid';
 }
 
-const ICON_CACHE = new Map<number, string>();
+const SPELL_ICON_CACHE = new Map<number, string>();
+const ITEM_ICON_CACHE = new Map<number, string>();
 
 function useSpellIcons(spellIds: number[]) {
   const [icons, setIcons] = useState<Map<number, string>>(new Map());
   const depKey = spellIds.join(',');
 
   useEffect(() => {
-    const missing = spellIds.filter((id) => id > 0 && !ICON_CACHE.has(id));
+    const missing = spellIds.filter((id) => id > 0 && !SPELL_ICON_CACHE.has(id));
     if (missing.length === 0) {
-      setIcons(new Map(ICON_CACHE));
+      setIcons(new Map(SPELL_ICON_CACHE));
       return;
     }
 
@@ -64,18 +65,51 @@ function useSpellIcons(spellIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`
-          );
+          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
           if (!res.ok) return;
           const data = await res.json();
-          if (data?.icon) ICON_CACHE.set(id, data.icon);
+          if (data?.icon) SPELL_ICON_CACHE.set(id, data.icon);
         } catch {
           // Ignore fetch failures and fall back to the catalog slug.
         }
       })
     ).then(() => {
-      if (!cancelled) setIcons(new Map(ICON_CACHE));
+      if (!cancelled) setIcons(new Map(SPELL_ICON_CACHE));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return icons;
+}
+
+function useItemIcons(itemIds: number[]) {
+  const [icons, setIcons] = useState<Map<number, string>>(new Map());
+  const depKey = itemIds.join(',');
+
+  useEffect(() => {
+    const missing = itemIds.filter((id) => id > 0 && !ITEM_ICON_CACHE.has(id));
+    if (missing.length === 0) {
+      setIcons(new Map(ITEM_ICON_CACHE));
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (id) => {
+        try {
+          const res = await fetch(`https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.icon) ITEM_ICON_CACHE.set(id, data.icon);
+        } catch {
+          // Ignore fetch failures
+        }
+      })
+    ).then(() => {
+      if (!cancelled) setIcons(new Map(ITEM_ICON_CACHE));
     });
 
     return () => {
@@ -661,11 +695,15 @@ function remapQuality(quality: number | undefined, familyMax: number | undefined
 }
 
 function optionSelectLabel(opt: OptionEntry) {
-  return (opt.label || '').replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '').replace(/\s+[1-3]\s*$/i, '');
+  return (opt.label || '')
+    .replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '')
+    .replace(/\s+[1-3]\s*$/i, '')
+    .replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '');
 }
 
 function QualityBadge({ quality }: { quality?: number }) {
   if (!quality || quality < 1 || quality > 3) return null;
+  const tierName = quality === 3 ? 'Gold' : quality === 2 ? 'Silver' : 'Bronze';
   const style =
     quality === 3
       ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
@@ -675,8 +713,8 @@ function QualityBadge({ quality }: { quality?: number }) {
   return (
     <span
       className={`h-3 w-3 shrink-0 rounded-[2px] border ${style}`}
-      title={`Quality ${quality}`}
-      aria-label={`Quality ${quality}`}
+      title={`Quality: ${tierName}`}
+      aria-label={`Quality: ${tierName}`}
     />
   );
 }
@@ -699,6 +737,11 @@ function ConsumableSelect({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   useWowheadTooltips([open, value, options.length]);
+
+  const itemIds = useMemo(() => {
+    return options.map((o) => o.itemId).filter((id): id is number => !!id);
+  }, [options]);
+  const itemIcons = useItemIcons(itemIds);
 
   useEffect(() => {
     if (disabled) setOpen(false);
@@ -728,9 +771,10 @@ function ConsumableSelect({
     for (const opt of options) {
       const family = optionQualityFamily(opt);
       if (!map.has(family)) {
+        const icon = (opt.itemId && itemIcons.get(opt.itemId)) || opt.icon || '';
         map.set(family, {
           label: optionSelectLabel(opt),
-          icon: opt.icon || '',
+          icon,
           itemId: opt.itemId,
           items: [],
           familyMax: qualityMaxByFamily.get(family) || 0,
@@ -739,33 +783,47 @@ function ConsumableSelect({
       map.get(family)!.items.push(opt);
     }
     return Array.from(map.values());
-  }, [options, qualityMaxByFamily]);
+  }, [options, qualityMaxByFamily, itemIcons]);
 
   return (
     <div className="space-y-1.5 text-[13px] text-zinc-300">
       <span className="block">{label}</span>
       <div ref={rootRef} className="relative">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => !disabled && setOpen((v) => !v)}
           className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm ${
-            disabled ? 'cursor-not-allowed text-zinc-500 opacity-70' : 'text-zinc-200'
+            disabled ? 'cursor-not-allowed text-zinc-500 opacity-70' : 'cursor-pointer text-zinc-200'
           }`}
         >
-          {selected?.icon ? (
-            <img
-              src={`https://wow.zamimg.com/images/wow/icons/small/${selected.icon}.jpg`}
-              alt=""
-              className="h-4 w-4 shrink-0 rounded-[3px]"
-            />
+          {selected?.icon || (selected?.itemId && itemIcons.get(selected.itemId)) ? (
+            <a
+              href="#"
+              onClick={(e) => e.preventDefault()}
+              data-wowhead={selected.itemId ? `item=${selected.itemId}` : selected.spellId ? `spell=${selected.spellId}` : undefined}
+              className="flex shrink-0 items-center"
+            >
+              <img
+                src={`https://wow.zamimg.com/images/wow/icons/small/${
+                  (selected.itemId && itemIcons.get(selected.itemId)) || selected.icon
+                }.jpg`}
+                alt=""
+                className="h-4 w-4 shrink-0 rounded-[3px]"
+              />
+            </a>
           ) : (
             <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
           )}
-          <div className="flex min-w-0 items-center gap-1.5">
+          <a
+            href="#"
+            onClick={(e) => e.preventDefault()}
+            className="flex min-w-0 items-center gap-1.5"
+            data-wowhead={selected?.itemId ? `item=${selected.itemId}` : selected?.spellId ? `spell=${selected.spellId}` : undefined}
+          >
             <span className="truncate">{selected ? optionSelectLabel(selected) : 'None'}</span>
             <QualityBadge quality={selectedQuality} />
-          </div>
+          </a>
           <svg
             className={`ml-auto h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
             viewBox="0 0 16 16"
@@ -777,7 +835,7 @@ function ConsumableSelect({
           >
             <path d="M4 6l4 4 4-4" />
           </svg>
-        </button>
+        </div>
         {open && (
           <div className="absolute z-30 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-xl">
             <button
@@ -810,14 +868,25 @@ function ConsumableSelect({
                     }
                   }}
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      if (!hasQuality) {
+                        e.preventDefault();
+                      }
+                    }}
+                    data-wowhead={group.itemId ? `item=${group.itemId}` : group.items[0]?.spellId ? `spell=${group.items[0].spellId}` : undefined}
+                    className="flex min-w-0 flex-1 items-center gap-2 no-underline hover:no-underline"
+                  >
                     <img
                       src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                       alt=""
                       className="h-4 w-4 shrink-0 rounded-[3px]"
                     />
-                    <span className="truncate">{group.label}</span>
-                  </div>
+                    <span className="truncate">
+                      {group.label}
+                    </span>
+                  </a>
                   {hasQuality && (
                     <div className="flex shrink-0 items-center gap-1.5">
                       {group.items
@@ -838,17 +907,21 @@ function ConsumableSelect({
                                   ? 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]'
                                   : 'border-orange-400/30 bg-orange-600/10 hover:border-orange-400/60 hover:bg-orange-600/20';
 
+                          const qName = q === 3 ? 'Gold' : q === 2 ? 'Silver' : 'Bronze';
+
                           return (
-                            <button
+                            <a
                               key={opt.key}
-                              type="button"
-                              title={`Quality ${q}`}
+                              href="#"
+                              title={`Quality: ${qName}`}
                               onClick={(e) => {
+                                e.preventDefault();
                                 e.stopPropagation();
                                 onChange(opt.token || '');
                                 setOpen(false);
                               }}
-                              className={`h-3.5 w-3.5 rounded-[2px] border transition-all ${qStyle}`}
+                              data-wowhead={opt.itemId ? `item=${opt.itemId}` : opt.spellId ? `spell=${opt.spellId}` : undefined}
+                              className={`block h-3.5 w-3.5 rounded-[2px] border transition-all ${qStyle}`}
                             />
                           );
                         })}

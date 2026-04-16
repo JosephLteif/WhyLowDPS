@@ -18,6 +18,7 @@ impl SqliteStorage {
                 status TEXT NOT NULL DEFAULT 'pending',
                 sim_type TEXT NOT NULL,
                 simc_input TEXT NOT NULL,
+                options TEXT,
                 result_json TEXT,
                 combo_metadata_json TEXT,
                 error_message TEXT,
@@ -65,6 +66,7 @@ impl SqliteStorage {
              ALTER TABLE jobs ADD COLUMN text_output TEXT;",
         );
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN raw_json TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN options TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN batch_id TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_region TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_realm TEXT;");
@@ -113,32 +115,35 @@ impl SqliteStorage {
 
     fn row_to_job(row: &rusqlite::Row) -> rusqlite::Result<Job> {
         let status_str: String = row.get(1)?;
-        let stages_str: String = row.get(10)?;
+        let stages_str: String = row.get(11)?;
         let stages: Vec<String> = serde_json::from_str(&stages_str).unwrap_or_default();
+        let options_json: Option<String> = row.get(4)?;
+        let options = options_json.and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(Job {
             id: row.get(0)?,
             status: SqliteStorage::str_to_status(&status_str),
             sim_type: row.get(2)?,
             simc_input: row.get(3)?,
-            result_json: row.get(4)?,
-            combo_metadata_json: row.get(5)?,
-            error_message: row.get(6)?,
-            progress_pct: row.get::<_, u8>(7)?,
-            progress_stage: row.get(8)?,
-            progress_detail: row.get(9)?,
+            options,
+            result_json: row.get(5)?,
+            combo_metadata_json: row.get(6)?,
+            error_message: row.get(7)?,
+            progress_pct: row.get::<_, u8>(8)?,
+            progress_stage: row.get(9)?,
+            progress_detail: row.get(10)?,
             stages_completed: stages,
-            iterations: row.get::<_, u32>(11)?,
-            fight_style: row.get(12)?,
-            target_error: row.get(13)?,
-            created_at: row.get(14)?,
-            raw_json: row.get(15).ok().flatten(),
-            html_report: row.get(16).ok().flatten(),
-            text_output: row.get(17).ok().flatten(),
-            batch_id: row.get(18).ok().flatten(),
-            linked_region: row.get(19).ok().flatten(),
-            linked_realm: row.get(20).ok().flatten(),
-            linked_name: row.get(21).ok().flatten(),
+            iterations: row.get::<_, u32>(12)?,
+            fight_style: row.get(13)?,
+            target_error: row.get(14)?,
+            created_at: row.get(15)?,
+            raw_json: row.get(16).ok().flatten(),
+            html_report: row.get(17).ok().flatten(),
+            text_output: row.get(18).ok().flatten(),
+            batch_id: row.get(19).ok().flatten(),
+            linked_region: row.get(20).ok().flatten(),
+            linked_realm: row.get(21).ok().flatten(),
+            linked_name: row.get(22).ok().flatten(),
         })
     }
 }
@@ -147,16 +152,18 @@ impl JobStorage for SqliteStorage {
     fn insert(&self, job: Job) {
         let conn = self.conn.lock().unwrap();
         let stages_json = serde_json::to_string(&job.stages_completed).unwrap();
+        let options_json = job.options.as_ref().map(|o| serde_json::to_string(o).unwrap());
         conn.execute(
-            "INSERT INTO jobs (id, status, sim_type, simc_input, result_json, combo_metadata_json,
+            "INSERT INTO jobs (id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
              iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
             params![
                 job.id,
                 Self::status_to_str(&job.status),
                 job.sim_type,
                 job.simc_input,
+                options_json,
                 job.result_json,
                 job.combo_metadata_json,
                 job.error_message,
@@ -190,7 +197,7 @@ impl JobStorage for SqliteStorage {
     fn get(&self, id: &str) -> Option<Job> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, status, sim_type, simc_input, result_json, combo_metadata_json,
+            "SELECT id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
              iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name
              FROM jobs WHERE id = ?1",

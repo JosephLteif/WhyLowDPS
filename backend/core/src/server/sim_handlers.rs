@@ -126,6 +126,7 @@ pub(super) async fn create_sim(
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };
 
+    let options = req.options.to_json_with_sim_type(&req.sim_type);
     let mut job = Job::new(
         simc_input.clone(),
         req.sim_type.clone(),
@@ -133,6 +134,7 @@ pub(super) async fn create_sim(
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.options = Some(options.clone());
     job.batch_id = req.options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -140,7 +142,6 @@ pub(super) async fn create_sim(
 
     // Spawn background task
     let store_clone = store.get_ref().clone();
-    let options = req.options.to_json_with_sim_type(&req.sim_type);
     let job_id_clone = job_id.clone();
     let logs = log_buffer.get_ref().clone();
     let jid_logs = job_id.clone();
@@ -1012,6 +1013,7 @@ async fn create_trinket_tier_heatmap_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.options = Some(options.to_json_with_sim_type("trinket_tier_heatmap"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -1081,6 +1083,7 @@ async fn create_external_buff_matrix_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.options = Some(options.to_json_with_sim_type("external_buff_matrix"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -1149,6 +1152,7 @@ async fn create_consumable_matrix_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.options = Some(options.to_json_with_sim_type("consumable_matrix"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -1292,13 +1296,14 @@ pub(super) async fn create_top_gear_sim(
         return resp;
     }
 
-    let job = Job::new(
+    let mut job = Job::new(
         generated_input.clone(),
         "top_gear".to_string(),
         req.options.iterations,
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.options = Some(req.options.to_json_with_sim_type("top_gear"));
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
 
@@ -1455,13 +1460,14 @@ pub(super) async fn create_droptimizer_sim(
         return resp;
     }
 
-    let job = Job::new(
+    let mut job = Job::new(
         generated_input.clone(),
         "droptimizer".to_string(),
         req.options.iterations,
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.options = Some(req.options.to_json_with_sim_type("droptimizer"));
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
 

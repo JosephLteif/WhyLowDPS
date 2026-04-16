@@ -393,13 +393,14 @@ pub(super) async fn create_upgrade_compare_sim(
         return resp;
     }
 
-    let job = Job::new(
+    let mut job = Job::new(
         generated_input.clone(),
         "top_gear".to_string(), // Reuse top_gear result format
         req.options.iterations,
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.options = Some(req.options.to_json_with_sim_type("top_gear"));
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
 

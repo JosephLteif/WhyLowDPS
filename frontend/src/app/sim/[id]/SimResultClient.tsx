@@ -354,16 +354,19 @@ export default function SimResultClient() {
   const activeStageStartedAtRef = useRef<number | null>(null);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const appendStageTiming = useCallback((name: string, elapsed: number) => {
-    setStageTimings((prev) => {
-      if (prev.some((entry) => entry.name === name)) return prev;
-      const next = [...prev, { name, elapsed: Math.max(0, elapsed) }];
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(`sim_stage_timings_${id}`, JSON.stringify(next));
-      }
-      return next;
-    });
-  }, [id]);
+  const appendStageTiming = useCallback(
+    (name: string, elapsed: number) => {
+      setStageTimings((prev) => {
+        if (prev.some((entry) => entry.name === name)) return prev;
+        const next = [...prev, { name, elapsed: Math.max(0, elapsed) }];
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(`sim_stage_timings_${id}`, JSON.stringify(next));
+        }
+        return next;
+      });
+    },
+    [id]
+  );
 
   useEffect(() => {
     setSiblings(getScenarioSiblings());
@@ -648,16 +651,16 @@ export default function SimResultClient() {
 
   if (job.status === 'pending' || job.status === 'running') {
     return (
-        <SimStatus
-          status={job.status}
-          progress={job.progress}
-          progressStage={job.progress_stage}
-          progressDetail={job.progress_detail}
-          createdAt={job.created_at}
-          stagesCompleted={job.stages_completed}
-          stageTimings={stageTimings}
-          activeStageElapsed={activeStageElapsed}
-          jobId={id}
+      <SimStatus
+        status={job.status}
+        progress={job.progress}
+        progressStage={job.progress_stage}
+        progressDetail={job.progress_detail}
+        createdAt={job.created_at}
+        stagesCompleted={job.stages_completed}
+        stageTimings={stageTimings}
+        activeStageElapsed={activeStageElapsed}
+        jobId={id}
         onCancelled={() => setJob({ ...job, status: 'cancelled' })}
         logLines={logLines}
         showLogs={showLogs}

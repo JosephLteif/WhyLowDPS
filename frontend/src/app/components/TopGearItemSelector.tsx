@@ -273,9 +273,9 @@ export default function TopGearItemSelector({
         uid,
         enchant_id: enchantId,
         gem_id: firstGemId,
-        enchant_name: enchantId > 0 ? (enchantInfoById[enchantId]?.name || '') : '',
-        gem_name: firstGemId > 0 ? (gemInfoById[firstGemId]?.name || '') : '',
-        gem_icon: firstGemId > 0 ? (gemInfoById[firstGemId]?.icon || '') : '',
+        enchant_name: enchantId > 0 ? enchantInfoById[enchantId]?.name || '' : '',
+        gem_name: firstGemId > 0 ? gemInfoById[firstGemId]?.name || '' : '',
+        gem_icon: firstGemId > 0 ? gemInfoById[firstGemId]?.icon || '' : '',
         simc_string: nextSimc,
       };
 
@@ -465,7 +465,8 @@ export default function TopGearItemSelector({
       items.push(...slotRes.alternatives);
 
       items.forEach((item) => {
-        const gemId = item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
+        const gemId =
+          item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
         const enchantId =
           item.enchant_id > 0
             ? item.enchant_id
@@ -555,9 +556,7 @@ export default function TopGearItemSelector({
     const effectiveGemId =
       item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
     const effectiveEnchantId =
-      item.enchant_id > 0
-        ? item.enchant_id
-        : parseFirstIdFromSimc(item.simc_string, 'enchant_id');
+      item.enchant_id > 0 ? item.enchant_id : parseFirstIdFromSimc(item.simc_string, 'enchant_id');
 
     const gemInfo = effectiveGemId > 0 ? gemInfoById[effectiveGemId] : undefined;
     const enchantInfo = effectiveEnchantId > 0 ? enchantInfoById[effectiveEnchantId] : undefined;

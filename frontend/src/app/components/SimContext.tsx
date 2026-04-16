@@ -65,6 +65,11 @@ interface SimContextType {
   setLockSingleConsumableOptions: (v: boolean) => void;
   autoClipboardPasteSimc: boolean;
   setAutoClipboardPasteSimc: (v: boolean) => void;
+  showAllClipboardSimcOptions: boolean;
+  setShowAllClipboardSimcOptions: (v: boolean) => void;
+  clipboardSimcHistory: string[];
+  setClipboardSimcHistory: (v: string[]) => void;
+  addToClipboardSimcHistory: (v: string) => void;
   dataCacheRefreshMinutes: number;
   setDataCacheRefreshMinutes: (v: number) => void;
   // Expert Mode injection points
@@ -157,7 +162,21 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [consumableTemporaryEnchant, _setConsumableTemporaryEnchant] = useState('');
   const [lockSingleConsumableOptions, setLockSingleConsumableOptions] = useState(false);
   const [autoClipboardPasteSimc, _setAutoClipboardPasteSimc] = useState(true);
+  const [showAllClipboardSimcOptions, _setShowAllClipboardSimcOptions] = useState(false);
+  const [clipboardSimcHistory, setClipboardSimcHistory] = useState<string[]>([]);
   const [dataCacheRefreshMinutes, _setDataCacheRefreshMinutes] = useState(0);
+
+  const addToClipboardSimcHistory = useCallback((v: string) => {
+    setClipboardSimcHistory((prev) => {
+      const next = prev.filter((entry) => entry !== v);
+      next.unshift(v);
+      const limited = next.slice(0, 10);
+      try {
+        sessionStorage.setItem('whylowdps_simc_history', JSON.stringify(limited));
+      } catch {}
+      return limited;
+    });
+  }, []);
   const [simcHeader, setSimcHeader] = useState('');
   const [simcBasePlayer, setSimcBasePlayer] = useState('');
   const [simcRaidActors, setSimcRaidActors] = useState('');
@@ -169,6 +188,12 @@ export function SimProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       _setSimcInput(readSessionString('whylowdps_simc_input', ''));
+      const rawHistory = sessionStorage.getItem('whylowdps_simc_history');
+      if (rawHistory) {
+        try {
+          setClipboardSimcHistory(JSON.parse(rawHistory));
+        } catch {}
+      }
       _setThreads(readStored('whylowdps_threads', 0));
       _setMaxCombinations(readStoredOptionalNumber('whylowdps_max_combinations'));
       _setIncludeTimeline(readStoredBool('whylowdps_include_timeline', true));
@@ -198,9 +223,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
       );
       _setSimcChannel(readStoredString('whylowdps_simc_channel', 'weekly') || 'weekly');
       _setAutoClipboardPasteSimc(readStoredBool('whylowdps_auto_clipboard_paste_simc', true));
+      _setShowAllClipboardSimcOptions(
+        readStoredBool('whylowdps_show_all_clipboard_simc_options', false)
+      );
       _setDataCacheRefreshMinutes(readStored('whylowdps_data_cache_refresh_minutes', 0));
       const rawChannel = readStoredString('whylowdps_simc_channel', 'stable') || 'stable';
-      const normalizedChannel = (rawChannel === 'weekly' || rawChannel === 'latest') ? 'stable' : rawChannel;
+      const normalizedChannel =
+        rawChannel === 'weekly' || rawChannel === 'latest' ? 'stable' : rawChannel;
       _setSimcChannel(normalizedChannel);
     } catch {}
   }, []);
@@ -397,6 +426,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  const setShowAllClipboardSimcOptions = useCallback((v: boolean) => {
+    _setShowAllClipboardSimcOptions(v);
+    try {
+      localStorage.setItem('whylowdps_show_all_clipboard_simc_options', String(v));
+    } catch {}
+  }, []);
+
   const setDataCacheRefreshMinutes = useCallback((v: number) => {
     _setDataCacheRefreshMinutes(v);
     try {
@@ -547,6 +583,11 @@ export function SimProvider({ children }: { children: ReactNode }) {
         setLockSingleConsumableOptions,
         autoClipboardPasteSimc,
         setAutoClipboardPasteSimc,
+        showAllClipboardSimcOptions,
+        setShowAllClipboardSimcOptions,
+        clipboardSimcHistory,
+        setClipboardSimcHistory,
+        addToClipboardSimcHistory,
         dataCacheRefreshMinutes,
         setDataCacheRefreshMinutes,
         simcHeader,

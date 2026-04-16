@@ -287,15 +287,15 @@ export default function TalentTree({
     return (
       <div className="flex h-full w-full items-stretch gap-0.5">
         <div className="min-w-0 flex-[2]">
-          <MiniTreeSvg
-            nodes={classNodesForRender}
-            selections={selections}
-            allNodes={allNodesArr}
-          />
+          <MiniTreeSvg nodes={classNodesForRender} selections={selections} allNodes={allNodesArr} />
         </div>
         {heroNodesForRender.length > 0 && (
           <div className="h-[45%] min-w-0 flex-1 self-center">
-            <MiniTreeSvg nodes={heroNodesForRender} selections={selections} allNodes={allNodesArr} />
+            <MiniTreeSvg
+              nodes={heroNodesForRender}
+              selections={selections}
+              allNodes={allNodesArr}
+            />
           </div>
         )}
         <div className="min-w-0 flex-[2]">

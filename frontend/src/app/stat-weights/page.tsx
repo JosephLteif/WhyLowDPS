@@ -256,9 +256,7 @@ export default function StatWeightsPage() {
 
   const handleSubmit = useCallback(() => {
     submit();
-  }, [
-    submit,
-  ]);
+  }, [submit]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -528,7 +526,9 @@ export default function StatWeightsPage() {
                         const isSingleNoQuality = sortedItems.length === 1 && !hasQuality;
                         const isSelected =
                           isSingleNoQuality &&
-                          (selected as string[]).includes(sortedItems[0].token || sortedItems[0].key);
+                          (selected as string[]).includes(
+                            sortedItems[0].token || sortedItems[0].key
+                          );
 
                         return (
                           <div
@@ -624,7 +624,10 @@ export default function StatWeightsPage() {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         (setSelected as (v: string[]) => void)(
-                                          toggleListValue(selected as string[], opt.token || opt.key)
+                                          toggleListValue(
+                                            selected as string[],
+                                            opt.token || opt.key
+                                          )
                                         );
                                       }}
                                       title={`Quality ${q}`}

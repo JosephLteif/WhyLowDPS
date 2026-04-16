@@ -670,10 +670,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
   }, [raidEncounters]);
 
   const expansionOptions = useMemo(() => {
-    const map = new Map<
-      string,
-      { key: string; label: string }
-    >();
+    const map = new Map<string, { key: string; label: string }>();
     for (const raid of raids) {
       if (!map.has(raid.expansionKey)) {
         map.set(raid.expansionKey, { key: raid.expansionKey, label: raid.expansionLabel });

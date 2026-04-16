@@ -156,8 +156,14 @@ export default function UpgradeComparePage() {
           body: JSON.stringify({
             simc_input: simcInput,
             selected_slots: [...selectedSlots],
-            upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
-            budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
+            upgrade_depth:
+              upgradeMode === 'all_affordable' || upgradeMode === 'all_any'
+                ? 'all_levels'
+                : 'highest_only',
+            budget_mode:
+              upgradeMode === 'highest_any' || upgradeMode === 'all_any'
+                ? 'ignore_budget'
+                : 'max_affordability',
             upgrade_budget_override: budgetOverridePayload,
             max_combinations: maxCombinations,
           }),
@@ -178,8 +184,14 @@ export default function UpgradeComparePage() {
     return {
       simc_input: simcInput,
       selected_slots: [...selectedSlots],
-      upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
-      budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
+      upgrade_depth:
+        upgradeMode === 'all_affordable' || upgradeMode === 'all_any'
+          ? 'all_levels'
+          : 'highest_only',
+      budget_mode:
+        upgradeMode === 'highest_any' || upgradeMode === 'all_any'
+          ? 'ignore_budget'
+          : 'max_affordability',
       upgrade_budget_override: budgetOverridePayload,
       max_combinations: maxCombinations,
     };
@@ -275,9 +287,7 @@ export default function UpgradeComparePage() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-[12px] font-medium uppercase tracking-widest text-muted">
-          Upgrade Mode
-        </p>
+        <p className="text-[12px] font-medium uppercase tracking-widest text-muted">Upgrade Mode</p>
         <div className="grid gap-2 md:grid-cols-2">
           {[
             ['highest_affordable', 'Highest Affordable', 'Only the highest tier you can afford.'],

@@ -259,9 +259,7 @@ export default function TopGearPage() {
 
   const handleSubmit = useCallback(() => {
     void submit();
-  }, [
-    submit,
-  ]);
+  }, [submit]);
 
   if (!resolved) {
     return (

@@ -337,7 +337,7 @@ export function GearSlotRow({
           )}
         </div>
         <p
-          className={`${compact ? 'text-[1.08rem] whitespace-normal break-words' : 'truncate text-sm'} text-zinc-300`}
+          className={`${compact ? 'whitespace-normal break-words text-[1.08rem]' : 'truncate text-sm'} text-zinc-300`}
         >
           {!compact && `${SLOT_LABELS[slot] || slot}`}
           {!compact && item.ilevel > 0 && ` - ${item.ilevel}`}
@@ -355,4 +355,3 @@ export function GearSlotRow({
     </div>
   );
 }
-

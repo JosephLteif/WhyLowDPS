@@ -134,6 +134,8 @@ export default function TopGearItemSelector({
     openOptimize,
     openUpgradeMenu,
     deselectAll,
+    selectAll,
+    toggleSlotAll,
     toggleGroup,
     toggleItem,
   } = useTopGearState({ resolved, selectedUids, onSelectionChange, onResolvedChange, onItemAdded });
@@ -645,6 +647,7 @@ export default function TopGearItemSelector({
       }
       onToggleVault={() => toggleGroup(vaultUids)}
       onToggleCatalyst={() => toggleGroup(catalystUids)}
+      onSelectAll={selectAll}
       onClear={deselectAll}
     />
   );
@@ -715,6 +718,7 @@ export default function TopGearItemSelector({
             onUpgradeSelect={addUpgradedCopy}
             onCatalystConvert={convertToCatalyst}
             onOptimize={openOptimize}
+            onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}
             isItemSelected={(item) => {
               const identity = makeIdentity(item);

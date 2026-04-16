@@ -108,6 +108,52 @@ export function useTopGearState({
 
   const deselectAll = useCallback(() => onSelectionChange({}), [onSelectionChange]);
 
+  const selectAll = useCallback(() => {
+    const updated: Record<string, Set<string>> = {};
+    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
+      updated[slot] = new Set();
+      if (slotRes.equipped) {
+        updated[slot].add(slotRes.equipped.uid);
+      }
+      for (const alt of slotRes.alternatives) {
+        updated[slot].add(alt.uid);
+      }
+    }
+    onSelectionChange(updated);
+  }, [resolved.slots, onSelectionChange]);
+
+  const toggleSlotAll = useCallback(
+    (slots: string[]) => {
+      const allSelected = slots.every((slot) => {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) return true;
+        const total = (slotRes.equipped ? 1 : 0) + slotRes.alternatives.length;
+        if (total === 0) return true;
+        return selectedUids[slot]?.size === total;
+      });
+
+      const updated = {
+        ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+      };
+
+      for (const slot of slots) {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) continue;
+        if (allSelected) {
+          updated[slot] = new Set();
+        } else {
+          updated[slot] = new Set();
+          if (slotRes.equipped) updated[slot].add(slotRes.equipped.uid);
+          for (const alt of slotRes.alternatives) {
+            updated[slot].add(alt.uid);
+          }
+        }
+      }
+      onSelectionChange(updated);
+    },
+    [resolved.slots, selectedUids, onSelectionChange]
+  );
+
   const toggleGroup = useCallback(
     (items: { uid: string; slot: string }[]) => {
       const allSelected = items.length > 0 && items.every((c) => selectedUids[c.slot]?.has(c.uid));
@@ -188,6 +234,8 @@ export function useTopGearState({
     openOptimize,
     openUpgradeMenu,
     deselectAll,
+    selectAll,
+    toggleSlotAll,
     toggleGroup,
     toggleItem,
   };

@@ -260,6 +260,16 @@ export default function UpgradeComparePage() {
     setSelectedSlots(next);
   };
 
+  const toggleAll = () => {
+    const allSlots = candidates.map((c) => c.slot);
+    const anyMissing = allSlots.some((s) => !selectedSlots.has(s));
+    if (anyMissing) {
+      setSelectedSlots(new Set(allSlots));
+    } else {
+      setSelectedSlots(new Set());
+    }
+  };
+
   if (!hasCharacter) {
     return (
       <p className="py-6 text-center text-sm text-muted">
@@ -382,9 +392,28 @@ export default function UpgradeComparePage() {
       {/* Upgradeable Items */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-widest text-muted">
-            Select Items to Upgrade
-          </p>
+          <div className="flex items-center gap-4">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted">
+              Select Items to Upgrade
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
+              >
+                All
+              </button>
+              <span className="h-3 w-px bg-zinc-700" />
+              <button
+                type="button"
+                onClick={() => setSelectedSlots(new Set())}
+                className="text-[11px] font-bold text-zinc-500 transition-colors hover:text-zinc-300"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
           {displayComboCount > 0 && (
             <span className="rounded-md bg-surface-2 px-2.5 py-1 font-mono text-xs text-white">
               {displayComboCount.toLocaleString()} combo{displayComboCount !== 1 ? 's' : ''}

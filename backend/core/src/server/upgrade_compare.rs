@@ -33,7 +33,7 @@ fn resolve_simc_binary_for_request(
     #[cfg(not(feature = "desktop"))]
     {
         if simc_path.exists() {
-            Ok(simc_path.clone())
+            Ok(simc_path.to_path_buf())
         } else {
             Err(format!("simc binary not found at: {}", simc_path.display()))
         }

@@ -1049,7 +1049,7 @@ fn extract_7z_archive(
         // failing to consume the reader can cause ChecksumVerificationFailed.
         // We extract everything, then clean up the optional entries afterward.
         let uncompressed_size = entry.size;
-            letres = sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path);
+        let res = sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path);
         extracted_bytes += uncompressed_size;
         updater.update_downloaded(extracted_bytes);
         res

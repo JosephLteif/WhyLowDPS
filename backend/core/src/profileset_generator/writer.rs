@@ -273,5 +273,8 @@ pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
     if item.is_catalyst {
         meta["is_catalyst"] = json!(true);
     }
+    if !item.upgrade_costs.is_empty() {
+        meta["upgrade_costs"] = json!(item.upgrade_costs);
+    }
     meta
 }

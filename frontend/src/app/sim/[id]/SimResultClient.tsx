@@ -801,6 +801,7 @@ export default function SimResultClient() {
             elapsedTime={r.elapsed_time_seconds as number | undefined}
             stageTimings={stageTimings}
             talentString={r.talent_string as string | undefined}
+            currencies={r.currencies as any}
           />
         </>
       ) : isStatWeights ? (
@@ -857,6 +858,7 @@ export default function SimResultClient() {
                       ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
                       : null
                   }
+                  currencies={r.currencies as any}
                 />
               </CollapsibleSection>
             )}

@@ -48,6 +48,7 @@ interface GearOverviewProps {
   upgradeSlots?: Set<string>;
   /** Slots to highlight as downgrades */
   downgradeSlots?: Set<string>;
+  currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
 
 export default function GearOverview({
@@ -56,6 +57,7 @@ export default function GearOverview({
   characterRenderUrl,
   upgradeSlots,
   downgradeSlots,
+  currencies,
 }: GearOverviewProps) {
   const allItemQueries = useMemo(() => {
     const seen = new Set<string>();
@@ -94,6 +96,59 @@ export default function GearOverview({
   const gemInfoMap = useGemInfo(allGemIds);
   useWowheadTooltips([itemInfoMap]);
 
+  const totalCostsDisplay = useMemo(() => {
+    if (!currencies) return null;
+
+    const manual: Record<string, number> = {};
+    let foundAny = false;
+    for (const it of Object.values(gear)) {
+      const upgradeCosts = (it as any).upgrade_costs || (it as any).costs;
+      if (!it.is_kept && upgradeCosts) {
+        for (const [cid, amt] of Object.entries(upgradeCosts)) {
+          manual[cid] = (manual[cid] || 0) + (amt as number);
+          foundAny = true;
+        }
+      }
+    }
+
+    if (!foundAny) return null;
+
+    const entries = Object.entries(manual).sort((a, b) => Number(a[0]) - Number(b[0]));
+    if (entries.length === 0) return null;
+
+    return (
+      <div className="mt-4 flex flex-wrap items-center gap-4 rounded-lg border border-border/50 bg-black/20 px-4 py-2">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+          Total Upgrade Cost
+        </span>
+        <div className="flex flex-wrap items-center gap-4">
+          {entries.map(([cid, amount]) => {
+            const meta = currencies[cid];
+            if (!meta) return null;
+            return (
+              <a
+                key={cid}
+                href={`https://www.wowhead.com/currency=${cid}`}
+                className="flex items-center gap-2 text-[14px] font-mono text-gold/90 no-underline"
+                data-wowhead={`currency=${cid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.preventDefault()}
+              >
+                <img
+                  src={getIconUrl(meta.icon)}
+                  alt={meta.name}
+                  className="h-5 w-5 rounded-sm border border-gold/30 shadow-sm"
+                />
+                <span>{amount}</span>
+              </a>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }, [gear, currencies]);
+
   if (Object.keys(gear).length === 0) return null;
 
   return (
@@ -109,7 +164,11 @@ export default function GearOverview({
         />
       )}
       <div className="relative">
-        <p className="mb-4 text-sm font-medium uppercase tracking-widest text-muted">{title}</p>
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <p className="text-sm font-medium uppercase tracking-widest text-muted">{title}</p>
+          {totalCostsDisplay && <div className="hidden md:block">{totalCostsDisplay}</div>}
+        </div>
+        {totalCostsDisplay && <div className="mb-4 md:hidden">{totalCostsDisplay}</div>}
         {(() => {
           const gridCols = characterRenderUrl ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2';
           return (

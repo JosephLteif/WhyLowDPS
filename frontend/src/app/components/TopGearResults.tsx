@@ -31,6 +31,7 @@ interface TopGearResultsProps {
   elapsedTime?: number;
   stageTimings?: Array<{ name: string; elapsed: number }>;
   talentString?: string;
+  currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
 
 function CollapsibleSection({
@@ -85,6 +86,7 @@ export default function TopGearResults({
   elapsedTime,
   stageTimings,
   talentString,
+  currencies,
 }: TopGearResultsProps) {
   const {
     groupMode,
@@ -238,6 +240,7 @@ export default function TopGearResults({
             characterRenderUrl={characterRenderUrl}
             upgradeSlots={upgradeSlots}
             downgradeSlots={downgradeSlots}
+            currencies={currencies}
           />
         </CollapsibleSection>
       )}
@@ -310,6 +313,7 @@ export default function TopGearResults({
                         itemInfoMap={itemInfoMap}
                         enchantInfoMap={enchantInfoMap}
                         gemInfoMap={gemInfoMap}
+                        currencies={currencies}
                       />
                     ))}
                   </div>
@@ -329,6 +333,7 @@ export default function TopGearResults({
             gemInfoMap={gemInfoMap}
             selectedResultName={selectedResultName}
             onSelectResult={setSelectedResultName}
+            currencies={currencies}
           />
         )}
       </CollapsibleSection>

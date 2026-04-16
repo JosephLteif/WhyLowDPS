@@ -129,6 +129,7 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         inventory_type,
         is_catalyst: false,
         can_catalyst: false,
+        ..Default::default()
     }
 }
 

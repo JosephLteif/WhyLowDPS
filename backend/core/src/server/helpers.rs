@@ -428,14 +428,25 @@ pub(super) fn spawn_staged_sim(
         {
             Ok(output) => {
                 let job_snap = store.get(&job_id);
-                let meta: Option<HashMap<String, Vec<Value>>> = job_snap
+                let combo_meta_val: Option<Value> = job_snap
                     .as_ref()
                     .and_then(|j| j.combo_metadata_json.as_ref())
-                    .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                    .and_then(|s| serde_json::from_str(s).ok());
+
+                let meta: Option<HashMap<String, Vec<Value>>> = combo_meta_val
+                    .as_ref()
                     .and_then(|v| v.get("_combo_metadata").cloned())
                     .and_then(|v| serde_json::from_value(v).ok());
 
                 let mut parsed = result_parser::parse_top_gear_result(&output.json, meta.as_ref());
+                
+                // Inject currencies if present in job metadata
+                if let Some(currencies) = combo_meta_val.as_ref().and_then(|v| v.get("currencies")) {
+                    if let Some(obj) = parsed.as_object_mut() {
+                        obj.insert("currencies".to_string(), currencies.clone());
+                    }
+                }
+
                 inject_realm(&mut parsed, &simc_input);
                 let result_str = serde_json::to_string(&parsed).unwrap_or_default();
                 let raw_str = serde_json::to_string(&output.json).ok();

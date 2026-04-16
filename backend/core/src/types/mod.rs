@@ -133,7 +133,7 @@ impl ItemInfo {
 
 // ---- Resolved Item (output of gear_resolver) ----
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ResolvedItem {
     /// Stable identity: "item_id:sorted_bonus_ids:origin:raw_slot"
     #[serde(default)]
@@ -195,6 +195,9 @@ pub struct ResolvedItem {
     /// Whether this item can be converted via Revival Catalyst.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub can_catalyst: bool,
+    /// Upgrade costs from the baseline equipped item (if this is an upgrade option).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub upgrade_costs: std::collections::HashMap<u64, u64>,
 }
 
 fn is_zero_i64(v: &i64) -> bool {

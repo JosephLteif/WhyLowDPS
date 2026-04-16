@@ -143,6 +143,7 @@ fn prepare_upgrade_compare(
             upgraded.origin = crate::types::ItemOrigin::Bags; // Marks as not baseline
             upgraded.bonus_ids = new_bonus_ids.clone();
             upgraded.ilevel = opt.ilevel as i64;
+            upgraded.upgrade_costs = opt.cumulative_costs.clone();
 
             let new_simc = bonus_re
                 .replace(&equipped.simc_string, |caps: &regex::Captures| {
@@ -405,6 +406,10 @@ pub(super) async fn create_upgrade_compare_sim(
     let meta_json = serde_json::to_string(&json!({
         "_combo_metadata": combo_metadata,
         "_combo_count": combo_count,
+        "currencies": prepared.upgrade_budget.keys().map(|&cid| {
+            let (name, icon) = crate::game_data::get_currency_info(cid).unwrap_or((format!("Currency {}", cid), "inv_misc_questionmark".to_string()));
+            (cid.to_string(), json!({ "id": cid, "name": name, "icon": icon }))
+        }).collect::<HashMap<String, Value>>(),
     }))
     .unwrap_or_default();
 

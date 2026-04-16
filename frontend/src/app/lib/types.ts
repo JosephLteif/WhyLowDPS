@@ -37,6 +37,9 @@ export interface ResultItem extends ResolvedItem {
   upgrade_levels?: number;
   encounter?: string;
   instance_name?: string;
+  __kind?: string;
+  costs?: Record<string, number>;
+  upgrade_costs?: Record<string, number>;
 }
 
 export interface TopGearResult {
@@ -47,6 +50,7 @@ export interface TopGearResult {
   talent_build?: string;
   talent_spec?: string;
   target_error?: number;
+  currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
 
 export interface SlotResolution {

@@ -647,6 +647,7 @@ fn make_resolved_item(
         inventory_type,
         is_catalyst: false,
         can_catalyst: false,
+        ..Default::default()
     }
 }
 

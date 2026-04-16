@@ -18,6 +18,7 @@ interface RankedResultsProps {
   gemInfoMap: Record<number, GemInfo>;
   selectedResultName: string | null;
   onSelectResult: (name: string) => void;
+  currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
 
 export default function RankedResults({
@@ -31,6 +32,7 @@ export default function RankedResults({
   gemInfoMap,
   selectedResultName,
   onSelectResult,
+  currencies,
 }: RankedResultsProps) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
@@ -54,6 +56,7 @@ export default function RankedResults({
           itemInfoMap={itemInfoMap}
           enchantInfoMap={enchantInfoMap}
           gemInfoMap={gemInfoMap}
+          currencies={currencies}
         />
       ))}
       {hasMore && (

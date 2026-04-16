@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { specDisplayName } from '../../lib/types';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
+import { getIconUrl } from '../../lib/useItemInfo';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import ItemTag from './ItemTag';
 
@@ -18,6 +19,7 @@ interface ResultRowProps {
   itemInfoMap: Record<number, ItemInfo>;
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
+  currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
 
 export default function ResultRow({
@@ -33,6 +35,7 @@ export default function ResultRow({
   itemInfoMap,
   enchantInfoMap,
   gemInfoMap,
+  currencies,
 }: ResultRowProps) {
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
   const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
@@ -73,6 +76,55 @@ export default function ResultRow({
     const newIlevel = calculateAverageIlevel(gearSet as any);
     return newIlevel - baseAvgIlevel;
   }, [equippedGear, baseAvgIlevel, result.items]);
+
+  const costsDisplay = useMemo(() => {
+    // Try to find pre-aggregated costs first
+    let costs = result.items.find((it) => it.__kind === 'total_upgrade_costs')?.costs;
+
+    // If not found, manually aggregate from individual items
+    if (!costs) {
+      const manual: Record<string, number> = {};
+      let foundAny = false;
+      for (const it of result.items) {
+        if (!it.is_kept && it.upgrade_costs) {
+          for (const [cid, amt] of Object.entries(it.upgrade_costs)) {
+            manual[cid] = (manual[cid] || 0) + amt;
+            foundAny = true;
+          }
+        }
+      }
+      if (foundAny) costs = manual;
+    }
+
+    if (!costs || !currencies) return null;
+
+    const entries = Object.entries(costs).sort((a, b) => Number(a[0]) - Number(b[0]));
+    if (entries.length === 0) return null;
+
+    return (
+      <div className="flex items-center gap-2">
+        {entries.map(([cid, amount]) => {
+          const meta = currencies[cid];
+          if (!meta) return null;
+          return (
+            <a
+              key={cid}
+              href={`https://www.wowhead.com/currency=${cid}`}
+              className="flex items-center gap-1 text-[11px] text-gold/70 no-underline"
+              title={meta.name}
+              data-wowhead={`currency=${cid}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.preventDefault()}
+            >
+              <img src={getIconUrl(meta.icon)} alt="" className="h-3 w-3 rounded-sm opacity-80" />
+              <span className="font-mono">{amount}</span>
+            </a>
+          );
+        })}
+      </div>
+    );
+  }, [result.items, currencies]);
 
   return (
     <div
@@ -126,6 +178,7 @@ export default function ResultRow({
                     gem={it.gem_id ? gemInfoMap[it.gem_id] : undefined}
                   />
                 ))}
+                {costsDisplay}
                 {talentBadge}
               </div>
             );

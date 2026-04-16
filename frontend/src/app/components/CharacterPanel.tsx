@@ -541,6 +541,7 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
 
 function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
   const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
+  const [showAll, setShowAll] = useState(false);
 
   const raids = useMemo(() => {
     if (!raidEncounters || typeof raidEncounters !== 'object') return [];
@@ -714,7 +715,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
       </div>
       {visibleRaids.length > 0 ? (
         <div className="space-y-4">
-          {visibleRaids.map((raid) => (
+          {(showAll ? visibleRaids : visibleRaids.slice(0, 3)).map((raid) => (
             <div key={raid.name} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
               <p className="mb-1 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
               <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">
@@ -728,6 +729,15 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
               </div>
             </div>
           ))}
+          {visibleRaids.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-2 text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
+            >
+              {showAll ? 'Show Less' : `View All (${visibleRaids.length})`}
+            </button>
+          )}
         </div>
       ) : (
         <p className="text-[11px] italic text-zinc-600">

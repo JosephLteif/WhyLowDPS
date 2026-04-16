@@ -9,7 +9,7 @@ import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
 import { getSimcStatus, isDesktop } from '../lib/api';
-import { specDisplayName } from '../lib/types';
+import { specDisplayName, CLASS_COLORS } from '../lib/types';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
@@ -359,6 +359,12 @@ function SimcInputEditor({
 
   const lines = value.split('\n');
 
+  // Shared typography classes to ensure pixel-perfect alignment.
+  // We use whitespace-pre to match how most editors handle SimC strings,
+  // and explicit line-height to prevent vertical drift.
+  const typographyClasses =
+    'font-mono text-[13px] leading-[1.6] whitespace-pre px-4 py-3';
+
   return (
     <div className="space-y-2">
       <div className="flex justify-end">
@@ -371,10 +377,11 @@ function SimcInputEditor({
         </button>
       </div>
       <div className="relative w-full rounded-lg border border-border bg-surface-2 shadow-sm transition-all duration-150 focus-within:border-gold/50 focus-within:ring-2 focus-within:ring-gold/20">
+        {/* The highlight layer (Pre) */}
         <pre
           ref={preRef}
           aria-hidden
-          className={`${editorHeight} overflow-auto px-3.5 py-2.5 font-mono text-[13px] leading-relaxed`}
+          className={`pointer-events-none absolute inset-0 ${editorHeight} w-full overflow-hidden scrollbar-none ${typographyClasses}`}
         >
           {value ? (
             lines.map((line, idx) => (
@@ -384,16 +391,17 @@ function SimcInputEditor({
               </span>
             ))
           ) : (
-            <span className="text-zinc-500">{placeholder}</span>
+            <span className="text-zinc-500 opacity-0">{placeholder}</span>
           )}
         </pre>
+        {/* The interactive layer (Textarea) */}
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onScroll={syncScroll}
           placeholder={placeholder}
           spellCheck={false}
-          className={`absolute inset-0 ${editorHeight} w-full overflow-auto bg-transparent px-3.5 py-2.5 font-mono text-[13px] leading-relaxed text-transparent placeholder-zinc-500 caret-zinc-100 focus:outline-none`}
+          className={`relative block ${editorHeight} w-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-100 placeholder-zinc-500 focus:outline-none ${typographyClasses}`}
         />
       </div>
     </div>
@@ -460,73 +468,135 @@ function CharacterInfoBar({
           .replace(/'/g, '')
           .replace(/\s+/g, '-')}/${info.name.toLowerCase()}`
       : null;
-  const summaryBits = [
-    info.level ? `lvl ${info.level}` : null,
-    info.race ? info.race : null,
-    info.region && info.server ? `${info.region.toUpperCase()}/${info.server}` : null,
-    info.role ? info.role : null,
-  ].filter((v): v is string => Boolean(v));
 
-  const detailBits = [
-    info.professions ? `professions ${info.professions}` : null,
-    info.lootSpec ? `loot ${info.lootSpec}` : null,
-    info.addonVersion ? `addon ${info.addonVersion}` : null,
-    info.wowVersion ? `wow ${info.wowVersion}` : null,
-    info.requiresVersion ? `requires ${info.requiresVersion}` : null,
-    info.talentsCount > 0
-      ? `${info.talentsCount} talent block${info.talentsCount === 1 ? '' : 's'}`
-      : null,
-    info.savedLoadouts > 0
-      ? `${info.savedLoadouts} saved loadout${info.savedLoadouts === 1 ? '' : 's'}`
-      : null,
-    info.checksum ? `checksum ${info.checksum}` : null,
-  ].filter((v): v is string => Boolean(v));
+  const classColor = CLASS_COLORS[info.className.toLowerCase().replace(/\s+/g, '')] || '#fff';
 
   return (
-    <div className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3.5 py-2">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-gold/70" />
-          <p className="text-sm font-medium text-zinc-100">
-            {info.name}
-            <span className="ml-1.5 font-normal text-zinc-300">
-              {specDisplayName(info.spec)} {info.className}
-            </span>
-          </p>
+    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] transition-all hover:border-white/10 hover:bg-white/[0.05]">
+      <div className="flex items-center justify-between gap-4 p-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/40 text-[10px] font-bold uppercase tracking-tighter shadow-inner"
+            style={{ color: classColor }}
+          >
+            {info.spec.slice(0, 3)}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-[15px] font-bold tracking-tight text-white">
+                {info.name}
+              </span>
+              {info.level && (
+                <span className="shrink-0 rounded bg-white/5 px-1.5 py-0.5 font-mono text-[10px] font-medium text-zinc-500">
+                  L{info.level}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 truncate text-[12px] font-medium">
+              <span style={{ color: classColor }}>{specDisplayName(info.spec)}</span>
+              <span className="text-zinc-500">{info.className}</span>
+              <span className="mx-0.5 h-1 w-1 rounded-full bg-zinc-700" />
+              <span className="text-zinc-400">
+                {info.region?.toUpperCase()}·{info.server}
+              </span>
+            </div>
+          </div>
         </div>
+
         <div className="flex items-center gap-2">
           {profileUrl && (
             <Link
               href={profileUrl}
-              className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
+              className="hidden rounded-lg bg-gold/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gold transition-all hover:bg-gold/20 sm:block"
             >
-              View Profile
+              Profile
             </Link>
           )}
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-medium text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-            aria-expanded={expanded}
+            className={`rounded-lg p-2 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white ${expanded ? 'bg-white/5 text-white' : ''}`}
           >
-            {expanded ? 'Collapse' : 'Expand'}
+            <svg
+              className={`h-4 w-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+            </svg>
           </button>
         </div>
       </div>
-      <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-zinc-500">
-        {summaryBits.map((bit) => (
-          <span key={bit} className="rounded-full bg-black/20 px-2 py-0.5">
-            {bit}
-          </span>
-        ))}
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-white/5 bg-black/20 px-4 py-2 text-[11px] font-medium">
+        {info.role && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-black">Role</span>
+            <span className="text-zinc-300">{info.role}</span>
+          </div>
+        )}
+        {info.race && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-black">Race</span>
+            <span className="text-zinc-300">{info.race}</span>
+          </div>
+        )}
+        {info.lootSpec && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-black">Loot</span>
+            <span className="text-zinc-300">{info.lootSpec}</span>
+          </div>
+        )}
       </div>
-      {expanded && detailBits.length > 0 && (
-        <div className="grid gap-1.5 pt-1 text-[11px] text-zinc-600 sm:grid-cols-2">
-          {detailBits.map((bit) => (
-            <div key={bit} className="rounded-md bg-black/20 px-2 py-1 leading-4">
-              {bit}
+
+      {expanded && (
+        <div className="grid grid-cols-2 gap-x-8 gap-y-3 border-t border-white/5 bg-black/40 p-4">
+          <div className="space-y-3">
+            <div>
+              <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Addon Info</p>
+              <div className="space-y-1 text-[11px]">
+                <div className="flex justify-between border-b border-white/[0.03] pb-1">
+                  <span className="text-zinc-500">Version</span>
+                  <span className="text-zinc-300">{info.addonVersion || 'Unknown'}</span>
+                </div>
+                <div className="flex justify-between border-b border-white/[0.03] pb-1">
+                  <span className="text-zinc-500">WoW Version</span>
+                  <span className="text-zinc-300">{info.wowVersion || 'Unknown'}</span>
+                </div>
+              </div>
             </div>
-          ))}
+            <div>
+              <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Sim Info</p>
+              <div className="space-y-1 text-[11px]">
+                <div className="flex justify-between border-b border-white/[0.03] pb-1">
+                  <span className="text-zinc-500">Talent Blocks</span>
+                  <span className="text-zinc-300">{info.talentsCount}</span>
+                </div>
+                <div className="flex justify-between border-b border-white/[0.03] pb-1">
+                  <span className="text-zinc-500">Saved Loadouts</span>
+                  <span className="text-zinc-300">{info.savedLoadouts}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {info.professions && (
+              <div>
+                <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Professions</p>
+                <p className="text-[11px] leading-relaxed text-zinc-300">{info.professions}</p>
+              </div>
+            )}
+            {info.checksum && (
+              <div>
+                <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Verification</p>
+                <div className="rounded border border-emerald-500/10 bg-emerald-500/5 px-2 py-1 font-mono text-[10px] text-emerald-400/80">
+                  {info.checksum}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -546,18 +616,65 @@ function DungeonInfoBar({
   };
 }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg bg-surface-2 px-3.5 py-2">
-      <div className="flex items-center gap-2">
-        <div className="h-2 w-2 rounded-full bg-sky-400/70" />
-        <p className="text-xs font-medium text-zinc-300">{info.title}</p>
+    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] transition-all hover:border-white/10 hover:bg-white/[0.05]">
+      <div className="flex items-center gap-3 p-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-sky-500/10 bg-sky-500/5 text-sky-400 shadow-inner">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L16 4m0 13V4m0 0L9 7"
+            />
+          </svg>
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[15px] font-bold tracking-tight text-white">
+              {info.dungeon || 'Unknown Dungeon'}
+            </span>
+            {info.level && (
+              <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] font-black text-sky-400">
+                +{info.level}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 truncate text-[12px] font-medium text-zinc-500">
+            <span>{info.title}</span>
+            {info.maxTime && (
+              <>
+                <span className="mx-0.5 h-1 w-1 rounded-full bg-zinc-700" />
+                <span className="flex items-center gap-1">
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  {Math.round(Number(info.maxTime) / 60)}m
+                </span>
+              </>
+            )}
+            {info.pullCount && (
+              <>
+                <span className="mx-0.5 h-1 w-1 rounded-full bg-zinc-700" />
+                <span>{info.pullCount} Pulls</span>
+              </>
+            )}
+          </div>
+        </div>
       </div>
-      <p className="text-[11px] text-zinc-500">
-        {info.dungeon ? info.dungeon : 'Dungeon route import'}
-        {info.level ? ` · +${info.level}` : ''}
-        {info.maxTime ? ` · ${Math.round(Number(info.maxTime) / 60)}m` : ''}
-        {info.pullCount ? ` · ${info.pullCount} pulls` : ''}
-        {info.extras.length > 0 ? ` · ${info.extras.join(' · ')}` : ''}
-      </p>
+      {info.extras.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-white/5 bg-black/20 px-4 py-2">
+          {info.extras.map((extra) => (
+            <span key={extra} className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+              {extra}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

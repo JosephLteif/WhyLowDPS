@@ -76,6 +76,11 @@ struct SystemInfo {
     version: String,
 }
 
+#[derive(serde::Serialize)]
+struct ClipboardTextResponse {
+    text: String,
+}
+
 #[tauri::command]
 async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
     let app_data_dir = app
@@ -124,69 +129,14 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
     })
 }
 
-#[tauri::command]
-async fn get_os_clipboard_history() -> Result<Vec<String>, String> {
-    #[cfg(target_os = "windows")]
-    {
-        use windows::ApplicationModel::DataTransfer::{Clipboard, StandardDataFormats};
-
-        let history_result = Clipboard::GetHistoryItemsAsync()
-            .map_err(|e| format!("Clipboard::GetHistoryItemsAsync failed: {:?}", e))?
-            .get()
-            .map_err(|e| format!("IAsyncOperation::get failed: {:?}", e))?;
-
-        let status = history_result
-            .Status()
-            .map_err(|e| format!("ClipboardHistoryItemsResult::Status failed: {:?}", e))?;
-        if status
-            != windows::ApplicationModel::DataTransfer::ClipboardHistoryItemsResultStatus::Success
-        {
-            return Ok(vec![]);
-        }
-
-        let items = history_result
-            .Items()
-            .map_err(|e| format!("ClipboardHistoryItemsResult::Items failed: {:?}", e))?;
-        let mut result = Vec::new();
-
-        for item in items {
-            let content = match item.Content() {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            
-            let format_text = match StandardDataFormats::Text() {
-                Ok(f) => f,
-                Err(_) => continue,
-            };
-
-            let has_text = content.Contains(&format_text).unwrap_or(false);
-
-            if has_text {
-                if let Ok(text_op) = content.GetTextAsync() {
-                    if let Ok(hstring) = text_op.get() {
-                        result.push(hstring.to_string());
-                    }
-                }
-            }
-        }
-        Ok(result)
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        Ok(vec![])
-    }
-}
-
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             open_auth_window,
-            get_system_info,
-            get_os_clipboard_history
+            get_system_info
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

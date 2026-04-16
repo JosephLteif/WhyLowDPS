@@ -19,7 +19,6 @@ import { useTalentTree } from '../lib/useTalentTree';
 import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
 import { decodeHeader } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
-import { generateSimcString } from '../lib/simc-generator';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -116,7 +115,6 @@ export default function CharacterPanel({
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const armoryUrl = `https://worldofwarcraft.blizzard.com/en-us/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`;
 
-  const [copied, setCopied] = useState(false);
   const itemsBySlot = useMemo(() => {
     const map: Record<string, BlizzardItem> = {};
     for (const item of equipment.equipped_items || []) {
@@ -208,18 +206,6 @@ export default function CharacterPanel({
       return null;
     }
   }, [activeLoadout, tree, specId, activeSpec]);
-
-  const handleCopySimc = () => {
-    const simcString = generateSimcString(
-      { name, realm, region, race, level, ...statistics, class: characterClass, professions },
-      equipment,
-      talentString,
-      specName
-    );
-    navigator.clipboard.writeText(simcString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
   // --- End Talent & SimC Logic ---
 
   const allItemQueries = useMemo(() => {
@@ -290,18 +276,6 @@ export default function CharacterPanel({
         >
           Raider.io
         </a>
-
-        <div className="mx-2 h-4 w-px bg-white/10" />
-
-        <button
-          disabled
-          className="flex cursor-not-allowed items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-bold text-zinc-500 opacity-50"
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z" />
-          </svg>
-          Copy SimC String (Parked)
-        </button>
       </div>
 
       {/* Upper Section: Gear & Stats */}
@@ -944,7 +918,6 @@ function TalentsCard({
   tree: any;
 }) {
   const loading = specId !== null && !tree;
-  const [copiedTalentTree, setCopiedTalentTree] = useState(false);
 
   if (!activeSpec) {
     return (
@@ -974,19 +947,6 @@ function TalentsCard({
             Specialization: <span className="text-gold">{activeSpec.specialization.name}</span>
           </h1>
           <div className="flex items-center gap-2">
-            {talentString && (
-              <button
-                type="button"
-                onClick={() => {
-                  void navigator.clipboard.writeText(talentString);
-                  setCopiedTalentTree(true);
-                  setTimeout(() => setCopiedTalentTree(false), 1500);
-                }}
-                className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-              >
-                {copiedTalentTree ? 'Copied' : 'Copy Talent Tree'}
-              </button>
-            )}
             {loading && (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
             )}

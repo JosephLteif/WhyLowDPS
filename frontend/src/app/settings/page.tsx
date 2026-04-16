@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
+import { invoke } from '@tauri-apps/api/core';
 import {
   API_URL,
   downloadLatestSimc,
   fetchJson,
   getSimcStatus,
   isDesktop,
+  isDesktopRuntime,
   type SimcStatus,
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
@@ -78,8 +80,6 @@ export default function SettingsPage() {
     setMaxCombinations,
     autoClipboardPasteSimc,
     setAutoClipboardPasteSimc,
-    showAllClipboardSimcOptions,
-    setShowAllClipboardSimcOptions,
     dataCacheRefreshMinutes,
     setDataCacheRefreshMinutes,
   } = useSimContext();
@@ -130,6 +130,55 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [clipboardStatus, setClipboardStatus] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>(
+    'unknown'
+  );
+
+  const refreshClipboardStatus = useCallback(async () => {
+    if (typeof navigator === 'undefined' || !navigator.permissions) return;
+    try {
+      const status = await navigator.permissions.query({ name: 'clipboard-read' as PermissionName });
+      setClipboardStatus(status.state as any);
+      status.onchange = () => {
+        setClipboardStatus(status.state as any);
+      };
+    } catch {
+      setClipboardStatus('unknown');
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshClipboardStatus();
+  }, [refreshClipboardStatus]);
+
+  const requestClipboardAccess = async () => {
+    try {
+      console.log('[Settings] Requesting clipboard access...');
+      if (isDesktop) {
+        console.log('[Settings] Invoking get_clipboard_text...');
+        const res = await invoke<any>('get_clipboard_text');
+        console.log('[Settings] Invoke returned:', res);
+        const text = res?.text || '';
+        console.log('[Settings] Desktop clipboard text length:', text.length);
+        if (text) {
+          setMessage({ 
+            type: 'success', 
+            text: `Desktop clipboard access active. Current text starts with: ${text.substring(0, 30)}...` 
+          });
+        } else {
+          setMessage({ type: 'success', text: 'Desktop clipboard access active (clipboard is empty).' });
+        }
+      } else if (navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        await refreshClipboardStatus();
+        console.log('[Settings] Browser clipboard text length:', text.length);
+        setMessage({ type: 'success', text: 'Browser clipboard access granted.' });
+      }
+    } catch (err: any) {
+      console.error('[Settings] Clipboard access failed:', err);
+      setMessage({ type: 'error', text: `Clipboard access failed: ${err.message || String(err)}` });
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -891,54 +940,71 @@ export default function SettingsPage() {
           export box if it looks like a valid SimC string.
         </p>
 
-        <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-zinc-200">Auto paste latest SimC from clipboard</p>
-            <p className="text-[13px] text-zinc-500">
-              Read the latest clipboard entry and automatically paste it into the main input if it
-              looks like a SimC profile.
-            </p>
+        <div className="space-y-4">
+          <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-zinc-200">Clipboard Access Status</p>
+              <p className="text-[13px] text-zinc-500">
+                {isDesktop ? (
+                  'System Desktop Integration'
+                ) : (
+                  <>
+                    Browser Status:{' '}
+                    <span className={`font-bold uppercase tracking-tight ${
+                      clipboardStatus === 'granted' ? 'text-emerald-400' :
+                      clipboardStatus === 'denied' ? 'text-red-400' : 'text-amber-400'
+                    }`}>
+                      {clipboardStatus}
+                    </span>
+                  </>
+                )}
+              </p>
+            </div>
+            {!isDesktop && clipboardStatus !== 'granted' && (
+              <button
+                type="button"
+                onClick={requestClipboardAccess}
+                className="rounded-md bg-gold/10 px-3 py-1.5 text-xs font-bold text-gold ring-1 ring-inset ring-gold/30 transition-colors hover:bg-gold/20"
+              >
+                Grant Access
+              </button>
+            )}
+            {isDesktop && (
+               <button
+               type="button"
+               onClick={requestClipboardAccess}
+               className="rounded-md bg-white/5 px-3 py-1.5 text-xs font-bold text-zinc-300 ring-1 ring-inset ring-white/10 transition-colors hover:bg-white/10"
+             >
+               Test Access
+             </button>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={() => setAutoClipboardPasteSimc(!autoClipboardPasteSimc)}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              autoClipboardPasteSimc ? 'bg-gold' : 'border border-border bg-surface'
-            }`}
-            aria-pressed={autoClipboardPasteSimc}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
-                autoClipboardPasteSimc ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
-              }`}
-            />
-          </button>
-        </div>
 
-        <div className="mt-4 flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-zinc-200">
-              Keep history of all SimC profiles from clipboard
-            </p>
-            <p className="text-[13px] text-zinc-500">
-              Loads from Windows OS Clipboard History (Win+V) if available on Desktop, or maintains
-              an internal app history on Web.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowAllClipboardSimcOptions(!showAllClipboardSimcOptions)}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              showAllClipboardSimcOptions ? 'bg-gold' : 'border border-border bg-surface'
-            }`}
-            aria-pressed={showAllClipboardSimcOptions}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
-                showAllClipboardSimcOptions ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+          <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-zinc-200">
+                Auto paste latest SimC from clipboard
+              </p>
+              <p className="text-[13px] text-zinc-500">
+                Read the latest clipboard entry and automatically paste it into the main input if it
+                looks like a SimC profile.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoClipboardPasteSimc(!autoClipboardPasteSimc)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                autoClipboardPasteSimc ? 'bg-gold' : 'border border-border bg-surface'
               }`}
-            />
-          </button>
+              aria-pressed={autoClipboardPasteSimc}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+                  autoClipboardPasteSimc ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+                }`}
+              />
+            </button>
+          </div>
         </div>
       </section>
 

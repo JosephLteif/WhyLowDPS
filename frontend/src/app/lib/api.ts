@@ -1,13 +1,30 @@
-export const isDesktop =
-  typeof window !== 'undefined' &&
-  (window.location.protocol === 'tauri:' ||
+export function isDesktopRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.location.protocol === 'tauri:' ||
     window.location.protocol === 'asset:' ||
     window.location.hostname === 'tauri.localhost' ||
-    (window as any).__TAURI__ ||
-    (window as any).__TAURI_METADATA__ ||
-    (window as any).__TAURI_INTERNALS__ ||
-    process.env.DESKTOP_BUILD ||
-    process.env.NEXT_PUBLIC_DESKTOP_BUILD);
+    !!(window as any).__TAURI__ ||
+    !!(window as any).__TAURI_METADATA__ ||
+    !!(window as any).__TAURI_INTERNALS__ ||
+    !!(window as any).__TAURI_IPC__ ||
+    process.env.DESKTOP_BUILD === 'true' ||
+    process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true' ||
+    process.env.DESKTOP_BUILD === true ||
+    process.env.NEXT_PUBLIC_DESKTOP_BUILD === true
+  );
+}
+
+export const isDesktop = isDesktopRuntime();
+
+if (typeof window !== 'undefined') {
+  console.log('[WhyLowDps] Mode:', isDesktop ? 'Desktop' : 'Web');
+  if (!isDesktop) {
+    console.log('[WhyLowDps] Protocol:', window.location.protocol);
+    console.log('[WhyLowDps] Hostname:', window.location.hostname);
+  }
+}
+
 export const API_URL = isDesktop ? 'http://localhost:17384' : '';
 
 export const TOKEN_KEY = 'whylowdps_auth_token';

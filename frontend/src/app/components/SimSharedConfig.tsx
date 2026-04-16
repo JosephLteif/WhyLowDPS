@@ -225,14 +225,14 @@ function looksLikeSimcInput(input: string) {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
   const hasChecksum = lines.some((line) => /^#\s*Checksum:/i.test(line));
   const hasSimcKeyValue = lines.some((line) =>
-    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name|server|region|spec|talents)\s*=/.test(
+    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name|server|region|spec|talents)\s*=/i.test(
       line
     )
   );
-  const hasArmoryLine = lines.some((line) => /^armory\s*=/.test(line));
+  const hasArmoryLine = lines.some((line) => /^armory\s*=/i.test(line));
   const hasCharacterHeader = lines.some((line) => /^\w+="[^"]+"/.test(line));
   const hasDungeonRoute = lines.some((line) =>
-    /^(?:dungeon_route|route|mythic_plus_route|mplus_route|dungeon|instance|keystone_level|mythic_plus_level)\s*=/.test(
+    /^(?:dungeon_route|route|mythic_plus_route|mplus_route|dungeon|instance|keystone_level|mythic_plus_level)\s*=/i.test(
       line
     )
   );
@@ -260,7 +260,27 @@ function splitSimcProfiles(input: string): string[] {
     profiles.push(currentProfile.join('\n'));
   }
 
-  return profiles.filter((p) => looksLikeSimcInput(p));
+  return profiles
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && looksLikeSimcInput(p));
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error('timeout')), timeoutMs);
+    }),
+  ]);
+}
+
+function normalizeClipboardTextPayload(payload: unknown): string {
+  if (typeof payload === 'string') return payload;
+  if (payload && typeof payload === 'object' && 'text' in payload) {
+    const text = (payload as { text?: unknown }).text;
+    return typeof text === 'string' ? text : '';
+  }
+  return '';
 }
 
 function ClipboardBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -1575,13 +1595,9 @@ export default function SimSharedConfig() {
     simcFooter,
     setSimcFooter,
     autoClipboardPasteSimc,
-    showAllClipboardSimcOptions,
-    setShowAllClipboardSimcOptions,
-    clipboardSimcHistory,
-    setClipboardSimcHistory,
-    addToClipboardSimcHistory,
   } = useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
+
   const detectedCharacterInfo = useMemo(() => {
     const info = parseCharacterInfo(simcInput);
     return info?.kind === 'character' ? info : null;
@@ -1609,125 +1625,93 @@ export default function SimSharedConfig() {
     normalizedPath === '/stat-weights' ||
     normalizedPath === '/upgrade-compare';
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (!autoClipboardPasteSimc && !showAllClipboardSimcOptions) return;
+  const readClipboardText = useCallback(async (): Promise<string> => {
+    try {
+      // Native desktop invoke can be slower on some systems; avoid aggressive timeout here.
+      const raw = await invoke<unknown>('get_clipboard_text');
+      const normalized = normalizeClipboardTextPayload(raw);
+      if (normalized) return normalized;
+    } catch {}
 
+    if (navigator.clipboard?.readText) {
+      try {
+        return await withTimeout(navigator.clipboard.readText(), 2500);
+      } catch {}
+    }
+    return '';
+  }, []);
+
+  useEffect(() => {
+    // On mount, capture current clipboard so we only auto-paste *new* changes.
+    void readClipboardText().then(text => {
+      if (text) lastAppliedClipboardRef.current = text.trim();
+    });
+  }, [readClipboardText]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !autoClipboardPasteSimc) return;
     let cancelled = false;
 
-    const readClipboardIntoSimc = async () => {
-      if (!document.hasFocus()) return;
-
+    const readClipboardIntoSimc = async (isFocusTrigger = false) => {
       try {
-        if (showAllClipboardSimcOptions && isDesktop) {
-          // Attempt to fetch actual OS clipboard history (Windows only via Tauri command)
-          try {
-            const osHistory = await invoke<string[]>('get_os_clipboard_history');
-            if (osHistory && osHistory.length > 0) {
-              const allProfiles: string[] = [];
-              for (const entry of osHistory) {
-                allProfiles.push(...splitSimcProfiles(entry));
-              }
-              if (allProfiles.length > 0) {
-                // Take unique profiles and update history
-                const unique = Array.from(new Set(allProfiles)).slice(0, 15);
-                setClipboardSimcHistory(unique);
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to fetch OS clipboard history:', e);
-          }
+        if (document.visibilityState === 'hidden') return;
+        const text = await readClipboardText();
+        if (cancelled || !text) return;
+
+        // Always track the last seen clipboard text to avoid re-processing non-SimC text repeatedly.
+        // We trim to handle trailing whitespace differences that can happen on some systems.
+        const trimmedText = text.trim();
+        if (trimmedText === lastAppliedClipboardRef.current) {
+          return;
+        }
+        lastAppliedClipboardRef.current = trimmedText;
+
+        const profiles = splitSimcProfiles(text);
+        if (profiles.length === 0) {
+          if (isFocusTrigger) console.log('[SimSharedConfig] Clipboard content is not a SimC profile.');
+          return;
         }
 
-        if (!navigator.clipboard?.readText) return;
-
-        const clipboardText = await navigator.clipboard.readText();
-        if (cancelled || !clipboardText) return;
-        if (clipboardText === lastAppliedClipboardRef.current) return;
-
-        // Split text into individual profiles
-        const profiles = splitSimcProfiles(clipboardText);
-        if (profiles.length === 0) return;
-
-        lastAppliedClipboardRef.current = clipboardText;
-
-        if (showAllClipboardSimcOptions && !isDesktop) {
-          // Internal history fallback for web (only tracks things copied while app was open)
-          // Add them in reverse order to keep the top of the text at the top of history
-          for (let i = profiles.length - 1; i >= 0; i--) {
-            addToClipboardSimcHistory(profiles[i]);
-          }
+        const first = profiles[0];
+        // If it's already what we have in the editor, skip to avoid overwrite.
+        if (first.trim() === simcInputRef.current.trim()) {
+          if (isFocusTrigger) console.log('[SimSharedConfig] Clipboard matches current input, skipping.');
+          return;
         }
 
-        if (autoClipboardPasteSimc) {
-          const firstProfile = profiles[0];
-          // We use a fresh check here; if the user manually changed it to exactly what is in the clipboard,
-          // we don't want to "paste" it again (triggering banners etc)
-          if (firstProfile === simcInputRef.current) return;
-          const detected = parseCharacterInfo(firstProfile);
-
-          if (detected?.kind === 'dungeon') {
-            setSimcFooter(firstProfile);
-            const summaryParts = [detected.dungeon || detected.title];
-            if (detected.level) summaryParts.push(`+${detected.level}`);
-            if (detected.maxTime)
-              summaryParts.push(`${Math.round(Number(detected.maxTime) / 60)}m`);
-            if (detected.pullCount) summaryParts.push(`${detected.pullCount} pulls`);
-            setBanner({
-              text: `Detected dungeon route and pasted to Footer: ${summaryParts.join(' · ')}`,
-              id: Date.now(),
-            });
-          } else {
-            setSimcInput(firstProfile);
-            const firstLine =
-              firstProfile
-                .split(/\r?\n/)
-                .find((line) => line.trim())
-                ?.trim() || '';
-            setBanner({
-              text: firstLine
-                ? `Detected and pasted: ${firstLine}`
-                : 'Detected and pasted SimC export.',
-              id: Date.now(),
-            });
-          }
+        const info = parseCharacterInfo(first);
+        if (info?.kind === 'dungeon') {
+          console.log('[SimSharedConfig] Auto-pasting dungeon route:', info.title);
+          setSimcFooter(first);
+          setBanner({ text: `Detected dungeon route: ${info.title}`, id: Date.now() });
+        } else if (info?.kind === 'character') {
+          console.log('[SimSharedConfig] Auto-pasting character:', info.name);
+          setSimcInput(first);
+          setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
+        } else {
+          console.log('[SimSharedConfig] Detected SimC content but could not parse info, pasting anyway.');
+          setSimcInput(first);
+          setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
         }
-      } catch {
-        // Ignore clipboard permission or platform errors.
+      } catch (err) {
+        console.error('[SimSharedConfig] Auto-paste failed:', err);
       }
     };
 
-    const onFocus = () => {
-      void readClipboardIntoSimc();
-    };
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        void readClipboardIntoSimc();
-      }
-    };
+    const onFocus = () => void readClipboardIntoSimc(true);
+    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void readClipboardIntoSimc(true); };
 
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibilityChange);
-
-    // Polling to catch changes while the app is already focused
-    const pollTimer = window.setInterval(() => {
-      void readClipboardIntoSimc();
-    }, 2000);
+    const poll = setInterval(() => void readClipboardIntoSimc(false), 2000);
 
     return () => {
       cancelled = true;
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.clearInterval(pollTimer);
+      clearInterval(poll);
     };
-  }, [
-    autoClipboardPasteSimc,
-    showAllClipboardSimcOptions,
-    addToClipboardSimcHistory,
-    setSimcFooter,
-    setSimcInput,
-  ]);
+  }, [autoClipboardPasteSimc, readClipboardText, setSimcFooter, setSimcInput]);
 
   useEffect(() => {
     if (!banner) return;
@@ -1758,48 +1742,6 @@ export default function SimSharedConfig() {
       <div className="card space-y-3 p-5">
         <div className="flex items-center justify-between">
           <label className="label-text">SimC Addon Export</label>
-          {showAllClipboardSimcOptions && clipboardSimcHistory.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                Clipboard History
-              </span>
-              <div className="relative inline-block">
-                <select
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) {
-                      setSimcInput(val);
-                      // Reset select
-                      e.target.selectedIndex = 0;
-                    }
-                  }}
-                  className="rounded border border-border bg-surface-2 px-2 py-1 text-[11px] text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white focus:border-gold/50 focus:outline-none"
-                >
-                  <option value="">Select from recent...</option>
-                  {clipboardSimcHistory.map((historyText, i) => {
-                    const firstLine =
-                      historyText
-                        .split(/\r?\n/)
-                        .find((l) => l.trim())
-                        ?.trim() || `Option ${i + 1}`;
-                    const charInfo = parseCharacterInfo(historyText);
-                    const label =
-                      charInfo?.kind === 'character'
-                        ? `${charInfo.name} - ${charInfo.spec} ${charInfo.className}`
-                        : charInfo?.kind === 'dungeon'
-                          ? `Dungeon: ${charInfo.title}`
-                          : firstLine;
-
-                    return (
-                      <option key={i} value={historyText}>
-                        {label.length > 40 ? label.substring(0, 37) + '...' : label}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-            </div>
-          )}
         </div>
         <SimcInputEditor
           value={simcInput}

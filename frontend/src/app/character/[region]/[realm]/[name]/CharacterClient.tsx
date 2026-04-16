@@ -4,7 +4,6 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import { API_URL, fetchJson } from '../../../../lib/api';
 import CharacterPanel from '../../../../components/CharacterPanel';
-import { generateSimcString } from '../../../../lib/simc-generator';
 
 export default function CharacterClient() {
   const params = useParams();
@@ -41,7 +40,6 @@ export default function CharacterClient() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [copying, setCopying] = useState(false);
 
   const fetchCharacterData = useCallback(
     async (refresh = false) => {
@@ -92,20 +90,6 @@ export default function CharacterClient() {
   useEffect(() => {
     fetchCharacterData();
   }, [fetchCharacterData]);
-
-  const handleCopySimc = async () => {
-    if (!data) return;
-    setCopying(true);
-    try {
-      const simc = generateSimcString(data.profile, data.equipment);
-      await navigator.clipboard.writeText(simc);
-      // Subtle success feedback could be added here
-    } catch (err) {
-      console.error('Failed to copy SimC:', err);
-    } finally {
-      setTimeout(() => setCopying(false), 1000);
-    }
-  };
 
   if (loading) {
     return (

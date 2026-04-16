@@ -354,6 +354,15 @@ export default function SimResultClient() {
   const activeStageStartedAtRef = useRef<number | null>(null);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const info = useMemo(() => {
+    if (!job?.simc_input) return null;
+    try {
+      return parseCharacterInfo(job.simc_input);
+    } catch {
+      return null;
+    }
+  }, [job?.simc_input]);
+
   const appendStageTiming = useCallback(
     (name: string, elapsed: number) => {
       setStageTimings((prev) => {
@@ -847,7 +856,47 @@ export default function SimResultClient() {
             elapsedTime={r.elapsed_time_seconds as number | undefined}
             stageTimings={stageTimings}
             avgIlevel={avgIlevel}
-          />
+          >
+            {info?.kind === 'dungeon' && (
+              <div className="mt-6 grid grid-cols-3 gap-4 border-t border-white/5 pt-6">
+                <div className="text-center">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Route HP</p>
+                  <p className="mt-1 text-lg font-bold text-emerald-400">
+                    {(() => {
+                      const hp = info.pulls.reduce((sum, p) => sum + (p.totalHealth || 0), 0);
+                      if (hp <= 0) return '-';
+                      if (hp >= 1_000_000) return `${(hp / 1_000_000).toFixed(1)}M`;
+                      if (hp >= 1_000) return `${(hp / 1_000).toFixed(0)}K`;
+                      return hp.toString();
+                    })()}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Timer</p>
+                  <p className="mt-1 text-lg font-bold text-amber-400">
+                    {(() => {
+                      const s = info.maxTime ? Number(info.maxTime) : 0;
+                      if (s <= 0) return '-';
+                      const mins = Math.floor(s / 60);
+                      const secs = s % 60;
+                      return `${mins}:${secs.toString().padStart(2, '0')}`;
+                    })()}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Min. Per DPS</p>
+                  <p className="mt-1 text-lg font-bold text-sky-400">
+                    {(() => {
+                      const hp = info.pulls.reduce((sum, p) => sum + (p.totalHealth || 0), 0);
+                      const s = info.maxTime ? Number(info.maxTime) : 0;
+                      const minDps = (s > 0 && hp > 0) ? (hp * 0.9) / 3 / s : 0;
+                      return minDps > 0 ? Math.round(minDps).toLocaleString() : '-';
+                    })()}
+                  </p>
+                </div>
+              </div>
+            )}
+          </DpsHeroCard>
           {r.equipped_gear &&
             Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (
               <CollapsibleSection title="Character Panel">

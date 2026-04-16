@@ -8,12 +8,15 @@ import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
-import { getSimcStatus, isDesktop } from '../lib/api';
-import { specDisplayName, CLASS_COLORS } from '../lib/types';
+import { getSimcStatus, isDesktop, listSavedRoutes, saveRoute, deleteSavedRoute } from '../lib/api';
+import { specDisplayName, CLASS_COLORS, SavedRoute } from '../lib/types';
+import { parseCharacterInfo, SimcClipboardInfo, PullInfo } from '../../lib/simc-parser';
+import { isMdtString, parseMdtString, convertMdtToSimc } from '../../lib/mdt-parser';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
+import RouteDetailsModal from './RouteDetailsModal';
 
 /** Adler-32 checksum matching the SimC addon's implementation.
  *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
@@ -81,141 +84,6 @@ function useSpellIcons(spellIds: number[]) {
   }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return icons;
-}
-
-type SimcClipboardInfo =
-  | {
-      kind: 'character';
-      className: string;
-      name: string;
-      spec: string;
-      level: string | null;
-      race: string | null;
-      region: string | null;
-      server: string | null;
-      role: string | null;
-      professions: string | null;
-      lootSpec: string | null;
-      addonVersion: string | null;
-      wowVersion: string | null;
-      requiresVersion: string | null;
-      talentsCount: number;
-      savedLoadouts: number;
-      checksum: string | null;
-    }
-  | {
-      kind: 'dungeon';
-      title: string;
-      dungeon: string | null;
-      level: string | null;
-      maxTime: string | null;
-      pullCount: number | null;
-      extras: string[];
-    };
-
-function parseCharacterInfo(input: string): SimcClipboardInfo | null {
-  if (!input) return null;
-
-  const nameMatch = input.match(/^(\w+)="(.+)"$/m);
-  const specMatch = input.match(/^spec=(\w+)/m);
-  const characterLevelMatch = input.match(/^level=(.+)$/m);
-  const raceMatch = input.match(/^race=(.+)$/m);
-  const classKeyMatch = input.match(
-    /^(warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker)\s*=\s*"?([^"\n,]+)"?/im
-  );
-  const realmMatch = input.match(/^server=(.+)$/m);
-  const regionMatch = input.match(/^region=(.+)$/m);
-  const roleMatch = input.match(/^role=(.+)$/m);
-  const professionsMatch = input.match(/^professions=(.+)$/m);
-  const lootSpecMatch = input.match(/^#\s*loot_spec=(.+)$/m);
-  const addonVersionMatch = input.match(/^#\s*SimC Addon\s+(.+)$/m);
-  const wowVersionMatch = input.match(/^#\s*WoW\s+(.+)$/m);
-  const requiresVersionMatch = input.match(/^#\s*Requires SimulationCraft\s+(.+)$/m);
-  const checksumMatch = input.match(/^#\s*Checksum:\s*([0-9a-fA-F]+)/m);
-  const talentsCount = (input.match(/^talents=/gim) || []).length;
-  const savedLoadouts = (input.match(/^#\s*Saved Loadout:/gim) || []).length;
-  const routeMatch = input.match(
-    /^(?:dungeon_route|route|mythic_plus_route|mplus_route)\s*=\s*"?([^"\n]+)"?/im
-  );
-  const fightStyleMatch = input.match(/^fight_style\s*=\s*"?([^"\n]+)"?/im);
-  const enemyMatch = input.match(/^enemy\s*=\s*"([^"]+)"/im);
-  const dungeonMatch = input.match(
-    /^(?:dungeon|instance|mythic_plus_dungeon|keystone_dungeon)\s*=\s*"?([^"\n,]+)"?/im
-  );
-  const levelMatch = input.match(
-    /^(?:keystone_level|level|mythic_plus_level)\s*=\s*"?([^"\n,]+)"?/im
-  );
-  const maxTimeMatch = input.match(/^max_time\s*=\s*"?([^"\n,]+)"?/im);
-  const affixMatch = input.match(/^(?:affix|affixes)\s*=\s*"?([^"\n,]+)"?/im);
-  const seasonMatch = input.match(/^(?:season|dungeon_season)\s*=\s*"?([^"\n,]+)"?/im);
-  const keyNameMatch = input.match(/^(?:route_name|name)\s*=\s*"?([^"\n,]+)"?/im);
-  const titleMatch = input.match(/^#\s*(.+)$/m);
-  const dungeonTitleMatch = input.match(/^#\s*(?:dungeon|route|mythic\s*\+)\s*[:\-]\s*(.+)$/im);
-
-  if (nameMatch && classKeyMatch) {
-    // Save last character to localStorage for history page
-    if (nameMatch[2] && realmMatch?.[1]) {
-      try {
-        localStorage.setItem(
-          'whylowdps_last_character',
-          JSON.stringify({ name: nameMatch[2], realm: realmMatch[1], region: regionMatch?.[1] })
-        );
-      } catch {}
-    }
-
-    return {
-      kind: 'character',
-      className: classKeyMatch[1],
-      name: nameMatch[2],
-      spec: specMatch?.[1] || 'unknown',
-      level: characterLevelMatch?.[1] || null,
-      race: raceMatch?.[1] || null,
-      region: regionMatch?.[1] || null,
-      server: realmMatch?.[1] || null,
-      role: roleMatch?.[1] || null,
-      professions: professionsMatch?.[1] || null,
-      lootSpec: lootSpecMatch?.[1] || null,
-      addonVersion: addonVersionMatch?.[1] || null,
-      wowVersion: wowVersionMatch?.[1] || null,
-      requiresVersion: requiresVersionMatch?.[1] || null,
-      talentsCount,
-      savedLoadouts,
-      checksum: checksumMatch?.[1] || null,
-    };
-  }
-
-  if (routeMatch || dungeonMatch || input.toLowerCase().includes('dungeon')) {
-    const enemyName = enemyMatch?.[1]?.trim() || null;
-    const dungeonFromEnemy = enemyName?.match(/^(.+?)\s*-\s*(.+?)\s*\([^)]*\)\s*$/)?.[2] || null;
-    const dungeon =
-      dungeonMatch?.[1] ||
-      dungeonFromEnemy ||
-      dungeonTitleMatch?.[1] ||
-      titleMatch?.[1] ||
-      enemyName;
-    const pullCount = (input.match(/^raid_events\+=\/pull,/gim) || []).length || null;
-    const extras = [
-      fightStyleMatch?.[1] ? `fight_style=${fightStyleMatch[1]}` : null,
-      levelMatch?.[1] ? `+${levelMatch[1]}` : null,
-      maxTimeMatch?.[1] ? `max_time=${maxTimeMatch[1]}` : null,
-      pullCount ? `${pullCount} pulls` : null,
-      affixMatch?.[1] || null,
-      seasonMatch?.[1] || null,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.trim());
-    return {
-      kind: 'dungeon',
-      title: dungeon || 'Dungeon route',
-      dungeon,
-      level: levelMatch?.[1] || null,
-      maxTime: maxTimeMatch?.[1] || null,
-      pullCount,
-      extras,
-    };
-  }
-
-  return null;
 }
 
 function looksLikeSimcInput(input: string) {
@@ -625,6 +493,10 @@ function CharacterInfoBar({
 
 function DungeonInfoBar({
   info,
+  onSave,
+  onViewDetails,
+  isSaving,
+  isAlreadySaved,
 }: {
   info: {
     title: string;
@@ -632,9 +504,16 @@ function DungeonInfoBar({
     level: string | null;
     maxTime: string | null;
     pullCount: number | null;
+    pulls: PullInfo[];
     extras: string[];
   };
+  onSave?: () => void;
+  onViewDetails?: () => void;
+  isSaving?: boolean;
+  isAlreadySaved?: boolean;
 }) {
+  const hasBloodlust = info.pulls.some((p) => p.bloodlust);
+
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] transition-all hover:border-white/10 hover:bg-white/[0.05]">
       <div className="flex items-center gap-3 p-3">
@@ -648,16 +527,81 @@ function DungeonInfoBar({
             />
           </svg>
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-[15px] font-bold tracking-tight text-white">
-              {info.dungeon || 'Unknown Dungeon'}
-            </span>
-            {info.level && (
-              <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] font-black text-sky-400">
-                +{info.level}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <span className="truncate text-[15px] font-bold tracking-tight text-white">
+                {info.dungeon || 'Unknown Dungeon'}
               </span>
-            )}
+              {info.level && (
+                <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] font-black text-sky-400">
+                  +{info.level}
+                </span>
+              )}
+              {hasBloodlust && (
+                <span
+                  className="shrink-0 rounded bg-red-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-red-400"
+                  title="Route includes Bloodlust/Heroism"
+                >
+                  BL
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onViewDetails?.();
+                }}
+                className="shrink-0 flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
+              >
+                View Details
+              </button>
+              {onSave && (
+                <button
+                  onClick={onSave}
+                  disabled={isSaving || isAlreadySaved}
+                  className={`shrink-0 flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all ${
+                    isAlreadySaved
+                      ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400/80 cursor-default'
+                      : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-50'
+                  }`}
+                >
+                  {isSaving ? (
+                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                        fill="none"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                  ) : isAlreadySaved ? (
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                      />
+                    </svg>
+                  )}
+                  {isAlreadySaved ? 'Saved' : 'Save Route'}
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-1.5 truncate text-[12px] font-medium text-zinc-500">
             <span>{info.title}</span>
@@ -686,6 +630,7 @@ function DungeonInfoBar({
           </div>
         </div>
       </div>
+
       {info.extras.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-white/5 bg-black/20 px-4 py-2">
           {info.extras.map((extra) => (
@@ -1587,6 +1532,96 @@ function ExpertToggle({
   );
 }
 
+function RouteSelectorModal({
+  isOpen,
+  onClose,
+  routes,
+  onSelect,
+  onDelete,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  routes: SavedRoute[];
+  onSelect: (route: SavedRoute) => void;
+  onDelete: (id: string) => void;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/5 p-4">
+          <div className="flex items-center gap-2">
+            <svg className="h-5 w-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+              />
+            </svg>
+            <h2 className="text-lg font-bold text-white">Select Saved Route</h2>
+          </div>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {routes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
+              <p>No saved routes yet.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {routes.map((route) => (
+                <div
+                  key={route.id}
+                  className="group relative flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 transition-all hover:border-white/10 hover:bg-white/[0.05]"
+                >
+                  <button
+                    onClick={() => {
+                      onSelect(route);
+                      onClose();
+                    }}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-[14px] font-bold text-zinc-200 transition-colors group-hover:text-sky-400">
+                        {route.name}
+                      </span>
+                    </div>
+                    <div className="text-[12px] font-medium text-zinc-500">{route.dungeon}</div>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(route.id);
+                    }}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/10 hover:text-red-400"
+                    title="Delete saved route"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SimSharedConfig() {
   const pathname = usePathname();
   const {
@@ -1607,6 +1642,76 @@ export default function SimSharedConfig() {
     return info?.kind === 'dungeon' ? info : null;
   }, [simcFooter]);
   const [banner, setBanner] = useState<{ text: string; id: number } | null>(null);
+  const [savedRoutes, setSavedRoutes] = useState<SavedRoute[]>([]);
+  const [isSavingRoute, setIsSavingRoute] = useState(false);
+  const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
+  const [viewingDungeonRoute, setViewingDungeonRoute] = useState<SavedRoute | null>(null);
+
+  const isRouteAlreadySaved = useMemo(() => {    if (!simcFooter || !savedRoutes.length) return false;
+    const normalizedCurrent = simcFooter.trim();
+    return savedRoutes.some((r) => r.route_data.trim() === normalizedCurrent);
+  }, [simcFooter, savedRoutes]);
+
+  const refreshRoutes = useCallback(async () => {
+    try {
+      const routes = await listSavedRoutes();
+      setSavedRoutes(routes);
+    } catch (e) {
+      console.error('Failed to list saved routes:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshRoutes();
+  }, [refreshRoutes]);
+
+  const handleViewDungeonDetails = () => {
+    if (!detectedDungeonInfo || !simcFooter) return;
+    setViewingDungeonRoute({
+      id: 'temporary',
+      name: detectedDungeonInfo.title,
+      dungeon: detectedDungeonInfo.dungeon || 'Unknown',
+      level: detectedDungeonInfo.level ? Number(detectedDungeonInfo.level) : undefined,
+      pull_count: detectedDungeonInfo.pullCount ?? undefined,
+      route_data: simcFooter,
+      created_at: new Date().toISOString(),
+    });
+  };
+
+  const handleSaveRoute = async () => {
+    if (!detectedDungeonInfo || !simcFooter) return;
+    setIsSavingRoute(true);
+    try {
+      await saveRoute({
+        name: detectedDungeonInfo.title,
+        dungeon: detectedDungeonInfo.dungeon || 'Unknown',
+        level: detectedDungeonInfo.level ? Number(detectedDungeonInfo.level) : undefined,
+        pull_count: detectedDungeonInfo.pullCount || undefined,
+        route_data: simcFooter,
+      });
+      await refreshRoutes();
+      setBanner({ text: `Saved route: ${detectedDungeonInfo.title}`, id: Date.now() });
+    } catch (e) {
+      console.error('Failed to save route:', e);
+    } finally {
+      setIsSavingRoute(false);
+    }
+  };
+
+  const handleSelectRoute = (route: SavedRoute) => {
+    setSimcFooter(route.route_data);
+    setBanner({ text: `Loaded route: ${route.name}`, id: Date.now() });
+  };
+
+  const handleDeleteRoute = async (id: string) => {
+    try {
+      await deleteSavedRoute(id);
+      await refreshRoutes();
+    } catch (e) {
+      console.error('Failed to delete route:', e);
+    }
+  };
+
   const bannerTimerRef = useRef<number | null>(null);
   const lastAppliedClipboardRef = useRef<string>('');
   const simcInputRef = useRef<string>(simcInput);
@@ -1677,6 +1782,17 @@ export default function SimSharedConfig() {
         if (first.trim() === simcInputRef.current.trim()) {
           if (isFocusTrigger) console.log('[SimSharedConfig] Clipboard matches current input, skipping.');
           return;
+        }
+
+        if (isMdtString(first)) {
+          const mdtInfo = parseMdtString(first);
+          if (mdtInfo) {
+            console.log('[SimSharedConfig] Auto-pasting MDT route:', mdtInfo.title);
+            const simcData = convertMdtToSimc(mdtInfo);
+            setSimcFooter(simcData);
+            setBanner({ text: `Detected and converted MDT route: ${mdtInfo.title}`, id: Date.now() });
+            return;
+          }
         }
 
         const info = parseCharacterInfo(first);
@@ -1767,7 +1883,60 @@ export default function SimSharedConfig() {
           </div>
         )}
         {detectedCharacterInfo && <CharacterInfoBar info={detectedCharacterInfo} />}
-        {detectedDungeonInfo && <DungeonInfoBar info={detectedDungeonInfo} />}
+        {detectedDungeonInfo && (
+          <DungeonInfoBar
+            info={detectedDungeonInfo}
+            onSave={handleSaveRoute}
+            onViewDetails={handleViewDungeonDetails}
+            isSaving={isSavingRoute}
+            isAlreadySaved={isRouteAlreadySaved}
+          />
+        )}
+
+        {viewingDungeonRoute && (
+          <RouteDetailsModal
+            route={viewingDungeonRoute}
+            onClose={() => setViewingDungeonRoute(null)}
+          />
+        )}
+
+        <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-3">
+          <div className="flex items-center gap-2">
+            <svg
+              className="h-4 w-4 text-zinc-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+              />
+            </svg>
+            <span className="text-[13px] font-bold tracking-tight text-zinc-400">
+              Dungeon Route
+            </span>
+          </div>
+          <button
+            onClick={() => setIsRouteModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
+          >
+            <span>{savedRoutes.length} Saved Routes</span>
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+
+        <RouteSelectorModal
+          isOpen={isRouteModalOpen}
+          onClose={() => setIsRouteModalOpen(false)}
+          routes={savedRoutes}
+          onSelect={handleSelectRoute}
+          onDelete={handleDeleteRoute}
+        />
       </div>
       <TalentPicker />
       <FightSetupOptions />

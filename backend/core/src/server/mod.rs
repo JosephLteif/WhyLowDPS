@@ -11,6 +11,8 @@ mod helpers;
 #[cfg(feature = "web")]
 mod job_handlers;
 #[cfg(feature = "web")]
+mod route_handlers;
+#[cfg(feature = "web")]
 mod sim_handlers;
 #[cfg(all(feature = "desktop", feature = "web"))]
 mod simc_updater;
@@ -528,6 +530,13 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/season-config",
                     web::get().to(game_data_handlers::get_season_config),
+                )
+                // Saved dungeon routes
+                .route("/api/routes", web::post().to(route_handlers::save_route))
+                .route("/api/routes", web::get().to(route_handlers::list_routes))
+                .route(
+                    "/api/routes/{id}",
+                    web::delete().to(route_handlers::delete_route),
                 )
                 .route(
                     "/api/instances",

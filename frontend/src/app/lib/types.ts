@@ -79,6 +79,18 @@ export interface ResolveGearResponse {
   catalyst_charges?: number;
 }
 
+export interface SavedRoute {
+  id: string;
+  name: string;
+  dungeon: string;
+  level?: number;
+  pull_count?: number;
+  timer_seconds?: number;
+  affixes?: string;
+  route_data: string;
+  created_at: string;
+}
+
 // Fight scenario for multi-sim
 export interface FightScenario {
   id: string;

@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
+use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute};
 
 pub struct MemoryStorage {
     jobs: Mutex<HashMap<String, Job>>,
     max_jobs: Mutex<usize>,
     cache: Mutex<HashMap<String, String>>,
     user_configs: Mutex<HashMap<(String, String), String>>,
+    routes: Mutex<HashMap<String, SavedRoute>>,
 }
 
 impl Default for MemoryStorage {
@@ -24,6 +25,7 @@ impl MemoryStorage {
             max_jobs: Mutex::new(*super::MAX_JOBS),
             cache: Mutex::new(HashMap::new()),
             user_configs: Mutex::new(HashMap::new()),
+            routes: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -258,5 +260,22 @@ impl JobStorage for MemoryStorage {
     fn remove_user_config(&self, user_id: &str, key: &str) {
         let mut configs = self.user_configs.lock().unwrap();
         configs.remove(&(user_id.to_string(), key.to_string()));
+    }
+
+    fn save_route(&self, route: SavedRoute) {
+        let mut routes = self.routes.lock().unwrap();
+        routes.insert(route.id.clone(), route);
+    }
+
+    fn list_routes(&self) -> Vec<SavedRoute> {
+        let routes = self.routes.lock().unwrap();
+        let mut results: Vec<SavedRoute> = routes.values().cloned().collect();
+        results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        results
+    }
+
+    fn delete_route(&self, id: &str) {
+        let mut routes = self.routes.lock().unwrap();
+        routes.remove(id);
     }
 }

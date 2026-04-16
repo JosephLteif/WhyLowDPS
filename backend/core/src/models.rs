@@ -13,6 +13,19 @@ pub enum JobStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedRoute {
+    pub id: String,
+    pub name: String,
+    pub dungeon: String,
+    pub level: Option<i32>,
+    pub pull_count: Option<i32>,
+    pub timer_seconds: Option<i32>,
+    pub affixes: Option<String>,
+    pub route_data: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: String,
     pub status: JobStatus,

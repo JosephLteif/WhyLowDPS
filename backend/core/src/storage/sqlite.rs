@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use std::sync::Mutex;
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
+use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute};
 
 pub struct SqliteStorage {
     conn: Mutex<Connection>,
@@ -44,6 +44,17 @@ impl SqliteStorage {
                 key TEXT NOT NULL,
                 value TEXT NOT NULL,
                 PRIMARY KEY (user_id, key)
+            );
+            CREATE TABLE IF NOT EXISTS dungeon_routes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                dungeon TEXT NOT NULL,
+                level INTEGER,
+                pull_count INTEGER,
+                timer_seconds INTEGER,
+                affixes TEXT,
+                route_data TEXT NOT NULL,
+                created_at TEXT NOT NULL
             );",
         )
         .expect("Failed to create tables");
@@ -58,6 +69,10 @@ impl SqliteStorage {
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_region TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_realm TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_name TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN level INTEGER;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN pull_count INTEGER;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN timer_seconds INTEGER;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN affixes TEXT;");
 
         let max_jobs = conn
             .query_row(
@@ -504,5 +519,55 @@ impl JobStorage for SqliteStorage {
             params![user_id, key],
         )
         .ok();
+    }
+
+    fn save_route(&self, route: SavedRoute) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO dungeon_routes (id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET name = ?2, dungeon = ?3, level = ?4, pull_count = ?5, timer_seconds = ?6, affixes = ?7, route_data = ?8",
+            params![
+                route.id,
+                route.name,
+                route.dungeon,
+                route.level,
+                route.pull_count,
+                route.timer_seconds,
+                route.affixes,
+                route.route_data,
+                route.created_at,
+            ],
+        )
+        .expect("Failed to save route");
+    }
+
+    fn list_routes(&self) -> Vec<SavedRoute> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at FROM dungeon_routes ORDER BY created_at DESC")
+            .unwrap();
+        stmt.query_map([], |row| {
+            Ok(SavedRoute {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                dungeon: row.get(2)?,
+                level: row.get(3)?,
+                pull_count: row.get(4)?,
+                timer_seconds: row.get(5)?,
+                affixes: row.get(6)?,
+                route_data: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    fn delete_route(&self, id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM dungeon_routes WHERE id = ?1", params![id])
+            .ok();
     }
 }

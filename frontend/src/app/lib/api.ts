@@ -1,3 +1,6 @@
+import { SavedRoute } from './types';
+import { Instance } from '../drop-finder/types';
+
 export function isDesktopRuntime(): boolean {
   if (typeof window === 'undefined') return false;
   return (
@@ -208,4 +211,33 @@ export async function removeSimcChannel(): Promise<SimcStatus> {
   return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/remove`, {
     method: 'POST',
   });
+}
+
+export async function listSavedRoutes(): Promise<SavedRoute[]> {
+  return fetchJson<SavedRoute[]>(`${API_URL}/api/routes`);
+}
+
+export async function saveRoute(route: {
+  name: string;
+  dungeon: string;
+  level?: number;
+  pull_count?: number;
+  timer_seconds?: number;
+  affixes?: string;
+  route_data: string;
+}): Promise<SavedRoute> {
+  return fetchJson<SavedRoute>(`${API_URL}/api/routes`, {
+    method: 'POST',
+    body: JSON.stringify(route),
+  });
+}
+
+export async function deleteSavedRoute(id: string): Promise<void> {
+  await fetchJson(`${API_URL}/api/routes/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function listInstances(): Promise<Instance[]> {
+  return fetchJson<Instance[]>(`${API_URL}/api/instances`);
 }

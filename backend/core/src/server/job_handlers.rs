@@ -112,6 +112,7 @@ pub(super) async fn get_sim_status(
         "id": job.id,
         "status": status_str,
         "sim_type": job.sim_type,
+        "simc_input": job.simc_input,
         "created_at": job.created_at,
         "progress": progress,
         "progress_stage": job.progress_stage,

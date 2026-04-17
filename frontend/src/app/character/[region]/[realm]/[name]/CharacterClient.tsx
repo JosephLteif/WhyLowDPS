@@ -2,8 +2,9 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { API_URL, fetchJson, listCharacterProfiles, SavedCharacterProfile } from '../../../../lib/api';
+import { API_URL, fetchJson, listCharacterProfiles, deleteCharacterProfile, SavedCharacterProfile } from '../../../../lib/api';
 import CharacterPanel from '../../../../components/CharacterPanel';
+import ConfirmModal from '../../../../components/ConfirmModal';
 
 function CopyIcon() {
   return (
@@ -49,6 +50,7 @@ export default function CharacterClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [savedProfiles, setSavedProfiles] = useState<SavedCharacterProfile[]>([]);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   // Fetch saved profiles for this character
   useEffect(() => {
@@ -57,6 +59,13 @@ export default function CharacterClient() {
       .then(setSavedProfiles)
       .catch(() => setSavedProfiles([]));
   }, [name, realm, region]);
+
+  const handleDeleteProfiles = useCallback(async () => {
+    for (const p of savedProfiles) {
+      await deleteCharacterProfile(p.id);
+    }
+    setSavedProfiles([]);
+  }, [savedProfiles]);
 
   const fetchCharacterData = useCallback(
     async (refresh = false) => {
@@ -173,16 +182,27 @@ export default function CharacterClient() {
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
             {savedProfiles.length > 0 && (
-              <button
-                onClick={() => {
-                  const latestProfile = savedProfiles[0];
-                  navigator.clipboard.writeText(latestProfile.simc_input);
-                }}
-                className="ml-2 flex items-center gap-1.5 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95"
-              >
-                <CopyIcon />
-                Copy SimC
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    const latestProfile = savedProfiles[0];
+                    navigator.clipboard.writeText(latestProfile.simc_input);
+                  }}
+                  className="ml-2 flex items-center gap-1.5 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95"
+                >
+                  <CopyIcon />
+                  Copy SimC
+                </button>
+                <button
+                  onClick={() => setDeleteModalOpen(true)}
+                  className="ml-2 flex items-center gap-1.5 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-red-400 backdrop-blur-sm hover:bg-white/10 active:scale-95"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Delete SimC
+                </button>
+              </>
             )}
           </div>
           <p className="mt-1 font-medium text-zinc-500">
@@ -205,6 +225,16 @@ export default function CharacterClient() {
         mythicPlus={data.mythicPlus}
         raidEncounters={data.raidEncounters}
         characterMediaUrl={characterMediaUrl}
+      />
+      <ConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleDeleteProfiles}
+        title="Delete SimC Profiles"
+        message={`Are you sure you want to delete all saved SimC profiles for ${profile.name}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="danger"
       />
     </div>
   );

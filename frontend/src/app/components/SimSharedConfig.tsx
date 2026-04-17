@@ -8,7 +8,7 @@ import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
-import { API_URL, getSimcStatus, isDesktop, listSavedRoutes, saveRoute, deleteSavedRoute, saveCharacterProfile, listCharacterProfiles, fetchJson } from '../lib/api';
+import { API_URL, getSimcStatus, isDesktop, listSavedRoutes, saveRoute, deleteSavedRoute, saveCharacterProfile, listCharacterProfiles, deleteCharacterProfile, fetchJson, SavedCharacterProfile } from '../lib/api';
 import { specDisplayName, CLASS_COLORS, SavedRoute } from '../lib/types';
 import { parseCharacterInfo, SimcClipboardInfo, PullInfo } from '../../lib/simc-parser';
 import { isMdtString, parseMdtString, convertMdtToSimc } from '../../lib/mdt-parser';
@@ -17,6 +17,7 @@ import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 import RouteDetailsModal from './RouteDetailsModal';
+import ConfirmModal from './ConfirmModal';
 
 /** Adler-32 checksum matching the SimC addon's implementation.
  *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
@@ -1721,7 +1722,16 @@ export default function SimSharedConfig() {
   const [viewingDungeonRoute, setViewingDungeonRoute] = useState<SavedRoute | null>(null);
   const [simcInputHistory, setSimcInputHistory] = useState<string[]>([]);
   const [selectedHistoryIdx, setSelectedHistoryIdx] = useState<number | null>(null);
+  const [selectedSavedId, setSelectedSavedId] = useState<string | null>(null);
   const [historyDropdownOpen, setHistoryDropdownOpen] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'saved' | 'history'>('saved');
+  const [bnetProfiles, setBnetProfiles] = useState<SavedCharacterProfile[]>([]);
+  const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null);
+
+  const deleteTargetProfile = useMemo(
+    () => bnetProfiles.find(p => p.id === deleteProfileId) || null,
+    [bnetProfiles, deleteProfileId]
+  );
 
   const addToHistory = useCallback((value: string) => {
     if (!value || value.length < 50) return;
@@ -1805,6 +1815,28 @@ export default function SimSharedConfig() {
     refreshRoutes();
   }, [refreshRoutes]);
 
+  // Load BNet character profiles when dropdown opens or when tab changes to saved
+  useEffect(() => {
+    if (!historyDropdownOpen || historyTab !== 'saved') return;
+    listCharacterProfiles()
+      .then(setBnetProfiles)
+      .catch(() => setBnetProfiles([]));
+  }, [historyDropdownOpen, historyTab]);
+
+  // Refresh profiles when dropdown is already open (realtime update)
+  const refreshProfiles = useCallback(() => {
+    if (!historyDropdownOpen || historyTab !== 'saved') return;
+    listCharacterProfiles()
+      .then(setBnetProfiles)
+      .catch(() => setBnetProfiles([]));
+  }, [historyDropdownOpen, historyTab]);
+
+  useEffect(() => {
+    if (!historyDropdownOpen || historyTab !== 'saved') return;
+    const interval = setInterval(refreshProfiles, 5000);
+    return () => clearInterval(interval);
+  }, [historyDropdownOpen, historyTab, refreshProfiles]);
+
   const handleViewDungeonDetails = () => {
     if (!detectedDungeonInfo || !simcFooter) return;
     setViewingDungeonRoute({
@@ -1851,6 +1883,19 @@ export default function SimSharedConfig() {
       console.error('Failed to delete route:', e);
     }
   };
+
+  const handleDeleteProfile = useCallback(async () => {
+    if (!deleteProfileId) return;
+    try {
+      await deleteCharacterProfile(deleteProfileId);
+      setBnetProfiles(prev => prev.filter(p => p.id !== deleteProfileId));
+      if (selectedSavedId === deleteProfileId) {
+        setSelectedSavedId(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete profile:', err);
+    }
+  }, [deleteProfileId, selectedSavedId]);
 
   const bannerTimerRef = useRef<number | null>(null);
   const lastAppliedClipboardRef = useRef<string>('');
@@ -2024,85 +2069,167 @@ export default function SimSharedConfig() {
       <div className="card space-y-3 p-5">
         <div className="flex items-center justify-between">
           <label className="label-text">SimC Addon Export</label>
-          {simcInputHistory.length > 0 && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setHistoryDropdownOpen(!historyDropdownOpen)}
-                className="flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1"
-              >
-                <span className="text-[12px] text-zinc-300">
-                  {selectedHistoryIdx !== null ? (() => {
-                    const info = parseCharacterInfo(simcInputHistory[selectedHistoryIdx]);
-                    return info?.kind === 'character' ? info.name : `Profile ${selectedHistoryIdx + 1}`;
-                  })() : 'None'}
-                </span>
-                <span className="text-[10px] text-zinc-500">{historyDropdownOpen ? '▲' : '▼'}</span>
-              </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setHistoryDropdownOpen(!historyDropdownOpen)}
+              className="flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1"
+            >
+              <span className="text-[12px] text-zinc-300">
+                {selectedSavedId !== null ? bnetProfiles.find(p => p.id === selectedSavedId)?.name || 'None' : 
+                 selectedHistoryIdx !== null ? (() => {
+                   const info = parseCharacterInfo(simcInputHistory[selectedHistoryIdx]);
+                   return info?.kind === 'character' ? info.name : `Profile ${selectedHistoryIdx + 1}`;
+                 })() : 'None'}
+              </span>
+              <span className="text-[10px] text-zinc-500">{historyDropdownOpen ? '▲' : '▼'}</span>
+            </button>
               {historyDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] rounded-md border border-border bg-surface-2 shadow-xl">
-                  <div className="flex items-center justify-between px-2 py-1.5 border-b border-border">
-                    <span className="text-[10px] text-zinc-500">History</span>
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[280px] rounded-md border border-border bg-surface-2 shadow-xl">
+                  <div className="flex border-b border-border">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryTab('saved')}
+                      className={`flex-1 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+                        historyTab === 'saved'
+                          ? 'border-gold text-gold'
+                          : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      Saved ({bnetProfiles.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryTab('history')}
+                      className={`flex-1 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
+                        historyTab === 'history'
+                          ? 'border-gold text-gold'
+                          : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      History ({simcInputHistory.length})
+                    </button>
                   </div>
-                  <div className="max-h-[200px] overflow-y-auto">
-                    {simcInputHistory.map((profile, idx) => {
-                      const info = parseCharacterInfo(profile);
-                      const name = info?.kind === 'character' ? info.name : `Profile ${idx + 1}`;
-                      return (
-                        <div
-                          key={idx}
-                          className={`flex items-center justify-between px-2 py-1.5 hover:bg-white/5 ${
-                            selectedHistoryIdx === idx ? 'bg-white/5' : ''
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedHistoryIdx(idx);
-                              setSimcInput(simcInputHistory[idx]);
-                              setHistoryDropdownOpen(false);
-                            }}
-                            className={`text-left text-[12px] flex-1 ${
-                              selectedHistoryIdx === idx ? 'text-gold' : 'text-zinc-300'
-                            }`}
-                          >
-                            {name}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const newHistory = simcInputHistory.filter((_, i) => i !== idx);
-                              setSimcInputHistory(newHistory);
-                              if (selectedHistoryIdx === idx) {
-                                setSelectedHistoryIdx(null);
-                              } else if (selectedHistoryIdx !== null && selectedHistoryIdx > idx) {
-                                setSelectedHistoryIdx(selectedHistoryIdx - 1);
-                              }
-                            }}
-                            className="text-[10px] text-zinc-500 hover:text-red-400 ml-2"
-                          >
-                            ✕
-                          </button>
+                  <div className="max-h-[240px] overflow-y-auto">
+                    {historyTab === 'saved' ? (
+                      bnetProfiles.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
+                          No saved character profiles
                         </div>
-                      );
-                    })}
+                      ) : (
+                        bnetProfiles.map((profile) => (
+                          <div
+                            key={profile.id}
+                            className="flex items-center justify-between px-3 py-2 hover:bg-white/5"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedSavedId(profile.id);
+                                setSelectedHistoryIdx(null);
+                                setSimcInput(profile.simc_input);
+                                addToHistory(profile.simc_input);
+                                setHistoryDropdownOpen(false);
+                              }}
+                              className={`text-left flex-1 ${
+                                selectedSavedId === profile.id ? 'text-gold' : ''
+                              }`}
+                            >
+                              <div className="text-[12px] text-zinc-300">{profile.name}</div>
+                              <div className="text-[10px] text-zinc-500">{profile.realm} ({profile.region})</div>
+                            </button>
+                            <span className="text-[10px] text-zinc-600">{profile.class}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteProfileId(profile.id);
+                              }}
+                              className="text-[10px] text-zinc-500 hover:text-red-400 ml-2"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))
+                      )
+                    ) : (
+                      simcInputHistory.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
+                          No history yet
+                        </div>
+                      ) : (
+                        simcInputHistory.map((profile, idx) => {
+                          const info = parseCharacterInfo(profile);
+                          const name = info?.kind === 'character' ? info.name : `Profile ${idx + 1}`;
+                          const charClass = info?.kind === 'character' ? info.className : null;
+                          const realm = info?.kind === 'character' ? info.server : null;
+                          const region = info?.kind === 'character' ? info.region : null;
+                          return (
+                            <div
+                              key={idx}
+                              className={`flex items-center justify-between px-3 py-2 hover:bg-white/5 ${
+                                selectedHistoryIdx === idx ? 'bg-white/5' : ''
+                              }`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedHistoryIdx(idx);
+                                  setSimcInput(simcInputHistory[idx]);
+                                  setHistoryDropdownOpen(false);
+                                }}
+                                className={`text-left flex-1 ${
+                                  selectedHistoryIdx === idx ? 'text-gold' : ''
+                                }`}
+                              >
+                                <div className="text-[12px] text-zinc-300">{name}</div>
+                                {info?.kind === 'character' && (realm || region) && (
+                                  <div className="text-[10px] text-zinc-500">
+                                    {realm}{region ? ` (${region})` : ''}
+                                  </div>
+                                )}
+                              </button>
+                              {charClass && (
+                                <span className="text-[10px] text-zinc-600">{charClass}</span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const newHistory = simcInputHistory.filter((_, i) => i !== idx);
+                                  setSimcInputHistory(newHistory);
+                                  if (selectedHistoryIdx === idx) {
+                                    setSelectedHistoryIdx(null);
+                                  } else if (selectedHistoryIdx !== null && selectedHistoryIdx > idx) {
+                                    setSelectedHistoryIdx(selectedHistoryIdx - 1);
+                                  }
+                                }}
+                                className="text-[10px] text-zinc-500 hover:text-red-400 ml-2"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          );
+                        })
+                      )
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSimcInputHistory([]);
-                      setSelectedHistoryIdx(null);
-                      setHistoryDropdownOpen(false);
-                    }}
-                    className="w-full text-left px-2 py-1.5 text-[12px] text-red-400 hover:bg-red-500/10 border-t border-border"
-                  >
-                    ✕ Clear All
-                  </button>
+                  {historyTab === 'history' && simcInputHistory.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSimcInputHistory([]);
+                        setSelectedHistoryIdx(null);
+                        setHistoryDropdownOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-[12px] text-red-400 hover:bg-red-500/10 border-t border-border"
+                    >
+                      ✕ Clear All
+                    </button>
+                  )}
                 </div>
               )}
             </div>
-          )}
         </div>
         <SimcInputEditor
           value={simcInput}
@@ -2181,6 +2308,16 @@ export default function SimSharedConfig() {
           routes={savedRoutes}
           onSelect={handleSelectRoute}
           onDelete={handleDeleteRoute}
+        />
+        <ConfirmModal
+          isOpen={!!deleteProfileId}
+          onClose={() => setDeleteProfileId(null)}
+          onConfirm={handleDeleteProfile}
+          title="Delete SimC Profile"
+          message={`Are you sure you want to delete the saved SimC profile for ${deleteTargetProfile?.name || 'this character'}? This action cannot be undone.`}
+          confirmLabel="Delete"
+          cancelLabel="Cancel"
+          variant="danger"
         />
       </div>
       <TalentPicker />

@@ -1,7 +1,6 @@
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::models::SavedCharacterProfile;
 use crate::storage::JobStorage;
@@ -20,8 +19,15 @@ pub async fn save_character_profile(
     body: web::Json<SaveProfileRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    // Use deterministic ID based on character identity to avoid duplicates
+    let id = format!(
+        "{}-{}-{}",
+        body.region.to_lowercase(),
+        body.realm.to_lowercase().replace(' ', "-").replace('\'', ""),
+        body.name.to_lowercase()
+    );
     let profile = SavedCharacterProfile {
-        id: Uuid::new_v4().to_string(),
+        id,
         name: body.name.clone(),
         realm: body.realm.clone(),
         region: body.region.clone(),

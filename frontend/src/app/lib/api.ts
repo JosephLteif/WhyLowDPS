@@ -12,9 +12,7 @@ export function isDesktopRuntime(): boolean {
     !!(window as any).__TAURI_INTERNALS__ ||
     !!(window as any).__TAURI_IPC__ ||
     process.env.DESKTOP_BUILD === 'true' ||
-    process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true' ||
-    process.env.DESKTOP_BUILD === true ||
-    process.env.NEXT_PUBLIC_DESKTOP_BUILD === true
+    process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true'
   );
 }
 

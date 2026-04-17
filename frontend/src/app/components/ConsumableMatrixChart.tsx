@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';

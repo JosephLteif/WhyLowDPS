@@ -1719,6 +1719,73 @@ export default function SimSharedConfig() {
   const [isSavingRoute, setIsSavingRoute] = useState(false);
   const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
   const [viewingDungeonRoute, setViewingDungeonRoute] = useState<SavedRoute | null>(null);
+  const [simcInputHistory, setSimcInputHistory] = useState<string[]>([]);
+  const [selectedHistoryIdx, setSelectedHistoryIdx] = useState<number | null>(null);
+  const [historyDropdownOpen, setHistoryDropdownOpen] = useState(false);
+
+  const addToHistory = useCallback((value: string) => {
+    if (!value || value.length < 50) return;
+    
+    // Find existing entry by character name (compute before setState)
+    const info = parseCharacterInfo(value);
+    const charName = info?.kind === 'character' ? info.name : null;
+    
+    setSimcInputHistory(prev => {
+      let existingIdx = -1;
+      
+      if (charName) {
+        existingIdx = prev.findIndex(p => {
+          const existingInfo = parseCharacterInfo(p);
+          return existingInfo?.kind === 'character' && existingInfo.name === charName;
+        });
+      }
+      
+      if (existingIdx !== -1) {
+        // Update existing entry
+        const newHistory = [...prev];
+        newHistory[existingIdx] = value;
+        return newHistory;
+      }
+      
+      // Add new entry
+      const newHistory = [...prev, value];
+      return newHistory.slice(-20);
+    });
+  }, []);
+
+  // Helper to add to history and return index (for selection)
+  const addToHistoryWithSelection = useCallback((value: string): number | null => {
+    if (!value || value.length < 50) return null;
+    
+    const info = parseCharacterInfo(value);
+    const charName = info?.kind === 'character' ? info.name : null;
+    
+    // Get current history to find index
+    let existingIdx = -1;
+    if (charName) {
+      existingIdx = simcInputHistory.findIndex(p => {
+        const hInfo = parseCharacterInfo(p);
+        return hInfo?.kind === 'character' && hInfo.name === charName;
+      });
+    }
+    
+    const newIdx = existingIdx >= 0 ? existingIdx : simcInputHistory.length;
+    addToHistory(value);
+    return newIdx;
+  }, [addToHistory, simcInputHistory]);
+
+  // Wrap setSimcInput to also track history
+  const handleSetSimcInput = useCallback((value: string) => {
+    setSimcInput(value);
+    if (!value || value.length < 50) {
+      setSelectedHistoryIdx(null);
+      return;
+    }
+    
+    // Add to history and get the selected index
+    const newIdx = addToHistoryWithSelection(value);
+    setSelectedHistoryIdx(newIdx);
+  }, [setSimcInput, addToHistoryWithSelection]);
 
   const isRouteAlreadySaved = useMemo(() => {    if (!simcFooter || !savedRoutes.length) return false;
     const normalizedCurrent = simcFooter.trim();
@@ -1858,12 +1925,12 @@ export default function SimSharedConfig() {
         }
 
         if (isMdtString(first)) {
-          const mdtInfo = parseMdtString(first);
-          if (mdtInfo) {
-            console.log('[SimSharedConfig] Auto-pasting MDT route:', mdtInfo.title);
+          const mdtInfo = parseMdtString(first) as SimcClipboardInfo | null;
+          if (mdtInfo && mdtInfo.kind === 'dungeon') {
+            console.log('[SimSharedConfig] Auto-pasting MDT route:', (mdtInfo as { title: string }).title);
             const simcData = convertMdtToSimc(mdtInfo);
             setSimcFooter(simcData);
-            setBanner({ text: `Detected and converted MDT route: ${mdtInfo.title}`, id: Date.now() });
+            setBanner({ text: `Detected and converted MDT route: ${(mdtInfo as { title: string }).title}`, id: Date.now() });
             return;
           }
         }
@@ -1875,10 +1942,14 @@ export default function SimSharedConfig() {
           setBanner({ text: `Detected dungeon route: ${info.title}`, id: Date.now() });
         } else if (info?.kind === 'character') {
           console.log('[SimSharedConfig] Auto-pasting character:', info.name);
+          const newIdx = addToHistoryWithSelection(first);
+          setSelectedHistoryIdx(newIdx);
           setSimcInput(first);
           setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
         } else {
           console.log('[SimSharedConfig] Detected SimC content but could not parse info, pasting anyway.');
+          const newIdx = addToHistoryWithSelection(first);
+          setSelectedHistoryIdx(newIdx);
           setSimcInput(first);
           setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
         }
@@ -1931,10 +2002,89 @@ export default function SimSharedConfig() {
       <div className="card space-y-3 p-5">
         <div className="flex items-center justify-between">
           <label className="label-text">SimC Addon Export</label>
+          {simcInputHistory.length > 0 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setHistoryDropdownOpen(!historyDropdownOpen)}
+                className="flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1"
+              >
+                <span className="text-[12px] text-zinc-300">
+                  {selectedHistoryIdx !== null ? (() => {
+                    const info = parseCharacterInfo(simcInputHistory[selectedHistoryIdx]);
+                    return info?.kind === 'character' ? info.name : `Profile ${selectedHistoryIdx + 1}`;
+                  })() : 'None'}
+                </span>
+                <span className="text-[10px] text-zinc-500">{historyDropdownOpen ? '▲' : '▼'}</span>
+              </button>
+              {historyDropdownOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] rounded-md border border-border bg-surface-2 shadow-xl">
+                  <div className="flex items-center justify-between px-2 py-1.5 border-b border-border">
+                    <span className="text-[10px] text-zinc-500">History</span>
+                  </div>
+                  <div className="max-h-[200px] overflow-y-auto">
+                    {simcInputHistory.map((profile, idx) => {
+                      const info = parseCharacterInfo(profile);
+                      const name = info?.kind === 'character' ? info.name : `Profile ${idx + 1}`;
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-center justify-between px-2 py-1.5 hover:bg-white/5 ${
+                            selectedHistoryIdx === idx ? 'bg-white/5' : ''
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedHistoryIdx(idx);
+                              setSimcInput(simcInputHistory[idx]);
+                              setHistoryDropdownOpen(false);
+                            }}
+                            className={`text-left text-[12px] flex-1 ${
+                              selectedHistoryIdx === idx ? 'text-gold' : 'text-zinc-300'
+                            }`}
+                          >
+                            {name}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newHistory = simcInputHistory.filter((_, i) => i !== idx);
+                              setSimcInputHistory(newHistory);
+                              if (selectedHistoryIdx === idx) {
+                                setSelectedHistoryIdx(null);
+                              } else if (selectedHistoryIdx !== null && selectedHistoryIdx > idx) {
+                                setSelectedHistoryIdx(selectedHistoryIdx - 1);
+                              }
+                            }}
+                            className="text-[10px] text-zinc-500 hover:text-red-400 ml-2"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSimcInputHistory([]);
+                      setSelectedHistoryIdx(null);
+                      setHistoryDropdownOpen(false);
+                    }}
+                    className="w-full text-left px-2 py-1.5 text-[12px] text-red-400 hover:bg-red-500/10 border-t border-border"
+                  >
+                    ✕ Clear All
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <SimcInputEditor
           value={simcInput}
-          onChange={setSimcInput}
+          onChange={handleSetSimcInput}
           placeholder="Paste your SimC addon export here..."
         />
         {checksumStatus === 'invalid' && (

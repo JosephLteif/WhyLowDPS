@@ -183,6 +183,8 @@ export function parseMdtString(input: string): SimcClipboardInfo | null {
           name: pullData.note || `Pull ${key}`,
           bloodlust: !!(pullData.bl || pullData.bloodlust),
           progress: null,
+          delay: null,
+          totalHealth: null,
           enemies,
         });
       }

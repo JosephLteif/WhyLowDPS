@@ -29,7 +29,7 @@ import {
   RAID_BUFF_MATRIX_OPTIONS,
   TEMP_ENCHANT_OPTIONS,
 } from '../../lib/sim-options-catalog';
-import { parseCharacterInfo, parseSimcBuffs } from '../../../lib/simc-parser';
+import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '../../../lib/simc-parser';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
 import { API_URL, fetchJson } from '../../lib/api';

@@ -214,6 +214,8 @@ export type SimcBuff = {
   category: 'flask' | 'food' | 'potion' | 'augment' | 'raid_buff' | 'other';
   value?: string;
   spellId?: number;
+  icon?: string;
+  itemId?: number;
 };
 
 export function parseSimcBuffs(input: string): SimcBuff[] {

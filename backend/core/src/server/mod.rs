@@ -1,8 +1,7 @@
 #[cfg(feature = "web")]
 pub mod auth_handlers;
-#[cfg(feature = "web")]
 mod blizzard;
-#[cfg(feature = "web")]
+mod character_profile_handlers;
 mod data_sync;
 #[cfg(feature = "web")]
 mod game_data_handlers;
@@ -537,6 +536,13 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/routes/{id}",
                     web::delete().to(route_handlers::delete_route),
+                )
+                // Character profiles
+                .route("/api/character-profiles", web::post().to(character_profile_handlers::save_character_profile))
+                .route("/api/character-profiles", web::get().to(character_profile_handlers::list_character_profiles))
+                .route(
+                    "/api/character-profiles/{id}",
+                    web::delete().to(character_profile_handlers::delete_character_profile),
                 )
                 .route(
                     "/api/instances",

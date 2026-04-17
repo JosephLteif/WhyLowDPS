@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute};
+use crate::models::{
+    extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
+};
 
 pub struct MemoryStorage {
     jobs: Mutex<HashMap<String, Job>>,
@@ -10,6 +12,7 @@ pub struct MemoryStorage {
     cache: Mutex<HashMap<String, String>>,
     user_configs: Mutex<HashMap<(String, String), String>>,
     routes: Mutex<HashMap<String, SavedRoute>>,
+    character_profiles: Mutex<HashMap<String, SavedCharacterProfile>>,
 }
 
 impl Default for MemoryStorage {
@@ -26,6 +29,7 @@ impl MemoryStorage {
             cache: Mutex::new(HashMap::new()),
             user_configs: Mutex::new(HashMap::new()),
             routes: Mutex::new(HashMap::new()),
+            character_profiles: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -277,5 +281,46 @@ impl JobStorage for MemoryStorage {
     fn delete_route(&self, id: &str) {
         let mut routes = self.routes.lock().unwrap();
         routes.remove(id);
+    }
+
+    fn save_character_profile(&self, profile: SavedCharacterProfile) {
+        let mut profiles = self.character_profiles.lock().unwrap();
+        profiles.insert(profile.id.clone(), profile);
+    }
+
+    fn list_character_profiles(
+        &self,
+        name: Option<&str>,
+        realm: Option<&str>,
+        region: Option<&str>,
+    ) -> Vec<SavedCharacterProfile> {
+        let profiles = self.character_profiles.lock().unwrap();
+        profiles
+            .values()
+            .filter(|p| {
+                if let Some(n) = name {
+                    if p.name.to_lowercase() != n.to_lowercase() {
+                        return false;
+                    }
+                }
+                if let Some(r) = realm {
+                    if p.realm.to_lowercase() != r.to_lowercase() {
+                        return false;
+                    }
+                }
+                if let Some(reg) = region {
+                    if p.region.to_lowercase() != reg.to_lowercase() {
+                        return false;
+                    }
+                }
+                true
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn delete_character_profile(&self, id: &str) {
+        let mut profiles = self.character_profiles.lock().unwrap();
+        profiles.remove(id);
     }
 }

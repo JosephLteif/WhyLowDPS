@@ -2,8 +2,16 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { API_URL, fetchJson } from '../../../../lib/api';
+import { API_URL, fetchJson, listCharacterProfiles, SavedCharacterProfile } from '../../../../lib/api';
 import CharacterPanel from '../../../../components/CharacterPanel';
+
+function CopyIcon() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+    </svg>
+  );
+}
 
 export default function CharacterClient() {
   const params = useParams();
@@ -40,6 +48,15 @@ export default function CharacterClient() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [savedProfiles, setSavedProfiles] = useState<SavedCharacterProfile[]>([]);
+
+  // Fetch saved profiles for this character
+  useEffect(() => {
+    if (!name || !realm || !region) return;
+    listCharacterProfiles({ name, realm, region })
+      .then(setSavedProfiles)
+      .catch(() => setSavedProfiles([]));
+  }, [name, realm, region]);
 
   const fetchCharacterData = useCallback(
     async (refresh = false) => {
@@ -155,6 +172,18 @@ export default function CharacterClient() {
             >
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
+            {savedProfiles.length > 0 && (
+              <button
+                onClick={() => {
+                  const latestProfile = savedProfiles[0];
+                  navigator.clipboard.writeText(latestProfile.simc_input);
+                }}
+                className="ml-2 flex items-center gap-1.5 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95"
+              >
+                <CopyIcon />
+                Copy SimC
+              </button>
+            )}
           </div>
           <p className="mt-1 font-medium text-zinc-500">
             {profile.realm.name} — {region.toUpperCase()}

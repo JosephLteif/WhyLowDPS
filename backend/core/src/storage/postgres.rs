@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use tokio_postgres::{Client, NoTls};
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute};
+use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute, SavedCharacterProfile};
 
 pub struct PostgresStorage {
     client: Mutex<Client>,
@@ -82,6 +82,16 @@ impl PostgresStorage {
                 timer_seconds INTEGER,
                 affixes TEXT,
                 route_data TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS character_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                realm TEXT NOT NULL,
+                region TEXT NOT NULL,
+                class TEXT,
+                spec TEXT,
+                simc_input TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );",
             )
@@ -695,6 +705,86 @@ impl JobStorage for PostgresStorage {
             self.rt.block_on(async {
                 client
                     .execute("DELETE FROM dungeon_routes WHERE id = $1", &[&id])
+                    .await
+                    .ok();
+            });
+        });
+    }
+
+    fn save_character_profile(&self, profile: SavedCharacterProfile) {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client.execute(
+                    "INSERT INTO character_profiles (id, name, realm, region, class, spec, simc_input, created_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                     ON CONFLICT (id) DO UPDATE SET name = $2, realm = $3, region = $4, class = $5, spec = $6, simc_input = $7",
+                    &[
+                        &profile.id,
+                        &profile.name,
+                        &profile.realm,
+                        &profile.region,
+                        &profile.class,
+                        &profile.spec,
+                        &profile.simc_input,
+                        &profile.created_at,
+                    ],
+                ).await.ok();
+            });
+        });
+    }
+
+    fn list_character_profiles(&self, name: Option<&str>, realm: Option<&str>, region: Option<&str>) -> Vec<SavedCharacterProfile> {
+        // Build query dynamically - use simpler approach without complex params
+        let query_name = name.map(|n| n.to_lowercase());
+        let query_realm = realm.map(|r| r.to_lowercase());
+        let query_region = region.map(|r| r.to_lowercase());
+
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                let mut results = Vec::new();
+                let rows = client
+                    .query(
+                        "SELECT id, name, realm, region, class, spec, simc_input, created_at FROM character_profiles ORDER BY created_at DESC",
+                        &[],
+                    )
+                    .await
+                    .ok()
+                    .unwrap_or_default();
+                
+                for row in rows {
+                    let n: String = row.get(1);
+                    let r: String = row.get(2);
+                    let reg: String = row.get(3);
+                    
+                    let matches = (query_name.is_none() || query_name.as_ref() == Some(&n.to_lowercase()))
+                        && (query_realm.is_none() || query_realm.as_ref() == Some(&r.to_lowercase()))
+                        && (query_region.is_none() || query_region.as_ref() == Some(&reg.to_lowercase()));
+                    
+                    if matches {
+                        results.push(SavedCharacterProfile {
+                            id: row.get(0),
+                            name: n,
+                            realm: r,
+                            region: reg,
+                            class: row.get(4),
+                            spec: row.get(5),
+                            simc_input: row.get(6),
+                            created_at: row.get(7),
+                        });
+                    }
+                }
+                results
+            })
+        })
+        .unwrap_or_default()
+    }
+
+    fn delete_character_profile(&self, id: &str) {
+        let id = id.to_string();
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client
+                    .execute("DELETE FROM character_profiles WHERE id = $1", &[&id])
                     .await
                     .ok();
             });

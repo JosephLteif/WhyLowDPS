@@ -2,7 +2,9 @@ use rusqlite::{params, Connection};
 use std::sync::Mutex;
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute};
+use crate::models::{
+    extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
+};
 
 pub struct SqliteStorage {
     conn: Mutex<Connection>,
@@ -55,6 +57,16 @@ impl SqliteStorage {
                 timer_seconds INTEGER,
                 affixes TEXT,
                 route_data TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS character_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                realm TEXT NOT NULL,
+                region TEXT NOT NULL,
+                class TEXT,
+                spec TEXT,
+                simc_input TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );",
         )
@@ -152,7 +164,10 @@ impl JobStorage for SqliteStorage {
     fn insert(&self, job: Job) {
         let conn = self.conn.lock().unwrap();
         let stages_json = serde_json::to_string(&job.stages_completed).unwrap();
-        let options_json = job.options.as_ref().map(|o| serde_json::to_string(o).unwrap());
+        let options_json = job
+            .options
+            .as_ref()
+            .map(|o| serde_json::to_string(o).unwrap());
         conn.execute(
             "INSERT INTO jobs (id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
@@ -575,6 +590,76 @@ impl JobStorage for SqliteStorage {
     fn delete_route(&self, id: &str) {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM dungeon_routes WHERE id = ?1", params![id])
+            .ok();
+    }
+
+    fn save_character_profile(&self, profile: SavedCharacterProfile) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO character_profiles (id, name, realm, region, class, spec, simc_input, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET name = ?2, realm = ?3, region = ?4, class = ?5, spec = ?6, simc_input = ?7",
+            params![
+                profile.id,
+                profile.name,
+                profile.realm,
+                profile.region,
+                profile.class,
+                profile.spec,
+                profile.simc_input,
+                profile.created_at,
+            ],
+        )
+        .expect("Failed to save character profile");
+    }
+
+    fn list_character_profiles(
+        &self,
+        name: Option<&str>,
+        realm: Option<&str>,
+        region: Option<&str>,
+    ) -> Vec<SavedCharacterProfile> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = "SELECT id, name, realm, region, class, spec, simc_input, created_at FROM character_profiles WHERE 1=1".to_string();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(n) = name {
+            sql.push_str(" AND LOWER(name) = LOWER(?)");
+            params_vec.push(Box::new(n.to_string()));
+        }
+        if let Some(r) = realm {
+            sql.push_str(" AND LOWER(realm) = LOWER(?)");
+            params_vec.push(Box::new(r.to_string()));
+        }
+        if let Some(reg) = region {
+            sql.push_str(" AND LOWER(region) = LOWER(?)");
+            params_vec.push(Box::new(reg.to_string()));
+        }
+        sql.push_str(" ORDER BY created_at DESC");
+
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        stmt.query_map(params_refs.as_slice(), |row| {
+            Ok(SavedCharacterProfile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                realm: row.get(2)?,
+                region: row.get(3)?,
+                class: row.get(4)?,
+                spec: row.get(5)?,
+                simc_input: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    fn delete_character_profile(&self, id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM character_profiles WHERE id = ?1", params![id])
             .ok();
     }
 }

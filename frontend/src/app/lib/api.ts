@@ -236,6 +236,50 @@ export async function deleteSavedRoute(id: string): Promise<void> {
   });
 }
 
+export interface SavedCharacterProfile {
+  id: string;
+  name: string;
+  realm: string;
+  region: string;
+  class?: string;
+  spec?: string;
+  simc_input: string;
+  created_at: string;
+}
+
+export async function listCharacterProfiles(options?: {
+  name?: string;
+  realm?: string;
+  region?: string;
+}): Promise<SavedCharacterProfile[]> {
+  const params = new URLSearchParams();
+  if (options?.name) params.set('name', options.name);
+  if (options?.realm) params.set('realm', options.realm);
+  if (options?.region) params.set('region', options.region);
+  const query = params.toString();
+  return fetchJson<SavedCharacterProfile[]>(`${API_URL}/api/character-profiles${query ? '?' + query : ''}`);
+}
+
+export async function saveCharacterProfile(profile: {
+  name: string;
+  realm: string;
+  region: string;
+  class?: string;
+  spec?: string;
+  simc_input: string;
+}): Promise<SavedCharacterProfile> {
+  return fetchJson<SavedCharacterProfile>(`${API_URL}/api/character-profiles`, {
+    method: 'POST',
+    body: JSON.stringify(profile),
+  });
+}
+
+export async function deleteCharacterProfile(id: string): Promise<void> {
+  await fetchJson(`${API_URL}/api/character-profiles/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function listInstances(): Promise<Instance[]> {
   return fetchJson<Instance[]>(`${API_URL}/api/instances`);
 }

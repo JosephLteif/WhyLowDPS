@@ -8,7 +8,7 @@ import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
-import { getSimcStatus, isDesktop, listSavedRoutes, saveRoute, deleteSavedRoute } from '../lib/api';
+import { API_URL, getSimcStatus, isDesktop, listSavedRoutes, saveRoute, deleteSavedRoute, saveCharacterProfile, listCharacterProfiles, fetchJson } from '../lib/api';
 import { specDisplayName, CLASS_COLORS, SavedRoute } from '../lib/types';
 import { parseCharacterInfo, SimcClipboardInfo, PullInfo } from '../../lib/simc-parser';
 import { isMdtString, parseMdtString, convertMdtToSimc } from '../../lib/mdt-parser';
@@ -1946,6 +1946,28 @@ export default function SimSharedConfig() {
           setSelectedHistoryIdx(newIdx);
           setSimcInput(first);
           setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
+          
+          // Try to save character profile if character is in BNet roster
+          if (info.name && info.server) {
+            try {
+              const bnetData = await fetchJson<{ characters: Array<{ name: string; realm: string; region: string }> }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({ characters: [] }));
+              const characters = bnetData.characters || [];
+              const bnetChar = characters.find((c: any) => c.name.toLowerCase() === info.name?.toLowerCase() && c.realm.toLowerCase() === info.server?.toLowerCase());
+              if (bnetChar) {
+                await saveCharacterProfile({
+                  name: info.name,
+                  realm: info.server,
+                  region: info.region || 'us',
+                  class: info.className,
+                  spec: info.spec,
+                  simc_input: first,
+                });
+                console.log('[SimSharedConfig] Saved character profile for:', info.name);
+              }
+            } catch (e) {
+              console.error('[SimSharedConfig] Failed to save character profile:', e);
+            }
+          }
         } else {
           console.log('[SimSharedConfig] Detected SimC content but could not parse info, pasting anyway.');
           const newIdx = addToHistoryWithSelection(first);

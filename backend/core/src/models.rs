@@ -26,6 +26,18 @@ pub struct SavedRoute {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedCharacterProfile {
+    pub id: String,
+    pub name: String,
+    pub realm: String,
+    pub region: String,
+    pub class: Option<String>,
+    pub spec: Option<String>,
+    pub simc_input: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: String,
     pub status: JobStatus,

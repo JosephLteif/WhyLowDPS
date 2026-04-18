@@ -175,9 +175,7 @@ export default function TopHeader() {
 
   const simcProgress = simcStatus?.download_progress;
   const simcIsIndeterminate =
-    !simcProgress ||
-    simcProgress.percent == null ||
-    (simcProgress.bytes_total ?? 0) <= 0;
+    !simcProgress || simcProgress.percent == null || (simcProgress.bytes_total ?? 0) <= 0;
   const showSimcToast =
     isDesktop &&
     !!user &&
@@ -277,7 +275,8 @@ export default function TopHeader() {
                 {simcStatus?.is_updating || simcUpdating
                   ? simcProgress?.phase === 'extracting_archive'
                     ? 'Unpacking archive...'
-                    : simcProgress?.phase === 'installing_files' || simcProgress?.phase === 'extracting_data'
+                    : simcProgress?.phase === 'installing_files' ||
+                        simcProgress?.phase === 'extracting_data'
                       ? 'Extracting data files...'
                       : 'Downloading...'
                   : `Remote: ${simcStatus?.latest_version || 'Unknown'}`}

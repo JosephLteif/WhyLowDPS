@@ -226,7 +226,9 @@ export default function SimStatus({
             <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
               Elapsed
             </span>
-            <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatElapsed(elapsedSeconds)}</span>
+            <span className="mt-1 font-mono text-[13px] text-zinc-200">
+              {formatElapsed(elapsedSeconds)}
+            </span>
           </div>
           {cpuPct !== undefined && cpuPct > 0 && (
             <div className="flex flex-col items-center">
@@ -249,7 +251,9 @@ export default function SimStatus({
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                 Memory
               </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">{formatBytes(memBytes)}</span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                {formatBytes(memBytes)}
+              </span>
             </div>
           )}
           {iterations && (
@@ -257,7 +261,9 @@ export default function SimStatus({
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                 Iterations
               </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">{(iterations / 1000).toFixed(0)}k</span>
+              <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                {(iterations / 1000).toFixed(0)}k
+              </span>
             </div>
           )}
           {fightStyle && (
@@ -321,7 +327,10 @@ export default function SimStatus({
               <span className="text-sm text-zinc-300">
                 {stage}
                 {stageTimings[i] && (
-                  <span className="text-gray-500"> took {formatElapsed(stageTimings[i].elapsed)}</span>
+                  <span className="text-gray-500">
+                    {' '}
+                    took {formatElapsed(stageTimings[i].elapsed)}
+                  </span>
                 )}
               </span>
             </div>

@@ -45,9 +45,9 @@ export default function SimcRequiredModal() {
     setDownloading(true);
     setError(null);
     window.dispatchEvent(
-        new CustomEvent('whylowdps-simc-download-start', {
-          detail: { channel: 'nightly' },
-        })
+      new CustomEvent('whylowdps-simc-download-start', {
+        detail: { channel: 'nightly' },
+      })
     );
     void refreshStatuses(true);
     try {
@@ -94,10 +94,7 @@ export default function SimcRequiredModal() {
   const progress = activeStatus?.download_progress;
   const isUpdating = Object.values(statuses).some((status) => !!status?.is_updating);
   const showProgress = downloading || isUpdating;
-  const isIndeterminate =
-    !progress ||
-    progress.percent == null ||
-    (progress.bytes_total ?? 0) <= 0;
+  const isIndeterminate = !progress || progress.percent == null || (progress.bytes_total ?? 0) <= 0;
 
   const formatBytes = (bytes?: number | null) => {
     if (bytes == null || Number.isNaN(bytes)) return 'Unknown';

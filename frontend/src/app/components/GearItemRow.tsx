@@ -181,9 +181,9 @@ export default function GearItemRow({
       )}
 
       {details && details.length > 0 && (
-        <div className={`basis-full min-w-0 pt-0.5 ${detailsIndentClass}`}>
+        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass}`}>
           <div className="flex flex-wrap items-center gap-1.5">
-            {details.map((p, i) => (
+            {details.map((p, i) =>
               p.kind === 'gemIcon' && p.icon ? (
                 <a
                   key={i}
@@ -195,7 +195,13 @@ export default function GearItemRow({
                   rel="noopener noreferrer"
                   onClick={p.href ? (e) => e.preventDefault() : undefined}
                 >
-                  <img src={getIconUrl(p.icon)} alt={p.text} width={24} height={24} className="h-full w-full" />
+                  <img
+                    src={getIconUrl(p.icon)}
+                    alt={p.text}
+                    width={24}
+                    height={24}
+                    className="h-full w-full"
+                  />
                 </a>
               ) : p.kind === 'iconText' && p.icon ? (
                 <a
@@ -215,10 +221,16 @@ export default function GearItemRow({
                     height={16}
                     className="h-4 w-4 rounded-[3px]"
                   />
-                  <span className="min-w-0 whitespace-normal break-words leading-snug">{p.text}</span>
+                  <span className="min-w-0 whitespace-normal break-words leading-snug">
+                    {p.text}
+                  </span>
                 </a>
               ) : p.kind === 'plain' ? (
-                <span key={i} className={`text-[13px] leading-snug ${p.color || 'text-zinc-300'}`} title={p.tooltip || p.text}>
+                <span
+                  key={i}
+                  className={`text-[13px] leading-snug ${p.color || 'text-zinc-300'}`}
+                  title={p.tooltip || p.text}
+                >
                   {p.text}
                 </span>
               ) : (
@@ -230,7 +242,7 @@ export default function GearItemRow({
                   {p.text}
                 </span>
               )
-            ))}
+            )}
           </div>
         </div>
       )}
@@ -238,7 +250,8 @@ export default function GearItemRow({
   );
 
   // Row styling
-  const baseClass = 'flex flex-wrap items-start gap-x-2.5 gap-y-1 rounded-md px-2.5 py-2 transition-colors';
+  const baseClass =
+    'flex flex-wrap items-start gap-x-2.5 gap-y-1 rounded-md px-2.5 py-2 transition-colors';
 
   if (selectable) {
     return (

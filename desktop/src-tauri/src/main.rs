@@ -76,6 +76,11 @@ struct SystemInfo {
     version: String,
 }
 
+#[derive(serde::Serialize)]
+struct ClipboardTextResponse {
+    text: String,
+}
+
 #[tauri::command]
 async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
     let app_data_dir = app
@@ -128,7 +133,11 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![open_auth_window, get_system_info])
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .invoke_handler(tauri::generate_handler![
+            open_auth_window,
+            get_system_info
+        ])
         .setup(|app| {
             let app_handle = app.handle().clone();
 

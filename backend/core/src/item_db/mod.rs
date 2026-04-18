@@ -63,6 +63,66 @@ pub fn instances() -> Vec<Value> {
     state::INSTANCES.read().unwrap().clone()
 }
 
+pub fn get_runtime_data() -> Value {
+    loader::get_runtime_metadata()
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct InstanceInfo {
+    pub id: i64,
+    pub name: String,
+    pub zone: Option<String>,
+    pub instance_type: String,
+    pub boss_count: Option<i32>,
+    pub expansion: i32,
+    pub active_rotation: Option<bool>,
+}
+
+pub fn list_instances() -> Vec<InstanceInfo> {
+    let inst = state::INSTANCES.read().unwrap();
+    inst.iter()
+        .filter_map(|v| {
+            let id = v.get("id")?.as_i64()?;
+            let name = v.get("name")?.as_str()?.to_string();
+            let zone = v
+                .get("zone")
+                .and_then(|z| z.as_str())
+                .map(|s| s.to_string());
+            let instance_type = v
+                .get("type")
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "dungeon".to_string());
+            let boss_count = v
+                .get("bossCount")
+                .and_then(|b| b.as_i64())
+                .map(|n| n as i32);
+            let expansion = v.get("expansion").and_then(|e| e.as_i64()).unwrap_or(0) as i32;
+            let active_rotation = v.get("active_rotation").and_then(|a| a.as_bool());
+
+            Some(InstanceInfo {
+                id,
+                name,
+                zone,
+                instance_type,
+                boss_count,
+                expansion,
+                active_rotation,
+            })
+        })
+        .collect()
+}
+
+pub fn get_mplus_dungeons() -> Vec<InstanceInfo> {
+    list_instances()
+        .into_iter()
+        .filter(|i| {
+            i.instance_type == "mythic_plus"
+                || (i.instance_type == "dungeon" && i.active_rotation == Some(true))
+        })
+        .collect()
+}
+
 pub fn drops_by_encounter() -> Arc<HashMap<i64, Vec<GameItem>>> {
     state::DROPS_BY_ENCOUNTER.read().unwrap().clone()
 }

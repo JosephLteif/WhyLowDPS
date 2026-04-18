@@ -546,6 +546,16 @@ pub fn load_consumables(data_dir: &Path) {
     *TEMP_ENCHANT_OPTIONS_RAW.write().unwrap() = Arc::new(temp_enchants);
 }
 
+pub fn get_runtime_metadata() -> Value {
+    use crate::item_db::state::RUNTIME_DATA;
+    RUNTIME_DATA.read().unwrap().clone()
+}
+
+pub fn set_runtime_data(data: Value) {
+    use crate::item_db::state::RUNTIME_DATA;
+    *RUNTIME_DATA.write().unwrap() = data;
+}
+
 pub fn hydrate_runtime_metadata(runtime_path: &Path) {
     if !runtime_path.exists() {
         return;
@@ -554,6 +564,9 @@ pub fn hydrate_runtime_metadata(runtime_path: &Path) {
         Ok(s) => serde_json::from_str(&s).unwrap_or(Value::Null),
         Err(_) => return,
     };
+
+    // Store for later access
+    set_runtime_data(data.clone());
 
     if let Some(mplus) = data.get("mplus_rotation").and_then(|v| v.as_array()) {
         let rotation_ids: Vec<i64> = mplus.iter().filter_map(|v| v.as_i64()).collect();

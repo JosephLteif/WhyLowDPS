@@ -9,8 +9,10 @@
     "core:default",
     "shell:default",
     "updater:default",
+    "allow-clipboard-commands",
     {
       "identifier": "shell:allow-open",
+
       "allow": [
         {
           "url": "http://localhost:17384/**"

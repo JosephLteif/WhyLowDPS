@@ -30,6 +30,11 @@ interface TopGearStateProps {
   onItemAdded: (slot: string, simcString: string, origin: string) => void;
 }
 
+function makeIdentity(item: ResolvedItem): string {
+  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+}
+
 export function useTopGearState({
   resolved,
   selectedUids,
@@ -103,6 +108,52 @@ export function useTopGearState({
 
   const deselectAll = useCallback(() => onSelectionChange({}), [onSelectionChange]);
 
+  const selectAll = useCallback(() => {
+    const updated: Record<string, Set<string>> = {};
+    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
+      updated[slot] = new Set();
+      if (slotRes.equipped) {
+        updated[slot].add(slotRes.equipped.uid);
+      }
+      for (const alt of slotRes.alternatives) {
+        updated[slot].add(alt.uid);
+      }
+    }
+    onSelectionChange(updated);
+  }, [resolved.slots, onSelectionChange]);
+
+  const toggleSlotAll = useCallback(
+    (slots: string[]) => {
+      const allSelected = slots.every((slot) => {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) return true;
+        const total = (slotRes.equipped ? 1 : 0) + slotRes.alternatives.length;
+        if (total === 0) return true;
+        return selectedUids[slot]?.size === total;
+      });
+
+      const updated = {
+        ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+      };
+
+      for (const slot of slots) {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) continue;
+        if (allSelected) {
+          updated[slot] = new Set();
+        } else {
+          updated[slot] = new Set();
+          if (slotRes.equipped) updated[slot].add(slotRes.equipped.uid);
+          for (const alt of slotRes.alternatives) {
+            updated[slot].add(alt.uid);
+          }
+        }
+      }
+      onSelectionChange(updated);
+    },
+    [resolved.slots, selectedUids, onSelectionChange]
+  );
+
   const toggleGroup = useCallback(
     (items: { uid: string; slot: string }[]) => {
       const allSelected = items.length > 0 && items.every((c) => selectedUids[c.slot]?.has(c.uid));
@@ -129,6 +180,8 @@ export function useTopGearState({
         ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
       };
 
+      const identity = makeIdentity(item);
+
       if (slots.length === 1) {
         const slot = item.slot;
         if (!updated[slot]) updated[slot] = new Set();
@@ -142,14 +195,16 @@ export function useTopGearState({
         const isSelected = slots.some((s) => {
           const slotRes = resolved.slots[s];
           if (!slotRes) return false;
-          const matching = slotRes.alternatives.find((a) => a.uid === item.uid);
-          return matching ? selectedUids[s]?.has(matching.uid) : false;
+          return Array.from(selectedUids[s] || []).some((uid) => {
+            const match = slotRes.alternatives.find((a) => a.uid === uid);
+            return match && makeIdentity(match) === identity;
+          });
         });
 
         for (const slot of slots) {
           const slotRes = resolved.slots[slot];
           if (!slotRes) continue;
-          const matching = slotRes.alternatives.find((a) => a.uid === item.uid);
+          const matching = slotRes.alternatives.find((a) => makeIdentity(a) === identity);
           if (!matching) continue;
           if (!updated[slot]) updated[slot] = new Set();
           if (isSelected) {
@@ -179,6 +234,8 @@ export function useTopGearState({
     openOptimize,
     openUpgradeMenu,
     deselectAll,
+    selectAll,
+    toggleSlotAll,
     toggleGroup,
     toggleItem,
   };

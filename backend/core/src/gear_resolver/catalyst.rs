@@ -122,6 +122,7 @@ pub fn build_catalyst_item(
         inventory_type: source.inventory_type,
         is_catalyst: true,
         can_catalyst: false,
+        ..Default::default()
     }
 }
 

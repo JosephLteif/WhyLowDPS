@@ -37,6 +37,9 @@ export interface ResultItem extends ResolvedItem {
   upgrade_levels?: number;
   encounter?: string;
   instance_name?: string;
+  __kind?: string;
+  costs?: Record<string, number>;
+  upgrade_costs?: Record<string, number>;
 }
 
 export interface TopGearResult {
@@ -47,6 +50,7 @@ export interface TopGearResult {
   talent_build?: string;
   talent_spec?: string;
   target_error?: number;
+  currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
 
 export interface SlotResolution {
@@ -73,6 +77,18 @@ export interface ResolveGearResponse {
   excluded: { uid: string; item_id: number; name: string; reason: string }[];
   talent_loadouts: TalentLoadout[];
   catalyst_charges?: number;
+}
+
+export interface SavedRoute {
+  id: string;
+  name: string;
+  dungeon: string;
+  level?: number;
+  pull_count?: number;
+  timer_seconds?: number;
+  affixes?: string;
+  route_data: string;
+  created_at: string;
 }
 
 // Fight scenario for multi-sim

@@ -352,6 +352,8 @@ pub fn generate_upgrade_compare_input(
         }
         let c_name = format!("Combo {}", combo_idx);
         let mut items_meta = Vec::new();
+        let mut total_costs: HashMap<u64, u64> = HashMap::new();
+
         lines.push(format!("### {}", c_name));
         for (slot, c_idx) in &combo.choices {
             if *c_idx == 0 {
@@ -363,13 +365,24 @@ pub fn generate_upgrade_compare_input(
                 c_name, slot, opt.simc_string
             ));
 
+            for (&cid, &amt) in &opt.upgrade_costs {
+                *total_costs.entry(cid).or_default() += amt;
+            }
+
             let mut m = writer::item_meta(opt, slot);
             // Upgrade items are never "kept" in the sense of being currently equipped baseline
             m["is_kept"] = json!(false);
-            // UpgradedItem usually has extra fields like upgrade_levels, but ResolvedItem doesn't have it natively.
-            // We might need to handle this differently if it's crucial for the UI.
             items_meta.push(m);
         }
+
+        // Add a special entry for total costs in metadata
+        if !total_costs.is_empty() {
+            items_meta.push(json!({
+                "__kind": "total_upgrade_costs",
+                "costs": total_costs
+            }));
+        }
+
         if !talents_string.is_empty() {
             lines.push(format!(
                 "profileset.\"{}\"+=talents={}",

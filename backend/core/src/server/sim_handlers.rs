@@ -125,6 +125,7 @@ pub(super) async fn create_sim(
         Err(detail) => return HttpResponse::BadRequest().json(json!({ "detail": detail })),
     };
 
+    let options = req.options.to_json_with_sim_type(&req.sim_type);
     let mut job = Job::new(
         simc_input.clone(),
         req.sim_type.clone(),
@@ -132,6 +133,7 @@ pub(super) async fn create_sim(
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.options = Some(options.clone());
     job.batch_id = req.options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -139,7 +141,6 @@ pub(super) async fn create_sim(
 
     // Spawn background task
     let store_clone = store.get_ref().clone();
-    let options = req.options.to_json_with_sim_type(&req.sim_type);
     let job_id_clone = job_id.clone();
     let logs = log_buffer.get_ref().clone();
     let jid_logs = job_id.clone();
@@ -468,17 +469,75 @@ fn build_consumable_matrix_input(simc_input: &str, options: &SimOptions) -> Matr
 
     let mut lines: Vec<String> = Vec::new();
     let mut combo_metadata: ComboMetadata = HashMap::new();
-    lines.push("optimal_raid=0".to_string());
     lines.push(String::new());
     lines.push("# Base Actor".to_string());
-    lines.extend(base_lines);
-    // Force matrix baseline to "no consumables" so each scenario delta is
-    // measured against a true empty-consumables profile.
+
+    // Filter out existing consumables, raid buffs, and common overrides from base_lines 
+    // to ensure the baseline is clean as requested.
+    let base_lines_filtered: Vec<String> = base_lines
+        .into_iter()
+        .filter(|line| {
+            let l = line.trim().to_lowercase();
+            // Clear standard consumable lines
+            if l.starts_with("food=")
+                || l.starts_with("flask=")
+                || l.starts_with("potion=")
+                || l.starts_with("augmentation=")
+                || l.starts_with("temporary_enchant=")
+                || l.starts_with("feast=")
+            {
+                return false;
+            }
+            // Clear raid buff settings
+            if l.starts_with("optimal_raid=")
+                || l.starts_with("party_buffs=")
+            {
+                return false;
+            }
+            // Clear common raid buff overrides that might be in the matrix
+            if l.starts_with("override.bloodlust=")
+                || l.starts_with("override.arcane_intellect=")
+                || l.starts_with("override.power_word_fortitude=")
+                || l.starts_with("override.battle_shout=")
+                || l.starts_with("override.mark_of_the_wild=")
+                || l.starts_with("override.hunters_mark=")
+                || l.starts_with("override.bleeding=")
+                || l.starts_with("override.chaos_brand=")
+                || l.starts_with("override.mystic_touch=")
+                || l.starts_with("override.skyfury=")
+                || l.starts_with("override.blessing_of_the_bronze=")
+                || l.starts_with("external_buffs.power_infusion=")
+            {
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    lines.extend(base_lines_filtered);
+
+    // Force matrix baseline to "no consumables" and "no raid buffs"
+    lines.push("optimal_raid=0".to_string());
+    lines.push("party_buffs=0".to_string());
     lines.push("flask=".to_string());
     lines.push("food=".to_string());
     lines.push("potion=".to_string());
     lines.push("augmentation=".to_string());
     lines.push("temporary_enchant=".to_string());
+    // Also clear common overrides to match the filter above
+    lines.push("override.bloodlust=0".to_string());
+    lines.push("override.arcane_intellect=0".to_string());
+    lines.push("override.power_word_fortitude=0".to_string());
+    lines.push("override.battle_shout=0".to_string());
+    lines.push("override.mark_of_the_wild=0".to_string());
+    lines.push("override.hunters_mark=0".to_string());
+    lines.push("override.bleeding=0".to_string());
+    lines.push("override.chaos_brand=0".to_string());
+    lines.push("override.mystic_touch=0".to_string());
+    lines.push("override.skyfury=0".to_string());
+    lines.push("override.blessing_of_the_bronze=0".to_string());
+    lines.push("external_buffs.power_infusion=".to_string());
+
     lines.push("### Combo 1".to_string());
     for slot in crate::types::class_data::GEAR_SLOTS {
         if let Some(gear) = equipped_gear.get(*slot) {
@@ -596,6 +655,7 @@ fn make_resolved_item(
         inventory_type,
         is_catalyst: false,
         can_catalyst: false,
+        ..Default::default()
     }
 }
 
@@ -1636,6 +1696,7 @@ async fn create_trinket_tier_heatmap_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.options = Some(options.to_json_with_sim_type("trinket_tier_heatmap"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -1705,6 +1766,7 @@ async fn create_external_buff_matrix_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.options = Some(options.to_json_with_sim_type("external_buff_matrix"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -1773,6 +1835,7 @@ async fn create_consumable_matrix_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.options = Some(options.to_json_with_sim_type("consumable_matrix"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -1916,13 +1979,14 @@ pub(super) async fn create_top_gear_sim(
         return resp;
     }
 
-    let job = Job::new(
+    let mut job = Job::new(
         generated_input.clone(),
         "top_gear".to_string(),
         req.options.iterations,
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.options = Some(req.options.to_json_with_sim_type("top_gear"));
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
 
@@ -2079,13 +2143,14 @@ pub(super) async fn create_droptimizer_sim(
         return resp;
     }
 
-    let job = Job::new(
+    let mut job = Job::new(
         generated_input.clone(),
         "droptimizer".to_string(),
         req.options.iterations,
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.options = Some(req.options.to_json_with_sim_type("droptimizer"));
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
 

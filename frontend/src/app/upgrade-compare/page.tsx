@@ -156,8 +156,14 @@ export default function UpgradeComparePage() {
           body: JSON.stringify({
             simc_input: simcInput,
             selected_slots: [...selectedSlots],
-            upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
-            budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
+            upgrade_depth:
+              upgradeMode === 'all_affordable' || upgradeMode === 'all_any'
+                ? 'all_levels'
+                : 'highest_only',
+            budget_mode:
+              upgradeMode === 'highest_any' || upgradeMode === 'all_any'
+                ? 'ignore_budget'
+                : 'max_affordability',
             upgrade_budget_override: budgetOverridePayload,
             max_combinations: maxCombinations,
           }),
@@ -178,8 +184,14 @@ export default function UpgradeComparePage() {
     return {
       simc_input: simcInput,
       selected_slots: [...selectedSlots],
-      upgrade_depth: upgradeMode === 'all_affordable' || upgradeMode === 'all_any' ? 'all_levels' : 'highest_only',
-      budget_mode: upgradeMode === 'highest_any' || upgradeMode === 'all_any' ? 'ignore_budget' : 'max_affordability',
+      upgrade_depth:
+        upgradeMode === 'all_affordable' || upgradeMode === 'all_any'
+          ? 'all_levels'
+          : 'highest_only',
+      budget_mode:
+        upgradeMode === 'highest_any' || upgradeMode === 'all_any'
+          ? 'ignore_budget'
+          : 'max_affordability',
       upgrade_budget_override: budgetOverridePayload,
       max_combinations: maxCombinations,
     };
@@ -248,6 +260,16 @@ export default function UpgradeComparePage() {
     setSelectedSlots(next);
   };
 
+  const toggleAll = () => {
+    const allSlots = candidates.map((c) => c.slot);
+    const anyMissing = allSlots.some((s) => !selectedSlots.has(s));
+    if (anyMissing) {
+      setSelectedSlots(new Set(allSlots));
+    } else {
+      setSelectedSlots(new Set());
+    }
+  };
+
   if (!hasCharacter) {
     return (
       <p className="py-6 text-center text-sm text-muted">
@@ -275,9 +297,7 @@ export default function UpgradeComparePage() {
       </div>
 
       <div className="space-y-2">
-        <p className="text-[12px] font-medium uppercase tracking-widest text-muted">
-          Upgrade Mode
-        </p>
+        <p className="text-[12px] font-medium uppercase tracking-widest text-muted">Upgrade Mode</p>
         <div className="grid gap-2 md:grid-cols-2">
           {[
             ['highest_affordable', 'Highest Affordable', 'Only the highest tier you can afford.'],
@@ -372,9 +392,28 @@ export default function UpgradeComparePage() {
       {/* Upgradeable Items */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium uppercase tracking-widest text-muted">
-            Select Items to Upgrade
-          </p>
+          <div className="flex items-center gap-4">
+            <p className="text-xs font-medium uppercase tracking-widest text-muted">
+              Select Items to Upgrade
+            </p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
+              >
+                All
+              </button>
+              <span className="h-3 w-px bg-zinc-700" />
+              <button
+                type="button"
+                onClick={() => setSelectedSlots(new Set())}
+                className="text-[11px] font-bold text-zinc-500 transition-colors hover:text-zinc-300"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
           {displayComboCount > 0 && (
             <span className="rounded-md bg-surface-2 px-2.5 py-1 font-mono text-xs text-white">
               {displayComboCount.toLocaleString()} combo{displayComboCount !== 1 ? 's' : ''}

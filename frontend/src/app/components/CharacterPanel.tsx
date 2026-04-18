@@ -1,25 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { EnchantInfo, GemInfo, ItemInfo } from '../lib/useItemInfo';
 import {
-  useItemInfo,
+  getIconUrl,
+  getWowheadData,
+  getWowheadUrl,
+  QUALITY_COLORS,
   useEnchantInfo,
   useGemInfo,
-  getIconUrl,
-  getWowheadUrl,
-  getWowheadData,
-  QUALITY_COLORS,
+  useItemInfo,
 } from '../lib/useItemInfo';
-import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
 import { useTalentTree } from '../lib/useTalentTree';
 import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
-import { decodeHeader } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
-import { generateSimcString } from '../lib/simc-generator';
+import { decodeHeader } from '../lib/talentDecode';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -41,8 +40,8 @@ function isTalentExportString(value: string, expectedSpecId?: number | null): bo
     const header = decodeHeader(trimmed);
     if (header.bits.length <= header.offset) return false;
     if (header.specId <= 0) return false;
-    if (expectedSpecId && header.specId !== expectedSpecId) return false;
-    return true;
+    return !(expectedSpecId && header.specId !== expectedSpecId);
+
   } catch {
     return false;
   }
@@ -95,6 +94,7 @@ interface CharacterPanelProps {
   professions: any;
   mythicPlus: any;
   raidEncounters: any;
+  dungeons?: any;
   characterMediaUrl?: string | null;
 }
 
@@ -102,13 +102,9 @@ export default function CharacterPanel({
   name,
   realm,
   region,
-  characterClass,
-  race,
-  level,
   equipment,
   statistics,
   specializations,
-  professions,
   mythicPlus,
   raidEncounters,
   characterMediaUrl,
@@ -116,7 +112,6 @@ export default function CharacterPanel({
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const armoryUrl = `https://worldofwarcraft.blizzard.com/en-us/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`;
 
-  const [copied, setCopied] = useState(false);
   const itemsBySlot = useMemo(() => {
     const map: Record<string, BlizzardItem> = {};
     for (const item of equipment.equipped_items || []) {
@@ -143,7 +138,6 @@ export default function CharacterPanel({
   }, [activeSpec]);
 
   const specId = activeSpec?.specialization?.id ?? null;
-  const specName = activeSpec?.specialization?.name ?? null;
   const tree = useTalentTree(specId);
 
   const talentString = useMemo(() => {
@@ -208,18 +202,6 @@ export default function CharacterPanel({
       return null;
     }
   }, [activeLoadout, tree, specId, activeSpec]);
-
-  const handleCopySimc = () => {
-    const simcString = generateSimcString(
-      { name, realm, region, race, level, ...statistics, class: characterClass, professions },
-      equipment,
-      talentString,
-      specName
-    );
-    navigator.clipboard.writeText(simcString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
   // --- End Talent & SimC Logic ---
 
   const allItemQueries = useMemo(() => {
@@ -290,18 +272,6 @@ export default function CharacterPanel({
         >
           Raider.io
         </a>
-
-        <div className="mx-2 h-4 w-px bg-white/10" />
-
-        <button
-          disabled
-          className="flex cursor-not-allowed items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-1.5 text-xs font-bold text-zinc-500 opacity-50"
-        >
-          <svg className="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3z" />
-          </svg>
-          Copy SimC String (Parked)
-        </button>
       </div>
 
       {/* Upper Section: Gear & Stats */}
@@ -541,6 +511,7 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
 
 function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
   const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
+  const [showAll, setShowAll] = useState(false);
 
   const raids = useMemo(() => {
     if (!raidEncounters || typeof raidEncounters !== 'object') return [];
@@ -670,10 +641,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
   }, [raidEncounters]);
 
   const expansionOptions = useMemo(() => {
-    const map = new Map<
-      string,
-      { key: string; label: string }
-    >();
+    const map = new Map<string, { key: string; label: string }>();
     for (const raid of raids) {
       if (!map.has(raid.expansionKey)) {
         map.set(raid.expansionKey, { key: raid.expansionKey, label: raid.expansionLabel });
@@ -684,8 +652,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
 
   const visibleRaids = useMemo(() => {
     return raids.filter((raid) => {
-      const expansionOk = selectedExpansion === 'all' || raid.expansionKey === selectedExpansion;
-      return expansionOk;
+      return selectedExpansion === 'all' || raid.expansionKey === selectedExpansion;
     });
   }, [raids, selectedExpansion]);
 
@@ -717,7 +684,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
       </div>
       {visibleRaids.length > 0 ? (
         <div className="space-y-4">
-          {visibleRaids.map((raid) => (
+          {(showAll ? visibleRaids : visibleRaids.slice(0, 3)).map((raid) => (
             <div key={raid.name} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
               <p className="mb-1 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
               <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">
@@ -731,6 +698,15 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
               </div>
             </div>
           ))}
+          {visibleRaids.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-2 text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
+            >
+              {showAll ? 'Show Less' : `View All (${visibleRaids.length})`}
+            </button>
+          )}
         </div>
       ) : (
         <p className="text-[11px] italic text-zinc-600">
@@ -877,7 +853,7 @@ function StatsCard({ statistics }: { statistics: any }) {
     const mastery = statistics.mastery;
     const versatility = statistics.versatility_offensive_modifier ?? statistics.versatility;
 
-    const list = [
+    return [
       { label: 'Main Stat', value: getEffectiveValue(mainStat) },
       { label: 'Stamina', value: getEffectiveValue(statistics.stamina) },
       null,
@@ -889,8 +865,6 @@ function StatsCard({ statistics }: { statistics: any }) {
         value: getPercentValue(versatility, statistics.versatility) ?? '0.0%',
       },
     ];
-
-    return list;
   }, [statistics]);
 
   if (!statistics) {
@@ -937,7 +911,6 @@ function TalentsCard({
   tree: any;
 }) {
   const loading = specId !== null && !tree;
-  const [copiedTalentTree, setCopiedTalentTree] = useState(false);
 
   if (!activeSpec) {
     return (
@@ -967,19 +940,6 @@ function TalentsCard({
             Specialization: <span className="text-gold">{activeSpec.specialization.name}</span>
           </h1>
           <div className="flex items-center gap-2">
-            {talentString && (
-              <button
-                type="button"
-                onClick={() => {
-                  void navigator.clipboard.writeText(talentString);
-                  setCopiedTalentTree(true);
-                  setTimeout(() => setCopiedTalentTree(false), 1500);
-                }}
-                className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-              >
-                {copiedTalentTree ? 'Copied' : 'Copy Talent Tree'}
-              </button>
-            )}
             {loading && (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
             )}

@@ -86,6 +86,17 @@ function makeUid(item: {
   return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
 }
 
+function makeIdentity(item: {
+  item_id: number;
+  bonus_ids: number[];
+  origin: string;
+  enchant_id?: number;
+  gem_id?: number;
+}): string {
+  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+}
+
 function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {
   const match = simc.match(new RegExp(`(?:^|,)${key}=([0-9/:]+)`));
   if (!match) return 0;
@@ -123,6 +134,8 @@ export default function TopGearItemSelector({
     openOptimize,
     openUpgradeMenu,
     deselectAll,
+    selectAll,
+    toggleSlotAll,
     toggleGroup,
     toggleItem,
   } = useTopGearState({ resolved, selectedUids, onSelectionChange, onResolvedChange, onItemAdded });
@@ -262,9 +275,9 @@ export default function TopGearItemSelector({
         uid,
         enchant_id: enchantId,
         gem_id: firstGemId,
-        enchant_name: enchantId > 0 ? (enchantInfoById[enchantId]?.name || '') : '',
-        gem_name: firstGemId > 0 ? (gemInfoById[firstGemId]?.name || '') : '',
-        gem_icon: firstGemId > 0 ? (gemInfoById[firstGemId]?.icon || '') : '',
+        enchant_name: enchantId > 0 ? enchantInfoById[enchantId]?.name || '' : '',
+        gem_name: firstGemId > 0 ? gemInfoById[firstGemId]?.name || '' : '',
+        gem_icon: firstGemId > 0 ? gemInfoById[firstGemId]?.icon || '' : '',
         simc_string: nextSimc,
       };
 
@@ -399,15 +412,31 @@ export default function TopGearItemSelector({
     return DISPLAY_GROUPS.map((group) => {
       const equipped: ResolvedItem[] = [];
       const alternatives: ResolvedItem[] = [];
-      const seenAltKeys = new Set<string>();
+      const seenEquippedIdentities = new Set<string>();
+      const seenAltIdentities = new Set<string>();
+
       group.slots.forEach((slot) => {
         const slotRes = resolved.slots[slot];
         if (!slotRes) return;
-        if (slotRes.equipped) equipped.push(slotRes.equipped);
+        if (slotRes.equipped) {
+          const identity = makeIdentity(slotRes.equipped);
+          if (!seenEquippedIdentities.has(identity)) {
+            seenEquippedIdentities.add(identity);
+            equipped.push(slotRes.equipped);
+          }
+        }
+      });
+
+      group.slots.forEach((slot) => {
+        const slotRes = resolved.slots[slot];
+        if (!slotRes) return;
         slotRes.alternatives.forEach((alt) => {
-          const key = makeUid(alt);
-          if (!seenAltKeys.has(key)) {
-            seenAltKeys.add(key);
+          const identity = makeIdentity(alt);
+          // If already in equipped for this group, skip
+          if (seenEquippedIdentities.has(identity)) return;
+
+          if (!seenAltIdentities.has(identity)) {
+            seenAltIdentities.add(identity);
             alternatives.push(alt);
           }
         });
@@ -438,7 +467,8 @@ export default function TopGearItemSelector({
       items.push(...slotRes.alternatives);
 
       items.forEach((item) => {
-        const gemId = item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
+        const gemId =
+          item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
         const enchantId =
           item.enchant_id > 0
             ? item.enchant_id
@@ -528,9 +558,7 @@ export default function TopGearItemSelector({
     const effectiveGemId =
       item.gem_id > 0 ? item.gem_id : parseFirstIdFromSimc(item.simc_string, 'gem_id');
     const effectiveEnchantId =
-      item.enchant_id > 0
-        ? item.enchant_id
-        : parseFirstIdFromSimc(item.simc_string, 'enchant_id');
+      item.enchant_id > 0 ? item.enchant_id : parseFirstIdFromSimc(item.simc_string, 'enchant_id');
 
     const gemInfo = effectiveGemId > 0 ? gemInfoById[effectiveGemId] : undefined;
     const enchantInfo = effectiveEnchantId > 0 ? enchantInfoById[effectiveEnchantId] : undefined;
@@ -619,6 +647,7 @@ export default function TopGearItemSelector({
       }
       onToggleVault={() => toggleGroup(vaultUids)}
       onToggleCatalyst={() => toggleGroup(catalystUids)}
+      onSelectAll={selectAll}
       onClear={deselectAll}
     />
   );
@@ -689,15 +718,21 @@ export default function TopGearItemSelector({
             onUpgradeSelect={addUpgradedCopy}
             onCatalystConvert={convertToCatalyst}
             onOptimize={openOptimize}
+            onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}
-            isItemSelected={(item) =>
-              group.slots.some((s) => {
+            isItemSelected={(item) => {
+              const identity = makeIdentity(item);
+              return group.slots.some((s) => {
+                const selected = selectedUids[s];
+                if (!selected) return false;
                 const slotRes = resolved.slots[s];
                 if (!slotRes) return false;
-                const match = slotRes.alternatives.find((a) => a.uid === item.uid);
-                return match ? selectedUids[s]?.has(match.uid) : false;
-              })
-            }
+                return Array.from(selected).some((uid) => {
+                  const match = slotRes.alternatives.find((a) => a.uid === uid);
+                  return match && makeIdentity(match) === identity;
+                });
+              });
+            }}
             getWowheadUrl={getWowheadUrl}
             getWowheadData={getWowheadData}
           />

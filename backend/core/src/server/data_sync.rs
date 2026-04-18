@@ -939,22 +939,205 @@ async fn perform_sync(
         let season_data: Value = res.json().await.map_err(|e| e.to_string())?;
 
         let mut rotation_dungeons = Vec::new();
+        let mut dungeon_details: Vec<Value> = Vec::new();
         let dungeons = season_data.get("dungeons").and_then(|d| d.as_array());
         let dungeon_count = dungeons.map(|d| d.len()).unwrap_or(0);
 
+        // Blizzard sometimes returns localized name objects (e.g. {"en_US": "..."}).
+        let localized_str = |v: Option<&Value>| -> Option<String> {
+            let value = v?;
+            if let Some(s) = value.as_str() {
+                return Some(s.to_string());
+            }
+            if let Some(obj) = value.as_object() {
+                if let Some(en) = obj.get("en_US").and_then(|x| x.as_str()) {
+                    return Some(en.to_string());
+                }
+                if let Some(any) = obj.values().find_map(|x| x.as_str()) {
+                    return Some(any.to_string());
+                }
+            }
+            None
+        };
+
+        // Get season name for storage
+        let season_name = localized_str(season_data.get("name"))
+            .unwrap_or_else(|| format!("Season {}", current_season_id));
+
         if let Some(dungeons) = dungeons {
             for (i, dungeon) in dungeons.iter().enumerate() {
-                let name = dungeon
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("Unknown Dungeon");
+                let name = localized_str(dungeon.get("name"))
+                    .or_else(|| localized_str(dungeon.get("short_name")))
+                    .unwrap_or_else(|| "Unknown Dungeon".to_string());
+                let id = dungeon.get("id").and_then(|v| v.as_i64());
+                let href = dungeon
+                    .get("key")
+                    .and_then(|k| k.get("href"))
+                    .and_then(|h| h.as_str());
+                let href_id = href
+                    .and_then(|h| h.split("/mythic-keystone/dungeon/").nth(1))
+                    .and_then(|tail| tail.split('?').next())
+                    .and_then(|id_str| id_str.parse::<i64>().ok());
+                let dungeon_id = id.or(href_id);
+                
                 {
                     let mut p = state.progress.lock().await;
                     *p = format!("Dungeons:{}:{}:{}", i + 1, dungeon_count, name);
                 }
-                if let Some(id) = dungeon.get("id").and_then(|v| v.as_i64()) {
-                    rotation_dungeons.push(id);
+                
+                // Try to fetch details for this dungeon from Blizzard API
+                if let Some(dungeon_id) = dungeon_id {
+                    let dungeon_url = if let Some(h) = href {
+                        if h.contains("locale=") {
+                            h.to_string()
+                        } else if h.contains('?') {
+                            format!("{h}&locale=en_US")
+                        } else {
+                            format!("{h}?locale=en_US")
+                        }
+                    } else {
+                        format!(
+                            "https://us.api.blizzard.com/data/wow/mythic-keystone/dungeon/{}?namespace=dynamic-us&locale=en_US",
+                            dungeon_id
+                        )
+                    };
+                    
+                    if let Ok(res) = blizzard.client.get(&dungeon_url).bearer_auth(&token).send().await {
+                        let json_result = res.json::<Value>().await.ok();
+                        if let Some(detail_data) = json_result {
+                            let description = detail_data
+                                .get("description")
+                                .and_then(|d| d.as_str())
+                                .map(|s| s.to_string())
+                                .or_else(|| localized_str(detail_data.get("description")));
+                            let zone = detail_data
+                                .get("location")
+                                .and_then(|l| l.get("name"))
+                                .and_then(|n| localized_str(Some(n)))
+                                .or_else(|| {
+                                    detail_data
+                                        .get("instance_map")
+                                        .and_then(|m| m.get("name"))
+                                        .and_then(|n| localized_str(Some(n)))
+                                });
+                            let slug = detail_data
+                                .get("slug")
+                                .and_then(|s| s.as_str())
+                                .map(|s| s.to_string());
+                            let short_name = detail_data
+                                .get("short_name")
+                                .and_then(|s| s.as_str())
+                                .map(|s| s.to_string());
+                            let expansion_id = detail_data
+                                .get("expansion")
+                                .and_then(|e| e.get("id"))
+                                .and_then(|v| v.as_i64());
+                            let expansion_name = detail_data
+                                .get("expansion")
+                                .and_then(|e| e.get("name"))
+                                .and_then(|n| localized_str(Some(n)));
+                            let map_id = detail_data
+                                .get("instance_map")
+                                .and_then(|m| m.get("id"))
+                                .and_then(|v| v.as_i64());
+                            let challenge_mode_id = detail_data
+                                .get("challenge_mode")
+                                .and_then(|cm| cm.get("id"))
+                                .and_then(|v| v.as_i64());
+                            let minimum_level = detail_data
+                                .get("minimum_level")
+                                .and_then(|v| v.as_i64());
+                            let keystone_timer_ms = detail_data
+                                .get("keystone_timer_ms")
+                                .and_then(|v| v.as_i64())
+                                .or_else(|| detail_data.get("timer_ms").and_then(|v| v.as_i64()));
+                            let keystone_upgrades: Vec<i64> = detail_data
+                                .get("keystone_upgrades")
+                                .and_then(|a| a.as_array())
+                                .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
+                                .unwrap_or_default();
+                            let encounter_names: Vec<String> = detail_data
+                                .get("encounters")
+                                .and_then(|a| a.as_array())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|enc| {
+                                            enc.get("name")
+                                                .and_then(|n| localized_str(Some(n)))
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+                            let blizzard_href = detail_data
+                                .get("key")
+                                .and_then(|k| k.get("href"))
+                                .and_then(|h| h.as_str())
+                                .map(|s| s.to_string());
+
+                            let mut detail = json!({"id": dungeon_id, "name": name});
+                            
+                            if let Some(desc) = description {
+                                detail["description"] = json!(desc);
+                            }
+                            if let Some(z) = zone {
+                                detail["zone"] = json!(z);
+                            }
+                            if let Some(s) = slug {
+                                detail["slug"] = json!(s);
+                            }
+                            if let Some(s) = short_name {
+                                detail["short_name"] = json!(s);
+                            }
+                            if let Some(exp) = expansion_id {
+                                detail["expansion"] = json!(exp);
+                            }
+                            if let Some(exp_name) = expansion_name {
+                                detail["expansion_name"] = json!(exp_name);
+                            }
+                            if let Some(mid) = map_id {
+                                detail["map_id"] = json!(mid);
+                            }
+                            if let Some(cmid) = challenge_mode_id {
+                                detail["challenge_mode_id"] = json!(cmid);
+                            }
+                            if let Some(level) = minimum_level {
+                                detail["minimum_level"] = json!(level);
+                            }
+                            if let Some(timer) = keystone_timer_ms {
+                                detail["keystone_timer_ms"] = json!(timer);
+                            }
+                            if !keystone_upgrades.is_empty() {
+                                detail["keystone_upgrades"] = json!(keystone_upgrades);
+                            }
+                            if !encounter_names.is_empty() {
+                                detail["encounters"] = json!(encounter_names.clone());
+                                detail["num_bosses"] = json!(encounter_names.len() as i64);
+                            }
+                            if let Some(href) = blizzard_href {
+                                detail["blizzard_href"] = json!(href);
+                            }
+                            
+                            // Try to get image from media assets
+                            if let Some(media) = detail_data.get("media").and_then(|m| m.as_object()) {
+                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array()) {
+                                    if let Some(first_asset) = assets.first() {
+                                        if let Some(url) = first_asset.get("value").and_then(|v| v.as_str()) {
+                                            detail["image_url"] = json!(url);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Keep full raw payload so the UI can render all available Blizzard fields.
+                            detail["blizzard_api_data"] = detail_data;
+                            
+                            dungeon_details.push(detail);
+                        }
+                    }
+                    
+                    rotation_dungeons.push(dungeon_id);
                 }
+                
                 tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
             }
         }
@@ -963,7 +1146,9 @@ async fn perform_sync(
             let runtime_file = dir.join("blizzard-runtime-data.json");
             let runtime_data = json!({
                 "current_season_id": current_season_id,
+                "season_name": season_name,
                 "mplus_rotation": rotation_dungeons,
+                "dungeon_details": dungeon_details,
                 "last_sync": chrono::Utc::now().to_rfc3339(),
             });
             std::fs::write(

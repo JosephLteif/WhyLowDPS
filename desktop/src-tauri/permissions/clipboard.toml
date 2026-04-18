@@ -1,0 +1,8 @@
+[[permission]]
+identifier = "allow-clipboard-commands"
+description = "Allows invoking clipboard-related commands"
+commands.allow = [
+    "get_clipboard_text",
+    "get_system_info",
+    "open_auth_window"
+]

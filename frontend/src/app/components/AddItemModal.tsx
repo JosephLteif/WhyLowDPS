@@ -76,6 +76,32 @@ export default function AddItemModal({
   preferredSlot,
 }: AddItemModalProps) {
   const state = useAddItemState(isOpen, className, spec, preferredSlot);
+
+  const inventoryTypeToSlot = useMemo<Record<number, string>>(
+    () => ({
+      1: 'head',
+      2: 'neck',
+      3: 'shoulder',
+      16: 'back',
+      5: 'chest',
+      20: 'chest',
+      9: 'wrist',
+      10: 'hands',
+      6: 'waist',
+      7: 'legs',
+      8: 'feet',
+      11: 'finger1',
+      12: 'trinket1',
+      13: 'main_hand',
+      17: 'main_hand',
+      21: 'main_hand',
+      14: 'off_hand',
+      22: 'off_hand',
+      23: 'off_hand',
+    }),
+    []
+  );
+
   const {
     instances,
     selectedInstance,
@@ -100,6 +126,8 @@ export default function AddItemModal({
     showSearchDropdown,
     setShowSearchDropdown,
     isGlobalLoading,
+    groupBy,
+    setGroupBy,
   } = state;
 
   const filteredInstances = useMemo(() => {
@@ -143,7 +171,8 @@ export default function AddItemModal({
       selectedInstance === -2
         ? globalSearchResults.reduce(
             (acc, item) => {
-              const slot = SLOT_LABELS[item.inventory_type] || 'Unknown';
+              const slotKey = inventoryTypeToSlot[item.inventory_type] || 'unknown';
+              const slot = SLOT_LABELS[slotKey] || 'Unknown';
               if (!acc[slot]) acc[slot] = [];
               acc[slot].push(item);
               return acc;
@@ -152,32 +181,87 @@ export default function AddItemModal({
           )
         : drops;
 
-    for (const [slot, items] of Object.entries(sourceData)) {
-      const lowerSlot = slot.toLowerCase();
-      const lowerFilter = filterSlot?.toLowerCase() || null;
-      if (lowerFilter && lowerSlot !== lowerFilter) {
-        const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');
-        const isRing =
-          (lowerFilter.startsWith('finger') || lowerFilter.startsWith('ring')) &&
-          (lowerSlot.startsWith('finger') || lowerSlot.startsWith('ring'));
-        if (!isTrinket && !isRing) continue;
+    if (groupBy === 'boss' && category === 'raid') {
+      // Flatten items then regroup by boss
+      const flattened = Object.values(sourceData).flat();
+      for (const item of flattened) {
+        const boss = item.encounter || 'Unknown';
+
+        // 1. Search filter logic
+        const lowerQuery = globalSearch.toLowerCase();
+        const localQuery = localSearch.toLowerCase();
+        const matchesGlobal =
+          item.name.toLowerCase().includes(lowerQuery) ||
+          item.encounter.toLowerCase().includes(lowerQuery);
+        const matchesLocal =
+          item.name.toLowerCase().includes(localQuery) ||
+          item.encounter.toLowerCase().includes(localQuery);
+
+        if (!matchesGlobal || !matchesLocal) continue;
+
+        // 2. Slot filter logic
+        const slotKey = inventoryTypeToSlot[item.inventory_type] || 'unknown';
+        const lowerSlot = slotKey.toLowerCase();
+        const lowerFilter = filterSlot?.toLowerCase() || null;
+
+        if (lowerFilter && lowerSlot !== lowerFilter) {
+          const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');
+          const isRing =
+            (lowerFilter.startsWith('finger') || lowerFilter.startsWith('ring')) &&
+            (lowerSlot.startsWith('finger') || lowerSlot.startsWith('ring'));
+          if (!isTrinket && !isRing) continue;
+        }
+
+        if (!result[boss]) result[boss] = [];
+        result[boss].push(item);
       }
-      const matching = items.filter(
-        (i) =>
-          (i.name.toLowerCase().includes(globalSearch.toLowerCase()) ||
-            i.encounter.toLowerCase().includes(globalSearch.toLowerCase())) &&
-          (i.name.toLowerCase().includes(localSearch.toLowerCase()) ||
-            i.encounter.toLowerCase().includes(localSearch.toLowerCase()))
-      );
-      if (matching.length > 0) result[slot] = matching;
+    } else {
+      // Group by slot (existing behavior)
+      for (const [slot, items] of Object.entries(sourceData)) {
+        const lowerSlot =
+          Object.keys(SLOT_LABELS).find((key) => SLOT_LABELS[key] === slot)?.toLowerCase() ||
+          slot.toLowerCase();
+        const lowerFilter = filterSlot?.toLowerCase() || null;
+        if (lowerFilter && lowerSlot !== lowerFilter) {
+          const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');
+          const isRing =
+            (lowerFilter.startsWith('finger') || lowerFilter.startsWith('ring')) &&
+            (lowerSlot.startsWith('finger') || lowerSlot.startsWith('ring'));
+          if (!isTrinket && !isRing) continue;
+        }
+        const matching = items.filter(
+          (i) =>
+            (i.name.toLowerCase().includes(globalSearch.toLowerCase()) ||
+              i.encounter.toLowerCase().includes(globalSearch.toLowerCase())) &&
+            (i.name.toLowerCase().includes(localSearch.toLowerCase()) ||
+              i.encounter.toLowerCase().includes(localSearch.toLowerCase()))
+        );
+        if (matching.length > 0) result[slot] = matching;
+      }
     }
     return result;
-  }, [drops, globalSearch, localSearch, filterSlot, selectedInstance, globalSearchResults]);
+  }, [
+    drops,
+    globalSearch,
+    localSearch,
+    filterSlot,
+    selectedInstance,
+    globalSearchResults,
+    groupBy,
+  ]);
 
   const difficulties = useMemo(() => {
-    if (!seasonConfig || !selectedInstance) return [];
+    if (!seasonConfig) return [];
+
+    // If we are in Raid category, prioritize raid difficulties
+    if (category === 'raid') return seasonConfig.raid_difficulties;
+
     const instance = instances.find((i) => i.id === selectedInstance);
-    if (!instance) return [];
+    if (!instance) {
+      // Fallback for dungeon category if no specific instance selected
+      return seasonConfig.dungeon_categories[0]?.difficulties || [];
+    }
+
     if (instance.type === 'raid') return seasonConfig.raid_difficulties;
     let group = seasonConfig.dungeon_categories.find(
       (c) =>
@@ -188,7 +272,24 @@ export default function AddItemModal({
     if (!group && (instance.type === 'dungeon' || instance.type === 'expansion-dungeon'))
       group = seasonConfig.dungeon_categories[0];
     return group?.difficulties || seasonConfig.raid_difficulties;
-  }, [seasonConfig, selectedInstance, instances]);
+  }, [seasonConfig, selectedInstance, instances, category]);
+
+  // Ensure selected difficulty is valid for the current instance/category
+  useEffect(() => {
+    if (difficulties.length > 0) {
+      const isValid = difficulties.some((d: any) => d.key === selectedDifficulty);
+      if (!isValid) {
+        // Default to heroic for raids, or a middle ground for dungeons
+        const defaultDiff =
+          category === 'raid'
+            ? difficulties.find((d: any) => d.key === 'heroic') || difficulties[0]
+            : difficulties.find((d: any) => d.key === '+10') || difficulties[0];
+        if (defaultDiff) {
+          setSelectedDifficulty(defaultDiff.key);
+        }
+      }
+    }
+  }, [difficulties, category, setSelectedDifficulty]);
 
   useWowheadTooltips([drops, globalSearchResults, selectedDifficulty, category]);
 
@@ -260,6 +361,26 @@ export default function AddItemModal({
                   </button>
                 ))}
               </div>
+              {category === 'raid' && (
+                <div className="flex rounded-2xl border border-white/5 bg-black/40 p-1.5 shadow-inner">
+                  {[
+                    { id: 'slot', label: 'Slot' },
+                    { id: 'boss', label: 'Boss' },
+                  ].map((mode: any) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => setGroupBy(mode.id)}
+                      className={`rounded-xl px-4 py-2 text-[10px] font-bold transition-all ${
+                        groupBy === mode.id
+                          ? 'bg-zinc-700 text-white shadow-lg'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      {mode.label.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <button
               onClick={onClose}

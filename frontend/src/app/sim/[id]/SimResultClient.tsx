@@ -114,7 +114,7 @@ function useIcons(entries: { type: 'spell' | 'item'; id: number }[]) {
     return () => {
       cancelled = true;
     };
-  }, [depKey]);
+  }, [depKey, entries]);
 
   return icons;
 }

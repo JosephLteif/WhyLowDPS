@@ -31,6 +31,7 @@ interface TopGearResultsProps {
   elapsedTime?: number;
   stageTimings?: Array<{ name: string; elapsed: number }>;
   talentString?: string;
+  currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
 
 function CollapsibleSection({
@@ -85,6 +86,7 @@ export default function TopGearResults({
   elapsedTime,
   stageTimings,
   talentString,
+  currencies,
 }: TopGearResultsProps) {
   const {
     groupMode,
@@ -238,6 +240,7 @@ export default function TopGearResults({
             characterRenderUrl={characterRenderUrl}
             upgradeSlots={upgradeSlots}
             downgradeSlots={downgradeSlots}
+            currencies={currencies}
           />
         </CollapsibleSection>
       )}
@@ -255,9 +258,7 @@ export default function TopGearResults({
           </p>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-widest text-zinc-600">
-                Group by
-              </span>
+              <span className="text-[10px] uppercase tracking-widest text-zinc-600">Group by</span>
               <div className="flex gap-1">
                 {(
                   [
@@ -291,7 +292,9 @@ export default function TopGearResults({
                   {instance !== '__ungrouped__' && (
                     <div className="mb-2 flex items-center gap-2 border-b border-border/50 pb-1.5">
                       <span className="text-[15px] font-semibold text-zinc-200">{instance}</span>
-                      <span className="font-mono text-[13px] text-zinc-400">{group.length} items</span>
+                      <span className="font-mono text-[13px] text-zinc-400">
+                        {group.length} items
+                      </span>
                     </div>
                   )}
                   <RankingsHeader />
@@ -310,6 +313,7 @@ export default function TopGearResults({
                         itemInfoMap={itemInfoMap}
                         enchantInfoMap={enchantInfoMap}
                         gemInfoMap={gemInfoMap}
+                        currencies={currencies}
                       />
                     ))}
                   </div>
@@ -329,6 +333,7 @@ export default function TopGearResults({
             gemInfoMap={gemInfoMap}
             selectedResultName={selectedResultName}
             onSelectResult={setSelectedResultName}
+            currencies={currencies}
           />
         )}
       </CollapsibleSection>

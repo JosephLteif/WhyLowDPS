@@ -13,11 +13,37 @@ pub enum JobStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedRoute {
+    pub id: String,
+    pub name: String,
+    pub dungeon: String,
+    pub level: Option<i32>,
+    pub pull_count: Option<i32>,
+    pub timer_seconds: Option<i32>,
+    pub affixes: Option<String>,
+    pub route_data: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedCharacterProfile {
+    pub id: String,
+    pub name: String,
+    pub realm: String,
+    pub region: String,
+    pub class: Option<String>,
+    pub spec: Option<String>,
+    pub simc_input: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: String,
     pub status: JobStatus,
     pub sim_type: String,
     pub simc_input: String,
+    pub options: Option<serde_json::Value>,
     pub result_json: Option<String>,
     pub raw_json: Option<String>,
     pub combo_metadata_json: Option<String>,
@@ -173,6 +199,7 @@ impl Job {
             status: JobStatus::Pending,
             sim_type,
             simc_input,
+            options: None,
             result_json: None,
             raw_json: None,
             combo_metadata_json: None,

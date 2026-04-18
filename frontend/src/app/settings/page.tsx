@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
+import { invoke } from '@tauri-apps/api/core';
 import {
   API_URL,
   downloadLatestSimc,
   fetchJson,
   getSimcStatus,
   isDesktop,
+  isDesktopRuntime,
   type SimcStatus,
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
@@ -64,9 +66,7 @@ interface DataFilePreviewResponse {
   truncated: boolean;
 }
 
-const SIMC_CHANNELS = [
-  { id: 'nightly', label: 'Nightly' },
-] as const;
+const SIMC_CHANNELS = [{ id: 'nightly', label: 'Nightly' }] as const;
 
 type SimcChannelName = (typeof SIMC_CHANNELS)[number]['id'];
 
@@ -607,7 +607,6 @@ export default function SettingsPage() {
       : 0;
 
   const activePresetIdx = PRESETS.findIndex(
-
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
   );
 
@@ -856,8 +855,7 @@ export default function SettingsPage() {
                         </div>
                       </div>
                     );
-                    })}
-
+                  })}
                 </div>
               </div>
 
@@ -893,28 +891,33 @@ export default function SettingsPage() {
           export box if it looks like a valid SimC string.
         </p>
 
-        <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-zinc-200">Auto paste SimC clipboard content</p>
-            <p className="text-[13px] text-zinc-500">
-              If the newest clipboard copy looks like a SimC export, it will be pasted into the main
-              text bar automatically when you return to the app.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setAutoClipboardPasteSimc(!autoClipboardPasteSimc)}
-            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              autoClipboardPasteSimc ? 'bg-gold' : 'border border-border bg-surface'
-            }`}
-            aria-pressed={autoClipboardPasteSimc}
-          >
-            <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
-                autoClipboardPasteSimc ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+        <div className="space-y-4">
+
+          <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-zinc-200">
+                Auto paste latest SimC from clipboard
+              </p>
+              <p className="text-[13px] text-zinc-500">
+                Read the latest clipboard entry and automatically paste it into the main input if it
+                looks like a SimC profile.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoClipboardPasteSimc(!autoClipboardPasteSimc)}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                autoClipboardPasteSimc ? 'bg-gold' : 'border border-border bg-surface'
               }`}
-            />
-          </button>
+              aria-pressed={autoClipboardPasteSimc}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+                  autoClipboardPasteSimc ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+                }`}
+              />
+            </button>
+          </div>
         </div>
       </section>
 

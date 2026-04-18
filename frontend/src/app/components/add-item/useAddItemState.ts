@@ -69,6 +69,7 @@ export function useAddItemState(
   const [allPossibleDrops, setAllPossibleDrops] = useState<Record<string, ExternalItem[]>>({});
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+  const [groupBy, setGroupBy] = useState<'slot' | 'boss'>('slot');
 
   useEffect(() => {
     if (isOpen) {
@@ -76,6 +77,7 @@ export function useAddItemState(
       setGlobalSearch('');
       setLocalSearch('');
       setCategory('raid');
+      setGroupBy('slot');
       setItemTiers({});
     }
   }, [isOpen, preferredSlot]);
@@ -95,7 +97,12 @@ export function useAddItemState(
         setInstances(instData);
         setSeasonConfig(seasonData);
         setUpgradeTracks(normalizeUpgradeTracks(tracksData));
-        if (instData.length > 0 && !selectedInstance) setSelectedInstance(instData[0].id);
+
+        if (instData.length > 0 && !selectedInstance) {
+          const firstRaid = instData.find((i: any) => i.type.toLowerCase() === 'raid');
+          if (firstRaid) setSelectedInstance(firstRaid.id);
+          else setSelectedInstance(instData[0].id);
+        }
       } catch (e) {
         console.error('Failed to fetch initial data', e);
       }
@@ -205,5 +212,7 @@ export function useAddItemState(
     setShowSearchDropdown,
     isGlobalLoading,
     setIsGlobalLoading,
+    groupBy,
+    setGroupBy,
   };
 }

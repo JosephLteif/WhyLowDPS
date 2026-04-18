@@ -2,7 +2,9 @@ use rusqlite::{params, Connection};
 use std::sync::Mutex;
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary};
+use crate::models::{
+    extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
+};
 
 pub struct SqliteStorage {
     conn: Mutex<Connection>,
@@ -18,6 +20,7 @@ impl SqliteStorage {
                 status TEXT NOT NULL DEFAULT 'pending',
                 sim_type TEXT NOT NULL,
                 simc_input TEXT NOT NULL,
+                options TEXT,
                 result_json TEXT,
                 combo_metadata_json TEXT,
                 error_message TEXT,
@@ -44,6 +47,27 @@ impl SqliteStorage {
                 key TEXT NOT NULL,
                 value TEXT NOT NULL,
                 PRIMARY KEY (user_id, key)
+            );
+            CREATE TABLE IF NOT EXISTS dungeon_routes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                dungeon TEXT NOT NULL,
+                level INTEGER,
+                pull_count INTEGER,
+                timer_seconds INTEGER,
+                affixes TEXT,
+                route_data TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS character_profiles (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                realm TEXT NOT NULL,
+                region TEXT NOT NULL,
+                class TEXT,
+                spec TEXT,
+                simc_input TEXT NOT NULL,
+                created_at TEXT NOT NULL
             );",
         )
         .expect("Failed to create tables");
@@ -54,10 +78,15 @@ impl SqliteStorage {
              ALTER TABLE jobs ADD COLUMN text_output TEXT;",
         );
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN raw_json TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN options TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN batch_id TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_region TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_realm TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_name TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN level INTEGER;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN pull_count INTEGER;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN timer_seconds INTEGER;");
+        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN affixes TEXT;");
 
         let max_jobs = conn
             .query_row(
@@ -98,32 +127,35 @@ impl SqliteStorage {
 
     fn row_to_job(row: &rusqlite::Row) -> rusqlite::Result<Job> {
         let status_str: String = row.get(1)?;
-        let stages_str: String = row.get(10)?;
+        let stages_str: String = row.get(11)?;
         let stages: Vec<String> = serde_json::from_str(&stages_str).unwrap_or_default();
+        let options_json: Option<String> = row.get(4)?;
+        let options = options_json.and_then(|s| serde_json::from_str(&s).ok());
 
         Ok(Job {
             id: row.get(0)?,
             status: SqliteStorage::str_to_status(&status_str),
             sim_type: row.get(2)?,
             simc_input: row.get(3)?,
-            result_json: row.get(4)?,
-            combo_metadata_json: row.get(5)?,
-            error_message: row.get(6)?,
-            progress_pct: row.get::<_, u8>(7)?,
-            progress_stage: row.get(8)?,
-            progress_detail: row.get(9)?,
+            options,
+            result_json: row.get(5)?,
+            combo_metadata_json: row.get(6)?,
+            error_message: row.get(7)?,
+            progress_pct: row.get::<_, u8>(8)?,
+            progress_stage: row.get(9)?,
+            progress_detail: row.get(10)?,
             stages_completed: stages,
-            iterations: row.get::<_, u32>(11)?,
-            fight_style: row.get(12)?,
-            target_error: row.get(13)?,
-            created_at: row.get(14)?,
-            raw_json: row.get(15).ok().flatten(),
-            html_report: row.get(16).ok().flatten(),
-            text_output: row.get(17).ok().flatten(),
-            batch_id: row.get(18).ok().flatten(),
-            linked_region: row.get(19).ok().flatten(),
-            linked_realm: row.get(20).ok().flatten(),
-            linked_name: row.get(21).ok().flatten(),
+            iterations: row.get::<_, u32>(12)?,
+            fight_style: row.get(13)?,
+            target_error: row.get(14)?,
+            created_at: row.get(15)?,
+            raw_json: row.get(16).ok().flatten(),
+            html_report: row.get(17).ok().flatten(),
+            text_output: row.get(18).ok().flatten(),
+            batch_id: row.get(19).ok().flatten(),
+            linked_region: row.get(20).ok().flatten(),
+            linked_realm: row.get(21).ok().flatten(),
+            linked_name: row.get(22).ok().flatten(),
         })
     }
 }
@@ -132,16 +164,21 @@ impl JobStorage for SqliteStorage {
     fn insert(&self, job: Job) {
         let conn = self.conn.lock().unwrap();
         let stages_json = serde_json::to_string(&job.stages_completed).unwrap();
+        let options_json = job
+            .options
+            .as_ref()
+            .map(|o| serde_json::to_string(o).unwrap());
         conn.execute(
-            "INSERT INTO jobs (id, status, sim_type, simc_input, result_json, combo_metadata_json,
+            "INSERT INTO jobs (id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
              iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)",
             params![
                 job.id,
                 Self::status_to_str(&job.status),
                 job.sim_type,
                 job.simc_input,
+                options_json,
                 job.result_json,
                 job.combo_metadata_json,
                 job.error_message,
@@ -175,7 +212,7 @@ impl JobStorage for SqliteStorage {
     fn get(&self, id: &str) -> Option<Job> {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT id, status, sim_type, simc_input, result_json, combo_metadata_json,
+            "SELECT id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
              iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name
              FROM jobs WHERE id = ?1",
@@ -504,5 +541,125 @@ impl JobStorage for SqliteStorage {
             params![user_id, key],
         )
         .ok();
+    }
+
+    fn save_route(&self, route: SavedRoute) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO dungeon_routes (id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET name = ?2, dungeon = ?3, level = ?4, pull_count = ?5, timer_seconds = ?6, affixes = ?7, route_data = ?8",
+            params![
+                route.id,
+                route.name,
+                route.dungeon,
+                route.level,
+                route.pull_count,
+                route.timer_seconds,
+                route.affixes,
+                route.route_data,
+                route.created_at,
+            ],
+        )
+        .expect("Failed to save route");
+    }
+
+    fn list_routes(&self) -> Vec<SavedRoute> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at FROM dungeon_routes ORDER BY created_at DESC")
+            .unwrap();
+        stmt.query_map([], |row| {
+            Ok(SavedRoute {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                dungeon: row.get(2)?,
+                level: row.get(3)?,
+                pull_count: row.get(4)?,
+                timer_seconds: row.get(5)?,
+                affixes: row.get(6)?,
+                route_data: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    fn delete_route(&self, id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM dungeon_routes WHERE id = ?1", params![id])
+            .ok();
+    }
+
+    fn save_character_profile(&self, profile: SavedCharacterProfile) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO character_profiles (id, name, realm, region, class, spec, simc_input, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(id) DO UPDATE SET name = ?2, realm = ?3, region = ?4, class = ?5, spec = ?6, simc_input = ?7",
+            params![
+                profile.id,
+                profile.name,
+                profile.realm,
+                profile.region,
+                profile.class,
+                profile.spec,
+                profile.simc_input,
+                profile.created_at,
+            ],
+        )
+        .expect("Failed to save character profile");
+    }
+
+    fn list_character_profiles(
+        &self,
+        name: Option<&str>,
+        realm: Option<&str>,
+        region: Option<&str>,
+    ) -> Vec<SavedCharacterProfile> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = "SELECT id, name, realm, region, class, spec, simc_input, created_at FROM character_profiles WHERE 1=1".to_string();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+        if let Some(n) = name {
+            sql.push_str(" AND LOWER(name) = LOWER(?)");
+            params_vec.push(Box::new(n.to_string()));
+        }
+        if let Some(r) = realm {
+            sql.push_str(" AND LOWER(realm) = LOWER(?)");
+            params_vec.push(Box::new(r.to_string()));
+        }
+        if let Some(reg) = region {
+            sql.push_str(" AND LOWER(region) = LOWER(?)");
+            params_vec.push(Box::new(reg.to_string()));
+        }
+        sql.push_str(" ORDER BY created_at DESC");
+
+        let mut stmt = conn.prepare(&sql).unwrap();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
+        stmt.query_map(params_refs.as_slice(), |row| {
+            Ok(SavedCharacterProfile {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                realm: row.get(2)?,
+                region: row.get(3)?,
+                class: row.get(4)?,
+                spec: row.get(5)?,
+                simc_input: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect()
+    }
+
+    fn delete_character_profile(&self, id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM character_profiles WHERE id = ?1", params![id])
+            .ok();
     }
 }

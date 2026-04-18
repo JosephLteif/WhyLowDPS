@@ -1,13 +1,31 @@
-export const isDesktop =
-  typeof window !== 'undefined' &&
-  (window.location.protocol === 'tauri:' ||
+import { SavedRoute } from './types';
+import { Instance } from '../drop-finder/types';
+
+export function isDesktopRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.location.protocol === 'tauri:' ||
     window.location.protocol === 'asset:' ||
     window.location.hostname === 'tauri.localhost' ||
-    (window as any).__TAURI__ ||
-    (window as any).__TAURI_METADATA__ ||
-    (window as any).__TAURI_INTERNALS__ ||
-    process.env.DESKTOP_BUILD ||
-    process.env.NEXT_PUBLIC_DESKTOP_BUILD);
+    !!(window as any).__TAURI__ ||
+    !!(window as any).__TAURI_METADATA__ ||
+    !!(window as any).__TAURI_INTERNALS__ ||
+    !!(window as any).__TAURI_IPC__ ||
+    process.env.DESKTOP_BUILD === 'true' ||
+    process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true'
+  );
+}
+
+export const isDesktop = isDesktopRuntime();
+
+if (typeof window !== 'undefined') {
+  console.log('[WhyLowDps] Mode:', isDesktop ? 'Desktop' : 'Web');
+  if (!isDesktop) {
+    console.log('[WhyLowDps] Protocol:', window.location.protocol);
+    console.log('[WhyLowDps] Hostname:', window.location.hostname);
+  }
+}
+
 export const API_URL = isDesktop ? 'http://localhost:17384' : '';
 
 export const TOKEN_KEY = 'whylowdps_auth_token';
@@ -191,4 +209,119 @@ export async function removeSimcChannel(): Promise<SimcStatus> {
   return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/remove`, {
     method: 'POST',
   });
+}
+
+export async function listSavedRoutes(): Promise<SavedRoute[]> {
+  return fetchJson<SavedRoute[]>(`${API_URL}/api/routes`);
+}
+
+export async function saveRoute(route: {
+  name: string;
+  dungeon: string;
+  level?: number;
+  pull_count?: number;
+  timer_seconds?: number;
+  affixes?: string;
+  route_data: string;
+}): Promise<SavedRoute> {
+  return fetchJson<SavedRoute>(`${API_URL}/api/routes`, {
+    method: 'POST',
+    body: JSON.stringify(route),
+  });
+}
+
+export async function deleteSavedRoute(id: string): Promise<void> {
+  await fetchJson(`${API_URL}/api/routes/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export interface SavedCharacterProfile {
+  id: string;
+  name: string;
+  realm: string;
+  region: string;
+  class?: string;
+  spec?: string;
+  simc_input: string;
+  created_at: string;
+}
+
+export async function listCharacterProfiles(options?: {
+  name?: string;
+  realm?: string;
+  region?: string;
+}): Promise<SavedCharacterProfile[]> {
+  const params = new URLSearchParams();
+  if (options?.name) params.set('name', options.name);
+  if (options?.realm) params.set('realm', options.realm);
+  if (options?.region) params.set('region', options.region);
+  const query = params.toString();
+  return fetchJson<SavedCharacterProfile[]>(`${API_URL}/api/character-profiles${query ? '?' + query : ''}`);
+}
+
+export async function saveCharacterProfile(profile: {
+  name: string;
+  realm: string;
+  region: string;
+  class?: string;
+  spec?: string;
+  simc_input: string;
+}): Promise<SavedCharacterProfile> {
+  return fetchJson<SavedCharacterProfile>(`${API_URL}/api/character-profiles`, {
+    method: 'POST',
+    body: JSON.stringify(profile),
+  });
+}
+
+export async function deleteCharacterProfile(id: string): Promise<void> {
+  await fetchJson(`${API_URL}/api/character-profiles/${id}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function listInstances(): Promise<Instance[]> {
+  return fetchJson<Instance[]>(`${API_URL}/api/instances`);
+}
+
+export interface DungeonAffix {
+  id: number;
+  name: string;
+  description: string;
+  icon: string | null;
+  spell_id: number | null;
+}
+
+export interface DungeonInfo {
+  id: number;
+  name: string;
+  description?: string;
+  zone: string | null;
+  slug?: string | null;
+  short_name?: string | null;
+  wowhead_id: number | null;
+  num_bosses: number | null;
+  expansion: number | null;
+  expansion_name?: string | null;
+  map_id?: number | null;
+  challenge_mode_id?: number | null;
+  minimum_level?: number | null;
+  keystone_timer_ms?: number | null;
+  keystone_upgrades?: number[];
+  encounters?: string[];
+  blizzard_href?: string | null;
+  image_url?: string;
+  linked_code?: string;
+  blizzard_api_data?: unknown;
+}
+
+export interface DungeonSeasonData {
+  season_id: number;
+  season_name: string;
+  current_affixes: DungeonAffix[];
+  rotation_dungeons: DungeonInfo[];
+}
+
+export async function getDungeonData(): Promise<DungeonSeasonData> {
+  return fetchJson<DungeonSeasonData>(`${API_URL}/api/dungeons`);
 }

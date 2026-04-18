@@ -55,6 +55,17 @@ const baseNavItems: NavItem[] = [
     icon: 'M8 8m-6.5 0a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M8 4.5V8l2.5 2.5',
     matchPaths: ['/history'],
   },
+  {
+    href: '/dungeons',
+    label: 'Dungeons & Routes',
+    description: 'M+ dungeons, affixes, and routes.',
+    icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2v6z',
+    matchPaths: ['/dungeons', '/dungeon-routes'],
+    children: [
+      { href: '/dungeons', label: 'Dungeon Info', description: 'Rotation and affixes' },
+      { href: '/dungeon-routes', label: 'Saved Routes', description: 'Dungeon routes for simulation' },
+    ],
+  },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = 'whylowdps_sidebar_collapsed';

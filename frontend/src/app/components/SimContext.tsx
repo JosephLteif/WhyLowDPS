@@ -158,6 +158,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [lockSingleConsumableOptions, setLockSingleConsumableOptions] = useState(false);
   const [autoClipboardPasteSimc, _setAutoClipboardPasteSimc] = useState(true);
   const [dataCacheRefreshMinutes, _setDataCacheRefreshMinutes] = useState(0);
+
   const [simcHeader, setSimcHeader] = useState('');
   const [simcBasePlayer, setSimcBasePlayer] = useState('');
   const [simcRaidActors, setSimcRaidActors] = useState('');
@@ -200,7 +201,8 @@ export function SimProvider({ children }: { children: ReactNode }) {
       _setAutoClipboardPasteSimc(readStoredBool('whylowdps_auto_clipboard_paste_simc', true));
       _setDataCacheRefreshMinutes(readStored('whylowdps_data_cache_refresh_minutes', 0));
       const rawChannel = readStoredString('whylowdps_simc_channel', 'stable') || 'stable';
-      const normalizedChannel = (rawChannel === 'weekly' || rawChannel === 'latest') ? 'stable' : rawChannel;
+      const normalizedChannel =
+        rawChannel === 'weekly' || rawChannel === 'latest' ? 'stable' : rawChannel;
       _setSimcChannel(normalizedChannel);
     } catch {}
   }, []);

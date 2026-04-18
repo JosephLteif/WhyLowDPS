@@ -100,7 +100,13 @@ export default function DropSlotList({
   );
 
   const visibleItemIds = useMemo(
-    () => [...new Set(Object.values(visibleDrops).flat().map((item) => item.item_id))],
+    () => [
+      ...new Set(
+        Object.values(visibleDrops)
+          .flat()
+          .map((item) => item.item_id)
+      ),
+    ],
     [visibleDrops]
   );
 
@@ -237,7 +243,7 @@ function DropItemCard({
       </div>
       <div className="ml-1 shrink-0">
         <span
-          className={`block text-base font-semibold tracking-tight tabular-nums text-zinc-100 ${isOffSpec ? 'opacity-70' : ''}`}
+          className={`block text-base font-semibold tabular-nums tracking-tight text-zinc-100 ${isOffSpec ? 'opacity-70' : ''}`}
         >
           {resolved.ilvl}
         </span>

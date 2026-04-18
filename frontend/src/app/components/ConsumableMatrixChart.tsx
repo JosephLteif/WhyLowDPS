@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
@@ -62,6 +62,69 @@ function normalizeLabel(input: string) {
   return input.replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '').replace(/\s+[1-3]\s*$/i, '');
 }
 
+const spellIconCache = new Map<number, string>();
+const itemIconCache = new Map<number, string>();
+
+function useSpellIcons(spellIds: number[]) {
+  const [icons, setIcons] = useState<Map<number, string>>(new Map());
+  const depKey = spellIds.join(',');
+
+  useEffect(() => {
+    const missing = spellIds.filter((id) => id > 0 && !spellIconCache.has(id));
+    if (missing.length === 0) {
+      setIcons(new Map(spellIconCache));
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (id) => {
+        try {
+          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.icon) spellIconCache.set(id, data.icon);
+        } catch {}
+      })
+    ).then(() => {
+      if (!cancelled) setIcons(new Map(spellIconCache));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]);
+  return icons;
+}
+
+function useItemIcons(itemIds: number[]) {
+  const [icons, setIcons] = useState<Map<number, string>>(new Map());
+  const depKey = itemIds.join(',');
+
+  useEffect(() => {
+    const missing = itemIds.filter((id) => id > 0 && !itemIconCache.has(id));
+    if (missing.length === 0) {
+      setIcons(new Map(itemIconCache));
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (id) => {
+        try {
+          const res = await fetch(`https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.icon) itemIconCache.set(id, data.icon);
+        } catch {}
+      })
+    ).then(() => {
+      if (!cancelled) setIcons(new Map(itemIconCache));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]);
+  return icons;
+}
+
 export default function ConsumableMatrixChart({
   baseDps,
   results,
@@ -69,8 +132,20 @@ export default function ConsumableMatrixChart({
   baseDps: number;
   results: MatrixResult[];
 }) {
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(10);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
   const raidBuffByKey = useMemo(() => new Map(RAID_BUFF_MATRIX_OPTIONS.map((b) => [b.key, b])), []);
+
+  const allItemIds = useMemo(() => {
+    const all = [...flasks, ...foods, ...potions, ...augments, ...tempEnchants];
+    return all.map((o) => o.itemId).filter((id): id is number => !!id);
+  }, [flasks, foods, potions, augments, tempEnchants]);
+  const itemIcons = useItemIcons(allItemIds);
+
+  const raidBuffSpellIds = useMemo(() => {
+    return RAID_BUFF_MATRIX_OPTIONS.map((b) => b.spellId).filter((id): id is number => !!id);
+  }, []);
+  const spellIcons = useSpellIcons(raidBuffSpellIds);
+
   const optionByCategory = useMemo(
     () => ({
       flask: new Map(flasks.map((o) => [o.token || '', o])),
@@ -184,7 +259,12 @@ export default function ConsumableMatrixChart({
                   : raidBuff?.spellId != null
                     ? `spell=${raidBuff.spellId}`
                     : undefined;
-              const icon = opt?.icon || raidBuff?.icon || '';
+              const resolvedIcon =
+                (opt?.itemId && itemIcons.get(opt.itemId)) ||
+                (raidBuff?.spellId && spellIcons.get(raidBuff.spellId)) ||
+                opt?.icon ||
+                raidBuff?.icon ||
+                '';
               return (
                 <div
                   key={`${category}:${row.token}:${row.rawName}:${rowIndex}`}
@@ -197,11 +277,11 @@ export default function ConsumableMatrixChart({
                       data-wowhead={wowhead}
                       className="flex min-w-0 items-center gap-2 text-sm text-zinc-200"
                     >
-                      {icon ? (
+                      {resolvedIcon ? (
                         <span
                           className="h-4 w-4 shrink-0 rounded-[3px] bg-cover bg-center"
                           style={{
-                            backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${icon}.jpg)`,
+                            backgroundImage: `url(https://wow.zamimg.com/images/wow/icons/small/${resolvedIcon}.jpg)`,
                           }}
                         />
                       ) : (

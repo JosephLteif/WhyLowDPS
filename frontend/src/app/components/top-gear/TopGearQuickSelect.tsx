@@ -8,6 +8,7 @@ interface TopGearQuickSelectProps {
   allCatalystSelected: boolean;
   onToggleVault: () => void;
   onToggleCatalyst: () => void;
+  onSelectAll: () => void;
   onClear: () => void;
 }
 
@@ -21,6 +22,7 @@ export default function TopGearQuickSelect({
   allCatalystSelected,
   onToggleVault,
   onToggleCatalyst,
+  onSelectAll,
   onClear,
 }: TopGearQuickSelectProps) {
   const comboLabel = `${comboCount.toLocaleString()} combo${comboCount !== 1 ? 's' : ''}`;
@@ -60,6 +62,13 @@ export default function TopGearQuickSelect({
             Catalyst
           </button>
         )}
+        <button
+          type="button"
+          onClick={onSelectAll}
+          className="rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-gold/60 transition-all hover:bg-gold/10 hover:text-gold"
+        >
+          All
+        </button>
         {hasSelection && (
           <button
             type="button"

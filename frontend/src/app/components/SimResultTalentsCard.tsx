@@ -10,7 +10,6 @@ interface SimResultTalentsCardProps {
 }
 
 export default function SimResultTalentsCard({ talentString }: SimResultTalentsCardProps) {
-  const [copied, setCopied] = useState(false);
   const specLabel = useMemo(() => {
     try {
       const specId = decodeHeader(talentString).specId;
@@ -34,17 +33,6 @@ export default function SimResultTalentsCard({ talentString }: SimResultTalentsC
               'Talents'
             )}
           </h3>
-          <button
-            type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(talentString);
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            }}
-            className="rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] font-bold text-zinc-300 transition-colors hover:bg-white/[0.08] hover:text-white"
-          >
-            {copied ? 'Copied' : 'Copy Talent Tree'}
-          </button>
         </div>
       </div>
       <div className="bg-black/20 p-2">

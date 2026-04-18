@@ -438,7 +438,8 @@ export default function DropFinderPage() {
             slot,
           };
           if (item.is_catalyst || item.can_catalyst) {
-            const convertSlot = slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slot;
+            const convertSlot =
+              slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slot;
             if (convertSlot) {
               try {
                 simItem = await fetchJson<SimDropItem>(`${API_URL}/api/gear/catalyst-convert`, {
@@ -564,7 +565,7 @@ export default function DropFinderPage() {
                     </span>
                     {ilvl && (
                       <span
-                        className={`mt-1.5 text-[13px] font-semibold tracking-wide tabular-nums ${isActive ? 'text-zinc-100' : 'text-zinc-300'}`}
+                        className={`mt-1.5 text-[13px] font-semibold tabular-nums tracking-wide ${isActive ? 'text-zinc-100' : 'text-zinc-300'}`}
                       >
                         ilvl {ilvl}
                       </span>
@@ -584,7 +585,7 @@ export default function DropFinderPage() {
             </div>
           </div>
 
-      {currentTrackInfo && drops && (
+          {currentTrackInfo && drops && (
             <div>
               <label className="label-text">Upgrade Level</label>
               <ToggleButtonGroup

@@ -259,9 +259,7 @@ function MetaStat({
       <p className="mt-0.5 text-sm font-medium tabular-nums text-zinc-100">
         {value}
         {note && (
-          <span className={`ml-1 text-sm font-normal ${noteColor || 'text-zinc-300'}`}>
-            {note}
-          </span>
+          <span className={`ml-1 text-sm font-normal ${noteColor || 'text-zinc-300'}`}>{note}</span>
         )}
       </p>
       {tooltipLines.length > 0 && (

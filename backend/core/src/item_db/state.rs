@@ -102,5 +102,7 @@ pub struct CatalystData {
 pub static CATALYST: Lazy<RwLock<Arc<CatalystData>>> =
     Lazy::new(|| RwLock::new(Arc::new(CatalystData::default())));
 
+pub static RUNTIME_DATA: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_json::json!({})));
+
 pub static EMPTY_SEASON_CONFIG: once_cell::sync::Lazy<Value> =
     once_cell::sync::Lazy::new(|| serde_json::json!({}));

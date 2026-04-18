@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { ResolvedItem } from '../../lib/types';
 import GearItemRow from '../GearItemRow';
 import TopGearUpgradeButton from './TopGearUpgradeButton';
@@ -36,6 +37,7 @@ interface TopGearSlotGroupProps {
     tooltip?: string;
   }[];
   isItemSelected: (item: ResolvedItem) => boolean;
+  onToggleAll?: () => void;
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
 }
@@ -57,15 +59,43 @@ export default function TopGearSlotGroup({
   onOptimize,
   itemDetails,
   isItemSelected,
+  onToggleAll,
   getWowheadUrl,
   getWowheadData,
 }: TopGearSlotGroupProps) {
+  const allSelected = useMemo(() => {
+    const totalItems = equipped.length + alternatives.length;
+    if (totalItems === 0) return true;
+    let selectedCount = 0;
+    equipped.forEach((it) => {
+      if (isItemSelected(it)) selectedCount++;
+    });
+    alternatives.forEach((it) => {
+      if (isItemSelected(it)) selectedCount++;
+    });
+    return selectedCount === totalItems;
+  }, [equipped, alternatives, isItemSelected]);
+
   return (
     <div className="card group/card space-y-1.5 p-4 transition-all hover:bg-white/[0.02]">
       <div className="flex items-center justify-between">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-300 group-hover/card:text-zinc-100">
-          {label}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-300 group-hover/card:text-zinc-100">
+            {label}
+          </h2>
+          {onToggleAll && (
+            <button
+              onClick={onToggleAll}
+              className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                allSelected
+                  ? 'bg-gold/20 text-gold ring-1 ring-gold/30'
+                  : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'
+              }`}
+            >
+              All
+            </button>
+          )}
+        </div>
         <button
           onClick={() => onAddClick(slots[0])}
           className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-zinc-400 transition-all hover:bg-gold/10 hover:text-gold"

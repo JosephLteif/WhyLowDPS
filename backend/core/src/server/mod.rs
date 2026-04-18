@@ -1,8 +1,7 @@
 #[cfg(feature = "web")]
 pub mod auth_handlers;
-#[cfg(feature = "web")]
 mod blizzard;
-#[cfg(feature = "web")]
+mod character_profile_handlers;
 mod data_sync;
 #[cfg(feature = "web")]
 mod game_data_handlers;
@@ -11,6 +10,8 @@ mod helpers;
 #[cfg(feature = "web")]
 mod job_handlers;
 #[cfg(feature = "web")]
+mod route_handlers;
+#[cfg(feature = "web")]
 mod sim_handlers;
 #[cfg(all(feature = "desktop", feature = "web"))]
 mod simc_updater;
@@ -18,6 +19,10 @@ mod simc_updater;
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
+#[cfg(feature = "web")]
+pub mod dungeon_data;
+#[cfg(feature = "web")]
+pub mod dungeon_source_blizzard;
 
 #[cfg(feature = "web")]
 use actix_cors::Cors;
@@ -529,6 +534,20 @@ pub async fn start_with_storage_bind(
                     "/api/season-config",
                     web::get().to(game_data_handlers::get_season_config),
                 )
+                // Saved dungeon routes
+                .route("/api/routes", web::post().to(route_handlers::save_route))
+                .route("/api/routes", web::get().to(route_handlers::list_routes))
+                .route(
+                    "/api/routes/{id}",
+                    web::delete().to(route_handlers::delete_route),
+                )
+                // Character profiles
+                .route("/api/character-profiles", web::post().to(character_profile_handlers::save_character_profile))
+                .route("/api/character-profiles", web::get().to(character_profile_handlers::list_character_profiles))
+                .route(
+                    "/api/character-profiles/{id}",
+                    web::delete().to(character_profile_handlers::delete_character_profile),
+                )
                 .route(
                     "/api/instances",
                     web::get().to(game_data_handlers::list_instances),
@@ -548,6 +567,7 @@ pub async fn start_with_storage_bind(
                 .route("/api/sims", web::get().to(job_handlers::list_sims))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config", web::post().to(update_config))
+                .route("/api/dungeons", web::get().to(game_data_handlers::get_dungeon_data))
                 .route("/health", web::get().to(health_check));
 
             #[cfg(feature = "desktop")]

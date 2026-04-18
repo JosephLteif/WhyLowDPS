@@ -2030,13 +2030,11 @@ export default function SimSharedConfig() {
 
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibilityChange);
-    const poll = setInterval(() => void readClipboardIntoSimc(false), 2000);
 
     return () => {
       cancelled = true;
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      clearInterval(poll);
     };
   }, [autoClipboardPasteSimc, readClipboardText, setSimcFooter, setSimcInput]);
 

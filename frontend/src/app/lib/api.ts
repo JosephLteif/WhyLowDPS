@@ -325,3 +325,15 @@ export interface DungeonSeasonData {
 export async function getDungeonData(): Promise<DungeonSeasonData> {
   return fetchJson<DungeonSeasonData>(`${API_URL}/api/dungeons`);
 }
+
+export async function getDungeonDataCached(): Promise<DungeonSeasonData> {
+  return fetchJsonCached<DungeonSeasonData>(`${API_URL}/api/dungeons`, {
+    ttl: 5 * 60 * 1000,
+    usePersistentCache: true,
+  });
+}
+
+export async function triggerDungeonDataRefresh(force = false): Promise<void> {
+  const query = force ? '?force=true' : '';
+  await fetchJson(`${API_URL}/api/data/sync-dungeons${query}`, { method: 'POST' });
+}

@@ -1,11 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  API_URL,
   DungeonSeasonData,
   DungeonAffix,
   DungeonInfo,
+  fetchJson,
+  fetchJsonCached,
+  getDungeonData,
+  getDungeonDataCached,
+  triggerDungeonDataRefresh,
 } from '../lib/api';
+import { Instance } from '../drop-finder/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 const DUNGEON_PLACEHOLDERS: Record<string, { icon: string; zone: string }> = {
@@ -40,6 +47,10 @@ function formatMs(ms?: number | null): string | null {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function normalizeDungeonName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 function AffixCard({ affix }: { affix: DungeonAffix }) {
@@ -87,6 +98,7 @@ function DungeonCard({
   const imageUrl = dungeon.image_url || placeholder?.icon;
   const zone = dungeon.zone || placeholder?.zone;
   const timer = formatMs(dungeon.keystone_timer_ms);
+  const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
   const rawPayload = dungeon.blizzard_api_data ? JSON.stringify(dungeon.blizzard_api_data, null, 2) : null;
 
   return (
@@ -115,6 +127,7 @@ function DungeonCard({
         <InfoPill label="Timer" value={timer} />
         <InfoPill label="Map ID" value={dungeon.map_id} />
         <InfoPill label="Challenge ID" value={dungeon.challenge_mode_id} />
+        <InfoPill label="Bosses" value={encounterCount} />
         <InfoPill label="Slug" value={dungeon.slug} />
         <InfoPill label="Short" value={dungeon.short_name} />
       </div>
@@ -134,7 +147,7 @@ function DungeonCard({
 
       {dungeon.encounters && dungeon.encounters.length > 0 && (
         <div className="mb-2">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Encounters ({dungeon.num_bosses})</p>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Encounters ({encounterCount})</p>
           <ul className="space-y-1 text-xs text-zinc-300">
             {dungeon.encounters.map((encounter) => (
               <li key={encounter}>{encounter}</li>
@@ -156,12 +169,162 @@ function DungeonCard({
 }
 
 export default function DungeonsPage() {
-  const [data] = useState<DungeonSeasonData | null>(null);
-  const [loading] = useState(true);
-  const [error] = useState<string | null>(null);
+  const [data, setData] = useState<DungeonSeasonData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const hasDungeons = (data?.rotation_dungeons?.length ?? 0) > 0;
+  const backendError = (data as (DungeonSeasonData & { error?: string }) | null)?.error;
+  const hasAnyBlizzardDetails =
+    data?.rotation_dungeons?.some((d) => d.blizzard_href || d.blizzard_api_data) ?? false;
 
   useWowheadTooltips([data?.current_affixes, data?.rotation_dungeons]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDungeonData = async (preferCache: boolean) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [seasonData, instances] = await Promise.all([
+          preferCache ? getDungeonDataCached() : getDungeonData(),
+          fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, {
+            ttl: 5 * 60 * 1000,
+            usePersistentCache: true,
+          }).catch(() => [] as Instance[]),
+        ]);
+
+        const instancesById = new Map<number, Instance>();
+        const instancesByName = new Map<string, Instance>();
+        for (const inst of instances) {
+          instancesById.set(inst.id, inst);
+          instancesByName.set(normalizeDungeonName(inst.name), inst);
+        }
+
+        const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
+          const matchedInstance =
+            instancesById.get(dungeon.id) ||
+            instancesByName.get(normalizeDungeonName(dungeon.name));
+          if (!matchedInstance) return dungeon;
+
+          const encounterNames = (matchedInstance.encounters || [])
+            .map((encounter) => encounter.name)
+            .filter((name): name is string => !!name && name.trim().length > 0);
+          const mergedEncounterNames =
+            dungeon.encounters && dungeon.encounters.length > 0
+              ? dungeon.encounters
+              : encounterNames;
+          const mergedBossCount =
+            dungeon.num_bosses ??
+            (mergedEncounterNames.length > 0 ? mergedEncounterNames.length : null);
+
+          return {
+            ...dungeon,
+            zone: dungeon.zone || matchedInstance.zone || null,
+            image_url: dungeon.image_url || matchedInstance.image_url,
+            encounters: mergedEncounterNames,
+            num_bosses: mergedBossCount,
+          };
+        });
+
+        if (!cancelled) {
+          setData({
+            ...seasonData,
+            rotation_dungeons: enrichedDungeons,
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setData(null);
+          setError(err instanceof Error ? err.message : 'Failed to load dungeon data.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadDungeonData(true);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const waitForDungeonSyncCompletion = async () => {
+    const timeoutMs = 20000;
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const status = await fetchJson<{ status?: string }>(`${API_URL}/api/data/status`);
+        const value = (status.status || '').toLowerCase();
+        if (value === 'ready' || value === 'error' || value === 'needs_credentials') {
+          return;
+        }
+      } catch {
+        return;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setError(null);
+    try {
+      await triggerDungeonDataRefresh(true);
+      await waitForDungeonSyncCompletion();
+      const [seasonData, instances] = await Promise.all([
+        getDungeonData(),
+        fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
+      ]);
+
+      const instancesById = new Map<number, Instance>();
+      const instancesByName = new Map<string, Instance>();
+      for (const inst of instances) {
+        instancesById.set(inst.id, inst);
+        instancesByName.set(normalizeDungeonName(inst.name), inst);
+      }
+
+      const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
+        const matchedInstance =
+          instancesById.get(dungeon.id) ||
+          instancesByName.get(normalizeDungeonName(dungeon.name));
+        if (!matchedInstance) return dungeon;
+
+        const encounterNames = (matchedInstance.encounters || [])
+          .map((encounter) => encounter.name)
+          .filter((name): name is string => !!name && name.trim().length > 0);
+        const mergedEncounterNames =
+          dungeon.encounters && dungeon.encounters.length > 0
+            ? dungeon.encounters
+            : encounterNames;
+        const mergedBossCount =
+          dungeon.num_bosses ??
+          (mergedEncounterNames.length > 0 ? mergedEncounterNames.length : null);
+
+        return {
+          ...dungeon,
+          zone: dungeon.zone || matchedInstance.zone || null,
+          image_url: dungeon.image_url || matchedInstance.image_url,
+          encounters: mergedEncounterNames,
+          num_bosses: mergedBossCount,
+        };
+      });
+
+      setData({
+        ...seasonData,
+        rotation_dungeons: enrichedDungeons,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh dungeon data.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -197,6 +360,16 @@ export default function DungeonsPage() {
           <p className="mt-1 text-sm font-medium text-zinc-500">
             {data?.season_name || 'Current Season'}
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
+            className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-gold/60 hover:text-gold disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh Dungeons'}
+          </button>
         </div>
       </div>
 
@@ -234,8 +407,7 @@ export default function DungeonsPage() {
         <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
           Season Dungeons ({data?.rotation_dungeons?.length || 0})
         </h2>
-        {hasDungeons &&
-          !(data?.rotation_dungeons?.some((d) => d.blizzard_href || d.blizzard_api_data) ?? false) && (
+        {hasDungeons && !!backendError && !hasAnyBlizzardDetails && (
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
               Blizzard dungeon detail payload is missing in local runtime cache. Showing best available fallback data from instances.
             </div>

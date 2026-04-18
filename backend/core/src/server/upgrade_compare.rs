@@ -414,7 +414,6 @@ pub(super) async fn create_upgrade_compare_sim(
     }))
     .unwrap_or_default();
 
-    let mut job = job;
     job.combo_metadata_json = Some(meta_json);
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);

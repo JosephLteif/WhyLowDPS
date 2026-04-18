@@ -20,10 +20,9 @@ fn resolve_simc_binary_for_request(
 ) -> Result<PathBuf, String> {
     #[cfg(feature = "desktop")]
     {
-        if let Some(path) = super::simc_updater::resolve_installed_binary_for_channel(
-            simc_path,
-            None,
-        ) {
+        if let Some(path) =
+            super::simc_updater::resolve_installed_binary_for_channel(simc_path, None)
+        {
             return Ok(path);
         }
         Err(
@@ -125,9 +124,10 @@ fn prepare_upgrade_compare(
                         .cumulative_costs
                         .iter()
                         .any(|(cid, amt)| upgrade_currency_ids.contains(cid) && *amt > 0)
-                    && opt.cumulative_costs.iter().all(|(cid, amt)| {
-                        upgrade_budget.get(cid).copied().unwrap_or(0) >= *amt
-                    })
+                    && opt
+                        .cumulative_costs
+                        .iter()
+                        .all(|(cid, amt)| upgrade_budget.get(cid).copied().unwrap_or(0) >= *amt)
             });
         }
 

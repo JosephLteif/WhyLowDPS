@@ -824,14 +824,11 @@ fn channel_binary_path(simc_path: &Path, channel: SimcChannel) -> Option<PathBuf
 }
 
 fn installed_channel_count(simc_path: &Path) -> usize {
-    [
-        SimcChannel::Stable,
-        SimcChannel::Nightly,
-    ]
-    .iter()
-    .filter_map(|channel| channel_binary_path(simc_path, *channel))
-    .filter(|bin| bin.exists())
-    .count()
+    [SimcChannel::Stable, SimcChannel::Nightly]
+        .iter()
+        .filter_map(|channel| channel_binary_path(simc_path, *channel))
+        .filter(|bin| bin.exists())
+        .count()
 }
 
 fn detect_installed_channel(simc_path: &Path, requested: SimcChannel) -> Option<String> {
@@ -1047,20 +1044,16 @@ fn extract_7z_archive(
     // Fall back to the Rust crate
     eprintln!("No system 7-Zip found, falling back to built-in extractor");
     let mut extracted_bytes = 0;
-    sevenz_rust2::decompress_file_with_extract_fn(
-        archive_path,
-        dest,
-        |entry, reader, dest_path| {
-            // DO NOT skip files entirely during extraction. In 7z solid blocks,
-            // failing to consume the reader can cause ChecksumVerificationFailed.
-            // We extract everything, then clean up the optional entries afterward.
-            let uncompressed_size = entry.size;
-            let res = sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path);
-            extracted_bytes += uncompressed_size;
-            updater.update_downloaded(extracted_bytes);
-            res
-        },
-    )
+    sevenz_rust2::decompress_file_with_extract_fn(archive_path, dest, |entry, reader, dest_path| {
+        // DO NOT skip files entirely during extraction. In 7z solid blocks,
+        // failing to consume the reader can cause ChecksumVerificationFailed.
+        // We extract everything, then clean up the optional entries afterward.
+        let uncompressed_size = entry.size;
+        let res = sevenz_rust2::default_entry_extract_fn(entry, reader, dest_path);
+        extracted_bytes += uncompressed_size;
+        updater.update_downloaded(extracted_bytes);
+        res
+    })
     .map(|_| {
         // Clean up optional entries (e.g. WACTAC.h!ml) after internal extraction
         cleanup_optional_entries_recursive(dest);

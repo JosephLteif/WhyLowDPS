@@ -112,7 +112,7 @@ export default function StatWeightsPage() {
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
 
   const [mode, setMode] = useState<
-    'stat_weights' | 'stat_plot' | 'consumable_matrix' | 'trinket_tier_heatmap'
+    'stat_weights' | 'stat_plot' | 'consumable_matrix' | 'tier_heatmap'
   >('stat_weights');
 
   const [plotStats, setPlotStats] = useState<string[]>([
@@ -123,8 +123,6 @@ export default function StatWeightsPage() {
   const [plotRange, setPlotRange] = useState(1000);
   const [plotStep, setPlotStep] = useState(100);
   const [plotIterations, setPlotIterations] = useState(2000);
-  const [includeTrinketMatrix, setIncludeTrinketMatrix] = useState(false);
-  const [includeTierMatrix, setIncludeTierMatrix] = useState(true);
 
   const [matrixFlasks, setMatrixFlasks] = useState<string[]>(uniqueTokens(flasks));
   const [matrixFoods, setMatrixFoods] = useState<string[]>(uniqueTokens(foods));
@@ -221,12 +219,13 @@ export default function StatWeightsPage() {
             dps_plot_step: Math.max(1, Math.floor(plotStep)),
             dps_plot_iterations: Math.max(100, Math.floor(plotIterations)),
           }
-        : mode === 'trinket_tier_heatmap'
+        : mode === 'tier_heatmap'
           ? {
-              include_trinket_matrix: includeTrinketMatrix,
-              include_tier_matrix: includeTierMatrix,
+              sim_type: 'trinket_tier_heatmap',
+              include_trinket_matrix: false,
+              include_tier_matrix: true,
             }
-          : mode === 'consumable_matrix'
+        : mode === 'consumable_matrix'
             ? {
                 consumable_matrix_flasks: matrixFlasks,
                 consumable_matrix_foods: matrixFoods,
@@ -244,8 +243,6 @@ export default function StatWeightsPage() {
       plotPoints,
       plotStep,
       plotIterations,
-      includeTrinketMatrix,
-      includeTierMatrix,
       matrixFlasks,
       matrixFoods,
       matrixPotions,
@@ -263,11 +260,6 @@ export default function StatWeightsPage() {
       if (plotStats.length === 0) return 'Choose at least one stat to plot.';
       if (plotRange < plotStep) return 'Plot range should be greater than or equal to step size.';
     }
-    if (mode === 'trinket_tier_heatmap') {
-      if (!includeTrinketMatrix && !includeTierMatrix) {
-        return 'Enable at least one matrix option (Trinkets or Tier Sets).';
-      }
-    }
     if (mode === 'consumable_matrix' && consumableCount === 0) {
       return 'Select at least one consumable or raid buff to compare.';
     }
@@ -278,8 +270,6 @@ export default function StatWeightsPage() {
     plotStats,
     plotRange,
     plotStep,
-    includeTrinketMatrix,
-    includeTierMatrix,
     consumableCount,
   ]);
 
@@ -298,7 +288,7 @@ export default function StatWeightsPage() {
       <div className="space-y-1">
         <h2 className="text-xl font-bold tracking-tight text-zinc-100">Stat Weights</h2>
         <p className="text-sm text-zinc-400">
-          Run quick weights, plots, consumable matrix, or trinket/tier heatmaps.
+          Run quick weights, plots, or consumable matrix sims.
         </p>
       </div>
 
@@ -320,11 +310,7 @@ export default function StatWeightsPage() {
               'Consumable Matrix',
               'Find best flask/food/potion/rune/raid buffs.',
             ],
-            [
-              'trinket_tier_heatmap',
-              'Trinket / Tier Heatmaps',
-              'Personalized trinket pair and tier-slot matrix sims.',
-            ],
+            ['tier_heatmap', 'Tier Slot Matrix', 'Sim tier-slot impact matrix only.'],
           ].map(([key, title, desc]) => (
             <button
               key={key}
@@ -709,32 +695,6 @@ export default function StatWeightsPage() {
           </div>
         )}
 
-        {mode === 'trinket_tier_heatmap' && (
-          <div className="space-y-3 rounded-lg border border-border bg-surface-2 p-4 text-xs text-zinc-400">
-            <p>Runs matrix simulations and renders personalized heatmaps in the result page.</p>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2">
-                <span className="text-zinc-300">Trinket Pair Matrix</span>
-                <input
-                  type="checkbox"
-                  checked={includeTrinketMatrix}
-                  onChange={(e) => setIncludeTrinketMatrix(e.target.checked)}
-                  className="h-4 w-4 accent-gold"
-                />
-              </label>
-              <label className="flex items-center justify-between rounded-md border border-border bg-surface px-3 py-2">
-                <span className="text-zinc-300">Tier Slot Matrix</span>
-                <input
-                  type="checkbox"
-                  checked={includeTierMatrix}
-                  onChange={(e) => setIncludeTierMatrix(e.target.checked)}
-                  className="h-4 w-4 accent-gold"
-                />
-              </label>
-            </div>
-          </div>
-        )}
-
         <button
           type="submit"
           disabled={submitting || simcInput.trim().length < 10}
@@ -745,9 +705,9 @@ export default function StatWeightsPage() {
             : buttonLabel(
                 mode === 'stat_plot'
                   ? 'Run Stat Plot Simulation'
-                  : mode === 'trinket_tier_heatmap'
-                    ? 'Run Trinket / Tier Heatmaps'
-                    : mode === 'consumable_matrix'
+                  : mode === 'tier_heatmap'
+                    ? 'Run Tier Slot Matrix'
+                  : mode === 'consumable_matrix'
                       ? 'Run Consumable Matrix'
                       : 'Run Stat Weights Simulation'
               )}

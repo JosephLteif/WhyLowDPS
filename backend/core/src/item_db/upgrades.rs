@@ -49,16 +49,20 @@ pub fn difficulty_track_name(difficulty: &str) -> Option<String> {
 }
 
 pub fn dungeon_normal_ilvl() -> u64 {
-    super::season_cfg()
-        .get("dungeonNormalIlvl")
+    let cfg = super::season_cfg();
+    cfg.get("dungeonNormal")
+        .and_then(|v| v.get("ilvl"))
         .and_then(|v| v.as_u64())
-        .unwrap_or(554)
+        .or_else(|| cfg.get("dungeonNormalIlvl").and_then(|v| v.as_u64()))
+        .unwrap_or(214)
 }
 
 pub fn dungeon_normal_quality() -> u64 {
-    super::season_cfg()
-        .get("dungeonNormalQuality")
+    let cfg = super::season_cfg();
+    cfg.get("dungeonNormal")
+        .and_then(|v| v.get("quality"))
         .and_then(|v| v.as_u64())
+        .or_else(|| cfg.get("dungeonNormalQuality").and_then(|v| v.as_u64()))
         .unwrap_or(3)
 }
 

@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 // ---- Gear Slots ----
@@ -122,6 +123,12 @@ use serde::{Deserialize, Serialize};
 
 pub static CLASSES: Lazy<RwLock<Arc<Vec<ClassDef>>>> =
     Lazy::new(|| RwLock::new(Arc::new(Vec::new())));
+pub static CLASS_TRAIT_SPEC_IDS: Lazy<RwLock<HashMap<String, Vec<u64>>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
+
+pub fn set_class_trait_spec_ids(map: HashMap<String, Vec<u64>>) {
+    *CLASS_TRAIT_SPEC_IDS.write().unwrap() = map;
+}
 
 // ---- Lookup Helpers ----
 
@@ -133,6 +140,94 @@ fn find_class(name: &str) -> Option<ClassDef> {
         .iter()
         .find(|c| c.name == n || c.aliases.iter().any(|a| a == &n))
         .cloned()
+}
+
+fn normalize_class_name(raw: &str) -> String {
+    let n = raw.trim().to_lowercase().replace([' ', '-'], "_");
+    match n.as_str() {
+        "deathknight" => "death_knight".to_string(),
+        "demonhunter" => "demon_hunter".to_string(),
+        _ => n,
+    }
+}
+
+fn normalize_spec_name(raw: &str) -> String {
+    let mut n = raw.trim().to_lowercase().replace([' ', '-'], "_");
+    n = match n.as_str() {
+        "beastmastery" => "beast_mastery".to_string(),
+        "frostdk" | "frost_death_knight" => "frost".to_string(),
+        "holypriest" | "holy_priest" => "holy".to_string(),
+        "restorationshaman" | "restoration_shaman" => "restoration".to_string(),
+        _ => n,
+    };
+
+    for suffix in [
+        "_death_knight",
+        "_demon_hunter",
+        "_demonhunter",
+        "_hunter",
+        "_mage",
+        "_monk",
+        "_paladin",
+        "_priest",
+        "_rogue",
+        "_shaman",
+        "_warlock",
+        "_warrior",
+        "_druid",
+        "_evoker",
+    ] {
+        if let Some(stripped) = n.strip_suffix(suffix) {
+            n = stripped.to_string();
+            break;
+        }
+    }
+
+    n
+}
+
+fn fallback_class_spec_pairs(class_name: &str) -> &'static [(&'static str, u64)] {
+    match class_name {
+        "death_knight" => &[("blood", 250), ("frost", 251), ("unholy", 252)],
+        "demon_hunter" => &[("havoc", 577), ("vengeance", 581)],
+        "druid" => &[
+            ("balance", 102),
+            ("feral", 103),
+            ("guardian", 104),
+            ("restoration", 105),
+        ],
+        "evoker" => &[
+            ("devastation", 1467),
+            ("preservation", 1468),
+            ("augmentation", 1473),
+        ],
+        "hunter" => &[
+            ("beast_mastery", 253),
+            ("marksmanship", 254),
+            ("survival", 255),
+        ],
+        "mage" => &[("arcane", 62), ("fire", 63), ("frost", 64)],
+        "monk" => &[
+            ("brewmaster", 268),
+            ("mistweaver", 270),
+            ("windwalker", 269),
+        ],
+        "paladin" => &[("holy", 65), ("protection", 66), ("retribution", 70)],
+        "priest" => &[("discipline", 256), ("holy", 257), ("shadow", 258)],
+        "rogue" => &[("assassination", 259), ("outlaw", 260), ("subtlety", 261)],
+        "shaman" => &[
+            ("elemental", 262),
+            ("enhancement", 263),
+            ("restoration", 264),
+        ],
+        "warlock" => &[
+            ("affliction", 265),
+            ("demonology", 266),
+            ("destruction", 267),
+        ],
+        "warrior" => &[("arms", 71), ("fury", 72), ("protection", 73)],
+        _ => &[],
+    }
 }
 
 pub fn can_dual_wield(spec: &str) -> bool {
@@ -163,18 +258,49 @@ pub fn spec_weapon_profile(class_name: &str, spec: &str) -> Option<SpecDef> {
 
 /// Map spec name → numeric spec ID.
 pub fn class_spec_ids(class_name: &str, spec_name: Option<&str>) -> Vec<u64> {
-    let class = match find_class(class_name) {
-        Some(c) => c,
-        None => return vec![],
-    };
-    match spec_name {
-        Some(name) => class
-            .specs
+    let cn = normalize_class_name(class_name);
+    let normalized_spec = spec_name.map(normalize_spec_name);
+
+    if let Some(trait_ids) = CLASS_TRAIT_SPEC_IDS.read().unwrap().get(&cn).cloned() {
+        return match normalized_spec.clone() {
+            Some(name) => fallback_class_spec_pairs(&cn)
+                .iter()
+                .find(|(spec, _)| *spec == name)
+                .map(|(_, id)| {
+                    if trait_ids.contains(id) {
+                        vec![*id]
+                    } else {
+                        vec![]
+                    }
+                })
+                .unwrap_or_default(),
+            None => trait_ids,
+        };
+    }
+
+    if let Some(class) = find_class(&cn) {
+        return match normalized_spec {
+            Some(name) => class
+                .specs
+                .iter()
+                .filter(|s| normalize_spec_name(&s.name) == name)
+                .map(|s| s.id)
+                .collect(),
+            None => class.specs.iter().map(|s| s.id).collect(),
+        };
+    }
+
+    // Fallback for environments where rich class metadata is unavailable.
+    match normalized_spec {
+        Some(name) => fallback_class_spec_pairs(&cn)
             .iter()
-            .filter(|s| s.name == name)
-            .map(|s| s.id)
+            .filter(|(spec, _)| *spec == name)
+            .map(|(_, id)| *id)
             .collect(),
-        None => class.specs.iter().map(|s| s.id).collect(),
+        None => fallback_class_spec_pairs(&cn)
+            .iter()
+            .map(|(_, id)| *id)
+            .collect(),
     }
 }
 
@@ -219,18 +345,46 @@ pub fn inv_type_to_slots(inv_type: u64, spec: &str) -> Vec<&'static str> {
 
 /// Map a numeric spec ID to the SimC spec name (e.g., 254 → "marksmanship").
 pub fn spec_id_to_name(spec_id: u64) -> Option<String> {
-    CLASSES
+    if let Some(name) = CLASSES
         .read()
         .unwrap()
         .iter()
         .flat_map(|c| c.specs.iter())
         .find(|s| s.id == spec_id)
         .map(|s| s.name.clone())
+    {
+        return Some(name);
+    }
+
+    for class_name in [
+        "death_knight",
+        "demon_hunter",
+        "druid",
+        "evoker",
+        "hunter",
+        "mage",
+        "monk",
+        "paladin",
+        "priest",
+        "rogue",
+        "shaman",
+        "warlock",
+        "warrior",
+    ] {
+        if let Some((name, _)) = fallback_class_spec_pairs(class_name)
+            .iter()
+            .find(|(_, id)| *id == spec_id)
+        {
+            return Some((*name).to_string());
+        }
+    }
+
+    None
 }
 
 /// Map a SimC class name to its WoW numeric class ID.
 pub fn class_wow_id(class_name: &str) -> Option<u64> {
-    let n = class_name.to_lowercase();
+    let n = normalize_class_name(class_name);
     // WoW class IDs: warrior=1, paladin=2, hunter=3, rogue=4, priest=5,
     // death_knight=6, shaman=7, mage=8, warlock=9, monk=10, druid=11,
     // demon_hunter=12, evoker=13
@@ -255,6 +409,54 @@ pub fn class_wow_id(class_name: &str) -> Option<u64> {
         .iter()
         .find(|(name, _)| *name == n)
         .map(|(_, id)| *id)
+}
+
+/// Resolve a numeric spec ID to its parent WoW class ID.
+pub fn spec_id_to_wow_class_id(spec_id: u64) -> Option<u64> {
+    const MAP: &[(u64, u64)] = &[
+        (71, 1),
+        (72, 1),
+        (73, 1),
+        (65, 2),
+        (66, 2),
+        (70, 2),
+        (253, 3),
+        (254, 3),
+        (255, 3),
+        (259, 4),
+        (260, 4),
+        (261, 4),
+        (256, 5),
+        (257, 5),
+        (258, 5),
+        (250, 6),
+        (251, 6),
+        (252, 6),
+        (262, 7),
+        (263, 7),
+        (264, 7),
+        (62, 8),
+        (63, 8),
+        (64, 8),
+        (265, 9),
+        (266, 9),
+        (267, 9),
+        (268, 10),
+        (269, 10),
+        (270, 10),
+        (102, 11),
+        (103, 11),
+        (104, 11),
+        (105, 11),
+        (577, 12),
+        (581, 12),
+        (1467, 13),
+        (1468, 13),
+        (1473, 13),
+    ];
+    MAP.iter()
+        .find(|(sid, _)| *sid == spec_id)
+        .map(|(_, cid)| *cid)
 }
 
 // ---- Detection ----

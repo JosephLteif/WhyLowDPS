@@ -269,7 +269,30 @@ pub struct GameItem {
 
     #[serde(rename = "allowableClasses")]
     pub classes: Option<Vec<u64>>,
+    #[serde(default)]
+    pub specs: Option<Vec<u64>>,
     pub sources: Option<Vec<ItemSource>>,
+}
+
+impl GameItem {
+    pub fn restriction_ids(&self) -> Vec<u64> {
+        let mut out = Vec::new();
+        if let Some(specs) = &self.specs {
+            for id in specs {
+                if !out.contains(id) {
+                    out.push(*id);
+                }
+            }
+        }
+        if let Some(classes) = &self.classes {
+            for id in classes {
+                if !out.contains(id) {
+                    out.push(*id);
+                }
+            }
+        }
+        out
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

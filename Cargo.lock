@@ -6447,7 +6447,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-core"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -6474,7 +6474,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-desktop"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -6493,7 +6493,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-server"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "tokio",
  "whylowdps-core",

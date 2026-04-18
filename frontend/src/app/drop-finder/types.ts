@@ -3,6 +3,8 @@ export interface Instance {
   name: string;
   type: string;
   order?: number;
+  zone?: string;
+  expansion?: number;
   image_url?: string;
   encounters: { id: number; name: string; image_url?: string }[];
 }

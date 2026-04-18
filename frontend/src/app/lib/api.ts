@@ -283,3 +283,45 @@ export async function deleteCharacterProfile(id: string): Promise<void> {
 export async function listInstances(): Promise<Instance[]> {
   return fetchJson<Instance[]>(`${API_URL}/api/instances`);
 }
+
+export interface DungeonAffix {
+  id: number;
+  name: string;
+  description: string;
+  icon: string | null;
+  spell_id: number | null;
+}
+
+export interface DungeonInfo {
+  id: number;
+  name: string;
+  description?: string;
+  zone: string | null;
+  slug?: string | null;
+  short_name?: string | null;
+  wowhead_id: number | null;
+  num_bosses: number | null;
+  expansion: number | null;
+  expansion_name?: string | null;
+  map_id?: number | null;
+  challenge_mode_id?: number | null;
+  minimum_level?: number | null;
+  keystone_timer_ms?: number | null;
+  keystone_upgrades?: number[];
+  encounters?: string[];
+  blizzard_href?: string | null;
+  image_url?: string;
+  linked_code?: string;
+  blizzard_api_data?: unknown;
+}
+
+export interface DungeonSeasonData {
+  season_id: number;
+  season_name: string;
+  current_affixes: DungeonAffix[];
+  rotation_dungeons: DungeonInfo[];
+}
+
+export async function getDungeonData(): Promise<DungeonSeasonData> {
+  return fetchJson<DungeonSeasonData>(`${API_URL}/api/dungeons`);
+}

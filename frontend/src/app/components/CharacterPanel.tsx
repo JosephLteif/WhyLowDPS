@@ -1,24 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { EnchantInfo, GemInfo, ItemInfo } from '../lib/useItemInfo';
 import {
-  useItemInfo,
+  getIconUrl,
+  getWowheadData,
+  getWowheadUrl,
+  QUALITY_COLORS,
   useEnchantInfo,
   useGemInfo,
-  getIconUrl,
-  getWowheadUrl,
-  getWowheadData,
-  QUALITY_COLORS,
+  useItemInfo,
 } from '../lib/useItemInfo';
-import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
 import { useTalentTree } from '../lib/useTalentTree';
 import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
-import { decodeHeader } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
+import { decodeHeader } from '../lib/talentDecode';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -40,8 +40,8 @@ function isTalentExportString(value: string, expectedSpecId?: number | null): bo
     const header = decodeHeader(trimmed);
     if (header.bits.length <= header.offset) return false;
     if (header.specId <= 0) return false;
-    if (expectedSpecId && header.specId !== expectedSpecId) return false;
-    return true;
+    return !(expectedSpecId && header.specId !== expectedSpecId);
+
   } catch {
     return false;
   }
@@ -94,6 +94,7 @@ interface CharacterPanelProps {
   professions: any;
   mythicPlus: any;
   raidEncounters: any;
+  dungeons?: any;
   characterMediaUrl?: string | null;
 }
 
@@ -101,13 +102,9 @@ export default function CharacterPanel({
   name,
   realm,
   region,
-  characterClass,
-  race,
-  level,
   equipment,
   statistics,
   specializations,
-  professions,
   mythicPlus,
   raidEncounters,
   characterMediaUrl,
@@ -141,7 +138,6 @@ export default function CharacterPanel({
   }, [activeSpec]);
 
   const specId = activeSpec?.specialization?.id ?? null;
-  const specName = activeSpec?.specialization?.name ?? null;
   const tree = useTalentTree(specId);
 
   const talentString = useMemo(() => {
@@ -656,8 +652,7 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
 
   const visibleRaids = useMemo(() => {
     return raids.filter((raid) => {
-      const expansionOk = selectedExpansion === 'all' || raid.expansionKey === selectedExpansion;
-      return expansionOk;
+      return selectedExpansion === 'all' || raid.expansionKey === selectedExpansion;
     });
   }, [raids, selectedExpansion]);
 
@@ -858,7 +853,7 @@ function StatsCard({ statistics }: { statistics: any }) {
     const mastery = statistics.mastery;
     const versatility = statistics.versatility_offensive_modifier ?? statistics.versatility;
 
-    const list = [
+    return [
       { label: 'Main Stat', value: getEffectiveValue(mainStat) },
       { label: 'Stamina', value: getEffectiveValue(statistics.stamina) },
       null,
@@ -870,8 +865,6 @@ function StatsCard({ statistics }: { statistics: any }) {
         value: getPercentValue(versatility, statistics.versatility) ?? '0.0%',
       },
     ];
-
-    return list;
   }, [statistics]);
 
   if (!statistics) {

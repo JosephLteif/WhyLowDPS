@@ -56,11 +56,15 @@ const baseNavItems: NavItem[] = [
     matchPaths: ['/history'],
   },
   {
-    href: '/dungeon-routes',
-    label: 'Saved Routes',
-    description: 'Dungeon routes for simulation.',
-    icon: 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L16 4m0 13V4m0 0L9 7',
-    matchPaths: ['/dungeon-routes'],
+    href: '/dungeons',
+    label: 'Dungeons & Routes',
+    description: 'M+ dungeons, affixes, and routes.',
+    icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2v6z',
+    matchPaths: ['/dungeons', '/dungeon-routes'],
+    children: [
+      { href: '/dungeons', label: 'Dungeon Info', description: 'Rotation and affixes' },
+      { href: '/dungeon-routes', label: 'Saved Routes', description: 'Dungeon routes for simulation' },
+    ],
   },
 ];
 

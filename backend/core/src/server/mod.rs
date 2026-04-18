@@ -19,6 +19,10 @@ mod simc_updater;
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
+#[cfg(feature = "web")]
+pub mod dungeon_data;
+#[cfg(feature = "web")]
+pub mod dungeon_source_blizzard;
 
 #[cfg(feature = "web")]
 use actix_cors::Cors;
@@ -563,6 +567,7 @@ pub async fn start_with_storage_bind(
                 .route("/api/sims", web::get().to(job_handlers::list_sims))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config", web::post().to(update_config))
+                .route("/api/dungeons", web::get().to(game_data_handlers::get_dungeon_data))
                 .route("/health", web::get().to(health_check));
 
             #[cfg(feature = "desktop")]

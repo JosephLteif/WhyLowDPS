@@ -248,6 +248,8 @@ export default function AddItemModal({
     selectedInstance,
     globalSearchResults,
     groupBy,
+    category,
+    inventoryTypeToSlot,
   ]);
 
   const difficulties = useMemo(() => {
@@ -289,7 +291,7 @@ export default function AddItemModal({
         }
       }
     }
-  }, [difficulties, category, setSelectedDifficulty]);
+  }, [difficulties, category, selectedDifficulty, setSelectedDifficulty]);
 
   useWowheadTooltips([drops, globalSearchResults, selectedDifficulty, category]);
 

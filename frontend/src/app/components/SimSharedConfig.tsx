@@ -2036,7 +2036,7 @@ export default function SimSharedConfig() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [autoClipboardPasteSimc, readClipboardText, setSimcFooter, setSimcInput]);
+  }, [autoClipboardPasteSimc, readClipboardText, setSimcFooter, setSimcInput, addToHistoryWithSelection]);
 
   useEffect(() => {
     if (!banner) return;

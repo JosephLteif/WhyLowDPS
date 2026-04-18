@@ -1064,6 +1064,7 @@ fn append_fallback_trinkets_from_encounter_drops(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_heatmap_profileset_input(
     simc_input: &str,
     class_name: &str,
@@ -1311,7 +1312,7 @@ fn build_heatmap_profileset_input(
                         let max_bonus = crate::item_db::upgrade_bonus_ids_to_max(&[bonus_id]);
                         if max_bonus.len() == 1 && max_bonus[0] != bonus_id {
                             let max_ilvl = crate::item_db::get_item_info(item_id, Some(&max_bonus))
-                                .map(|i| i.ilevel as i64)
+                                .map(|i| i.ilevel)
                                 .unwrap_or(ilvl);
                             let upgraded = make_resolved_item(
                                 "trinket",
@@ -1997,7 +1998,6 @@ pub(super) async fn create_top_gear_sim(
     }))
     .unwrap_or_default();
 
-    let mut job = job;
     job.combo_metadata_json = Some(meta_json);
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);
@@ -2160,7 +2160,6 @@ pub(super) async fn create_droptimizer_sim(
     }))
     .unwrap_or_default();
 
-    let mut job = job;
     job.combo_metadata_json = Some(meta_json);
     job.batch_id = req.options.batch_id.clone();
     store.insert(job);

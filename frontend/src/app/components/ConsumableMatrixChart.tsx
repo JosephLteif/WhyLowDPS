@@ -91,7 +91,7 @@ function useSpellIcons(spellIds: number[]) {
     return () => {
       cancelled = true;
     };
-  }, [depKey]);
+  }, [depKey, spellIds]);
   return icons;
 }
 
@@ -121,7 +121,7 @@ function useItemIcons(itemIds: number[]) {
     return () => {
       cancelled = true;
     };
-  }, [depKey]);
+  }, [depKey, itemIds]);
   return icons;
 }
 

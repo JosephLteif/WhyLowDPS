@@ -10,6 +10,7 @@
   "scripts": {
     "tauri": "tauri",
     "web": "docker compose up --build",
+    "clean:caches": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$paths=@('target\\\\debug\\\\incremental','backend\\\\target\\\\debug\\\\incremental','desktop\\\\src-tauri\\\\target_desktop\\\\debug\\\\incremental'); foreach($p in $paths){ if(Test-Path $p){ Remove-Item -LiteralPath $p -Recurse -Force } }; Write-Host 'Incremental caches cleaned.'\"",
     "ensure:frontend": "node scripts/ensure-frontend-deps.js",
     "ensure:cargo": "node scripts/ensure-cargo.js",
     "backend:dev": "cd backend && cargo watch -w core/src -w server/src -w core/Cargo.toml -w server/Cargo.toml -w Cargo.toml -x 'run -p whylowdps-server'",

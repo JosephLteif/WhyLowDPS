@@ -1,4 +1,4 @@
-import { SavedRoute } from './types';
+import { SavedRoute, SimSummary, SystemStats } from './types';
 import { Instance } from '../drop-finder/types';
 
 export function isDesktopRuntime(): boolean {
@@ -141,6 +141,27 @@ export interface HistoryStats {
 
 export async function getHistoryStats(): Promise<HistoryStats> {
   return fetchJson<HistoryStats>(`${API_URL}/api/history/stats`);
+}
+
+/** List simulations with optional filters */
+export async function listSims(params?: {
+  player?: string;
+  realm?: string;
+  linked_only?: boolean;
+  unlinked_only?: boolean;
+}): Promise<SimSummary[]> {
+  const query = new URLSearchParams();
+  if (params?.player) query.set('player', params.player);
+  if (params?.realm) query.set('realm', params.realm);
+  if (params?.linked_only) query.set('linked_only', 'true');
+  if (params?.unlinked_only) query.set('unlinked_only', 'true');
+  const qs = query.toString();
+  return fetchJson<SimSummary[]>(`${API_URL}/api/sims${qs ? '?' + qs : ''}`);
+}
+
+/** Get current system CPU usage (Desktop only) */
+export async function getSystemStats(): Promise<SystemStats> {
+  return fetchJson<SystemStats>(`${API_URL}/api/system-stats`);
 }
 
 export async function clearHistory(): Promise<void> {

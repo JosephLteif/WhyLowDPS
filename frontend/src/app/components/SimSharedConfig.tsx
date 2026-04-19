@@ -1907,7 +1907,7 @@ export default function SimSharedConfig() {
     normalizedPath === '/top-gear' ||
     normalizedPath === '/drop-finder' ||
     normalizedPath === '/stat-weights' ||
-    normalizedPath === '/upgrade-compare';
+    normalizedPath.startsWith('/upgrade');
 
   const readClipboardText = useCallback(async (): Promise<string> => {
     try {

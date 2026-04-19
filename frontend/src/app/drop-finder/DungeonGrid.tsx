@@ -15,8 +15,18 @@ function imgSrc(imageUrl: string): string {
 }
 
 function instanceImageSrc(inst: Instance): string | null {
+  const localBlizzardImage =
+    inst.id > 0 ? `${API_URL}/api/data/instance-images/instance-${inst.id}.jpg` : null;
   const direct = inst.image_url?.trim();
-  return direct ? imgSrc(direct) : null;
+  if (!direct) return localBlizzardImage;
+
+  const resolvedDirect = imgSrc(direct);
+  // Prefer clean downloaded Blizzard JPGs over faded EJ background art.
+  if (resolvedDirect.includes('/EncounterJournal/orig/ui-ej-background-')) {
+    return localBlizzardImage || resolvedDirect;
+  }
+
+  return resolvedDirect;
 }
 
 function backgroundStyleFor(src: string | null): Record<string, string> | null {

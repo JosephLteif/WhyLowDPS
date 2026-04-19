@@ -33,6 +33,7 @@ import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { API_URL, fetchJson } from '../../lib/api';
 import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
+import { getSimReturnTarget, resolveSimAgainNavigation } from '../../lib/sim-return';
 
 interface JobData {
   id: string;
@@ -391,6 +392,7 @@ export default function SimResultClient() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
+  const [hasSimAgainTarget, setHasSimAgainTarget] = useState(false);
   const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
   const [activeStageElapsed, setActiveStageElapsed] = useState(0);
   const activeStageNameRef = useRef<string | null>(null);
@@ -553,6 +555,14 @@ export default function SimResultClient() {
   useEffect(() => {
     setSiblings(getScenarioSiblings());
   }, []);
+
+  useEffect(() => {
+    if (!id || id === '_') {
+      setHasSimAgainTarget(false);
+      return;
+    }
+    setHasSimAgainTarget(!!getSimReturnTarget(id));
+  }, [id]);
 
   useEffect(() => {
     activeStageNameRef.current = null;
@@ -795,6 +805,12 @@ export default function SimResultClient() {
     return 'text-zinc-300';
   }, []);
 
+  const handleSimAgain = useCallback(() => {
+    const returnUrl = resolveSimAgainNavigation(id);
+    if (!returnUrl) return;
+    router.push(returnUrl);
+  }, [id, router]);
+
   if (fetchError) {
     return (
       <div className="card border-red-500/20 bg-red-500/[0.03] p-6">
@@ -931,6 +947,15 @@ export default function SimResultClient() {
           <div />
         )}
         <div className="flex items-center gap-3">
+          {hasSimAgainTarget && (
+            <button
+              type="button"
+              onClick={handleSimAgain}
+              className="inline-flex items-center rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/25 hover:text-emerald-100"
+            >
+              Sim Again
+            </button>
+          )}
           <CharacterLinkButton
             jobId={id}
             currentLinkedName={job.linked_name}

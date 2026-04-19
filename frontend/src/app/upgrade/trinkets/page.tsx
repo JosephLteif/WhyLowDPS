@@ -8,6 +8,7 @@ import { API_URL } from '../../lib/api';
 import { getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../../lib/useItemInfo';
 import { useSimSubmit } from '../../lib/useSimSubmit';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
+import { consumeSimAgainState } from '../../lib/sim-return';
 
 type TrinketSimMode = 'matrix' | 'lock_trinket1' | 'lock_trinket2';
 type TrinketRolePool = 'auto' | 'dps' | 'tank' | 'healer';
@@ -51,6 +52,16 @@ enum RolePool {
 }
 
 const DEFAULT_SOURCE_TYPES: SourceKey[] = ['raid', 'dungeon', 'delve', 'pvp', 'profession'];
+const UPGRADE_TRINKETS_SIM_AGAIN_KEY = 'upgrade-trinkets';
+
+interface UpgradeTrinketsSimAgainState {
+  targetIlevel?: number;
+  includeRaid?: boolean;
+  includeDungeon?: boolean;
+  simMode?: TrinketSimMode;
+  rolePool?: TrinketRolePool;
+  ignoreSpecRestrictions?: boolean;
+}
 
 const SPEC_TO_CLASS_ID = new Map<number, number>([
   [62, 8],
@@ -282,6 +293,36 @@ export default function UpgradeTrinketsPage() {
   const [dropsBySource, setDropsBySource] = useState<Record<SourceKey, DropItem[]>>({});
   const [upgradeTracks, setUpgradeTracks] = useState<Record<string, TrackRow[]>>({});
   const [poolLoading, setPoolLoading] = useState(false);
+
+  useEffect(() => {
+    const restored = consumeSimAgainState<UpgradeTrinketsSimAgainState>(
+      UPGRADE_TRINKETS_SIM_AGAIN_KEY
+    );
+    if (!restored) return;
+    if (typeof restored.targetIlevel === 'number' && Number.isFinite(restored.targetIlevel)) {
+      setTargetIlevel(Math.max(1, Math.floor(restored.targetIlevel)));
+    }
+    if (typeof restored.includeRaid === 'boolean') setIncludeRaid(restored.includeRaid);
+    if (typeof restored.includeDungeon === 'boolean') setIncludeDungeon(restored.includeDungeon);
+    if (
+      restored.simMode === 'matrix' ||
+      restored.simMode === 'lock_trinket1' ||
+      restored.simMode === 'lock_trinket2'
+    ) {
+      setSimMode(restored.simMode);
+    }
+    if (
+      restored.rolePool === 'auto' ||
+      restored.rolePool === 'dps' ||
+      restored.rolePool === 'tank' ||
+      restored.rolePool === 'healer'
+    ) {
+      setRolePool(restored.rolePool);
+    }
+    if (typeof restored.ignoreSpecRestrictions === 'boolean') {
+      setIgnoreSpecRestrictions(restored.ignoreSpecRestrictions);
+    }
+  }, []);
 
   const equippedTrinket1 = useMemo(() => parseEquippedTrinket(simcInput, 'trinket1'), [simcInput]);
   const equippedTrinket2 = useMemo(() => parseEquippedTrinket(simcInput, 'trinket2'), [simcInput]);
@@ -548,6 +589,17 @@ export default function UpgradeTrinketsPage() {
     endpoint: '/api/sim',
     buildPayload,
     validate,
+    simAgain: {
+      pageKey: UPGRADE_TRINKETS_SIM_AGAIN_KEY,
+      captureState: () => ({
+        targetIlevel,
+        includeRaid,
+        includeDungeon,
+        simMode,
+        rolePool,
+        ignoreSpecRestrictions,
+      }),
+    },
   });
 
   const lockLabel = useCallback(

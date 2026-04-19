@@ -7,6 +7,7 @@ import { useSimSubmit } from '../lib/useSimSubmit';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
+import { consumeSimAgainState } from '../lib/sim-return';
 
 const PLOT_STATS = [
   { value: 'haste_rating', label: 'Haste' },
@@ -17,6 +18,22 @@ const PLOT_STATS = [
   { value: 'agility', label: 'Agility' },
   { value: 'strength', label: 'Strength' },
 ];
+
+const STAT_WEIGHTS_SIM_AGAIN_KEY = 'stat-weights';
+
+interface StatWeightsSimAgainState {
+  mode?: 'stat_weights' | 'stat_plot' | 'consumable_matrix' | 'tier_heatmap';
+  plotStats?: string[];
+  plotRange?: number;
+  plotStep?: number;
+  plotIterations?: number;
+  matrixFlasks?: string[];
+  matrixFoods?: string[];
+  matrixPotions?: string[];
+  matrixAugments?: string[];
+  matrixTempEnchants?: string[];
+  matrixRaidBuffs?: string[];
+}
 
 const spellIconCache = new Map<number, string>();
 const itemIconCache = new Map<number, string>();
@@ -138,6 +155,43 @@ export default function StatWeightsPage() {
   const [matrixRaidBuffs, setMatrixRaidBuffs] = useState<string[]>(
     RAID_BUFF_MATRIX_OPTIONS.map((o) => o.key)
   );
+
+  useEffect(() => {
+    const restored = consumeSimAgainState<StatWeightsSimAgainState>(STAT_WEIGHTS_SIM_AGAIN_KEY);
+    if (!restored) return;
+    if (
+      restored.mode === 'stat_weights' ||
+      restored.mode === 'stat_plot' ||
+      restored.mode === 'consumable_matrix' ||
+      restored.mode === 'tier_heatmap'
+    ) {
+      setMode(restored.mode);
+    }
+    if (Array.isArray(restored.plotStats)) {
+      setPlotStats(restored.plotStats.filter((v) => typeof v === 'string'));
+    }
+    if (typeof restored.plotRange === 'number' && Number.isFinite(restored.plotRange)) {
+      setPlotRange(Math.max(100, Math.floor(restored.plotRange)));
+    }
+    if (typeof restored.plotStep === 'number' && Number.isFinite(restored.plotStep)) {
+      setPlotStep(Math.max(10, Math.floor(restored.plotStep)));
+    }
+    if (typeof restored.plotIterations === 'number' && Number.isFinite(restored.plotIterations)) {
+      setPlotIterations(Math.max(100, Math.floor(restored.plotIterations)));
+    }
+    if (Array.isArray(restored.matrixFlasks))
+      setMatrixFlasks(restored.matrixFlasks.filter((v) => typeof v === 'string'));
+    if (Array.isArray(restored.matrixFoods))
+      setMatrixFoods(restored.matrixFoods.filter((v) => typeof v === 'string'));
+    if (Array.isArray(restored.matrixPotions))
+      setMatrixPotions(restored.matrixPotions.filter((v) => typeof v === 'string'));
+    if (Array.isArray(restored.matrixAugments))
+      setMatrixAugments(restored.matrixAugments.filter((v) => typeof v === 'string'));
+    if (Array.isArray(restored.matrixTempEnchants))
+      setMatrixTempEnchants(restored.matrixTempEnchants.filter((v) => typeof v === 'string'));
+    if (Array.isArray(restored.matrixRaidBuffs))
+      setMatrixRaidBuffs(restored.matrixRaidBuffs.filter((v) => typeof v === 'string'));
+  }, []);
 
   const consumableCount =
     matrixFlasks.length +
@@ -274,6 +328,22 @@ export default function StatWeightsPage() {
     endpoint: '/api/sim',
     buildPayload,
     validate,
+    simAgain: {
+      pageKey: STAT_WEIGHTS_SIM_AGAIN_KEY,
+      captureState: () => ({
+        mode,
+        plotStats,
+        plotRange,
+        plotStep,
+        plotIterations,
+        matrixFlasks,
+        matrixFoods,
+        matrixPotions,
+        matrixAugments,
+        matrixTempEnchants,
+        matrixRaidBuffs,
+      }),
+    },
   });
 
   const handleSubmit = useCallback(() => {

@@ -14,6 +14,31 @@ function imgSrc(imageUrl: string): string {
   return imageUrl.startsWith('/') ? `${API_URL}${imageUrl}` : imageUrl;
 }
 
+function instanceImageSrc(inst: Instance): string | null {
+  const direct = inst.image_url?.trim();
+  return direct ? imgSrc(direct) : null;
+}
+
+function backgroundStyleFor(src: string | null): Record<string, string> | null {
+  if (!src) return null;
+
+  return {
+    backgroundImage: `url(${src})`,
+  };
+}
+
+function MissingImageFallback() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center bg-black p-3">
+      <img
+        src="/wow-logo.png"
+        alt="WoW"
+        className="-translate-y-2 h-[72%] w-[72%] max-h-36 max-w-36 object-contain opacity-95"
+      />
+    </div>
+  );
+}
+
 export default function DungeonGrid({
   value,
   onChange,
@@ -21,6 +46,12 @@ export default function DungeonGrid({
   allKey,
   allLabel,
 }: DungeonGridProps) {
+  const allTileImages = instances
+    .filter((inst) => inst.id !== 1312 && inst.name !== 'World Bosses')
+    .map((inst) => ({ inst, src: instanceImageSrc(inst) }))
+    .filter((x) => !!x.src)
+    .slice(0, 4);
+
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
       {/* "All" tile */}
@@ -32,19 +63,20 @@ export default function DungeonGrid({
             : 'border-border hover:border-gold/20'
         }`}
       >
-        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 brightness-[0.5] saturate-[0.7]">
-          {instances
-            .filter((inst) => inst.image_url)
-            .slice(0, 4)
-            .map((inst) => (
+        <div className="absolute inset-0 bg-black" />
+        {allTileImages.length === 0 && <MissingImageFallback />}
+        <div
+          className="absolute inset-0 grid"
+          style={{ gridTemplateColumns: `repeat(${Math.max(allTileImages.length, 1)}, minmax(0, 1fr))` }}
+        >
+          {allTileImages.map(({ inst }) => (
               <div
                 key={inst.id}
                 className="h-full w-full bg-cover bg-center bg-no-repeat"
-                style={{ backgroundImage: `url(${imgSrc(inst.image_url!)})` }}
+                style={backgroundStyleFor(instanceImageSrc(inst)) ?? undefined}
               />
             ))}
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/30" />
         <div className="relative w-full px-3 pb-3 pt-1">
           <p
             className={`text-base font-bold leading-snug drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] ${value === allKey ? 'text-gold' : 'text-white'}`}
@@ -65,14 +97,16 @@ export default function DungeonGrid({
               : 'border-border hover:border-gold/20'
           }`}
         >
-          <div className="absolute inset-0 bg-surface-2" />
-          {inst.image_url && (
-            <div
-              className="absolute inset-0 bg-black/20 bg-cover bg-center bg-no-repeat brightness-[0.75] saturate-[0.85] transition-all duration-300 group-hover:brightness-90"
-              style={{ backgroundImage: `url(${imgSrc(inst.image_url)})` }}
-            />
+          <div className="absolute inset-0 bg-black" />
+          <MissingImageFallback />
+          {instanceImageSrc(inst) && (
+            <div className="absolute inset-0 overflow-hidden">
+              <div
+                className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-300"
+                style={backgroundStyleFor(instanceImageSrc(inst)) ?? undefined}
+              />
+            </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
           <div className="relative w-full px-3 pb-3 pt-1">
             <p
               className={`text-base font-bold leading-snug drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] ${

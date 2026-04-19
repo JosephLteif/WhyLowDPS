@@ -6,6 +6,7 @@ export function isDesktopRuntime(): boolean {
   return (
     window.location.protocol === 'tauri:' ||
     window.location.protocol === 'asset:' ||
+    window.location.protocol === 'file:' ||
     window.location.hostname === 'tauri.localhost' ||
     !!(window as any).__TAURI__ ||
     !!(window as any).__TAURI_METADATA__ ||

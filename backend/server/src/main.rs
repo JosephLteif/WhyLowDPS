@@ -58,7 +58,9 @@ async fn main() {
             #[cfg(feature = "web")]
             {
                 println!("Using SQLite storage: {}", _db_url);
-                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&_db_url))
+                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(
+                    &_db_url,
+                ))
             }
             #[cfg(not(feature = "web"))]
             {
@@ -72,7 +74,9 @@ async fn main() {
             #[cfg(feature = "web")]
             {
                 println!("Using SQLite storage: {}", _db_url);
-                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(&_db_url))
+                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(
+                    &_db_url,
+                ))
             }
             #[cfg(not(feature = "web"))]
             {

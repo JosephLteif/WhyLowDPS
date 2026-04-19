@@ -10,7 +10,7 @@ pub use postgres::PostgresStorage;
 #[cfg(feature = "web")]
 pub use sqlite::SqliteStorage;
 
-use crate::models::{Job, JobStatus, JobSummary, SavedRoute, SavedCharacterProfile};
+use crate::models::{Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute};
 use once_cell::sync::Lazy;
 
 /// Maximum number of jobs to retain. Oldest jobs are deleted on insert.
@@ -87,6 +87,11 @@ pub trait JobStorage: Send + Sync {
 
     // Character profiles
     fn save_character_profile(&self, profile: SavedCharacterProfile);
-    fn list_character_profiles(&self, name: Option<&str>, realm: Option<&str>, region: Option<&str>) -> Vec<SavedCharacterProfile>;
+    fn list_character_profiles(
+        &self,
+        name: Option<&str>,
+        realm: Option<&str>,
+        region: Option<&str>,
+    ) -> Vec<SavedCharacterProfile>;
     fn delete_character_profile(&self, id: &str);
 }

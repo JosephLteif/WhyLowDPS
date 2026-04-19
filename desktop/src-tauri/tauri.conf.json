@@ -1,6 +1,6 @@
 {
   "productName": "WhyLowDps",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",
@@ -26,7 +26,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",

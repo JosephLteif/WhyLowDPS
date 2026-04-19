@@ -472,7 +472,7 @@ fn build_consumable_matrix_input(simc_input: &str, options: &SimOptions) -> Matr
     lines.push(String::new());
     lines.push("# Base Actor".to_string());
 
-    // Filter out existing consumables, raid buffs, and common overrides from base_lines 
+    // Filter out existing consumables, raid buffs, and common overrides from base_lines
     // to ensure the baseline is clean as requested.
     let base_lines_filtered: Vec<String> = base_lines
         .into_iter()
@@ -489,9 +489,7 @@ fn build_consumable_matrix_input(simc_input: &str, options: &SimOptions) -> Matr
                 return false;
             }
             // Clear raid buff settings
-            if l.starts_with("optimal_raid=")
-                || l.starts_with("party_buffs=")
-            {
+            if l.starts_with("optimal_raid=") || l.starts_with("party_buffs=") {
                 return false;
             }
             // Clear common raid buff overrides that might be in the matrix
@@ -742,16 +740,16 @@ fn spec_id_to_role_pool(spec_id: u64) -> TrinketRolePool {
 fn class_id_supports_role_pool(class_id: u64, role: TrinketRolePool) -> bool {
     match class_id {
         1 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Tank), // Warrior
-        2 => true, // Paladin
-        3 => matches!(role, TrinketRolePool::Dps), // Hunter
-        4 => matches!(role, TrinketRolePool::Dps), // Rogue
+        2 => true,                                                         // Paladin
+        3 => matches!(role, TrinketRolePool::Dps),                         // Hunter
+        4 => matches!(role, TrinketRolePool::Dps),                         // Rogue
         5 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Healer), // Priest
         6 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Tank), // Death Knight
         7 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Healer), // Shaman
-        8 => matches!(role, TrinketRolePool::Dps), // Mage
-        9 => matches!(role, TrinketRolePool::Dps), // Warlock
-        10 => true, // Monk
-        11 => true, // Druid
+        8 => matches!(role, TrinketRolePool::Dps),                         // Mage
+        9 => matches!(role, TrinketRolePool::Dps),                         // Warlock
+        10 => true,                                                        // Monk
+        11 => true,                                                        // Druid
         12 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Tank), // Demon Hunter
         13 => matches!(role, TrinketRolePool::Dps | TrinketRolePool::Healer), // Evoker
         _ => true,
@@ -792,13 +790,14 @@ fn selected_heatmap_role_pools(
     if has_auto {
         return HashSet::from([spec_id_to_role_pool(active_spec_id.unwrap_or(0))]);
     }
-    HashSet::from([TrinketRolePool::Dps, TrinketRolePool::Tank, TrinketRolePool::Healer])
+    HashSet::from([
+        TrinketRolePool::Dps,
+        TrinketRolePool::Tank,
+        TrinketRolePool::Healer,
+    ])
 }
 
-fn item_specs_match_role_pools(
-    specs: &[u64],
-    selected_pools: &HashSet<TrinketRolePool>,
-) -> bool {
+fn item_specs_match_role_pools(specs: &[u64], selected_pools: &HashSet<TrinketRolePool>) -> bool {
     if selected_pools.is_empty() || specs.is_empty() {
         return true;
     }
@@ -928,9 +927,7 @@ fn item_has_mplus_rotation_source(item: &crate::types::GameItem, mplus_ids: &Has
     item.sources.as_ref().is_some_and(|sources| {
         sources.iter().any(|src| {
             src.instance_id == Some(-1)
-                || src
-                    .instance_id
-                    .is_some_and(|iid| mplus_ids.contains(&iid))
+                || src.instance_id.is_some_and(|iid| mplus_ids.contains(&iid))
         })
     })
 }
@@ -1286,51 +1283,51 @@ fn build_heatmap_profileset_input(
             let dungeon_info = trinket.get("dungeon_info").and_then(|v| v.as_object());
             let mut added_for_item = false;
             let mut add_from_entry = |entry: &serde_json::Map<String, Value>| {
-                    let ilvl = entry.get("ilvl").and_then(|v| v.as_i64()).unwrap_or(0);
-                    let bonus_id = entry.get("bonus_id").and_then(|v| v.as_u64()).unwrap_or(0);
-                    if ilvl <= 0 {
-                        return;
-                    }
-                    let item = make_resolved_item(
-                        "trinket",
-                        item_id,
-                        ResolvedItemSeed {
-                            name: item_name.clone(),
-                            icon: item_icon.clone(),
-                            quality: item_quality,
-                            ilevel: ilvl,
-                            bonus_ids: if bonus_id > 0 { vec![bonus_id] } else { vec![] },
-                        },
-                        crate::types::ItemOrigin::Bags,
-                        12,
-                    );
-                    add_variant(item);
+                let ilvl = entry.get("ilvl").and_then(|v| v.as_i64()).unwrap_or(0);
+                let bonus_id = entry.get("bonus_id").and_then(|v| v.as_u64()).unwrap_or(0);
+                if ilvl <= 0 {
+                    return;
+                }
+                let item = make_resolved_item(
+                    "trinket",
+                    item_id,
+                    ResolvedItemSeed {
+                        name: item_name.clone(),
+                        icon: item_icon.clone(),
+                        quality: item_quality,
+                        ilevel: ilvl,
+                        bonus_ids: if bonus_id > 0 { vec![bonus_id] } else { vec![] },
+                    },
+                    crate::types::ItemOrigin::Bags,
+                    12,
+                );
+                add_variant(item);
 
-                    // Also add a "max-upgraded" variant for this drop bonus when applicable.
-                    // World boss drops are intentionally capped and should not be promoted.
-                    if bonus_id > 0 && !is_world_boss_source {
-                        let max_bonus = crate::item_db::upgrade_bonus_ids_to_max(&[bonus_id]);
-                        if max_bonus.len() == 1 && max_bonus[0] != bonus_id {
-                            let max_ilvl = crate::item_db::get_item_info(item_id, Some(&max_bonus))
-                                .map(|i| i.ilevel)
-                                .unwrap_or(ilvl);
-                            let upgraded = make_resolved_item(
-                                "trinket",
-                                item_id,
-                                ResolvedItemSeed {
-                                    name: item_name.clone(),
-                                    icon: item_icon.clone(),
-                                    quality: item_quality,
-                                    ilevel: max_ilvl,
-                                    bonus_ids: max_bonus,
-                                },
-                                crate::types::ItemOrigin::Bags,
-                                12,
-                            );
-                            add_variant(upgraded);
-                        }
+                // Also add a "max-upgraded" variant for this drop bonus when applicable.
+                // World boss drops are intentionally capped and should not be promoted.
+                if bonus_id > 0 && !is_world_boss_source {
+                    let max_bonus = crate::item_db::upgrade_bonus_ids_to_max(&[bonus_id]);
+                    if max_bonus.len() == 1 && max_bonus[0] != bonus_id {
+                        let max_ilvl = crate::item_db::get_item_info(item_id, Some(&max_bonus))
+                            .map(|i| i.ilevel)
+                            .unwrap_or(ilvl);
+                        let upgraded = make_resolved_item(
+                            "trinket",
+                            item_id,
+                            ResolvedItemSeed {
+                                name: item_name.clone(),
+                                icon: item_icon.clone(),
+                                quality: item_quality,
+                                ilevel: max_ilvl,
+                                bonus_ids: max_bonus,
+                            },
+                            crate::types::ItemOrigin::Bags,
+                            12,
+                        );
+                        add_variant(upgraded);
                     }
-                    added_for_item = true;
+                }
+                added_for_item = true;
             };
 
             if let Some(diff_obj) = difficulty_info {
@@ -1342,11 +1339,10 @@ fn build_heatmap_profileset_input(
                 }
             }
             if let Some(dungeon_obj) = dungeon_info {
-                let mut entries: Vec<&serde_json::Map<String, Value>> = dungeon_obj
-                    .values()
-                    .filter_map(|v| v.as_object())
-                    .collect();
-                entries.sort_by_key(|entry| entry.get("ilvl").and_then(|v| v.as_i64()).unwrap_or(0));
+                let mut entries: Vec<&serde_json::Map<String, Value>> =
+                    dungeon_obj.values().filter_map(|v| v.as_object()).collect();
+                entries
+                    .sort_by_key(|entry| entry.get("ilvl").and_then(|v| v.as_i64()).unwrap_or(0));
                 for entry in entries {
                     add_from_entry(entry);
                 }
@@ -1507,7 +1503,10 @@ fn build_heatmap_profileset_input(
                     combo_name, t2.item.simc_string
                 ));
                 if !talents.is_empty() {
-                    lines.push(format!("profileset.\"{}\"+=talents={}", combo_name, talents));
+                    lines.push(format!(
+                        "profileset.\"{}\"+=talents={}",
+                        combo_name, talents
+                    ));
                 }
                 lines.push(String::new());
 

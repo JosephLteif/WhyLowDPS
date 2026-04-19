@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { useSimSubmit } from '../lib/useSimSubmit';
@@ -35,7 +35,9 @@ function useSpellIcons(spellIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`,
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) spellIconCache.set(id, data.icon);
@@ -65,7 +67,9 @@ function useItemIcons(itemIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`,
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) itemIconCache.set(id, data.icon);
@@ -225,7 +229,7 @@ export default function StatWeightsPage() {
               include_trinket_matrix: false,
               include_tier_matrix: true,
             }
-        : mode === 'consumable_matrix'
+          : mode === 'consumable_matrix'
             ? {
                 consumable_matrix_flasks: matrixFlasks,
                 consumable_matrix_foods: matrixFoods,
@@ -264,14 +268,7 @@ export default function StatWeightsPage() {
       return 'Select at least one consumable or raid buff to compare.';
     }
     return null;
-  }, [
-    simcInput,
-    mode,
-    plotStats,
-    plotRange,
-    plotStep,
-    consumableCount,
-  ]);
+  }, [simcInput, mode, plotStats, plotRange, plotStep, consumableCount]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/sim',
@@ -707,7 +704,7 @@ export default function StatWeightsPage() {
                   ? 'Run Stat Plot Simulation'
                   : mode === 'tier_heatmap'
                     ? 'Run Tier Slot Matrix'
-                  : mode === 'consumable_matrix'
+                    : mode === 'consumable_matrix'
                       ? 'Run Consumable Matrix'
                       : 'Run Stat Weights Simulation'
               )}

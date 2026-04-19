@@ -183,7 +183,11 @@ function selectedRoleSet(rolePool: TrinketRolePool, activeSpecId: number): Set<R
   return new Set([specToRole(activeSpecId || 0)]);
 }
 
-function itemSpecsMatchActiveSpec(specs: number[] | undefined, activeSpecId: number, ignoreSpec: boolean) {
+function itemSpecsMatchActiveSpec(
+  specs: number[] | undefined,
+  activeSpecId: number,
+  ignoreSpec: boolean,
+) {
   if (ignoreSpec) return true;
   if (!specs || specs.length === 0) return true;
   const specEntries = specs.filter((id) => id > 13);
@@ -231,12 +235,14 @@ function collectItemIlevels(item: DropItem): Array<{ ilevel: number; tag: string
   if (item.ilevel && item.ilevel > 0) out.push({ ilevel: item.ilevel, tag: 'Base Drop' });
   if (item.difficulty_info) {
     for (const [key, entry] of Object.entries(item.difficulty_info)) {
-      if (entry?.ilvl && entry.ilvl > 0) out.push({ ilevel: entry.ilvl, tag: normalizeDropTag(key) });
+      if (entry?.ilvl && entry.ilvl > 0)
+        out.push({ ilevel: entry.ilvl, tag: normalizeDropTag(key) });
     }
   }
   if (item.dungeon_info) {
     for (const [key, entry] of Object.entries(item.dungeon_info)) {
-      if (entry?.ilvl && entry.ilvl > 0) out.push({ ilevel: entry.ilvl, tag: normalizeDropTag(key) });
+      if (entry?.ilvl && entry.ilvl > 0)
+        out.push({ ilevel: entry.ilvl, tag: normalizeDropTag(key) });
     }
   }
   return out;
@@ -294,20 +300,13 @@ export default function UpgradeTrinketsPage() {
     equippedTrinket2.ilevel,
   ]);
 
-  const selectedSources = useMemo(
-    () => {
-      // If the user disables both visible source toggles, treat pool as empty.
-      if (!includeRaid && !includeDungeon) return [];
-      return sourceTypes.filter((s) =>
-        s === 'raid'
-          ? includeRaid
-          : s === 'dungeon'
-            ? includeDungeon
-            : false
-      );
-    },
-    [sourceTypes, includeRaid, includeDungeon]
-  );
+  const selectedSources = useMemo(() => {
+    // If the user disables both visible source toggles, treat pool as empty.
+    if (!includeRaid && !includeDungeon) return [];
+    return sourceTypes.filter((s) =>
+      s === 'raid' ? includeRaid : s === 'dungeon' ? includeDungeon : false,
+    );
+  }, [sourceTypes, includeRaid, includeDungeon]);
 
   useEffect(() => {
     let cancelled = false;
@@ -369,8 +368,7 @@ export default function UpgradeTrinketsPage() {
           const res = sourceResponses[i];
           if (!res || !res.ok) continue;
           const data = await res.json().catch(() => ({}));
-          const trinkets = Array.isArray(data?.Trinket) ? (data.Trinket as DropItem[]) : [];
-          nextDrops[source] = trinkets;
+          nextDrops[source] = Array.isArray(data?.Trinket) ? (data.Trinket as DropItem[]) : [];
         }
         if (!cancelled) {
           setUpgradeTracks(nextTracks);
@@ -387,7 +385,10 @@ export default function UpgradeTrinketsPage() {
   }, [className, specName, sourceTypes, ignoreSpecRestrictions]);
 
   const sourceScope = selectedSources.join(',');
-  const selectedRoles = useMemo(() => selectedRoleSet(rolePool, activeSpecId), [rolePool, activeSpecId]);
+  const selectedRoles = useMemo(
+    () => selectedRoleSet(rolePool, activeSpecId),
+    [rolePool, activeSpecId],
+  );
 
   const filteredPool = useMemo(() => {
     const byItem = new Map<number, DropItem>();
@@ -517,11 +518,7 @@ export default function UpgradeTrinketsPage() {
       heatmap_target_ilevel: Math.max(1, Math.floor(targetIlevel || 289)),
       heatmap_trinket_sources: sourceScope || 'all',
       heatmap_lock_trinket_slot:
-        simMode === 'lock_trinket1'
-          ? 'trinket1'
-          : simMode === 'lock_trinket2'
-            ? 'trinket2'
-            : '',
+        simMode === 'lock_trinket1' ? 'trinket1' : simMode === 'lock_trinket2' ? 'trinket2' : '',
       heatmap_role_pools: rolePool,
       heatmap_ignore_spec_restrictions: ignoreSpecRestrictions,
     }),
@@ -529,7 +526,8 @@ export default function UpgradeTrinketsPage() {
   );
 
   const validate = useCallback(() => {
-    if (simcInput.trim().length < 10) return 'SimC input is too short. Paste your full addon export.';
+    if (simcInput.trim().length < 10)
+      return 'SimC input is too short. Paste your full addon export.';
     if (selectedSources.length === 0) return 'Pick at least one trinket source.';
     if (simMode === 'lock_trinket1' && equippedTrinket1.itemId <= 0) {
       return 'Could not detect your equipped Trinket 1 from the SimC export.';
@@ -538,7 +536,13 @@ export default function UpgradeTrinketsPage() {
       return 'Could not detect your equipped Trinket 2 from the SimC export.';
     }
     return null;
-  }, [simcInput, selectedSources.length, simMode, equippedTrinket1.itemId, equippedTrinket2.itemId]);
+  }, [
+    simcInput,
+    selectedSources.length,
+    simMode,
+    equippedTrinket1.itemId,
+    equippedTrinket2.itemId,
+  ]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/sim',
@@ -594,7 +598,9 @@ export default function UpgradeTrinketsPage() {
     >
       <div className="space-y-1">
         <h2 className="text-xl font-bold tracking-tight text-zinc-100">Upgrade Trinkets</h2>
-        <p className="text-sm text-zinc-400">Sim trinket pair upgrades by source and target item level.</p>
+        <p className="text-sm text-zinc-400">
+          Sim trinket pair upgrades by source and target item level.
+        </p>
       </div>
 
       <ErrorAlert message={error} />
@@ -609,22 +615,29 @@ export default function UpgradeTrinketsPage() {
             onChange={(e) => setTargetIlevel(Number(e.target.value) || targetIlevel)}
             className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 focus:border-gold focus:outline-none"
           >
-            {(ilevelOptions.length > 0 ? ilevelOptions : [{ ilevel: 289, label: '289' }]).map((opt) => (
-              <option key={opt.ilevel} value={opt.ilevel}>
-                {opt.label}
-              </option>
-            ))}
+            {(ilevelOptions.length > 0 ? ilevelOptions : [{ ilevel: 289, label: '289' }]).map(
+              (opt) => (
+                <option key={opt.ilevel} value={opt.ilevel}>
+                  {opt.label}
+                </option>
+              ),
+            )}
           </select>
           <span className="block text-[11px] text-zinc-500">
-            Options are derived from current drop-pool data and upgrade tracks (auto-updates each season).
+            Options are derived from current drop-pool data and upgrade tracks (auto-updates each
+            season).
           </span>
         </label>
 
         <div className="flex items-center justify-between rounded-md border border-zinc-700/70 bg-zinc-900/60 px-3 py-2.5">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Expected Run Size</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
+              Expected Run Size
+            </p>
             <p className="mt-0.5 text-xs text-zinc-400">
-              {poolLoading ? 'Calculating from drop pool...' : `${expectedStats.trinketCount.toLocaleString()} trinkets in pool`}
+              {poolLoading
+                ? 'Calculating from drop pool...'
+                : `${expectedStats.trinketCount.toLocaleString()} trinkets in pool`}
             </p>
           </div>
           <ComboPill

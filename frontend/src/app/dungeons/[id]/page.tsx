@@ -8,11 +8,7 @@ export function generateStaticParams() {
   }));
 }
 
-export default async function DungeonPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function DungeonPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
   return <DungeonPageClient id={resolvedParams.id} />;
 }

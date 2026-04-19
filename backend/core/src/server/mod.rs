@@ -4,6 +4,10 @@ mod blizzard;
 mod character_profile_handlers;
 mod data_sync;
 #[cfg(feature = "web")]
+pub mod dungeon_data;
+#[cfg(feature = "web")]
+pub mod dungeon_source_blizzard;
+#[cfg(feature = "web")]
 mod game_data_handlers;
 #[cfg(feature = "web")]
 mod helpers;
@@ -19,10 +23,6 @@ mod simc_updater;
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
-#[cfg(feature = "web")]
-pub mod dungeon_data;
-#[cfg(feature = "web")]
-pub mod dungeon_source_blizzard;
 
 #[cfg(feature = "web")]
 use actix_cors::Cors;
@@ -546,8 +546,14 @@ pub async fn start_with_storage_bind(
                     web::delete().to(route_handlers::delete_route),
                 )
                 // Character profiles
-                .route("/api/character-profiles", web::post().to(character_profile_handlers::save_character_profile))
-                .route("/api/character-profiles", web::get().to(character_profile_handlers::list_character_profiles))
+                .route(
+                    "/api/character-profiles",
+                    web::post().to(character_profile_handlers::save_character_profile),
+                )
+                .route(
+                    "/api/character-profiles",
+                    web::get().to(character_profile_handlers::list_character_profiles),
+                )
                 .route(
                     "/api/character-profiles/{id}",
                     web::delete().to(character_profile_handlers::delete_character_profile),
@@ -571,7 +577,10 @@ pub async fn start_with_storage_bind(
                 .route("/api/sims", web::get().to(job_handlers::list_sims))
                 .route("/api/config", web::get().to(get_config))
                 .route("/api/config", web::post().to(update_config))
-                .route("/api/dungeons", web::get().to(game_data_handlers::get_dungeon_data))
+                .route(
+                    "/api/dungeons",
+                    web::get().to(game_data_handlers::get_dungeon_data),
+                )
                 .route("/health", web::get().to(health_check));
 
             #[cfg(feature = "desktop")]

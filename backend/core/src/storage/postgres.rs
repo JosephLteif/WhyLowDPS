@@ -3,7 +3,9 @@ use std::sync::Mutex;
 use tokio_postgres::{Client, NoTls};
 
 use super::JobStorage;
-use crate::models::{extract_result_summary, Job, JobStatus, JobSummary, SavedRoute, SavedCharacterProfile};
+use crate::models::{
+    extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
+};
 
 pub struct PostgresStorage {
     client: Mutex<Client>,
@@ -200,7 +202,10 @@ impl PostgresStorage {
 impl JobStorage for PostgresStorage {
     fn insert(&self, job: Job) {
         let stages_json = serde_json::to_string(&job.stages_completed).unwrap();
-        let options_json = job.options.as_ref().map(|o| serde_json::to_string(o).unwrap());
+        let options_json = job
+            .options
+            .as_ref()
+            .map(|o| serde_json::to_string(o).unwrap());
         let limit = *self.max_jobs.lock().unwrap();
         self.blocking(|client| {
             self.rt.block_on(async {
@@ -733,7 +738,12 @@ impl JobStorage for PostgresStorage {
         });
     }
 
-    fn list_character_profiles(&self, name: Option<&str>, realm: Option<&str>, region: Option<&str>) -> Vec<SavedCharacterProfile> {
+    fn list_character_profiles(
+        &self,
+        name: Option<&str>,
+        realm: Option<&str>,
+        region: Option<&str>,
+    ) -> Vec<SavedCharacterProfile> {
         // Build query dynamically - use simpler approach without complex params
         let query_name = name.map(|n| n.to_lowercase());
         let query_realm = realm.map(|r| r.to_lowercase());
@@ -750,16 +760,16 @@ impl JobStorage for PostgresStorage {
                     .await
                     .ok()
                     .unwrap_or_default();
-                
+
                 for row in rows {
                     let n: String = row.get(1);
                     let r: String = row.get(2);
                     let reg: String = row.get(3);
-                    
+
                     let matches = (query_name.is_none() || query_name.as_ref() == Some(&n.to_lowercase()))
                         && (query_realm.is_none() || query_realm.as_ref() == Some(&r.to_lowercase()))
                         && (query_region.is_none() || query_region.as_ref() == Some(&reg.to_lowercase()));
-                    
+
                     if matches {
                         results.push(SavedCharacterProfile {
                             id: row.get(0),

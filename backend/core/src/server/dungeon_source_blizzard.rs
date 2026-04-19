@@ -39,12 +39,15 @@ impl BlizzardDungeonSource {
     pub fn new() -> Self {
         let runtime_data = get_runtime_data();
         let dungeon_cache = Self::load_dungeon_details(&runtime_data);
-        Self { runtime_data, dungeon_cache }
+        Self {
+            runtime_data,
+            dungeon_cache,
+        }
     }
 
     fn load_dungeon_details(runtime: &serde_json::Value) -> HashMap<u32, DungeonDetail> {
         let mut cache = HashMap::new();
-        
+
         if let Some(dungeons) = runtime.get("dungeon_details").and_then(|d| d.as_array()) {
             for d in dungeons {
                 let id = match d.get("id").and_then(|v| v.as_u64()) {
@@ -55,18 +58,51 @@ impl BlizzardDungeonSource {
                     Some(s) => s.to_string(),
                     None => continue,
                 };
-                let description = d.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let zone = d.get("zone").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let slug = d.get("slug").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let short_name = d.get("short_name").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let wowhead_id = d.get("wowhead_id").and_then(|v| v.as_u64()).map(|n| n as u32);
-                let num_bosses = d.get("num_bosses").and_then(|v| v.as_u64()).map(|n| n as u32);
-                let expansion = d.get("expansion").and_then(|v| v.as_u64()).map(|n| n as u32);
-                let expansion_name = d.get("expansion_name").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let description = d
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let zone = d
+                    .get("zone")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let slug = d
+                    .get("slug")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let short_name = d
+                    .get("short_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let wowhead_id = d
+                    .get("wowhead_id")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                let num_bosses = d
+                    .get("num_bosses")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                let expansion = d
+                    .get("expansion")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                let expansion_name = d
+                    .get("expansion_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let map_id = d.get("map_id").and_then(|v| v.as_u64()).map(|n| n as u32);
-                let challenge_mode_id = d.get("challenge_mode_id").and_then(|v| v.as_u64()).map(|n| n as u32);
-                let minimum_level = d.get("minimum_level").and_then(|v| v.as_u64()).map(|n| n as u32);
-                let keystone_timer_ms = d.get("keystone_timer_ms").and_then(|v| v.as_u64()).map(|n| n as u32);
+                let challenge_mode_id = d
+                    .get("challenge_mode_id")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                let minimum_level = d
+                    .get("minimum_level")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                let keystone_timer_ms = d
+                    .get("keystone_timer_ms")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
                 let keystone_upgrades = d
                     .get("keystone_upgrades")
                     .and_then(|v| v.as_array())
@@ -86,36 +122,48 @@ impl BlizzardDungeonSource {
                             .collect::<Vec<String>>()
                     })
                     .unwrap_or_default();
-                let blizzard_href = d.get("blizzard_href").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let image_url = d.get("image_url").and_then(|v| v.as_str()).map(|s| s.to_string());
-                let linked_code = d.get("linked_code").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let blizzard_href = d
+                    .get("blizzard_href")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let image_url = d
+                    .get("image_url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let linked_code = d
+                    .get("linked_code")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let blizzard_api_data = d.get("blizzard_api_data").cloned();
-                
-                cache.insert(id, DungeonDetail {
+
+                cache.insert(
                     id,
-                    name,
-                    description,
-                    zone,
-                    slug,
-                    short_name,
-                    wowhead_id,
-                    num_bosses,
-                    expansion,
-                    expansion_name,
-                    map_id,
-                    challenge_mode_id,
-                    minimum_level,
-                    keystone_timer_ms,
-                    keystone_upgrades,
-                    encounters,
-                    blizzard_href,
-                    image_url,
-                    linked_code,
-                    blizzard_api_data,
-                });
+                    DungeonDetail {
+                        id,
+                        name,
+                        description,
+                        zone,
+                        slug,
+                        short_name,
+                        wowhead_id,
+                        num_bosses,
+                        expansion,
+                        expansion_name,
+                        map_id,
+                        challenge_mode_id,
+                        minimum_level,
+                        keystone_timer_ms,
+                        keystone_upgrades,
+                        encounters,
+                        blizzard_href,
+                        image_url,
+                        linked_code,
+                        blizzard_api_data,
+                    },
+                );
             }
         }
-        
+
         cache
     }
 
@@ -130,8 +178,14 @@ impl BlizzardDungeonSource {
                             id: v.get("id")?.as_u64()?.try_into().ok()?,
                             name: v.get("name")?.as_str()?.to_string(),
                             description: v.get("description")?.as_str()?.to_string(),
-                            icon: v.get("icon").and_then(|i| i.as_str()).map(|s| s.to_string()),
-                            spell_id: v.get("spell_id").and_then(|s| s.as_u64()).and_then(|n| n.try_into().ok()),
+                            icon: v
+                                .get("icon")
+                                .and_then(|i| i.as_str())
+                                .map(|s| s.to_string()),
+                            spell_id: v
+                                .get("spell_id")
+                                .and_then(|s| s.as_u64())
+                                .and_then(|n| n.try_into().ok()),
                         })
                     })
                     .collect()
@@ -140,16 +194,18 @@ impl BlizzardDungeonSource {
     }
 
     fn get_cached_season(&self) -> Option<(u32, String)> {
-        let season_id = self.runtime_data
+        let season_id = self
+            .runtime_data
             .get("current_season_id")
             .and_then(|n| n.as_u64())
             .map(|n| n as u32)
             .unwrap_or(crate::item_db::current_season_id() as u32);
-        let season_name = self.runtime_data
+        let season_name = self
+            .runtime_data
             .get("season_name")
             .and_then(|n| n.as_str())
             .map(|s| s.to_string())?;
-        
+
         Some((season_id, season_name))
     }
 
@@ -185,7 +241,7 @@ impl DungeonDataSource for BlizzardDungeonSource {
         if !cached.is_empty() {
             return Ok(cached);
         }
-        
+
         Ok(vec![
             DungeonAffix {
                 id: 1,
@@ -197,7 +253,8 @@ impl DungeonDataSource for BlizzardDungeonSource {
             DungeonAffix {
                 id: 2,
                 name: "Fortified".to_string(),
-                description: "Non-boss health increased by 20% and damage increased by 10%.".to_string(),
+                description: "Non-boss health increased by 20% and damage increased by 10%."
+                    .to_string(),
                 icon: None,
                 spell_id: Some(409968),
             },
@@ -220,7 +277,7 @@ impl DungeonDataSource for BlizzardDungeonSource {
 
     fn get_rotation_dungeons(&self) -> Result<Vec<DungeonInfo>, String> {
         let dungeon_ids = self.get_cached_rotation_ids();
-        
+
         // First try to get enriched details from cache
         let mut details = self.get_all_dungeon_details();
         if !dungeon_ids.is_empty() {
@@ -259,12 +316,14 @@ impl DungeonDataSource for BlizzardDungeonSource {
                 })
                 .collect());
         }
-        
+
         // Fall back to item_db instances
         let instances = crate::item_db::list_instances();
         let mut dungeons: Vec<DungeonInfo> = instances
             .into_iter()
-            .filter(|instance| instance.instance_type == "mythic_plus" || instance.instance_type == "dungeon")
+            .filter(|instance| {
+                instance.instance_type == "mythic_plus" || instance.instance_type == "dungeon"
+            })
             .map(|instance| DungeonInfo {
                 id: instance.id as u32,
                 name: instance.name,
@@ -288,37 +347,396 @@ impl DungeonDataSource for BlizzardDungeonSource {
                 blizzard_api_data: None,
             })
             .collect();
-        
+
         if dungeons.is_empty() {
             dungeons = vec![
-                DungeonInfo { id: 1, name: "Siege of Boralus".to_string(), description: None, zone: Some("Darkshore".to_string()), slug: None, short_name: None, wowhead_id: Some(134), num_bosses: Some(4), expansion: Some(7), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 2, name: "Atal'zar".to_string(), description: None, zone: Some("Nazmir".to_string()), slug: None, short_name: None, wowhead_id: Some(244), num_bosses: Some(6), expansion: Some(7), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 3, name: "The Freehold".to_string(), description: None, zone: Some("Zuldazar".to_string()), slug: None, short_name: None, wowhead_id: Some(245), num_bosses: Some(5), expansion: Some(7), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 4, name: "Kings' Rest".to_string(), description: None, zone: Some("Zuldazar".to_string()), slug: None, short_name: None, wowhead_id: Some(246), num_bosses: Some(4), expansion: Some(7), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 5, name: "Sethralis".to_string(), description: None, zone: Some("Stormsong Valley".to_string()), slug: None, short_name: None, wowhead_id: Some(247), num_bosses: Some(4), expansion: Some(7), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 6, name: "Shrine of the Storm".to_string(), description: None, zone: Some("Vol'dun".to_string()), slug: None, short_name: None, wowhead_id: Some(249), num_bosses: Some(4), expansion: Some(7), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 7, name: "Temple of Sethraliss".to_string(), description: None, zone: Some("Zuljan Reach".to_string()), slug: None, short_name: None, wowhead_id: Some(159), num_bosses: Some(4), expansion: Some(8), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 8, name: "Murozand".to_string(), description: None, zone: Some("N'Zoth".to_string()), slug: None, short_name: None, wowhead_id: Some(160), num_bosses: Some(4), expansion: Some(8), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 9, name: "Return to Kharzet".to_string(), description: None, zone: Some("Kharzet".to_string()), slug: None, short_name: None, wowhead_id: Some(200), num_bosses: Some(4), expansion: Some(8), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 10, name: "The Necrotic Wake".to_string(), description: None, zone: Some("Maldraxxus".to_string()), slug: None, short_name: None, wowhead_id: Some(229), num_bosses: Some(4), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 11, name: "Plaguefall".to_string(), description: None, zone: Some("Maldraxxus".to_string()), slug: None, short_name: None, wowhead_id: Some(234), num_bosses: Some(4), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 12, name: "Halls of Atonement".to_string(), description: None, zone: Some("Maldraxxus".to_string()), slug: None, short_name: None, wowhead_id: Some(235), num_bosses: Some(3), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 13, name: "Spires of Ascension".to_string(), description: None, zone: Some("Bastion".to_string()), slug: None, short_name: None, wowhead_id: Some(238), num_bosses: Some(4), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 14, name: "Sanguine Depths".to_string(), description: None, zone: Some("Maldraxxus".to_string()), slug: None, short_name: None, wowhead_id: Some(239), num_bosses: Some(4), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 15, name: "Theater of Pain".to_string(), description: None, zone: Some("Maldraxxus".to_string()), slug: None, short_name: None, wowhead_id: Some(240), num_bosses: Some(4), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 16, name: "Tazavesh: Streets".to_string(), description: None, zone: Some("Mechagon".to_string()), slug: None, short_name: None, wowhead_id: Some(244), num_bosses: Some(5), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
-                DungeonInfo { id: 17, name: "Tazavesh: So'leah".to_string(), description: None, zone: Some("Mechagon".to_string()), slug: None, short_name: None, wowhead_id: Some(245), num_bosses: Some(4), expansion: Some(9), expansion_name: None, map_id: None, challenge_mode_id: None, minimum_level: None, keystone_timer_ms: None, keystone_upgrades: Vec::new(), encounters: Vec::new(), blizzard_href: None, image_url: None, linked_code: None, blizzard_api_data: None },
+                DungeonInfo {
+                    id: 1,
+                    name: "Siege of Boralus".to_string(),
+                    description: None,
+                    zone: Some("Darkshore".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(134),
+                    num_bosses: Some(4),
+                    expansion: Some(7),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 2,
+                    name: "Atal'zar".to_string(),
+                    description: None,
+                    zone: Some("Nazmir".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(244),
+                    num_bosses: Some(6),
+                    expansion: Some(7),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 3,
+                    name: "The Freehold".to_string(),
+                    description: None,
+                    zone: Some("Zuldazar".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(245),
+                    num_bosses: Some(5),
+                    expansion: Some(7),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 4,
+                    name: "Kings' Rest".to_string(),
+                    description: None,
+                    zone: Some("Zuldazar".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(246),
+                    num_bosses: Some(4),
+                    expansion: Some(7),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 5,
+                    name: "Sethralis".to_string(),
+                    description: None,
+                    zone: Some("Stormsong Valley".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(247),
+                    num_bosses: Some(4),
+                    expansion: Some(7),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 6,
+                    name: "Shrine of the Storm".to_string(),
+                    description: None,
+                    zone: Some("Vol'dun".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(249),
+                    num_bosses: Some(4),
+                    expansion: Some(7),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 7,
+                    name: "Temple of Sethraliss".to_string(),
+                    description: None,
+                    zone: Some("Zuljan Reach".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(159),
+                    num_bosses: Some(4),
+                    expansion: Some(8),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 8,
+                    name: "Murozand".to_string(),
+                    description: None,
+                    zone: Some("N'Zoth".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(160),
+                    num_bosses: Some(4),
+                    expansion: Some(8),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 9,
+                    name: "Return to Kharzet".to_string(),
+                    description: None,
+                    zone: Some("Kharzet".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(200),
+                    num_bosses: Some(4),
+                    expansion: Some(8),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 10,
+                    name: "The Necrotic Wake".to_string(),
+                    description: None,
+                    zone: Some("Maldraxxus".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(229),
+                    num_bosses: Some(4),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 11,
+                    name: "Plaguefall".to_string(),
+                    description: None,
+                    zone: Some("Maldraxxus".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(234),
+                    num_bosses: Some(4),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 12,
+                    name: "Halls of Atonement".to_string(),
+                    description: None,
+                    zone: Some("Maldraxxus".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(235),
+                    num_bosses: Some(3),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 13,
+                    name: "Spires of Ascension".to_string(),
+                    description: None,
+                    zone: Some("Bastion".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(238),
+                    num_bosses: Some(4),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 14,
+                    name: "Sanguine Depths".to_string(),
+                    description: None,
+                    zone: Some("Maldraxxus".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(239),
+                    num_bosses: Some(4),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 15,
+                    name: "Theater of Pain".to_string(),
+                    description: None,
+                    zone: Some("Maldraxxus".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(240),
+                    num_bosses: Some(4),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 16,
+                    name: "Tazavesh: Streets".to_string(),
+                    description: None,
+                    zone: Some("Mechagon".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(244),
+                    num_bosses: Some(5),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
+                DungeonInfo {
+                    id: 17,
+                    name: "Tazavesh: So'leah".to_string(),
+                    description: None,
+                    zone: Some("Mechagon".to_string()),
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(245),
+                    num_bosses: Some(4),
+                    expansion: Some(9),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                },
             ];
         }
-        
+
         Ok(dungeons)
     }
 
     fn get_season_info(&self) -> Result<DungeonSeasonData, String> {
-        let season = self.get_cached_season().unwrap_or((1, "Unknown Season".to_string()));
+        let season = self
+            .get_cached_season()
+            .unwrap_or((1, "Unknown Season".to_string()));
         let affixes = self.get_current_affixes()?;
         let dungeons = self.get_rotation_dungeons()?;
-        
+
         Ok(DungeonSeasonData {
             season_id: season.0,
             season_name: season.1,

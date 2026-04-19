@@ -23,7 +23,10 @@ pub async fn save_character_profile(
     let id = format!(
         "{}-{}-{}",
         body.region.to_lowercase(),
-        body.realm.to_lowercase().replace(' ', "-").replace('\'', ""),
+        body.realm
+            .to_lowercase()
+            .replace(' ', "-")
+            .replace('\'', ""),
         body.name.to_lowercase()
     );
     let profile = SavedCharacterProfile {

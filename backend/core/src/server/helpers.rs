@@ -159,7 +159,7 @@ pub(super) fn apply_shared_simc_options(
     }
 
     let shared_opts = format!("\n# Shared Sim Options\n{}\n", extra_lines.join("\n"));
-    
+
     if let Some(idx) = simc_input.find("### Combo 1") {
         let mut out = String::new();
         out.push_str(&simc_input[..idx]);
@@ -439,9 +439,10 @@ pub(super) fn spawn_staged_sim(
                     .and_then(|v| serde_json::from_value(v).ok());
 
                 let mut parsed = result_parser::parse_top_gear_result(&output.json, meta.as_ref());
-                
+
                 // Inject currencies if present in job metadata
-                if let Some(currencies) = combo_meta_val.as_ref().and_then(|v| v.get("currencies")) {
+                if let Some(currencies) = combo_meta_val.as_ref().and_then(|v| v.get("currencies"))
+                {
                     if let Some(obj) = parsed.as_object_mut() {
                         obj.insert("currencies".to_string(), currencies.clone());
                     }

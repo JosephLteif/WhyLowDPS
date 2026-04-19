@@ -128,7 +128,7 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
         for (const raw of rawEnemies) {
           const [nameWithId, valStr] = raw.split(':');
           const val = valStr ? parseInt(valStr, 10) : 1;
-          
+
           const idMatch = nameWithId.match(/_(\d+)"?$/);
           const npcId = idMatch ? parseInt(idMatch[1], 10) : undefined;
 
@@ -147,8 +147,8 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
           // even if an NPC ID is present.
           const isHealth = !isNaN(val) && val > 1000;
           const health = isHealth ? val : 0;
-          const count = isHealth ? 1 : (val > 0 ? val : 1);
-          
+          const count = isHealth ? 1 : val > 0 ? val : 1;
+
           if (name) {
             const entry = counts.get(name) || { count: 0, health: 0, id: npcId };
             entry.count += count;
@@ -158,11 +158,11 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
           }
         }
         for (const [name, data] of counts) {
-          enemiesList.push({ 
-            name, 
-            count: data.count, 
+          enemiesList.push({
+            name,
+            count: data.count,
             health: data.health || undefined,
-            id: data.id 
+            id: data.id,
           });
         }
       }
@@ -257,7 +257,11 @@ export function parseSimcBuffs(input: string): SimcBuff[] {
 
     // Common raid buffs in raid_events or direct assignments
     const lowerLine = cleanLine.toLowerCase();
-    if (lowerLine.includes('bloodlust') || lowerLine.includes('heroism') || lowerLine.includes('time_warp')) {
+    if (
+      lowerLine.includes('bloodlust') ||
+      lowerLine.includes('heroism') ||
+      lowerLine.includes('time_warp')
+    ) {
       buffs.push({ name: 'Bloodlust', category: 'raid_buff', spellId: 2825 });
     }
     if (lowerLine.includes('power_infusion')) {
@@ -291,7 +295,7 @@ export function parseSimcBuffs(input: string): SimcBuff[] {
       buffs.push({ name: 'Skyfury', category: 'raid_buff', spellId: 462854 });
     }
     if (lowerLine.includes('vampiric_touch')) {
-        // usually PI logic or similar
+      // usually PI logic or similar
     }
   }
 

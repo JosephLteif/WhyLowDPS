@@ -1,12 +1,10 @@
 'use client';
 
-import { useParams, useSearchParams } from 'next/navigation';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DpsHeroCard from '../../components/DpsHeroCard';
-import GearOverview from '../../components/GearOverview';
 import type { GearItem } from '../../components/GearOverview';
+import GearOverview from '../../components/GearOverview';
 import ResultsChart from '../../components/ResultsChart';
 import SimStatus from '../../components/SimStatus';
 import StatPlotChart from '../../components/StatPlotChart';
@@ -29,16 +27,11 @@ import {
   RAID_BUFF_MATRIX_OPTIONS,
   TEMP_ENCHANT_OPTIONS,
 } from '../../lib/sim-options-catalog';
-import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '../../../lib/simc-parser';
+import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '@/lib/simc-parser';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
 import { API_URL, fetchJson } from '../../lib/api';
-import { useSimContext } from '../../components/SimContext';
-import {
-  getScenarioSiblings,
-  formatScenarioLabel,
-  type ScenarioSibling,
-} from '../../lib/scenario-siblings';
+import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
 
 interface JobData {
@@ -117,17 +110,6 @@ function useIcons(entries: { type: 'spell' | 'item'; id: number }[]) {
   }, [depKey, entries]);
 
   return icons;
-}
-
-function SpellIcon({ icon, size = 'small' }: { icon: string; size?: 'small' | 'large' }) {
-  const s = size === 'small' ? 'h-5 w-5' : 'h-10 w-10';
-  return (
-    <img
-      src={`https://wow.zamimg.com/images/wow/icons/small/${icon}.jpg`}
-      alt=""
-      className={`${s} shrink-0 rounded-[3px] border border-black/50`}
-    />
-  );
 }
 
 interface StageTiming {
@@ -432,10 +414,10 @@ export default function SimResultClient() {
 
   const activeBuffs = useMemo(() => {
     if (!job) return [];
-    
+
     // 1. Get base buffs from simc_input parser (mostly for consumables/others)
     const baseBuffs = job.simc_input ? parseSimcBuffs(job.simc_input) : [];
-    
+
     // 2. Overlay or override from job.options (the source of truth for checkboxes)
     const options = (job as any).options || {};
     const finalBuffs: SimcBuff[] = [];
@@ -454,16 +436,26 @@ export default function SimResultClient() {
       finalBuffs.push({ name: 'Mystic Touch', category: 'raid_buff', spellId: 8647 });
       finalBuffs.push({ name: 'Chaos Brand', category: 'raid_buff', spellId: 1490 });
     } else {
-      if (options.raid_buff_bloodlust) finalBuffs.push({ name: 'Bloodlust', category: 'raid_buff', spellId: 2825 });
-      if (options.raid_buff_arcane_intellect) finalBuffs.push({ name: 'Arcane Intellect', category: 'raid_buff', spellId: 1459 });
-      if (options.raid_buff_power_word_fortitude) finalBuffs.push({ name: 'Power Word: Fortitude', category: 'raid_buff', spellId: 21562 });
-      if (options.raid_buff_mark_of_the_wild) finalBuffs.push({ name: 'Mark of the Wild', category: 'raid_buff', spellId: 1126 });
-      if (options.raid_buff_battle_shout) finalBuffs.push({ name: 'Battle Shout', category: 'raid_buff', spellId: 6673 });
-      if (options.external_buff_mystic_touch) finalBuffs.push({ name: 'Mystic Touch', category: 'raid_buff', spellId: 8647 });
-      if (options.external_buff_chaos_brand) finalBuffs.push({ name: 'Chaos Brand', category: 'raid_buff', spellId: 1490 });
-      if (options.external_buff_skyfury) finalBuffs.push({ name: 'Skyfury', category: 'raid_buff', spellId: 462854 });
-      if (options.external_buff_power_infusion) finalBuffs.push({ name: 'Power Infusion', category: 'raid_buff', spellId: 10060 });
-      if (options.external_buff_augmentation) finalBuffs.push({ name: 'Ebon Might (Aug)', category: 'raid_buff', spellId: 395152 });
+      if (options.raid_buff_bloodlust)
+        finalBuffs.push({ name: 'Bloodlust', category: 'raid_buff', spellId: 2825 });
+      if (options.raid_buff_arcane_intellect)
+        finalBuffs.push({ name: 'Arcane Intellect', category: 'raid_buff', spellId: 1459 });
+      if (options.raid_buff_power_word_fortitude)
+        finalBuffs.push({ name: 'Power Word: Fortitude', category: 'raid_buff', spellId: 21562 });
+      if (options.raid_buff_mark_of_the_wild)
+        finalBuffs.push({ name: 'Mark of the Wild', category: 'raid_buff', spellId: 1126 });
+      if (options.raid_buff_battle_shout)
+        finalBuffs.push({ name: 'Battle Shout', category: 'raid_buff', spellId: 6673 });
+      if (options.external_buff_mystic_touch)
+        finalBuffs.push({ name: 'Mystic Touch', category: 'raid_buff', spellId: 8647 });
+      if (options.external_buff_chaos_brand)
+        finalBuffs.push({ name: 'Chaos Brand', category: 'raid_buff', spellId: 1490 });
+      if (options.external_buff_skyfury)
+        finalBuffs.push({ name: 'Skyfury', category: 'raid_buff', spellId: 462854 });
+      if (options.external_buff_power_infusion)
+        finalBuffs.push({ name: 'Power Infusion', category: 'raid_buff', spellId: 10060 });
+      if (options.external_buff_augmentation)
+        finalBuffs.push({ name: 'Ebon Might (Aug)', category: 'raid_buff', spellId: 395152 });
     }
 
     // Add consumables from options or base
@@ -482,17 +474,16 @@ export default function SimResultClient() {
         let normName = b.name.toLowerCase().replace(/\s+/g, '_');
         // Handle rank suffixes often used in SimC
         normName = normName.replace(/_rank([0-9])/, '_$1');
-        
+
         // Try to find exact match on token or loose match on name/label
         const match = allCatalog.find(
           (c) =>
-            (c.token && (
-              normName === c.token.toLowerCase() || 
-              c.token.toLowerCase().endsWith(normName) ||
-              c.token.toLowerCase().includes(normName) ||
-              normName.endsWith(c.token.toLowerCase()) ||
-              normName.includes(c.token.toLowerCase())
-            )) ||
+            (c.token &&
+              (normName === c.token.toLowerCase() ||
+                c.token.toLowerCase().endsWith(normName) ||
+                c.token.toLowerCase().includes(normName) ||
+                normName.endsWith(c.token.toLowerCase()) ||
+                normName.includes(c.token.toLowerCase()))) ||
             b.name.toLowerCase() === c.label.toLowerCase() ||
             b.name.toLowerCase().includes(c.label.toLowerCase()) ||
             c.label.toLowerCase().includes(b.name.toLowerCase()) ||
@@ -1040,7 +1031,9 @@ export default function SimResultClient() {
             {info?.kind === 'dungeon' && (
               <div className="mt-6 grid grid-cols-3 gap-4 border-t border-white/5 pt-6">
                 <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Route HP</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                    Route HP
+                  </p>
                   <p className="mt-1 text-lg font-bold text-emerald-400">
                     {(() => {
                       const hp = info.pulls.reduce((sum, p) => sum + (p.totalHealth || 0), 0);
@@ -1052,7 +1045,9 @@ export default function SimResultClient() {
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Timer</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                    Timer
+                  </p>
                   <p className="mt-1 text-lg font-bold text-amber-400">
                     {(() => {
                       const s = info.maxTime ? Number(info.maxTime) : 0;
@@ -1064,12 +1059,14 @@ export default function SimResultClient() {
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Min. Per DPS</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                    Min. Per DPS
+                  </p>
                   <p className="mt-1 text-lg font-bold text-sky-400">
                     {(() => {
                       const hp = info.pulls.reduce((sum, p) => sum + (p.totalHealth || 0), 0);
                       const s = info.maxTime ? Number(info.maxTime) : 0;
-                      const minDps = (s > 0 && hp > 0) ? (hp * 0.9) / 3 / s : 0;
+                      const minDps = s > 0 && hp > 0 ? (hp * 0.9) / 3 / s : 0;
                       return minDps > 0 ? Math.round(minDps).toLocaleString() : '-';
                     })()}
                   </p>
@@ -1152,7 +1149,13 @@ export default function SimResultClient() {
                                       />
                                     ) : (
                                       <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
-                                        <svg className="h-4 w-4 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <svg
+                                          className="h-4 w-4 text-zinc-600"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                        >
                                           <circle cx="12" cy="12" r="10" />
                                           <path d="M12 16v-4M12 8h.01" />
                                         </svg>
@@ -1167,35 +1170,46 @@ export default function SimResultClient() {
                                   />
                                 ) : (
                                   <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
-                                    <svg className="h-4 w-4 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <svg
+                                      className="h-4 w-4 text-zinc-600"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                    >
                                       <circle cx="12" cy="12" r="10" />
                                       <path d="M12 16v-4M12 8h.01" />
                                     </svg>
                                   </div>
                                 )}
                               </div>
-                              <div className="flex-1 min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
                                   <p className="truncate text-[14px] font-bold capitalize leading-tight">
-{(() => {
-                                    const rawName = buff.name.replace(/_/g, ' ');
-                                    return rawName.replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '').replace(/\s+\d+\s*$/i, '');
-                                  })()}
-                                </p>
-{(() => {
-                                  const match = buff.name.match(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i) || buff.name.match(/\s+(\d+)\s*$/i);
-                                  if (!match) return null;
-                                  const tierStr = match[1].toLowerCase();
-                                  const isNumericTier = /^\d+$/.test(match[1]);
-                                  const style = isNumericTier
-                                    ? (match[1] === '3' || match[1] === '2'
+                                    {(() => {
+                                      const rawName = buff.name.replace(/_/g, ' ');
+                                      return rawName
+                                        .replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '')
+                                        .replace(/\s+\d+\s*$/i, '');
+                                    })()}
+                                  </p>
+                                  {(() => {
+                                    const match =
+                                      buff.name.match(
+                                        /\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i,
+                                      ) || buff.name.match(/\s+(\d+)\s*$/i);
+                                    if (!match) return null;
+                                    const tierStr = match[1].toLowerCase();
+                                    const isNumericTier = /^\d+$/.test(match[1]);
+                                    const style = isNumericTier
+                                      ? match[1] === '3' || match[1] === '2'
                                         ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
-                                        : 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]')
-                                    : tierStr === 'gold' || tierStr === 'tier 3'
-                                      ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
-                                      : tierStr === 'silver' || tierStr === 'tier 2'
-                                        ? 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
-                                        : 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]';
+                                        : 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
+                                      : tierStr === 'gold' || tierStr === 'tier 3'
+                                        ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
+                                        : tierStr === 'silver' || tierStr === 'tier 2'
+                                          ? 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
+                                          : 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]';
                                     return (
                                       <span
                                         className={`h-3 w-3 shrink-0 rounded-[2px] border ${style}`}

@@ -1,18 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
-import { invoke } from '@tauri-apps/api/core';
-import {
-  API_URL,
-  downloadLatestSimc,
-  fetchJson,
-  getSimcStatus,
-  isDesktop,
-  isDesktopRuntime,
-  type SimcStatus,
-} from '../lib/api';
+import { API_URL, downloadLatestSimc, fetchJson, getSimcStatus, isDesktop, type SimcStatus } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 
 const PRESETS = [
@@ -94,7 +85,6 @@ export default function SettingsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [performanceSaved, setPerformanceSaved] = useState(false);
   const [cacheSyncing, setCacheSyncing] = useState(false);
-  const [cacheSyncStatus, setCacheSyncStatus] = useState<string>('idle');
   const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
   const [cacheMessage, setCacheMessage] = useState<{
     type: 'success' | 'error';
@@ -401,7 +391,6 @@ export default function SettingsPage() {
     try {
       const data = await fetchJson<any>(`${API_URL}/api/data/status`);
       const status = parseSyncStatus(data.status);
-      setCacheSyncStatus(status);
       setCacheSyncProgress(data.progress || '');
       window.dispatchEvent(
         new CustomEvent('whylowdps-cache-refresh-status', {
@@ -445,7 +434,6 @@ export default function SettingsPage() {
   const refreshDataCache = async () => {
     setCacheMessage(null);
     setCacheSyncing(true);
-    setCacheSyncStatus('syncing');
     setCacheSyncProgress('Initializing synchronization...');
     window.dispatchEvent(new CustomEvent('whylowdps-cache-refresh-start'));
 
@@ -597,9 +585,6 @@ export default function SettingsPage() {
     };
     return acc;
   }, {});
-  const totalDataFiles = dataFileStates?.files.length ?? 0;
-  const downloadedDataFiles = dataFileStates?.files.filter((file) => file.exists).length ?? 0;
-  const remainingDataFiles = Math.max(0, totalDataFiles - downloadedDataFiles);
   const syncProgress = parseProgress(cacheSyncProgress);
   const syncProgressPct =
     cacheSyncing && syncProgress.total > 0
@@ -892,7 +877,6 @@ export default function SettingsPage() {
         </p>
 
         <div className="space-y-4">
-
           <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
             <div className="space-y-1">
               <p className="text-sm font-medium text-zinc-200">

@@ -64,7 +64,11 @@ const baseNavItems: NavItem[] = [
     matchPaths: ['/dungeons', '/dungeon-routes'],
     children: [
       { href: '/dungeons', label: 'Dungeon Info', description: 'Rotation and affixes' },
-      { href: '/dungeon-routes', label: 'Saved Routes', description: 'Dungeon routes for simulation' },
+      {
+        href: '/dungeon-routes',
+        label: 'Saved Routes',
+        description: 'Dungeon routes for simulation',
+      },
     ],
   },
 ];

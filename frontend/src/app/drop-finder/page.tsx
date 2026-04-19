@@ -377,7 +377,7 @@ export default function DropFinderPage() {
 
   const dungeonInstances = useMemo(() => activeDungeonCat?.instances ?? [], [activeDungeonCat]);
   const activeInstances = isRaid ? raids : dungeonInstances;
-  const hasImages = activeInstances.some((i) => i.image_url);
+  const hasImages = activeInstances.some((i) => !!i.image_url?.trim());
 
   const allKey = isRaid
     ? 'type:raid'
@@ -637,7 +637,16 @@ export default function DropFinderPage() {
         </p>
       )}
 
-      {loading && <Spinner />}
+      {loading && !drops && <Spinner />}
+
+      {loading && drops && (
+        <div className="flex items-center justify-center py-2">
+          <svg className="h-4 w-4 animate-spin text-gold" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
+            <path d="M14 8a6 6 0 00-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </div>
+      )}
 
       {!loading && selectedId && !drops && (
         <p className="py-6 text-center text-sm text-muted">
@@ -645,7 +654,7 @@ export default function DropFinderPage() {
         </p>
       )}
 
-      {!loading && drops && (
+      {drops && (
         <>
           <DropSlotList
             drops={drops}

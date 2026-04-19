@@ -6,6 +6,9 @@ export interface Instance {
   zone?: string;
   expansion?: number;
   image_url?: string;
+  image_background?: string;
+  image_button?: string;
+  image_button_small?: string;
   encounters: { id: number; name: string; image_url?: string }[];
 }
 

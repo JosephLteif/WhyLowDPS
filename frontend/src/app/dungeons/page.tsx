@@ -114,23 +114,27 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
   return (
     <div className="group flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:border-gold/50 hover:bg-white/[0.05]">
-      <div className="mb-3 flex gap-3">
-        {imageUrl ? (
-          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-zinc-800">
-            <img src={imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-          </div>
-        ) : (
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-            <span className="text-2xl font-bold text-zinc-600">{dungeon.name[0]}</span>
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-bold text-zinc-200">{dungeon.name}</p>
-          {zone && <p className="truncate text-xs text-zinc-500">{zone}</p>}
-          {dungeon.description && (
-            <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{dungeon.description}</p>
-          )}
+      {imageUrl ? (
+        <div className="relative mb-3 h-28 w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
+          <img
+            src={imageUrl}
+            alt=""
+            className="h-full w-full object-cover object-center"
+            loading="lazy"
+          />
         </div>
+      ) : (
+        <div className="mb-3 flex h-20 w-full items-center justify-center rounded-lg border border-white/10 bg-zinc-900">
+          <span className="text-3xl font-bold text-zinc-600">{dungeon.name[0]}</span>
+        </div>
+      )}
+
+      <div className="mb-3 min-w-0">
+        <p className="truncate font-bold text-zinc-200">{dungeon.name}</p>
+        {zone && <p className="truncate text-xs text-zinc-500">{zone}</p>}
+        {dungeon.description && (
+          <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{dungeon.description}</p>
+        )}
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1.5">

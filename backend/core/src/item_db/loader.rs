@@ -568,6 +568,24 @@ pub fn hydrate_runtime_metadata(runtime_path: &Path) {
     // Store for later access
     set_runtime_data(data.clone());
 
+    if let Some(media_map) = data.get("instance_media_urls").and_then(|v| v.as_object()) {
+        let mut inst = INSTANCES.write().unwrap();
+        for instance in inst.iter_mut() {
+            let Some(id) = instance.get("id").and_then(|v| v.as_i64()) else {
+                continue;
+            };
+            if let Some(url) = media_map
+                .get(&id.to_string())
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+            {
+                if let Some(obj) = instance.as_object_mut() {
+                    obj.insert("image_url".to_string(), Value::String(url));
+                }
+            }
+        }
+    }
+
     if let Some(mplus) = data.get("mplus_rotation").and_then(|v| v.as_array()) {
         let rotation_ids: Vec<i64> = mplus.iter().filter_map(|v| v.as_i64()).collect();
         // Update instances with 'active_rotation' flag in memory

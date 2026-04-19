@@ -26,27 +26,7 @@ pub fn get_instances() -> Vec<Value> {
                 let image_url = obj
                     .get("image_url")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .or_else(|| {
-                        obj.get("image_background")
-                            .and_then(|v| v.as_str())
-                            .map(|slug| {
-                                format!(
-                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
-                                    slug
-                                )
-                            })
-                    })
-                    .or_else(|| {
-                        obj.get("image_button")
-                            .and_then(|v| v.as_str())
-                            .map(|slug| {
-                                format!(
-                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
-                                    slug
-                                )
-                            })
-                    });
+                    .map(|s| s.to_string());
 
                 if let Some(url) = image_url {
                     obj.insert("image_url".to_string(), Value::String(url));

@@ -76,11 +76,6 @@ struct SystemInfo {
     version: String,
 }
 
-#[derive(serde::Serialize)]
-struct ClipboardTextResponse {
-    text: String,
-}
-
 #[tauri::command]
 async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
     let app_data_dir = app

@@ -9,6 +9,7 @@
     "core:default",
     "shell:default",
     "updater:default",
+    "notification:default",
     "allow-clipboard-commands",
     {
       "identifier": "shell:allow-open",

@@ -35,6 +35,9 @@ jobs:
       - name: install dependencies
         run: npm ci && npm ci --prefix frontend
 
+      - name: Sync version from VERSION file
+        run: npm run sync:version
+
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
@@ -84,11 +87,6 @@ jobs:
       #     touch backend/resources/simc/.keep
 
       # Game data is synchronized at app launch; skip heavy data-fetch step during release builds.
-
-      - name: Enable Updater Artifacts
-        shell: bash
-        run: |
-          sed -i 's/"createUpdaterArtifacts": false/"createUpdaterArtifacts": true/g' desktop/src-tauri/tauri.conf.json
 
       # -- Build and Release --
       - uses: tauri-apps/tauri-action@v0

@@ -6,11 +6,19 @@ const version = fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim();
 
 console.log(`Syncing version: ${version}`);
 
-// 1. Cargo.toml
-const cargoPath = path.join(root, 'backend', 'Cargo.toml');
-let cargoContent = fs.readFileSync(cargoPath, 'utf8');
-cargoContent = cargoContent.replace(/version\s*=\s*".*"/, `version = "${version}"`);
-fs.writeFileSync(cargoPath, cargoContent);
+function syncWorkspacePackageVersion(cargoPath) {
+    if (!fs.existsSync(cargoPath)) return;
+    const cargoContent = fs.readFileSync(cargoPath, 'utf8');
+    const updated = cargoContent.replace(
+        /(\[workspace\.package\][\s\S]*?version\s*=\s*)".*?"/m,
+        `$1"${version}"`
+    );
+    fs.writeFileSync(cargoPath, updated);
+}
+
+// 1. Cargo workspace versions
+syncWorkspacePackageVersion(path.join(root, 'Cargo.toml'));
+syncWorkspacePackageVersion(path.join(root, 'backend', 'Cargo.toml'));
 
 // 2. package.json files
 const packagePaths = [
@@ -27,11 +35,17 @@ for (const pkgPath of packagePaths) {
 }
 
 // 3. Tauri conf
-const tauriConfPath = path.join(root, 'desktop', 'src-tauri', 'tauri.conf.json');
-if (fs.existsSync(tauriConfPath)) {
-    const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
-    tauriConf.version = version;
-    fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
+const tauriConfigPaths = [
+    path.join(root, 'desktop', 'src-tauri', 'tauri.conf.json'),
+    path.join(root, 'desktop', 'src-tauri', 'tauri.docker.conf.json')
+];
+
+for (const tauriConfPath of tauriConfigPaths) {
+    if (fs.existsSync(tauriConfPath)) {
+        const tauriConf = JSON.parse(fs.readFileSync(tauriConfPath, 'utf8'));
+        tauriConf.version = version;
+        fs.writeFileSync(tauriConfPath, JSON.stringify(tauriConf, null, 2) + '\n');
+    }
 }
 
 console.log('Done.');

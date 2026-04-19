@@ -91,6 +91,27 @@ export interface SavedRoute {
   created_at: string;
 }
 
+export interface SimSummary {
+  id: string;
+  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled';
+  sim_type: string;
+  created_at: string;
+  fight_style: string;
+  iterations: number;
+  player_name?: string;
+  player_class?: string;
+  realm?: string;
+  dps?: number;
+  size_bytes: number;
+  linked_region?: string;
+  linked_realm?: string;
+  linked_name?: string;
+}
+
+export interface SystemStats {
+  cpu_usage: number;
+}
+
 // Fight scenario for multi-sim
 export interface FightScenario {
   id: string;

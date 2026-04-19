@@ -17,6 +17,13 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   {
+    href: '/',
+    label: 'Dashboard',
+    description: 'Overview of sims, activity, and results.',
+    icon: 'M2.5 8L8 3.5 13.5 8M4.5 7.3V12.5h7V7.3',
+    matchPaths: ['/'],
+  },
+  {
     href: '/quick-sim',
     label: 'Quick Sim',
     description: 'DPS, ability breakdown, stat weights.',

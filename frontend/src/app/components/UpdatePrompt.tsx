@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { APP_VERSION } from '../lib/version';
 
 type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
 type CacheRefreshState = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
@@ -15,6 +16,9 @@ type UpdaterStatusEvent =
 type UpdateDetails = {
   version: string;
   notes?: string;
+  currentVersion?: string;
+  manualDownloadUrl?: string;
+  fallbackOnly?: boolean;
 };
 
 type DownloadProgress = {
@@ -31,6 +35,10 @@ const UPDATE_CHECK_EVENT = 'whylowdps-updater-check';
 const UPDATE_STATUS_EVENT = 'whylowdps-updater-status';
 const CACHE_REFRESH_CHECK_EVENT = 'whylowdps-cache-refresh-start';
 const CACHE_REFRESH_STATUS_EVENT = 'whylowdps-cache-refresh-status';
+const UPDATER_MANIFEST_URL =
+  'https://github.com/JosephLteif/simcraft/releases/latest/download/latest.json';
+const GITHUB_RELEASES_LATEST_API =
+  'https://api.github.com/repos/JosephLteif/simcraft/releases/latest';
 
 function isDesktopRuntime(): boolean {
   if (typeof window === 'undefined') return false;
@@ -44,6 +52,146 @@ function isDesktopRuntime(): boolean {
 function emitUpdaterStatus(status: UpdaterStatusEvent, message?: string) {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent(UPDATE_STATUS_EVENT, { detail: { status, message } }));
+}
+
+function normalizeVersion(version: string): string {
+  return version.trim().replace(/^v/i, '');
+}
+
+function compareVersions(a: string, b: string): number | null {
+  const parse = (value: string) => {
+    const parts = normalizeVersion(value)
+      .split('.')
+      .map((part) => Number.parseInt(part, 10));
+    if (parts.some((part) => Number.isNaN(part))) return null;
+    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  };
+  const left = parse(a);
+  const right = parse(b);
+  if (!left || !right) return null;
+
+  for (let i = 0; i < 3; i += 1) {
+    if (left[i] < right[i]) return -1;
+    if (left[i] > right[i]) return 1;
+  }
+  return 0;
+}
+
+function resolveCurrentVersion(tauriVersion: string | null): string | null {
+  const frontendVersion = APP_VERSION || null;
+  if (!tauriVersion) return frontendVersion;
+  if (!frontendVersion) return tauriVersion;
+
+  const comparison = compareVersions(frontendVersion, tauriVersion);
+  if (comparison === null) return tauriVersion;
+  if (comparison === 0) return tauriVersion;
+
+  // If the two sources drift, prefer the lower one to avoid false "latest" reports.
+  return comparison === -1 ? frontendVersion : tauriVersion;
+}
+
+async function getCurrentAppVersion(): Promise<string | null> {
+  try {
+    const appModule = (await import('@tauri-apps/api/app')) as {
+      getVersion: () => Promise<string>;
+    };
+    return await appModule.getVersion();
+  } catch {
+    return null;
+  }
+}
+
+type RemoteReleaseInfo = {
+  version: string;
+  notes?: string;
+  downloadUrl?: string;
+};
+
+async function fetchManifestVersionFromLatestJson(): Promise<RemoteReleaseInfo | null> {
+  try {
+    const response = await fetch(UPDATER_MANIFEST_URL, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const raw = await response.text();
+    let payload: {
+      version?: unknown;
+      notes?: unknown;
+      platforms?: Record<string, { url?: unknown }>;
+    };
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+
+    const version = typeof payload.version === 'string' ? payload.version : '';
+    if (!version) return null;
+
+    const platforms = payload.platforms || {};
+    const preferredKeys = ['windows-x86_64', 'windows-x86_64-nsis'];
+    const preferredUrl =
+      preferredKeys
+        .map((key) => platforms[key]?.url)
+        .find((url) => typeof url === 'string' && url.length > 0) ||
+      Object.values(platforms)
+        .map((platform) => platform?.url)
+        .find((url) => typeof url === 'string' && url.length > 0);
+
+    return {
+      version,
+      notes: typeof payload.notes === 'string' ? payload.notes : undefined,
+      downloadUrl: typeof preferredUrl === 'string' ? preferredUrl : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchManifestVersionFromGitHubApi(): Promise<RemoteReleaseInfo | null> {
+  try {
+    const response = await fetch(GITHUB_RELEASES_LATEST_API, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as {
+      tag_name?: unknown;
+      name?: unknown;
+      body?: unknown;
+      assets?: Array<{ browser_download_url?: unknown; name?: unknown }>;
+    };
+
+    const versionRaw =
+      typeof payload.tag_name === 'string'
+        ? payload.tag_name
+        : typeof payload.name === 'string'
+          ? payload.name
+          : '';
+    const version = normalizeVersion(versionRaw);
+    if (!version) return null;
+
+    const assetUrls = (payload.assets || [])
+      .map((asset) => (typeof asset.browser_download_url === 'string' ? asset.browser_download_url : ''))
+      .filter((url) => url.length > 0);
+    const preferredUrl =
+      assetUrls.find((url) => /windows|x64|setup|nsis/i.test(url)) || assetUrls[0];
+
+    return {
+      version,
+      notes: typeof payload.body === 'string' ? payload.body : undefined,
+      downloadUrl: preferredUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchManifestVersion(): Promise<RemoteReleaseInfo | null> {
+  const fromLatestJson = await fetchManifestVersionFromLatestJson();
+  if (fromLatestJson) return fromLatestJson;
+  return fetchManifestVersionFromGitHubApi();
 }
 
 export default function UpdatePrompt() {
@@ -113,17 +261,48 @@ export default function UpdatePrompt() {
         check: () => Promise<any>;
       };
 
+      const tauriVersion = await getCurrentAppVersion();
+      const currentVersion = resolveCurrentVersion(tauriVersion);
       const update = await updaterModule.check();
       if (!update) {
+        const manifest = await fetchManifestVersion();
+        const hasNewerManifest =
+          manifest &&
+          currentVersion &&
+          compareVersions(currentVersion, String(manifest.version)) === -1;
+
+        if (hasNewerManifest) {
+          setDetails({
+            version: String(manifest.version),
+            notes: manifest.notes,
+            currentVersion,
+            manualDownloadUrl: manifest.downloadUrl,
+            fallbackOnly: true,
+          });
+          setDismissed(false);
+          setBackgroundMode(false);
+          setState('available');
+          emitUpdaterStatus(
+            'available',
+            `Update ${manifest.version} is available (current ${currentVersion}).`,
+          );
+          return;
+        }
+
         setState('idle');
-        emitUpdaterStatus('none', 'You are on the latest version.');
+        emitUpdaterStatus(
+          'none',
+          currentVersion
+            ? `You are on the latest version (${currentVersion}).`
+            : 'You are on the latest version.',
+        );
         return;
       }
 
       updateRef.current = update;
       const version = String(update.version ?? update.versionName ?? 'latest');
       const notes = typeof update.body === 'string' ? update.body : undefined;
-      setDetails({ version, notes });
+      setDetails({ version, notes, currentVersion: currentVersion ?? undefined, fallbackOnly: false });
       setDismissed(false);
       setBackgroundMode(false);
       setState('available');
@@ -339,9 +518,18 @@ export default function UpdatePrompt() {
                   >
                     Later
                   </button>
+                  {details?.fallbackOnly && details.manualDownloadUrl ? (
+                    <button
+                      onClick={() => window.open(details.manualDownloadUrl, '_blank', 'noopener,noreferrer')}
+                      className="btn-primary px-4 py-2 text-sm"
+                    >
+                      Open Download
+                    </button>
+                  ) : (
                   <button onClick={handleInstall} className="btn-primary px-4 py-2 text-sm">
                     Update Now
                   </button>
+                  )}
                 </>
               )}
 

@@ -187,7 +187,7 @@ struct RemoteAsset {
 struct ParsedVersion {
     major: u32,
     minor: u32,
-    extra: Option<String>,
+    suffix: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -929,30 +929,55 @@ fn compare_versions(a: &str, b: &str) -> Option<Ordering> {
         a.major
             .cmp(&b.major)
             .then(a.minor.cmp(&b.minor))
-            .then_with(|| match (&a.extra, &b.extra) {
+            .then_with(|| match (&a.suffix, &b.suffix) {
                 (None, None) => Ordering::Equal,
                 (None, Some(_)) => Ordering::Less,
                 (Some(_), None) => Ordering::Greater,
-                (Some(a), Some(b)) => a.cmp(b),
+                (Some(a), Some(b)) if a == b => Ordering::Equal,
+                (Some(_), Some(_)) => Ordering::Less,
             }),
     )
 }
 
 fn parse_version(input: &str) -> Option<ParsedVersion> {
-    let re = Regex::new(r"(?i)(\d{4})[.-](\d{2})(?:[.-]([0-9a-z]+))?").ok()?;
+    let re = Regex::new(r"(?i)(\d{4})[.-](\d{2})(.*)$").ok()?;
     let caps = re.captures(input)?;
     let major = caps.get(1)?.as_str().parse::<u32>().ok()?;
     let minor = caps.get(2)?.as_str().parse::<u32>().ok()?;
-    let extra = caps.get(3).map(|m| m.as_str().to_ascii_lowercase());
+    let suffix = caps
+        .get(3)
+        .map(|m| m.as_str().trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty());
     Some(ParsedVersion {
         major,
         minor,
-        extra,
+        suffix,
     })
 }
 
 fn normalize_version(value: &str) -> String {
     value.trim().to_ascii_lowercase().replace('-', ".")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_available_detects_newer_same_day_build_suffix() {
+        assert!(is_update_available(
+            "simc-2026-04-18-win64.zip",
+            "simc-2026-04-18-hotfix-win64.zip"
+        ));
+    }
+
+    #[test]
+    fn update_available_detects_newer_date() {
+        assert!(is_update_available(
+            "simc-2026-04-18-win64.zip",
+            "simc-2026-04-19-win64.zip"
+        ));
+    }
 }
 
 /// Find a working 7z.exe on the system.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
@@ -79,7 +79,9 @@ function useSpellIcons(spellIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`,
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) spellIconCache.set(id, data.icon);
@@ -109,7 +111,9 @@ function useItemIcons(itemIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`,
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) itemIconCache.set(id, data.icon);

@@ -8,10 +8,22 @@ import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import TalentPicker from './TalentPicker';
-import { API_URL, getSimcStatus, isDesktop, listSavedRoutes, saveRoute, deleteSavedRoute, saveCharacterProfile, listCharacterProfiles, deleteCharacterProfile, fetchJson, SavedCharacterProfile } from '../lib/api';
-import { specDisplayName, CLASS_COLORS, SavedRoute } from '../lib/types';
-import { parseCharacterInfo, SimcClipboardInfo, PullInfo } from '../../lib/simc-parser';
-import { isMdtString, parseMdtString, convertMdtToSimc } from '../../lib/mdt-parser';
+import {
+  API_URL,
+  deleteCharacterProfile,
+  deleteSavedRoute,
+  fetchJson,
+  getSimcStatus,
+  isDesktop,
+  listCharacterProfiles,
+  listSavedRoutes,
+  saveCharacterProfile,
+  SavedCharacterProfile,
+  saveRoute,
+} from '../lib/api';
+import { CLASS_COLORS, SavedRoute, specDisplayName } from '../lib/types';
+import { parseCharacterInfo, PullInfo, SimcClipboardInfo } from '@/lib/simc-parser';
+import { convertMdtToSimc, isMdtString, parseMdtString } from '@/lib/mdt-parser';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
@@ -66,7 +78,9 @@ function useSpellIcons(spellIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`,
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) SPELL_ICON_CACHE.set(id, data.icon);
@@ -101,7 +115,9 @@ function useItemIcons(itemIds: number[]) {
     Promise.all(
       missing.map(async (id) => {
         try {
-          const res = await fetch(`https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`);
+          const res = await fetch(
+            `https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`,
+          );
           if (!res.ok) return;
           const data = await res.json();
           if (data?.icon) ITEM_ICON_CACHE.set(id, data.icon);
@@ -163,9 +179,7 @@ function splitSimcProfiles(input: string): string[] {
     profiles.push(currentProfile.join('\n'));
   }
 
-  return profiles
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0 && looksLikeSimcInput(p));
+  return profiles.map((p) => p.trim()).filter((p) => p.length > 0 && looksLikeSimcInput(p));
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -247,7 +261,7 @@ function renderSimcLine(line: string) {
   const value =
     /^".*"$/.test(rawValue) || /^[A-Za-z_/-]+$/.test(rawValue)
       ? 'text-emerald-300'
-      : /^(?:\d+(?:\.\d+)?)$/.test(rawValue)
+      : /^\d+(?:\.\d+)?$/.test(rawValue)
         ? 'text-sky-300'
         : 'text-zinc-300';
 
@@ -285,8 +299,7 @@ function SimcInputEditor({
   // Shared typography classes to ensure pixel-perfect alignment.
   // We use whitespace-pre to match how most editors handle SimC strings,
   // and explicit line-height to prevent vertical drift.
-  const typographyClasses =
-    'font-mono text-[13px] leading-[1.6] whitespace-pre px-4 py-3';
+  const typographyClasses = 'font-mono text-[13px] leading-[1.6] whitespace-pre px-4 py-3';
 
   return (
     <div className="space-y-2">
@@ -304,7 +317,7 @@ function SimcInputEditor({
         <pre
           ref={preRef}
           aria-hidden
-          className={`pointer-events-none absolute inset-0 ${editorHeight} w-full overflow-hidden scrollbar-none ${typographyClasses}`}
+          className={`pointer-events-none absolute inset-0 ${editorHeight} scrollbar-none w-full overflow-hidden ${typographyClasses}`}
         >
           {value ? (
             lines.map((line, idx) => (
@@ -324,7 +337,7 @@ function SimcInputEditor({
           onScroll={syncScroll}
           placeholder={placeholder}
           spellCheck={false}
-          className={`relative block ${editorHeight} w-full resize-none overflow-auto bg-transparent text-transparent caret-zinc-100 placeholder-zinc-500 focus:outline-none ${typographyClasses}`}
+          className={`relative block ${editorHeight} w-full resize-none overflow-auto bg-transparent text-transparent placeholder-zinc-500 caret-zinc-100 focus:outline-none ${typographyClasses}`}
         />
       </div>
     </div>
@@ -446,7 +459,12 @@ function CharacterInfoBar({
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
         </div>
@@ -455,19 +473,25 @@ function CharacterInfoBar({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-white/5 bg-black/20 px-4 py-2 text-[11px] font-medium">
         {info.role && (
           <div className="flex items-center gap-1.5">
-            <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-black">Role</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
+              Role
+            </span>
             <span className="text-zinc-300">{info.role}</span>
           </div>
         )}
         {info.race && (
           <div className="flex items-center gap-1.5">
-            <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-black">Race</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
+              Race
+            </span>
             <span className="text-zinc-300">{info.race}</span>
           </div>
         )}
         {info.lootSpec && (
           <div className="flex items-center gap-1.5">
-            <span className="text-zinc-600 uppercase tracking-widest text-[9px] font-black">Loot</span>
+            <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
+              Loot
+            </span>
             <span className="text-zinc-300">{info.lootSpec}</span>
           </div>
         )}
@@ -477,7 +501,9 @@ function CharacterInfoBar({
         <div className="grid grid-cols-2 gap-x-8 gap-y-3 border-t border-white/5 bg-black/40 p-4">
           <div className="space-y-3">
             <div>
-              <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Addon Info</p>
+              <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                Addon Info
+              </p>
               <div className="space-y-1 text-[11px]">
                 <div className="flex justify-between border-b border-white/[0.03] pb-1">
                   <span className="text-zinc-500">Version</span>
@@ -490,7 +516,9 @@ function CharacterInfoBar({
               </div>
             </div>
             <div>
-              <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Sim Info</p>
+              <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                Sim Info
+              </p>
               <div className="space-y-1 text-[11px]">
                 <div className="flex justify-between border-b border-white/[0.03] pb-1">
                   <span className="text-zinc-500">Talent Blocks</span>
@@ -507,13 +535,17 @@ function CharacterInfoBar({
           <div className="space-y-3">
             {info.professions && (
               <div>
-                <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Professions</p>
+                <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                  Professions
+                </p>
                 <p className="text-[11px] leading-relaxed text-zinc-300">{info.professions}</p>
               </div>
             )}
             {info.checksum && (
               <div>
-                <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">Verification</p>
+                <p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                  Verification
+                </p>
                 <div className="rounded border border-emerald-500/10 bg-emerald-500/5 px-2 py-1 font-mono text-[10px] text-emerald-400/80">
                   {info.checksum}
                 </div>
@@ -588,7 +620,7 @@ function DungeonInfoBar({
                   e.stopPropagation();
                   onViewDetails?.();
                 }}
-                className="shrink-0 flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
+                className="flex shrink-0 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
               >
                 View Details
               </button>
@@ -596,9 +628,9 @@ function DungeonInfoBar({
                 <button
                   onClick={onSave}
                   disabled={isSaving || isAlreadySaved}
-                  className={`shrink-0 flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all ${
+                  className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-bold transition-all ${
                     isAlreadySaved
-                      ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-400/80 cursor-default'
+                      ? 'cursor-default border-emerald-500/20 bg-emerald-500/5 text-emerald-400/80'
                       : 'border-white/10 bg-white/5 text-zinc-300 hover:border-white/20 hover:bg-white/10 hover:text-white disabled:opacity-50'
                   }`}
                 >
@@ -621,7 +653,12 @@ function DungeonInfoBar({
                     </svg>
                   ) : isAlreadySaved ? (
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                   ) : (
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -669,7 +706,10 @@ function DungeonInfoBar({
       {info.extras.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-t border-white/5 bg-black/20 px-4 py-2">
           {info.extras.map((extra) => (
-            <span key={extra} className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+            <span
+              key={extra}
+              className="text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+            >
               {extra}
             </span>
           ))}
@@ -795,14 +835,22 @@ function ConsumableSelect({
           tabIndex={0}
           onClick={() => !disabled && setOpen((v) => !v)}
           className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm ${
-            disabled ? 'cursor-not-allowed text-zinc-500 opacity-70' : 'cursor-pointer text-zinc-200'
+            disabled
+              ? 'cursor-not-allowed text-zinc-500 opacity-70'
+              : 'cursor-pointer text-zinc-200'
           }`}
         >
           {selected?.icon || (selected?.itemId && itemIcons.get(selected.itemId)) ? (
             <a
               href="#"
               onClick={(e) => e.preventDefault()}
-              data-wowhead={selected.itemId ? `item=${selected.itemId}` : selected.spellId ? `spell=${selected.spellId}` : undefined}
+              data-wowhead={
+                selected.itemId
+                  ? `item=${selected.itemId}`
+                  : selected.spellId
+                    ? `spell=${selected.spellId}`
+                    : undefined
+              }
               className="flex shrink-0 items-center"
             >
               <img
@@ -820,7 +868,13 @@ function ConsumableSelect({
             href="#"
             onClick={(e) => e.preventDefault()}
             className="flex min-w-0 items-center gap-1.5"
-            data-wowhead={selected?.itemId ? `item=${selected.itemId}` : selected?.spellId ? `spell=${selected.spellId}` : undefined}
+            data-wowhead={
+              selected?.itemId
+                ? `item=${selected.itemId}`
+                : selected?.spellId
+                  ? `spell=${selected.spellId}`
+                  : undefined
+            }
           >
             <span className="truncate">{selected ? optionSelectLabel(selected) : 'None'}</span>
             <QualityBadge quality={selectedQuality} />
@@ -876,7 +930,13 @@ function ConsumableSelect({
                         e.preventDefault();
                       }
                     }}
-                    data-wowhead={group.itemId ? `item=${group.itemId}` : group.items[0]?.spellId ? `spell=${group.items[0].spellId}` : undefined}
+                    data-wowhead={
+                      group.itemId
+                        ? `item=${group.itemId}`
+                        : group.items[0]?.spellId
+                          ? `spell=${group.items[0].spellId}`
+                          : undefined
+                    }
                     className="flex min-w-0 flex-1 items-center gap-2 no-underline hover:no-underline"
                   >
                     <img
@@ -884,9 +944,7 @@ function ConsumableSelect({
                       alt=""
                       className="h-4 w-4 shrink-0 rounded-[3px]"
                     />
-                    <span className="truncate">
-                      {group.label}
-                    </span>
+                    <span className="truncate">{group.label}</span>
                   </a>
                   {hasQuality && (
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -921,7 +979,13 @@ function ConsumableSelect({
                                 onChange(opt.token || '');
                                 setOpen(false);
                               }}
-                              data-wowhead={opt.itemId ? `item=${opt.itemId}` : opt.spellId ? `spell=${opt.spellId}` : undefined}
+                              data-wowhead={
+                                opt.itemId
+                                  ? `item=${opt.itemId}`
+                                  : opt.spellId
+                                    ? `spell=${opt.spellId}`
+                                    : undefined
+                              }
                               className={`block h-3.5 w-3.5 rounded-[2px] border transition-all ${qStyle}`}
                             />
                           );
@@ -931,73 +995,6 @@ function ConsumableSelect({
                 </div>
               );
             })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-const SIMC_CHANNEL_LABELS: Record<string, string> = {
-  nightly: 'Nightly',
-};
-
-function SimcChannelSelector({
-  value,
-  options,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const activeLabel = SIMC_CHANNEL_LABELS[value] || value;
-
-  return (
-    <div className="space-y-1.5">
-      <div className="relative" onBlur={() => setOpen(false)}>
-        <button
-          type="button"
-          onClick={() => !disabled && setOpen(!open)}
-          className={`input-field flex h-10 w-full items-center justify-between text-sm ${
-            disabled ? 'cursor-not-allowed opacity-70' : ''
-          }`}
-        >
-          <span>{activeLabel}</span>
-          <svg
-            className={`h-4 w-4 text-zinc-500 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 6l4 4 4-4" />
-          </svg>
-        </button>
-        {open && !disabled && (
-          <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface-2 py-1 shadow-lg shadow-black/40">
-            {options.map((channel) => (
-              <button
-                key={channel}
-                type="button"
-                onMouseDown={() => {
-                  onChange(channel);
-                  setOpen(false);
-                }}
-                className={`flex w-full items-center px-3.5 py-2 text-left text-sm transition-colors ${
-                  channel === value
-                    ? 'bg-gold/[0.08] text-gold'
-                    : 'text-zinc-400 hover:bg-white/[0.04] hover:text-zinc-200'
-                }`}
-              >
-                {SIMC_CHANNEL_LABELS[channel] || channel}
-              </button>
-            ))}
           </div>
         )}
       </div>
@@ -1088,18 +1085,8 @@ function FightSetupOptions() {
 
 function ConsumablesAndRaidBuffsOptions() {
   const {
-    fightStyle,
-    setFightStyle,
-    targetCount,
-    setTargetCount,
-    fightLength,
-    setFightLength,
-    customApl,
-    setCustomApl,
     simcChannel,
     setSimcChannel,
-    includeTimeline,
-    setIncludeTimeline,
     externalBuffChaosBrand,
     setExternalBuffChaosBrand,
     externalBuffMysticTouch,
@@ -1135,7 +1122,6 @@ function ConsumablesAndRaidBuffsOptions() {
     lockSingleConsumableOptions,
   } = useSimContext();
   const [installedSimcChannels, setInstalledSimcChannels] = useState<string[]>(['nightly']);
-  const [simcChannelLoading, setSimcChannelLoading] = useState(false);
 
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
   const qualityMaxByFamily = useMemo(() => {
@@ -1148,21 +1134,17 @@ function ConsumablesAndRaidBuffsOptions() {
     }
     return map;
   }, [flasks, potions, augments, tempEnchants]);
-  const fightStyleRules = getFightStyleParamRules(fightStyle);
   const refreshInstalledSimcChannels = useCallback(async () => {
     if (!isDesktop) {
       setInstalledSimcChannels(['nightly']);
       return;
     }
-    setSimcChannelLoading(true);
     try {
       const nightly = await getSimcStatus();
       const installed = [nightly.installed_exists ? 'nightly' : null].filter(Boolean) as string[];
       setInstalledSimcChannels(installed.length > 0 ? installed : ['nightly']);
     } catch {
       setInstalledSimcChannels(['nightly']);
-    } finally {
-      setSimcChannelLoading(false);
     }
   }, []);
 
@@ -1627,7 +1609,12 @@ function RouteSelectorModal({
       <div className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-white/5 p-4">
           <div className="flex items-center gap-2">
-            <svg className="h-5 w-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              className="h-5 w-5 text-sky-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -1639,7 +1626,12 @@ function RouteSelectorModal({
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-white">
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -1698,13 +1690,8 @@ function RouteSelectorModal({
 
 export default function SimSharedConfig() {
   const pathname = usePathname();
-  const {
-    simcInput,
-    setSimcInput,
-    simcFooter,
-    setSimcFooter,
-    autoClipboardPasteSimc,
-  } = useSimContext();
+  const { simcInput, setSimcInput, simcFooter, setSimcFooter, autoClipboardPasteSimc } =
+    useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
 
   const detectedCharacterInfo = useMemo(() => {
@@ -1729,34 +1716,34 @@ export default function SimSharedConfig() {
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null);
 
   const deleteTargetProfile = useMemo(
-    () => bnetProfiles.find(p => p.id === deleteProfileId) || null,
+    () => bnetProfiles.find((p) => p.id === deleteProfileId) || null,
     [bnetProfiles, deleteProfileId]
   );
 
   const addToHistory = useCallback((value: string) => {
     if (!value || value.length < 50) return;
-    
+
     // Find existing entry by character name (compute before setState)
     const info = parseCharacterInfo(value);
     const charName = info?.kind === 'character' ? info.name : null;
-    
-    setSimcInputHistory(prev => {
+
+    setSimcInputHistory((prev) => {
       let existingIdx = -1;
-      
+
       if (charName) {
-        existingIdx = prev.findIndex(p => {
+        existingIdx = prev.findIndex((p) => {
           const existingInfo = parseCharacterInfo(p);
           return existingInfo?.kind === 'character' && existingInfo.name === charName;
         });
       }
-      
+
       if (existingIdx !== -1) {
         // Update existing entry
         const newHistory = [...prev];
         newHistory[existingIdx] = value;
         return newHistory;
       }
-      
+
       // Add new entry
       const newHistory = [...prev, value];
       return newHistory.slice(-20);
@@ -1764,40 +1751,47 @@ export default function SimSharedConfig() {
   }, []);
 
   // Helper to add to history and return index (for selection)
-  const addToHistoryWithSelection = useCallback((value: string): number | null => {
-    if (!value || value.length < 50) return null;
-    
-    const info = parseCharacterInfo(value);
-    const charName = info?.kind === 'character' ? info.name : null;
-    
-    // Get current history to find index
-    let existingIdx = -1;
-    if (charName) {
-      existingIdx = simcInputHistory.findIndex(p => {
-        const hInfo = parseCharacterInfo(p);
-        return hInfo?.kind === 'character' && hInfo.name === charName;
-      });
-    }
-    
-    const newIdx = existingIdx >= 0 ? existingIdx : simcInputHistory.length;
-    addToHistory(value);
-    return newIdx;
-  }, [addToHistory, simcInputHistory]);
+  const addToHistoryWithSelection = useCallback(
+    (value: string): number | null => {
+      if (!value || value.length < 50) return null;
+
+      const info = parseCharacterInfo(value);
+      const charName = info?.kind === 'character' ? info.name : null;
+
+      // Get current history to find index
+      let existingIdx = -1;
+      if (charName) {
+        existingIdx = simcInputHistory.findIndex((p) => {
+          const hInfo = parseCharacterInfo(p);
+          return hInfo?.kind === 'character' && hInfo.name === charName;
+        });
+      }
+
+      const newIdx = existingIdx >= 0 ? existingIdx : simcInputHistory.length;
+      addToHistory(value);
+      return newIdx;
+    },
+    [addToHistory, simcInputHistory],
+  );
 
   // Wrap setSimcInput to also track history
-  const handleSetSimcInput = useCallback((value: string) => {
-    setSimcInput(value);
-    if (!value || value.length < 50) {
-      setSelectedHistoryIdx(null);
-      return;
-    }
-    
-    // Add to history and get the selected index
-    const newIdx = addToHistoryWithSelection(value);
-    setSelectedHistoryIdx(newIdx);
-  }, [setSimcInput, addToHistoryWithSelection]);
+  const handleSetSimcInput = useCallback(
+    (value: string) => {
+      setSimcInput(value);
+      if (!value || value.length < 50) {
+        setSelectedHistoryIdx(null);
+        return;
+      }
 
-  const isRouteAlreadySaved = useMemo(() => {    if (!simcFooter || !savedRoutes.length) return false;
+      // Add to history and get the selected index
+      const newIdx = addToHistoryWithSelection(value);
+      setSelectedHistoryIdx(newIdx);
+    },
+    [setSimcInput, addToHistoryWithSelection],
+  );
+
+  const isRouteAlreadySaved = useMemo(() => {
+    if (!simcFooter || !savedRoutes.length) return false;
     const normalizedCurrent = simcFooter.trim();
     return savedRoutes.some((r) => r.route_data.trim() === normalizedCurrent);
   }, [simcFooter, savedRoutes]);
@@ -1888,7 +1882,7 @@ export default function SimSharedConfig() {
     if (!deleteProfileId) return;
     try {
       await deleteCharacterProfile(deleteProfileId);
-      setBnetProfiles(prev => prev.filter(p => p.id !== deleteProfileId));
+      setBnetProfiles((prev) => prev.filter((p) => p.id !== deleteProfileId));
       if (selectedSavedId === deleteProfileId) {
         setSelectedSavedId(null);
       }
@@ -1933,7 +1927,7 @@ export default function SimSharedConfig() {
 
   useEffect(() => {
     // On mount, capture current clipboard so we only auto-paste *new* changes.
-    void readClipboardText().then(text => {
+    void readClipboardText().then((text) => {
       if (text) lastAppliedClipboardRef.current = text.trim();
     });
   }, [readClipboardText]);
@@ -1958,24 +1952,32 @@ export default function SimSharedConfig() {
 
         const profiles = splitSimcProfiles(text);
         if (profiles.length === 0) {
-          if (isFocusTrigger) console.log('[SimSharedConfig] Clipboard content is not a SimC profile.');
+          if (isFocusTrigger)
+            console.log('[SimSharedConfig] Clipboard content is not a SimC profile.');
           return;
         }
 
         const first = profiles[0];
         // If it's already what we have in the editor, skip to avoid overwrite.
         if (first.trim() === simcInputRef.current.trim()) {
-          if (isFocusTrigger) console.log('[SimSharedConfig] Clipboard matches current input, skipping.');
+          if (isFocusTrigger)
+            console.log('[SimSharedConfig] Clipboard matches current input, skipping.');
           return;
         }
 
         if (isMdtString(first)) {
           const mdtInfo = parseMdtString(first) as SimcClipboardInfo | null;
           if (mdtInfo && mdtInfo.kind === 'dungeon') {
-            console.log('[SimSharedConfig] Auto-pasting MDT route:', (mdtInfo as { title: string }).title);
+            console.log(
+              '[SimSharedConfig] Auto-pasting MDT route:',
+              (mdtInfo as { title: string }).title,
+            );
             const simcData = convertMdtToSimc(mdtInfo);
             setSimcFooter(simcData);
-            setBanner({ text: `Detected and converted MDT route: ${(mdtInfo as { title: string }).title}`, id: Date.now() });
+            setBanner({
+              text: `Detected and converted MDT route: ${(mdtInfo as { title: string }).title}`,
+              id: Date.now(),
+            });
             return;
           }
         }
@@ -1991,13 +1993,19 @@ export default function SimSharedConfig() {
           setSelectedHistoryIdx(newIdx);
           setSimcInput(first);
           setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
-          
+
           // Try to save character profile if character is in BNet roster
           if (info.name && info.server) {
             try {
-              const bnetData = await fetchJson<{ characters: Array<{ name: string; realm: string; region: string }> }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({ characters: [] }));
+              const bnetData = await fetchJson<{
+                characters: Array<{ name: string; realm: string; region: string }>;
+              }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({ characters: [] }));
               const characters = bnetData.characters || [];
-              const bnetChar = characters.find((c: any) => c.name.toLowerCase() === info.name?.toLowerCase() && c.realm.toLowerCase() === info.server?.toLowerCase());
+              const bnetChar = characters.find(
+                (c: any) =>
+                  c.name.toLowerCase() === info.name?.toLowerCase() &&
+                  c.realm.toLowerCase() === info.server?.toLowerCase(),
+              );
               if (bnetChar) {
                 await saveCharacterProfile({
                   name: info.name,
@@ -2014,7 +2022,9 @@ export default function SimSharedConfig() {
             }
           }
         } else {
-          console.log('[SimSharedConfig] Detected SimC content but could not parse info, pasting anyway.');
+          console.log(
+            '[SimSharedConfig] Detected SimC content but could not parse info, pasting anyway.',
+          );
           const newIdx = addToHistoryWithSelection(first);
           setSelectedHistoryIdx(newIdx);
           setSimcInput(first);
@@ -2026,7 +2036,9 @@ export default function SimSharedConfig() {
     };
 
     const onFocus = () => void readClipboardIntoSimc(true);
-    const onVisibilityChange = () => { if (document.visibilityState === 'visible') void readClipboardIntoSimc(true); };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void readClipboardIntoSimc(true);
+    };
 
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -2036,7 +2048,13 @@ export default function SimSharedConfig() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [autoClipboardPasteSimc, readClipboardText, setSimcFooter, setSimcInput, addToHistoryWithSelection]);
+  }, [
+    autoClipboardPasteSimc,
+    readClipboardText,
+    setSimcFooter,
+    setSimcInput,
+    addToHistoryWithSelection,
+  ]);
 
   useEffect(() => {
     if (!banner) return;
@@ -2074,160 +2092,167 @@ export default function SimSharedConfig() {
               className="flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1"
             >
               <span className="text-[12px] text-zinc-300">
-                {selectedSavedId !== null ? bnetProfiles.find(p => p.id === selectedSavedId)?.name || 'None' : 
-                 selectedHistoryIdx !== null ? (() => {
-                   const info = parseCharacterInfo(simcInputHistory[selectedHistoryIdx]);
-                   return info?.kind === 'character' ? info.name : `Profile ${selectedHistoryIdx + 1}`;
-                 })() : 'None'}
+                {selectedSavedId !== null
+                  ? bnetProfiles.find((p) => p.id === selectedSavedId)?.name || 'None'
+                  : selectedHistoryIdx !== null
+                    ? (() => {
+                      const info = parseCharacterInfo(simcInputHistory[selectedHistoryIdx]);
+                      return info?.kind === 'character'
+                        ? info.name
+                        : `Profile ${selectedHistoryIdx + 1}`;
+                    })()
+                    : 'None'}
               </span>
               <span className="text-[10px] text-zinc-500">{historyDropdownOpen ? '▲' : '▼'}</span>
             </button>
-              {historyDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 min-w-[280px] rounded-md border border-border bg-surface-2 shadow-xl">
-                  <div className="flex border-b border-border">
-                    <button
-                      type="button"
-                      onClick={() => setHistoryTab('saved')}
-                      className={`flex-1 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
-                        historyTab === 'saved'
-                          ? 'border-gold text-gold'
-                          : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      Saved ({bnetProfiles.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHistoryTab('history')}
-                      className={`flex-1 px-3 py-2 text-[12px] font-medium border-b-2 transition-colors ${
-                        historyTab === 'history'
-                          ? 'border-gold text-gold'
-                          : 'border-transparent text-zinc-500 hover:text-zinc-300'
-                      }`}
-                    >
-                      History ({simcInputHistory.length})
-                    </button>
-                  </div>
-                  <div className="max-h-[240px] overflow-y-auto">
-                    {historyTab === 'saved' ? (
-                      bnetProfiles.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
-                          No saved character profiles
-                        </div>
-                      ) : (
-                        bnetProfiles.map((profile) => (
-                          <div
-                            key={profile.id}
-                            className="flex items-center justify-between px-3 py-2 hover:bg-white/5"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedSavedId(profile.id);
-                                setSelectedHistoryIdx(null);
-                                setSimcInput(profile.simc_input);
-                                addToHistory(profile.simc_input);
-                                setHistoryDropdownOpen(false);
-                              }}
-                              className={`text-left flex-1 ${
-                                selectedSavedId === profile.id ? 'text-gold' : ''
-                              }`}
-                            >
-                              <div className="text-[12px] text-zinc-300">{profile.name}</div>
-                              <div className="text-[10px] text-zinc-500">{profile.realm} ({profile.region})</div>
-                            </button>
-                            <span className="text-[10px] text-zinc-600">{profile.class}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setDeleteProfileId(profile.id);
-                              }}
-                              className="text-[10px] text-zinc-500 hover:text-red-400 ml-2"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ))
-                      )
+            {historyDropdownOpen && (
+              <div
+                className="absolute right-0 top-full z-50 mt-1 min-w-[280px] rounded-md border border-border bg-surface-2 shadow-xl">
+                <div className="flex border-b border-border">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('saved')}
+                    className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-medium transition-colors ${
+                      historyTab === 'saved'
+                        ? 'border-gold text-gold'
+                        : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    Saved ({bnetProfiles.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryTab('history')}
+                    className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-medium transition-colors ${
+                      historyTab === 'history'
+                        ? 'border-gold text-gold'
+                        : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    History ({simcInputHistory.length})
+                  </button>
+                </div>
+                <div className="max-h-[240px] overflow-y-auto">
+                  {historyTab === 'saved' ? (
+                    bnetProfiles.length === 0 ? (
+                      <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
+                        No saved character profiles
+                      </div>
                     ) : (
-                      simcInputHistory.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
-                          No history yet
-                        </div>
-                      ) : (
-                        simcInputHistory.map((profile, idx) => {
-                          const info = parseCharacterInfo(profile);
-                          const name = info?.kind === 'character' ? info.name : `Profile ${idx + 1}`;
-                          const charClass = info?.kind === 'character' ? info.className : null;
-                          const realm = info?.kind === 'character' ? info.server : null;
-                          const region = info?.kind === 'character' ? info.region : null;
-                          return (
-                            <div
-                              key={idx}
-                              className={`flex items-center justify-between px-3 py-2 hover:bg-white/5 ${
-                                selectedHistoryIdx === idx ? 'bg-white/5' : ''
-                              }`}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedHistoryIdx(idx);
-                                  setSimcInput(simcInputHistory[idx]);
-                                  setHistoryDropdownOpen(false);
-                                }}
-                                className={`text-left flex-1 ${
-                                  selectedHistoryIdx === idx ? 'text-gold' : ''
-                                }`}
-                              >
-                                <div className="text-[12px] text-zinc-300">{name}</div>
-                                {info?.kind === 'character' && (realm || region) && (
-                                  <div className="text-[10px] text-zinc-500">
-                                    {realm}{region ? ` (${region})` : ''}
-                                  </div>
-                                )}
-                              </button>
-                              {charClass && (
-                                <span className="text-[10px] text-zinc-600">{charClass}</span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newHistory = simcInputHistory.filter((_, i) => i !== idx);
-                                  setSimcInputHistory(newHistory);
-                                  if (selectedHistoryIdx === idx) {
-                                    setSelectedHistoryIdx(null);
-                                  } else if (selectedHistoryIdx !== null && selectedHistoryIdx > idx) {
-                                    setSelectedHistoryIdx(selectedHistoryIdx - 1);
-                                  }
-                                }}
-                                className="text-[10px] text-zinc-500 hover:text-red-400 ml-2"
-                              >
-                                ✕
-                              </button>
+                      bnetProfiles.map((profile) => (
+                        <div
+                          key={profile.id}
+                          className="flex items-center justify-between px-3 py-2 hover:bg-white/5"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedSavedId(profile.id);
+                              setSelectedHistoryIdx(null);
+                              setSimcInput(profile.simc_input);
+                              addToHistory(profile.simc_input);
+                              setHistoryDropdownOpen(false);
+                            }}
+                            className={`flex-1 text-left ${
+                              selectedSavedId === profile.id ? 'text-gold' : ''
+                            }`}
+                          >
+                            <div className="text-[12px] text-zinc-300">{profile.name}</div>
+                            <div className="text-[10px] text-zinc-500">
+                              {profile.realm} ({profile.region})
                             </div>
-                          );
-                        })
-                      )
-                    )}
-                  </div>
-                  {historyTab === 'history' && simcInputHistory.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSimcInputHistory([]);
-                        setSelectedHistoryIdx(null);
-                        setHistoryDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-3 py-2 text-[12px] text-red-400 hover:bg-red-500/10 border-t border-border"
-                    >
-                      ✕ Clear All
-                    </button>
+                          </button>
+                          <span className="text-[10px] text-zinc-600">{profile.class}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteProfileId(profile.id);
+                            }}
+                            className="ml-2 text-[10px] text-zinc-500 hover:text-red-400"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                    )
+                  ) : simcInputHistory.length === 0 ? (
+                    <div className="px-3 py-4 text-center text-[12px] text-zinc-500">
+                      No history yet
+                    </div>
+                  ) : (
+                    simcInputHistory.map((profile, idx) => {
+                      const info = parseCharacterInfo(profile);
+                      const name = info?.kind === 'character' ? info.name : `Profile ${idx + 1}`;
+                      const charClass = info?.kind === 'character' ? info.className : null;
+                      const realm = info?.kind === 'character' ? info.server : null;
+                      const region = info?.kind === 'character' ? info.region : null;
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-center justify-between px-3 py-2 hover:bg-white/5 ${
+                            selectedHistoryIdx === idx ? 'bg-white/5' : ''
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedHistoryIdx(idx);
+                              setSimcInput(simcInputHistory[idx]);
+                              setHistoryDropdownOpen(false);
+                            }}
+                            className={`flex-1 text-left ${
+                              selectedHistoryIdx === idx ? 'text-gold' : ''
+                            }`}
+                          >
+                            <div className="text-[12px] text-zinc-300">{name}</div>
+                            {info?.kind === 'character' && (realm || region) && (
+                              <div className="text-[10px] text-zinc-500">
+                                {realm}
+                                {region ? ` (${region})` : ''}
+                              </div>
+                            )}
+                          </button>
+                          {charClass && (
+                            <span className="text-[10px] text-zinc-600">{charClass}</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newHistory = simcInputHistory.filter((_, i) => i !== idx);
+                              setSimcInputHistory(newHistory);
+                              if (selectedHistoryIdx === idx) {
+                                setSelectedHistoryIdx(null);
+                              } else if (selectedHistoryIdx !== null && selectedHistoryIdx > idx) {
+                                setSelectedHistoryIdx(selectedHistoryIdx - 1);
+                              }
+                            }}
+                            className="ml-2 text-[10px] text-zinc-500 hover:text-red-400"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
-              )}
-            </div>
+                {historyTab === 'history' && simcInputHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSimcInputHistory([]);
+                      setSelectedHistoryIdx(null);
+                      setHistoryDropdownOpen(false);
+                    }}
+                    className="w-full border-t border-border px-3 py-2 text-left text-[12px] text-red-400 hover:bg-red-500/10"
+                  >
+                    ✕ Clear All
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <SimcInputEditor
           value={simcInput}
@@ -2295,7 +2320,12 @@ export default function SimSharedConfig() {
           >
             <span>{savedRoutes.length} Saved Routes</span>
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
         </div>

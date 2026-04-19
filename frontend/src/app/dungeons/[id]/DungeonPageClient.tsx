@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { API_URL, fetchJson, DungeonInfo, getDungeonData } from '../../lib/api';
+import { API_URL, DungeonInfo, fetchJson, getDungeonData } from '../../lib/api';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { Instance } from '../../drop-finder/types';
 
@@ -15,10 +15,7 @@ export default function DungeonPageClient({ id }: { id: string }) {
     if (!id) return;
     const dungeonId = parseInt(id, 10);
 
-    Promise.all([
-      getDungeonData(),
-      fetchJson<Instance[]>(`${API_URL}/api/instances`),
-    ])
+    Promise.all([getDungeonData(), fetchJson<Instance[]>(`${API_URL}/api/instances`)])
       .then(([seasonData, instances]) => {
         const found = seasonData.rotation_dungeons.find((d) => d.id === dungeonId);
         if (!found) {
@@ -51,7 +48,12 @@ export default function DungeonPageClient({ id }: { id: string }) {
       <div className="mx-auto max-w-lg py-20 text-center">
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500">
           <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
         </div>
         <h2 className="mb-2 text-xl font-bold text-zinc-200">Dungeon Not Found</h2>
@@ -98,7 +100,11 @@ export default function DungeonPageClient({ id }: { id: string }) {
                 className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-4"
               >
                 {encounter.image_url ? (
-                  <img src={encounter.image_url} alt="" className="h-12 w-12 rounded object-cover" />
+                  <img
+                    src={encounter.image_url}
+                    alt=""
+                    className="h-12 w-12 rounded object-cover"
+                  />
                 ) : (
                   <div className="flex h-12 w-12 items-center justify-center rounded bg-zinc-800">
                     <span className="text-xl font-bold text-gold">?</span>

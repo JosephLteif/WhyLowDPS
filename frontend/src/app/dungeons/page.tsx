@@ -3,9 +3,9 @@
 import { useEffect, useState } from 'react';
 import {
   API_URL,
-  DungeonSeasonData,
   DungeonAffix,
   DungeonInfo,
+  DungeonSeasonData,
   fetchJson,
   fetchJsonCached,
   getDungeonData,
@@ -17,18 +17,30 @@ import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 const DUNGEON_PLACEHOLDERS: Record<string, { icon: string; zone: string }> = {
   'Siege of Boralus': { icon: 'https://wow.zamimages.com/logo/PoS.jpg', zone: 'Darkshore' },
-  'Atalzar': { icon: 'https://wow.zamimages.com/logo/Atalzar.jpg', zone: 'Nazmir' },
-  'Freehold': { icon: 'https://wow.zamimages.com/logo/Freehold.jpg', zone: 'Zuldazar' },
+  Atalzar: { icon: 'https://wow.zamimages.com/logo/Atalzar.jpg', zone: 'Nazmir' },
+  Freehold: { icon: 'https://wow.zamimages.com/logo/Freehold.jpg', zone: 'Zuldazar' },
   'Kings Rest': { icon: 'https://wow.zamimages.com/logo/KingsRest.jpg', zone: 'Zuldazar' },
-  'Temple of Sethraliss': { icon: 'https://wow.zamimages.com/logo/TempleSethraliss.jpg', zone: 'Zuljan Reach' },
+  'Temple of Sethraliss': {
+    icon: 'https://wow.zamimages.com/logo/TempleSethraliss.jpg',
+    zone: 'Zuljan Reach',
+  },
   'Shrine of the Storm': { icon: 'https://wow.zamimages.com/logo/Shrine.jpg', zone: 'Vol dun' },
   'Necrotic Wake': { icon: 'https://wow.zamimages.com/logo/NecroticWake.jpg', zone: 'Maldraxxus' },
-  'Plaguefall': { icon: 'https://wow.zamimages.com/logo/Plaguefall.jpg', zone: 'Maldraxxus' },
-  'Halls of Atonement': { icon: 'https://wow.zamimages.com/logo/HallsAtonement.jpg', zone: 'Maldraxxus' },
-  'Spires of Ascension': { icon: 'https://wow.zamimages.com/logo/SpiresAscension.jpg', zone: 'Bastion' },
-  'Sanguine Depths': { icon: 'https://wow.zamimages.com/logo/SanguineDepths.jpg', zone: 'Maldraxxus' },
+  Plaguefall: { icon: 'https://wow.zamimages.com/logo/Plaguefall.jpg', zone: 'Maldraxxus' },
+  'Halls of Atonement': {
+    icon: 'https://wow.zamimages.com/logo/HallsAtonement.jpg',
+    zone: 'Maldraxxus',
+  },
+  'Spires of Ascension': {
+    icon: 'https://wow.zamimages.com/logo/SpiresAscension.jpg',
+    zone: 'Bastion',
+  },
+  'Sanguine Depths': {
+    icon: 'https://wow.zamimages.com/logo/SanguineDepths.jpg',
+    zone: 'Maldraxxus',
+  },
   'Theater of Pain': { icon: 'https://wow.zamimages.com/logo/TheaterPain.jpg', zone: 'Maldraxxus' },
-  'Tazavesh': { icon: 'https://wow.zamimages.com/logo/Tazavesh.jpg', zone: 'Mechagon' },
+  Tazavesh: { icon: 'https://wow.zamimages.com/logo/Tazavesh.jpg', zone: 'Mechagon' },
 };
 
 function getDungeonPlaceholder(name: string) {
@@ -57,7 +69,10 @@ function AffixCard({ affix }: { affix: DungeonAffix }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
       {affix.spell_id ? (
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-zinc-800" data-wowhead={`spell=${affix.spell_id}`}>
+        <div
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-zinc-800"
+          data-wowhead={`spell=${affix.spell_id}`}
+        >
           {affix.icon ? (
             <img src={affix.icon} alt="" className="h-10 w-10 rounded object-cover" />
           ) : (
@@ -87,19 +102,15 @@ function InfoPill({ label, value }: { label: string; value?: string | number | n
   );
 }
 
-function DungeonCard({
-  dungeon,
-}: {
-  dungeon: DungeonInfo;
-  seasonName?: string;
-}) {
-
+function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string }) {
   const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
   const imageUrl = dungeon.image_url || placeholder?.icon;
   const zone = dungeon.zone || placeholder?.zone;
   const timer = formatMs(dungeon.keystone_timer_ms);
   const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
-  const rawPayload = dungeon.blizzard_api_data ? JSON.stringify(dungeon.blizzard_api_data, null, 2) : null;
+  const rawPayload = dungeon.blizzard_api_data
+    ? JSON.stringify(dungeon.blizzard_api_data, null, 2)
+    : null;
 
   return (
     <div className="group flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:border-gold/50 hover:bg-white/[0.05]">
@@ -134,7 +145,9 @@ function DungeonCard({
 
       {dungeon.keystone_upgrades && dungeon.keystone_upgrades.length > 0 && (
         <div className="mb-2">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Keystone Upgrades</p>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+            Keystone Upgrades
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {dungeon.keystone_upgrades.map((upgrade) => (
               <span key={upgrade} className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">
@@ -147,7 +160,9 @@ function DungeonCard({
 
       {dungeon.encounters && dungeon.encounters.length > 0 && (
         <div className="mb-2">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Encounters ({encounterCount})</p>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+            Encounters ({encounterCount})
+          </p>
           <ul className="space-y-1 text-xs text-zinc-300">
             {dungeon.encounters.map((encounter) => (
               <li key={encounter}>{encounter}</li>
@@ -158,7 +173,9 @@ function DungeonCard({
 
       {rawPayload && (
         <details className="mt-2 rounded-md border border-white/10 bg-black/20 p-2">
-          <summary className="cursor-pointer text-xs font-semibold text-zinc-400">Blizzard API Raw Data</summary>
+          <summary className="cursor-pointer text-xs font-semibold text-zinc-400">
+            Blizzard API Raw Data
+          </summary>
           <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-4 text-zinc-400">
             {rawPayload}
           </pre>
@@ -291,17 +308,14 @@ export default function DungeonsPage() {
 
       const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
         const matchedInstance =
-          instancesById.get(dungeon.id) ||
-          instancesByName.get(normalizeDungeonName(dungeon.name));
+          instancesById.get(dungeon.id) || instancesByName.get(normalizeDungeonName(dungeon.name));
         if (!matchedInstance) return dungeon;
 
         const encounterNames = (matchedInstance.encounters || [])
           .map((encounter) => encounter.name)
           .filter((name): name is string => !!name && name.trim().length > 0);
         const mergedEncounterNames =
-          dungeon.encounters && dungeon.encounters.length > 0
-            ? dungeon.encounters
-            : encounterNames;
+          dungeon.encounters && dungeon.encounters.length > 0 ? dungeon.encounters : encounterNames;
         const mergedBossCount =
           dungeon.num_bosses ??
           (mergedEncounterNames.length > 0 ? mergedEncounterNames.length : null);
@@ -340,12 +354,20 @@ export default function DungeonsPage() {
       <div className="mx-auto max-w-lg py-20 text-center">
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500">
           <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+            />
           </svg>
         </div>
         <h2 className="mb-2 text-xl font-bold text-zinc-200">Failed to Load Data</h2>
         <p className="mb-6 text-zinc-500">{error}</p>
-        <button onClick={() => window.location.reload()} className="rounded-lg bg-gold px-4 py-2 text-sm font-bold text-black">
+        <button
+          onClick={() => window.location.reload()}
+          className="rounded-lg bg-gold px-4 py-2 text-sm font-bold text-black"
+        >
           Retry
         </button>
       </div>
@@ -394,7 +416,9 @@ export default function DungeonsPage() {
 
       {data?.current_affixes && data.current_affixes.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-500">This Week&apos;s Affixes</h2>
+          <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
+            This Week&apos;s Affixes
+          </h2>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {data.current_affixes.map((affix) => (
               <AffixCard key={affix.id} affix={affix} />
@@ -408,10 +432,11 @@ export default function DungeonsPage() {
           Season Dungeons ({data?.rotation_dungeons?.length || 0})
         </h2>
         {hasDungeons && !!backendError && !hasAnyBlizzardDetails && (
-            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              Blizzard dungeon detail payload is missing in local runtime cache. Showing best available fallback data from instances.
-            </div>
-          )}
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            Blizzard dungeon detail payload is missing in local runtime cache. Showing best
+            available fallback data from instances.
+          </div>
+        )}
         {data?.rotation_dungeons && data.rotation_dungeons.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.rotation_dungeons.map((dungeon) => (
@@ -419,13 +444,12 @@ export default function DungeonsPage() {
             ))}
           </div>
         ) : (
-          <div className="rounded-xl border border-white/8 bg-white/[0.02] px-4 py-6 text-center">
+          <div className="border-white/8 rounded-xl border bg-white/[0.02] px-4 py-6 text-center">
             <p className="text-sm text-zinc-500">No dungeons available</p>
             <p className="mt-2 text-xs text-zinc-600">Dungeon data is currently unavailable.</p>
           </div>
         )}
       </section>
-
     </div>
   );
 }

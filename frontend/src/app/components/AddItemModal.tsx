@@ -4,7 +4,7 @@ import { useEffect, useMemo } from 'react';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { getWowheadData } from '../lib/useItemInfo';
-import { useAddItemState, type ExternalItem } from './add-item/useAddItemState';
+import { type ExternalItem, useAddItemState } from './add-item/useAddItemState';
 import AddItemDifficultyToggle from './add-item/AddItemDifficultyToggle';
 import AddItemInstanceSidebar from './add-item/AddItemInstanceSidebar';
 import AddItemSearchOverlay from './add-item/AddItemSearchOverlay';
@@ -111,12 +111,10 @@ export default function AddItemModal({
     globalSearch,
     setGlobalSearch,
     localSearch,
-    setLocalSearch,
     seasonConfig,
     selectedDifficulty,
     setSelectedDifficulty,
     filterSlot,
-    setFilterSlot,
     category,
     setCategory,
     upgradeTracks,
@@ -219,8 +217,9 @@ export default function AddItemModal({
       // Group by slot (existing behavior)
       for (const [slot, items] of Object.entries(sourceData)) {
         const lowerSlot =
-          Object.keys(SLOT_LABELS).find((key) => SLOT_LABELS[key] === slot)?.toLowerCase() ||
-          slot.toLowerCase();
+          Object.keys(SLOT_LABELS)
+            .find((key) => SLOT_LABELS[key] === slot)
+            ?.toLowerCase() || slot.toLowerCase();
         const lowerFilter = filterSlot?.toLowerCase() || null;
         if (lowerFilter && lowerSlot !== lowerFilter) {
           const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');

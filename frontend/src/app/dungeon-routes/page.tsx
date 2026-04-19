@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
-import { listSavedRoutes, deleteSavedRoute, saveRoute, listInstances } from '../lib/api';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { deleteSavedRoute, listInstances, listSavedRoutes, saveRoute } from '../lib/api';
 import { SavedRoute } from '../lib/types';
-import { parseCharacterInfo } from '../../lib/simc-parser';
-import { isMdtString, parseMdtString, convertMdtToSimc } from '../../lib/mdt-parser';
+import { parseCharacterInfo } from '@/lib/simc-parser';
+import { convertMdtToSimc, isMdtString, parseMdtString } from '@/lib/mdt-parser';
 import { Instance } from '../drop-finder/types';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -17,7 +17,6 @@ export default function DungeonRoutesPage() {
   const [routes, setRoutes] = useState<SavedRoute[]>([]);
   const [availableInstances, setAvailableInstances] = useState<Instance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Filters
   const [dungeonFilter, setDungeonFilter] = useState<string>('all');
@@ -25,14 +24,14 @@ export default function DungeonRoutesPage() {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newRoute, setNewRoute] = useState({ 
-    name: '', 
-    dungeon: '', 
-    level: '', 
-    pull_count: '', 
-    timer_seconds: '', 
-    affixes: '', 
-    route_data: '' 
+  const [newRoute, setNewRoute] = useState({
+    name: '',
+    dungeon: '',
+    level: '',
+    pull_count: '',
+    timer_seconds: '',
+    affixes: '',
+    route_data: '',
   });
   const [parsedMdt, setParsedMdt] = useState<any>(null);
   const [selectedDungeonId, setSelectedDungeonId] = useState<string>('');
@@ -58,8 +57,6 @@ export default function DungeonRoutesPage() {
       const [data, instances] = await Promise.all([listSavedRoutes(), listInstances()]);
       setRoutes(data);
       setAvailableInstances(instances);
-    } catch (e: any) {
-      setError(e.message);
     } finally {
       setIsLoading(false);
     }
@@ -85,8 +82,12 @@ export default function DungeonRoutesPage() {
       setParsedMdt(null);
     }
 
-    const levelMatch = input.match(/^(?:keystone_level|level|mythic_plus_level)\s*=\s*"?([^"\n,]+)"?/im);
-    const dungeonMatch = input.match(/^(?:dungeon|instance|mythic_plus_dungeon|keystone_dungeon)\s*=\s*"?([^"\n,]+)"?/im);
+    const levelMatch = input.match(
+      /^(?:keystone_level|level|mythic_plus_level)\s*=\s*"?([^"\n,]+)"?/im,
+    );
+    const dungeonMatch = input.match(
+      /^(?:dungeon|instance|mythic_plus_dungeon|keystone_dungeon)\s*=\s*"?([^"\n,]+)"?/im,
+    );
     const nameMatch = input.match(/^(?:route_name|name)\s*=\s*"?([^"\n,]+)"?/im);
     const enemyMatch = input.match(/^enemy\s*=\s*"([^"]+)"/im);
     const timerMatch = input.match(/^max_time\s*=\s*"?([^"\n,]+)"?/im);
@@ -95,7 +96,7 @@ export default function DungeonRoutesPage() {
 
     setNewRoute((prev) => {
       const updates: any = {};
-      
+
       if (!prev.level && levelMatch?.[1]) {
         updates.level = levelMatch[1];
       }
@@ -111,19 +112,21 @@ export default function DungeonRoutesPage() {
       if (!prev.pull_count && pullCount > 0) {
         updates.pull_count = pullCount.toString();
       }
-      
+
       if (!prev.dungeon) {
         if (dungeonMatch?.[1]) {
           updates.dungeon = dungeonMatch[1];
         } else if (enemyMatch?.[1]) {
-          const cleanEnemy = enemyMatch[1].replace(/^(Expert|Advanced|Standard):\s*/i, '').replace(/'s Weekly Route/i, '');
-          updates.dungeon = cleanEnemy;
+          updates.dungeon = enemyMatch[1]
+            .replace(/^(Expert|Advanced|Standard):\s*/i, '')
+            .replace(/'s Weekly Route/i, '');
         }
 
         if (updates.dungeon) {
-          const matched = availableInstances.find(i => 
-            i.name.toLowerCase() === updates.dungeon.toLowerCase() ||
-            i.name.toLowerCase().includes(updates.dungeon.toLowerCase())
+          const matched = availableInstances.find(
+            (i) =>
+              i.name.toLowerCase() === updates.dungeon.toLowerCase() ||
+              i.name.toLowerCase().includes(updates.dungeon.toLowerCase()),
           );
           if (matched) {
             setSelectedDungeonId(String(matched.id));
@@ -158,9 +161,10 @@ export default function DungeonRoutesPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const dungeonName = selectedDungeonId === 'other' 
-      ? customDungeonName 
-      : availableInstances.find(i => String(i.id) === selectedDungeonId)?.name || 'Unknown';
+    const dungeonName =
+      selectedDungeonId === 'other'
+        ? customDungeonName
+        : availableInstances.find((i) => String(i.id) === selectedDungeonId)?.name || 'Unknown';
 
     try {
       await saveRoute({
@@ -172,14 +176,14 @@ export default function DungeonRoutesPage() {
         affixes: newRoute.affixes || undefined,
         route_data: newRoute.route_data,
       });
-      setNewRoute({ 
-        name: '', 
-        dungeon: '', 
-        level: '', 
-        pull_count: '', 
-        timer_seconds: '', 
-        affixes: '', 
-        route_data: '' 
+      setNewRoute({
+        name: '',
+        dungeon: '',
+        level: '',
+        pull_count: '',
+        timer_seconds: '',
+        affixes: '',
+        route_data: '',
       });
       setSelectedDungeonId('');
       setCustomDungeonName('');
@@ -237,7 +241,9 @@ export default function DungeonRoutesPage() {
       <div className="mb-8 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-white">Saved Routes</h1>
-          <p className="mt-2 text-zinc-400">Manage and browse your saved dungeon routes for simulation.</p>
+          <p className="mt-2 text-zinc-400">
+            Manage and browse your saved dungeon routes for simulation.
+          </p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
@@ -249,7 +255,9 @@ export default function DungeonRoutesPage() {
 
       <div className="mb-6 flex flex-wrap items-center gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-4">
         <div className="flex flex-col gap-1.5">
-          <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Dungeon</label>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+            Dungeon
+          </label>
           <select
             value={dungeonFilter}
             onChange={(e) => setDungeonFilter(e.target.value)}
@@ -265,7 +273,9 @@ export default function DungeonRoutesPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Sort By</label>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+            Sort By
+          </label>
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
@@ -289,10 +299,7 @@ export default function DungeonRoutesPage() {
       {filteredAndSortedRoutes.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.01]">
           <p className="text-zinc-500">No saved routes found matching your filters.</p>
-          <Link
-            href="/quick-sim"
-            className="mt-4 text-sm font-medium text-gold hover:underline"
-          >
+          <Link href="/quick-sim" className="mt-4 text-sm font-medium text-gold hover:underline">
             Go to Quick Sim to save your first route
           </Link>
         </div>
@@ -306,7 +313,8 @@ export default function DungeonRoutesPage() {
               <div className="p-5">
                 <div className="mb-4 flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="truncate text-lg font-bold tracking-tight text-white group-hover:text-gold transition-colors">
+                    <h3
+                      className="truncate text-lg font-bold tracking-tight text-white transition-colors group-hover:text-gold">
                       {route.name}
                     </h3>
                     <p className="text-sm font-medium text-zinc-500">{route.dungeon}</p>
@@ -338,10 +346,14 @@ export default function DungeonRoutesPage() {
                   {(() => {
                     const info = parseCharacterInfo(route.route_data);
                     if (info?.kind !== 'dungeon') return null;
-                    const totalHealth = info.pulls.reduce((sum, p) => sum + (p.totalHealth || 0), 0);
+                    const totalHealth = info.pulls.reduce(
+                      (sum, p) => sum + (p.totalHealth || 0),
+                      0,
+                    );
                     const timer = route.timer_seconds || (info.maxTime ? Number(info.maxTime) : 0);
                     // Assume 3 DPS do 90% of total HP.
-                    const minDps = timer > 0 && totalHealth > 0 ? (totalHealth * 0.9) / 3 / timer : 0;
+                    const minDps =
+                      timer > 0 && totalHealth > 0 ? (totalHealth * 0.9) / 3 / timer : 0;
 
                     return (
                       <>
@@ -383,11 +395,11 @@ export default function DungeonRoutesPage() {
                   Use in Sim
                 </button>
                 <button
-                   onClick={() => {
-                     navigator.clipboard.writeText(route.route_data);
-                     alert('Route data copied to clipboard!');
-                   }}
-                   className="flex-1 bg-white/[0.02] py-3 text-xs font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-white"
+                  onClick={() => {
+                    navigator.clipboard.writeText(route.route_data);
+                    alert('Route data copied to clipboard!');
+                  }}
+                  className="flex-1 bg-white/[0.02] py-3 text-xs font-bold uppercase tracking-widest text-zinc-400 transition-colors hover:bg-white/[0.05] hover:text-white"
                 >
                   Copy
                 </button>
@@ -422,7 +434,8 @@ export default function DungeonRoutesPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl animate-in fade-in zoom-in duration-200 rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl">
+          <div
+            className="animate-in fade-in zoom-in w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl duration-200">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">Add New Dungeon Route</h2>
               <button
@@ -430,7 +443,12 @@ export default function DungeonRoutesPage() {
                 className="text-zinc-500 hover:text-white"
               >
                 <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -438,7 +456,9 @@ export default function DungeonRoutesPage() {
             <form onSubmit={handleCreateRoute} className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Route Name</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Route Name
+                  </label>
                   <input
                     required
                     type="text"
@@ -449,21 +469,26 @@ export default function DungeonRoutesPage() {
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Dungeon</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Dungeon
+                  </label>
                   <select
                     required
                     value={selectedDungeonId}
                     onChange={(e) => setSelectedDungeonId(e.target.value)}
                     className="rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
                   >
-                    <option value="" disabled>Select a Dungeon</option>
+                    <option value="" disabled>
+                      Select a Dungeon
+                    </option>
                     {availableInstances
-                      .filter(i => i.type === 'dungeon' || i.type === 'mythic_plus')
+                      .filter((i) => i.type === 'dungeon' || i.type === 'mythic_plus')
                       .sort((a, b) => a.name.localeCompare(b.name))
-                      .map(i => (
-                        <option key={i.id} value={String(i.id)}>{i.name}</option>
-                      ))
-                    }
+                      .map((i) => (
+                        <option key={i.id} value={String(i.id)}>
+                          {i.name}
+                        </option>
+                      ))}
                     <option value="other">Other / Custom</option>
                   </select>
                 </div>
@@ -471,7 +496,9 @@ export default function DungeonRoutesPage() {
 
               {selectedDungeonId === 'other' && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Custom Dungeon Name</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Custom Dungeon Name
+                  </label>
                   <input
                     required
                     type="text"
@@ -484,7 +511,9 @@ export default function DungeonRoutesPage() {
               )}
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Keystone Level (Optional)</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Keystone Level (Optional)
+                </label>
                 <input
                   type="number"
                   value={newRoute.level}
@@ -495,7 +524,9 @@ export default function DungeonRoutesPage() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">SimC Route Data</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  SimC Route Data
+                </label>
                 <textarea
                   required
                   rows={8}
@@ -508,7 +539,9 @@ export default function DungeonRoutesPage() {
 
               {parsedMdt && (
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Pulls Preview ({parsedMdt.pullCount} pulls)</label>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                    Pulls Preview ({parsedMdt.pullCount} pulls)
+                  </label>
                   <div className="max-h-60 overflow-y-auto rounded-lg border border-white/10 bg-black/40">
                     <table className="w-full text-left text-[11px]">
                       <thead className="sticky top-0 bg-zinc-900 text-[10px] font-black uppercase tracking-wider text-zinc-500">

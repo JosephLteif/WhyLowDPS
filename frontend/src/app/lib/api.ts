@@ -257,7 +257,9 @@ export async function listCharacterProfiles(options?: {
   if (options?.realm) params.set('realm', options.realm);
   if (options?.region) params.set('region', options.region);
   const query = params.toString();
-  return fetchJson<SavedCharacterProfile[]>(`${API_URL}/api/character-profiles${query ? '?' + query : ''}`);
+  return fetchJson<SavedCharacterProfile[]>(
+    `${API_URL}/api/character-profiles${query ? '?' + query : ''}`,
+  );
 }
 
 export async function saveCharacterProfile(profile: {

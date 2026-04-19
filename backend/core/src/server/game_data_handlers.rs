@@ -401,51 +401,68 @@ pub(super) async fn get_instance_drops(
 
 pub async fn get_dungeon_data() -> HttpResponse {
     use crate::item_db;
-    use crate::server::dungeon_data::{DungeonDataSource, DungeonAffix, DungeonInfo, DungeonSeasonData};
+    use crate::server::dungeon_data::{
+        DungeonAffix, DungeonDataSource, DungeonInfo, DungeonSeasonData,
+    };
     use crate::server::dungeon_source_blizzard::BlizzardDungeonSource;
-    
+
     let source = BlizzardDungeonSource::new();
-    
+
     match source.get_season_info() {
         Ok(data) => HttpResponse::Ok().json(data),
         Err(e) => {
             // Fallback: create default data from item_db
             let instances = item_db::get_mplus_dungeons();
-            let fallback_dungeons: Vec<DungeonInfo> = instances.into_iter().map(|i| DungeonInfo {
-                id: i.id as u32,
-                name: i.name,
-                description: None,
-                zone: i.zone,
-                slug: None,
-                short_name: None,
-                wowhead_id: Some(i.id as u32),
-                num_bosses: i.boss_count.map(|b| b as u32),
-                expansion: Some(i.expansion as u32),
-                expansion_name: None,
-                map_id: None,
-                challenge_mode_id: None,
-                minimum_level: None,
-                keystone_timer_ms: None,
-                keystone_upgrades: Vec::new(),
-                encounters: Vec::new(),
-                blizzard_href: None,
-                image_url: None,
-                linked_code: None,
-                blizzard_api_data: None,
-            }).collect();
-            
+            let fallback_dungeons: Vec<DungeonInfo> = instances
+                .into_iter()
+                .map(|i| DungeonInfo {
+                    id: i.id as u32,
+                    name: i.name,
+                    description: None,
+                    zone: i.zone,
+                    slug: None,
+                    short_name: None,
+                    wowhead_id: Some(i.id as u32),
+                    num_bosses: i.boss_count.map(|b| b as u32),
+                    expansion: Some(i.expansion as u32),
+                    expansion_name: None,
+                    map_id: None,
+                    challenge_mode_id: None,
+                    minimum_level: None,
+                    keystone_timer_ms: None,
+                    keystone_upgrades: Vec::new(),
+                    encounters: Vec::new(),
+                    blizzard_href: None,
+                    image_url: None,
+                    linked_code: None,
+                    blizzard_api_data: None,
+                })
+                .collect();
+
             let fallback_affixes = vec![
-                DungeonAffix { id: 1, name: "Tyrannical".to_string(), description: "Health and damage increased by 15%.".to_string(), icon: None, spell_id: Some(409967) },
-                DungeonAffix { id: 2, name: "Fortified".to_string(), description: "Non-boss health increased by 20%.".to_string(), icon: None, spell_id: Some(409968) },
+                DungeonAffix {
+                    id: 1,
+                    name: "Tyrannical".to_string(),
+                    description: "Health and damage increased by 15%.".to_string(),
+                    icon: None,
+                    spell_id: Some(409967),
+                },
+                DungeonAffix {
+                    id: 2,
+                    name: "Fortified".to_string(),
+                    description: "Non-boss health increased by 20%.".to_string(),
+                    icon: None,
+                    spell_id: Some(409968),
+                },
             ];
-            
+
             let fallback_data = DungeonSeasonData {
                 season_id: item_db::current_season_id() as u32,
                 season_name: format!("Season {}", item_db::current_season_id()),
                 current_affixes: fallback_affixes,
                 rotation_dungeons: fallback_dungeons,
             };
-            
+
             HttpResponse::Ok().json(json!({
                 "error": e,
                 "season_id": fallback_data.season_id,

@@ -1,16 +1,16 @@
 'use client';
 
 import { useMemo } from 'react';
+import type { EnchantInfo, GemInfo, ItemInfo, ItemQuery } from '../lib/useItemInfo';
 import {
-  useItemInfo,
+  getIconUrl,
+  getWowheadData,
+  getWowheadUrl,
+  QUALITY_COLORS,
   useEnchantInfo,
   useGemInfo,
-  getIconUrl,
-  getWowheadUrl,
-  getWowheadData,
-  QUALITY_COLORS,
+  useItemInfo,
 } from '../lib/useItemInfo';
-import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
@@ -129,7 +129,7 @@ export default function GearOverview({
               <a
                 key={cid}
                 href={`https://www.wowhead.com/currency=${cid}`}
-                className="flex items-center gap-2 text-[14px] font-mono text-gold/90 no-underline"
+                className="flex items-center gap-2 font-mono text-[14px] text-gold/90 no-underline"
                 data-wowhead={`currency=${cid}`}
                 target="_blank"
                 rel="noopener noreferrer"

@@ -307,7 +307,8 @@ pub fn get_instance_drops(
                         .get("worldBossLevel")
                         .and_then(|v| v.as_u64())
                         .unwrap_or(1);
-                    if let Some(&(ilvl, bonus_id, quality)) = tracks.get(&(wb_track.clone(), wb_level, tm))
+                    if let Some(&(ilvl, bonus_id, quality)) =
+                        tracks.get(&(wb_track.clone(), wb_level, tm))
                     {
                         diff_info.insert(
                             "normal".to_string(),
@@ -351,10 +352,7 @@ pub fn get_instance_drops(
                     {
                         for (diff_key, entry) in ddt {
                             // Non-rotation dungeons should not receive M+ / vault tiers.
-                            if !has_mplus_source
-                                && diff_key != "heroic"
-                                && diff_key != "mythic"
-                            {
+                            if !has_mplus_source && diff_key != "heroic" && diff_key != "mythic" {
                                 continue;
                             }
                             let track = entry.get("track").and_then(|v| v.as_str()).unwrap_or("");

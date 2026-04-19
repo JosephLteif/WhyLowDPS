@@ -579,7 +579,8 @@ fn install_from_archive(
     }
 
     let install_res = (|| -> Result<(), String> {
-        std::fs::create_dir_all(install_dir).map_err(|e| format!("Failed to create install dir: {e}"))?;
+        std::fs::create_dir_all(install_dir)
+            .map_err(|e| format!("Failed to create install dir: {e}"))?;
         copy_files_with_progress(&source_dir, install_dir, &files_to_copy, updater)?;
 
         let expected_bin = install_dir.join(binary_filename());

@@ -1030,12 +1030,12 @@ async fn perform_sync(
                     .and_then(|tail| tail.split('?').next())
                     .and_then(|id_str| id_str.parse::<i64>().ok());
                 let dungeon_id = id.or(href_id);
-                
+
                 {
                     let mut p = state.progress.lock().await;
                     *p = format!("Dungeons:{}:{}:{}", i + 1, dungeon_count, name);
                 }
-                
+
                 // Try to fetch details for this dungeon from Blizzard API
                 if let Some(dungeon_id) = dungeon_id {
                     let dungeon_url = if let Some(h) = href {
@@ -1052,8 +1052,14 @@ async fn perform_sync(
                             dungeon_id
                         )
                     };
-                    
-                    if let Ok(res) = blizzard.client.get(&dungeon_url).bearer_auth(&token).send().await {
+
+                    if let Ok(res) = blizzard
+                        .client
+                        .get(&dungeon_url)
+                        .bearer_auth(&token)
+                        .send()
+                        .await
+                    {
                         let json_result = res.json::<Value>().await.ok();
                         if let Some(detail_data) = json_result {
                             let description = detail_data
@@ -1095,9 +1101,8 @@ async fn perform_sync(
                                 .get("challenge_mode")
                                 .and_then(|cm| cm.get("id"))
                                 .and_then(|v| v.as_i64());
-                            let minimum_level = detail_data
-                                .get("minimum_level")
-                                .and_then(|v| v.as_i64());
+                            let minimum_level =
+                                detail_data.get("minimum_level").and_then(|v| v.as_i64());
                             let keystone_timer_ms = detail_data
                                 .get("keystone_timer_ms")
                                 .and_then(|v| v.as_i64())
@@ -1113,8 +1118,7 @@ async fn perform_sync(
                                 .map(|arr| {
                                     arr.iter()
                                         .filter_map(|enc| {
-                                            enc.get("name")
-                                                .and_then(|n| localized_str(Some(n)))
+                                            enc.get("name").and_then(|n| localized_str(Some(n)))
                                         })
                                         .collect()
                                 })
@@ -1126,7 +1130,7 @@ async fn perform_sync(
                                 .map(|s| s.to_string());
 
                             let mut detail = json!({"id": dungeon_id, "name": name});
-                            
+
                             if let Some(desc) = description {
                                 detail["description"] = json!(desc);
                             }
@@ -1167,12 +1171,17 @@ async fn perform_sync(
                             if let Some(href) = blizzard_href {
                                 detail["blizzard_href"] = json!(href);
                             }
-                            
+
                             // Try to get image from media assets
-                            if let Some(media) = detail_data.get("media").and_then(|m| m.as_object()) {
-                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array()) {
+                            if let Some(media) =
+                                detail_data.get("media").and_then(|m| m.as_object())
+                            {
+                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array())
+                                {
                                     if let Some(first_asset) = assets.first() {
-                                        if let Some(url) = first_asset.get("value").and_then(|v| v.as_str()) {
+                                        if let Some(url) =
+                                            first_asset.get("value").and_then(|v| v.as_str())
+                                        {
                                             detail["image_url"] = json!(url);
                                         }
                                     }
@@ -1181,14 +1190,14 @@ async fn perform_sync(
 
                             // Keep full raw payload so the UI can render all available Blizzard fields.
                             detail["blizzard_api_data"] = detail_data;
-                            
+
                             dungeon_details.push(detail);
                         }
                     }
-                    
+
                     rotation_dungeons.push(dungeon_id);
                 }
-                
+
                 tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
             }
         }
@@ -1367,7 +1376,13 @@ async fn perform_dungeon_sync(
                         )
                     };
 
-                    if let Ok(res) = blizzard.client.get(&dungeon_url).bearer_auth(&token).send().await {
+                    if let Ok(res) = blizzard
+                        .client
+                        .get(&dungeon_url)
+                        .bearer_auth(&token)
+                        .send()
+                        .await
+                    {
                         let json_result = res.json::<Value>().await.ok();
                         if let Some(detail_data) = json_result {
                             let description = detail_data
@@ -1409,9 +1424,8 @@ async fn perform_dungeon_sync(
                                 .get("challenge_mode")
                                 .and_then(|cm| cm.get("id"))
                                 .and_then(|v| v.as_i64());
-                            let minimum_level = detail_data
-                                .get("minimum_level")
-                                .and_then(|v| v.as_i64());
+                            let minimum_level =
+                                detail_data.get("minimum_level").and_then(|v| v.as_i64());
                             let keystone_timer_ms = detail_data
                                 .get("keystone_timer_ms")
                                 .and_then(|v| v.as_i64())
@@ -1427,8 +1441,7 @@ async fn perform_dungeon_sync(
                                 .map(|arr| {
                                     arr.iter()
                                         .filter_map(|enc| {
-                                            enc.get("name")
-                                                .and_then(|n| localized_str(Some(n)))
+                                            enc.get("name").and_then(|n| localized_str(Some(n)))
                                         })
                                         .collect()
                                 })
@@ -1482,10 +1495,15 @@ async fn perform_dungeon_sync(
                                 detail["blizzard_href"] = json!(href);
                             }
 
-                            if let Some(media) = detail_data.get("media").and_then(|m| m.as_object()) {
-                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array()) {
+                            if let Some(media) =
+                                detail_data.get("media").and_then(|m| m.as_object())
+                            {
+                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array())
+                                {
                                     if let Some(first_asset) = assets.first() {
-                                        if let Some(url) = first_asset.get("value").and_then(|v| v.as_str()) {
+                                        if let Some(url) =
+                                            first_asset.get("value").and_then(|v| v.as_str())
+                                        {
                                             detail["image_url"] = json!(url);
                                         }
                                     }

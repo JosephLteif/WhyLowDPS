@@ -17,7 +17,10 @@ export default function ComboPill({
 }: ComboPillProps) {
   const hasItems = itemCount > 0;
   const isActive = activeBy === 'items' ? hasItems : comboCount > 0;
-  const isOverLimit = Number.isFinite(maxCombinations) && (maxCombinations as number) > 0 && comboCount > (maxCombinations as number);
+  const isOverLimit =
+    Number.isFinite(maxCombinations) &&
+    (maxCombinations as number) > 0 &&
+    comboCount > (maxCombinations as number);
   const comboLabel = `${comboCount.toLocaleString()} combo${comboCount !== 1 ? 's' : ''}`;
 
   const comboColorClass = isOverLimit
@@ -33,10 +36,15 @@ export default function ComboPill({
       ? 'rounded-lg px-3.5 py-1.5 font-mono text-sm font-semibold'
       : 'rounded-md px-3 py-1 font-mono text-xs font-medium';
 
-  const glowClass = glowWhenActive && isActive ? 'ring-1 ring-emerald-400/40 shadow-[0_0_18px_rgba(16,185,129,0.28)]' : '';
+  const glowClass =
+    glowWhenActive && isActive
+      ? 'ring-1 ring-emerald-400/40 shadow-[0_0_18px_rgba(16,185,129,0.28)]'
+      : '';
 
   return (
-    <span className={`inline-flex items-center gap-1.5 shadow-inner ${comboColorClass} ${sizeClass} ${glowClass}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 shadow-inner ${comboColorClass} ${sizeClass} ${glowClass}`}
+    >
       <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
       {comboLabel}
     </span>

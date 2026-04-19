@@ -169,10 +169,9 @@ export default function TrinketTierHeatmap({
     labelFrequency.set(pair.leftItem.label, (labelFrequency.get(pair.leftItem.label) || 0) + 1);
     labelFrequency.set(pair.rightItem.label, (labelFrequency.get(pair.rightItem.label) || 0) + 1);
   }
-  const [anchorLabel, anchorCount] = [...labelFrequency.entries()].sort((a, b) => b[1] - a[1])[0] || [
-    '',
-    0,
-  ];
+  const [anchorLabel, anchorCount] = [...labelFrequency.entries()].sort(
+    (a, b) => b[1] - a[1],
+  )[0] || ['', 0];
   const shouldUseAnchoredCompactView =
     trinketAxes.length >= 3 &&
     missingTrinketPairs > 0 &&
@@ -180,7 +179,9 @@ export default function TrinketTierHeatmap({
 
   const anchoredRows: AnchoredComparisonRow[] = shouldUseAnchoredCompactView
     ? rankedTrinketPairs
-        .filter((pair) => pair.leftItem.label === anchorLabel || pair.rightItem.label === anchorLabel)
+      .filter(
+        (pair) => pair.leftItem.label === anchorLabel || pair.rightItem.label === anchorLabel,
+      )
         .map((pair) => {
           const item = pair.leftItem.label === anchorLabel ? pair.rightItem : pair.leftItem;
           return {
@@ -199,7 +200,9 @@ export default function TrinketTierHeatmap({
             (pair) => pair.leftItem.label === anchorLabel || pair.rightItem.label === anchorLabel
           );
           if (!firstPair) return null;
-          return firstPair.leftItem.label === anchorLabel ? firstPair.leftItem : firstPair.rightItem;
+        return firstPair.leftItem.label === anchorLabel
+          ? firstPair.leftItem
+          : firstPair.rightItem;
         })()
       : null;
 
@@ -222,7 +225,10 @@ export default function TrinketTierHeatmap({
     anchorItem && shouldUseAnchoredCompactView
       ? [
           { item_id: anchorItem.itemId, bonus_ids: anchorItem.bonusIds },
-          ...anchoredRows.map((row) => ({ item_id: row.item.itemId, bonus_ids: row.item.bonusIds })),
+        ...anchoredRows.map((row) => ({
+          item_id: row.item.itemId,
+          bonus_ids: row.item.bonusIds,
+        })),
         ]
       : [];
   const baselineItemQueries = baselineTrinkets.map((item) => ({
@@ -317,12 +323,18 @@ export default function TrinketTierHeatmap({
                       const info = topPairItemInfo[item.itemId];
                       const whData = item.itemId
                         ? `item=${item.itemId}${(() => {
-                            const extra = getWowheadData(item.bonusIds, item.ilevel || info?.ilevel || 0);
+                          const extra = getWowheadData(
+                            item.bonusIds,
+                            item.ilevel || info?.ilevel || 0,
+                          );
                             return extra ? `&${extra}` : '';
                           })()}`
                         : undefined;
                       return (
-                        <span key={`${item.itemId}-${idx}`} className="inline-flex items-center gap-2">
+                        <span
+                          key={`${item.itemId}-${idx}`}
+                          className="inline-flex items-center gap-2"
+                        >
                           <a
                             href={item.itemId > 0 ? getWowheadUrl(item.itemId) : '#'}
                             target="_blank"
@@ -352,28 +364,28 @@ export default function TrinketTierHeatmap({
                   <div key={`top-col-${colIdx}`} className="space-y-2">
                     {column.map((pair, rowIdx) => {
                       const idx = colIdx === 0 ? rowIdx : topPairsSplitIndex + rowIdx;
-                  const leftInfo = topPairItemInfo[pair.leftItem.itemId];
-                  const rightInfo = topPairItemInfo[pair.rightItem.itemId];
-                  const leftIcon = getIconUrl(leftInfo?.icon || 'inv_misc_questionmark');
-                  const rightIcon = getIconUrl(rightInfo?.icon || 'inv_misc_questionmark');
-                  const leftWhData = pair.leftItem.itemId
-                    ? `item=${pair.leftItem.itemId}${(() => {
-                        const extra = getWowheadData(
-                          pair.leftItem.bonusIds,
-                          pair.leftItem.ilevel || leftInfo?.ilevel || 0
-                        );
-                        return extra ? `&${extra}` : '';
-                      })()}`
-                    : undefined;
-                  const rightWhData = pair.rightItem.itemId
-                    ? `item=${pair.rightItem.itemId}${(() => {
-                        const extra = getWowheadData(
-                          pair.rightItem.bonusIds,
-                          pair.rightItem.ilevel || rightInfo?.ilevel || 0
-                        );
-                        return extra ? `&${extra}` : '';
-                      })()}`
-                    : undefined;
+                      const leftInfo = topPairItemInfo[pair.leftItem.itemId];
+                      const rightInfo = topPairItemInfo[pair.rightItem.itemId];
+                      const leftIcon = getIconUrl(leftInfo?.icon || 'inv_misc_questionmark');
+                      const rightIcon = getIconUrl(rightInfo?.icon || 'inv_misc_questionmark');
+                      const leftWhData = pair.leftItem.itemId
+                        ? `item=${pair.leftItem.itemId}${(() => {
+                          const extra = getWowheadData(
+                            pair.leftItem.bonusIds,
+                            pair.leftItem.ilevel || leftInfo?.ilevel || 0,
+                          );
+                          return extra ? `&${extra}` : '';
+                        })()}`
+                        : undefined;
+                      const rightWhData = pair.rightItem.itemId
+                        ? `item=${pair.rightItem.itemId}${(() => {
+                          const extra = getWowheadData(
+                            pair.rightItem.bonusIds,
+                            pair.rightItem.ilevel || rightInfo?.ilevel || 0,
+                          );
+                          return extra ? `&${extra}` : '';
+                        })()}`
+                        : undefined;
 
                       return (
                         <div
@@ -383,7 +395,9 @@ export default function TrinketTierHeatmap({
                           <span className="flex items-center gap-2 text-xs text-zinc-300">
                             <span>{idx + 1}.</span>
                             <a
-                              href={pair.leftItem.itemId > 0 ? getWowheadUrl(pair.leftItem.itemId) : '#'}
+                              href={
+                                pair.leftItem.itemId > 0 ? getWowheadUrl(pair.leftItem.itemId) : '#'
+                              }
                               target="_blank"
                               rel="noreferrer"
                               data-wowhead={leftWhData}
@@ -399,7 +413,9 @@ export default function TrinketTierHeatmap({
                             <span>+</span>
                             <a
                               href={
-                                pair.rightItem.itemId > 0 ? getWowheadUrl(pair.rightItem.itemId) : '#'
+                                pair.rightItem.itemId > 0
+                                  ? getWowheadUrl(pair.rightItem.itemId)
+                                  : '#'
                               }
                               target="_blank"
                               rel="noreferrer"
@@ -461,7 +477,9 @@ export default function TrinketTierHeatmap({
                     className="mt-0.5 inline-flex max-w-full items-center gap-2 text-sm font-semibold text-zinc-50 hover:underline"
                   >
                     <img
-                      src={getIconUrl(topPairItemInfo[anchorItem.itemId]?.icon || 'inv_misc_questionmark')}
+                      src={getIconUrl(
+                        topPairItemInfo[anchorItem.itemId]?.icon || 'inv_misc_questionmark',
+                      )}
                       alt={anchorItem.name}
                       className="h-5 w-5 rounded-sm border border-white/10"
                     />
@@ -495,7 +513,9 @@ export default function TrinketTierHeatmap({
                         className="inline-flex min-w-0 items-center gap-2 text-xs text-zinc-200 hover:underline"
                       >
                         <img
-                          src={getIconUrl(topPairItemInfo[row.item.itemId]?.icon || 'inv_misc_questionmark')}
+                          src={getIconUrl(
+                            topPairItemInfo[row.item.itemId]?.icon || 'inv_misc_questionmark',
+                          )}
                           alt={row.item.name}
                           className="h-4 w-4 rounded-sm border border-white/10"
                         />
@@ -570,7 +590,9 @@ export default function TrinketTierHeatmap({
                     >
                       <div className="inline-flex min-w-0 items-center gap-2 text-xs text-zinc-200">
                         <a
-                          href={pair.leftItem.itemId > 0 ? getWowheadUrl(pair.leftItem.itemId) : '#'}
+                          href={
+                            pair.leftItem.itemId > 0 ? getWowheadUrl(pair.leftItem.itemId) : '#'
+                          }
                           target="_blank"
                           rel="noreferrer"
                           data-wowhead={leftWhData}
@@ -634,13 +656,13 @@ export default function TrinketTierHeatmap({
 
       {tierResults.length > 0 && (
         <div className="card p-5">
-        <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">
-          Tier Slot Impact Matrix
-        </h4>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-          <div className="overflow-auto">
-            <table className="min-w-[560px] border-collapse text-xs">
-              <thead>
+          <h4 className="mb-3 text-xs font-medium uppercase tracking-widest text-muted">
+            Tier Slot Impact Matrix
+          </h4>
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="overflow-auto">
+              <table className="min-w-[560px] border-collapse text-xs">
+                <thead>
                 <tr>
                   <th className="border border-border bg-surface-2 px-3 py-2 text-left text-zinc-300">
                     Tier Pieces
@@ -654,8 +676,8 @@ export default function TrinketTierHeatmap({
                     </th>
                   ))}
                 </tr>
-              </thead>
-              <tbody>
+                </thead>
+                <tbody>
                 {tierPieceCounts.map((count) => {
                   const row = tierRows.get(count) || {};
                   return (
@@ -681,33 +703,33 @@ export default function TrinketTierHeatmap({
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+                </tbody>
+              </table>
+            </div>
 
-          <div className="rounded-md border border-border bg-surface-2 p-3">
-            <h5 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
-              Tier Priority
-            </h5>
-            {tierSlotPriority.length === 0 ? (
-              <p className="text-xs text-zinc-500">Not enough tier data yet.</p>
-            ) : (
-              <ol className="space-y-1.5 text-xs text-zinc-200">
-                {tierSlotPriority.map((entry, idx) => (
-                  <li key={entry.slot} className="flex items-center justify-between gap-2">
-                    <span className="text-zinc-300">
-                      {idx + 1}. {TIER_SLOT_LABELS[entry.slot]}
-                    </span>
-                    <span className={entry.score >= 0 ? 'text-emerald-300' : 'text-red-300'}>
-                      {entry.score >= 0 ? '+' : ''}
-                      {Math.round(entry.score).toLocaleString()}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
+            <div className="rounded-md border border-border bg-surface-2 p-3">
+              <h5 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-400">
+                Tier Priority
+              </h5>
+              {tierSlotPriority.length === 0 ? (
+                <p className="text-xs text-zinc-500">Not enough tier data yet.</p>
+              ) : (
+                <ol className="space-y-1.5 text-xs text-zinc-200">
+                  {tierSlotPriority.map((entry, idx) => (
+                    <li key={entry.slot} className="flex items-center justify-between gap-2">
+                      <span className="text-zinc-300">
+                        {idx + 1}. {TIER_SLOT_LABELS[entry.slot]}
+                      </span>
+                      <span className={entry.score >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                        {entry.score >= 0 ? '+' : ''}
+                        {Math.round(entry.score).toLocaleString()}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           </div>
-        </div>
         </div>
       )}
     </div>

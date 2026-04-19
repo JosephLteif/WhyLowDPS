@@ -41,7 +41,6 @@ function isTalentExportString(value: string, expectedSpecId?: number | null): bo
     if (header.bits.length <= header.offset) return false;
     if (header.specId <= 0) return false;
     return !(expectedSpecId && header.specId !== expectedSpecId);
-
   } catch {
     return false;
   }

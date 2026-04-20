@@ -15,12 +15,27 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setIsChecking(true);
-    checkCredentialsStatus().then((status) => {
-      console.log('[DataGuard] Credentials status:', status);
-      setIsGloballyConfigured(status.globally_configured);
-      setIsChecking(false);
-    });
+    checkCredentialsStatus()
+      .then((status) => {
+        if (cancelled) return;
+        console.log('[DataGuard] Credentials status:', status);
+        setIsGloballyConfigured(status.globally_configured);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('[DataGuard] Credentials status check failed:', err);
+        setIsGloballyConfigured(false);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setIsChecking(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [checkCredentialsStatus, user]);
 
   const checkStatus = useCallback(async () => {

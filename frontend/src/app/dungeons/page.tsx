@@ -65,28 +65,139 @@ function normalizeDungeonName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-function AffixCard({ affix }: { affix: DungeonAffix }) {
+function mergeWithPreviousDungeonData(
+  nextDungeons: DungeonInfo[],
+  previousDungeons?: DungeonInfo[],
+): DungeonInfo[] {
+  if (!previousDungeons || previousDungeons.length === 0) {
+    return nextDungeons;
+  }
+
+  const previousById = new Map<number, DungeonInfo>();
+  const previousByName = new Map<string, DungeonInfo>();
+  for (const dungeon of previousDungeons) {
+    previousById.set(dungeon.id, dungeon);
+    previousByName.set(normalizeDungeonName(dungeon.name), dungeon);
+  }
+
+  return nextDungeons.map((dungeon) => {
+    const previous =
+      previousById.get(dungeon.id) || previousByName.get(normalizeDungeonName(dungeon.name));
+    if (!previous) return dungeon;
+
+    const encounters =
+      dungeon.encounters && dungeon.encounters.length > 0
+        ? dungeon.encounters
+        : (previous.encounters ?? []);
+    const keystoneUpgrades =
+      dungeon.keystone_upgrades && dungeon.keystone_upgrades.length > 0
+        ? dungeon.keystone_upgrades
+        : (previous.keystone_upgrades ?? []);
+
+    return {
+      ...dungeon,
+      description: dungeon.description || previous.description,
+      zone: dungeon.zone || previous.zone,
+      slug: dungeon.slug || previous.slug,
+      short_name: dungeon.short_name || previous.short_name,
+      wowhead_id: dungeon.wowhead_id ?? previous.wowhead_id,
+      num_bosses:
+        dungeon.num_bosses ?? previous.num_bosses ?? (encounters.length > 0 ? encounters.length : null),
+      expansion: dungeon.expansion ?? previous.expansion,
+      expansion_name: dungeon.expansion_name || previous.expansion_name,
+      map_id: dungeon.map_id ?? previous.map_id,
+      challenge_mode_id: dungeon.challenge_mode_id ?? previous.challenge_mode_id,
+      minimum_level: dungeon.minimum_level ?? previous.minimum_level,
+      keystone_timer_ms: dungeon.keystone_timer_ms ?? previous.keystone_timer_ms,
+      keystone_upgrades: keystoneUpgrades,
+      encounters,
+      blizzard_href: dungeon.blizzard_href || previous.blizzard_href,
+      image_url: dungeon.image_url || previous.image_url,
+      linked_code: dungeon.linked_code || previous.linked_code,
+      blizzard_api_data: dungeon.blizzard_api_data ?? previous.blizzard_api_data,
+    };
+  });
+}
+
+function getCurrentMplusDungeonIds(instances: Instance[]): Set<number> {
+  const mplusBucket =
+    instances.find((instance) => instance.type === 'mplus-chest') ||
+    instances.find((instance) => instance.name.toLowerCase() === 'mythic+ dungeons');
+  if (!mplusBucket || !mplusBucket.encounters?.length) {
+    return new Set<number>();
+  }
+  return new Set<number>(mplusBucket.encounters.map((encounter) => encounter.id));
+}
+
+function getLocalInstanceImageUrl(instanceId?: number | null): string | null {
+  if (!instanceId || instanceId <= 0) return null;
+  return `${API_URL}/api/data/instance-images/instance-${instanceId}.jpg`;
+}
+
+function shouldPreferLocalInstanceImage(imageUrl?: string | null): boolean {
+  if (!imageUrl) return false;
+  return imageUrl.includes('/EncounterJournal/orig/ui-ej-background-');
+}
+
+function getEncounterJournalFallbackImage(instance?: Instance | null): string | null {
+  if (!instance) return null;
+  if (instance.image_background) {
+    return `https://www.raidbots.com/static/images/EncounterJournal/orig/${instance.image_background}.png`;
+  }
+  if (instance.image_button) {
+    return `https://www.raidbots.com/static/images/EncounterJournal/orig/${instance.image_button}.png`;
+  }
+  return null;
+}
+
+function normalizeAffixName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+type DisplayAffix = DungeonAffix & {
+  wowhead_url?: string | null;
+};
+
+function AffixCard({ affix, fallbackIconUrl }: { affix: DisplayAffix; fallbackIconUrl?: string }) {
+  const iconUrl = affix.icon || fallbackIconUrl || null;
+  const wowheadUrl =
+    affix.wowhead_url || (affix.spell_id ? `https://wowhead.com/spell=${affix.spell_id}` : null);
+  const iconNode = iconUrl ? (
+    <img src={iconUrl} alt="" className="h-10 w-10 rounded object-cover" loading="lazy" />
+  ) : (
+    <span className="text-xl font-bold text-gold">{affix.name[0]}</span>
+  );
+  const wrappedIconNode = wowheadUrl ? (
+    <a
+      href={wowheadUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex h-10 w-10 items-center justify-center"
+      aria-label={`Open ${affix.name} on Wowhead`}
+    >
+      {iconNode}
+    </a>
+  ) : (
+    iconNode
+  );
+
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+    <div className="flex items-center gap-3 rounded-lg border border-white/15 bg-zinc-900/75 p-4">
       {affix.spell_id ? (
         <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-zinc-800"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800"
           data-wowhead={`spell=${affix.spell_id}`}
         >
-          {affix.icon ? (
-            <img src={affix.icon} alt="" className="h-10 w-10 rounded object-cover" />
-          ) : (
-            <span className="text-xl font-bold text-gold">{affix.name[0]}</span>
-          )}
+          {wrappedIconNode}
         </div>
       ) : (
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-          <span className="text-xl font-bold text-gold">{affix.name[0]}</span>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800">
+          {wrappedIconNode}
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="truncate font-bold text-zinc-200">{affix.name}</p>
-        <p className="line-clamp-2 text-xs text-zinc-500">{affix.description}</p>
+        <p className="truncate text-lg font-bold leading-tight text-zinc-100">{affix.name}</p>
+        <p className="text-sm leading-6 text-zinc-300 break-words">{affix.description}</p>
       </div>
     </div>
   );
@@ -104,7 +215,12 @@ function InfoPill({ label, value }: { label: string; value?: string | number | n
 
 function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string }) {
   const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
-  const imageUrl = dungeon.image_url || placeholder?.icon;
+  const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
+  const preferredImageUrl =
+    shouldPreferLocalInstanceImage(dungeon.image_url) && localInstanceImage
+      ? localInstanceImage
+      : dungeon.image_url;
+  const imageUrl = preferredImageUrl || placeholder?.icon;
   const zone = dungeon.zone || placeholder?.zone;
   const timer = formatMs(dungeon.keystone_timer_ms);
   const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
@@ -113,24 +229,30 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
     : null;
 
   return (
-    <div className="group flex flex-col rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:border-gold/50 hover:bg-white/[0.05]">
-      <div className="mb-3 flex gap-3">
-        {imageUrl ? (
-          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-zinc-800">
-            <img src={imageUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-          </div>
-        ) : (
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-zinc-800">
-            <span className="text-2xl font-bold text-zinc-600">{dungeon.name[0]}</span>
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-bold text-zinc-200">{dungeon.name}</p>
-          {zone && <p className="truncate text-xs text-zinc-500">{zone}</p>}
-          {dungeon.description && (
-            <p className="mt-1 line-clamp-2 text-xs text-zinc-400">{dungeon.description}</p>
-          )}
+    <div className="group flex flex-col rounded-xl border border-white/15 bg-zinc-900/80 p-4 transition-all hover:border-gold/50 hover:bg-zinc-900">
+      {imageUrl ? (
+        <div className="relative mb-3 h-28 w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
+          <img
+            src={imageUrl}
+            alt=""
+            className="h-full w-full object-cover object-center"
+            loading="lazy"
+          />
         </div>
+      ) : (
+        <div className="mb-3 flex h-20 w-full items-center justify-center rounded-lg border border-white/10 bg-zinc-900">
+          <span className="text-3xl font-bold text-zinc-600">{dungeon.name[0]}</span>
+        </div>
+      )}
+
+      <div className="mb-3 min-w-0">
+        <p className="truncate text-xl font-bold leading-tight text-zinc-100 sm:text-2xl">
+          {dungeon.name}
+        </p>
+        {zone && <p className="truncate text-sm text-zinc-300">{zone}</p>}
+        {dungeon.description && (
+          <p className="mt-1 line-clamp-2 text-sm text-zinc-200">{dungeon.description}</p>
+        )}
       </div>
 
       <div className="mb-3 flex flex-wrap gap-1.5">
@@ -145,7 +267,7 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
       {dungeon.keystone_upgrades && dungeon.keystone_upgrades.length > 0 && (
         <div className="mb-2">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
             Keystone Upgrades
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -160,10 +282,10 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
       {dungeon.encounters && dungeon.encounters.length > 0 && (
         <div className="mb-2">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
             Encounters ({encounterCount})
           </p>
-          <ul className="space-y-1 text-xs text-zinc-300">
+          <ul className="space-y-1 text-sm text-zinc-100">
             {dungeon.encounters.map((encounter) => (
               <li key={encounter}>{encounter}</li>
             ))}
@@ -187,6 +309,8 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
 export default function DungeonsPage() {
   const [data, setData] = useState<DungeonSeasonData | null>(null);
+  const [raiderAffixIconByName, setRaiderAffixIconByName] = useState<Record<string, string>>({});
+  const [raiderCurrentAffixes, setRaiderCurrentAffixes] = useState<DisplayAffix[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -194,8 +318,85 @@ export default function DungeonsPage() {
   const backendError = (data as (DungeonSeasonData & { error?: string }) | null)?.error;
   const hasAnyBlizzardDetails =
     data?.rotation_dungeons?.some((d) => d.blizzard_href || d.blizzard_api_data) ?? false;
+  const displayedAffixes: DisplayAffix[] =
+    raiderCurrentAffixes.length > 0 ? raiderCurrentAffixes : (data?.current_affixes ?? []);
+  const affixSource = raiderCurrentAffixes.length > 0 ? 'Raider.IO (live)' : 'Backend cache';
 
   useWowheadTooltips([data?.current_affixes, data?.rotation_dungeons]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    type RaiderAffixResponse = {
+      title?: string;
+      affix_details?: Array<{
+        id?: number;
+        name?: string;
+        description?: string;
+        icon_url?: string;
+        wowhead_url?: string;
+      }>;
+    };
+
+    const loadRaiderAffixIcons = async () => {
+      try {
+        const urls = [
+          'https://raider.io/api/v1/mythic-plus/affixes?region=us&locale=en',
+          'https://raider.io/api/v1/mythic-plus/affixes?region=eu&locale=en',
+        ];
+
+        const responses = await Promise.all(
+          urls.map((url) =>
+            fetch(url)
+              .then((res) => (res.ok ? res.json() : null))
+              .catch(() => null),
+          ),
+        );
+
+        const iconMap: Record<string, string> = {};
+        let bestPayload: RaiderAffixResponse | null = null;
+        for (const payload of responses as (RaiderAffixResponse | null)[]) {
+          if (!bestPayload && payload?.affix_details && payload.affix_details.length > 0) {
+            bestPayload = payload;
+          }
+          for (const affix of payload?.affix_details ?? []) {
+            if (!affix.name || !affix.icon_url) continue;
+            const key = normalizeAffixName(affix.name);
+            if (!iconMap[key]) {
+              iconMap[key] = affix.icon_url;
+            }
+          }
+        }
+
+        if (!cancelled) {
+          setRaiderAffixIconByName(iconMap);
+          setRaiderCurrentAffixes(
+            (bestPayload?.affix_details ?? [])
+              .filter((affix): affix is NonNullable<typeof affix> & { name: string } => !!affix?.name)
+              .map((affix) => ({
+                id: affix.id ?? Math.abs(normalizeAffixName(affix.name).split('').reduce((a, c) => a + c.charCodeAt(0), 0)),
+                name: affix.name,
+                description: affix.description ?? '',
+                icon: affix.icon_url ?? null,
+                spell_id: null,
+                wowhead_url: affix.wowhead_url ?? null,
+              })),
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setRaiderAffixIconByName({});
+          setRaiderCurrentAffixes([]);
+        }
+      }
+    };
+
+    void loadRaiderAffixIcons();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,12 +419,22 @@ export default function DungeonsPage() {
           instancesById.set(inst.id, inst);
           instancesByName.set(normalizeDungeonName(inst.name), inst);
         }
+        const currentMplusIds = getCurrentMplusDungeonIds(instances);
 
         const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
           const matchedInstance =
             instancesById.get(dungeon.id) ||
             instancesByName.get(normalizeDungeonName(dungeon.name));
           if (!matchedInstance) return dungeon;
+          const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
+          const preferredDungeonImage =
+            shouldPreferLocalInstanceImage(dungeon.image_url) && localInstanceImage
+              ? localInstanceImage
+              : dungeon.image_url;
+          const preferredInstanceImage =
+            shouldPreferLocalInstanceImage(matchedInstance.image_url) && localInstanceImage
+              ? localInstanceImage
+              : matchedInstance.image_url;
 
           const encounterNames = (matchedInstance.encounters || [])
             .map((encounter) => encounter.name)
@@ -239,17 +450,27 @@ export default function DungeonsPage() {
           return {
             ...dungeon,
             zone: dungeon.zone || matchedInstance.zone || null,
-            image_url: dungeon.image_url || matchedInstance.image_url,
+            image_url:
+              preferredDungeonImage ||
+              preferredInstanceImage ||
+              getEncounterJournalFallbackImage(matchedInstance),
             encounters: mergedEncounterNames,
             num_bosses: mergedBossCount,
           };
         });
+        const filteredDungeons =
+          currentMplusIds.size > 0
+            ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+            : enrichedDungeons;
 
         if (!cancelled) {
-          setData({
+          setData((previous) => ({
             ...seasonData,
-            rotation_dungeons: enrichedDungeons,
-          });
+            rotation_dungeons: mergeWithPreviousDungeonData(
+              filteredDungeons,
+              previous?.rotation_dungeons,
+            ),
+          }));
         }
       } catch (err) {
         if (!cancelled) {
@@ -305,11 +526,21 @@ export default function DungeonsPage() {
         instancesById.set(inst.id, inst);
         instancesByName.set(normalizeDungeonName(inst.name), inst);
       }
+      const currentMplusIds = getCurrentMplusDungeonIds(instances);
 
       const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
         const matchedInstance =
           instancesById.get(dungeon.id) || instancesByName.get(normalizeDungeonName(dungeon.name));
         if (!matchedInstance) return dungeon;
+        const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
+        const preferredDungeonImage =
+          shouldPreferLocalInstanceImage(dungeon.image_url) && localInstanceImage
+            ? localInstanceImage
+            : dungeon.image_url;
+        const preferredInstanceImage =
+          shouldPreferLocalInstanceImage(matchedInstance.image_url) && localInstanceImage
+            ? localInstanceImage
+            : matchedInstance.image_url;
 
         const encounterNames = (matchedInstance.encounters || [])
           .map((encounter) => encounter.name)
@@ -323,16 +554,26 @@ export default function DungeonsPage() {
         return {
           ...dungeon,
           zone: dungeon.zone || matchedInstance.zone || null,
-          image_url: dungeon.image_url || matchedInstance.image_url,
+          image_url:
+            preferredDungeonImage ||
+            preferredInstanceImage ||
+            getEncounterJournalFallbackImage(matchedInstance),
           encounters: mergedEncounterNames,
           num_bosses: mergedBossCount,
         };
       });
+      const filteredDungeons =
+        currentMplusIds.size > 0
+          ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+          : enrichedDungeons;
 
-      setData({
+      setData((previous) => ({
         ...seasonData,
-        rotation_dungeons: enrichedDungeons,
-      });
+        rotation_dungeons: mergeWithPreviousDungeonData(
+          filteredDungeons,
+          previous?.rotation_dungeons,
+        ),
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh dungeon data.');
     } finally {
@@ -378,8 +619,10 @@ export default function DungeonsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-100">Mythic+ Dungeons</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white lg:text-4xl">
+            Mythic+ Dungeons
+          </h1>
+          <p className="mt-2 text-base font-semibold text-zinc-300">
             {data?.season_name || 'Current Season'}
           </p>
         </div>
@@ -397,38 +640,43 @@ export default function DungeonsPage() {
 
       {data && (
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Season</p>
-            <p className="mt-1 text-lg font-bold text-zinc-100">{data.season_name}</p>
+          <div className="rounded-xl border border-white/15 bg-zinc-900/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Season</p>
+            <p className="mt-2 text-2xl font-extrabold text-white">{data.season_name}</p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Dungeons</p>
-            <p className="mt-1 text-lg font-bold text-zinc-100">{data.rotation_dungeons.length}</p>
-            <p className="text-sm text-zinc-500">Currently in rotation</p>
+          <div className="rounded-xl border border-white/15 bg-zinc-900/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Dungeons</p>
+            <p className="mt-2 text-2xl font-extrabold text-white">{data.rotation_dungeons.length}</p>
+            <p className="text-sm font-medium text-zinc-300">Currently in rotation</p>
           </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Affixes</p>
-            <p className="mt-1 text-lg font-bold text-zinc-100">{data.current_affixes.length}</p>
-            <p className="text-sm text-zinc-500">Active this week</p>
+          <div className="rounded-xl border border-white/15 bg-zinc-900/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Affixes</p>
+            <p className="mt-2 text-2xl font-extrabold text-white">{data.current_affixes.length}</p>
+            <p className="text-sm font-medium text-zinc-300">Active this week</p>
           </div>
         </section>
       )}
 
-      {data?.current_affixes && data.current_affixes.length > 0 && (
+      {displayedAffixes.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
+          <h2 className="text-base font-bold uppercase tracking-wider text-zinc-300">
             This Week&apos;s Affixes
           </h2>
+          <p className="text-sm font-medium text-zinc-400">Source: {affixSource}</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {data.current_affixes.map((affix) => (
-              <AffixCard key={affix.id} affix={affix} />
+            {displayedAffixes.map((affix) => (
+              <AffixCard
+                key={affix.id}
+                affix={affix}
+                fallbackIconUrl={raiderAffixIconByName[normalizeAffixName(affix.name)]}
+              />
             ))}
           </div>
         </section>
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-500">
+        <h2 className="text-base font-bold uppercase tracking-wider text-zinc-300">
           Season Dungeons ({data?.rotation_dungeons?.length || 0})
         </h2>
         {hasDungeons && !!backendError && !hasAnyBlizzardDetails && (

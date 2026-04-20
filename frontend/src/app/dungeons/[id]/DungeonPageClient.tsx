@@ -5,6 +5,32 @@ import { API_URL, DungeonInfo, fetchJson, getDungeonData } from '../../lib/api';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { Instance } from '../../drop-finder/types';
 
+function isHttpUrl(value?: string | null): value is string {
+  return !!value && /^https?:\/\//i.test(value);
+}
+
+function isBlizzardHost(value: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase();
+    return host.includes('blizzard.com') || host.includes('battle.net');
+  } catch {
+    return false;
+  }
+}
+
+function buildImageProxyUrl(
+  imageType: 'instance' | 'encounter',
+  id: number | null | undefined,
+  source?: string | null,
+): string | null {
+  if (!id || id <= 0) return null;
+  const base = `${API_URL}/api/data/images/${imageType}/${id}?v=bapi3`;
+  if (isHttpUrl(source) && isBlizzardHost(source)) {
+    return `${base}&source=${encodeURIComponent(source)}`;
+  }
+  return base;
+}
+
 export default function DungeonPageClient({ id }: { id: string }) {
   const [dungeon, setDungeon] = useState<DungeonInfo | null>(null);
   const [instanceDetails, setInstanceDetails] = useState<Instance | null>(null);
@@ -68,11 +94,13 @@ export default function DungeonPageClient({ id }: { id: string }) {
     );
   }
 
+  const dungeonImageSrc = buildImageProxyUrl('instance', dungeon.id, dungeon.image_url);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        {dungeon.image_url ? (
-          <img src={dungeon.image_url} alt="" className="h-20 w-20 rounded-xl object-cover" />
+        {dungeonImageSrc ? (
+          <img src={dungeonImageSrc} alt="" className="h-20 w-20 rounded-xl object-cover" />
         ) : (
           <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-zinc-800">
             <span className="text-3xl font-bold text-zinc-600">{dungeon.name[0]}</span>
@@ -94,27 +122,30 @@ export default function DungeonPageClient({ id }: { id: string }) {
         <div className="space-y-3">
           <h2 className="text-xl font-bold text-zinc-200">Encounters</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {instanceDetails.encounters.map((encounter) => (
-              <div
-                key={encounter.id}
-                className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-4"
-              >
-                {encounter.image_url ? (
-                  <img
-                    src={encounter.image_url}
-                    alt=""
-                    className="h-12 w-12 rounded object-cover"
-                  />
-                ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded bg-zinc-800">
-                    <span className="text-xl font-bold text-gold">?</span>
+            {instanceDetails.encounters.map((encounter) => {
+              const encounterImageSrc = buildImageProxyUrl(
+                'encounter',
+                encounter.id,
+                encounter.image_url,
+              );
+              return (
+                <div
+                  key={encounter.id}
+                  className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-4"
+                >
+                  {encounterImageSrc ? (
+                    <img src={encounterImageSrc} alt="" className="h-12 w-12 rounded object-cover" />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded bg-zinc-800">
+                      <span className="text-xl font-bold text-gold">?</span>
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-bold text-zinc-200">{encounter.name}</p>
                   </div>
-                )}
-                <div>
-                  <p className="font-bold text-zinc-200">{encounter.name}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

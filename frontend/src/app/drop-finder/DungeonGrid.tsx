@@ -10,45 +10,9 @@ interface DungeonGridProps {
   allLabel: string;
 }
 
-function imgSrc(imageUrl: string): string {
-  return imageUrl.startsWith('/') ? `${API_URL}${imageUrl}` : imageUrl;
-}
-
-function isHttpUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value);
-}
-
-function isBlizzardHost(value: string): boolean {
-  try {
-    const host = new URL(value).hostname.toLowerCase();
-    return host.includes('blizzard.com') || host.includes('battle.net');
-  } catch {
-    return false;
-  }
-}
-
 function instanceImageSrc(inst: Instance): string | null {
-  const localProxyBase =
-    inst.id > 0 ? `${API_URL}/api/data/images/instance/${inst.id}?v=bapi2` : null;
-  const direct = inst.image_url?.trim();
-  if (!direct) return localProxyBase;
-
-  const resolvedDirect = imgSrc(direct);
-  // Prefer clean downloaded Blizzard JPGs over faded EJ background art.
-  if (resolvedDirect.includes('/EncounterJournal/orig/ui-ej-background-')) {
-    if (localProxyBase) {
-      return isHttpUrl(resolvedDirect) && isBlizzardHost(resolvedDirect)
-        ? `${localProxyBase}&source=${encodeURIComponent(resolvedDirect)}`
-        : localProxyBase;
-    }
-    return resolvedDirect;
-  }
-
-  if (localProxyBase && isHttpUrl(resolvedDirect) && isBlizzardHost(resolvedDirect)) {
-    return `${localProxyBase}&source=${encodeURIComponent(resolvedDirect)}`;
-  }
-
-  return localProxyBase || null;
+  if (inst.id <= 0) return null;
+  return `${API_URL}/api/data/images/instance/${inst.id}?v=bapi3`;
 }
 
 function backgroundStyleFor(src: string | null): Record<string, string> | null {

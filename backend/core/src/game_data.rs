@@ -23,33 +23,37 @@ pub fn get_instances() -> Vec<Value> {
         .into_iter()
         .map(|mut inst| {
             if let Some(obj) = inst.as_object_mut() {
-                let image_url = obj
-                    .get("image_url")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .or_else(|| {
-                        obj.get("image_background")
-                            .and_then(|v| v.as_str())
-                            .map(|slug| {
-                                format!(
-                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
-                                    slug
-                                )
-                            })
-                    })
-                    .or_else(|| {
-                        obj.get("image_button")
-                            .and_then(|v| v.as_str())
-                            .map(|slug| {
-                                format!(
-                                    "https://www.raidbots.com/static/images/EncounterJournal/orig/{}.png",
-                                    slug
-                                )
-                            })
-                    });
+                let instance_id = obj.get("id").and_then(|v| v.as_i64()).unwrap_or_default();
 
-                if let Some(url) = image_url {
-                    obj.insert("image_url".to_string(), Value::String(url));
+                // Route all instance images through the backend proxy so Blizzard API
+                // remains the primary source regardless of stale upstream image_url values.
+                if instance_id > 0 {
+                    obj.insert(
+                        "image_url".to_string(),
+                        Value::String(format!("/api/data/images/instance/{}", instance_id)),
+                    );
+                }
+
+                // Do the same for encounter images to avoid direct Raidbots URLs in clients.
+                if let Some(encounters) = obj.get_mut("encounters").and_then(|v| v.as_array_mut()) {
+                    for encounter in encounters {
+                        let Some(enc_obj) = encounter.as_object_mut() else {
+                            continue;
+                        };
+                        let encounter_id = enc_obj
+                            .get("id")
+                            .and_then(|v| v.as_i64())
+                            .unwrap_or_default();
+                        if encounter_id > 0 {
+                            enc_obj.insert(
+                                "image_url".to_string(),
+                                Value::String(format!(
+                                    "/api/data/images/encounter/{}",
+                                    encounter_id
+                                )),
+                            );
+                        }
+                    }
                 }
             }
             inst

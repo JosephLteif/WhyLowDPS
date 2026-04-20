@@ -13,6 +13,8 @@ use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
 
+const IMAGE_CACHE_VERSION: &str = "bapi3";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SyncStatus {
@@ -363,22 +365,22 @@ fn is_allowed_remote_image_url(url: &str) -> bool {
     let Some(host) = parsed.host_str() else {
         return false;
     };
-    host.contains("blizzard.com") || host.contains("battle.net")
+    let host = host.to_ascii_lowercase();
+    host == "blizzard.com"
+        || host.ends_with(".blizzard.com")
+        || host == "battle.net"
+        || host.ends_with(".battle.net")
+        || host == "worldofwarcraft.com"
+        || host.ends_with(".worldofwarcraft.com")
 }
 
 fn find_cached_image_file(images_dir: &Path, image_type: &str, id: u64) -> Option<PathBuf> {
     let candidates = [
-        format!("{}-{}-bapi2.jpg", image_type, id),
-        format!("{}-{}-bapi2.jpeg", image_type, id),
-        format!("{}-{}-bapi2.png", image_type, id),
-        format!("{}-{}-bapi2.webp", image_type, id),
-        format!("{}-{}-bapi2.gif", image_type, id),
-        // Legacy local cache names from compact-data.js / prior builds.
-        format!("{}-{}.jpg", image_type, id),
-        format!("{}-{}.jpeg", image_type, id),
-        format!("{}-{}.png", image_type, id),
-        format!("{}-{}.webp", image_type, id),
-        format!("{}-{}.gif", image_type, id),
+        format!("{}-{}-{}.jpg", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.jpeg", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.png", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.webp", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.gif", image_type, id, IMAGE_CACHE_VERSION),
     ];
 
     for candidate in candidates {
@@ -458,31 +460,11 @@ fn content_type_for_extension(ext: &str) -> &'static str {
     }
 }
 
-fn placeholder_svg(image_type: &str, id: u64) -> String {
-    format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#111827"/>
-      <stop offset="100%" stop-color="#1f2937"/>
-    </linearGradient>
-  </defs>
-  <rect width="640" height="360" fill="url(#g)"/>
-  <circle cx="320" cy="150" r="58" fill="#111827" stroke="#c8992a" stroke-width="6"/>
-  <text x="320" y="167" text-anchor="middle" font-size="54" font-family="Arial, sans-serif" fill="#c8992a">W</text>
-  <text x="320" y="270" text-anchor="middle" font-size="22" font-family="Arial, sans-serif" fill="#e5e7eb">{}</text>
-  <text x="320" y="300" text-anchor="middle" font-size="14" font-family="Arial, sans-serif" fill="#9ca3af">ID {}</text>
-</svg>"##,
-        image_type, id
-    )
-}
-
-fn placeholder_image_response(image_type: &str, id: u64, reason: &str) -> HttpResponse {
-    HttpResponse::Ok()
-        .append_header(("Cache-Control", "no-store, no-cache, must-revalidate"))
-        .append_header(("X-Image-Fallback", reason))
-        .content_type("image/svg+xml")
-        .body(placeholder_svg(image_type, id))
+fn image_error_response(status: actix_web::http::StatusCode, reason: &str) -> HttpResponse {
+    HttpResponse::build(status).json(json!({
+        "detail": format!("Image unavailable: {}", reason),
+        "reason": reason,
+    }))
 }
 
 fn journal_instance_candidates(instance_id: u64) -> Vec<u64> {
@@ -755,17 +737,30 @@ async fn media_url_from_media_href(
         format!("{media_href}?locale=en_US")
     };
 
+    println!("[image-api] GET Blizzard media href: {}", media_url);
     let media_res = client
         .get(&media_url)
         .bearer_auth(token)
         .send()
         .await
         .ok()?;
+    println!(
+        "[image-api] Blizzard media href status: {} ({})",
+        media_res.status(),
+        media_url
+    );
     if !media_res.status().is_success() {
         return None;
     }
     let media_json: Value = media_res.json().await.ok()?;
-    best_blizzard_asset_url(&media_json).filter(|url| is_allowed_remote_image_url(url))
+    let selected = best_blizzard_asset_url(&media_json)
+        .filter(|url| is_allowed_remote_image_url(url));
+    if let Some(url) = &selected {
+        println!("[image-api] Selected Blizzard media asset: {}", url);
+    } else {
+        println!("[image-api] No allowed Blizzard media asset in payload");
+    }
+    selected
 }
 
 async fn fetch_blizzard_mythic_dungeon_image_url(
@@ -790,12 +785,18 @@ async fn fetch_blizzard_mythic_dungeon_image_url_with_token(
         "https://us.api.blizzard.com/data/wow/mythic-keystone/dungeon/{}?namespace=dynamic-us&locale=en_US",
         dungeon_id
     );
+    println!("[image-api] GET Blizzard mythic dungeon: {}", dungeon_url);
     let dungeon_res = client
         .get(&dungeon_url)
         .bearer_auth(token)
         .send()
         .await
         .ok()?;
+    println!(
+        "[image-api] Blizzard mythic dungeon status: {} (dungeon_id={})",
+        dungeon_res.status(),
+        dungeon_id
+    );
     if !dungeon_res.status().is_success() {
         return None;
     }
@@ -837,6 +838,10 @@ async fn fetch_blizzard_mythic_dungeon_image_url_with_token(
     names.dedup();
     if let Some(journal_id) = journal_instance_id_from_names_with_token(client, token, &names).await
     {
+        println!(
+            "[image-api] Mapped dungeon_id={} to journal_instance_id={} via name candidates",
+            dungeon_id, journal_id
+        );
         let candidates = vec![journal_id];
         return fetch_blizzard_journal_instance_image_url_with_token(client, token, &candidates)
             .await;
@@ -860,11 +865,50 @@ async fn fetch_blizzard_journal_instance_image_url_with_token(
     token: &str,
     instance_candidates: &[u64],
 ) -> Option<String> {
+    for instance_id in instance_candidates {
+        let media_url = format!(
+            "https://us.api.blizzard.com/data/wow/media/journal-instance/{}?namespace=static-us&locale=en_US",
+            instance_id
+        );
+        println!(
+            "[image-api] GET Blizzard journal media: {} (candidate={})",
+            media_url, instance_id
+        );
+        let media_res = match client.get(&media_url).bearer_auth(token).send().await {
+            Ok(res) => res,
+            Err(_) => continue,
+        };
+        println!(
+            "[image-api] Blizzard journal media status: {} (candidate={})",
+            media_res.status(),
+            instance_id
+        );
+        if !media_res.status().is_success() {
+            continue;
+        }
+        let media_json: Value = match media_res.json().await {
+            Ok(json) => json,
+            Err(_) => continue,
+        };
+        if let Some(url) = best_blizzard_asset_url(&media_json)
+            .filter(|url| is_allowed_remote_image_url(url))
+        {
+            println!(
+                "[image-api] Selected journal media asset for candidate {}: {}",
+                instance_id, url
+            );
+            return Some(url);
+        }
+    }
 
     for instance_id in instance_candidates {
         let instance_url = format!(
             "https://us.api.blizzard.com/data/wow/journal-instance/{}?namespace=static-us&locale=en_US",
             instance_id
+        );
+        println!(
+            "[image-api] GET Blizzard journal instance: {} (candidate={})",
+            instance_url, instance_id
         );
         let instance_res = match client
             .get(&instance_url)
@@ -875,6 +919,11 @@ async fn fetch_blizzard_journal_instance_image_url_with_token(
             Ok(res) => res,
             Err(_) => continue,
         };
+        println!(
+            "[image-api] Blizzard journal instance status: {} (candidate={})",
+            instance_res.status(),
+            instance_id
+        );
         if !instance_res.status().is_success() {
             continue;
         }
@@ -981,6 +1030,12 @@ pub async fn get_data_image(
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
     let (image_type, id_raw) = path.into_inner();
+    println!(
+        "[image-api] Incoming request type={} id_raw={} query_source={:?}",
+        image_type,
+        id_raw,
+        query.source
+    );
     if image_type != "instance" && image_type != "encounter" {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "Unsupported image type. Use 'instance' or 'encounter'."}));
@@ -998,6 +1053,12 @@ pub async fn get_data_image(
     std::fs::create_dir_all(&images_dir).ok();
 
     if let Some(cached_path) = find_cached_image_file(&images_dir, &image_type, id) {
+        println!(
+            "[image-api] Cache hit type={} id={} path={}",
+            image_type,
+            id,
+            cached_path.display()
+        );
         match std::fs::read(&cached_path) {
             Ok(bytes) => {
                 let ext = cached_path
@@ -1017,6 +1078,7 @@ pub async fn get_data_image(
             }
         }
     }
+    println!("[image-api] Cache miss type={} id={}", image_type, id);
 
     let hinted_source = query
         .source
@@ -1027,6 +1089,9 @@ pub async fn get_data_image(
         .clone()
         .filter(|url| is_allowed_remote_image_url(url));
     let mut source_url = hinted_allowed.clone();
+    if let Some(url) = &hinted_allowed {
+        println!("[image-api] Using hinted allowed source URL: {}", url);
+    }
 
     if source_url.is_none() && image_type == "instance" {
         let candidate_ids = journal_instance_candidates(id);
@@ -1072,35 +1137,79 @@ pub async fn get_data_image(
     }
     if source_url.is_none() {
         source_url = find_runtime_image_url(&image_type, id).filter(|url| is_allowed_remote_image_url(url));
+        if let Some(url) = &source_url {
+            println!("[image-api] Using runtime source URL: {}", url);
+        }
     }
 
     let Some(source_url) = source_url else {
-        return placeholder_image_response(&image_type, id, "no_source");
+        println!("[image-api] No source URL resolved type={} id={}", image_type, id);
+        return image_error_response(actix_web::http::StatusCode::NOT_FOUND, "no_source");
     };
     if !is_allowed_remote_image_url(&source_url) {
-        return placeholder_image_response(&image_type, id, "unsupported_host");
+        println!(
+            "[image-api] Rejected source host type={} id={} url={}",
+            image_type, id, source_url
+        );
+        return image_error_response(
+            actix_web::http::StatusCode::BAD_REQUEST,
+            "unsupported_host",
+        );
     }
 
+    println!(
+        "[image-api] Fetching final image type={} id={} url={}",
+        image_type, id, source_url
+    );
     let response = match blizzard.client.get(&source_url).send().await {
         Ok(res) => res,
         Err(err) => {
             let _ = err;
-            return placeholder_image_response(&image_type, id, "fetch_error");
+            println!(
+                "[image-api] Final image fetch error type={} id={} url={}",
+                image_type, id, source_url
+            );
+            return image_error_response(
+                actix_web::http::StatusCode::BAD_GATEWAY,
+                "fetch_error",
+            );
         }
     };
+    println!(
+        "[image-api] Final image status type={} id={} status={} url={}",
+        image_type,
+        id,
+        response.status(),
+        source_url
+    );
     if !response.status().is_success() {
-        return placeholder_image_response(&image_type, id, "remote_status");
+        return image_error_response(
+            actix_web::http::StatusCode::BAD_GATEWAY,
+            "remote_status",
+        );
     }
     let bytes = match response.bytes().await {
         Ok(bytes) => bytes,
         Err(err) => {
             let _ = err;
-            return placeholder_image_response(&image_type, id, "read_error");
+            return image_error_response(
+                actix_web::http::StatusCode::BAD_GATEWAY,
+                "read_error",
+            );
         }
     };
+    println!(
+        "[image-api] Final image bytes type={} id={} size={}",
+        image_type,
+        id,
+        bytes.len()
+    );
 
     let ext = infer_image_extension(&source_url);
-    let target = images_dir.join(format!("{}-{}-bapi2.{}", image_type, id, ext));
+    let target = images_dir.join(format!(
+        "{}-{}-{}.{}",
+        image_type, id, IMAGE_CACHE_VERSION, ext
+    ));
     if std::fs::write(&target, &bytes).is_err() {
         // Best-effort cache write; still return downloaded bytes.
     }
@@ -1764,20 +1873,39 @@ async fn perform_sync(
                                 detail["blizzard_href"] = json!(href);
                             }
 
-                            // Try to get image from media assets
-                            if let Some(media) =
-                                detail_data.get("media").and_then(|m| m.as_object())
-                            {
-                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array())
+                            let mut media_asset_url = media_url_from_entity_payload(&detail_data);
+                            if media_asset_url.is_none() {
+                                if let Some(media_href) = detail_data
+                                    .get("media")
+                                    .and_then(|m| m.get("key"))
+                                    .and_then(|k| k.get("href"))
+                                    .and_then(|h| h.as_str())
                                 {
-                                    if let Some(first_asset) = assets.first() {
-                                        if let Some(url) =
-                                            first_asset.get("value").and_then(|v| v.as_str())
-                                        {
-                                            detail["image_url"] = json!(url);
-                                        }
-                                    }
+                                    media_asset_url = media_url_from_media_href(
+                                        &blizzard.client,
+                                        &token,
+                                        media_href,
+                                    )
+                                    .await;
                                 }
+                            }
+                            if media_asset_url.is_none() {
+                                if let Some(journal_id) = detail_data
+                                    .get("journal_instance")
+                                    .and_then(|v| v.get("id"))
+                                    .and_then(|v| v.as_u64())
+                                {
+                                    media_asset_url =
+                                        fetch_blizzard_journal_instance_image_url_with_token(
+                                            &blizzard.client,
+                                            &token,
+                                            &[journal_id],
+                                        )
+                                        .await;
+                                }
+                            }
+                            if let Some(url) = media_asset_url {
+                                detail["image_url"] = json!(url);
                             }
 
                             // Keep full raw payload so the UI can render all available Blizzard fields.
@@ -2087,19 +2215,39 @@ async fn perform_dungeon_sync(
                                 detail["blizzard_href"] = json!(href);
                             }
 
-                            if let Some(media) =
-                                detail_data.get("media").and_then(|m| m.as_object())
-                            {
-                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array())
+                            let mut media_asset_url = media_url_from_entity_payload(&detail_data);
+                            if media_asset_url.is_none() {
+                                if let Some(media_href) = detail_data
+                                    .get("media")
+                                    .and_then(|m| m.get("key"))
+                                    .and_then(|k| k.get("href"))
+                                    .and_then(|h| h.as_str())
                                 {
-                                    if let Some(first_asset) = assets.first() {
-                                        if let Some(url) =
-                                            first_asset.get("value").and_then(|v| v.as_str())
-                                        {
-                                            detail["image_url"] = json!(url);
-                                        }
-                                    }
+                                    media_asset_url = media_url_from_media_href(
+                                        &blizzard.client,
+                                        &token,
+                                        media_href,
+                                    )
+                                    .await;
                                 }
+                            }
+                            if media_asset_url.is_none() {
+                                if let Some(journal_id) = detail_data
+                                    .get("journal_instance")
+                                    .and_then(|v| v.get("id"))
+                                    .and_then(|v| v.as_u64())
+                                {
+                                    media_asset_url =
+                                        fetch_blizzard_journal_instance_image_url_with_token(
+                                            &blizzard.client,
+                                            &token,
+                                            &[journal_id],
+                                        )
+                                        .await;
+                                }
+                            }
+                            if let Some(url) = media_asset_url {
+                                detail["image_url"] = json!(url);
                             }
 
                             detail["blizzard_api_data"] = detail_data;

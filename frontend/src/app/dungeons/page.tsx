@@ -65,6 +65,10 @@ function normalizeDungeonName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function normalizeImageUrl(url?: string | null): string | undefined {
+  return url ?? undefined;
+}
+
 function AffixCard({ affix }: { affix: DungeonAffix }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
@@ -239,7 +243,7 @@ export default function DungeonsPage() {
           return {
             ...dungeon,
             zone: dungeon.zone || matchedInstance.zone || null,
-            image_url: dungeon.image_url || matchedInstance.image_url,
+            image_url: normalizeImageUrl(dungeon.image_url || matchedInstance.image_url),
             encounters: mergedEncounterNames,
             num_bosses: mergedBossCount,
           };
@@ -323,7 +327,7 @@ export default function DungeonsPage() {
         return {
           ...dungeon,
           zone: dungeon.zone || matchedInstance.zone || null,
-          image_url: dungeon.image_url || matchedInstance.image_url,
+          image_url: normalizeImageUrl(dungeon.image_url || matchedInstance.image_url),
           encounters: mergedEncounterNames,
           num_bosses: mergedBossCount,
         };

@@ -10,23 +10,9 @@ interface DungeonGridProps {
   allLabel: string;
 }
 
-function imgSrc(imageUrl: string): string {
-  return imageUrl.startsWith('/') ? `${API_URL}${imageUrl}` : imageUrl;
-}
-
 function instanceImageSrc(inst: Instance): string | null {
-  const localBlizzardImage =
-    inst.id > 0 ? `${API_URL}/api/data/instance-images/instance-${inst.id}.jpg` : null;
-  const direct = inst.image_url?.trim();
-  if (!direct) return localBlizzardImage;
-
-  const resolvedDirect = imgSrc(direct);
-  // Prefer clean downloaded Blizzard JPGs over faded EJ background art.
-  if (resolvedDirect.includes('/EncounterJournal/orig/ui-ej-background-')) {
-    return localBlizzardImage || resolvedDirect;
-  }
-
-  return resolvedDirect;
+  if (inst.id <= 0) return null;
+  return `${API_URL}/api/data/images/instance/${inst.id}?v=bapi3`;
 }
 
 function backgroundStyleFor(src: string | null): Record<string, string> | null {

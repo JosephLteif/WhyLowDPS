@@ -6,7 +6,7 @@
  *
  * Usage:  node compact-data.js <input-dir> <output-dir>
  *
- * ── MANIFEST ──────────────────────────────────────────────────────────
+ * â”€â”€ MANIFEST â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
  * When game_data.rs starts using new files or fields, update this manifest.
  * Everything not listed here is stripped from the build output.
  */
@@ -21,56 +21,49 @@ const http = require("http");
 //   null = copy the whole file as-is (minified)
 //   [...] = keep only these top-level fields per array element / object value
 // ---------------------------------------------------------------------------
-const MANIFEST = {
-  // Items — only keep fields accessed by game_data.rs.
-  // Also filter out items without sources (not droppable = not needed).
-  "equippable-items-full.json": {
-    // Handled specially — see compactItems()
-    custom: true,
-  },
+const DATA_MANIFEST_PATH = path.resolve(__dirname, "..", "resources", "data-manifest.json");
 
-  // Enchantments — keep fields used for enchant/gem lookups
-  "enchantments.json": {
-    fields: [
-      "id", "displayName", "itemId", "itemName", "itemIcon",
-      "spellIcon", "quality", "expansion", "equipRequirements", "slot",
-    ],
-  },
+function loadDataManifest() {
+  if (!fs.existsSync(DATA_MANIFEST_PATH)) {
+    throw new Error(`Data manifest not found: ${DATA_MANIFEST_PATH}`);
+  }
+  const parsed = readJson(DATA_MANIFEST_PATH);
+  if (!parsed || !Array.isArray(parsed.files)) {
+    throw new Error(`Invalid data manifest shape at ${DATA_MANIFEST_PATH}`);
+  }
+  return parsed.files;
+}
 
-  // Bonuses — object keyed by bonus ID. Keep fields used for resolution.
-  "bonuses.json": {
-    fields: [
-      "id", "quality", "itemLevel", "tag", "socket", "upgrade",
-    ],
-  },
+function buildCompactManifest(manifestEntries) {
+  const compactManifest = {};
+  for (const entry of manifestEntries) {
+    if (!entry || typeof entry.local_path !== "string") continue;
+    const mode = entry.compact_mode;
+    if (!mode) continue;
 
-  // Upgrade track data — small file, keep as-is
-  "bonus-upgrade-sets.json": null,
+    if (mode === "copy") {
+      compactManifest[entry.local_path] = null;
+      continue;
+    }
+    if (mode === "fields") {
+      compactManifest[entry.local_path] = {
+        fields: Array.isArray(entry.compact_fields) ? entry.compact_fields : [],
+      };
+      continue;
+    }
+    if (mode === "custom_items") {
+      compactManifest[entry.local_path] = { custom: true };
+      continue;
+    }
+    if (mode === "custom_instances") {
+      compactManifest[entry.local_path] = { custom: true, handler: "instances" };
+      continue;
+    }
 
-  // Seasons — small file, keep as-is
-  "seasons.json": null,
-
-  // Instances — enriched with Blizzard CDN image URLs at compaction time
-  "instances.json": { custom: true, handler: "instances" },
-
-  // Season config — our own file, keep as-is
-  "season-config.json": null,
-
-  // Talent trees — keep as-is (keyed by specId)
-  "talents.json": null,
-
-  // Catalyst item conversions — keep as-is
-  "item-conversions.json": null,
-
-  // Item limit categories (e.g. max 2 embellished) — keep as-is
-  "item-limit-categories.json": null,
-
-  // Item squish era mapping — keep as-is
-  "item-squish-era.json": null,
-
-  // Item curves for ilevel conversion — keep as-is
-  "item-curves.json": null,
-};
+    console.warn(`  SKIP ${entry.local_path} (unknown compact_mode: ${mode})`);
+  }
+  return compactManifest;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -339,7 +332,11 @@ async function main() {
   let totalOut = 0;
 
   // Process only JSON files listed in the MANIFEST.
-  const manifestFiles = Object.keys(MANIFEST);
+  const compactManifest = buildCompactManifest(loadDataManifest());
+  const manifestFiles = Object.keys(compactManifest);
+  if (manifestFiles.length === 0) {
+    throw new Error("No compactable files found in data-manifest.json");
+  }
 
   for (const filename of manifestFiles) {
     const inputPath = path.join(inputDir, filename);
@@ -348,7 +345,7 @@ async function main() {
       continue;
     }
     const outputPath = path.join(outputDir, filename);
-    const config = MANIFEST[filename];
+    const config = compactManifest[filename];
 
     const inSize = fs.statSync(inputPath).size;
     process.stdout.write(`  Processing ${filename.padEnd(35)}... `);

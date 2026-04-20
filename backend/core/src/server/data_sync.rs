@@ -1,15 +1,19 @@
 use actix_web::{web, HttpResponse};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::server::auth_handlers::BlizzardAuthState;
+use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
+
+const IMAGE_CACHE_VERSION: &str = "bapi3";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -51,395 +55,112 @@ pub struct DataFilePreviewResponse {
     pub truncated: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Deserialize)]
+pub struct DataImageQuery {
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 enum DataFileSource {
     Raidbots,
-    Runtime,
+    Blizzard,
+    Local,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+enum DataFileEntryType {
+    #[default]
+    File,
     Directory,
-    LocalStatic,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DataManifest {
+    files: Vec<DataManifestEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DataManifestEntry {
+    key: String,
+    label: String,
+    section: String,
+    source: DataFileSource,
+    remote_path: Option<String>,
+    local_path: String,
+    required: bool,
+    #[serde(default)]
+    entry_type: DataFileEntryType,
+    bundled_path: Option<String>,
 }
 
 #[derive(Clone)]
 struct DataFileEntry {
-    key: &'static str,
-    label: &'static str,
-    section: &'static str,
-    relative_path: &'static str,
-    required: bool,
+    key: String,
+    label: String,
+    section: String,
     source: DataFileSource,
+    remote_path: Option<String>,
+    local_path: String,
+    required: bool,
+    entry_type: DataFileEntryType,
+    bundled_path: Option<String>,
 }
 
-fn data_file_catalog() -> [DataFileEntry; 46] {
-    [
-        DataFileEntry {
-            key: "metadata",
-            label: "Metadata",
-            section: "Metadata",
-            relative_path: "metadata.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "items",
-            label: "Equippable Items",
-            section: "Items",
-            relative_path: "equippable-items.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonuses",
-            label: "Bonuses",
-            section: "Bonus Data",
-            relative_path: "bonuses.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "equippable_items_full",
-            label: "Equippable Items (Full)",
-            section: "Items",
-            relative_path: "equippable-items-full.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_names",
-            label: "Item Names",
-            section: "Items",
-            relative_path: "item-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_affix_names",
-            label: "Bonus Affix Names",
-            section: "Bonus Data",
-            relative_path: "bonus-affix-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_corruption",
-            label: "Bonus Corruption",
-            section: "Bonus Data",
-            relative_path: "bonus-corruption.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_crafted_stats",
-            label: "Bonus Crafted Stats",
-            section: "Bonus Data",
-            relative_path: "bonus-crafted-stats.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_effects",
-            label: "Bonus Effects",
-            section: "Bonus Data",
-            relative_path: "bonus-effects.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_id_base_levels",
-            label: "Bonus ID Base Levels",
-            section: "Bonus Data",
-            relative_path: "bonus-id-base-levels.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_id_levels",
-            label: "Bonus ID Levels",
-            section: "Bonus Data",
-            relative_path: "bonus-id-levels.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_level_deltas",
-            label: "Bonus Level Deltas",
-            section: "Bonus Data",
-            relative_path: "bonus-level-deltas.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_sockets",
-            label: "Bonus Sockets",
-            section: "Bonus Data",
-            relative_path: "bonus-sockets.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_upgrade_sets",
-            label: "Bonus Upgrade Sets",
-            section: "Bonus Data",
-            relative_path: "bonus-upgrade-sets.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_curves",
-            label: "Item Curves",
-            section: "Curves",
-            relative_path: "item-curves.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_squish_era",
-            label: "Item Squish Era",
-            section: "Curves",
-            relative_path: "item-squish-era.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_level_bonus_lookup",
-            label: "Item Level Bonus Lookup",
-            section: "Bonus Data",
-            relative_path: "item-level-bonus-lookup.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_level_offset_bonuses",
-            label: "Item Level Offset Bonuses",
-            section: "Bonus Data",
-            relative_path: "item-level-offset-bonuses.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_limit_categories",
-            label: "Item Limit Categories",
-            section: "Item Data",
-            relative_path: "item-limit-categories.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_conversions",
-            label: "Item Conversions",
-            section: "Item Data",
-            relative_path: "item-conversions.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "crafting",
-            label: "Crafting",
-            section: "Item Data",
-            relative_path: "crafting.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "instances",
-            label: "Instances",
-            section: "Instances",
-            relative_path: "instances.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "instance_names",
-            label: "Instance Names",
-            section: "Instances",
-            relative_path: "instance-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "encounter_names",
-            label: "Encounter Names",
-            section: "Instances",
-            relative_path: "encounter-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "encounter_items",
-            label: "Encounter Items",
-            section: "Instances",
-            relative_path: "encounter-items.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "gems",
-            label: "Gems",
-            section: "Enchants & Gems",
-            relative_path: "gems.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "enchants",
-            label: "Enchantments",
-            section: "Enchants & Gems",
-            relative_path: "enchantments.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "season_config",
-            label: "Season Config",
-            section: "Static Config",
-            relative_path: "season-config.json",
-            required: true,
-            source: DataFileSource::LocalStatic,
-        },
-        DataFileEntry {
-            key: "talents",
-            label: "Talents",
-            section: "Talents",
-            relative_path: "talents.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_flasks",
-            label: "Consumables: Flasks",
-            section: "Consumables",
-            relative_path: "flasks.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_foods",
-            label: "Consumables: Foods",
-            section: "Consumables",
-            relative_path: "foods.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_potions",
-            label: "Consumables: Potions",
-            section: "Consumables",
-            relative_path: "potions.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_augments",
-            label: "Consumables: Augments",
-            section: "Consumables",
-            relative_path: "augments.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_temp_enchants",
-            label: "Consumables: Temp Enchants",
-            section: "Consumables",
-            relative_path: "temp-enchants.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "class_traits_json",
-            label: "Class Traits",
-            section: "Classes",
-            relative_path: "class-traits.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "currency_types",
-            label: "Currency Types",
-            section: "Item Data",
-            relative_path: "currency-types.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "legendary_abilities",
-            label: "Legendary Abilities",
-            section: "Static Config",
-            relative_path: "legendary-abilities.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "level_selector_sequences",
-            label: "Level Selector Sequences",
-            section: "Static Config",
-            relative_path: "level-selector-sequences.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "manifest_paths",
-            label: "Manifest Paths",
-            section: "Static Config",
-            relative_path: "manifest-paths.txt",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "manifest_paths_all",
-            label: "Manifest Paths (All)",
-            section: "Static Config",
-            relative_path: "manifest-paths-all.txt",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "icon_lookup",
-            label: "Icon Lookup",
-            section: "Static Config",
-            relative_path: "icon-lookup.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "icon_paths",
-            label: "Icon Paths",
-            section: "Static Config",
-            relative_path: "icon-paths.txt",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "spell_scaling_table",
-            label: "Spell Scaling Table",
-            section: "Static Config",
-            relative_path: "spell-scaling-table.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_sets",
-            label: "Item Sets",
-            section: "Item Data",
-            relative_path: "item-sets.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "runtime_blizzard",
-            label: "Runtime: Blizzard Rotation",
-            section: "Runtime",
-            relative_path: "blizzard-runtime-data.json",
-            required: false,
-            source: DataFileSource::Runtime,
-        },
-        DataFileEntry {
-            key: "instance_images_dir",
-            label: "Instance Images Directory",
-            section: "Runtime",
-            relative_path: "instance-images",
-            required: false,
-            source: DataFileSource::Directory,
-        },
-    ]
+impl From<DataManifestEntry> for DataFileEntry {
+    fn from(value: DataManifestEntry) -> Self {
+        Self {
+            key: value.key,
+            label: value.label,
+            section: value.section,
+            source: value.source,
+            remote_path: value.remote_path,
+            local_path: value.local_path,
+            required: value.required,
+            entry_type: value.entry_type,
+            bundled_path: value.bundled_path,
+        }
+    }
+}
+
+fn data_manifest_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("resources")
+        .join("data-manifest.json")
+}
+
+fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
+    let manifest_path = data_manifest_path();
+    let content = std::fs::read_to_string(&manifest_path).map_err(|err| {
+        format!(
+            "Failed to read data manifest at {}: {}",
+            manifest_path.display(),
+            err
+        )
+    })?;
+    let parsed: DataManifest = serde_json::from_str(&content).map_err(|err| {
+        format!(
+            "Failed to parse data manifest at {}: {}",
+            manifest_path.display(),
+            err
+        )
+    })?;
+    Ok(parsed.files.into_iter().map(DataFileEntry::from).collect())
+}
+
+fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
+    let runtime = root.join(&entry.local_path);
+    if runtime.exists() {
+        return runtime;
+    }
+
+    if let Some(bundled_path) = &entry.bundled_path {
+        return Path::new(env!("CARGO_MANIFEST_DIR")).join(bundled_path);
+    }
+
+    runtime
 }
 
 impl DataSyncState {
@@ -451,7 +172,112 @@ impl DataSyncState {
     }
 }
 
+fn get_background_credentials(
+    auth_state: &BlizzardAuthState,
+    store: &dyn JobStorage,
+) -> Option<(String, String)> {
+    if let (Some(id), Some(sec)) = (
+        store.get_user_config("system", "blizzard_client_id"),
+        store.get_user_config("system", "blizzard_client_secret"),
+    ) {
+        return Some((id, sec));
+    }
+
+    if let (Some(id), Some(sec)) = (&auth_state.client_id, &auth_state.client_secret) {
+        return Some((id.clone(), sec.clone()));
+    }
+
+    None
+}
+
+fn is_background_sync_due(data_dir: Option<&Path>, threshold_hours: i64) -> bool {
+    let Some(dir) = data_dir else {
+        return true;
+    };
+    let runtime_file = dir.join("blizzard-runtime-data.json");
+    let content = match std::fs::read_to_string(runtime_file) {
+        Ok(content) => content,
+        Err(_) => return true,
+    };
+    let parsed: Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return true,
+    };
+    let last_sync_str = match parsed.get("last_sync").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return true,
+    };
+    let last_sync = match chrono::DateTime::parse_from_rfc3339(last_sync_str) {
+        Ok(ts) => ts.with_timezone(&chrono::Utc),
+        Err(_) => return true,
+    };
+    chrono::Utc::now().signed_duration_since(last_sync).num_hours() >= threshold_hours
+}
+
+pub fn spawn_background_sync_loop(
+    state: Arc<DataSyncState>,
+    auth_state: Arc<BlizzardAuthState>,
+    blizzard: Arc<BlizzardState>,
+    store: Arc<dyn JobStorage>,
+    data_dir: Option<PathBuf>,
+) {
+    tokio::spawn(async move {
+        let poll_duration = tokio::time::Duration::from_secs(10 * 60);
+        let stale_threshold_hours = 6;
+
+        loop {
+            let due = is_background_sync_due(data_dir.as_deref(), stale_threshold_hours);
+            let already_syncing = {
+                let status = state.status.lock().await;
+                *status == SyncStatus::Syncing
+            };
+
+            if due && !already_syncing {
+                if let Some((client_id, client_secret)) =
+                    get_background_credentials(auth_state.as_ref(), &*store)
+                {
+                    {
+                        let mut status = state.status.lock().await;
+                        *status = SyncStatus::Syncing;
+                    }
+                    {
+                        let mut progress = state.progress.lock().await;
+                        *progress = "Auto:0:1:Scheduled background data sync...".to_string();
+                    }
+
+                    let result = perform_sync(
+                        state.clone(),
+                        blizzard.clone(),
+                        client_id,
+                        client_secret,
+                        data_dir.clone(),
+                        false,
+                    )
+                    .await;
+
+                    let mut status = state.status.lock().await;
+                    *status = match result {
+                        Ok(_) => SyncStatus::Ready,
+                        Err(err) => SyncStatus::Error(err),
+                    };
+                }
+            }
+
+            tokio::time::sleep(poll_duration).await;
+        }
+    });
+}
+
 pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
+
     let Some(root) = data_dir.get_ref().clone() else {
         let empty_files: Vec<DataFileState> = Vec::new();
         return HttpResponse::Ok().json(json!({
@@ -461,35 +287,26 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
         }));
     };
 
-    let files: Vec<DataFileState> = data_file_catalog()
+    let files: Vec<DataFileState> = catalog
         .iter()
         .map(|entry| {
-            let metadata = match entry.source {
-                DataFileSource::LocalStatic => {
-                    let runtime = root.join(entry.relative_path);
-                    if runtime.exists() {
-                        std::fs::metadata(runtime).ok()
-                    } else {
-                        let bundled =
-                            Path::new(env!("CARGO_MANIFEST_DIR")).join(entry.relative_path);
-                        std::fs::metadata(bundled).ok()
-                    }
-                }
-                _ => std::fs::metadata(root.join(entry.relative_path)).ok(),
-            };
-            let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+            let metadata = std::fs::metadata(resolve_catalog_path(&root, entry)).ok();
+            let is_dir = entry.entry_type == DataFileEntryType::Directory
+                || metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size_bytes = if is_dir {
                 0
             } else {
                 metadata.as_ref().map(|m| m.len()).unwrap_or(0)
             };
             DataFileState {
-                key: entry.key.to_string(),
-                label: entry.label.to_string(),
-                section: entry.section.to_string(),
-                relative_path: entry.relative_path.to_string(),
+                key: entry.key.clone(),
+                label: entry.label.clone(),
+                section: entry.section.clone(),
+                relative_path: entry.local_path.clone(),
                 required: entry.required,
-                downloadable: matches!(entry.source, DataFileSource::Raidbots),
+                downloadable: entry.source == DataFileSource::Raidbots
+                    && entry.remote_path.is_some()
+                    && entry.entry_type == DataFileEntryType::File,
                 exists: metadata.is_some(),
                 size_bytes,
             }
@@ -536,41 +353,638 @@ fn is_previewable_file(relative_path: &str) -> bool {
     )
 }
 
+fn is_http_url(url: &str) -> bool {
+    let lowered = url.to_ascii_lowercase();
+    lowered.starts_with("https://") || lowered.starts_with("http://")
+}
+
+fn is_allowed_remote_image_url(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
+    host == "blizzard.com"
+        || host.ends_with(".blizzard.com")
+        || host == "battle.net"
+        || host.ends_with(".battle.net")
+        || host == "worldofwarcraft.com"
+        || host.ends_with(".worldofwarcraft.com")
+}
+
+fn find_cached_image_file(images_dir: &Path, image_type: &str, id: u64) -> Option<PathBuf> {
+    let candidates = [
+        format!("{}-{}-{}.jpg", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.jpeg", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.png", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.webp", image_type, id, IMAGE_CACHE_VERSION),
+        format!("{}-{}-{}.gif", image_type, id, IMAGE_CACHE_VERSION),
+    ];
+
+    for candidate in candidates {
+        let path = images_dir.join(candidate);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+fn find_runtime_image_url(image_type: &str, id: u64) -> Option<String> {
+    let runtime = crate::item_db::get_runtime_data();
+    if let Some(details) = runtime.get("dungeon_details").and_then(|v| v.as_array()) {
+        for detail in details {
+            if image_type == "instance" && detail.get("id").and_then(|v| v.as_u64()) == Some(id) {
+                if let Some(url) = detail
+                    .get("image_url")
+                    .and_then(|v| v.as_str())
+                    .filter(|url| is_http_url(url))
+                {
+                    return Some(url.to_string());
+                }
+            }
+            if image_type == "encounter" {
+                let Some(raw_payload) = detail.get("blizzard_api_data") else {
+                    continue;
+                };
+                if let Some(encounters) = raw_payload.get("encounters").and_then(|v| v.as_array()) {
+                    for encounter in encounters {
+                        if encounter.get("id").and_then(|v| v.as_u64()) == Some(id) {
+                            if let Some(url) = encounter
+                                .get("image_url")
+                                .and_then(|v| v.as_str())
+                                .filter(|url| is_http_url(url))
+                            {
+                                return Some(url.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn infer_image_extension(url: &str) -> &'static str {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return "jpg";
+    };
+    let path = parsed.path().to_ascii_lowercase();
+    if path.ends_with(".png") {
+        return "png";
+    }
+    if path.ends_with(".webp") {
+        return "webp";
+    }
+    if path.ends_with(".gif") {
+        return "gif";
+    }
+    if path.ends_with(".jpeg") {
+        return "jpeg";
+    }
+    "jpg"
+}
+
+fn content_type_for_extension(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "jpeg" | "jpg" => "image/jpeg",
+        _ => "application/octet-stream",
+    }
+}
+
+fn image_error_response(status: actix_web::http::StatusCode, reason: &str) -> HttpResponse {
+    HttpResponse::build(status).json(json!({
+        "detail": format!("Image unavailable: {}", reason),
+        "reason": reason,
+    }))
+}
+
+fn journal_instance_candidates(instance_id: u64) -> Vec<u64> {
+    let mut candidates = vec![instance_id];
+    let runtime = crate::item_db::get_runtime_data();
+    let Some(details) = runtime.get("dungeon_details").and_then(|v| v.as_array()) else {
+        return candidates;
+    };
+
+    for detail in details {
+        if detail.get("id").and_then(|v| v.as_u64()) != Some(instance_id) {
+            continue;
+        }
+        if let Some(map_id) = detail.get("map_id").and_then(|v| v.as_u64()) {
+            candidates.push(map_id);
+        }
+        if let Some(cm_id) = detail.get("challenge_mode_id").and_then(|v| v.as_u64()) {
+            candidates.push(cm_id);
+        }
+        if let Some(href) = detail.get("blizzard_href").and_then(|v| v.as_str()) {
+            if let Some(parsed) = href
+                .split("/journal-instance/")
+                .nth(1)
+                .and_then(|tail| tail.split('?').next())
+                .and_then(|raw| raw.parse::<u64>().ok())
+            {
+                candidates.push(parsed);
+            }
+        }
+        if let Some(raw) = detail.get("blizzard_api_data") {
+            if let Some(key_href) = raw
+                .get("key")
+                .and_then(|k| k.get("href"))
+                .and_then(|h| h.as_str())
+            {
+                if let Some(parsed) = key_href
+                    .split("/journal-instance/")
+                    .nth(1)
+                    .and_then(|tail| tail.split('?').next())
+                    .and_then(|raw| raw.parse::<u64>().ok())
+                {
+                    candidates.push(parsed);
+                }
+            }
+            if let Some(map_id) = raw
+                .get("instance_map")
+                .and_then(|m| m.get("id"))
+                .and_then(|v| v.as_u64())
+            {
+                candidates.push(map_id);
+            }
+        }
+    }
+
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates
+}
+
+#[derive(Clone)]
+struct JournalIndexCache {
+    fetched_at: chrono::DateTime<chrono::Utc>,
+    entries: Vec<(u64, String)>,
+}
+
+static JOURNAL_INDEX_CACHE: Lazy<Mutex<Option<JournalIndexCache>>> = Lazy::new(|| Mutex::new(None));
+
+fn localized_str(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    if let Some(raw) = value.as_str() {
+        return Some(raw.to_string());
+    }
+    if let Some(obj) = value.as_object() {
+        if let Some(en) = obj.get("en_US").and_then(|v| v.as_str()) {
+            return Some(en.to_string());
+        }
+        if let Some(any) = obj.values().find_map(|v| v.as_str()) {
+            return Some(any.to_string());
+        }
+    }
+    None
+}
+
+fn normalize_lookup_key(input: &str) -> String {
+    input
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect()
+}
+
+fn runtime_dungeon_name_candidates(instance_id: u64) -> Vec<String> {
+    let mut names = Vec::new();
+
+    // Prefer stable local instance metadata first so lookup still works even when
+    // blizzard-runtime-data.json has sparse/empty dungeon_details.
+    for instance in crate::item_db::instances() {
+        if instance.get("id").and_then(|v| v.as_u64()) != Some(instance_id) {
+            continue;
+        }
+        if let Some(name) = instance.get("name").and_then(|v| v.as_str()) {
+            names.push(name.to_string());
+        }
+        if let Some(short_name) = instance.get("short_name").and_then(|v| v.as_str()) {
+            names.push(short_name.to_string());
+        }
+    }
+
+    let runtime = crate::item_db::get_runtime_data();
+    if let Some(details) = runtime.get("dungeon_details").and_then(|v| v.as_array()) {
+        for detail in details {
+            if detail.get("id").and_then(|v| v.as_u64()) != Some(instance_id) {
+                continue;
+            }
+            if let Some(name) = detail.get("name").and_then(|v| v.as_str()) {
+                names.push(name.to_string());
+            }
+            if let Some(short_name) = detail.get("short_name").and_then(|v| v.as_str()) {
+                names.push(short_name.to_string());
+            }
+            if let Some(raw) = detail.get("blizzard_api_data") {
+                if let Some(name) = localized_str(raw.get("name")) {
+                    names.push(name);
+                }
+                if let Some(short_name) = localized_str(raw.get("short_name")) {
+                    names.push(short_name);
+                }
+            }
+        }
+    }
+
+    names.sort_unstable();
+    names.dedup();
+    names
+}
+
+async fn journal_index_entries_with_token(
+    client: &reqwest::Client,
+    token: &str,
+) -> Vec<(u64, String)> {
+    {
+        let cache = JOURNAL_INDEX_CACHE.lock().await;
+        if let Some(cached) = cache.as_ref() {
+            let age = chrono::Utc::now().signed_duration_since(cached.fetched_at);
+            if age.num_hours() < 6 {
+                return cached.entries.clone();
+            }
+        }
+    }
+
+    let index_url = "https://us.api.blizzard.com/data/wow/journal-instance/index?namespace=static-us&locale=en_US";
+    let response = match client.get(index_url).bearer_auth(token).send().await {
+        Ok(res) => res,
+        Err(_) => return Vec::new(),
+    };
+    if !response.status().is_success() {
+        return Vec::new();
+    }
+    let payload: Value = match response.json().await {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut entries = Vec::new();
+    if let Some(instances) = payload.get("instances").and_then(|v| v.as_array()) {
+        for item in instances {
+            let Some(id) = item.get("id").and_then(|v| v.as_u64()) else {
+                continue;
+            };
+            let Some(name) = localized_str(item.get("name")) else {
+                continue;
+            };
+            entries.push((id, name));
+        }
+    }
+
+    let mut cache = JOURNAL_INDEX_CACHE.lock().await;
+    *cache = Some(JournalIndexCache {
+        fetched_at: chrono::Utc::now(),
+        entries: entries.clone(),
+    });
+
+    entries
+}
+
+async fn journal_instance_id_from_names_with_token(
+    client: &reqwest::Client,
+    token: &str,
+    names: &[String],
+) -> Option<u64> {
+    if names.is_empty() {
+        return None;
+    }
+    let entries = journal_index_entries_with_token(client, token).await;
+    if entries.is_empty() {
+        return None;
+    }
+
+    let normalized_names: Vec<String> = names
+        .iter()
+        .map(|name| normalize_lookup_key(name))
+        .filter(|v| !v.is_empty())
+        .collect();
+
+    for target in &normalized_names {
+        if let Some((id, _)) = entries
+            .iter()
+            .find(|(_, name)| normalize_lookup_key(name) == *target)
+        {
+            return Some(*id);
+        }
+    }
+
+    for target in &normalized_names {
+        if let Some((id, _)) = entries.iter().find(|(_, name)| {
+            let candidate = normalize_lookup_key(name);
+            candidate.contains(target) || target.contains(&candidate)
+        }) {
+            return Some(*id);
+        }
+    }
+
+    None
+}
+
+fn best_blizzard_asset_url(media_json: &Value) -> Option<String> {
+    let assets = media_json.get("assets").and_then(|v| v.as_array())?;
+    let preferred_keys = ["tile", "splash", "header", "main", "icon", "image"];
+    for key in preferred_keys {
+        if let Some(url) = assets.iter().find_map(|asset| {
+            let matches_key = asset
+                .get("key")
+                .and_then(|v| v.as_str())
+                .map(|k| k.eq_ignore_ascii_case(key))
+                .unwrap_or(false);
+            if !matches_key {
+                return None;
+            }
+            asset.get("value").and_then(|v| v.as_str()).map(str::to_string)
+        }) {
+            return Some(url);
+        }
+    }
+    assets
+        .iter()
+        .find_map(|asset| asset.get("value").and_then(|v| v.as_str()).map(str::to_string))
+}
+
+fn media_url_from_entity_payload(entity_json: &Value) -> Option<String> {
+    if let Some(url) = entity_json
+        .get("media")
+        .and_then(best_blizzard_asset_url)
+        .filter(|url| is_allowed_remote_image_url(url))
+    {
+        return Some(url);
+    }
+    None
+}
+
+async fn media_url_from_media_href(
+    client: &reqwest::Client,
+    token: &str,
+    media_href: &str,
+) -> Option<String> {
+    let media_url = if media_href.contains("locale=") {
+        media_href.to_string()
+    } else if media_href.contains('?') {
+        format!("{media_href}&locale=en_US")
+    } else {
+        format!("{media_href}?locale=en_US")
+    };
+
+    println!("[image-api] GET Blizzard media href: {}", media_url);
+    let media_res = client
+        .get(&media_url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .ok()?;
+    println!(
+        "[image-api] Blizzard media href status: {} ({})",
+        media_res.status(),
+        media_url
+    );
+    if !media_res.status().is_success() {
+        return None;
+    }
+    let media_json: Value = media_res.json().await.ok()?;
+    let selected = best_blizzard_asset_url(&media_json)
+        .filter(|url| is_allowed_remote_image_url(url));
+    if let Some(url) = &selected {
+        println!("[image-api] Selected Blizzard media asset: {}", url);
+    } else {
+        println!("[image-api] No allowed Blizzard media asset in payload");
+    }
+    selected
+}
+
+async fn fetch_blizzard_mythic_dungeon_image_url(
+    client: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    dungeon_id: u64,
+    name_candidates: &[String],
+) -> Option<String> {
+    let token = BlizzardState::get_token_with_creds(client, client_id, client_secret).await?;
+    fetch_blizzard_mythic_dungeon_image_url_with_token(client, &token, dungeon_id, name_candidates)
+        .await
+}
+
+async fn fetch_blizzard_mythic_dungeon_image_url_with_token(
+    client: &reqwest::Client,
+    token: &str,
+    dungeon_id: u64,
+    name_candidates: &[String],
+) -> Option<String> {
+    let dungeon_url = format!(
+        "https://us.api.blizzard.com/data/wow/mythic-keystone/dungeon/{}?namespace=dynamic-us&locale=en_US",
+        dungeon_id
+    );
+    println!("[image-api] GET Blizzard mythic dungeon: {}", dungeon_url);
+    let dungeon_res = client
+        .get(&dungeon_url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .ok()?;
+    println!(
+        "[image-api] Blizzard mythic dungeon status: {} (dungeon_id={})",
+        dungeon_res.status(),
+        dungeon_id
+    );
+    if !dungeon_res.status().is_success() {
+        return None;
+    }
+
+    let dungeon_json: Value = dungeon_res.json().await.ok()?;
+    if let Some(url) = media_url_from_entity_payload(&dungeon_json) {
+        return Some(url);
+    }
+
+    if let Some(media_href) = dungeon_json
+        .get("media")
+        .and_then(|m| m.get("key"))
+        .and_then(|k| k.get("href"))
+        .and_then(|h| h.as_str())
+    {
+        if let Some(url) = media_url_from_media_href(client, &token, media_href).await {
+            return Some(url);
+        }
+    }
+
+    if let Some(journal_id) = dungeon_json
+        .get("journal_instance")
+        .and_then(|v| v.get("id"))
+        .and_then(|v| v.as_u64())
+    {
+        let candidates = vec![journal_id];
+        return fetch_blizzard_journal_instance_image_url_with_token(client, token, &candidates)
+            .await;
+    }
+
+    let mut names = name_candidates.to_vec();
+    if let Some(name) = localized_str(dungeon_json.get("name")) {
+        names.push(name);
+    }
+    if let Some(short_name) = localized_str(dungeon_json.get("short_name")) {
+        names.push(short_name);
+    }
+    names.sort();
+    names.dedup();
+    if let Some(journal_id) = journal_instance_id_from_names_with_token(client, token, &names).await
+    {
+        println!(
+            "[image-api] Mapped dungeon_id={} to journal_instance_id={} via name candidates",
+            dungeon_id, journal_id
+        );
+        let candidates = vec![journal_id];
+        return fetch_blizzard_journal_instance_image_url_with_token(client, token, &candidates)
+            .await;
+    }
+
+    None
+}
+
+async fn fetch_blizzard_journal_instance_image_url(
+    client: &reqwest::Client,
+    client_id: &str,
+    client_secret: &str,
+    instance_candidates: &[u64],
+) -> Option<String> {
+    let token = BlizzardState::get_token_with_creds(client, client_id, client_secret).await?;
+    fetch_blizzard_journal_instance_image_url_with_token(client, &token, instance_candidates).await
+}
+
+async fn fetch_blizzard_journal_instance_image_url_with_token(
+    client: &reqwest::Client,
+    token: &str,
+    instance_candidates: &[u64],
+) -> Option<String> {
+    for instance_id in instance_candidates {
+        let media_url = format!(
+            "https://us.api.blizzard.com/data/wow/media/journal-instance/{}?namespace=static-us&locale=en_US",
+            instance_id
+        );
+        println!(
+            "[image-api] GET Blizzard journal media: {} (candidate={})",
+            media_url, instance_id
+        );
+        let media_res = match client.get(&media_url).bearer_auth(token).send().await {
+            Ok(res) => res,
+            Err(_) => continue,
+        };
+        println!(
+            "[image-api] Blizzard journal media status: {} (candidate={})",
+            media_res.status(),
+            instance_id
+        );
+        if !media_res.status().is_success() {
+            continue;
+        }
+        let media_json: Value = match media_res.json().await {
+            Ok(json) => json,
+            Err(_) => continue,
+        };
+        if let Some(url) = best_blizzard_asset_url(&media_json)
+            .filter(|url| is_allowed_remote_image_url(url))
+        {
+            println!(
+                "[image-api] Selected journal media asset for candidate {}: {}",
+                instance_id, url
+            );
+            return Some(url);
+        }
+    }
+
+    for instance_id in instance_candidates {
+        let instance_url = format!(
+            "https://us.api.blizzard.com/data/wow/journal-instance/{}?namespace=static-us&locale=en_US",
+            instance_id
+        );
+        println!(
+            "[image-api] GET Blizzard journal instance: {} (candidate={})",
+            instance_url, instance_id
+        );
+        let instance_res = match client
+            .get(&instance_url)
+            .bearer_auth(token)
+            .send()
+            .await
+        {
+            Ok(res) => res,
+            Err(_) => continue,
+        };
+        println!(
+            "[image-api] Blizzard journal instance status: {} (candidate={})",
+            instance_res.status(),
+            instance_id
+        );
+        if !instance_res.status().is_success() {
+            continue;
+        }
+        let instance_json: Value = match instance_res.json().await {
+            Ok(json) => json,
+            Err(_) => continue,
+        };
+
+        if let Some(url) = media_url_from_entity_payload(&instance_json) {
+            return Some(url);
+        }
+
+        let Some(media_href) = instance_json
+            .get("media")
+            .and_then(|m| m.get("key"))
+            .and_then(|k| k.get("href"))
+            .and_then(|h| h.as_str())
+        else {
+            continue;
+        };
+
+        if let Some(url) = media_url_from_media_href(client, token, media_href).await {
+            return Some(url);
+        }
+    }
+
+    None
+}
+
 pub async fn get_data_file_content(
     path: web::Path<String>,
     data_dir: web::Data<Option<PathBuf>>,
 ) -> HttpResponse {
     let key = path.into_inner();
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let catalog = data_file_catalog();
     let Some(entry) = catalog.iter().find(|e| e.key == key) else {
         return HttpResponse::NotFound().json(json!({"detail": "Unknown data file key"}));
     };
 
-    if matches!(entry.source, DataFileSource::Directory) {
+    if entry.entry_type == DataFileEntryType::Directory {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "Directories do not have file content"}));
     }
 
-    if !is_previewable_file(entry.relative_path) {
+    if !is_previewable_file(&entry.local_path) {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "This file type is not previewable"}));
     }
 
-    let path = match entry.source {
-        DataFileSource::LocalStatic => {
-            let runtime = root.join(entry.relative_path);
-            if runtime.exists() {
-                runtime
-            } else {
-                Path::new(env!("CARGO_MANIFEST_DIR")).join(entry.relative_path)
-            }
-        }
-        _ => root.join(entry.relative_path),
-    };
+    let path = resolve_catalog_path(&root, entry);
 
     let metadata = match std::fs::metadata(&path) {
         Ok(metadata) => metadata,
@@ -598,22 +1012,223 @@ pub async fn get_data_file_content(
     };
 
     HttpResponse::Ok().json(DataFilePreviewResponse {
-        key: entry.key.to_string(),
-        label: entry.label.to_string(),
-        relative_path: entry.relative_path.to_string(),
+        key: entry.key.clone(),
+        label: entry.label.clone(),
+        relative_path: entry.local_path.clone(),
         content: preview,
         truncated,
     })
 }
 
+pub async fn get_data_image(
+    req: actix_web::HttpRequest,
+    path: web::Path<(String, String)>,
+    query: web::Query<DataImageQuery>,
+    data_dir: web::Data<Option<PathBuf>>,
+    blizzard: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let (image_type, id_raw) = path.into_inner();
+    println!(
+        "[image-api] Incoming request type={} id_raw={} query_source={:?}",
+        image_type,
+        id_raw,
+        query.source
+    );
+    if image_type != "instance" && image_type != "encounter" {
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Unsupported image type. Use 'instance' or 'encounter'."}));
+    }
+
+    let id = match id_raw.parse::<u64>() {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().json(json!({"detail": "Invalid image id"})),
+    };
+
+    let Some(root) = data_dir.get_ref().clone() else {
+        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
+    };
+    let images_dir = root.join("instance-images");
+    std::fs::create_dir_all(&images_dir).ok();
+
+    if let Some(cached_path) = find_cached_image_file(&images_dir, &image_type, id) {
+        println!(
+            "[image-api] Cache hit type={} id={} path={}",
+            image_type,
+            id,
+            cached_path.display()
+        );
+        match std::fs::read(&cached_path) {
+            Ok(bytes) => {
+                let ext = cached_path
+                    .extension()
+                    .and_then(|v| v.to_str())
+                    .unwrap_or("jpg")
+                    .to_ascii_lowercase();
+                return HttpResponse::Ok()
+                    .append_header(("Cache-Control", "no-store, no-cache, must-revalidate"))
+                    .content_type(content_type_for_extension(&ext))
+                    .body(bytes);
+            }
+            Err(err) => {
+                return HttpResponse::InternalServerError().json(json!({
+                    "detail": format!("Failed to read cached image: {}", err)
+                }));
+            }
+        }
+    }
+    println!("[image-api] Cache miss type={} id={}", image_type, id);
+
+    let hinted_source = query
+        .source
+        .as_deref()
+        .filter(|url| is_http_url(url))
+        .map(ToOwned::to_owned);
+    let hinted_allowed = hinted_source
+        .clone()
+        .filter(|url| is_allowed_remote_image_url(url));
+    let mut source_url = hinted_allowed.clone();
+    if let Some(url) = &hinted_allowed {
+        println!("[image-api] Using hinted allowed source URL: {}", url);
+    }
+
+    if source_url.is_none() && image_type == "instance" {
+        let candidate_ids = journal_instance_candidates(id);
+        let name_candidates = runtime_dungeon_name_candidates(id);
+
+        if let Some((client_id, client_secret)) =
+            BlizzardState::get_effective_credentials(&req, Some(auth_state.get_ref()), &***store)
+        {
+            source_url = fetch_blizzard_mythic_dungeon_image_url(
+                &blizzard.client,
+                &client_id,
+                &client_secret,
+                id,
+                &name_candidates,
+            )
+            .await;
+            if source_url.is_none() {
+                source_url = fetch_blizzard_journal_instance_image_url(
+                    &blizzard.client,
+                    &client_id,
+                    &client_secret,
+                    &candidate_ids,
+                )
+                .await;
+            }
+        } else if let Some(claims) = verify_jwt(&req, &auth_state.jwt_secret) {
+            source_url = fetch_blizzard_mythic_dungeon_image_url_with_token(
+                &blizzard.client,
+                &claims.access_token,
+                id,
+                &name_candidates,
+            )
+            .await;
+            if source_url.is_none() {
+                source_url = fetch_blizzard_journal_instance_image_url_with_token(
+                    &blizzard.client,
+                    &claims.access_token,
+                    &candidate_ids,
+                )
+                .await;
+            }
+        }
+    }
+    if source_url.is_none() {
+        source_url = find_runtime_image_url(&image_type, id).filter(|url| is_allowed_remote_image_url(url));
+        if let Some(url) = &source_url {
+            println!("[image-api] Using runtime source URL: {}", url);
+        }
+    }
+
+    let Some(source_url) = source_url else {
+        println!("[image-api] No source URL resolved type={} id={}", image_type, id);
+        return image_error_response(actix_web::http::StatusCode::NOT_FOUND, "no_source");
+    };
+    if !is_allowed_remote_image_url(&source_url) {
+        println!(
+            "[image-api] Rejected source host type={} id={} url={}",
+            image_type, id, source_url
+        );
+        return image_error_response(
+            actix_web::http::StatusCode::BAD_REQUEST,
+            "unsupported_host",
+        );
+    }
+
+    println!(
+        "[image-api] Fetching final image type={} id={} url={}",
+        image_type, id, source_url
+    );
+    let response = match blizzard.client.get(&source_url).send().await {
+        Ok(res) => res,
+        Err(err) => {
+            let _ = err;
+            println!(
+                "[image-api] Final image fetch error type={} id={} url={}",
+                image_type, id, source_url
+            );
+            return image_error_response(
+                actix_web::http::StatusCode::BAD_GATEWAY,
+                "fetch_error",
+            );
+        }
+    };
+    println!(
+        "[image-api] Final image status type={} id={} status={} url={}",
+        image_type,
+        id,
+        response.status(),
+        source_url
+    );
+    if !response.status().is_success() {
+        return image_error_response(
+            actix_web::http::StatusCode::BAD_GATEWAY,
+            "remote_status",
+        );
+    }
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            let _ = err;
+            return image_error_response(
+                actix_web::http::StatusCode::BAD_GATEWAY,
+                "read_error",
+            );
+        }
+    };
+    println!(
+        "[image-api] Final image bytes type={} id={} size={}",
+        image_type,
+        id,
+        bytes.len()
+    );
+
+    let ext = infer_image_extension(&source_url);
+    let target = images_dir.join(format!(
+        "{}-{}-{}.{}",
+        image_type, id, IMAGE_CACHE_VERSION, ext
+    ));
+    if std::fs::write(&target, &bytes).is_err() {
+        // Best-effort cache write; still return downloaded bytes.
+    }
+
+    HttpResponse::Ok()
+        .append_header(("Cache-Control", "no-store, no-cache, must-revalidate"))
+        .content_type(content_type_for_extension(ext))
+        .body(bytes)
+}
+
 async fn download_raidbots_file(
     client: &reqwest::Client,
     data_root: &Path,
-    relative_path: &str,
+    remote_path: &str,
+    local_path: &str,
 ) -> Result<(), String> {
     let base_url = "https://www.raidbots.com/static/data/live";
-    let file_url = format!("{}/{}", base_url, relative_path);
-    let dst = data_root.join(relative_path);
+    let file_url = format!("{}/{}", base_url, remote_path);
+    let dst = data_root.join(local_path);
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -621,19 +1236,67 @@ async fn download_raidbots_file(
         .get(&file_url)
         .send()
         .await
-        .map_err(|e| format!("Failed to download {}: {}", relative_path, e))?;
+        .map_err(|e| format!("Failed to download {}: {}", remote_path, e))?;
     if !res.status().is_success() {
         return Err(format!(
             "Failed to download {}: HTTP {}",
-            relative_path,
+            remote_path,
             res.status()
         ));
     }
     let bytes = res
         .bytes()
         .await
-        .map_err(|e| format!("Failed to read {}: {}", relative_path, e))?;
-    std::fs::write(dst, bytes).map_err(|e| format!("Failed to save {}: {}", relative_path, e))?;
+        .map_err(|e| format!("Failed to read {}: {}", remote_path, e))?;
+    std::fs::write(dst, bytes).map_err(|e| format!("Failed to save {}: {}", local_path, e))?;
+    Ok(())
+}
+
+fn stage_raidbots_files(
+    staging_root: &Path,
+    final_root: &Path,
+    files: &[String],
+    metadata_text: &str,
+) -> Result<(), String> {
+    for file_name in files {
+        let staged = staging_root.join(file_name);
+        let final_path = final_root.join(file_name);
+        if let Some(parent) = final_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to create final directory for {}: {}",
+                    final_path.display(),
+                    e
+                )
+            })?;
+        }
+
+        match std::fs::rename(&staged, &final_path) {
+            Ok(_) => {}
+            Err(err) if err.kind() == io::ErrorKind::CrossesDevices => {
+                std::fs::copy(&staged, &final_path).map_err(|copy_err| {
+                    format!(
+                        "Failed to copy staged file {} to {}: {}",
+                        staged.display(),
+                        final_path.display(),
+                        copy_err
+                    )
+                })?;
+                std::fs::remove_file(&staged).ok();
+            }
+            Err(err) => {
+                return Err(format!(
+                    "Failed to move staged file {} to {}: {}",
+                    staged.display(),
+                    final_path.display(),
+                    err
+                ));
+            }
+        }
+    }
+
+    std::fs::write(final_root.join("metadata.json"), metadata_text)
+        .map_err(|e| format!("Failed to write metadata.json: {}", e))?;
     Ok(())
 }
 
@@ -643,21 +1306,33 @@ pub async fn download_data_file(
     blizzard: web::Data<Arc<BlizzardState>>,
 ) -> HttpResponse {
     let key = path.into_inner();
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let catalog = data_file_catalog();
     let Some(entry) = catalog.iter().find(|e| e.key == key) else {
         return HttpResponse::NotFound().json(json!({"detail": "Unknown data file key"}));
     };
 
-    if !matches!(entry.source, DataFileSource::Raidbots) {
+    if entry.source != DataFileSource::Raidbots {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "This entry cannot be downloaded directly"}));
     }
 
-    match download_raidbots_file(&blizzard.client, &root, entry.relative_path).await {
+    let Some(remote_path) = entry.remote_path.as_deref() else {
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Missing remote path in data manifest for this entry"}));
+    };
+
+    match download_raidbots_file(&blizzard.client, &root, remote_path, &entry.local_path).await {
         Ok(()) => {
             crate::item_db::load(&root);
             let runtime_file = root.join("blizzard-runtime-data.json");
@@ -667,7 +1342,7 @@ pub async fn download_data_file(
             HttpResponse::Ok().json(json!({
                 "status": "ok",
                 "key": entry.key,
-                "relative_path": entry.relative_path,
+                "relative_path": entry.local_path,
             }))
         }
         Err(e) => HttpResponse::InternalServerError().json(json!({"detail": e})),
@@ -678,6 +1353,14 @@ pub async fn download_missing_data_files(
     data_dir: web::Data<Option<PathBuf>>,
     blizzard: web::Data<Arc<BlizzardState>>,
 ) -> HttpResponse {
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
@@ -685,20 +1368,29 @@ pub async fn download_missing_data_files(
     let mut downloaded: Vec<String> = Vec::new();
     let mut failed: Vec<serde_json::Value> = Vec::new();
 
-    for entry in data_file_catalog()
+    for entry in catalog
         .iter()
-        .filter(|e| matches!(e.source, DataFileSource::Raidbots))
+        .filter(|e| {
+            e.source == DataFileSource::Raidbots
+                && e.entry_type == DataFileEntryType::File
+                && e.remote_path.is_some()
+        })
     {
-        let path = root.join(entry.relative_path);
+        let path = root.join(&entry.local_path);
         if path.exists() {
             continue;
         }
 
-        match download_raidbots_file(&blizzard.client, &root, entry.relative_path).await {
-            Ok(()) => downloaded.push(entry.key.to_string()),
+        let Some(remote_path) = entry.remote_path.as_deref() else {
+            continue;
+        };
+
+        match download_raidbots_file(&blizzard.client, &root, remote_path, &entry.local_path).await
+        {
+            Ok(()) => downloaded.push(entry.key.clone()),
             Err(err) => failed.push(json!({
                 "key": entry.key,
-                "relative_path": entry.relative_path,
+                "relative_path": entry.local_path,
                 "error": err,
             })),
         }
@@ -894,6 +1586,11 @@ async fn perform_sync(
         let total_files = files.len();
         if let Some(dir) = &data_dir {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            let staging = tempfile::Builder::new()
+                .prefix("raidbots-sync-")
+                .tempdir_in(dir)
+                .map_err(|e| format!("Failed to create staging directory: {}", e))?;
+            let staging_path = staging.path().to_path_buf();
 
             for (i, file_name) in files.iter().enumerate() {
                 {
@@ -902,7 +1599,7 @@ async fn perform_sync(
                 }
 
                 let file_url = format!("{}/{}", base_url, file_name);
-                let file_path = dir.join(file_name);
+                let file_path = staging_path.join(file_name);
                 if let Some(parent) = file_path.parent() {
                     std::fs::create_dir_all(parent).map_err(|e| {
                         format!("Failed to create directory for {}: {}", file_name, e)
@@ -923,8 +1620,12 @@ async fn perform_sync(
                 std::fs::write(&file_path, content)
                     .map_err(|e| format!("Failed to save {}: {}", file_name, e))?;
             }
-            // Save metadata last
-            std::fs::write(dir.join("metadata.json"), &metadata_text).ok();
+
+            {
+                let mut p = state.progress.lock().await;
+                *p = "Applying staged Raidbots data...".to_string();
+            }
+            stage_raidbots_files(&staging_path, dir, &files, &metadata_text)?;
         }
     }
 
@@ -1172,20 +1873,39 @@ async fn perform_sync(
                                 detail["blizzard_href"] = json!(href);
                             }
 
-                            // Try to get image from media assets
-                            if let Some(media) =
-                                detail_data.get("media").and_then(|m| m.as_object())
-                            {
-                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array())
+                            let mut media_asset_url = media_url_from_entity_payload(&detail_data);
+                            if media_asset_url.is_none() {
+                                if let Some(media_href) = detail_data
+                                    .get("media")
+                                    .and_then(|m| m.get("key"))
+                                    .and_then(|k| k.get("href"))
+                                    .and_then(|h| h.as_str())
                                 {
-                                    if let Some(first_asset) = assets.first() {
-                                        if let Some(url) =
-                                            first_asset.get("value").and_then(|v| v.as_str())
-                                        {
-                                            detail["image_url"] = json!(url);
-                                        }
-                                    }
+                                    media_asset_url = media_url_from_media_href(
+                                        &blizzard.client,
+                                        &token,
+                                        media_href,
+                                    )
+                                    .await;
                                 }
+                            }
+                            if media_asset_url.is_none() {
+                                if let Some(journal_id) = detail_data
+                                    .get("journal_instance")
+                                    .and_then(|v| v.get("id"))
+                                    .and_then(|v| v.as_u64())
+                                {
+                                    media_asset_url =
+                                        fetch_blizzard_journal_instance_image_url_with_token(
+                                            &blizzard.client,
+                                            &token,
+                                            &[journal_id],
+                                        )
+                                        .await;
+                                }
+                            }
+                            if let Some(url) = media_asset_url {
+                                detail["image_url"] = json!(url);
                             }
 
                             // Keep full raw payload so the UI can render all available Blizzard fields.
@@ -1495,19 +2215,39 @@ async fn perform_dungeon_sync(
                                 detail["blizzard_href"] = json!(href);
                             }
 
-                            if let Some(media) =
-                                detail_data.get("media").and_then(|m| m.as_object())
-                            {
-                                if let Some(assets) = media.get("assets").and_then(|a| a.as_array())
+                            let mut media_asset_url = media_url_from_entity_payload(&detail_data);
+                            if media_asset_url.is_none() {
+                                if let Some(media_href) = detail_data
+                                    .get("media")
+                                    .and_then(|m| m.get("key"))
+                                    .and_then(|k| k.get("href"))
+                                    .and_then(|h| h.as_str())
                                 {
-                                    if let Some(first_asset) = assets.first() {
-                                        if let Some(url) =
-                                            first_asset.get("value").and_then(|v| v.as_str())
-                                        {
-                                            detail["image_url"] = json!(url);
-                                        }
-                                    }
+                                    media_asset_url = media_url_from_media_href(
+                                        &blizzard.client,
+                                        &token,
+                                        media_href,
+                                    )
+                                    .await;
                                 }
+                            }
+                            if media_asset_url.is_none() {
+                                if let Some(journal_id) = detail_data
+                                    .get("journal_instance")
+                                    .and_then(|v| v.get("id"))
+                                    .and_then(|v| v.as_u64())
+                                {
+                                    media_asset_url =
+                                        fetch_blizzard_journal_instance_image_url_with_token(
+                                            &blizzard.client,
+                                            &token,
+                                            &[journal_id],
+                                        )
+                                        .await;
+                                }
+                            }
+                            if let Some(url) = media_asset_url {
+                                detail["image_url"] = json!(url);
                             }
 
                             detail["blizzard_api_data"] = detail_data;

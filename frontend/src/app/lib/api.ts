@@ -313,6 +313,7 @@ export interface DungeonAffix {
   name: string;
   description: string;
   icon: string | null;
+  wowhead_url?: string | null;
   spell_id: number | null;
 }
 
@@ -346,12 +347,31 @@ export interface DungeonSeasonData {
   rotation_dungeons: DungeonInfo[];
 }
 
+export interface GameDataState {
+  season_id: number;
+  season_name: string;
+  active_affixes: string[];
+  mplus_rotation: number[];
+  last_sync: string;
+}
+
 export async function getDungeonData(): Promise<DungeonSeasonData> {
   return fetchJson<DungeonSeasonData>(`${API_URL}/api/dungeons`);
 }
 
 export async function getDungeonDataCached(): Promise<DungeonSeasonData> {
   return fetchJsonCached<DungeonSeasonData>(`${API_URL}/api/dungeons`, {
+    ttl: 5 * 60 * 1000,
+    usePersistentCache: true,
+  });
+}
+
+export async function getGameDataState(): Promise<GameDataState> {
+  return fetchJson<GameDataState>(`${API_URL}/api/game-data/state`);
+}
+
+export async function getGameDataStateCached(): Promise<GameDataState> {
+  return fetchJsonCached<GameDataState>(`${API_URL}/api/game-data/state`, {
     ttl: 5 * 60 * 1000,
     usePersistentCache: true,
   });

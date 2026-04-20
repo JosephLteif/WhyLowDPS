@@ -7,6 +7,7 @@ pub struct DungeonAffix {
     pub name: String,
     pub description: String,
     pub icon: Option<String>,
+    pub wowhead_url: Option<String>,
     pub spell_id: Option<u32>,
 }
 

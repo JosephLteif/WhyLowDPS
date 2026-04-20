@@ -2,6 +2,8 @@
 pub mod auth_handlers;
 mod blizzard;
 mod character_profile_handlers;
+#[cfg(feature = "web")]
+mod data_provider;
 mod data_sync;
 #[cfg(feature = "web")]
 pub mod dungeon_data;
@@ -261,6 +263,11 @@ pub async fn start_with_storage_bind(
         // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>>
         // to the proxy handlers so они can check for JWT sub.
         let auth_state_opt_data = web::Data::new(Some(auth_state.get_ref().clone()));
+        let sync_state_for_background = sync_state.get_ref().clone();
+        let auth_state_for_background = auth_state.get_ref().clone();
+        let blizzard_state_for_background = blizzard_state.get_ref().clone();
+        let store_for_background = store_data.get_ref().clone();
+        let data_dir_for_background = data.clone();
 
         let server = HttpServer::new(move || {
             let cors = Cors::default()
@@ -366,6 +373,10 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/data/files/{key}/content",
                     web::get().to(data_sync::get_data_file_content),
+                )
+                .route(
+                    "/api/data/images/{type}/{id}",
+                    web::get().to(data_sync::get_data_image),
                 )
                 .route("/api/data/sync", web::post().to(data_sync::trigger_sync))
                 .route(
@@ -581,6 +592,10 @@ pub async fn start_with_storage_bind(
                     "/api/dungeons",
                     web::get().to(game_data_handlers::get_dungeon_data),
                 )
+                .route(
+                    "/api/game-data/state",
+                    web::get().to(data_provider::get_game_data_state),
+                )
                 .route("/health", web::get().to(health_check));
 
             #[cfg(feature = "desktop")]
@@ -635,6 +650,14 @@ pub async fn start_with_storage_bind(
         .bind(&bind_addr)
         .unwrap_or_else(|_| panic!("Failed to bind to {}", bind_addr))
         .run();
+
+        data_sync::spawn_background_sync_loop(
+            sync_state_for_background,
+            auth_state_for_background,
+            blizzard_state_for_background,
+            store_for_background,
+            data_dir_for_background,
+        );
 
         println!("HTTP server starting on port {}", port);
         (server, port)

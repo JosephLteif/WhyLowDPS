@@ -426,7 +426,7 @@ export default function DropFinderPage() {
 
   const dungeonInstances = useMemo(() => activeDungeonCat?.instances ?? [], [activeDungeonCat]);
   const activeInstances = isRaid ? raids : dungeonInstances;
-  const hasImages = activeInstances.some((i) => !!i.image_url?.trim());
+  const hasImages = activeInstances.some((i) => i.id > 0 || !!i.image_url?.trim());
 
   const allKey = isRaid
     ? 'type:raid'

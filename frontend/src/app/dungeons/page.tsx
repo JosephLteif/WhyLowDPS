@@ -7,13 +7,15 @@ import {
   DungeonInfo,
   DungeonSeasonData,
   fetchJson,
-  fetchJsonCached,
+  GameDataState,
   getDungeonData,
   getDungeonDataCached,
+  getGameDataState,
+  getGameDataStateCached,
   triggerDungeonDataRefresh,
 } from '../lib/api';
-import { Instance } from '../drop-finder/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import type { Instance } from '../drop-finder/types';
 
 const DUNGEON_PLACEHOLDERS: Record<string, { icon: string; zone: string }> = {
   'Siege of Boralus': { icon: 'https://wow.zamimages.com/logo/PoS.jpg', zone: 'Darkshore' },
@@ -59,10 +61,6 @@ function formatMs(ms?: number | null): string | null {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function normalizeDungeonName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 function normalizeImageUrl(url?: string | null): string | undefined {
@@ -123,6 +121,15 @@ function mergeWithPreviousDungeonData(
   });
 }
 
+function getLocalInstanceImageUrl(instanceId?: number | null): string | null {
+  if (!instanceId || instanceId <= 0) return null;
+  return `${API_URL}/api/data/images/instance/${instanceId}?v=bapi3`;
+}
+
+function normalizeDungeonName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function getCurrentMplusDungeonIds(instances: Instance[]): Set<number> {
   const mplusBucket =
     instances.find((instance) => instance.type === 'mplus-chest') ||
@@ -133,25 +140,42 @@ function getCurrentMplusDungeonIds(instances: Instance[]): Set<number> {
   return new Set<number>(mplusBucket.encounters.map((encounter) => encounter.id));
 }
 
-function getLocalInstanceImageUrl(instanceId?: number | null): string | null {
-  if (!instanceId || instanceId <= 0) return null;
-  return `${API_URL}/api/data/instance-images/instance-${instanceId}.jpg`;
-}
+function mergeWithInstancesFallback(dungeons: DungeonInfo[], instances: Instance[]): DungeonInfo[] {
+  if (!instances.length) return dungeons;
 
-function shouldPreferLocalInstanceImage(imageUrl?: string | null): boolean {
-  if (!imageUrl) return false;
-  return imageUrl.includes('/EncounterJournal/orig/ui-ej-background-');
-}
+  const instancesById = new Map<number, Instance>();
+  const instancesByName = new Map<string, Instance>();
+  for (const instance of instances) {
+    instancesById.set(instance.id, instance);
+    instancesByName.set(normalizeDungeonName(instance.name), instance);
+  }
 
-function getEncounterJournalFallbackImage(instance?: Instance | null): string | null {
-  if (!instance) return null;
-  if (instance.image_background) {
-    return `https://www.raidbots.com/static/images/EncounterJournal/orig/${instance.image_background}.png`;
-  }
-  if (instance.image_button) {
-    return `https://www.raidbots.com/static/images/EncounterJournal/orig/${instance.image_button}.png`;
-  }
-  return null;
+  return dungeons.map((dungeon) => {
+    const fallback =
+      instancesById.get(dungeon.id) || instancesByName.get(normalizeDungeonName(dungeon.name));
+    if (!fallback) return dungeon;
+
+    const fallbackEncounterNames = (fallback.encounters ?? [])
+      .map((encounter) => encounter.name)
+      .filter((name): name is string => !!name);
+    const hasEncounterNames = (dungeon.encounters?.length ?? 0) > 0;
+    const mergedEncounters: string[] = hasEncounterNames
+      ? (dungeon.encounters ?? [])
+      : fallbackEncounterNames;
+    const mergedNumBosses =
+      dungeon.num_bosses && dungeon.num_bosses > 0
+        ? dungeon.num_bosses
+        : mergedEncounters.length > 0
+          ? mergedEncounters.length
+          : null;
+
+    return {
+      ...dungeon,
+      zone: dungeon.zone || fallback.zone || null,
+      encounters: mergedEncounters,
+      num_bosses: mergedNumBosses,
+    };
+  });
 }
 
 function normalizeAffixName(name: string): string {
@@ -162,8 +186,8 @@ type DisplayAffix = DungeonAffix & {
   wowhead_url?: string | null;
 };
 
-function AffixCard({ affix, fallbackIconUrl }: { affix: DisplayAffix; fallbackIconUrl?: string }) {
-  const iconUrl = affix.icon || fallbackIconUrl || null;
+function AffixCard({ affix }: { affix: DisplayAffix }) {
+  const iconUrl = affix.icon || null;
   const wowheadUrl =
     affix.wowhead_url || (affix.spell_id ? `https://wowhead.com/spell=${affix.spell_id}` : null);
   const iconNode = iconUrl ? (
@@ -187,20 +211,12 @@ function AffixCard({ affix, fallbackIconUrl }: { affix: DisplayAffix; fallbackIc
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-white/15 bg-zinc-900/75 p-4">
-      {affix.spell_id ? (
-        <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800"
-          data-wowhead={`spell=${affix.spell_id}`}
-        >
-          {wrappedIconNode}
-        </div>
-      ) : (
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800">
-          {wrappedIconNode}
-        </div>
-      )}
+      <div
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800">
+        {wrappedIconNode}
+      </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-lg font-bold leading-tight text-zinc-100">{affix.name}</p>
+        <p className="mb-1 text-lg font-bold leading-tight text-zinc-100 break-words">{affix.name}</p>
         <p className="text-sm leading-6 text-zinc-300 break-words">{affix.description}</p>
       </div>
     </div>
@@ -220,11 +236,8 @@ function InfoPill({ label, value }: { label: string; value?: string | number | n
 function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string }) {
   const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
   const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
-  const preferredImageUrl =
-    shouldPreferLocalInstanceImage(dungeon.image_url) && localInstanceImage
-      ? localInstanceImage
-      : dungeon.image_url;
-  const imageUrl = preferredImageUrl || placeholder?.icon;
+  const imageUrl = localInstanceImage || dungeon.image_url || placeholder?.icon;
+  const [imageFailed, setImageFailed] = useState(false);
   const zone = dungeon.zone || placeholder?.zone;
   const timer = formatMs(dungeon.keystone_timer_ms);
   const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
@@ -234,18 +247,25 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
   return (
     <div className="group flex flex-col rounded-xl border border-white/15 bg-zinc-900/80 p-4 transition-all hover:border-gold/50 hover:bg-zinc-900">
-      {imageUrl ? (
+      {imageUrl && !imageFailed ? (
         <div className="relative mb-3 h-28 w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
           <img
             src={imageUrl}
             alt=""
             className="h-full w-full object-cover object-center"
             loading="lazy"
+            onError={() => setImageFailed(true)}
           />
         </div>
       ) : (
-        <div className="mb-3 flex h-20 w-full items-center justify-center rounded-lg border border-white/10 bg-zinc-900">
-          <span className="text-3xl font-bold text-zinc-600">{dungeon.name[0]}</span>
+        <div
+          className="relative mb-3 flex h-28 w-full items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black">
+          <img
+            src="/wow-logo.png"
+            alt="WoW"
+            className="h-[64%] w-[64%] max-h-24 max-w-24 object-contain opacity-95"
+            loading="lazy"
+          />
         </div>
       )}
 
@@ -264,7 +284,6 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
         <InfoPill label="Timer" value={timer} />
         <InfoPill label="Map ID" value={dungeon.map_id} />
         <InfoPill label="Challenge ID" value={dungeon.challenge_mode_id} />
-        <InfoPill label="Bosses" value={encounterCount} />
         <InfoPill label="Slug" value={dungeon.slug} />
         <InfoPill label="Short" value={dungeon.short_name} />
       </div>
@@ -313,8 +332,7 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
 export default function DungeonsPage() {
   const [data, setData] = useState<DungeonSeasonData | null>(null);
-  const [raiderAffixIconByName, setRaiderAffixIconByName] = useState<Record<string, string>>({});
-  const [raiderCurrentAffixes, setRaiderCurrentAffixes] = useState<DisplayAffix[]>([]);
+  const [gameState, setGameState] = useState<GameDataState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -322,85 +340,29 @@ export default function DungeonsPage() {
   const backendError = (data as (DungeonSeasonData & { error?: string }) | null)?.error;
   const hasAnyBlizzardDetails =
     data?.rotation_dungeons?.some((d) => d.blizzard_href || d.blizzard_api_data) ?? false;
-  const displayedAffixes: DisplayAffix[] =
-    raiderCurrentAffixes.length > 0 ? raiderCurrentAffixes : (data?.current_affixes ?? []);
-  const affixSource = raiderCurrentAffixes.length > 0 ? 'Raider.IO (live)' : 'Backend cache';
+  const displayedAffixes: DisplayAffix[] = (() => {
+    const backendAffixes = data?.current_affixes ?? [];
+    if (!gameState?.active_affixes?.length) {
+      return backendAffixes;
+    }
+    const byName = new Map<string, DisplayAffix>(
+      backendAffixes.map((affix) => [normalizeAffixName(affix.name), affix]),
+    );
+    return gameState.active_affixes.map((name, idx) => {
+      const matched = byName.get(normalizeAffixName(name));
+      if (matched) return matched;
+      return {
+        id: 900000 + idx,
+        name,
+        description: '',
+        icon: null,
+        spell_id: null,
+      };
+    });
+  })();
+  const affixSource = 'Raider.IO (live)';
 
   useWowheadTooltips([data?.current_affixes, data?.rotation_dungeons]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    type RaiderAffixResponse = {
-      title?: string;
-      affix_details?: Array<{
-        id?: number;
-        name?: string;
-        description?: string;
-        icon_url?: string;
-        wowhead_url?: string;
-      }>;
-    };
-
-    const loadRaiderAffixIcons = async () => {
-      try {
-        const urls = [
-          'https://raider.io/api/v1/mythic-plus/affixes?region=us&locale=en',
-          'https://raider.io/api/v1/mythic-plus/affixes?region=eu&locale=en',
-        ];
-
-        const responses = await Promise.all(
-          urls.map((url) =>
-            fetch(url)
-              .then((res) => (res.ok ? res.json() : null))
-              .catch(() => null),
-          ),
-        );
-
-        const iconMap: Record<string, string> = {};
-        let bestPayload: RaiderAffixResponse | null = null;
-        for (const payload of responses as (RaiderAffixResponse | null)[]) {
-          if (!bestPayload && payload?.affix_details && payload.affix_details.length > 0) {
-            bestPayload = payload;
-          }
-          for (const affix of payload?.affix_details ?? []) {
-            if (!affix.name || !affix.icon_url) continue;
-            const key = normalizeAffixName(affix.name);
-            if (!iconMap[key]) {
-              iconMap[key] = affix.icon_url;
-            }
-          }
-        }
-
-        if (!cancelled) {
-          setRaiderAffixIconByName(iconMap);
-          setRaiderCurrentAffixes(
-            (bestPayload?.affix_details ?? [])
-              .filter((affix): affix is NonNullable<typeof affix> & { name: string } => !!affix?.name)
-              .map((affix) => ({
-                id: affix.id ?? Math.abs(normalizeAffixName(affix.name).split('').reduce((a, c) => a + c.charCodeAt(0), 0)),
-                name: affix.name,
-                description: affix.description ?? '',
-                icon: affix.icon_url ?? null,
-                spell_id: null,
-                wowhead_url: affix.wowhead_url ?? null,
-              })),
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setRaiderAffixIconByName({});
-          setRaiderCurrentAffixes([]);
-        }
-      }
-    };
-
-    void loadRaiderAffixIcons();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -409,66 +371,37 @@ export default function DungeonsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [seasonData, instances] = await Promise.all([
+        const [seasonData, gameDataState, fallbackInstances] = await Promise.all([
           preferCache ? getDungeonDataCached() : getDungeonData(),
-          fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, {
-            ttl: 5 * 60 * 1000,
-            usePersistentCache: true,
-          }).catch(() => [] as Instance[]),
+          (preferCache ? getGameDataStateCached() : getGameDataState()).catch(
+            () => null as GameDataState | null,
+          ),
+          fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
         ]);
+        const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
+        const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
+        const mergedWithFallback = mergeWithInstancesFallback(
+          seasonData.rotation_dungeons,
+          fallbackInstances,
+        );
 
-        const instancesById = new Map<number, Instance>();
-        const instancesByName = new Map<string, Instance>();
-        for (const inst of instances) {
-          instancesById.set(inst.id, inst);
-          instancesByName.set(normalizeDungeonName(inst.name), inst);
-        }
-        const currentMplusIds = getCurrentMplusDungeonIds(instances);
-
-        const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
-          const matchedInstance =
-            instancesById.get(dungeon.id) ||
-            instancesByName.get(normalizeDungeonName(dungeon.name));
-          if (!matchedInstance) return dungeon;
+        const enrichedDungeons = mergedWithFallback.map((dungeon) => {
           const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
-          const preferredDungeonImage =
-            shouldPreferLocalInstanceImage(dungeon.image_url) && localInstanceImage
-              ? localInstanceImage
-              : dungeon.image_url;
-          const preferredInstanceImage =
-            shouldPreferLocalInstanceImage(matchedInstance.image_url) && localInstanceImage
-              ? localInstanceImage
-              : matchedInstance.image_url;
-
-          const encounterNames = (matchedInstance.encounters || [])
-            .map((encounter) => encounter.name)
-            .filter((name): name is string => !!name && name.trim().length > 0);
-          const mergedEncounterNames =
-            dungeon.encounters && dungeon.encounters.length > 0
-              ? dungeon.encounters
-              : encounterNames;
-          const mergedBossCount =
-            dungeon.num_bosses ??
-            (mergedEncounterNames.length > 0 ? mergedEncounterNames.length : null);
 
           return {
             ...dungeon,
-            zone: dungeon.zone || matchedInstance.zone || null,
-            image_url: normalizeImageUrl(
-              preferredDungeonImage ||
-              preferredInstanceImage ||
-              getEncounterJournalFallbackImage(matchedInstance),
-            ),
-            encounters: mergedEncounterNames,
-            num_bosses: mergedBossCount,
+            image_url: normalizeImageUrl(localInstanceImage || dungeon.image_url),
           };
         });
         const filteredDungeons =
           currentMplusIds.size > 0
             ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+            : activeRotationIds.size > 0
+            ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
             : enrichedDungeons;
 
         if (!cancelled) {
+          setGameState(gameDataState);
           setData((previous) => ({
             ...seasonData,
             rotation_dungeons: mergeWithPreviousDungeonData(
@@ -520,59 +453,34 @@ export default function DungeonsPage() {
     try {
       await triggerDungeonDataRefresh(true);
       await waitForDungeonSyncCompletion();
-      const [seasonData, instances] = await Promise.all([
+      const [seasonData, gameDataState, fallbackInstances] = await Promise.all([
         getDungeonData(),
+        getGameDataState().catch(() => null as GameDataState | null),
         fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
       ]);
+      const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
+      const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
+      const mergedWithFallback = mergeWithInstancesFallback(
+        seasonData.rotation_dungeons,
+        fallbackInstances,
+      );
 
-      const instancesById = new Map<number, Instance>();
-      const instancesByName = new Map<string, Instance>();
-      for (const inst of instances) {
-        instancesById.set(inst.id, inst);
-        instancesByName.set(normalizeDungeonName(inst.name), inst);
-      }
-      const currentMplusIds = getCurrentMplusDungeonIds(instances);
-
-      const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
-        const matchedInstance =
-          instancesById.get(dungeon.id) || instancesByName.get(normalizeDungeonName(dungeon.name));
-        if (!matchedInstance) return dungeon;
+      const enrichedDungeons = mergedWithFallback.map((dungeon) => {
         const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
-        const preferredDungeonImage =
-          shouldPreferLocalInstanceImage(dungeon.image_url) && localInstanceImage
-            ? localInstanceImage
-            : dungeon.image_url;
-        const preferredInstanceImage =
-          shouldPreferLocalInstanceImage(matchedInstance.image_url) && localInstanceImage
-            ? localInstanceImage
-            : matchedInstance.image_url;
-
-        const encounterNames = (matchedInstance.encounters || [])
-          .map((encounter) => encounter.name)
-          .filter((name): name is string => !!name && name.trim().length > 0);
-        const mergedEncounterNames =
-          dungeon.encounters && dungeon.encounters.length > 0 ? dungeon.encounters : encounterNames;
-        const mergedBossCount =
-          dungeon.num_bosses ??
-          (mergedEncounterNames.length > 0 ? mergedEncounterNames.length : null);
 
         return {
           ...dungeon,
-          zone: dungeon.zone || matchedInstance.zone || null,
-          image_url: normalizeImageUrl(
-            preferredDungeonImage ||
-            preferredInstanceImage ||
-            getEncounterJournalFallbackImage(matchedInstance),
-          ),
-          encounters: mergedEncounterNames,
-          num_bosses: mergedBossCount,
+          image_url: normalizeImageUrl(localInstanceImage || dungeon.image_url),
         };
       });
       const filteredDungeons =
         currentMplusIds.size > 0
           ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+          : activeRotationIds.size > 0
+          ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
           : enrichedDungeons;
 
+      setGameState(gameDataState);
       setData((previous) => ({
         ...seasonData,
         rotation_dungeons: mergeWithPreviousDungeonData(
@@ -671,11 +579,7 @@ export default function DungeonsPage() {
           <p className="text-sm font-medium text-zinc-400">Source: {affixSource}</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {displayedAffixes.map((affix) => (
-              <AffixCard
-                key={affix.id}
-                affix={affix}
-                fallbackIconUrl={raiderAffixIconByName[normalizeAffixName(affix.name)]}
-              />
+              <AffixCard key={affix.id} affix={affix} />
             ))}
           </div>
         </section>

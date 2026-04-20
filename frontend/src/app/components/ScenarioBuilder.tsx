@@ -64,17 +64,17 @@ export default function ScenarioBuilder() {
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={addScenario}
           disabled={scenarios.length >= maxScenarios}
-          className="text-[13px] font-semibold text-gold transition-colors hover:text-gold/80 disabled:cursor-not-allowed disabled:text-zinc-400"
+          className="rounded-md border border-gold/40 bg-gold/15 px-3 py-1.5 text-[13px] font-semibold text-gold transition-colors hover:bg-gold/25 disabled:cursor-not-allowed disabled:border-zinc-700 disabled:bg-zinc-900 disabled:text-zinc-400"
         >
-          + Add current config
+          + Add this setup
         </button>
         <p className="text-sm text-zinc-300">
-          Run multiple fight configurations with the same setup
+          Save the current fight setup, then compare multiple scenario variants in one run.
         </p>
       </div>
     </div>

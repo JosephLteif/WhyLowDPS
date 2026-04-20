@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import SimcRequiredModal from './components/SimcRequiredModal';
 import TopHeader from './components/TopHeader';
 import UpdatePrompt from './components/UpdatePrompt';
+import CloseBehaviorPrompt from './components/CloseBehaviorPrompt';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
 import './globals.css';
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <TopHeader />
               <SimcRequiredModal />
               <UpdatePrompt />
+              <CloseBehaviorPrompt />
 
               <Sidebar />
 

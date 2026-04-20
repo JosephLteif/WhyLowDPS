@@ -3,9 +3,76 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Semantic version bump type'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
+  bump-version:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci && npm ci --prefix frontend
+
+      - name: Bump VERSION and sync files
+        id: bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          CURRENT_VERSION="$(tr -d '\r\n' < VERSION)"
+          echo "Current version: ${CURRENT_VERSION}"
+          NEW_VERSION="$(npm version "${{ github.event.inputs.release_type }}" --no-git-tag-version | sed 's/^v//')"
+          echo "${NEW_VERSION}" > VERSION
+          npm run sync:version
+          npm install --package-lock-only
+          npm install --package-lock-only --prefix frontend
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag release
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json
+          if git diff --cached --quiet; then
+            echo "No version changes detected; skipping commit/tag."
+            exit 0
+          fi
+          git commit -m "chore(release): bump version to v${{ steps.bump.outputs.new_version }}"
+          git tag "v${{ steps.bump.outputs.new_version }}"
+          git push origin master
+          git push origin "v${{ steps.bump.outputs.new_version }}"
+
   publish:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     strategy:

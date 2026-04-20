@@ -500,6 +500,14 @@ pub async fn start_with_storage_bind(
                     "/api/blizzard/character/{realm}/{name}/encounters/raids",
                     web::get().to(blizzard::proxy_character_raid_encounters),
                 )
+                .route(
+                    "/api/blizzard/mythic-keystone/dungeon/index",
+                    web::get().to(blizzard::proxy_mythic_keystone_dungeon_index),
+                )
+                .route(
+                    "/api/blizzard/mythic-keystone/dungeon/{dungeon_id}",
+                    web::get().to(blizzard::proxy_mythic_keystone_dungeon_detail),
+                )
                 // Game data routes
                 .route(
                     "/api/item-info/{id}",

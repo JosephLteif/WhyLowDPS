@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../lib/useItemInfo';
 import {
   getIconUrl,
@@ -19,6 +19,12 @@ import { useTalentTree } from '../lib/useTalentTree';
 import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { decodeHeader } from '../lib/talentDecode';
+import RaidProgressionGrid from './RaidProgressionGrid';
+import {
+  getMythicKeystoneDungeonDetail,
+  getMythicKeystoneDungeonIndex,
+  type MythicKeystoneDungeonDetail,
+} from '../lib/api';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -368,14 +374,116 @@ export default function CharacterPanel({
 }
 
 function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
-  const [showAll, setShowAll] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
+  const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
+    Record<string, MythicKeystoneDungeonDetail>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    getMythicKeystoneDungeonIndex('us')
+      .then(async (indexData) => {
+        const indexEntries = Array.isArray(indexData?.dungeons) ? indexData.dungeons : [];
+        const detailResults = await Promise.all(
+          indexEntries.map((entry) =>
+            getMythicKeystoneDungeonDetail(Number(entry?.id), 'us').catch(() => null),
+          ),
+        );
+        if (cancelled) return;
+        const map: Record<string, MythicKeystoneDungeonDetail> = {};
+        for (const detail of detailResults) {
+          if (!detail || typeof detail !== 'object') continue;
+          const name = String(detail?.name || '')
+            .trim()
+            .toLowerCase();
+          if (name) map[name] = detail;
+        }
+        setMplusDungeonDetailsByName(map);
+      })
+      .catch(() => {
+        if (!cancelled) setMplusDungeonDetailsByName({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const summary = useMemo(() => {
     if (!mythicPlus || typeof mythicPlus !== 'object') return null;
+
+    const normalizeName = (value: unknown) =>
+      String(value ?? '')
+        .trim()
+        .toLowerCase();
+
+    const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+    const getRunDurationMs = (run: any) => Number(run?.duration ?? run?.run_duration ?? 0);
+    const getRunName = (run: any) =>
+      run?.keystone_dungeon?.name ||
+      run?.dungeon?.name ||
+      run?.completed_challenge_mode?.name ||
+      run?.name ||
+      'Dungeon';
+    const getMplusDungeonDetail = (run: any): MythicKeystoneDungeonDetail | null => {
+      const key = normalizeName(getRunName(run));
+      if (!key) return null;
+      return mplusDungeonDetailsByName[key] || null;
+    };
+    const getTimedByDurationFallback = (run: any): boolean | null => {
+      const detail = getMplusDungeonDetail(run);
+      if (!detail) return null;
+      const oneChestDuration = detail.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
+        ?.qualifying_duration;
+      const durationMs = getRunDurationMs(run);
+      if (!oneChestDuration || !durationMs) return null;
+      return durationMs <= oneChestDuration;
+    };
+    const getRunTimed = (run: any): boolean | null => {
+      if (typeof run?.is_completed_within_timeout === 'boolean') return run.is_completed_within_timeout;
+      if (typeof run?.completed_in_time === 'boolean') return run.completed_in_time;
+      if (typeof run?.completedWithinTime === 'boolean') return run.completedWithinTime;
+      return getTimedByDurationFallback(run);
+    };
+    const getRunTimestamp = (run: any) =>
+      Number(
+        run?.completed_timestamp ??
+          run?.completedTimestamp ??
+          run?.end_timestamp ??
+          run?.endTimestamp ??
+          run?.start_timestamp ??
+          run?.startTimestamp ??
+          run?.timestamp ??
+          0,
+      );
+
+    const formatDuration = (ms: number) => {
+      if (!Number.isFinite(ms) || ms <= 0) return '-';
+      const totalSec = Math.floor(ms / 1000);
+      const min = Math.floor(totalSec / 60);
+      const sec = totalSec % 60;
+      return `${min}:${String(sec).padStart(2, '0')}`;
+    };
+
+    const formatClockDelta = (run: any) => {
+      const detail = getMplusDungeonDetail(run);
+      const timerMs = detail?.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
+        ?.qualifying_duration;
+      const durationMs = getRunDurationMs(run);
+      if (!timerMs || !durationMs) return null;
+      const diff = timerMs - durationMs;
+      const absSec = Math.floor(Math.abs(diff) / 1000);
+      const min = Math.floor(absSec / 60);
+      const sec = absSec % 60;
+      const sign = diff >= 0 ? '+' : '-';
+      return `${sign}${min}:${String(sec).padStart(2, '0')}`;
+    };
+
     const isRunLike = (value: any) =>
       value &&
       typeof value === 'object' &&
       (typeof value.keystone_level === 'number' ||
         typeof value.keystoneLevel === 'number' ||
+        value.keystone_dungeon ||
         value.dungeon ||
         value.completed_challenge_mode);
 
@@ -387,120 +495,290 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
         const current = stack.pop();
         if (!current || seen.has(current)) continue;
         seen.add(current);
-
         if (Array.isArray(current)) {
-          if (current.some((item) => isRunLike(item))) {
-            out.push(...current.filter((item) => isRunLike(item)));
-          } else {
-            for (const item of current) {
-              if (item && typeof item === 'object') stack.push(item);
-            }
-          }
+          if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+          else for (const item of current) if (item && typeof item === 'object') stack.push(item);
           continue;
         }
-
         if (typeof current === 'object') {
           if (isRunLike(current)) out.push(current);
-          for (const value of Object.values(current)) {
-            if (value && typeof value === 'object') stack.push(value);
-          }
+          for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
         }
       }
       return out;
     };
 
-    const combinedRuns = collectRuns(mythicPlus);
-    const byDungeon = new Map<string, any>();
-    for (const run of combinedRuns) {
-      const dungeonName =
-        run?.dungeon?.name || run?.completed_challenge_mode?.name || run?.name || 'Dungeon';
-      const key = dungeonName.trim().toLowerCase();
-      const level = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-      const existing = byDungeon.get(key);
-      const existingLevel = Number(existing?.keystone_level ?? existing?.keystoneLevel ?? 0);
-      if (!existing || level > existingLevel) {
-        byDungeon.set(key, run);
+    const collectRewardMap = (root: any): Map<number, number> => {
+      const map = new Map<number, number>();
+      const stack: any[] = [root];
+      const seen = new Set<any>();
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || seen.has(current) || typeof current !== 'object') continue;
+        seen.add(current);
+        if (Array.isArray(current)) {
+          for (const item of current) stack.push(item);
+          continue;
+        }
+        const level = Number(current.keystone_level ?? current.keystoneLevel ?? current.level ?? 0);
+        const ilvl = Number(
+          current.item_level ??
+            current.itemLevel ??
+            current.reward_item_level ??
+            current.rewardItemLevel ??
+            0,
+        );
+        if (level > 0 && ilvl > 0) map.set(level, Math.max(ilvl, map.get(level) || 0));
+        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
       }
+      return map;
+    };
+
+    const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
+    const byDungeon = new Map<string, any>();
+    for (const run of allRuns) {
+      const dungeonName = getRunName(run);
+      const key = normalizeName(dungeonName);
+      const level = getRunLevel(run);
+      const existing = byDungeon.get(key);
+      const existingLevel = getRunLevel(existing);
+      if (!existing || level > existingLevel) byDungeon.set(key, run);
     }
     const bestRuns = Array.from(byDungeon.values());
+    const bestLevel = bestRuns.reduce((acc, run) => Math.max(acc, getRunLevel(run)), 0);
+    const bestDungeon = bestRuns.find((run) => getRunLevel(run) === bestLevel);
+    const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
+    const recentRuns = [...recentSource]
+      .sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a))
+      .slice(0, 20);
+    const timedRuns = recentRuns.filter((run) => getRunTimed(run) === true).length;
+    const depletedRuns = recentRuns.filter((run) => getRunTimed(run) === false).length;
+    const timedStatusKnownCount = recentRuns.filter((run) => getRunTimed(run) !== null).length;
 
-    const bestLevel = bestRuns.reduce((acc: number, run: any) => {
-      const lvl = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-      return Number.isFinite(lvl) ? Math.max(acc, lvl) : acc;
-    }, 0);
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recentWeekCount = recentRuns.filter((run) => {
+      const ts = getRunTimestamp(run);
+      return ts > 0 && ts >= weekAgo;
+    }).length;
 
-    const bestDungeon = bestRuns.find(
-      (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0) === bestLevel
-    );
+    const currentPeriodCandidates = collectRuns(mythicPlus?.current_period || {});
+    const currentPeriodCount = currentPeriodCandidates.length;
+    const runsForVault = Math.max(recentWeekCount, currentPeriodCount);
+    const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
+    const rewardMap = collectRewardMap(mythicPlus?.current_period || mythicPlus);
+    const slotThresholds = [1, 4, 8];
+    const vaultSlots = slotThresholds.map((threshold, i) => {
+      const unlocked = runsForVault >= threshold;
+      const keyLevel = topLevels[threshold - 1] || null;
+      const rewardIlvl = keyLevel ? rewardMap.get(keyLevel) || null : null;
+      return {
+        slot: i + 1,
+        threshold,
+        unlocked,
+        keyLevel,
+        rewardIlvl,
+        progress: Math.min(1, runsForVault / threshold),
+      };
+    });
+    const hasAnyVaultIlvl = vaultSlots.some((slot) => slot.rewardIlvl != null);
 
     const score = Number(
       mythicPlus.current_mythic_rating?.rating ??
         mythicPlus.currentMythicRating?.rating ??
         mythicPlus.current_mythic_rating?.value ??
-        0
+        0,
     );
 
     return {
       score: score > 0 ? Math.round(score) : null,
-      runs: Array.isArray(bestRuns) ? bestRuns.length : 0,
+      runs: bestRuns.length,
       bestLevel: bestLevel > 0 ? bestLevel : null,
-      bestDungeonName:
-        bestDungeon?.dungeon?.name || bestDungeon?.completed_challenge_mode?.name || null,
-      bestRuns: Array.isArray(bestRuns)
-        ? [...bestRuns].sort((a: any, b: any) => {
-            const aLvl = Number(a?.keystone_level ?? a?.keystoneLevel ?? 0);
-            const bLvl = Number(b?.keystone_level ?? b?.keystoneLevel ?? 0);
-            return bLvl - aLvl;
-          })
-        : [],
+      bestDungeonName: bestDungeon ? getRunName(bestDungeon) : null,
+      recentRuns: recentRuns.map((run: any, i: number) => ({
+        id: `${getRunName(run)}-${getRunLevel(run)}-${getRunTimestamp(run)}-${i}`,
+        dungeon: getRunName(run),
+        level: getRunLevel(run),
+        duration: formatDuration(getRunDurationMs(run)),
+        timed: getRunTimed(run),
+        clockDelta: formatClockDelta(run),
+        timestamp: getRunTimestamp(run),
+        members: Array.isArray(run?.members) ? run.members : [],
+        dungeonId: getMplusDungeonDetail(run)?.id ?? null,
+        keystoneUpgrades: getMplusDungeonDetail(run)?.keystone_upgrades ?? [],
+      })),
+      timedRuns,
+      depletedRuns,
+      hasTimedStatusData: timedStatusKnownCount > 0,
+      vaultSlots,
+      vaultProgressCount: runsForVault,
+      hasAnyVaultIlvl,
     };
-  }, [mythicPlus]);
+  }, [mplusDungeonDetailsByName, mythicPlus]);
+
+  const formatRelative = (timestamp: number) => {
+    if (!timestamp || timestamp <= 0) return 'Unknown time';
+    const deltaMs = Date.now() - timestamp;
+    if (deltaMs <= 0) return 'Just now';
+    const hours = Math.floor(deltaMs / (60 * 60 * 1000));
+    if (hours < 24) return `${hours || 1}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
 
   return (
     <div className="card p-5">
-      <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-zinc-500">Mythic+</h3>
-      {summary ? (
-        <div className="space-y-2">
-          <StatRow
-            label="Current Score"
-            value={summary.score ? summary.score.toLocaleString() : '-'}
-          />
-          <StatRow label="Best Runs (Period)" value={summary.runs.toString()} />
-          <StatRow label="Highest Key" value={summary.bestLevel ? `+${summary.bestLevel}` : '-'} />
-          <StatRow label="Top Dungeon" value={summary.bestDungeonName || '-'} />
-          {summary.bestRuns.length > 0 && (
-            <>
-              <div className="my-3 h-px bg-white/5" />
-              <div className="space-y-1.5">
-                {(showAll ? summary.bestRuns : summary.bestRuns.slice(0, 3)).map(
-                  (run: any, i: number) => {
-                    const level = Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-                    const dungeonName =
-                      run?.dungeon?.name || run?.completed_challenge_mode?.name || 'Dungeon';
-                    return (
-                      <div
-                        key={`${dungeonName}-${level}-${i}`}
-                        className="flex items-center justify-between text-[12px]"
-                      >
-                        <span className="truncate pr-3 text-zinc-400">{dungeonName}</span>
-                        <span className="font-mono font-bold text-zinc-200">+{level}</span>
-                      </div>
-                    );
-                  }
-                )}
-              </div>
-              {summary.bestRuns.length > 3 && (
-                <button
-                  type="button"
-                  onClick={() => setShowAll((v) => !v)}
-                  className="mt-2 text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
-                >
-                  {showAll ? 'Show Less' : `View All (${summary.bestRuns.length})`}
-                </button>
-              )}
-            </>
-          )}
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Mythic+</h3>
+        <div className="inline-flex rounded-md border border-white/10 bg-black/20 p-0.5">
+          <button
+            type="button"
+            onClick={() => setActiveTab('overview')}
+            className={`rounded px-2 py-1 text-[11px] font-bold ${
+              activeTab === 'overview' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('runs')}
+            className={`rounded px-2 py-1 text-[11px] font-bold ${
+              activeTab === 'runs' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Recent Runs
+          </button>
         </div>
+      </div>
+      {summary ? (
+        activeTab === 'overview' ? (
+          <div className="space-y-3">
+            <StatRow label="Current Score" value={summary.score ? summary.score.toLocaleString() : '-'} />
+            <StatRow label="Best Runs (Period)" value={summary.runs.toString()} />
+            <StatRow label="Highest Key" value={summary.bestLevel ? `+${summary.bestLevel}` : '-'} />
+            <StatRow label="Top Dungeon" value={summary.bestDungeonName || '-'} />
+            <div className="my-2 h-px bg-white/5" />
+            <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                Weekly Vault Tracker
+              </p>
+              <p className="mb-3 text-[11px] text-zinc-400">
+                Completed runs counted: <span className="font-bold text-zinc-200">{summary.vaultProgressCount}</span>
+              </p>
+              <div className="space-y-2">
+                {summary.vaultSlots.map((slot) => (
+                  <div key={slot.slot} className="rounded border border-white/5 bg-black/20 p-2">
+                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-zinc-300">Slot {slot.slot}</span>
+                      <span className={slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}>
+                        {slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
+                      </span>
+                    </div>
+                    <div className="mb-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className={`h-full rounded-full ${slot.unlocked ? 'bg-emerald-400/90' : 'bg-gold/80'}`}
+                        style={{ width: `${Math.round(slot.progress * 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                      <span>{slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}</span>
+                      {summary.hasAnyVaultIlvl && slot.rewardIlvl ? (
+                        <span>{`iLvl ${slot.rewardIlvl}`}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11px] text-zinc-400">
+              <span>Showing {summary.recentRuns.length} recent runs</span>
+              {summary.hasTimedStatusData ? (
+                <span>
+                  <span className="text-emerald-300">{summary.timedRuns} timed</span> ·{' '}
+                  <span className="text-red-300">{summary.depletedRuns} depleted</span>
+                </span>
+              ) : null}
+            </div>
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+              {summary.recentRuns.map((run) => {
+                const runStatus = run.timed === true ? 'Timed' : run.timed === false ? 'Depleted' : null;
+                const statusOrDelta = run.clockDelta || runStatus;
+                return (
+                  <div key={run.id} className="rounded-md border border-white/5 bg-white/[0.02] p-2.5">
+                    <div className="flex items-center gap-2">
+                      {run.timed !== null ? (
+                        <span
+                          className={`h-7 w-1.5 shrink-0 rounded-full ${
+                            run.timed === true
+                              ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]'
+                              : 'bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.6)]'
+                          }`}
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12px] font-semibold text-zinc-100">
+                          {run.dungeon} <span className="font-mono text-gold">+{run.level}</span>
+                        </p>
+                        <p className="text-[10px] text-zinc-500">{formatRelative(run.timestamp)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[11px] font-mono text-zinc-200">{run.duration}</p>
+                        {statusOrDelta ? (
+                          <p
+                            className={`text-[10px] font-bold ${
+                              run.timed === true
+                                ? 'text-emerald-300'
+                                : run.timed === false
+                                  ? 'text-red-300'
+                                  : run.clockDelta?.startsWith('+')
+                                    ? 'text-emerald-300'
+                                    : run.clockDelta?.startsWith('-')
+                                      ? 'text-red-300'
+                                      : 'text-zinc-400'
+                            }`}
+                          >
+                            {statusOrDelta}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    {run.members.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {run.members.slice(0, 5).map((member: any, idx: number) => {
+                          const memberName =
+                            member?.profile?.name || member?.character?.name || member?.name || 'Player';
+                          const memberClass =
+                            member?.profile?.character_class?.name ||
+                            member?.character_class?.name ||
+                            member?.class?.name ||
+                            member?.class ||
+                            '';
+                          return (
+                            <span
+                              key={`${memberName}-${idx}`}
+                              className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300"
+                            >
+                              {memberName}
+                              {memberClass ? ` (${memberClass})` : ''}
+                            </span>
+                          );
+                        })}
+                        {run.members.length > 5 && (
+                          <span className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-400">
+                            +{run.members.length - 5} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )
       ) : (
         <p className="text-[11px] italic text-zinc-600">Mythic+ data unavailable.</p>
       )}
@@ -510,7 +788,6 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
 
 function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
   const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
-  const [showAll, setShowAll] = useState(false);
 
   const raids = useMemo(() => {
     if (!raidEncounters || typeof raidEncounters !== 'object') return [];
@@ -657,56 +934,28 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
 
   return (
     <div className="card p-5">
-      <div className="mb-4 flex flex-col gap-3">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Raid Progress</h3>
         {expansionOptions.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-[11px] font-bold uppercase tracking-wider text-zinc-600">
-              <span className="block">Expansion</span>
-              <select
-                value={selectedExpansion}
-                onChange={(e) => {
-                  setSelectedExpansion(e.target.value);
-                }}
-                className="input-field w-full text-sm"
-              >
-                <option value="all">All expansions</option>
-                {expansionOptions.map((exp) => (
-                  <option key={exp.key} value={exp.key}>
-                    {exp.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <select
+            aria-label="Expansion"
+            value={selectedExpansion}
+            onChange={(e) => {
+              setSelectedExpansion(e.target.value);
+            }}
+            className="input-field max-w-[170px] text-sm"
+          >
+            <option value="all">All expansions</option>
+            {expansionOptions.map((exp) => (
+              <option key={exp.key} value={exp.key}>
+                {exp.label}
+              </option>
+            ))}
+          </select>
         )}
       </div>
       {visibleRaids.length > 0 ? (
-        <div className="space-y-4">
-          {(showAll ? visibleRaids : visibleRaids.slice(0, 3)).map((raid) => (
-            <div key={raid.name} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-              <p className="mb-1 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
-              <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">
-                {raid.expansionLabel}
-              </p>
-              <div className="grid grid-cols-2 gap-1 text-[11px] text-zinc-400">
-                <span>LFR: {raid.lfr}</span>
-                <span>Normal: {raid.normal}</span>
-                <span>Heroic: {raid.heroic}</span>
-                <span>Mythic: {raid.mythic}</span>
-              </div>
-            </div>
-          ))}
-          {visibleRaids.length > 3 && (
-            <button
-              type="button"
-              onClick={() => setShowAll((v) => !v)}
-              className="mt-2 text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
-            >
-              {showAll ? 'Show Less' : `View All (${visibleRaids.length})`}
-            </button>
-          )}
-        </div>
+        <RaidProgressionGrid raidEncounters={raidEncounters} selectedExpansion={selectedExpansion} />
       ) : (
         <p className="text-[11px] italic text-zinc-600">
           Raid progression data unavailable for the selected filter.
@@ -805,8 +1054,8 @@ function BlizzardGearSlot({
           <span className="text-zinc-400">
             {item.level?.value} {label}
           </span>
-          {enchant && <span className="text-emerald-400/80">· {enchant.name}</span>}
-          {gem && <span className="text-sky-400/80">· {gem.name}</span>}
+          {enchant && <span className="text-emerald-400/80">Â· {enchant.name}</span>}
+          {gem && <span className="text-sky-400/80">Â· {gem.name}</span>}
         </div>
       </div>
     </a>

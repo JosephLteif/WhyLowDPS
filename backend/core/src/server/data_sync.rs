@@ -51,395 +51,107 @@ pub struct DataFilePreviewResponse {
     pub truncated: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 enum DataFileSource {
     Raidbots,
-    Runtime,
+    Blizzard,
+    Local,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+enum DataFileEntryType {
+    #[default]
+    File,
     Directory,
-    LocalStatic,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DataManifest {
+    files: Vec<DataManifestEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DataManifestEntry {
+    key: String,
+    label: String,
+    section: String,
+    source: DataFileSource,
+    remote_path: Option<String>,
+    local_path: String,
+    required: bool,
+    #[serde(default)]
+    entry_type: DataFileEntryType,
+    bundled_path: Option<String>,
 }
 
 #[derive(Clone)]
 struct DataFileEntry {
-    key: &'static str,
-    label: &'static str,
-    section: &'static str,
-    relative_path: &'static str,
-    required: bool,
+    key: String,
+    label: String,
+    section: String,
     source: DataFileSource,
+    remote_path: Option<String>,
+    local_path: String,
+    required: bool,
+    entry_type: DataFileEntryType,
+    bundled_path: Option<String>,
 }
 
-fn data_file_catalog() -> [DataFileEntry; 46] {
-    [
-        DataFileEntry {
-            key: "metadata",
-            label: "Metadata",
-            section: "Metadata",
-            relative_path: "metadata.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "items",
-            label: "Equippable Items",
-            section: "Items",
-            relative_path: "equippable-items.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonuses",
-            label: "Bonuses",
-            section: "Bonus Data",
-            relative_path: "bonuses.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "equippable_items_full",
-            label: "Equippable Items (Full)",
-            section: "Items",
-            relative_path: "equippable-items-full.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_names",
-            label: "Item Names",
-            section: "Items",
-            relative_path: "item-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_affix_names",
-            label: "Bonus Affix Names",
-            section: "Bonus Data",
-            relative_path: "bonus-affix-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_corruption",
-            label: "Bonus Corruption",
-            section: "Bonus Data",
-            relative_path: "bonus-corruption.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_crafted_stats",
-            label: "Bonus Crafted Stats",
-            section: "Bonus Data",
-            relative_path: "bonus-crafted-stats.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_effects",
-            label: "Bonus Effects",
-            section: "Bonus Data",
-            relative_path: "bonus-effects.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_id_base_levels",
-            label: "Bonus ID Base Levels",
-            section: "Bonus Data",
-            relative_path: "bonus-id-base-levels.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_id_levels",
-            label: "Bonus ID Levels",
-            section: "Bonus Data",
-            relative_path: "bonus-id-levels.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_level_deltas",
-            label: "Bonus Level Deltas",
-            section: "Bonus Data",
-            relative_path: "bonus-level-deltas.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_sockets",
-            label: "Bonus Sockets",
-            section: "Bonus Data",
-            relative_path: "bonus-sockets.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "bonus_upgrade_sets",
-            label: "Bonus Upgrade Sets",
-            section: "Bonus Data",
-            relative_path: "bonus-upgrade-sets.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_curves",
-            label: "Item Curves",
-            section: "Curves",
-            relative_path: "item-curves.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_squish_era",
-            label: "Item Squish Era",
-            section: "Curves",
-            relative_path: "item-squish-era.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_level_bonus_lookup",
-            label: "Item Level Bonus Lookup",
-            section: "Bonus Data",
-            relative_path: "item-level-bonus-lookup.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_level_offset_bonuses",
-            label: "Item Level Offset Bonuses",
-            section: "Bonus Data",
-            relative_path: "item-level-offset-bonuses.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_limit_categories",
-            label: "Item Limit Categories",
-            section: "Item Data",
-            relative_path: "item-limit-categories.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_conversions",
-            label: "Item Conversions",
-            section: "Item Data",
-            relative_path: "item-conversions.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "crafting",
-            label: "Crafting",
-            section: "Item Data",
-            relative_path: "crafting.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "instances",
-            label: "Instances",
-            section: "Instances",
-            relative_path: "instances.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "instance_names",
-            label: "Instance Names",
-            section: "Instances",
-            relative_path: "instance-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "encounter_names",
-            label: "Encounter Names",
-            section: "Instances",
-            relative_path: "encounter-names.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "encounter_items",
-            label: "Encounter Items",
-            section: "Instances",
-            relative_path: "encounter-items.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "gems",
-            label: "Gems",
-            section: "Enchants & Gems",
-            relative_path: "gems.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "enchants",
-            label: "Enchantments",
-            section: "Enchants & Gems",
-            relative_path: "enchantments.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "season_config",
-            label: "Season Config",
-            section: "Static Config",
-            relative_path: "season-config.json",
-            required: true,
-            source: DataFileSource::LocalStatic,
-        },
-        DataFileEntry {
-            key: "talents",
-            label: "Talents",
-            section: "Talents",
-            relative_path: "talents.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_flasks",
-            label: "Consumables: Flasks",
-            section: "Consumables",
-            relative_path: "flasks.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_foods",
-            label: "Consumables: Foods",
-            section: "Consumables",
-            relative_path: "foods.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_potions",
-            label: "Consumables: Potions",
-            section: "Consumables",
-            relative_path: "potions.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_augments",
-            label: "Consumables: Augments",
-            section: "Consumables",
-            relative_path: "augments.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "consumables_temp_enchants",
-            label: "Consumables: Temp Enchants",
-            section: "Consumables",
-            relative_path: "temp-enchants.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "class_traits_json",
-            label: "Class Traits",
-            section: "Classes",
-            relative_path: "class-traits.json",
-            required: true,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "currency_types",
-            label: "Currency Types",
-            section: "Item Data",
-            relative_path: "currency-types.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "legendary_abilities",
-            label: "Legendary Abilities",
-            section: "Static Config",
-            relative_path: "legendary-abilities.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "level_selector_sequences",
-            label: "Level Selector Sequences",
-            section: "Static Config",
-            relative_path: "level-selector-sequences.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "manifest_paths",
-            label: "Manifest Paths",
-            section: "Static Config",
-            relative_path: "manifest-paths.txt",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "manifest_paths_all",
-            label: "Manifest Paths (All)",
-            section: "Static Config",
-            relative_path: "manifest-paths-all.txt",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "icon_lookup",
-            label: "Icon Lookup",
-            section: "Static Config",
-            relative_path: "icon-lookup.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "icon_paths",
-            label: "Icon Paths",
-            section: "Static Config",
-            relative_path: "icon-paths.txt",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "spell_scaling_table",
-            label: "Spell Scaling Table",
-            section: "Static Config",
-            relative_path: "spell-scaling-table.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "item_sets",
-            label: "Item Sets",
-            section: "Item Data",
-            relative_path: "item-sets.json",
-            required: false,
-            source: DataFileSource::Raidbots,
-        },
-        DataFileEntry {
-            key: "runtime_blizzard",
-            label: "Runtime: Blizzard Rotation",
-            section: "Runtime",
-            relative_path: "blizzard-runtime-data.json",
-            required: false,
-            source: DataFileSource::Runtime,
-        },
-        DataFileEntry {
-            key: "instance_images_dir",
-            label: "Instance Images Directory",
-            section: "Runtime",
-            relative_path: "instance-images",
-            required: false,
-            source: DataFileSource::Directory,
-        },
-    ]
+impl From<DataManifestEntry> for DataFileEntry {
+    fn from(value: DataManifestEntry) -> Self {
+        Self {
+            key: value.key,
+            label: value.label,
+            section: value.section,
+            source: value.source,
+            remote_path: value.remote_path,
+            local_path: value.local_path,
+            required: value.required,
+            entry_type: value.entry_type,
+            bundled_path: value.bundled_path,
+        }
+    }
+}
+
+fn data_manifest_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("resources")
+        .join("data-manifest.json")
+}
+
+fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
+    let manifest_path = data_manifest_path();
+    let content = std::fs::read_to_string(&manifest_path).map_err(|err| {
+        format!(
+            "Failed to read data manifest at {}: {}",
+            manifest_path.display(),
+            err
+        )
+    })?;
+    let parsed: DataManifest = serde_json::from_str(&content).map_err(|err| {
+        format!(
+            "Failed to parse data manifest at {}: {}",
+            manifest_path.display(),
+            err
+        )
+    })?;
+    Ok(parsed.files.into_iter().map(DataFileEntry::from).collect())
+}
+
+fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
+    let runtime = root.join(&entry.local_path);
+    if runtime.exists() {
+        return runtime;
+    }
+
+    if let Some(bundled_path) = &entry.bundled_path {
+        return Path::new(env!("CARGO_MANIFEST_DIR")).join(bundled_path);
+    }
+
+    runtime
 }
 
 impl DataSyncState {
@@ -452,6 +164,15 @@ impl DataSyncState {
 }
 
 pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
+
     let Some(root) = data_dir.get_ref().clone() else {
         let empty_files: Vec<DataFileState> = Vec::new();
         return HttpResponse::Ok().json(json!({
@@ -461,35 +182,26 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
         }));
     };
 
-    let files: Vec<DataFileState> = data_file_catalog()
+    let files: Vec<DataFileState> = catalog
         .iter()
         .map(|entry| {
-            let metadata = match entry.source {
-                DataFileSource::LocalStatic => {
-                    let runtime = root.join(entry.relative_path);
-                    if runtime.exists() {
-                        std::fs::metadata(runtime).ok()
-                    } else {
-                        let bundled =
-                            Path::new(env!("CARGO_MANIFEST_DIR")).join(entry.relative_path);
-                        std::fs::metadata(bundled).ok()
-                    }
-                }
-                _ => std::fs::metadata(root.join(entry.relative_path)).ok(),
-            };
-            let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+            let metadata = std::fs::metadata(resolve_catalog_path(&root, entry)).ok();
+            let is_dir = entry.entry_type == DataFileEntryType::Directory
+                || metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size_bytes = if is_dir {
                 0
             } else {
                 metadata.as_ref().map(|m| m.len()).unwrap_or(0)
             };
             DataFileState {
-                key: entry.key.to_string(),
-                label: entry.label.to_string(),
-                section: entry.section.to_string(),
-                relative_path: entry.relative_path.to_string(),
+                key: entry.key.clone(),
+                label: entry.label.clone(),
+                section: entry.section.clone(),
+                relative_path: entry.local_path.clone(),
                 required: entry.required,
-                downloadable: matches!(entry.source, DataFileSource::Raidbots),
+                downloadable: entry.source == DataFileSource::Raidbots
+                    && entry.remote_path.is_some()
+                    && entry.entry_type == DataFileEntryType::File,
                 exists: metadata.is_some(),
                 size_bytes,
             }
@@ -541,36 +253,33 @@ pub async fn get_data_file_content(
     data_dir: web::Data<Option<PathBuf>>,
 ) -> HttpResponse {
     let key = path.into_inner();
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let catalog = data_file_catalog();
     let Some(entry) = catalog.iter().find(|e| e.key == key) else {
         return HttpResponse::NotFound().json(json!({"detail": "Unknown data file key"}));
     };
 
-    if matches!(entry.source, DataFileSource::Directory) {
+    if entry.entry_type == DataFileEntryType::Directory {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "Directories do not have file content"}));
     }
 
-    if !is_previewable_file(entry.relative_path) {
+    if !is_previewable_file(&entry.local_path) {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "This file type is not previewable"}));
     }
 
-    let path = match entry.source {
-        DataFileSource::LocalStatic => {
-            let runtime = root.join(entry.relative_path);
-            if runtime.exists() {
-                runtime
-            } else {
-                Path::new(env!("CARGO_MANIFEST_DIR")).join(entry.relative_path)
-            }
-        }
-        _ => root.join(entry.relative_path),
-    };
+    let path = resolve_catalog_path(&root, entry);
 
     let metadata = match std::fs::metadata(&path) {
         Ok(metadata) => metadata,
@@ -598,9 +307,9 @@ pub async fn get_data_file_content(
     };
 
     HttpResponse::Ok().json(DataFilePreviewResponse {
-        key: entry.key.to_string(),
-        label: entry.label.to_string(),
-        relative_path: entry.relative_path.to_string(),
+        key: entry.key.clone(),
+        label: entry.label.clone(),
+        relative_path: entry.local_path.clone(),
         content: preview,
         truncated,
     })
@@ -609,11 +318,12 @@ pub async fn get_data_file_content(
 async fn download_raidbots_file(
     client: &reqwest::Client,
     data_root: &Path,
-    relative_path: &str,
+    remote_path: &str,
+    local_path: &str,
 ) -> Result<(), String> {
     let base_url = "https://www.raidbots.com/static/data/live";
-    let file_url = format!("{}/{}", base_url, relative_path);
-    let dst = data_root.join(relative_path);
+    let file_url = format!("{}/{}", base_url, remote_path);
+    let dst = data_root.join(local_path);
     if let Some(parent) = dst.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -621,19 +331,19 @@ async fn download_raidbots_file(
         .get(&file_url)
         .send()
         .await
-        .map_err(|e| format!("Failed to download {}: {}", relative_path, e))?;
+        .map_err(|e| format!("Failed to download {}: {}", remote_path, e))?;
     if !res.status().is_success() {
         return Err(format!(
             "Failed to download {}: HTTP {}",
-            relative_path,
+            remote_path,
             res.status()
         ));
     }
     let bytes = res
         .bytes()
         .await
-        .map_err(|e| format!("Failed to read {}: {}", relative_path, e))?;
-    std::fs::write(dst, bytes).map_err(|e| format!("Failed to save {}: {}", relative_path, e))?;
+        .map_err(|e| format!("Failed to read {}: {}", remote_path, e))?;
+    std::fs::write(dst, bytes).map_err(|e| format!("Failed to save {}: {}", local_path, e))?;
     Ok(())
 }
 
@@ -643,21 +353,33 @@ pub async fn download_data_file(
     blizzard: web::Data<Arc<BlizzardState>>,
 ) -> HttpResponse {
     let key = path.into_inner();
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let catalog = data_file_catalog();
     let Some(entry) = catalog.iter().find(|e| e.key == key) else {
         return HttpResponse::NotFound().json(json!({"detail": "Unknown data file key"}));
     };
 
-    if !matches!(entry.source, DataFileSource::Raidbots) {
+    if entry.source != DataFileSource::Raidbots {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "This entry cannot be downloaded directly"}));
     }
 
-    match download_raidbots_file(&blizzard.client, &root, entry.relative_path).await {
+    let Some(remote_path) = entry.remote_path.as_deref() else {
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Missing remote path in data manifest for this entry"}));
+    };
+
+    match download_raidbots_file(&blizzard.client, &root, remote_path, &entry.local_path).await {
         Ok(()) => {
             crate::item_db::load(&root);
             let runtime_file = root.join("blizzard-runtime-data.json");
@@ -667,7 +389,7 @@ pub async fn download_data_file(
             HttpResponse::Ok().json(json!({
                 "status": "ok",
                 "key": entry.key,
-                "relative_path": entry.relative_path,
+                "relative_path": entry.local_path,
             }))
         }
         Err(e) => HttpResponse::InternalServerError().json(json!({"detail": e})),
@@ -678,6 +400,14 @@ pub async fn download_missing_data_files(
     data_dir: web::Data<Option<PathBuf>>,
     blizzard: web::Data<Arc<BlizzardState>>,
 ) -> HttpResponse {
+    let catalog = match data_file_catalog() {
+        Ok(entries) => entries,
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({
+                "detail": err,
+            }));
+        }
+    };
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
@@ -685,20 +415,29 @@ pub async fn download_missing_data_files(
     let mut downloaded: Vec<String> = Vec::new();
     let mut failed: Vec<serde_json::Value> = Vec::new();
 
-    for entry in data_file_catalog()
+    for entry in catalog
         .iter()
-        .filter(|e| matches!(e.source, DataFileSource::Raidbots))
+        .filter(|e| {
+            e.source == DataFileSource::Raidbots
+                && e.entry_type == DataFileEntryType::File
+                && e.remote_path.is_some()
+        })
     {
-        let path = root.join(entry.relative_path);
+        let path = root.join(&entry.local_path);
         if path.exists() {
             continue;
         }
 
-        match download_raidbots_file(&blizzard.client, &root, entry.relative_path).await {
-            Ok(()) => downloaded.push(entry.key.to_string()),
+        let Some(remote_path) = entry.remote_path.as_deref() else {
+            continue;
+        };
+
+        match download_raidbots_file(&blizzard.client, &root, remote_path, &entry.local_path).await
+        {
+            Ok(()) => downloaded.push(entry.key.clone()),
             Err(err) => failed.push(json!({
                 "key": entry.key,
-                "relative_path": entry.relative_path,
+                "relative_path": entry.local_path,
                 "error": err,
             })),
         }

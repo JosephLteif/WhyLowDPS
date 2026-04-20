@@ -12,6 +12,9 @@ import {
   getDungeonDataCached,
   getGameDataState,
   getGameDataStateCached,
+  getMythicKeystoneDungeonDetail,
+  getMythicKeystoneDungeonIndex,
+  type MythicKeystoneDungeonDetail,
   triggerDungeonDataRefresh,
 } from '../lib/api';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
@@ -61,6 +64,13 @@ function formatMs(ms?: number | null): string | null {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function normalizeMplusName(name: string): string {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
 }
 
 function normalizeImageUrl(url?: string | null): string | undefined {
@@ -233,13 +243,29 @@ function InfoPill({ label, value }: { label: string; value?: string | number | n
   );
 }
 
-function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string }) {
+function DungeonCard({
+  dungeon,
+  mplusDetail,
+}: {
+  dungeon: DungeonInfo;
+  seasonName?: string;
+  mplusDetail?: MythicKeystoneDungeonDetail | null;
+}) {
   const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
   const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
   const imageUrl = localInstanceImage || dungeon.image_url || placeholder?.icon;
   const [imageFailed, setImageFailed] = useState(false);
   const zone = dungeon.zone || placeholder?.zone;
-  const timer = formatMs(dungeon.keystone_timer_ms);
+  const detailUpgrades = (mplusDetail?.keystone_upgrades ?? [])
+    .map((upgrade) => ({
+      upgrade_level: Number(upgrade?.upgrade_level ?? 0),
+      qualifying_duration: Number(upgrade?.qualifying_duration ?? 0),
+    }))
+    .filter((upgrade) => upgrade.upgrade_level > 0 && upgrade.qualifying_duration > 0)
+    .sort((a, b) => a.upgrade_level - b.upgrade_level);
+  const oneChestDuration =
+    detailUpgrades.find((upgrade) => upgrade.upgrade_level === 1)?.qualifying_duration ?? null;
+  const timer = formatMs(dungeon.keystone_timer_ms ?? oneChestDuration);
   const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
   const rawPayload = dungeon.blizzard_api_data
     ? JSON.stringify(dungeon.blizzard_api_data, null, 2)
@@ -288,7 +314,23 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
         <InfoPill label="Short" value={dungeon.short_name} />
       </div>
 
-      {dungeon.keystone_upgrades && dungeon.keystone_upgrades.length > 0 && (
+      {detailUpgrades.length > 0 ? (
+        <div className="mb-2">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Keystone Upgrade Timers
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {detailUpgrades.map((upgrade) => (
+              <span
+                key={`${dungeon.id}-upgrade-${upgrade.upgrade_level}`}
+                className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold"
+              >
+                +{upgrade.upgrade_level} ({formatMs(upgrade.qualifying_duration)})
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : dungeon.keystone_upgrades && dungeon.keystone_upgrades.length > 0 ? (
         <div className="mb-2">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
             Keystone Upgrades
@@ -301,7 +343,7 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {dungeon.encounters && dungeon.encounters.length > 0 && (
         <div className="mb-2">
@@ -332,6 +374,7 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
 export default function DungeonsPage() {
   const [data, setData] = useState<DungeonSeasonData | null>(null);
+  const [mplusDetailsByName, setMplusDetailsByName] = useState<Record<string, MythicKeystoneDungeonDetail>>({});
   const [gameState, setGameState] = useState<GameDataState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -428,6 +471,54 @@ export default function DungeonsPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMplusDetails = async () => {
+      if (!data?.rotation_dungeons?.length) {
+        setMplusDetailsByName({});
+        return;
+      }
+      try {
+        const index = await getMythicKeystoneDungeonIndex('us');
+        const indexByName = new Map<number | string, number>();
+        for (const row of index?.dungeons || []) {
+          const key = normalizeMplusName(row?.name || '');
+          const id = Number(row?.id ?? 0);
+          if (key && id > 0) indexByName.set(key, id);
+        }
+
+        const dungeonIds = Array.from(
+          new Set(
+            data.rotation_dungeons
+              .map((dungeon) => {
+                const matchedFromName = indexByName.get(normalizeMplusName(dungeon.name));
+                const fallbackId = Number(dungeon.id ?? 0);
+                return Number(matchedFromName ?? fallbackId);
+              })
+              .filter((id) => Number.isFinite(id) && id > 0),
+          ),
+        );
+        const details = await Promise.all(
+          dungeonIds.map((id) => getMythicKeystoneDungeonDetail(id, 'us').catch(() => null)),
+        );
+        if (cancelled) return;
+        const byName: Record<string, MythicKeystoneDungeonDetail> = {};
+        for (const detail of details) {
+          if (!detail || typeof detail !== 'object') continue;
+          const key = normalizeMplusName(detail.name || '');
+          if (key) byName[key] = detail;
+        }
+        setMplusDetailsByName(byName);
+      } catch {
+        if (!cancelled) setMplusDetailsByName({});
+      }
+    };
+    loadMplusDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.rotation_dungeons]);
 
   const waitForDungeonSyncCompletion = async () => {
     const timeoutMs = 20000;
@@ -598,7 +689,12 @@ export default function DungeonsPage() {
         {data?.rotation_dungeons && data.rotation_dungeons.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.rotation_dungeons.map((dungeon) => (
-              <DungeonCard key={dungeon.id} dungeon={dungeon} seasonName={data.season_name} />
+              <DungeonCard
+                key={dungeon.id}
+                dungeon={dungeon}
+                seasonName={data.season_name}
+                mplusDetail={mplusDetailsByName[normalizeMplusName(dungeon.name)] || null}
+              />
             ))}
           </div>
         ) : (

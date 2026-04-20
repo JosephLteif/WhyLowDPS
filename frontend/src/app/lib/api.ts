@@ -347,6 +347,31 @@ export interface DungeonSeasonData {
   rotation_dungeons: DungeonInfo[];
 }
 
+export interface MythicKeystoneDungeonIndexEntry {
+  id: number;
+  name: string;
+  key?: { href?: string };
+}
+
+export interface MythicKeystoneDungeonIndexResponse {
+  dungeons: MythicKeystoneDungeonIndexEntry[];
+}
+
+export interface MythicKeystoneUpgradeTimer {
+  upgrade_level: number;
+  qualifying_duration: number;
+}
+
+export interface MythicKeystoneDungeonDetail {
+  id: number;
+  name: string;
+  map?: { id?: number; name?: string };
+  zone?: { slug?: string };
+  dungeon?: { id?: number; name?: string; key?: { href?: string } };
+  keystone_upgrades?: MythicKeystoneUpgradeTimer[];
+  is_tracked?: boolean;
+}
+
 export interface GameDataState {
   season_id: number;
   season_name: string;
@@ -380,4 +405,21 @@ export async function getGameDataStateCached(): Promise<GameDataState> {
 export async function triggerDungeonDataRefresh(force = false): Promise<void> {
   const query = force ? '?force=true' : '';
   await fetchJson(`${API_URL}/api/data/sync-dungeons${query}`, { method: 'POST' });
+}
+
+export async function getMythicKeystoneDungeonIndex(
+  region = 'us',
+): Promise<MythicKeystoneDungeonIndexResponse> {
+  return fetchJson<MythicKeystoneDungeonIndexResponse>(
+    `${API_URL}/api/blizzard/mythic-keystone/dungeon/index?region=${encodeURIComponent(region)}`,
+  );
+}
+
+export async function getMythicKeystoneDungeonDetail(
+  dungeonId: number,
+  region = 'us',
+): Promise<MythicKeystoneDungeonDetail> {
+  return fetchJson<MythicKeystoneDungeonDetail>(
+    `${API_URL}/api/blizzard/mythic-keystone/dungeon/${encodeURIComponent(String(dungeonId))}?region=${encodeURIComponent(region)}`,
+  );
 }

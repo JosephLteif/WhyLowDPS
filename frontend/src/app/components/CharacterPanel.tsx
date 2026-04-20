@@ -20,7 +20,11 @@ import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { decodeHeader } from '../lib/talentDecode';
 import RaidProgressionGrid from './RaidProgressionGrid';
-import { getDungeonData } from '../lib/api';
+import {
+  getMythicKeystoneDungeonDetail,
+  getMythicKeystoneDungeonIndex,
+  type MythicKeystoneDungeonDetail,
+} from '../lib/api';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -371,25 +375,33 @@ export default function CharacterPanel({
 
 function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
-  const [dungeonTimersByName, setDungeonTimersByName] = useState<Record<string, number>>({});
+  const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
+    Record<string, MythicKeystoneDungeonDetail>
+  >({});
 
   useEffect(() => {
     let cancelled = false;
-    getDungeonData()
-      .then((data) => {
+    getMythicKeystoneDungeonIndex('us')
+      .then(async (indexData) => {
+        const indexEntries = Array.isArray(indexData?.dungeons) ? indexData.dungeons : [];
+        const detailResults = await Promise.all(
+          indexEntries.map((entry) =>
+            getMythicKeystoneDungeonDetail(Number(entry?.id), 'us').catch(() => null),
+          ),
+        );
         if (cancelled) return;
-        const map: Record<string, number> = {};
-        for (const dungeon of data?.rotation_dungeons || []) {
-          const name = String(dungeon?.name || '')
+        const map: Record<string, MythicKeystoneDungeonDetail> = {};
+        for (const detail of detailResults) {
+          if (!detail || typeof detail !== 'object') continue;
+          const name = String(detail?.name || '')
             .trim()
             .toLowerCase();
-          const timer = Number(dungeon?.keystone_timer_ms ?? 0);
-          if (name && timer > 0) map[name] = timer;
+          if (name) map[name] = detail;
         }
-        setDungeonTimersByName(map);
+        setMplusDungeonDetailsByName(map);
       })
       .catch(() => {
-        if (!cancelled) setDungeonTimersByName({});
+        if (!cancelled) setMplusDungeonDetailsByName({});
       });
     return () => {
       cancelled = true;
@@ -412,11 +424,25 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
       run?.completed_challenge_mode?.name ||
       run?.name ||
       'Dungeon';
+    const getMplusDungeonDetail = (run: any): MythicKeystoneDungeonDetail | null => {
+      const key = normalizeName(getRunName(run));
+      if (!key) return null;
+      return mplusDungeonDetailsByName[key] || null;
+    };
+    const getTimedByDurationFallback = (run: any): boolean | null => {
+      const detail = getMplusDungeonDetail(run);
+      if (!detail) return null;
+      const oneChestDuration = detail.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
+        ?.qualifying_duration;
+      const durationMs = getRunDurationMs(run);
+      if (!oneChestDuration || !durationMs) return null;
+      return durationMs <= oneChestDuration;
+    };
     const getRunTimed = (run: any): boolean | null => {
       if (typeof run?.is_completed_within_timeout === 'boolean') return run.is_completed_within_timeout;
       if (typeof run?.completed_in_time === 'boolean') return run.completed_in_time;
       if (typeof run?.completedWithinTime === 'boolean') return run.completedWithinTime;
-      return null;
+      return getTimedByDurationFallback(run);
     };
     const getRunTimestamp = (run: any) =>
       Number(
@@ -439,8 +465,9 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
     };
 
     const formatClockDelta = (run: any) => {
-      const dungeonNameKey = normalizeName(getRunName(run));
-      const timerMs = dungeonTimersByName[dungeonNameKey];
+      const detail = getMplusDungeonDetail(run);
+      const timerMs = detail?.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
+        ?.qualifying_duration;
       const durationMs = getRunDurationMs(run);
       if (!timerMs || !durationMs) return null;
       const diff = timerMs - durationMs;
@@ -576,6 +603,8 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
         clockDelta: formatClockDelta(run),
         timestamp: getRunTimestamp(run),
         members: Array.isArray(run?.members) ? run.members : [],
+        dungeonId: getMplusDungeonDetail(run)?.id ?? null,
+        keystoneUpgrades: getMplusDungeonDetail(run)?.keystone_upgrades ?? [],
       })),
       timedRuns,
       depletedRuns,
@@ -584,7 +613,7 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
       vaultProgressCount: runsForVault,
       hasAnyVaultIlvl,
     };
-  }, [dungeonTimersByName, mythicPlus]);
+  }, [mplusDungeonDetailsByName, mythicPlus]);
 
   const formatRelative = (timestamp: number) => {
     if (!timestamp || timestamp <= 0) return 'Unknown time';

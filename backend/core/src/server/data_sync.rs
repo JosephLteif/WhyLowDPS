@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -161,6 +162,102 @@ impl DataSyncState {
             progress: Mutex::new(String::new()),
         }
     }
+}
+
+fn get_background_credentials(
+    auth_state: &BlizzardAuthState,
+    store: &dyn JobStorage,
+) -> Option<(String, String)> {
+    if let (Some(id), Some(sec)) = (
+        store.get_user_config("system", "blizzard_client_id"),
+        store.get_user_config("system", "blizzard_client_secret"),
+    ) {
+        return Some((id, sec));
+    }
+
+    if let (Some(id), Some(sec)) = (&auth_state.client_id, &auth_state.client_secret) {
+        return Some((id.clone(), sec.clone()));
+    }
+
+    None
+}
+
+fn is_background_sync_due(data_dir: Option<&Path>, threshold_hours: i64) -> bool {
+    let Some(dir) = data_dir else {
+        return true;
+    };
+    let runtime_file = dir.join("blizzard-runtime-data.json");
+    let content = match std::fs::read_to_string(runtime_file) {
+        Ok(content) => content,
+        Err(_) => return true,
+    };
+    let parsed: Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return true,
+    };
+    let last_sync_str = match parsed.get("last_sync").and_then(|v| v.as_str()) {
+        Some(s) => s,
+        None => return true,
+    };
+    let last_sync = match chrono::DateTime::parse_from_rfc3339(last_sync_str) {
+        Ok(ts) => ts.with_timezone(&chrono::Utc),
+        Err(_) => return true,
+    };
+    chrono::Utc::now().signed_duration_since(last_sync).num_hours() >= threshold_hours
+}
+
+pub fn spawn_background_sync_loop(
+    state: Arc<DataSyncState>,
+    auth_state: Arc<BlizzardAuthState>,
+    blizzard: Arc<BlizzardState>,
+    store: Arc<dyn JobStorage>,
+    data_dir: Option<PathBuf>,
+) {
+    tokio::spawn(async move {
+        let poll_duration = tokio::time::Duration::from_secs(10 * 60);
+        let stale_threshold_hours = 6;
+
+        loop {
+            let due = is_background_sync_due(data_dir.as_deref(), stale_threshold_hours);
+            let already_syncing = {
+                let status = state.status.lock().await;
+                *status == SyncStatus::Syncing
+            };
+
+            if due && !already_syncing {
+                if let Some((client_id, client_secret)) =
+                    get_background_credentials(auth_state.as_ref(), &*store)
+                {
+                    {
+                        let mut status = state.status.lock().await;
+                        *status = SyncStatus::Syncing;
+                    }
+                    {
+                        let mut progress = state.progress.lock().await;
+                        *progress = "Auto:0:1:Scheduled background data sync...".to_string();
+                    }
+
+                    let result = perform_sync(
+                        state.clone(),
+                        blizzard.clone(),
+                        client_id,
+                        client_secret,
+                        data_dir.clone(),
+                        false,
+                    )
+                    .await;
+
+                    let mut status = state.status.lock().await;
+                    *status = match result {
+                        Ok(_) => SyncStatus::Ready,
+                        Err(err) => SyncStatus::Error(err),
+                    };
+                }
+            }
+
+            tokio::time::sleep(poll_duration).await;
+        }
+    });
 }
 
 pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
@@ -344,6 +441,54 @@ async fn download_raidbots_file(
         .await
         .map_err(|e| format!("Failed to read {}: {}", remote_path, e))?;
     std::fs::write(dst, bytes).map_err(|e| format!("Failed to save {}: {}", local_path, e))?;
+    Ok(())
+}
+
+fn stage_raidbots_files(
+    staging_root: &Path,
+    final_root: &Path,
+    files: &[String],
+    metadata_text: &str,
+) -> Result<(), String> {
+    for file_name in files {
+        let staged = staging_root.join(file_name);
+        let final_path = final_root.join(file_name);
+        if let Some(parent) = final_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "Failed to create final directory for {}: {}",
+                    final_path.display(),
+                    e
+                )
+            })?;
+        }
+
+        match std::fs::rename(&staged, &final_path) {
+            Ok(_) => {}
+            Err(err) if err.kind() == io::ErrorKind::CrossesDevices => {
+                std::fs::copy(&staged, &final_path).map_err(|copy_err| {
+                    format!(
+                        "Failed to copy staged file {} to {}: {}",
+                        staged.display(),
+                        final_path.display(),
+                        copy_err
+                    )
+                })?;
+                std::fs::remove_file(&staged).ok();
+            }
+            Err(err) => {
+                return Err(format!(
+                    "Failed to move staged file {} to {}: {}",
+                    staged.display(),
+                    final_path.display(),
+                    err
+                ));
+            }
+        }
+    }
+
+    std::fs::write(final_root.join("metadata.json"), metadata_text)
+        .map_err(|e| format!("Failed to write metadata.json: {}", e))?;
     Ok(())
 }
 
@@ -633,6 +778,11 @@ async fn perform_sync(
         let total_files = files.len();
         if let Some(dir) = &data_dir {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            let staging = tempfile::Builder::new()
+                .prefix("raidbots-sync-")
+                .tempdir_in(dir)
+                .map_err(|e| format!("Failed to create staging directory: {}", e))?;
+            let staging_path = staging.path().to_path_buf();
 
             for (i, file_name) in files.iter().enumerate() {
                 {
@@ -641,7 +791,7 @@ async fn perform_sync(
                 }
 
                 let file_url = format!("{}/{}", base_url, file_name);
-                let file_path = dir.join(file_name);
+                let file_path = staging_path.join(file_name);
                 if let Some(parent) = file_path.parent() {
                     std::fs::create_dir_all(parent).map_err(|e| {
                         format!("Failed to create directory for {}: {}", file_name, e)
@@ -662,8 +812,12 @@ async fn perform_sync(
                 std::fs::write(&file_path, content)
                     .map_err(|e| format!("Failed to save {}: {}", file_name, e))?;
             }
-            // Save metadata last
-            std::fs::write(dir.join("metadata.json"), &metadata_text).ok();
+
+            {
+                let mut p = state.progress.lock().await;
+                *p = "Applying staged Raidbots data...".to_string();
+            }
+            stage_raidbots_files(&staging_path, dir, &files, &metadata_text)?;
         }
     }
 

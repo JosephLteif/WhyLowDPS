@@ -263,6 +263,11 @@ pub async fn start_with_storage_bind(
         // For historical/trait reasons, we still provide a web::Data<Option<Arc<BlizzardAuthState>>>
         // to the proxy handlers so они can check for JWT sub.
         let auth_state_opt_data = web::Data::new(Some(auth_state.get_ref().clone()));
+        let sync_state_for_background = sync_state.get_ref().clone();
+        let auth_state_for_background = auth_state.get_ref().clone();
+        let blizzard_state_for_background = blizzard_state.get_ref().clone();
+        let store_for_background = store_data.get_ref().clone();
+        let data_dir_for_background = data.clone();
 
         let server = HttpServer::new(move || {
             let cors = Cors::default()
@@ -641,6 +646,14 @@ pub async fn start_with_storage_bind(
         .bind(&bind_addr)
         .unwrap_or_else(|_| panic!("Failed to bind to {}", bind_addr))
         .run();
+
+        data_sync::spawn_background_sync_loop(
+            sync_state_for_background,
+            auth_state_for_background,
+            blizzard_state_for_background,
+            store_for_background,
+            data_dir_for_background,
+        );
 
         println!("HTTP server starting on port {}", port);
         (server, port)

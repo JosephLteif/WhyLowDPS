@@ -136,9 +136,16 @@ function getCurrentMplusDungeonIds(instances: Instance[]): Set<number> {
   return new Set<number>(mplusBucket.encounters.map((encounter) => encounter.id));
 }
 
-function getLocalInstanceImageUrl(instanceId?: number | null): string | null {
+function getLocalInstanceImageUrl(
+  instanceId?: number | null,
+  sourceUrl?: string | null,
+): string | null {
   if (!instanceId || instanceId <= 0) return null;
-  return `${API_URL}/api/data/instance-images/instance-${instanceId}.jpg`;
+  const base = `${API_URL}/api/data/images/instance/${instanceId}`;
+  if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) {
+    return base;
+  }
+  return `${base}?source=${encodeURIComponent(sourceUrl)}`;
 }
 
 function shouldPreferLocalInstanceImage(imageUrl?: string | null): boolean {
@@ -408,9 +415,12 @@ export default function DungeonsPage() {
             ...dungeon,
             zone: dungeon.zone || matchedInstance.zone || null,
             image_url: normalizeImageUrl(
-              preferredDungeonImage ||
-              preferredInstanceImage ||
-              getEncounterJournalFallbackImage(matchedInstance),
+              getLocalInstanceImageUrl(
+                dungeon.id,
+                preferredDungeonImage ||
+                  preferredInstanceImage ||
+                  getEncounterJournalFallbackImage(matchedInstance),
+              ) || preferredDungeonImage || preferredInstanceImage || getEncounterJournalFallbackImage(matchedInstance),
             ),
             encounters: mergedEncounterNames,
             num_bosses: mergedBossCount,
@@ -517,9 +527,12 @@ export default function DungeonsPage() {
           ...dungeon,
           zone: dungeon.zone || matchedInstance.zone || null,
           image_url: normalizeImageUrl(
-            preferredDungeonImage ||
-            preferredInstanceImage ||
-            getEncounterJournalFallbackImage(matchedInstance),
+            getLocalInstanceImageUrl(
+              dungeon.id,
+              preferredDungeonImage ||
+                preferredInstanceImage ||
+                getEncounterJournalFallbackImage(matchedInstance),
+            ) || preferredDungeonImage || preferredInstanceImage || getEncounterJournalFallbackImage(matchedInstance),
           ),
           encounters: mergedEncounterNames,
           num_bosses: mergedBossCount,

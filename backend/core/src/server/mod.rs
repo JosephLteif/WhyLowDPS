@@ -374,6 +374,10 @@ pub async fn start_with_storage_bind(
                     "/api/data/files/{key}/content",
                     web::get().to(data_sync::get_data_file_content),
                 )
+                .route(
+                    "/api/data/images/{type}/{id}",
+                    web::get().to(data_sync::get_data_image),
+                )
                 .route("/api/data/sync", web::post().to(data_sync::trigger_sync))
                 .route(
                     "/api/data/sync-dungeons",

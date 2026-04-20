@@ -52,6 +52,11 @@ pub struct DataFilePreviewResponse {
     pub truncated: bool,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DataImageQuery {
+    pub source: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum DataFileSource {
@@ -345,6 +350,125 @@ fn is_previewable_file(relative_path: &str) -> bool {
     )
 }
 
+fn is_http_url(url: &str) -> bool {
+    let lowered = url.to_ascii_lowercase();
+    lowered.starts_with("https://") || lowered.starts_with("http://")
+}
+
+fn is_blizzard_cdn_url(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    host.contains("blizzard.com") || host.contains("battle.net")
+}
+
+fn find_cached_image_file(images_dir: &Path, image_type: &str, id: u64) -> Option<PathBuf> {
+    let candidates = [
+        format!("{}.jpg", id),
+        format!("{}.jpeg", id),
+        format!("{}.png", id),
+        format!("{}.webp", id),
+        format!("{}.gif", id),
+        format!("{}-{}.jpg", image_type, id),
+        format!("{}-{}.jpeg", image_type, id),
+        format!("{}-{}.png", image_type, id),
+        format!("{}-{}.webp", image_type, id),
+        format!("{}-{}.gif", image_type, id),
+    ];
+
+    for candidate in candidates {
+        let path = images_dir.join(candidate);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
+    None
+}
+
+fn find_runtime_image_url(image_type: &str, id: u64) -> Option<String> {
+    for instance in crate::item_db::instances() {
+        let instance_id = instance.get("id").and_then(|v| v.as_u64());
+        if image_type == "instance" && instance_id == Some(id) {
+            if let Some(url) = instance
+                .get("image_url")
+                .and_then(|v| v.as_str())
+                .filter(|url| is_http_url(url))
+            {
+                return Some(url.to_string());
+            }
+        }
+
+        if image_type == "encounter" {
+            if let Some(encounters) = instance.get("encounters").and_then(|v| v.as_array()) {
+                for encounter in encounters {
+                    if encounter.get("id").and_then(|v| v.as_u64()) == Some(id) {
+                        if let Some(url) = encounter
+                            .get("image_url")
+                            .and_then(|v| v.as_str())
+                            .filter(|url| is_http_url(url))
+                        {
+                            return Some(url.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if image_type == "instance" {
+        let runtime = crate::item_db::get_runtime_data();
+        if let Some(details) = runtime.get("dungeon_details").and_then(|v| v.as_array()) {
+            for detail in details {
+                if detail.get("id").and_then(|v| v.as_u64()) == Some(id) {
+                    if let Some(url) = detail
+                        .get("image_url")
+                        .and_then(|v| v.as_str())
+                        .filter(|url| is_http_url(url))
+                    {
+                        return Some(url.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn infer_image_extension(url: &str) -> &'static str {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return "jpg";
+    };
+    let path = parsed.path().to_ascii_lowercase();
+    if path.ends_with(".png") {
+        return "png";
+    }
+    if path.ends_with(".webp") {
+        return "webp";
+    }
+    if path.ends_with(".gif") {
+        return "gif";
+    }
+    if path.ends_with(".jpeg") {
+        return "jpeg";
+    }
+    "jpg"
+}
+
+fn content_type_for_extension(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "jpeg" | "jpg" => "image/jpeg",
+        _ => "application/octet-stream",
+    }
+}
+
 pub async fn get_data_file_content(
     path: web::Path<String>,
     data_dir: web::Data<Option<PathBuf>>,
@@ -410,6 +534,97 @@ pub async fn get_data_file_content(
         content: preview,
         truncated,
     })
+}
+
+pub async fn get_data_image(
+    path: web::Path<(String, String)>,
+    query: web::Query<DataImageQuery>,
+    data_dir: web::Data<Option<PathBuf>>,
+    blizzard: web::Data<Arc<BlizzardState>>,
+) -> HttpResponse {
+    let (image_type, id_raw) = path.into_inner();
+    if image_type != "instance" && image_type != "encounter" {
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Unsupported image type. Use 'instance' or 'encounter'."}));
+    }
+
+    let id = match id_raw.parse::<u64>() {
+        Ok(id) => id,
+        Err(_) => return HttpResponse::BadRequest().json(json!({"detail": "Invalid image id"})),
+    };
+
+    let Some(root) = data_dir.get_ref().clone() else {
+        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
+    };
+    let images_dir = root.join("instance-images");
+    std::fs::create_dir_all(&images_dir).ok();
+
+    if let Some(cached_path) = find_cached_image_file(&images_dir, &image_type, id) {
+        match std::fs::read(&cached_path) {
+            Ok(bytes) => {
+                let ext = cached_path
+                    .extension()
+                    .and_then(|v| v.to_str())
+                    .unwrap_or("jpg")
+                    .to_ascii_lowercase();
+                return HttpResponse::Ok()
+                    .append_header(("Cache-Control", "public, max-age=86400"))
+                    .content_type(content_type_for_extension(&ext))
+                    .body(bytes);
+            }
+            Err(err) => {
+                return HttpResponse::InternalServerError().json(json!({
+                    "detail": format!("Failed to read cached image: {}", err)
+                }));
+            }
+        }
+    }
+
+    let source_url = query
+        .source
+        .as_deref()
+        .filter(|url| is_http_url(url))
+        .map(ToOwned::to_owned)
+        .or_else(|| find_runtime_image_url(&image_type, id));
+
+    let Some(source_url) = source_url else {
+        return HttpResponse::NotFound().json(json!({"detail": "No image source found"}));
+    };
+    if !is_blizzard_cdn_url(&source_url) {
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Only Blizzard CDN sources are allowed"}));
+    }
+
+    let response = match blizzard.client.get(&source_url).send().await {
+        Ok(res) => res,
+        Err(err) => {
+            return HttpResponse::BadGateway()
+                .json(json!({"detail": format!("Failed to fetch remote image: {}", err)}));
+        }
+    };
+    if !response.status().is_success() {
+        return HttpResponse::BadGateway().json(json!({
+            "detail": format!("Remote image fetch failed with status {}", response.status())
+        }));
+    }
+    let bytes = match response.bytes().await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return HttpResponse::BadGateway()
+                .json(json!({"detail": format!("Failed to read remote image: {}", err)}));
+        }
+    };
+
+    let ext = infer_image_extension(&source_url);
+    let target = images_dir.join(format!("{}-{}.{}", image_type, id, ext));
+    if std::fs::write(&target, &bytes).is_err() {
+        // Best-effort cache write; still return downloaded bytes.
+    }
+
+    HttpResponse::Ok()
+        .append_header(("Cache-Control", "public, max-age=86400"))
+        .content_type(content_type_for_extension(ext))
+        .body(bytes)
 }
 
 async fn download_raidbots_file(

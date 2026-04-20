@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { API_URL, fetchJson } from '../lib/api';
 import { useSimContext } from './SimContext';
 import { characterHref } from '../lib/routes';
+import { CLASS_COLORS } from '../lib/types';
 
 interface DpsHeroCardProps {
   playerName: string;
@@ -33,6 +34,36 @@ const FACTION_BGS: Record<string, string> = {
   alliance: '/api/data/static/faction-bg-alliance.jpg',
   horde: '/api/data/static/faction-bg-horde.jpg',
 };
+
+function classColorFromLabel(label: string | undefined): string | undefined {
+  if (!label) return undefined;
+  const normalized = label.trim().toLowerCase().replace(/[_-]+/g, ' ');
+  if (!normalized) return undefined;
+
+  const classAliases: Array<[alias: string, classKey: string]> = [
+    ['death knight', 'death_knight'],
+    ['demon hunter', 'demon_hunter'],
+    ['warrior', 'warrior'],
+    ['paladin', 'paladin'],
+    ['hunter', 'hunter'],
+    ['rogue', 'rogue'],
+    ['priest', 'priest'],
+    ['shaman', 'shaman'],
+    ['mage', 'mage'],
+    ['warlock', 'warlock'],
+    ['monk', 'monk'],
+    ['druid', 'druid'],
+    ['evoker', 'evoker'],
+  ];
+
+  for (const [alias, classKey] of classAliases) {
+    if (normalized === alias || normalized.endsWith(` ${alias}`)) {
+      return CLASS_COLORS[classKey];
+    }
+  }
+
+  return undefined;
+}
 
 function useFaction(
   realm: string | undefined,
@@ -98,6 +129,7 @@ export default function DpsHeroCard({
     avgIlevel != null;
 
   const faction = useFaction(playerRealm, playerName, playerRegion);
+  const playerClassColor = classColorFromLabel(playerClass);
 
   const insetUrl =
     playerRealm && playerName
@@ -163,7 +195,9 @@ export default function DpsHeroCard({
           ) : (
             <p className="text-2xl font-bold tracking-tight text-white">{playerName}</p>
           )}
-          <p className="mt-0.5 text-sm font-medium text-gold/70">{playerClass}</p>
+          <p className="mt-0.5 text-sm font-medium" style={{ color: playerClassColor || undefined }}>
+            {playerClass}
+          </p>
           <p className="mt-4 text-5xl font-bold tabular-nums tracking-tight text-white">
             {Math.round(dps).toLocaleString()}
           </p>

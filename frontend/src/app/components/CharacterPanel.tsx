@@ -19,6 +19,7 @@ import { useTalentTree } from '../lib/useTalentTree';
 import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { decodeHeader } from '../lib/talentDecode';
+import RaidProgressionGrid from './RaidProgressionGrid';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -510,7 +511,6 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
 
 function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
   const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
-  const [showAll, setShowAll] = useState(false);
 
   const raids = useMemo(() => {
     if (!raidEncounters || typeof raidEncounters !== 'object') return [];
@@ -657,56 +657,28 @@ function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
 
   return (
     <div className="card p-5">
-      <div className="mb-4 flex flex-col gap-3">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Raid Progress</h3>
         {expansionOptions.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-[11px] font-bold uppercase tracking-wider text-zinc-600">
-              <span className="block">Expansion</span>
-              <select
-                value={selectedExpansion}
-                onChange={(e) => {
-                  setSelectedExpansion(e.target.value);
-                }}
-                className="input-field w-full text-sm"
-              >
-                <option value="all">All expansions</option>
-                {expansionOptions.map((exp) => (
-                  <option key={exp.key} value={exp.key}>
-                    {exp.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <select
+            aria-label="Expansion"
+            value={selectedExpansion}
+            onChange={(e) => {
+              setSelectedExpansion(e.target.value);
+            }}
+            className="input-field max-w-[170px] text-sm"
+          >
+            <option value="all">All expansions</option>
+            {expansionOptions.map((exp) => (
+              <option key={exp.key} value={exp.key}>
+                {exp.label}
+              </option>
+            ))}
+          </select>
         )}
       </div>
       {visibleRaids.length > 0 ? (
-        <div className="space-y-4">
-          {(showAll ? visibleRaids : visibleRaids.slice(0, 3)).map((raid) => (
-            <div key={raid.name} className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-              <p className="mb-1 truncate text-[12px] font-bold text-zinc-200">{raid.name}</p>
-              <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-500">
-                {raid.expansionLabel}
-              </p>
-              <div className="grid grid-cols-2 gap-1 text-[11px] text-zinc-400">
-                <span>LFR: {raid.lfr}</span>
-                <span>Normal: {raid.normal}</span>
-                <span>Heroic: {raid.heroic}</span>
-                <span>Mythic: {raid.mythic}</span>
-              </div>
-            </div>
-          ))}
-          {visibleRaids.length > 3 && (
-            <button
-              type="button"
-              onClick={() => setShowAll((v) => !v)}
-              className="mt-2 text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
-            >
-              {showAll ? 'Show Less' : `View All (${visibleRaids.length})`}
-            </button>
-          )}
-        </div>
+        <RaidProgressionGrid raidEncounters={raidEncounters} selectedExpansion={selectedExpansion} />
       ) : (
         <p className="text-[11px] italic text-zinc-600">
           Raid progression data unavailable for the selected filter.

@@ -2,6 +2,8 @@
 pub mod auth_handlers;
 mod blizzard;
 mod character_profile_handlers;
+#[cfg(feature = "web")]
+mod data_provider;
 mod data_sync;
 #[cfg(feature = "web")]
 pub mod dungeon_data;
@@ -580,6 +582,10 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/dungeons",
                     web::get().to(game_data_handlers::get_dungeon_data),
+                )
+                .route(
+                    "/api/game-data/state",
+                    web::get().to(data_provider::get_game_data_state),
                 )
                 .route("/health", web::get().to(health_check));
 

@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react';
 import {
   API_URL,
   DungeonAffix,
+  GameDataState,
   DungeonInfo,
   DungeonSeasonData,
   fetchJson,
   fetchJsonCached,
   getDungeonData,
   getDungeonDataCached,
+  getGameDataState,
+  getGameDataStateCached,
   triggerDungeonDataRefresh,
 } from '../lib/api';
 import { Instance } from '../drop-finder/types';
@@ -162,8 +165,8 @@ type DisplayAffix = DungeonAffix & {
   wowhead_url?: string | null;
 };
 
-function AffixCard({ affix, fallbackIconUrl }: { affix: DisplayAffix; fallbackIconUrl?: string }) {
-  const iconUrl = affix.icon || fallbackIconUrl || null;
+function AffixCard({ affix }: { affix: DisplayAffix }) {
+  const iconUrl = affix.icon || null;
   const wowheadUrl =
     affix.wowhead_url || (affix.spell_id ? `https://wowhead.com/spell=${affix.spell_id}` : null);
   const iconNode = iconUrl ? (
@@ -313,8 +316,7 @@ function DungeonCard({ dungeon }: { dungeon: DungeonInfo; seasonName?: string })
 
 export default function DungeonsPage() {
   const [data, setData] = useState<DungeonSeasonData | null>(null);
-  const [raiderAffixIconByName, setRaiderAffixIconByName] = useState<Record<string, string>>({});
-  const [raiderCurrentAffixes, setRaiderCurrentAffixes] = useState<DisplayAffix[]>([]);
+  const [gameState, setGameState] = useState<GameDataState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -322,85 +324,31 @@ export default function DungeonsPage() {
   const backendError = (data as (DungeonSeasonData & { error?: string }) | null)?.error;
   const hasAnyBlizzardDetails =
     data?.rotation_dungeons?.some((d) => d.blizzard_href || d.blizzard_api_data) ?? false;
-  const displayedAffixes: DisplayAffix[] =
-    raiderCurrentAffixes.length > 0 ? raiderCurrentAffixes : (data?.current_affixes ?? []);
-  const affixSource = raiderCurrentAffixes.length > 0 ? 'Raider.IO (live)' : 'Backend cache';
+  const displayedAffixes: DisplayAffix[] = (() => {
+    const backendAffixes = data?.current_affixes ?? [];
+    if (!gameState?.active_affixes?.length) {
+      return backendAffixes;
+    }
+    const byName = new Map<string, DisplayAffix>(
+      backendAffixes.map((affix) => [normalizeAffixName(affix.name), affix]),
+    );
+    return gameState.active_affixes.map((name, idx) => {
+      const matched = byName.get(normalizeAffixName(name));
+      if (matched) return matched;
+      return {
+        id: 900000 + idx,
+        name,
+        description: '',
+        icon: null,
+        spell_id: null,
+      };
+    });
+  })();
+  const affixSource = gameState?.active_affixes?.length
+    ? 'Backend game state'
+    : 'Backend dungeon cache';
 
   useWowheadTooltips([data?.current_affixes, data?.rotation_dungeons]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    type RaiderAffixResponse = {
-      title?: string;
-      affix_details?: Array<{
-        id?: number;
-        name?: string;
-        description?: string;
-        icon_url?: string;
-        wowhead_url?: string;
-      }>;
-    };
-
-    const loadRaiderAffixIcons = async () => {
-      try {
-        const urls = [
-          'https://raider.io/api/v1/mythic-plus/affixes?region=us&locale=en',
-          'https://raider.io/api/v1/mythic-plus/affixes?region=eu&locale=en',
-        ];
-
-        const responses = await Promise.all(
-          urls.map((url) =>
-            fetch(url)
-              .then((res) => (res.ok ? res.json() : null))
-              .catch(() => null),
-          ),
-        );
-
-        const iconMap: Record<string, string> = {};
-        let bestPayload: RaiderAffixResponse | null = null;
-        for (const payload of responses as (RaiderAffixResponse | null)[]) {
-          if (!bestPayload && payload?.affix_details && payload.affix_details.length > 0) {
-            bestPayload = payload;
-          }
-          for (const affix of payload?.affix_details ?? []) {
-            if (!affix.name || !affix.icon_url) continue;
-            const key = normalizeAffixName(affix.name);
-            if (!iconMap[key]) {
-              iconMap[key] = affix.icon_url;
-            }
-          }
-        }
-
-        if (!cancelled) {
-          setRaiderAffixIconByName(iconMap);
-          setRaiderCurrentAffixes(
-            (bestPayload?.affix_details ?? [])
-              .filter((affix): affix is NonNullable<typeof affix> & { name: string } => !!affix?.name)
-              .map((affix) => ({
-                id: affix.id ?? Math.abs(normalizeAffixName(affix.name).split('').reduce((a, c) => a + c.charCodeAt(0), 0)),
-                name: affix.name,
-                description: affix.description ?? '',
-                icon: affix.icon_url ?? null,
-                spell_id: null,
-                wowhead_url: affix.wowhead_url ?? null,
-              })),
-          );
-        }
-      } catch {
-        if (!cancelled) {
-          setRaiderAffixIconByName({});
-          setRaiderCurrentAffixes([]);
-        }
-      }
-    };
-
-    void loadRaiderAffixIcons();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -409,8 +357,11 @@ export default function DungeonsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [seasonData, instances] = await Promise.all([
+        const [seasonData, gameDataState, instances] = await Promise.all([
           preferCache ? getDungeonDataCached() : getDungeonData(),
+          (preferCache ? getGameDataStateCached() : getGameDataState()).catch(
+            () => null as GameDataState | null,
+          ),
           fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, {
             ttl: 5 * 60 * 1000,
             usePersistentCache: true,
@@ -424,6 +375,8 @@ export default function DungeonsPage() {
           instancesByName.set(normalizeDungeonName(inst.name), inst);
         }
         const currentMplusIds = getCurrentMplusDungeonIds(instances);
+        const providerRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
+        const activeRotationIds = providerRotationIds.size > 0 ? providerRotationIds : currentMplusIds;
 
         const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
           const matchedInstance =
@@ -464,11 +417,12 @@ export default function DungeonsPage() {
           };
         });
         const filteredDungeons =
-          currentMplusIds.size > 0
-            ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+          activeRotationIds.size > 0
+            ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
             : enrichedDungeons;
 
         if (!cancelled) {
+          setGameState(gameDataState);
           setData((previous) => ({
             ...seasonData,
             rotation_dungeons: mergeWithPreviousDungeonData(
@@ -520,8 +474,9 @@ export default function DungeonsPage() {
     try {
       await triggerDungeonDataRefresh(true);
       await waitForDungeonSyncCompletion();
-      const [seasonData, instances] = await Promise.all([
+      const [seasonData, gameDataState, instances] = await Promise.all([
         getDungeonData(),
+        getGameDataState().catch(() => null as GameDataState | null),
         fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
       ]);
 
@@ -532,6 +487,8 @@ export default function DungeonsPage() {
         instancesByName.set(normalizeDungeonName(inst.name), inst);
       }
       const currentMplusIds = getCurrentMplusDungeonIds(instances);
+      const providerRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
+      const activeRotationIds = providerRotationIds.size > 0 ? providerRotationIds : currentMplusIds;
 
       const enrichedDungeons = seasonData.rotation_dungeons.map((dungeon) => {
         const matchedInstance =
@@ -569,10 +526,11 @@ export default function DungeonsPage() {
         };
       });
       const filteredDungeons =
-        currentMplusIds.size > 0
-          ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+        activeRotationIds.size > 0
+          ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
           : enrichedDungeons;
 
+      setGameState(gameDataState);
       setData((previous) => ({
         ...seasonData,
         rotation_dungeons: mergeWithPreviousDungeonData(
@@ -671,11 +629,7 @@ export default function DungeonsPage() {
           <p className="text-sm font-medium text-zinc-400">Source: {affixSource}</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {displayedAffixes.map((affix) => (
-              <AffixCard
-                key={affix.id}
-                affix={affix}
-                fallbackIconUrl={raiderAffixIconByName[normalizeAffixName(affix.name)]}
-              />
+              <AffixCard key={affix.id} affix={affix} />
             ))}
           </div>
         </section>

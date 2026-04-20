@@ -7,6 +7,8 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-close",
     "shell:default",
     "updater:default",
     "notification:default",

@@ -2,10 +2,12 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet};
 use tauri::path::BaseDirectory;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::Emitter;
 use tauri::Manager;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::WindowEvent;
@@ -90,6 +92,86 @@ struct SimNotificationSummary {
     player_name: Option<String>,
     linked_name: Option<String>,
     dps: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
+struct AppClosePreferences {
+    minimize_to_tray_on_close: Option<bool>,
+}
+
+#[derive(Debug)]
+struct AppClosePreferencesState {
+    prefs: Mutex<AppClosePreferences>,
+    path: PathBuf,
+}
+
+#[derive(serde::Serialize)]
+struct CloseBehaviorPreferenceResponse {
+    minimize_to_tray_on_close: Option<bool>,
+}
+
+fn load_close_preferences(path: &Path) -> AppClosePreferences {
+    if !path.exists() {
+        return AppClosePreferences::default();
+    }
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => return AppClosePreferences::default(),
+    };
+    serde_json::from_str::<AppClosePreferences>(&raw).unwrap_or_default()
+}
+
+fn save_close_preferences(path: &Path, prefs: &AppClosePreferences) -> Result<(), String> {
+    let payload = serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?;
+    std::fs::write(path, payload).map_err(|e| e.to_string())
+}
+
+fn set_close_behavior_preference_internal(
+    state: &AppClosePreferencesState,
+    minimize_to_tray_on_close: bool,
+) -> Result<(), String> {
+    let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+    prefs.minimize_to_tray_on_close = Some(minimize_to_tray_on_close);
+    save_close_preferences(&state.path, &prefs)
+}
+
+#[tauri::command]
+fn get_close_behavior_preference(
+    state: tauri::State<'_, AppClosePreferencesState>,
+) -> CloseBehaviorPreferenceResponse {
+    let minimize_to_tray_on_close = state
+        .prefs
+        .lock()
+        .ok()
+        .and_then(|prefs| prefs.minimize_to_tray_on_close);
+    CloseBehaviorPreferenceResponse {
+        minimize_to_tray_on_close,
+    }
+}
+
+#[tauri::command]
+fn set_close_behavior_preference(
+    state: tauri::State<'_, AppClosePreferencesState>,
+    minimize_to_tray_on_close: bool,
+) -> Result<(), String> {
+    set_close_behavior_preference_internal(&state, minimize_to_tray_on_close)
+}
+
+#[tauri::command]
+fn apply_close_behavior_choice(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppClosePreferencesState>,
+    minimize_to_tray_on_close: bool,
+) -> Result<(), String> {
+    set_close_behavior_preference_internal(&state, minimize_to_tray_on_close)?;
+    if minimize_to_tray_on_close {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.hide();
+        }
+    } else {
+        app.exit(0);
+    }
+    Ok(())
 }
 
 fn is_active_status(status: &str) -> bool {
@@ -182,9 +264,26 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             open_auth_window,
-            get_system_info
+            get_system_info,
+            get_close_behavior_preference,
+            set_close_behavior_preference,
+            apply_close_behavior_choice
         ])
         .setup(|app| {
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("./"));
+            if !app_data_dir.exists() {
+                let _ = std::fs::create_dir_all(&app_data_dir);
+            }
+            let close_prefs_path = app_data_dir.join("desktop_prefs.json");
+            let close_prefs = load_close_preferences(&close_prefs_path);
+            app.manage(AppClosePreferencesState {
+                prefs: Mutex::new(close_prefs),
+                path: close_prefs_path,
+            });
+
             let app_handle = app.handle().clone();
             let notifier_handle = app_handle.clone();
             let show_item = MenuItemBuilder::with_id("show_app", "Show WhyLowDps").build(app)?;
@@ -395,8 +494,26 @@ fn main() {
                 return;
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+                let state = window.app_handle().state::<AppClosePreferencesState>();
+                let close_behavior = state
+                    .prefs
+                    .lock()
+                    .ok()
+                    .and_then(|prefs| prefs.minimize_to_tray_on_close);
+
+                match close_behavior {
+                    Some(true) => {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                    Some(false) => {
+                        // Let the window close naturally.
+                    }
+                    None => {
+                        api.prevent_close();
+                        let _ = window.emit("whylowdps-close-choice-requested", ());
+                    }
+                }
             }
         })
         .run(tauri::generate_context!())

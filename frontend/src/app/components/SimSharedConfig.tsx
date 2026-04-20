@@ -275,6 +275,21 @@ function renderSimcLine(line: string) {
   );
 }
 
+function normalizeClassKey(value: string): string {
+  return value.toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function resolveClassColor(className?: string | null): string | undefined {
+  if (!className) return undefined;
+  const normalized = normalizeClassKey(className);
+  return CLASS_COLORS[normalized] || CLASS_COLORS[normalized.replace(/_/g, '')];
+}
+
+function formatRealmName(realm?: string | null): string {
+  if (!realm) return '';
+  return realm.charAt(0).toUpperCase() + realm.slice(1);
+}
+
 function SimcInputEditor({
   value,
   onChange,
@@ -1296,23 +1311,22 @@ function ConsumablesAndRaidBuffsOptions() {
             <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
             <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => {
                 Object.values(raidBuffBindings).forEach((b) => b.setChecked(true));
               }}
-              className="text-[12px] font-bold text-gold/80 transition-colors hover:text-gold"
+              className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
             >
               Select All
             </button>
-            <span className="h-3 w-px bg-zinc-700" />
             <button
               type="button"
               onClick={() => {
                 Object.values(raidBuffBindings).forEach((b) => b.setChecked(false));
               }}
-              className="text-[12px] font-bold text-zinc-500 transition-colors hover:text-zinc-300"
+              className="rounded-md border border-zinc-600 bg-zinc-900/70 px-2.5 py-1 text-[12px] font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
             >
               Clear
             </button>
@@ -1909,6 +1923,60 @@ export default function SimSharedConfig() {
     normalizedPath === '/stat-weights' ||
     normalizedPath.startsWith('/upgrade');
 
+  const selectedProfileMeta = useMemo(() => {
+    if (selectedSavedId !== null) {
+      const saved = bnetProfiles.find((p) => p.id === selectedSavedId);
+      if (!saved) return null;
+      const classLabel = [saved.spec ? specDisplayName(saved.spec) : null, saved.class]
+        .filter(Boolean)
+        .join(' ');
+      const realmLabel = [formatRealmName(saved.realm), saved.region ? `(${saved.region})` : null]
+        .filter(Boolean)
+        .join(' ');
+      return {
+        name: saved.name,
+        classLabel: classLabel || saved.class || null,
+        classColor: resolveClassColor(saved.class),
+        combinedLabel:
+          saved.name && (classLabel || saved.class)
+            ? `${saved.name} - ${classLabel || saved.class}`
+            : saved.name || classLabel || saved.class || 'Select profile',
+        realmLabel: realmLabel || null,
+      };
+    }
+
+    if (selectedHistoryIdx !== null) {
+      const profile = simcInputHistory[selectedHistoryIdx];
+      if (!profile) return null;
+      const info = parseCharacterInfo(profile);
+      if (info?.kind === 'character') {
+        const classLabel = [specDisplayName(info.spec), info.className].filter(Boolean).join(' ');
+        const realmLabel = [info.server, info.region ? `(${info.region})` : null]
+          .filter(Boolean)
+          .join(' ');
+        return {
+          name: info.name,
+          classLabel,
+          classColor: resolveClassColor(info.className),
+          combinedLabel:
+            info.name && classLabel
+              ? `${info.name} - ${classLabel}`
+              : info.name || classLabel || `Profile ${selectedHistoryIdx + 1}`,
+          realmLabel: realmLabel || null,
+        };
+      }
+      return {
+        name: `Profile ${selectedHistoryIdx + 1}`,
+        classLabel: null,
+        classColor: undefined,
+        combinedLabel: `Profile ${selectedHistoryIdx + 1}`,
+        realmLabel: null,
+      };
+    }
+
+    return null;
+  }, [bnetProfiles, selectedHistoryIdx, selectedSavedId, simcInputHistory]);
+
   const readClipboardText = useCallback(async (): Promise<string> => {
     try {
       // Native desktop invoke can be slower on some systems; avoid aggressive timeout here.
@@ -2089,30 +2157,46 @@ export default function SimSharedConfig() {
             <button
               type="button"
               onClick={() => setHistoryDropdownOpen(!historyDropdownOpen)}
-              className="flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1"
+              className="flex min-w-[220px] items-center justify-between gap-3 rounded-md border border-gold/35 bg-zinc-950/95 px-3 py-1.5 text-left shadow-sm shadow-black/40 transition-colors hover:border-gold/60 hover:bg-zinc-900"
             >
-              <span className="text-[12px] text-zinc-300">
-                {selectedSavedId !== null
-                  ? bnetProfiles.find((p) => p.id === selectedSavedId)?.name || 'None'
-                  : selectedHistoryIdx !== null
-                    ? (() => {
-                      const info = parseCharacterInfo(simcInputHistory[selectedHistoryIdx]);
-                      return info?.kind === 'character'
-                        ? info.name
-                        : `Profile ${selectedHistoryIdx + 1}`;
-                    })()
-                    : 'None'}
-              </span>
-              <span className="text-[10px] text-zinc-500">{historyDropdownOpen ? '▲' : '▼'}</span>
+              <div className="min-w-0">
+                {selectedProfileMeta?.name && selectedProfileMeta?.classLabel ? (
+                  <p className="truncate text-[13px] font-semibold tracking-tight text-zinc-100">
+                    <span>{selectedProfileMeta.name}</span>
+                    <span className="text-zinc-100"> - </span>
+                    <span style={{ color: selectedProfileMeta.classColor || '#f4f4f5' }}>
+                      {selectedProfileMeta.classLabel}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="truncate text-[13px] font-semibold tracking-tight text-zinc-100">
+                    {selectedProfileMeta?.combinedLabel || 'Select profile'}
+                  </p>
+                )}
+                <p className="truncate text-[12px] font-medium text-zinc-100">
+                  {selectedProfileMeta?.realmLabel || 'Saved and recent exports'}
+                </p>
+              </div>
+              <svg
+                className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${historyDropdownOpen ? 'rotate-180 text-zinc-300' : ''}`}
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3.5 6.5L8 11l4.5-4.5" />
+              </svg>
             </button>
             {historyDropdownOpen && (
               <div
-                className="absolute right-0 top-full z-50 mt-1 min-w-[280px] rounded-md border border-border bg-surface-2 shadow-xl">
+                className="absolute right-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950/95 shadow-2xl backdrop-blur">
                 <div className="flex border-b border-border">
                   <button
                     type="button"
                     onClick={() => setHistoryTab('saved')}
-                    className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-medium transition-colors ${
+                    className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-semibold transition-colors ${
                       historyTab === 'saved'
                         ? 'border-gold text-gold'
                         : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -2123,7 +2207,7 @@ export default function SimSharedConfig() {
                   <button
                     type="button"
                     onClick={() => setHistoryTab('history')}
-                    className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-medium transition-colors ${
+                    className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-semibold transition-colors ${
                       historyTab === 'history'
                         ? 'border-gold text-gold'
                         : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -2142,7 +2226,7 @@ export default function SimSharedConfig() {
                       bnetProfiles.map((profile) => (
                         <div
                           key={profile.id}
-                          className="flex items-center justify-between px-3 py-2 hover:bg-white/5"
+                          className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5"
                         >
                           <button
                             type="button"
@@ -2157,12 +2241,23 @@ export default function SimSharedConfig() {
                               selectedSavedId === profile.id ? 'text-gold' : ''
                             }`}
                           >
-                            <div className="text-[12px] text-zinc-300">{profile.name}</div>
-                            <div className="text-[10px] text-zinc-500">
-                              {profile.realm} ({profile.region})
+                            <div
+                              className="text-[13px] font-semibold text-zinc-100"
+                            >
+                              {profile.name}
+                            </div>
+                            <div className="text-[11px] font-medium text-zinc-100">
+                              {formatRealmName(profile.realm)} ({profile.region})
                             </div>
                           </button>
-                          <span className="text-[10px] text-zinc-600">{profile.class}</span>
+                          <span
+                            className="text-[11px] font-medium"
+                            style={{ color: resolveClassColor(profile.class) || '#71717a' }}
+                          >
+                            {[profile.spec ? specDisplayName(profile.spec) : null, profile.class]
+                              .filter(Boolean)
+                              .join(' ')}
+                          </span>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -2185,6 +2280,7 @@ export default function SimSharedConfig() {
                       const info = parseCharacterInfo(profile);
                       const name = info?.kind === 'character' ? info.name : `Profile ${idx + 1}`;
                       const charClass = info?.kind === 'character' ? info.className : null;
+                      const charSpec = info?.kind === 'character' ? info.spec : null;
                       const realm = info?.kind === 'character' ? info.server : null;
                       const region = info?.kind === 'character' ? info.region : null;
                       return (
@@ -2205,16 +2301,27 @@ export default function SimSharedConfig() {
                               selectedHistoryIdx === idx ? 'text-gold' : ''
                             }`}
                           >
-                            <div className="text-[12px] text-zinc-300">{name}</div>
+                            <div
+                              className="text-[13px] font-semibold text-zinc-100"
+                            >
+                              {name}
+                            </div>
                             {info?.kind === 'character' && (realm || region) && (
-                              <div className="text-[10px] text-zinc-500">
-                                {realm}
+                              <div className="text-[11px] font-medium text-zinc-100">
+                                {formatRealmName(realm)}
                                 {region ? ` (${region})` : ''}
                               </div>
                             )}
                           </button>
                           {charClass && (
-                            <span className="text-[10px] text-zinc-600">{charClass}</span>
+                            <span
+                              className="text-[11px] font-medium"
+                              style={{ color: resolveClassColor(charClass) || '#71717a' }}
+                            >
+                              {[charSpec ? specDisplayName(charSpec) : null, charClass]
+                                .filter(Boolean)
+                                .join(' ')}
+                            </span>
                           )}
                           <button
                             type="button"

@@ -94,6 +94,7 @@ function moveLabel(order: string[], source: string, target: string): string[] {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const normalizedPath = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [navOrder, setNavOrder] = useState<string[] | null>(null);
@@ -265,7 +266,16 @@ export default function Sidebar() {
                   )}
                   <Link
                     href={item.href}
-                    onClick={() => hasChildren && setOpenMenu(isOpen ? null : item.label)}
+                    onClick={(e) => {
+                      const normalizedHref =
+                        item.href.endsWith('/') && item.href !== '/' ? item.href.slice(0, -1) : item.href;
+                      if (normalizedPath === normalizedHref) {
+                        e.preventDefault();
+                        window.scrollTo(0, 0);
+                        return;
+                      }
+                      if (hasChildren) setOpenMenu(isOpen ? null : item.label);
+                    }}
                     draggable={false}
                     className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
                       draggingLabel === item.label ? 'scale-[0.98] opacity-65 shadow-lg' : ''
@@ -308,6 +318,16 @@ export default function Sidebar() {
                         <Link
                           key={child.href}
                           href={child.href}
+                          onClick={(e) => {
+                            const normalizedHref =
+                              child.href.endsWith('/') && child.href !== '/'
+                                ? child.href.slice(0, -1)
+                                : child.href;
+                            if (normalizedPath === normalizedHref) {
+                              e.preventDefault();
+                              window.scrollTo(0, 0);
+                            }
+                          }}
                           className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
                             childActive
                               ? 'text-gold'

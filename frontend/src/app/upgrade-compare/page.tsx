@@ -9,6 +9,15 @@ import { API_URL } from '../lib/api';
 import { SLOT_LABELS } from '../lib/types';
 import { QUALITY_COLORS, getIconUrl, useItemInfo, type ItemQuery } from '../lib/useItemInfo';
 import { useSimSubmit } from '../lib/useSimSubmit';
+import { consumeSimAgainState } from '../lib/sim-return';
+
+const UPGRADE_COMPARE_SIM_AGAIN_KEY = 'upgrade-compare';
+
+interface UpgradeCompareSimAgainState {
+  selectedSlots?: string[];
+  upgradeMode?: 'highest_affordable' | 'all_affordable' | 'highest_any' | 'all_any';
+  budgetOverride?: Record<string, string>;
+}
 
 // ---- Types ----
 
@@ -102,6 +111,35 @@ export default function UpgradeComparePage() {
     'highest_affordable' | 'all_affordable' | 'highest_any' | 'all_any'
   >('highest_affordable');
   const [budgetOverride, setBudgetOverride] = useState<Record<string, string>>({});
+  const skipNextDataResetRef = useRef(false);
+
+  useEffect(() => {
+    const restored = consumeSimAgainState<UpgradeCompareSimAgainState>(
+      UPGRADE_COMPARE_SIM_AGAIN_KEY
+    );
+    if (!restored) return;
+    if (Array.isArray(restored.selectedSlots)) {
+      setSelectedSlots(
+        new Set(restored.selectedSlots.filter((slot) => typeof slot === 'string' && slot.length > 0))
+      );
+    }
+    if (
+      restored.upgradeMode === 'highest_affordable' ||
+      restored.upgradeMode === 'all_affordable' ||
+      restored.upgradeMode === 'highest_any' ||
+      restored.upgradeMode === 'all_any'
+    ) {
+      setUpgradeMode(restored.upgradeMode);
+    }
+    if (restored.budgetOverride && typeof restored.budgetOverride === 'object') {
+      const next: Record<string, string> = {};
+      for (const [cid, value] of Object.entries(restored.budgetOverride)) {
+        if (typeof value === 'string') next[cid] = value;
+      }
+      setBudgetOverride(next);
+    }
+    skipNextDataResetRef.current = true;
+  }, []);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
   const currencies = useMemo(() => data?.currencies ?? {}, [data]);
@@ -126,6 +164,11 @@ export default function UpgradeComparePage() {
 
   // Reset selection when candidates change
   useEffect(() => {
+    if (skipNextDataResetRef.current) {
+      if (!data) return;
+      skipNextDataResetRef.current = false;
+      return;
+    }
     setSelectedSlots(new Set());
     setComboCount(0);
     setBudgetOverride({});
@@ -207,7 +250,19 @@ export default function UpgradeComparePage() {
     submitting,
     error,
     buttonLabel,
-  } = useSimSubmit({ endpoint: '/api/upgrade-compare/sim', buildPayload, validate });
+  } = useSimSubmit({
+    endpoint: '/api/upgrade-compare/sim',
+    buildPayload,
+    validate,
+    simAgain: {
+      pageKey: UPGRADE_COMPARE_SIM_AGAIN_KEY,
+      captureState: () => ({
+        selectedSlots: [...selectedSlots],
+        upgradeMode,
+        budgetOverride,
+      }),
+    },
+  });
 
   // Group candidates by primary upgrade currency
   const candidateGroups = useMemo(() => {

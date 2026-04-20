@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import ToggleButtonGroup from '../components/ToggleButtonGroup';
 import { API_URL, fetchJson } from '../lib/api';
 import { useSimSubmit } from '../lib/useSimSubmit';
+import { consumeSimAgainState } from '../lib/sim-return';
 import type { SeasonConfigResponse, DifficultyDef, DungeonCategory } from '../lib/types';
 import CategorySelector from './CategorySelector';
 import DropSlotList from './DropSlotList';
@@ -26,6 +27,18 @@ import {
 
 type Category = 'raids' | string;
 type SimDropItem = DropItem & { slot?: string };
+
+const DROP_FINDER_SIM_AGAIN_KEY = 'drop-finder';
+
+interface DropFinderSimAgainState {
+  activeSpecs?: string[];
+  selected?: number[];
+  difficulty?: string;
+  dungeonDiff?: string;
+  upgradeLevel?: number;
+  category?: string;
+  selectedId?: string;
+}
 
 const TRACK_SHORT: Record<string, string> = {
   Adventurer: 'Adv',
@@ -338,12 +351,48 @@ export default function DropFinderPage() {
   const [dungeonDiff, setDungeonDiff] = useState('mythic+10');
   const [upgradeLevel, setUpgradeLevel] = useState(0);
   const [category, setCategory] = useState<Category | ''>('');
+  const skipNextDetectedSpecSyncRef = useRef(false);
+  const skipNextDropsResetRef = useRef(false);
 
   useEffect(() => {
+    const restored = consumeSimAgainState<DropFinderSimAgainState>(DROP_FINDER_SIM_AGAIN_KEY);
+    if (!restored) return;
+
+    if (Array.isArray(restored.activeSpecs) && restored.activeSpecs.length > 0) {
+      setActiveSpecs(new Set(restored.activeSpecs.filter((spec) => typeof spec === 'string')));
+      skipNextDetectedSpecSyncRef.current = true;
+    }
+    if (Array.isArray(restored.selected)) {
+      setSelected(new Set(restored.selected.filter((id) => Number.isFinite(id))));
+      skipNextDropsResetRef.current = true;
+    }
+    if (typeof restored.difficulty === 'string' && restored.difficulty.length > 0) {
+      setDifficulty(restored.difficulty);
+    }
+    if (typeof restored.dungeonDiff === 'string' && restored.dungeonDiff.length > 0) {
+      setDungeonDiff(restored.dungeonDiff);
+    }
+    if (typeof restored.upgradeLevel === 'number' && Number.isFinite(restored.upgradeLevel)) {
+      setUpgradeLevel(Math.max(0, Math.floor(restored.upgradeLevel)));
+    }
+    if (typeof restored.category === 'string') setCategory(restored.category);
+    if (typeof restored.selectedId === 'string') setSelectedId(restored.selectedId);
+  }, [setSelectedId]);
+
+  useEffect(() => {
+    if (skipNextDetectedSpecSyncRef.current) {
+      skipNextDetectedSpecSyncRef.current = false;
+      return;
+    }
     setActiveSpecs(detectedSpec ? new Set([detectedSpec]) : new Set());
   }, [detectedSpec]);
 
   useEffect(() => {
+    if (skipNextDropsResetRef.current) {
+      if (!drops) return;
+      skipNextDropsResetRef.current = false;
+      return;
+    }
     setSelected(new Set());
   }, [drops]);
 
@@ -492,7 +541,23 @@ export default function DropFinderPage() {
     submitting,
     error,
     buttonLabel,
-  } = useSimSubmit({ endpoint: '/api/droptimizer/sim', buildPayload, validate });
+  } = useSimSubmit({
+    endpoint: '/api/droptimizer/sim',
+    buildPayload,
+    validate,
+    simAgain: {
+      pageKey: DROP_FINDER_SIM_AGAIN_KEY,
+      captureState: () => ({
+        activeSpecs: [...activeSpecs],
+        selected: [...selected],
+        difficulty,
+        dungeonDiff,
+        upgradeLevel,
+        category,
+        selectedId,
+      }),
+    },
+  });
 
   const submitLabel = !hasCharacter
     ? 'Paste SimC export to simulate'

@@ -6,6 +6,11 @@ import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 import { simResultHref } from './routes';
 import { buildFightStylePayload } from './fight-style';
+import {
+  buildCurrentReturnUrl,
+  registerSimReturnTarget,
+  registerSimReturnTargets,
+} from './sim-return';
 
 interface UseSimSubmitOptions {
   /** API endpoint path, e.g. "/api/sim" */
@@ -17,6 +22,12 @@ interface UseSimSubmitOptions {
   buildPayload: () => Record<string, unknown> | Promise<Record<string, unknown> | null> | null;
   /** Optional pre-submit validation. Return an error string to abort. */
   validate?: () => string | null;
+  /** Optional Sim Again metadata for restoring page-local state. */
+  simAgain?: {
+    pageKey?: string;
+    returnUrl?: string;
+    captureState?: () => unknown;
+  };
 }
 
 function normalizeName(name: string): string {
@@ -71,7 +82,7 @@ function extractSimcIdentity(
   return { name, realm, region };
 }
 
-export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitOptions) {
+export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: UseSimSubmitOptions) {
   const router = useRouter();
   const {
     simcInput,
@@ -165,6 +176,26 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     const pagePayload = await buildPayload();
     if (pagePayload === null) return;
     const isConsumableMatrix = pagePayload.sim_type === 'consumable_matrix';
+    let simAgainTarget: { returnUrl: string; pageKey?: string; state?: unknown } | null = null;
+    if (typeof window !== 'undefined') {
+      const returnUrl = (simAgain?.returnUrl || buildCurrentReturnUrl()).trim();
+      const pageKey = simAgain?.pageKey?.trim();
+      let state: unknown = undefined;
+      if (simAgain?.captureState) {
+        try {
+          state = simAgain.captureState();
+        } catch {
+          state = undefined;
+        }
+      }
+      if (returnUrl) {
+        simAgainTarget = {
+          returnUrl,
+          ...(pageKey ? { pageKey } : {}),
+          ...(state !== undefined ? { state } : {}),
+        };
+      }
+    }
 
     setSubmitting(true);
     clearScenarioSiblings();
@@ -238,6 +269,9 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
       if (scenarios.length === 0) {
         const r = results[0];
         if (r.status === 'fulfilled') {
+          if (simAgainTarget) {
+            registerSimReturnTarget(r.value.id, simAgainTarget);
+          }
           void autoLinkJobToCharacter(r.value.id);
           router.push(simResultHref(r.value.id));
         } else {
@@ -259,6 +293,12 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
           .filter((s): s is NonNullable<typeof s> => s !== null);
 
         if (siblings.length > 0) {
+          if (simAgainTarget) {
+            registerSimReturnTargets(
+              siblings.map((s) => s.id),
+              simAgainTarget
+            );
+          }
           siblings.forEach((s) => {
             void autoLinkJobToCharacter(s.id);
           });
@@ -313,6 +353,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate }: UseSimSubmitO
     scenarios,
     clearScenarios,
     autoLinkJobToCharacter,
+    simAgain,
   ]);
 
   const buttonLabel = useCallback(

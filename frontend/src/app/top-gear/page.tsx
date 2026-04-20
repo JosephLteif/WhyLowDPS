@@ -6,7 +6,20 @@ import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
 import { API_URL } from '../lib/api';
 import { useSimSubmit } from '../lib/useSimSubmit';
+import { consumeSimAgainState } from '../lib/sim-return';
 import type { ResolveGearResponse } from '../lib/types';
+
+const TOP_GEAR_SIM_AGAIN_KEY = 'top-gear';
+
+interface TopGearSimAgainState {
+  selectedUids?: Record<string, string[]>;
+  localItems?: { slot: string; simc_string: string; origin: string }[];
+  maxUpgrade?: boolean;
+  copyEnchants?: boolean;
+  catalyst?: boolean;
+  catalystCharges?: number | null;
+  resolved?: ResolveGearResponse | null;
+}
 
 export default function TopGearPage() {
   const { simcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
@@ -25,6 +38,52 @@ export default function TopGearPage() {
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
+  const skipNextInputResetRef = useRef(false);
+  const skipNextResolveRef = useRef(false);
+
+  useEffect(() => {
+    const restored = consumeSimAgainState<TopGearSimAgainState>(TOP_GEAR_SIM_AGAIN_KEY);
+    if (!restored) return;
+
+    if (restored.selectedUids && typeof restored.selectedUids === 'object') {
+      const next: Record<string, Set<string>> = {};
+      for (const [slot, values] of Object.entries(restored.selectedUids)) {
+        next[slot] = new Set(Array.isArray(values) ? values.filter((v) => typeof v === 'string') : []);
+      }
+      setSelectedUids(next);
+    }
+
+    if (Array.isArray(restored.localItems)) {
+      setLocalItems(
+        restored.localItems.filter(
+          (item) =>
+            !!item &&
+            typeof item.slot === 'string' &&
+            typeof item.simc_string === 'string' &&
+            typeof item.origin === 'string'
+        )
+      );
+    }
+
+    if (typeof restored.maxUpgrade === 'boolean') setMaxUpgrade(restored.maxUpgrade);
+    if (typeof restored.copyEnchants === 'boolean') setCopyEnchants(restored.copyEnchants);
+    if (typeof restored.catalyst === 'boolean') setCatalyst(restored.catalyst);
+    if (restored.catalystCharges == null || Number.isFinite(restored.catalystCharges)) {
+      setCatalystCharges(restored.catalystCharges ?? null);
+    }
+    if (restored.resolved && typeof restored.resolved === 'object') {
+      setResolved(restored.resolved);
+      skipNextResolveRef.current = true;
+    }
+
+    prevInputRef.current = simcInput.trim();
+    prevUpgradeRef.current =
+      typeof restored.maxUpgrade === 'boolean' ? restored.maxUpgrade : maxUpgrade;
+    prevCatalystRef.current =
+      typeof restored.catalyst === 'boolean' ? restored.catalyst : catalyst;
+
+    skipNextInputResetRef.current = true;
+  }, [simcInput, maxUpgrade, catalyst]);
 
   // Resolve gear when simc input, maxUpgrade, or catalyst changes
   useEffect(() => {
@@ -32,6 +91,11 @@ export default function TopGearPage() {
     const inputChanged = trimmed !== prevInputRef.current;
     const upgradeChanged = maxUpgrade !== prevUpgradeRef.current;
     const catalystChanged = catalyst !== prevCatalystRef.current;
+
+    if (skipNextResolveRef.current) {
+      skipNextResolveRef.current = false;
+      return;
+    }
 
     if (!inputChanged && !upgradeChanged && !catalystChanged) return;
 
@@ -81,6 +145,10 @@ export default function TopGearPage() {
           }
 
           if (inputChanged) {
+            if (skipNextInputResetRef.current) {
+              skipNextInputResetRef.current = false;
+              return;
+            }
             setSelectedUids({});
             setLocalItems([]);
           }
@@ -255,6 +323,20 @@ export default function TopGearPage() {
     endpoint: '/api/top-gear/sim',
     buildPayload,
     validate,
+    simAgain: {
+      pageKey: TOP_GEAR_SIM_AGAIN_KEY,
+      captureState: () => ({
+        selectedUids: Object.fromEntries(
+          Object.entries(selectedUids).map(([slot, values]) => [slot, [...values]])
+        ),
+        localItems,
+        maxUpgrade,
+        copyEnchants,
+        catalyst,
+        catalystCharges,
+        resolved,
+      }),
+    },
   });
 
   const handleSubmit = useCallback(() => {

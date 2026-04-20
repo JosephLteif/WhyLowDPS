@@ -313,6 +313,7 @@ export interface DungeonAffix {
   name: string;
   description: string;
   icon: string | null;
+  wowhead_url?: string | null;
   spell_id: number | null;
 }
 

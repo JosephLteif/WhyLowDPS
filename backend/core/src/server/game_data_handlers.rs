@@ -416,6 +416,7 @@ pub async fn get_dungeon_data() -> HttpResponse {
                     name: "Tyrannical".to_string(),
                     description: "Health and damage increased by 15%.".to_string(),
                     icon: None,
+                    wowhead_url: Some("https://wowhead.com/affix=9".to_string()),
                     spell_id: Some(409967),
                 },
                 DungeonAffix {
@@ -423,6 +424,7 @@ pub async fn get_dungeon_data() -> HttpResponse {
                     name: "Fortified".to_string(),
                     description: "Non-boss health increased by 20%.".to_string(),
                     icon: None,
+                    wowhead_url: Some("https://wowhead.com/affix=10".to_string()),
                     spell_id: Some(409968),
                 },
             ];

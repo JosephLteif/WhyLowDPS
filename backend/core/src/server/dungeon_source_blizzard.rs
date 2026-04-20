@@ -2,9 +2,33 @@ use crate::item_db::get_runtime_data;
 use crate::server::dungeon_data::{
     DungeonAffix, DungeonDataSource, DungeonInfo, DungeonSeasonData,
 };
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::future::Future;
+use std::thread;
+use std::time::Duration;
+use tokio::runtime::{Builder, Handle};
+
+const RAIDER_AFFIXES_URL: &str = "https://raider.io/api/v1/mythic-plus/affixes?region=us&locale=en";
+
+#[derive(Debug, Clone, Deserialize)]
+struct RaiderAffixesResponse {
+    leaderboard_url: Option<String>,
+    #[serde(default)]
+    affix_details: Vec<RaiderAffixDetail>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RaiderAffixDetail {
+    id: Option<u32>,
+    name: Option<String>,
+    description: Option<String>,
+    icon_url: Option<String>,
+    wowhead_url: Option<String>,
+}
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DungeonDetail {
@@ -43,6 +67,95 @@ impl BlizzardDungeonSource {
             runtime_data,
             dungeon_cache,
         }
+    }
+
+    fn run_async<T, F>(fut: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T, String>> + Send + 'static,
+    {
+        if Handle::try_current().is_ok() {
+            // Actix workers may run on a current-thread Tokio runtime where block_in_place panics.
+            // Run the async work on a dedicated thread with its own runtime instead.
+            let join = thread::spawn(move || {
+                let runtime = Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|e| format!("failed to create async runtime: {}", e))?;
+                runtime.block_on(fut)
+            });
+            match join.join() {
+                Ok(result) => result,
+                Err(_) => Err("raider fetch thread panicked".to_string()),
+            }
+        } else {
+            let runtime = Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| format!("failed to create async runtime: {}", e))?;
+            runtime.block_on(fut)
+        }
+    }
+
+    fn http_client() -> Option<Client> {
+        Client::builder()
+            .timeout(Duration::from_secs(8))
+            .user_agent("whylowdps/raider-sync")
+            .build()
+            .ok()
+    }
+
+    fn map_affix_spell_id(affix_id: u32, affix_name: &str) -> Option<u32> {
+        match affix_id {
+            9 => Some(409967),   // Tyrannical
+            10 => Some(409968),  // Fortified
+            11 => Some(226510),  // Bursting (legacy, retained for tooltip support)
+            12 => Some(240447),  // Grievous
+            13 => Some(240443),  // Volcanic
+            134 => Some(373724), // Thundering
+            147 => Some(408556), // Xal'atath's Guile
+            160 => Some(461866), // Xal'atath's Bargain: Devour
+            162 => Some(462771), // Xal'atath's Bargain: Pulsar
+            _ => {
+                let lower = affix_name.to_ascii_lowercase();
+                if lower.contains("tyrannical") {
+                    Some(409967)
+                } else if lower.contains("fortified") {
+                    Some(409968)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn infer_season_name_from_raider_url(url: &str) -> Option<String> {
+        let marker = "/season-";
+        let idx = url.find(marker)?;
+        let tail = &url[(idx + marker.len())..];
+        let slug = tail.split('/').next()?;
+        let mut parts = slug.split('-');
+        let expansion_code = parts.next()?.to_ascii_lowercase();
+        let season_num_raw = parts.next()?;
+        let season_num = season_num_raw.parse::<u32>().ok()?;
+
+        let expansion_name = match expansion_code.as_str() {
+            "mn" => "Midnight",
+            "tww" => "The War Within",
+            "df" => "Dragonflight",
+            "sl" => "Shadowlands",
+            "bfa" => "Battle for Azeroth",
+            "legion" => "Legion",
+            _ => {
+                let upper = expansion_code.to_ascii_uppercase();
+                if upper.is_empty() {
+                    return None;
+                }
+                return Some(format!("{} Season {}", upper, season_num));
+            }
+        };
+
+        Some(format!("{} Season {}", expansion_name, season_num))
     }
 
     fn load_dungeon_details(runtime: &serde_json::Value) -> HashMap<u32, DungeonDetail> {
@@ -182,6 +295,10 @@ impl BlizzardDungeonSource {
                                 .get("icon")
                                 .and_then(|i| i.as_str())
                                 .map(|s| s.to_string()),
+                            wowhead_url: v
+                                .get("wowhead_url")
+                                .and_then(|w| w.as_str())
+                                .map(|s| s.to_string()),
                             spell_id: v
                                 .get("spell_id")
                                 .and_then(|s| s.as_u64())
@@ -191,6 +308,65 @@ impl BlizzardDungeonSource {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    fn fetch_raider_affixes(&self) -> Result<(Vec<DungeonAffix>, Option<String>), String> {
+        Self::run_async(async {
+            let client =
+                Self::http_client().ok_or_else(|| "failed to create http client".to_string())?;
+            let response = client
+                .get(RAIDER_AFFIXES_URL)
+                .send()
+                .await
+                .map_err(|e| format!("raider affix request failed: {}", e))?;
+
+            if !response.status().is_success() {
+                return Err(format!(
+                    "raider affix request failed with status {}",
+                    response.status()
+                ));
+            }
+
+            let payload: RaiderAffixesResponse = response
+                .json()
+                .await
+                .map_err(|e| format!("raider affix response parse failed: {}", e))?;
+            let season_name = payload
+                .leaderboard_url
+                .as_deref()
+                .and_then(Self::infer_season_name_from_raider_url);
+
+            let affixes: Vec<DungeonAffix> = payload
+                .affix_details
+                .into_iter()
+                .filter_map(|affix| {
+                    let id = affix.id?;
+                    let name = affix.name?;
+                    if name.trim().is_empty() {
+                        return None;
+                    }
+                    let description = affix.description.unwrap_or_default();
+                    let icon = affix.icon_url;
+                    let wowhead_url = affix.wowhead_url;
+                    let spell_id = Self::map_affix_spell_id(id, &name);
+
+                    Some(DungeonAffix {
+                        id,
+                        name,
+                        description,
+                        icon,
+                        wowhead_url,
+                        spell_id,
+                    })
+                })
+                .collect();
+
+            if affixes.is_empty() {
+                return Err("raider affix response had no affixes".to_string());
+            }
+
+            Ok((affixes, season_name))
+        })
     }
 
     fn get_cached_season(&self) -> Option<(u32, String)> {
@@ -237,6 +413,10 @@ impl Default for BlizzardDungeonSource {
 
 impl DungeonDataSource for BlizzardDungeonSource {
     fn get_current_affixes(&self) -> Result<Vec<DungeonAffix>, String> {
+        if let Ok((live_affixes, _)) = self.fetch_raider_affixes() {
+            return Ok(live_affixes);
+        }
+
         let cached = self.get_cached_affixes();
         if !cached.is_empty() {
             return Ok(cached);
@@ -248,6 +428,7 @@ impl DungeonDataSource for BlizzardDungeonSource {
                 name: "Tyrannical".to_string(),
                 description: "Health and damage increased by 15%.".to_string(),
                 icon: None,
+                wowhead_url: Some("https://wowhead.com/affix=9".to_string()),
                 spell_id: Some(409967),
             },
             DungeonAffix {
@@ -256,6 +437,7 @@ impl DungeonDataSource for BlizzardDungeonSource {
                 description: "Non-boss health increased by 20% and damage increased by 10%."
                     .to_string(),
                 icon: None,
+                wowhead_url: Some("https://wowhead.com/affix=10".to_string()),
                 spell_id: Some(409968),
             },
             DungeonAffix {
@@ -263,6 +445,7 @@ impl DungeonDataSource for BlizzardDungeonSource {
                 name: "Afflicted".to_string(),
                 description: "Soulshards roam the dungeon, seeking the nearest player.".to_string(),
                 icon: None,
+                wowhead_url: Some("https://wowhead.com/affix=124".to_string()),
                 spell_id: Some(466033),
             },
             DungeonAffix {
@@ -270,6 +453,7 @@ impl DungeonDataSource for BlizzardDungeonSource {
                 name: "Entangling".to_string(),
                 description: "Roots periodically trap players.".to_string(),
                 icon: None,
+                wowhead_url: Some("https://wowhead.com/affix=125".to_string()),
                 spell_id: Some(455024),
             },
         ])
@@ -731,10 +915,18 @@ impl DungeonDataSource for BlizzardDungeonSource {
     }
 
     fn get_season_info(&self) -> Result<DungeonSeasonData, String> {
-        let season = self
+        let mut season = self
             .get_cached_season()
             .unwrap_or((1, "Unknown Season".to_string()));
-        let affixes = self.get_current_affixes()?;
+
+        let affixes = if let Ok((live_affixes, live_season_name)) = self.fetch_raider_affixes() {
+            if let Some(name) = live_season_name {
+                season.1 = name;
+            }
+            live_affixes
+        } else {
+            self.get_current_affixes()?
+        };
         let dungeons = self.get_rotation_dungeons()?;
 
         Ok(DungeonSeasonData {

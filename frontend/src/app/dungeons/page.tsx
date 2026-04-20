@@ -130,6 +130,16 @@ function normalizeDungeonName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function getCurrentMplusDungeonIds(instances: Instance[]): Set<number> {
+  const mplusBucket =
+    instances.find((instance) => instance.type === 'mplus-chest') ||
+    instances.find((instance) => instance.name.toLowerCase() === 'mythic+ dungeons');
+  if (!mplusBucket || !mplusBucket.encounters?.length) {
+    return new Set<number>();
+  }
+  return new Set<number>(mplusBucket.encounters.map((encounter) => encounter.id));
+}
+
 function mergeWithInstancesFallback(dungeons: DungeonInfo[], instances: Instance[]): DungeonInfo[] {
   if (!instances.length) return dungeons;
 
@@ -149,7 +159,9 @@ function mergeWithInstancesFallback(dungeons: DungeonInfo[], instances: Instance
       .map((encounter) => encounter.name)
       .filter((name): name is string => !!name);
     const hasEncounterNames = (dungeon.encounters?.length ?? 0) > 0;
-    const mergedEncounters = hasEncounterNames ? dungeon.encounters : fallbackEncounterNames;
+    const mergedEncounters: string[] = hasEncounterNames
+      ? (dungeon.encounters ?? [])
+      : fallbackEncounterNames;
     const mergedNumBosses =
       dungeon.num_bosses && dungeon.num_bosses > 0
         ? dungeon.num_bosses
@@ -204,7 +216,7 @@ function AffixCard({ affix }: { affix: DisplayAffix }) {
         {wrappedIconNode}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-lg font-bold leading-tight text-zinc-100">{affix.name}</p>
+        <p className="mb-1 text-lg font-bold leading-tight text-zinc-100 break-words">{affix.name}</p>
         <p className="text-sm leading-6 text-zinc-300 break-words">{affix.description}</p>
       </div>
     </div>
@@ -348,9 +360,7 @@ export default function DungeonsPage() {
       };
     });
   })();
-  const affixSource = gameState?.active_affixes?.length
-    ? 'Backend game state'
-    : 'Backend dungeon cache';
+  const affixSource = 'Raider.IO (live)';
 
   useWowheadTooltips([data?.current_affixes, data?.rotation_dungeons]);
 
@@ -369,6 +379,7 @@ export default function DungeonsPage() {
           fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
         ]);
         const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
+        const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
         const mergedWithFallback = mergeWithInstancesFallback(
           seasonData.rotation_dungeons,
           fallbackInstances,
@@ -383,7 +394,9 @@ export default function DungeonsPage() {
           };
         });
         const filteredDungeons =
-          activeRotationIds.size > 0
+          currentMplusIds.size > 0
+            ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+            : activeRotationIds.size > 0
             ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
             : enrichedDungeons;
 
@@ -446,6 +459,7 @@ export default function DungeonsPage() {
         fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
       ]);
       const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
+      const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
       const mergedWithFallback = mergeWithInstancesFallback(
         seasonData.rotation_dungeons,
         fallbackInstances,
@@ -460,7 +474,9 @@ export default function DungeonsPage() {
         };
       });
       const filteredDungeons =
-        activeRotationIds.size > 0
+        currentMplusIds.size > 0
+          ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
+          : activeRotationIds.size > 0
           ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
           : enrichedDungeons;
 

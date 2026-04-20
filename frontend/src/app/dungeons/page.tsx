@@ -65,6 +65,10 @@ function normalizeDungeonName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function normalizeImageUrl(url?: string | null): string | undefined {
+  return url ?? undefined;
+}
+
 function mergeWithPreviousDungeonData(
   nextDungeons: DungeonInfo[],
   previousDungeons?: DungeonInfo[],
@@ -450,10 +454,11 @@ export default function DungeonsPage() {
           return {
             ...dungeon,
             zone: dungeon.zone || matchedInstance.zone || null,
-            image_url:
+            image_url: normalizeImageUrl(
               preferredDungeonImage ||
               preferredInstanceImage ||
               getEncounterJournalFallbackImage(matchedInstance),
+            ),
             encounters: mergedEncounterNames,
             num_bosses: mergedBossCount,
           };
@@ -554,10 +559,11 @@ export default function DungeonsPage() {
         return {
           ...dungeon,
           zone: dungeon.zone || matchedInstance.zone || null,
-          image_url:
+          image_url: normalizeImageUrl(
             preferredDungeonImage ||
             preferredInstanceImage ||
             getEncounterJournalFallbackImage(matchedInstance),
+          ),
           encounters: mergedEncounterNames,
           num_bosses: mergedBossCount,
         };

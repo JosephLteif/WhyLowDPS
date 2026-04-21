@@ -393,7 +393,6 @@ export default function SimResultClient() {
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
-  const [hasSimAgainTarget, setHasSimAgainTarget] = useState(false);
   const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
   const [activeStageElapsed, setActiveStageElapsed] = useState(0);
   const activeStageNameRef = useRef<string | null>(null);
@@ -563,14 +562,31 @@ export default function SimResultClient() {
     setSiblings(getScenarioSiblings());
   }, []);
 
-  useEffect(() => {
-    const currentJobId = job?.id || activeScenarioId;
-    if (!currentJobId || currentJobId === '_') {
-      setHasSimAgainTarget(false);
-      return;
+  const getCurrentSimId = useCallback(
+    () =>
+      [job?.id, activeScenarioId, id]
+        .map((value) => String(value || '').trim())
+        .find((value) => value.length > 0 && value !== '_') || null,
+    [job?.id, activeScenarioId, id]
+  );
+
+  const getSimTypeFallbackUrl = useCallback((simType?: string) => {
+    const normalized = String(simType || '').toLowerCase();
+    if (normalized.includes('top_gear') || normalized.includes('top-gear')) return '/top-gear';
+    if (normalized.includes('droptimizer') || normalized.includes('drop_finder')) return '/drop-finder';
+    if (normalized.includes('trinket_tier_heatmap')) return '/upgrade/trinkets';
+    if (normalized.includes('external_buff_matrix')) return '/stat-weights';
+    if (normalized.includes('consumable_matrix')) return '/stat-weights';
+    if (
+      normalized.includes('stat_weights') ||
+      normalized.includes('stat-weights') ||
+      normalized.includes('stat_plot')
+    ) {
+      return '/stat-weights';
     }
-    setHasSimAgainTarget(!!getSimReturnTarget(currentJobId));
-  }, [job?.id, activeScenarioId]);
+    if (normalized.includes('upgrade')) return '/upgrade';
+    return '/quick-sim';
+  }, []);
 
   useEffect(() => {
     activeStageNameRef.current = null;
@@ -805,11 +821,19 @@ export default function SimResultClient() {
   }, []);
 
   const handleSimAgain = useCallback(() => {
-    const currentJobId = job?.id || activeScenarioId;
-    const returnUrl = resolveSimAgainNavigation(currentJobId);
-    if (!returnUrl) return;
-    router.push(returnUrl);
-  }, [job?.id, activeScenarioId, router]);
+    const currentSimId = getCurrentSimId();
+    if (currentSimId) {
+      const exactTarget = getSimReturnTarget(currentSimId);
+      if (exactTarget?.returnUrl) {
+        const returnUrl = resolveSimAgainNavigation(currentSimId);
+        if (returnUrl) {
+          router.push(returnUrl);
+          return;
+        }
+      }
+    }
+    router.push(getSimTypeFallbackUrl(job?.sim_type));
+  }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
 
   const navigateToScenario = useCallback(
     (scenarioId: string) => {
@@ -906,15 +930,13 @@ export default function SimResultClient() {
       )}
       {job.status === 'done' ? (
         <div className="flex items-center gap-3">
-          {hasSimAgainTarget && (
-            <button
-              type="button"
-              onClick={handleSimAgain}
-              className="inline-flex items-center rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/25 hover:text-emerald-100"
-            >
-              Sim Again
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleSimAgain}
+            className="inline-flex items-center rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/25 hover:text-emerald-100"
+          >
+            Sim Again
+          </button>
           <CharacterLinkButton
             jobId={activeScenarioId}
             currentLinkedName={job.linked_name}

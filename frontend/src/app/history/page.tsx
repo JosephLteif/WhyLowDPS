@@ -144,14 +144,32 @@ function SimRow({
   compact,
   onDelete,
   siblingGroup,
+  selectable,
+  selected,
+  onSelectToggle,
 }: {
   sim: JobSummary;
   compact?: boolean;
   onDelete?: (id: string) => void;
   siblingGroup?: JobSummary[];
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: (id: string, checked: boolean) => void;
 }) {
   return (
     <div className="group relative flex items-center">
+      {selectable && (
+        <div className={`shrink-0 ${compact ? 'pl-3' : 'pl-4'}`}>
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={(e) => onSelectToggle?.(sim.id, e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 rounded border-border bg-surface-2 text-gold focus:ring-gold"
+            aria-label={`Select simulation ${sim.id}`}
+          />
+        </div>
+      )}
       <Link
         href={simResultHref(sim.id)}
         onClick={() => {
@@ -275,15 +293,25 @@ function groupByBatch(sims: JobSummary[]): HistoryEntry[] {
 function BatchGroup({
   entry,
   onDelete,
+  selectedIds,
+  onBatchSelectToggle,
+  onRowSelectToggle,
 }: {
   entry: Extract<HistoryEntry, { type: 'batch' }>;
   onDelete?: (id: string) => void;
+  selectedIds?: Set<string>;
+  onBatchSelectToggle?: (ids: string[], checked: boolean) => void;
+  onRowSelectToggle?: (id: string, checked: boolean) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const first = entry.sims[0];
   const simType = SIM_TYPE_LABELS[first?.sim_type] || first?.sim_type || 'Sim';
   const bestDps = Math.max(...entry.sims.map((s) => s.dps ?? 0));
   const batchSize = entry.sims.reduce((acc, s) => acc + s.size_bytes, 0);
+  const batchIds = entry.sims.map((s) => s.id);
+  const selectedCount = batchIds.filter((id) => selectedIds?.has(id)).length;
+  const isBatchChecked = selectedCount > 0 && selectedCount === batchIds.length;
+  const isBatchIndeterminate = selectedCount > 0 && selectedCount < batchIds.length;
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -291,6 +319,18 @@ function BatchGroup({
         className="group relative flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.03]"
         onClick={() => setIsOpen(!isOpen)}
       >
+        <input
+          type="checkbox"
+          checked={isBatchChecked}
+          ref={(el) => {
+            if (!el) return;
+            el.indeterminate = isBatchIndeterminate;
+          }}
+          onChange={(e) => onBatchSelectToggle?.(batchIds, e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 shrink-0 rounded border-border bg-surface-2 text-gold focus:ring-gold"
+          aria-label={`Select batch ${entry.batchId}`}
+        />
         <ChevronIcon open={isOpen} />
 
         <span className="w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold">
@@ -344,6 +384,9 @@ function BatchGroup({
                 compact
                 onDelete={onDelete}
                 siblingGroup={entry.sims}
+                selectable
+                selected={selectedIds?.has(sim.id)}
+                onSelectToggle={onRowSelectToggle}
               />
             ))}
           </div>
@@ -368,6 +411,8 @@ export default function HistoryPage() {
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [maxJobs, setMaxJobs] = useState<number>(50);
   const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   useEffect(() => {
     // Fetch account characters and historical characters
@@ -416,6 +461,7 @@ export default function HistoryPage() {
       ]);
       setSims(simsData);
       setStats(statsData);
+      setSelectedIds(new Set());
     } catch (err) {
       setSims([]);
     }
@@ -433,6 +479,26 @@ export default function HistoryPage() {
     await deleteSim(id);
     refreshHistory();
   };
+
+  const handleToggleSelection = useCallback((id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleToggleBatchSelection = useCallback((ids: string[], checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  }, []);
 
   const handleClear = async () => {
     if (!confirm('Are you sure you want to clear ALL history?')) return;
@@ -473,6 +539,46 @@ export default function HistoryPage() {
 
     return dateGroups;
   }, [sims, search]);
+
+  const visibleIds = useMemo(() => {
+    const ids: string[] = [];
+    Object.values(filteredEntries).forEach((entries) => {
+      entries.forEach((entry) => {
+        if (entry.type === 'single') ids.push(entry.sim.id);
+        else ids.push(...entry.sims.map((s) => s.id));
+      });
+    });
+    return ids;
+  }, [filteredEntries]);
+
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+
+  const handleToggleSelectAllVisible = useCallback(
+    (checked: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        visibleIds.forEach((id) => {
+          if (checked) next.add(id);
+          else next.delete(id);
+        });
+        return next;
+      });
+    },
+    [visibleIds]
+  );
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} selected simulation record(s)?`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => deleteSim(id)));
+      await refreshHistory();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [selectedIds, refreshHistory]);
 
   if (loading) {
     return (
@@ -578,6 +684,24 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-8">
+          <div className="sticky top-16 z-20 flex items-center justify-between rounded-lg border border-border bg-surface/95 px-4 py-2 backdrop-blur">
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                ref={(el) => {
+                  if (!el) return;
+                  el.indeterminate = !allVisibleSelected && someVisibleSelected;
+                }}
+                onChange={(e) => handleToggleSelectAllVisible(e.target.checked)}
+                className="h-4 w-4 rounded border-border bg-surface-2 text-gold focus:ring-gold"
+              />
+              Select all visible
+            </label>
+            <span className="text-xs text-zinc-500">
+              {selectedIds.size} selected
+            </span>
+          </div>
           {groupKeys.map((group) => (
             <div key={group} className="space-y-2">
               <h3 className="px-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
@@ -590,9 +714,21 @@ export default function HistoryPage() {
                   return (
                     <div key={id} className={!isLast ? 'border-b border-border' : ''}>
                       {entry.type === 'single' ? (
-                        <SimRow sim={entry.sim} onDelete={handleDelete} />
+                        <SimRow
+                          sim={entry.sim}
+                          onDelete={handleDelete}
+                          selectable
+                          selected={selectedIds.has(entry.sim.id)}
+                          onSelectToggle={handleToggleSelection}
+                        />
                       ) : (
-                        <BatchGroup entry={entry} onDelete={handleDelete} />
+                        <BatchGroup
+                          entry={entry}
+                          onDelete={handleDelete}
+                          selectedIds={selectedIds}
+                          onBatchSelectToggle={handleToggleBatchSelection}
+                          onRowSelectToggle={handleToggleSelection}
+                        />
                       )}
                     </div>
                   );
@@ -600,6 +736,32 @@ export default function HistoryPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex w-[min(95vw,680px)] -translate-x-1/2 items-center justify-between gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-2xl backdrop-blur">
+          <div className="text-sm text-zinc-200">
+            {selectedIds.size} record{selectedIds.size === 1 ? '' : 's'} selected
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              disabled={bulkDeleting}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-zinc-300 hover:bg-surface-2 disabled:opacity-50"
+            >
+              Cancel Selection
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="inline-flex items-center gap-2 rounded-md bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+            >
+              {bulkDeleting && (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-200/40 border-t-red-300" />
+              )}
+              Delete Selected
+            </button>
+          </div>
         </div>
       )}
     </div>

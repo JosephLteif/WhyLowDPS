@@ -106,6 +106,23 @@ function groupLabel(item: WishlistItem): string {
   return `${instance} - ${source}`;
 }
 
+function slotGroupLabel(item: WishlistItem): string {
+  const slot = (item.wishlist_slot || '').trim();
+  if (slot) {
+    return slot
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  const first = slotCandidates(item)[0];
+  if (!first) return 'Unknown Slot';
+  return first
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function iconCandidates(icon: string): string[] {
   const clean = (icon || '').trim().replace(/\.(jpg|jpeg|png|webp)$/i, '');
   if (!clean) return [];
@@ -173,6 +190,7 @@ export default function WishlistPage() {
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
   const [bnetCharacters, setBnetCharacters] = useState<BnetCharacter[]>([]);
+  const [groupBy, setGroupBy] = useState<'instance' | 'slot'>('instance');
 
   const characterInfo = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
 
@@ -274,34 +292,38 @@ export default function WishlistPage() {
         realm,
         region,
         className: className || undefined,
-        label: `${name} - ${className || 'character'} (${realm} / ${region.toLowerCase()})`,
+        label: name,
       });
     }
 
     if (!byKey.has(activeCharacterOwnerKey)) {
       byKey.set(activeCharacterOwnerKey, {
         key: activeCharacterOwnerKey,
-        label:
-          characterInfo?.kind === 'character'
-            ? `${characterInfo.name} - ${characterInfo.className || 'character'}`
-            : 'Active character',
+        label: characterInfo?.kind === 'character' ? characterInfo.name : 'Active character',
         count: loadWishlist(activeCharacterOwnerKey).length,
       });
     }
 
-    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+    return [...byKey.values()].sort((a, b) => {
+      const aIsGlobal = a.key === 'global';
+      const bIsGlobal = b.key === 'global';
+      if (aIsGlobal && !bIsGlobal) return -1;
+      if (!aIsGlobal && bIsGlobal) return 1;
+      if (a.count !== b.count) return b.count - a.count;
+      return a.label.localeCompare(b.label);
+    });
   }, [owners, bnetCharacters, activeCharacterOwnerKey, characterInfo]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, WishlistItem[]>();
     for (const item of wishlist) {
-      const key = groupLabel(item);
+      const key = groupBy === 'slot' ? slotGroupLabel(item) : groupLabel(item);
       const list = map.get(key) || [];
       list.push(item);
       map.set(key, list);
     }
-    return [...map.entries()];
-  }, [wishlist]);
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [wishlist, groupBy]);
 
   const buildPayload = useCallback(async () => {
     const effectiveSimcInput = await resolveSimcInputForOwner({
@@ -417,12 +439,6 @@ export default function WishlistPage() {
         <div>
           <h2 className="text-lg font-semibold text-zinc-100">Wishlist</h2>
           <p className="text-sm text-zinc-400">{wishlist.length} saved item(s)</p>
-          <p className="text-xs text-zinc-500">
-            Active character:{' '}
-            {characterInfo?.kind === 'character'
-              ? `${characterInfo.name} - ${characterInfo.server || 'unknown realm'} (${characterInfo.region || 'unknown region'})`
-              : 'No active character loaded'}
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
@@ -471,13 +487,35 @@ export default function WishlistPage() {
         </div>
       </div>
 
-      {selectedOwnerSummary && (
-        <p className="text-xs text-zinc-500">
-          Viewing wishlist for: {selectedOwnerSummary.label}
-        </p>
-      )}
-
       <ErrorAlert message={error} />
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs uppercase tracking-wider text-zinc-500">Group By</span>
+        <div className="inline-flex rounded border border-border bg-surface-2 p-0.5">
+          <button
+            type="button"
+            onClick={() => setGroupBy('instance')}
+            className={`rounded px-2 py-1 text-xs transition ${
+              groupBy === 'instance'
+                ? 'bg-gold/20 text-gold'
+                : 'text-zinc-300 hover:bg-surface-3 hover:text-zinc-100'
+            }`}
+          >
+            By Instance
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupBy('slot')}
+            className={`rounded px-2 py-1 text-xs transition ${
+              groupBy === 'slot'
+                ? 'bg-gold/20 text-gold'
+                : 'text-zinc-300 hover:bg-surface-3 hover:text-zinc-100'
+            }`}
+          >
+            By Slot
+          </button>
+        </div>
+      </div>
 
       {wishlist.length === 0 ? (
         <div className="card p-8 text-center text-sm text-zinc-500">

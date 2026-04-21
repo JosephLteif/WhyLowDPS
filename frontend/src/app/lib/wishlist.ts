@@ -159,11 +159,7 @@ function ownerLabel(ownerKey: string): string {
   if (!parsed.name && !parsed.realm && !parsed.region && !parsed.className) {
     return 'Global Wishlist';
   }
-
-  const left = [parsed.name, parsed.className].filter(Boolean).join(' - ');
-  const right = [parsed.realm, parsed.region].filter(Boolean).join(' / ');
-  if (left && right) return `${left} (${right})`;
-  return left || right || 'Character Wishlist';
+  return parsed.name || 'Character Wishlist';
 }
 
 export function loadWishlist(ownerKey?: string): WishlistItem[] {

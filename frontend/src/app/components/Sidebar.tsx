@@ -93,6 +93,21 @@ function moveLabel(order: string[], source: string, target: string): string[] {
   return withoutSource;
 }
 
+function moveLabelWithPosition(
+  order: string[],
+  source: string,
+  target: string,
+  position: 'before' | 'after'
+): string[] {
+  if (source === target) return order;
+  const withoutSource = order.filter((label) => label !== source);
+  const targetIdx = withoutSource.indexOf(target);
+  if (targetIdx === -1) return withoutSource;
+  const insertIdx = position === 'after' ? targetIdx + 1 : targetIdx;
+  withoutSource.splice(insertIdx, 0, source);
+  return withoutSource;
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const normalizedPath = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
@@ -102,10 +117,19 @@ export default function Sidebar() {
   const [visibleLabels, setVisibleLabels] = useState<string[] | null>(null);
   const [draggingLabel, setDraggingLabel] = useState<string | null>(null);
   const [dragOverLabel, setDragOverLabel] = useState<string | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after'>('before');
+  const [dragPointer, setDragPointer] = useState<{
+    x: number;
+    y: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+  } | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const dragSourceRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
+  const dragOverPosRef = useRef<'before' | 'after'>('before');
   const { user } = useAuth();
 
   const navItems = useMemo(() => {
@@ -231,24 +255,45 @@ export default function Sidebar() {
     dragOverRef.current = dragOverLabel;
   }, [dragOverLabel]);
 
+  useEffect(() => {
+    dragOverPosRef.current = dragOverPosition;
+  }, [dragOverPosition]);
+
   const finishPointerDrag = useCallback(() => {
     const source = dragSourceRef.current;
     const target = dragOverRef.current;
     if (source && target && source !== target) {
-      setNavOrder((prev) => moveLabel(prev ?? orderedNavItems.map((i) => i.label), source, target));
+      setNavOrder((prev) =>
+        moveLabelWithPosition(
+          prev ?? orderedNavItems.map((i) => i.label),
+          source,
+          target,
+          dragOverPosRef.current
+        )
+      );
     }
     dragSourceRef.current = null;
     setDraggingLabel(null);
     setDragOverLabel(null);
+    setDragOverPosition('before');
+    setDragPointer(null);
   }, [orderedNavItems]);
 
   useEffect(() => {
     if (!draggingLabel) return;
+    const onPointerMove = (e: PointerEvent) => {
+      setDragPointer((prev) => {
+        if (!prev) return prev;
+        return { ...prev, x: e.clientX, y: e.clientY };
+      });
+    };
     const onPointerUp = () => finishPointerDrag();
     const onPointerCancel = () => finishPointerDrag();
+    window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
     return () => {
+      window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
     };
@@ -336,16 +381,26 @@ export default function Sidebar() {
                 key={item.label}
                 data-nav-label={item.label}
                 className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
-                  dragOverLabel === item.label && draggingLabel !== item.label
-                    ? 'scale-[1.01] bg-gold/[0.06] ring-1 ring-gold/40'
-                    : ''
+                  dragOverLabel === item.label && draggingLabel !== item.label ? 'bg-gold/[0.04]' : ''
                 }`}
                 onPointerEnter={() => {
                   if (draggingLabel && draggingLabel !== item.label) {
                     setDragOverLabel(item.label);
+                    setDragOverPosition('before');
+                  }
+                }}
+                onPointerMove={(e) => {
+                  if (draggingLabel && draggingLabel !== item.label) {
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                    setDragOverLabel(item.label);
+                    setDragOverPosition(position);
                   }
                 }}
               >
+                {dragOverLabel === item.label && draggingLabel !== item.label && dragOverPosition === 'before' && (
+                  <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
+                )}
                 <div className="flex items-stretch gap-1">
                   {isEditMode && !isCollapsed && (
                     <button
@@ -354,9 +409,19 @@ export default function Sidebar() {
                         if (!isEditMode) return;
                         if (e.pointerType === 'mouse' && e.button !== 0) return;
                         e.preventDefault();
+                        const rect = (e.currentTarget as HTMLButtonElement).closest('[data-nav-label]')?.getBoundingClientRect();
                         dragSourceRef.current = item.label;
                         setDraggingLabel(item.label);
                         setDragOverLabel(item.label);
+                        if (rect) {
+                          setDragPointer({
+                            x: e.clientX,
+                            y: e.clientY,
+                            offsetX: e.clientX - rect.left,
+                            offsetY: e.clientY - rect.top,
+                            width: rect.width,
+                          });
+                        }
                       }}
                       className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all hover:bg-white/5 hover:text-zinc-300 active:cursor-grabbing ${
                         draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
@@ -392,7 +457,7 @@ export default function Sidebar() {
                     }}
                     draggable={false}
                     className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
-                      draggingLabel === item.label ? 'scale-[0.98] opacity-65 shadow-lg' : ''
+                      draggingLabel === item.label ? 'scale-[0.98] opacity-25' : ''
                     } ${
                       isActive
                         ? 'bg-gold/15 text-gold'
@@ -441,6 +506,9 @@ export default function Sidebar() {
                     </button>
                   )}
                 </div>
+                {dragOverLabel === item.label && draggingLabel !== item.label && dragOverPosition === 'after' && (
+                  <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
+                )}
                 {hasChildren && isOpen && !isCollapsed && (
                   <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
                     {item.children!.map((child) => {
@@ -476,6 +544,19 @@ export default function Sidebar() {
             );
           })}
         </div>
+        {draggingLabel && dragPointer && (
+          <div
+            className="pointer-events-none fixed z-[70] rounded-lg border border-gold/40 bg-[#14151d]/95 px-4 py-3 shadow-[0_16px_30px_rgba(0,0,0,0.45)] ring-1 ring-gold/20"
+            style={{
+              left: dragPointer.x - dragPointer.offsetX,
+              top: dragPointer.y - dragPointer.offsetY,
+              width: dragPointer.width,
+              transform: 'rotate(-1deg)',
+            }}
+          >
+            <div className="text-[15px] font-medium text-zinc-100">{draggingLabel}</div>
+          </div>
+        )}
         <div className="mt-3 mb-2 flex items-end justify-end">
           <button
             type="button"

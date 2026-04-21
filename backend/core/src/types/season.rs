@@ -1,7 +1,6 @@
 //! Typed season configuration returned by `/api/season-config`.
 //!
-//! `season-config.json` is optional. The backend generates safe defaults at
-//! runtime and applies file overrides only when present.
+//! The backend generates this dynamically from synced data files at runtime.
 
 use serde::{Deserialize, Serialize};
 

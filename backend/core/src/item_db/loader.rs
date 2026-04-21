@@ -278,14 +278,133 @@ fn inferred_season_label() -> String {
     }
 }
 
-fn generated_season_config() -> Value {
+fn read_active_season_metadata(data_dir: &Path) -> (Option<String>, Option<u64>) {
+    let path = data_dir.join("seasons.json");
+    if !path.exists() {
+        return (None, None);
+    }
+
+    let file = match fs::File::open(&path) {
+        Ok(f) => f,
+        Err(_) => return (None, None),
+    };
+    let seasons: Vec<Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
+
+    let active = seasons
+        .iter()
+        .find(|s| s.get("active").and_then(|v| v.as_bool()) == Some(true))
+        .or_else(|| seasons.first());
+
+    let season_name = active
+        .and_then(|s| s.get("name"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let catalyst_currency = active
+        .and_then(|s| s.get("itemConversionCurrency"))
+        .and_then(|v| v.as_u64());
+
+    (season_name, catalyst_currency)
+}
+
+fn track_rank_index(name: &str) -> usize {
+    TRACK_RANKS
+        .iter()
+        .position(|rank| rank.eq_ignore_ascii_case(name))
+        .unwrap_or(usize::MAX / 2)
+}
+
+fn available_track_names() -> Vec<String> {
+    let tracks = UPGRADE_TRACKS.read().unwrap();
+    let mut seen = HashSet::<String>::new();
+    let mut names: Vec<String> = tracks
+        .keys()
+        .filter_map(|(name, _, _)| {
+            let key = name.to_ascii_lowercase();
+            if seen.insert(key) {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+    names.sort_by_key(|name| track_rank_index(name));
+    names
+}
+
+fn pick_track_name(preferred: &str, available_tracks: &[String]) -> String {
+    if let Some(exact) = available_tracks
+        .iter()
+        .find(|name| name.eq_ignore_ascii_case(preferred))
+    {
+        return exact.clone();
+    }
+    if available_tracks.is_empty() {
+        return preferred.to_string();
+    }
+
+    let preferred_rank = track_rank_index(preferred);
+    available_tracks
+        .iter()
+        .min_by_key(|name| track_rank_index(name).abs_diff(preferred_rank))
+        .cloned()
+        .unwrap_or_else(|| preferred.to_string())
+}
+
+fn track_max_level(track_name: &str) -> u64 {
+    let tracks = UPGRADE_TRACKS.read().unwrap();
+    tracks
+        .keys()
+        .filter(|(name, _, _)| name.eq_ignore_ascii_case(track_name))
+        .map(|(_, _, max)| *max)
+        .max()
+        .unwrap_or(0)
+}
+
+fn clamp_level(level: u64, max_level: u64) -> u64 {
+    if max_level == 0 {
+        level
+    } else {
+        level.clamp(1, max_level)
+    }
+}
+
+fn generated_season_config(data_dir: &Path) -> Value {
+    let (season_name_from_file, catalyst_currency_from_file) = read_active_season_metadata(data_dir);
+    let season_name = season_name_from_file.unwrap_or_else(inferred_season_label);
+    let catalyst_currency_id = catalyst_currency_from_file.unwrap_or(3378);
+
+    let available_tracks = available_track_names();
+    let adventurer_track = pick_track_name("Adventurer", &available_tracks);
+    let veteran_track = pick_track_name("Veteran", &available_tracks);
+    let champion_track = pick_track_name("Champion", &available_tracks);
+    let hero_track = pick_track_name("Hero", &available_tracks);
+    let myth_track = pick_track_name("Myth", &available_tracks);
+
+    let adventurer_max = track_max_level(&adventurer_track);
+    let champion_max = track_max_level(&champion_track);
+    let hero_max = track_max_level(&hero_track);
+    let myth_max = track_max_level(&myth_track);
+
+    let heroic_level = clamp_level(2, adventurer_max);
+    let mythic_zero_level = clamp_level(1, champion_max);
+    let mplus2_level = clamp_level(2, champion_max);
+    let mplus4_level = clamp_level(3, champion_max);
+    let mplus5_level = clamp_level(4, champion_max);
+    let mplus6_level = clamp_level(5, champion_max);
+    let mplus7_level = clamp_level(1, hero_max);
+    let mplus8_level = clamp_level(2, hero_max);
+    let mplus10_level = clamp_level(3, hero_max);
+    let vault79_level = clamp_level(4, hero_max);
+    let vault10_level = clamp_level(1, myth_max);
+
     json!({
-      "season": inferred_season_label(),
+      "season": season_name,
       "raidDifficulties": [
-        { "key": "lfr",    "label": "Raid Finder", "track": "Veteran",  "level": 1, "sortOrder": 1 },
-        { "key": "normal", "label": "Normal",      "track": "Champion", "level": 2, "sortOrder": 2 },
-        { "key": "heroic", "label": "Heroic",      "track": "Hero",     "level": 3, "sortOrder": 3 },
-        { "key": "mythic", "label": "Mythic",      "track": "Myth",     "level": 4, "sortOrder": 4 }
+        { "key": "lfr",    "label": "Raid Finder", "track": veteran_track,  "level": 1, "sortOrder": 1 },
+        { "key": "normal", "label": "Normal",      "track": champion_track, "level": 2, "sortOrder": 2 },
+        { "key": "heroic", "label": "Heroic",      "track": hero_track,     "level": 3, "sortOrder": 3 },
+        { "key": "mythic", "label": "Mythic",      "track": myth_track,     "level": 4, "sortOrder": 4 }
       ],
       "dungeonCategories": [
         {
@@ -294,19 +413,19 @@ fn generated_season_config() -> Value {
           "poolInstanceId": -1,
           "defaultDifficulty": "mythic+10",
           "difficulties": [
-            { "key": "heroic",    "label": "Heroic",     "track": "Adventurer", "level": 2, "sortOrder": 1 },
-            { "key": "mythic",    "label": "Mythic 0",   "track": "Champion",   "level": 1, "sortOrder": 2 },
-            { "key": "mythic+2",  "label": "+2",         "track": "Champion",   "level": 2, "sortOrder": 3 },
-            { "key": "mythic+3",  "label": "+3",         "track": "Champion",   "level": 2, "sortOrder": 4 },
-            { "key": "mythic+4",  "label": "+4",         "track": "Champion",   "level": 3, "sortOrder": 5 },
-            { "key": "mythic+5",  "label": "+5",         "track": "Champion",   "level": 4, "sortOrder": 6 },
-            { "key": "mythic+6",  "label": "+6",         "track": "Champion",   "level": 5, "sortOrder": 7 },
-            { "key": "mythic+7",  "label": "+7",         "track": "Hero",       "level": 1, "sortOrder": 8 },
-            { "key": "mythic+8",  "label": "+8",         "track": "Hero",       "level": 2, "sortOrder": 9 },
-            { "key": "mythic+9",  "label": "+9",         "track": "Hero",       "level": 2, "sortOrder": 10 },
-            { "key": "mythic+10", "label": "+10",        "track": "Hero",       "level": 3, "sortOrder": 11 },
-            { "key": "vault+7-9", "label": "Vault +7-9", "track": "Hero",       "level": 4, "sortOrder": 12 },
-            { "key": "vault+10",  "label": "Vault +10",  "track": "Myth",       "level": 1, "sortOrder": 13 }
+            { "key": "heroic",    "label": "Heroic",     "track": adventurer_track, "level": heroic_level, "sortOrder": 1 },
+            { "key": "mythic",    "label": "Mythic 0",   "track": champion_track,   "level": mythic_zero_level, "sortOrder": 2 },
+            { "key": "mythic+2",  "label": "+2",         "track": champion_track,   "level": mplus2_level, "sortOrder": 3 },
+            { "key": "mythic+3",  "label": "+3",         "track": champion_track,   "level": mplus2_level, "sortOrder": 4 },
+            { "key": "mythic+4",  "label": "+4",         "track": champion_track,   "level": mplus4_level, "sortOrder": 5 },
+            { "key": "mythic+5",  "label": "+5",         "track": champion_track,   "level": mplus5_level, "sortOrder": 6 },
+            { "key": "mythic+6",  "label": "+6",         "track": champion_track,   "level": mplus6_level, "sortOrder": 7 },
+            { "key": "mythic+7",  "label": "+7",         "track": hero_track,       "level": mplus7_level, "sortOrder": 8 },
+            { "key": "mythic+8",  "label": "+8",         "track": hero_track,       "level": mplus8_level, "sortOrder": 9 },
+            { "key": "mythic+9",  "label": "+9",         "track": hero_track,       "level": mplus8_level, "sortOrder": 10 },
+            { "key": "mythic+10", "label": "+10",        "track": hero_track,       "level": mplus10_level, "sortOrder": 11 },
+            { "key": "vault+7-9", "label": "Vault +7-9", "track": hero_track,       "level": vault79_level, "sortOrder": 12 },
+            { "key": "vault+10",  "label": "Vault +10",  "track": myth_track,       "level": vault10_level, "sortOrder": 13 }
           ]
         },
         {
@@ -316,81 +435,45 @@ fn generated_season_config() -> Value {
           "defaultDifficulty": "heroic",
           "difficulties": [
             { "key": "normal", "label": "Normal", "track": null, "level": 0, "sortOrder": 1, "fixedIlvl": 214, "fixedQuality": 3 },
-            { "key": "heroic", "label": "Heroic", "track": "Adventurer", "level": 2, "sortOrder": 2 },
-            { "key": "mythic", "label": "Mythic", "track": "Champion", "level": 1, "sortOrder": 3 }
+            { "key": "heroic", "label": "Heroic", "track": adventurer_track, "level": heroic_level, "sortOrder": 2 },
+            { "key": "mythic", "label": "Mythic", "track": champion_track, "level": mythic_zero_level, "sortOrder": 3 }
           ]
         }
       ],
       "encounterOverrides": [],
       "instanceOverrides": [],
       "raidDifficultyTracks": {
-        "lfr": "Veteran",
-        "normal": "Champion",
-        "heroic": "Hero",
-        "mythic": "Myth"
+        "lfr": veteran_track,
+        "normal": champion_track,
+        "heroic": hero_track,
+        "mythic": myth_track
       },
       "encounterUpgradeLevel": {},
       "dungeonNormal": { "ilvl": 214, "quality": 3 },
       "dungeonDifficultyTracks": {
-        "heroic":    { "track": "Adventurer", "level": 2 },
-        "mythic":    { "track": "Champion",   "level": 1 },
-        "mythic+2":  { "track": "Champion",   "level": 2 },
-        "mythic+3":  { "track": "Champion",   "level": 2 },
-        "mythic+4":  { "track": "Champion",   "level": 3 },
-        "mythic+5":  { "track": "Champion",   "level": 4 },
-        "mythic+6":  { "track": "Champion",   "level": 5 },
-        "mythic+7":  { "track": "Hero",       "level": 1 },
-        "mythic+8":  { "track": "Hero",       "level": 2 },
-        "mythic+9":  { "track": "Hero",       "level": 2 },
-        "mythic+10": { "track": "Hero",       "level": 3 },
-        "vault+7-9": { "track": "Hero",       "level": 4 },
-        "vault+10":  { "track": "Myth",       "level": 1 }
+        "heroic":    { "track": adventurer_track, "level": heroic_level },
+        "mythic":    { "track": champion_track,   "level": mythic_zero_level },
+        "mythic+2":  { "track": champion_track,   "level": mplus2_level },
+        "mythic+3":  { "track": champion_track,   "level": mplus2_level },
+        "mythic+4":  { "track": champion_track,   "level": mplus4_level },
+        "mythic+5":  { "track": champion_track,   "level": mplus5_level },
+        "mythic+6":  { "track": champion_track,   "level": mplus6_level },
+        "mythic+7":  { "track": hero_track,       "level": mplus7_level },
+        "mythic+8":  { "track": hero_track,       "level": mplus8_level },
+        "mythic+9":  { "track": hero_track,       "level": mplus8_level },
+        "mythic+10": { "track": hero_track,       "level": mplus10_level },
+        "vault+7-9": { "track": hero_track,       "level": vault79_level },
+        "vault+10":  { "track": myth_track,       "level": vault10_level }
       },
-      "worldBossTrack": "Champion",
-      "worldBossLevel": 1,
+      "worldBossTrack": champion_track,
+      "worldBossLevel": mythic_zero_level,
       "tierSetBonusId": 20,
-      "catalyst_currency_id": 3378
+      "catalyst_currency_id": catalyst_currency_id
     })
 }
 
 pub fn load_season_config(data_dir: &Path) {
-    let mut cfg = generated_season_config();
-
-    let path = data_dir.join("season-config.json");
-    let path = if path.exists() {
-        path
-    } else {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("season-config.json")
-    };
-
-    if path.exists() {
-        match fs::File::open(&path) {
-            Ok(file) => {
-                let parsed: Value =
-                    serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or(Value::Null);
-                if let (Some(base), Some(custom)) = (cfg.as_object_mut(), parsed.as_object()) {
-                    for (key, value) in custom {
-                        base.insert(key.clone(), value.clone());
-                    }
-                } else {
-                    eprintln!(
-                        "season-config.json at {} is invalid; using generated defaults.",
-                        path.display()
-                    );
-                }
-            }
-            Err(err) => {
-                eprintln!(
-                    "Failed to open season-config.json at {}: {}. Using generated defaults.",
-                    path.display(),
-                    err
-                );
-            }
-        }
-    }
-
-    let mut sc = SEASON_CONFIG.write().unwrap();
-    *sc = cfg;
+    *SEASON_CONFIG.write().unwrap() = generated_season_config(data_dir);
 }
 
 pub fn load_item_limit_categories(data_dir: &Path) {

@@ -222,6 +222,12 @@ function SimRow({
           {sim.player_name ? (
             <span className={`block truncate text-zinc-200 ${compact ? 'text-xs' : 'text-sm'}`}>
               {sim.player_name}
+              {sim.pinned && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded border border-gold/30 bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold">
+                  <PinIcon pinned />
+                  Pinned
+                </span>
+              )}
               {sim.player_class && <span className="ml-1.5 text-zinc-500">{sim.player_class}</span>}
               {sim.status === 'done' && sim.upgrades != null && sim.downgrades != null && (
                 <span className="ml-2 text-xs text-zinc-400">
@@ -437,7 +443,7 @@ function BatchGroup({
 export default function HistoryPage() {
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showUnlinkedOnly, setShowUnlinkedOnly] = useState(false);
+  const [pinFilter, setPinFilter] = useState<'all' | 'pinned' | 'unpinned'>('all');
   const [character, setCharacter] = useState<{
     name: string;
     realm: string;
@@ -452,6 +458,7 @@ export default function HistoryPage() {
   const [showPinnedOnly, setShowPinnedOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkPinning, setBulkPinning] = useState(false);
 
   useEffect(() => {
     // Fetch account characters and historical characters
@@ -488,9 +495,7 @@ export default function HistoryPage() {
   const refreshHistory = useCallback(async () => {
     try {
       let url = `${API_URL}/api/sims`;
-      if (showUnlinkedOnly) {
-        url += '?unlinked_only=true';
-      } else if (showPinnedOnly) {
+      if (showPinnedOnly) {
         url += '?pinned_only=true';
       } else if (character && character.name && character.realm) {
         url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
@@ -506,7 +511,7 @@ export default function HistoryPage() {
     } catch (err) {
       setSims([]);
     }
-  }, [character, showUnlinkedOnly, showPinnedOnly]);
+  }, [character, showPinnedOnly]);
 
   useEffect(() => {
     setLoading(true);
@@ -522,8 +527,12 @@ export default function HistoryPage() {
   };
 
   const handleTogglePinned = async (id: string, pinned: boolean) => {
-    await setSimPinned(id, pinned);
-    refreshHistory();
+    setSims((prev) => prev.map((sim) => (sim.id === id ? { ...sim, pinned } : sim)));
+    try {
+      await setSimPinned(id, pinned);
+    } catch {
+      setSims((prev) => prev.map((sim) => (sim.id === id ? { ...sim, pinned: !pinned } : sim)));
+    }
   };
 
   const handleToggleSelection = useCallback((id: string, checked: boolean) => {
@@ -571,8 +580,14 @@ export default function HistoryPage() {
             s.player_class?.toLowerCase().includes(query)
         )
       : sims;
+    const pinFiltered =
+      pinFilter === 'all'
+        ? filtered
+        : pinFilter === 'pinned'
+          ? filtered.filter((s) => !!s.pinned)
+          : filtered.filter((s) => !s.pinned);
 
-    const grouped = groupByBatch(filtered);
+    const grouped = groupByBatch(pinFiltered);
 
     // Group by date
     const dateGroups: Record<string, HistoryEntry[]> = {};
@@ -584,7 +599,10 @@ export default function HistoryPage() {
     });
 
     return dateGroups;
-  }, [sims, search]);
+  }, [sims, search, pinFilter]);
+
+  const pinnedCount = useMemo(() => sims.filter((s) => !!s.pinned).length, [sims]);
+  const unpinnedCount = useMemo(() => sims.filter((s) => !s.pinned).length, [sims]);
 
   const visibleIds = useMemo(() => {
     const ids: string[] = [];
@@ -626,6 +644,25 @@ export default function HistoryPage() {
     }
   }, [selectedIds, refreshHistory]);
 
+  const handleBulkPin = useCallback(
+    async (pinned: boolean) => {
+      if (selectedIds.size === 0) return;
+      const ids = Array.from(selectedIds);
+      setBulkPinning(true);
+      setSims((prev) => prev.map((sim) => (selectedIds.has(sim.id) ? { ...sim, pinned } : sim)));
+      try {
+        await Promise.all(ids.map((id) => setSimPinned(id, pinned)));
+      } catch {
+        setSims((prev) =>
+          prev.map((sim) => (selectedIds.has(sim.id) ? { ...sim, pinned: !pinned } : sim))
+        );
+      } finally {
+        setBulkPinning(false);
+      }
+    },
+    [selectedIds]
+  );
+
   if (loading) {
     return (
       <div className="py-12 text-center">
@@ -643,7 +680,7 @@ export default function HistoryPage() {
           <h2 className="text-lg font-medium text-zinc-100">Simulation History</h2>
           {stats && (
             <span className="text-xs text-zinc-500">
-              {sims.length} records &middot; {formatSize(stats.size_bytes)}
+              {unpinnedCount} regular + {pinnedCount} pinned &middot; {formatSize(stats.size_bytes)}
             </span>
           )}
         </div>
@@ -653,44 +690,40 @@ export default function HistoryPage() {
             <select
               className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
               value={
-                showUnlinkedOnly
-                  ? 'unlinked'
-                  : showPinnedOnly
-                    ? 'pinned'
-                  : character
-                    ? `${character.name}-${character.realm}`
-                    : 'all'
+                character ? `${character.name}-${character.realm}` : 'all'
               }
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === 'all') {
                   setCharacter(null);
-                  setShowUnlinkedOnly(false);
-                  setShowPinnedOnly(false);
-                } else if (val === 'unlinked') {
-                  setCharacter(null);
-                  setShowUnlinkedOnly(true);
-                  setShowPinnedOnly(false);
-                } else if (val === 'pinned') {
-                  setCharacter(null);
-                  setShowUnlinkedOnly(false);
-                  setShowPinnedOnly(true);
                 } else {
                   const [name, realm] = val.split('-');
-                  setShowUnlinkedOnly(false);
-                  setShowPinnedOnly(false);
                   setCharacter({ name, realm });
                 }
               }}
             >
               <option value="all">All Sims</option>
-              <option value="unlinked">Unlinked</option>
-              <option value="pinned">Pinned</option>
               {bnetCharacters.map((c, i) => (
                 <option key={i} value={`${c.name}-${c.realm}`}>
                   {c.name} - {c.realm} {c.source === 'history' ? '(History)' : ''}
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 border-r border-border pr-2">
+            <span className="text-xs text-zinc-500">Pin Filter:</span>
+            <select
+              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
+              value={pinFilter}
+              onChange={(e) => {
+                const val = e.target.value as 'all' | 'pinned' | 'unpinned';
+                setPinFilter(val);
+                setShowPinnedOnly(val === 'pinned');
+              }}
+            >
+              <option value="all">All</option>
+              <option value="pinned">Pinned</option>
+              <option value="unpinned">Not Pinned</option>
             </select>
           </div>
           <div className="relative">
@@ -731,10 +764,10 @@ export default function HistoryPage() {
           <p className="text-sm text-muted">
             {search
               ? 'No records match your search.'
-              : showUnlinkedOnly
-                ? 'No unlinked simulations found.'
-                : showPinnedOnly
-                  ? 'No pinned simulations found.'
+              : pinFilter === 'pinned'
+                ? 'No pinned simulations found.'
+                : pinFilter === 'unpinned'
+                  ? 'No unpinned simulations found.'
                 : character
                   ? `No simulations found for ${character.name} on ${character.realm}.`
                   : 'No simulations yet.'}
@@ -805,15 +838,29 @@ export default function HistoryPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => handleBulkPin(true)}
+              disabled={bulkDeleting || bulkPinning}
+              className="rounded-md border border-gold/30 px-3 py-1.5 text-xs text-gold hover:bg-gold/10 disabled:opacity-50"
+            >
+              {bulkPinning ? 'Pinning...' : 'Pin Selected'}
+            </button>
+            <button
+              onClick={() => handleBulkPin(false)}
+              disabled={bulkDeleting || bulkPinning}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-zinc-300 hover:bg-surface-2 disabled:opacity-50"
+            >
+              {bulkPinning ? 'Updating...' : 'Unpin Selected'}
+            </button>
+            <button
               onClick={() => setSelectedIds(new Set())}
-              disabled={bulkDeleting}
+              disabled={bulkDeleting || bulkPinning}
               className="rounded-md border border-border px-3 py-1.5 text-xs text-zinc-300 hover:bg-surface-2 disabled:opacity-50"
             >
               Cancel Selection
             </button>
             <button
               onClick={handleBulkDelete}
-              disabled={bulkDeleting}
+              disabled={bulkDeleting || bulkPinning}
               className="inline-flex items-center gap-2 rounded-md bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
             >
               {bulkDeleting && (

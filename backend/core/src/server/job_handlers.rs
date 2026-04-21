@@ -13,6 +13,11 @@ pub(super) async fn list_sims(
     query: web::Query<ListSimsQuery>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    // Enforce retention proactively so old unpinned jobs are trimmed even if
+    // no new jobs were inserted since the limit was configured.
+    let max_jobs = store.get_max_jobs();
+    store.set_max_jobs(max_jobs);
+
     let player = if query.player.is_empty() {
         None
     } else {
@@ -25,7 +30,7 @@ pub(super) async fn list_sims(
     };
 
     let summaries = store.list_recent(
-        store.get_max_jobs(),
+        std::cmp::max(max_jobs, 10000),
         player,
         realm,
         query.linked_only,

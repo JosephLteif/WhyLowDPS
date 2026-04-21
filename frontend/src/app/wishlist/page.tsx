@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
@@ -7,7 +8,7 @@ import { API_URL, fetchJson, listCharacterProfiles } from '../lib/api';
 import { getWowheadData, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
-import { useSimSubmit } from '../lib/useSimSubmit';
+import { setSimAgainState } from '../lib/sim-return';
 import { parseCharacterInfo } from '../../lib/simc-parser';
 import {
   WISHLIST_STORAGE_KEY,
@@ -22,7 +23,6 @@ import {
 } from '../lib/wishlist';
 
 type SelectedItemsMap = Record<string, string[]>;
-type ItemsBySlotMap = Record<string, ResolvedItem[]>;
 type BnetCharacter = {
   name?: string;
   realm?: string;
@@ -87,14 +87,16 @@ function slotCandidates(item: WishlistItem): string[] {
       if (fallback.includes('back')) return ['back'];
       if (fallback.includes('chest')) return ['chest'];
       if (fallback.includes('wrist')) return ['wrist'];
+      // Match weapon hands before generic "hands" so "main hand"/"off hand"
+      // does not get misclassified as glove slot.
+      if (fallback.includes('main')) return ['main_hand'];
+      if (fallback.includes('off')) return ['off_hand'];
       if (fallback.includes('hand')) return ['hands'];
       if (fallback.includes('waist')) return ['waist'];
       if (fallback.includes('leg')) return ['legs'];
       if (fallback.includes('feet')) return ['feet'];
       if (fallback.includes('finger') || fallback.includes('ring')) return ['finger1', 'finger2'];
       if (fallback.includes('trinket')) return ['trinket1', 'trinket2'];
-      if (fallback.includes('main')) return ['main_hand'];
-      if (fallback.includes('off')) return ['off_hand'];
       return [];
     }
   }
@@ -186,11 +188,14 @@ async function resolveSimcInputForOwner(opts: {
 }
 
 export default function WishlistPage() {
-  const { simcInput, maxCombinations } = useSimContext();
+  const router = useRouter();
+  const { simcInput, setSimcInput } = useSimContext();
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
   const [bnetCharacters, setBnetCharacters] = useState<BnetCharacter[]>([]);
   const [groupBy, setGroupBy] = useState<'instance' | 'slot'>('instance');
+  const [preparingTopGear, setPreparingTopGear] = useState(false);
+  const [error, setError] = useState('');
 
   const characterInfo = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
 
@@ -325,7 +330,7 @@ export default function WishlistPage() {
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [wishlist, groupBy]);
 
-  const buildPayload = useCallback(async () => {
+  const buildTopGearRestoreState = useCallback(async () => {
     const effectiveSimcInput = await resolveSimcInputForOwner({
       selectedOwnerKey,
       activeOwnerKey: activeCharacterOwnerKey,
@@ -339,18 +344,23 @@ export default function WishlistPage() {
       body: JSON.stringify({ simc_input: effectiveSimcInput, max_upgrade: false, catalyst: false }),
     });
 
-    const itemsBySlot: ItemsBySlotMap = {};
     const selectedItems: SelectedItemsMap = {};
-
-    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
-      const items: ResolvedItem[] = [];
-      if (slotRes.equipped) items.push(slotRes.equipped);
-      items.push(...slotRes.alternatives);
-      itemsBySlot[slot] = items;
-    }
+    const nextResolved: ResolveGearResponse = {
+      ...resolved,
+      slots: Object.fromEntries(
+        Object.entries(resolved.slots).map(([slot, slotRes]) => [
+          slot,
+          {
+            ...slotRes,
+            equipped: slotRes.equipped ? { ...slotRes.equipped } : null,
+            alternatives: [...slotRes.alternatives],
+          },
+        ])
+      ),
+    };
 
     for (const wish of wishlist) {
-      const slots = slotCandidates(wish).filter((slot) => !!itemsBySlot[slot]);
+      const slots = slotCandidates(wish).filter((slot) => !!nextResolved.slots[slot]);
       if (slots.length === 0) continue;
       const bonusIds = Array.isArray(wish.bonus_ids) ? wish.bonus_ids : [];
       const finalBonusIds =
@@ -366,9 +376,13 @@ export default function WishlistPage() {
 
       for (const slot of slots) {
         const uid = makeUid(wish.item_id, finalBonusIds, 'bags', slot);
-        const exists = itemsBySlot[slot]?.some((item) => item.uid === uid);
+        const slotRes = nextResolved.slots[slot];
+        const exists =
+          slotRes?.equipped?.uid === uid ||
+          slotRes?.alternatives?.some((item) => item.uid === uid);
         if (!exists) {
-          itemsBySlot[slot].push({
+          const resolvedIcon = itemInfoMap[wish.item_id]?.icon || wish.icon || '';
+          const newItem: ResolvedItem = {
             uid,
             slot,
             item_id: wish.item_id,
@@ -379,7 +393,7 @@ export default function WishlistPage() {
             enchant_id: 0,
             gem_id: 0,
             name: wish.name,
-            icon: wish.icon,
+            icon: resolvedIcon,
             quality: wish.quality,
             quality_color:
               wish.quality >= 5
@@ -399,7 +413,8 @@ export default function WishlistPage() {
             instance_name: wish.instance_name,
             source_type: wish.source_type,
             inventory_type: wish.inventory_type,
-          });
+          };
+          slotRes.alternatives.push(newItem);
         }
         if (!selectedItems[slot]) selectedItems[slot] = [];
         if (!selectedItems[slot].includes(uid)) selectedItems[slot].push(uid);
@@ -407,31 +422,58 @@ export default function WishlistPage() {
     }
 
     return {
-      simc_input: effectiveSimcInput,
-      selected_items: selectedItems,
-      items_by_slot: itemsBySlot,
-      max_upgrade: false,
-      copy_enchants: true,
-      ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
+      simcInput: effectiveSimcInput,
+      selectedUids: selectedItems,
+      localItems: [],
+      maxUpgrade: false,
+      copyEnchants: true,
+      catalyst: false,
+      catalystCharges: null,
+      resolved: nextResolved,
     };
-  }, [selectedOwnerKey, activeCharacterOwnerKey, simcInput, wishlist, maxCombinations]);
+  }, [selectedOwnerKey, activeCharacterOwnerKey, simcInput, wishlist, itemInfoMap]);
 
-  const validate = useCallback(() => {
+  const handleGenerateWishlistSim = useCallback(async () => {
     if (!simcInput.trim() && !selectedOwnerSummary?.name) {
-      return 'Load a SimC export or pick a saved character wishlist.';
+      setError('Load a SimC export or pick a saved character wishlist.');
+      return;
     }
     if (!canGenerateForSelectedOwner) {
-      return 'Switch to the active character in Wishlist to generate this sim.';
+      setError('Switch to the active character in Wishlist to prepare this in Top Gear.');
+      return;
     }
-    if (wishlist.length === 0) return 'Your wishlist is empty.';
-    return null;
-  }, [simcInput, wishlist, canGenerateForSelectedOwner, selectedOwnerSummary]);
+    if (wishlist.length === 0) {
+      setError('Your wishlist is empty.');
+      return;
+    }
 
-  const { submit, submitting, error, buttonLabel } = useSimSubmit({
-    endpoint: '/api/top-gear/sim',
-    buildPayload,
-    validate,
-  });
+    setPreparingTopGear(true);
+    setError('');
+    try {
+      const state = await buildTopGearRestoreState();
+      if (!state) {
+        setError('Could not prepare Top Gear state from this wishlist.');
+        return;
+      }
+      if (typeof state.simcInput === 'string' && state.simcInput.trim().length > 0) {
+        setSimcInput(state.simcInput);
+      }
+      setSimAgainState('top-gear', state);
+      router.push('/top-gear');
+    } catch {
+      setError('Failed to prepare Top Gear with wishlist items.');
+    } finally {
+      setPreparingTopGear(false);
+    }
+  }, [
+    simcInput,
+    selectedOwnerSummary,
+    canGenerateForSelectedOwner,
+    wishlist.length,
+    buildTopGearRestoreState,
+    setSimcInput,
+    router,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -466,9 +508,9 @@ export default function WishlistPage() {
             Clear All
           </button>
           <button
-            onClick={() => void submit()}
+            onClick={() => void handleGenerateWishlistSim()}
             disabled={
-              submitting ||
+              preparingTopGear ||
               wishlist.length === 0 ||
               !hasSimSource ||
               !canGenerateForSelectedOwner
@@ -482,7 +524,7 @@ export default function WishlistPage() {
                   : undefined
             }
           >
-            {submitting ? 'Generating...' : buttonLabel('Generate Wishlist Sim')}
+            {preparingTopGear ? 'Preparing Top Gear...' : 'Generate Wishlist Sim'}
           </button>
         </div>
       </div>

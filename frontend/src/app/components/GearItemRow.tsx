@@ -49,7 +49,12 @@ interface GearItemRowProps {
 }
 
 function getIconUrl(iconName: string): string {
-  return `https://render.worldofwarcraft.com/icons/56/${iconName}.jpg`;
+  const raw = String(iconName || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const noExt = raw.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+  const base = noExt.split('/').pop() || noExt;
+  return `https://render.worldofwarcraft.com/icons/56/${base}.jpg`;
 }
 
 export default function GearItemRow({
@@ -72,6 +77,7 @@ export default function GearItemRow({
 }: GearItemRowProps) {
   const hasLeadingControl = showCheckbox && (selectable || equipped);
   const detailsIndentClass = hasLeadingControl ? 'pl-[1.875rem]' : 'pl-0';
+  const mainIconUrl = getIconUrl(icon);
 
   const content = (
     <>
@@ -132,14 +138,18 @@ export default function GearItemRow({
             e.stopPropagation();
           }}
         >
-          <img
-            src={getIconUrl(icon)}
-            alt={name}
-            width={32}
-            height={32}
-            className="h-full w-full"
-            loading="lazy"
-          />
+          {mainIconUrl ? (
+            <img
+              src={mainIconUrl}
+              alt={name}
+              width={32}
+              height={32}
+              className="h-full w-full"
+              loading="lazy"
+            />
+          ) : (
+            <div className="h-full w-full bg-surface-2" />
+          )}
         </a>
       ) : (
         <div
@@ -151,14 +161,18 @@ export default function GearItemRow({
                 : 'ring-1 ring-white/5'
           }`}
         >
-          <img
-            src={getIconUrl(icon)}
-            alt={name}
-            width={32}
-            height={32}
-            className="h-full w-full"
-            loading="lazy"
-          />
+          {mainIconUrl ? (
+            <img
+              src={mainIconUrl}
+              alt={name}
+              width={32}
+              height={32}
+              className="h-full w-full"
+              loading="lazy"
+            />
+          ) : (
+            <div className="h-full w-full bg-surface-2" />
+          )}
         </div>
       )}
 
@@ -185,6 +199,9 @@ export default function GearItemRow({
           <div className="flex flex-wrap items-center gap-1.5">
             {details.map((p, i) =>
               p.kind === 'gemIcon' && p.icon ? (
+                (() => {
+                  const detailIconUrl = getIconUrl(p.icon);
+                  return (
                 <a
                   key={i}
                   href={p.href}
@@ -195,15 +212,24 @@ export default function GearItemRow({
                   rel="noopener noreferrer"
                   onClick={p.href ? (e) => e.preventDefault() : undefined}
                 >
-                  <img
-                    src={getIconUrl(p.icon)}
-                    alt={p.text}
-                    width={24}
-                    height={24}
-                    className="h-full w-full"
-                  />
+                  {detailIconUrl ? (
+                    <img
+                      src={detailIconUrl}
+                      alt={p.text}
+                      width={24}
+                      height={24}
+                      className="h-full w-full"
+                    />
+                  ) : (
+                    <span className="text-[10px]">?</span>
+                  )}
                 </a>
+                  );
+                })()
               ) : p.kind === 'iconText' && p.icon ? (
+                (() => {
+                  const detailIconUrl = getIconUrl(p.icon);
+                  return (
                 <a
                   key={i}
                   href={p.href}
@@ -214,17 +240,25 @@ export default function GearItemRow({
                   rel="noopener noreferrer"
                   onClick={p.href ? (e) => e.preventDefault() : undefined}
                 >
-                  <img
-                    src={getIconUrl(p.icon)}
-                    alt={p.text}
-                    width={16}
-                    height={16}
-                    className="h-4 w-4 rounded-[3px]"
-                  />
+                  {detailIconUrl ? (
+                    <img
+                      src={detailIconUrl}
+                      alt={p.text}
+                      width={16}
+                      height={16}
+                      className="h-4 w-4 rounded-[3px]"
+                    />
+                  ) : (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-white/10 text-[10px]">
+                      ?
+                    </span>
+                  )}
                   <span className="min-w-0 whitespace-normal break-words leading-snug">
                     {p.text}
                   </span>
                 </a>
+                  );
+                })()
               ) : p.kind === 'plain' ? (
                 <span
                   key={i}

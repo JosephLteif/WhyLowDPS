@@ -326,12 +326,27 @@ pub(super) async fn get_talent_tree(path: web::Path<u64>) -> HttpResponse {
 pub(super) async fn get_season_config() -> HttpResponse {
     use crate::types::season::*;
     let cfg = crate::item_db::season_cfg();
+    let runtime = crate::item_db::get_runtime_data();
 
-    let season = cfg
-        .get("season")
+    let season = runtime
+        .get("season_name")
         .and_then(|s| s.as_str())
-        .unwrap_or("")
-        .to_string();
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            cfg.get("season")
+                .and_then(|s| s.as_str())
+                .map(|s| s.to_string())
+        })
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| {
+            let season_id = crate::item_db::current_season_id();
+            if season_id > 0 {
+                format!("Season {}", season_id)
+            } else {
+                "Current Season".to_string()
+            }
+        });
 
     let raid_difficulties: Vec<DifficultyDef> = cfg
         .get("raidDifficulties")

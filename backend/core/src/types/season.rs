@@ -1,6 +1,6 @@
-//! Typed season configuration — loaded from season-config.json.
+//! Typed season configuration returned by `/api/season-config`.
 //!
-//! When a new WoW season drops, update the JSON file. No code changes needed.
+//! The backend generates this dynamically from synced data files at runtime.
 
 use serde::{Deserialize, Serialize};
 
@@ -79,3 +79,4 @@ pub struct SeasonConfigResponse {
     pub raid_difficulties: Vec<DifficultyDef>,
     pub dungeon_categories: Vec<DungeonCategory>,
 }
+

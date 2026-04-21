@@ -847,31 +847,110 @@ export default function SimResultClient() {
     );
   }
 
+  const scenarioToolbar = (
+    <div className="sticky top-16 z-40 flex flex-wrap items-center justify-between gap-4 py-2">
+      {siblings && siblings.length > 1 ? (
+        <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">Scenarios</span>
+            <span className="h-4 w-px shrink-0 bg-border" />
+            {siblings.map((s) => {
+              const isCurrent = s.id === id;
+              const status = siblingStatuses[s.id] || (isCurrent ? job.status : 'pending');
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    navigateToScenario(s.id);
+                  }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigateToScenario(s.id);
+                  }}
+                  className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
+                    isCurrent
+                      ? 'border-gold/40 bg-gold/[0.08] text-gold'
+                      : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <span>{formatScenarioLabel(s)}</span>
+                    <span className={`text-[11px] ${scenarioStatusTone(status, isCurrent)}`}>
+                      {status === 'running'
+                        ? 'In Progress'
+                        : status === 'pending'
+                          ? 'Pending'
+                          : status === 'done'
+                            ? 'Done'
+                            : status === 'failed'
+                              ? 'Failed'
+                              : status === 'cancelled'
+                                ? 'Cancelled'
+                                : ''}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div />
+      )}
+      {job.status === 'done' ? (
+        <div className="flex items-center gap-3">
+          {hasSimAgainTarget && (
+            <button
+              type="button"
+              onClick={handleSimAgain}
+              className="inline-flex items-center rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/25 hover:text-emerald-100"
+            >
+              Sim Again
+            </button>
+          )}
+          <CharacterLinkButton
+            jobId={id}
+            currentLinkedName={job.linked_name}
+            currentLinkedRealm={job.linked_realm}
+            currentLinkedRegion={job.linked_region}
+          />
+        </div>
+      ) : (
+        <div />
+      )}
+    </div>
+  );
+
   if (job.status === 'pending' || job.status === 'running') {
     return (
-      <SimStatus
-        status={job.status}
-        progress={job.progress}
-        progressStage={job.progress_stage}
-        progressDetail={job.progress_detail}
-        createdAt={job.created_at}
-        stagesCompleted={job.stages_completed}
-        stageTimings={stageTimings}
-        activeStageElapsed={activeStageElapsed}
-        jobId={id}
-        onCancelled={() => setJob({ ...job, status: 'cancelled' })}
-        logLines={logLines}
-        showLogs={showLogs}
-        onToggleLogs={handleToggleLogs}
-        profilesetsCompleted={job.profilesets_completed}
-        profilesetsTotal={job.profilesets_total}
-        cpuPct={job.cpu_pct}
-        memBytes={job.mem_bytes}
-        cpuCores={job.cpu_cores}
-        iterations={job.iterations}
-        iterationsCompleted={job.iterations_completed}
-        fightStyle={job.fight_style}
-      />
+      <div className="space-y-4">
+        {scenarioToolbar}
+        <SimStatus
+          status={job.status}
+          progress={job.progress}
+          progressStage={job.progress_stage}
+          progressDetail={job.progress_detail}
+          createdAt={job.created_at}
+          stagesCompleted={job.stages_completed}
+          stageTimings={stageTimings}
+          activeStageElapsed={activeStageElapsed}
+          jobId={id}
+          onCancelled={() => setJob({ ...job, status: 'cancelled' })}
+          logLines={logLines}
+          showLogs={showLogs}
+          onToggleLogs={handleToggleLogs}
+          profilesetsCompleted={job.profilesets_completed}
+          profilesetsTotal={job.profilesets_total}
+          cpuPct={job.cpu_pct}
+          memBytes={job.mem_bytes}
+          cpuCores={job.cpu_cores}
+          iterations={job.iterations}
+          iterationsCompleted={job.iterations_completed}
+          fightStyle={job.fight_style}
+        />
+      </div>
     );
   }
 
@@ -893,77 +972,7 @@ export default function SimResultClient() {
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-16 z-40 flex flex-wrap items-center justify-between gap-4 py-2">
-        {siblings && siblings.length > 1 ? (
-          <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
-                Scenarios
-              </span>
-              <span className="h-4 w-px shrink-0 bg-border" />
-              {siblings.map((s) => {
-                const isCurrent = s.id === id;
-                const status = siblingStatuses[s.id] || (isCurrent ? job.status : 'pending');
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      navigateToScenario(s.id);
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigateToScenario(s.id);
-                    }}
-                    className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
-                      isCurrent
-                        ? 'border-gold/40 bg-gold/[0.08] text-gold'
-                        : 'border-border bg-surface-2 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300'
-                    }`}
-                  >
-                    <span className="inline-flex items-center gap-1.5">
-                      <span>{formatScenarioLabel(s)}</span>
-                      <span className={`text-[11px] ${scenarioStatusTone(status, isCurrent)}`}>
-                        {status === 'running'
-                          ? 'In Progress'
-                          : status === 'pending'
-                            ? 'Pending'
-                            : status === 'done'
-                              ? 'Done'
-                              : status === 'failed'
-                                ? 'Failed'
-                                : status === 'cancelled'
-                                  ? 'Cancelled'
-                                  : ''}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : (
-          <div />
-        )}
-        <div className="flex items-center gap-3">
-          {hasSimAgainTarget && (
-            <button
-              type="button"
-              onClick={handleSimAgain}
-              className="inline-flex items-center rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/25 hover:text-emerald-100"
-            >
-              Sim Again
-            </button>
-          )}
-          <CharacterLinkButton
-            jobId={id}
-            currentLinkedName={job.linked_name}
-            currentLinkedRealm={job.linked_realm}
-            currentLinkedRegion={job.linked_region}
-          />
-        </div>
-      </div>
+      {scenarioToolbar}
 
       {isTopGear && isTrinketTierHeatmap ? (
         <TrinketTierHeatmap

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { API_URL } from '../lib/api';
 import DpsHeroCard from './DpsHeroCard';
 import GearOverview from './GearOverview';
@@ -13,6 +14,8 @@ import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
 import SimResultTalentsCard from './SimResultTalentsCard';
+import { addItemsToWishlist, buildWishlistOwnerKey } from '../lib/wishlist';
+import type { DropItem } from '../drop-finder/types';
 
 interface TopGearResultsProps {
   playerName: string;
@@ -32,6 +35,7 @@ interface TopGearResultsProps {
   stageTimings?: Array<{ name: string; elapsed: number }>;
   talentString?: string;
   currencies?: Record<string, { id: number; name: string; icon: string }>;
+  enableWishlistActions?: boolean;
 }
 
 function CollapsibleSection({
@@ -87,6 +91,7 @@ export default function TopGearResults({
   stageTimings,
   talentString,
   currencies,
+  enableWishlistActions = false,
 }: TopGearResultsProps) {
   const {
     groupMode,
@@ -161,6 +166,62 @@ export default function TopGearResults({
   useWowheadTooltips([itemInfoMap]);
 
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
+  const [wishlistFeedback, setWishlistFeedback] = useState('');
+  const wishlistOwnerKey = useMemo(
+    () =>
+      buildWishlistOwnerKey({
+        name: playerName,
+        realm: playerRealm,
+        region: playerRegion,
+        className: playerClass,
+      }),
+    [playerName, playerRealm, playerRegion, playerClass]
+  );
+
+  const changedSelectedItems = useMemo(
+    () => selectedResult?.items.filter((it) => !it.is_kept && it.item_id > 0) ?? [],
+    [selectedResult]
+  );
+
+  const handleAddSelectedToWishlist = () => {
+    if (changedSelectedItems.length === 0) {
+      setWishlistFeedback('No changed items in this selection.');
+      return;
+    }
+
+    const entries = changedSelectedItems.map((it) => {
+      const dropItem: DropItem = {
+        item_id: it.item_id,
+        name: it.name,
+        icon: it.icon,
+        quality: it.quality,
+        ilevel: it.ilevel,
+        encounter: it.encounter || '',
+        instance_name: it.instance_name,
+        source_type: it.source_type || 'Drop Finder Result',
+        inventory_type: it.inventory_type,
+        bonus_ids: Array.isArray(it.bonus_ids) ? it.bonus_ids : [],
+      };
+      return {
+        item: dropItem,
+        slot: it.slot.replace(/_/g, ' '),
+        meta: {
+          ilvl: it.ilevel,
+          bonusId: Array.isArray(it.bonus_ids) && it.bonus_ids.length > 0 ? it.bonus_ids[0] : undefined,
+          upgradeLabel: it.upgrade || undefined,
+        },
+      };
+    });
+
+    const { added, skipped } = addItemsToWishlist(entries, wishlistOwnerKey);
+    if (added > 0 && skipped > 0) {
+      setWishlistFeedback(`Added ${added} item(s), ${skipped} already saved.`);
+    } else if (added > 0) {
+      setWishlistFeedback(`Added ${added} item(s) to wishlist.`);
+    } else {
+      setWishlistFeedback('All selected items are already in wishlist.');
+    }
+  };
 
   const characterRenderUrl =
     playerRealm && playerName
@@ -257,6 +318,23 @@ export default function TopGearResults({
             Rankings
           </p>
           <div className="flex items-center gap-3">
+            {enableWishlistActions && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddSelectedToWishlist}
+                  className="rounded border border-gold/30 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
+                >
+                  Add Selection To Wishlist
+                </button>
+                <Link
+                  href="/wishlist"
+                  className="rounded border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white"
+                >
+                  Open Wishlist
+                </Link>
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-widest text-zinc-600">Group by</span>
               <div className="flex gap-1">
@@ -283,6 +361,9 @@ export default function TopGearResults({
             <span className="font-mono text-[14px] text-zinc-300">{results.length} results</span>
           </div>
         </div>
+        {enableWishlistActions && wishlistFeedback && (
+          <div className="mb-3 text-xs text-zinc-300">{wishlistFeedback}</div>
+        )}
 
         {groupMode === 'instance' ? (
           <div className="space-y-6">

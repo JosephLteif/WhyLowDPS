@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 const FIGHT_STYLES = [
   { value: 'Patchwerk', label: 'Patchwerk', desc: 'Pure single-target with no movement.' },
@@ -53,13 +54,16 @@ interface FightStyleSelectorProps {
 
 export default function FightStyleSelector({ value, onChange }: FightStyleSelectorProps) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const activeStyle = FIGHT_STYLES.find((fs) => fs.value === value);
   const activeLabel = activeStyle?.label ?? value;
   const activeDescription = activeStyle?.desc ?? '';
 
+  useDismissOnOutside(rootRef, open, () => setOpen(false));
+
   return (
     <div className="space-y-1.5">
-      <div className="relative" onBlur={() => setOpen(false)}>
+      <div ref={rootRef} className="relative">
         <button
           type="button"
           onClick={() => setOpen(!open)}

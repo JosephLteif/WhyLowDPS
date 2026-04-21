@@ -225,7 +225,7 @@ export default function CharacterClient() {
             )}
           </div>
           <p className="mt-1 font-medium text-zinc-500">
-            {profile.realm.name} — {region.toUpperCase()}
+            {profile.realm.name} - {region.toUpperCase()}
           </p>
         </div>
       </div>

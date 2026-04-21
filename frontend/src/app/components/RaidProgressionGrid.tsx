@@ -297,27 +297,10 @@ export default function RaidProgressionGrid({
     <div className="space-y-4">
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
         <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <p className="truncate text-[12px] font-bold text-zinc-100">{currentRaid.name}</p>
-            <p className="text-[10px] uppercase tracking-wider text-zinc-500">{currentRaid.expansionLabel}</p>
-            <p className="mt-1 text-[10px] text-zinc-500">
-              {selectedRaidKey === 'auto'
-                ? 'Auto-selected by most recent kill activity.'
-                : 'Manually selected raid.'}
-            </p>
-          </div>
-          <span className="rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold">
-            Progression Tracker
-          </span>
-        </div>
-        <div className="mb-3 flex items-center gap-2">
-          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-            Raid
-          </span>
           <select
             value={selectedRaidKey}
             onChange={(e) => setSelectedRaidKey(e.target.value)}
-            className="input-field h-9 min-w-0 flex-1 text-sm"
+            className="input-field h-10 min-w-0 flex-1 text-sm"
           >
             <option value="auto">Most recently progressed</option>
             {visibleRaids.map((raid) => (

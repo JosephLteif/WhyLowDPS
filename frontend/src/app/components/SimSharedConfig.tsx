@@ -30,6 +30,7 @@ import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 import RouteDetailsModal from './RouteDetailsModal';
 import ConfirmModal from './ConfirmModal';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 /** Adler-32 checksum matching the SimC addon's implementation.
  *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
@@ -1615,12 +1616,14 @@ function RouteSelectorModal({
   onSelect: (route: SavedRoute) => void;
   onDelete: (id: string) => void;
 }) {
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutside(modalRef, isOpen, onClose);
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl">
+      <div ref={modalRef} className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-white/5 p-4">
           <div className="flex items-center gap-2">
             <svg
@@ -1728,11 +1731,13 @@ export default function SimSharedConfig() {
   const [historyTab, setHistoryTab] = useState<'saved' | 'history'>('saved');
   const [bnetProfiles, setBnetProfiles] = useState<SavedCharacterProfile[]>([]);
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null);
+  const historyDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const deleteTargetProfile = useMemo(
     () => bnetProfiles.find((p) => p.id === deleteProfileId) || null,
     [bnetProfiles, deleteProfileId]
   );
+  useDismissOnOutside(historyDropdownRef, historyDropdownOpen, () => setHistoryDropdownOpen(false));
 
   const addToHistory = useCallback((value: string) => {
     if (!value || value.length < 50) return;
@@ -2153,11 +2158,11 @@ export default function SimSharedConfig() {
       <div className="card space-y-3 p-5">
         <div className="flex items-center justify-between">
           <label className="label-text">SimC Addon Export</label>
-          <div className="relative">
+          <div ref={historyDropdownRef} className="relative">
             <button
               type="button"
               onClick={() => setHistoryDropdownOpen(!historyDropdownOpen)}
-              className="flex min-w-[220px] items-center justify-between gap-3 rounded-md border border-gold/35 bg-zinc-950/95 px-3 py-1.5 text-left shadow-sm shadow-black/40 transition-colors hover:border-gold/60 hover:bg-zinc-900"
+              className="flex min-w-[220px] items-center justify-between gap-3 rounded-md border border-gold/35 bg-surface-2/95 px-3 py-1.5 text-left shadow-sm shadow-black/30 transition-colors hover:border-gold/60 hover:bg-surface"
             >
               <div className="min-w-0">
                 {selectedProfileMeta?.name && selectedProfileMeta?.classLabel ? (
@@ -2191,7 +2196,8 @@ export default function SimSharedConfig() {
             </button>
             {historyDropdownOpen && (
               <div
-                className="absolute right-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950/95 shadow-2xl backdrop-blur">
+                className="absolute right-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur"
+              >
                 <div className="flex border-b border-border">
                   <button
                     type="button"
@@ -2226,7 +2232,7 @@ export default function SimSharedConfig() {
                       bnetProfiles.map((profile) => (
                         <div
                           key={profile.id}
-                          className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5"
+                          className="flex items-center justify-between px-3 py-2.5 hover:bg-surface-2/70"
                         >
                           <button
                             type="button"
@@ -2286,8 +2292,8 @@ export default function SimSharedConfig() {
                       return (
                         <div
                           key={idx}
-                          className={`flex items-center justify-between px-3 py-2 hover:bg-white/5 ${
-                            selectedHistoryIdx === idx ? 'bg-white/5' : ''
+                          className={`flex items-center justify-between px-3 py-2 hover:bg-surface-2/70 ${
+                            selectedHistoryIdx === idx ? 'bg-surface-2/70' : ''
                           }`}
                         >
                           <button

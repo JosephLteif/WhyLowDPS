@@ -42,10 +42,12 @@ impl JobStorage for MemoryStorage {
         if jobs.len() > limit {
             let mut entries: Vec<(String, String)> = jobs
                 .iter()
+                .filter(|(_, j)| !j.pinned)
                 .map(|(id, j)| (id.clone(), j.created_at.clone()))
                 .collect();
             entries.sort_by(|a, b| a.1.cmp(&b.1));
-            let to_remove = jobs.len() - limit;
+            let unpinned_count = entries.len();
+            let to_remove = unpinned_count.saturating_sub(limit);
             for (id, _) in entries.into_iter().take(to_remove) {
                 jobs.remove(&id);
             }
@@ -63,6 +65,7 @@ impl JobStorage for MemoryStorage {
         realm: Option<&str>,
         linked_only: bool,
         unlinked_only: bool,
+        pinned_only: bool,
     ) -> Vec<JobSummary> {
         let jobs = self.jobs.lock().unwrap();
         let mut entries: Vec<&Job> = jobs.values().collect();
@@ -83,6 +86,9 @@ impl JobStorage for MemoryStorage {
             if unlinked_only
                 && (linked_name.is_some() || linked_realm.is_some() || linked_region.is_some())
             {
+                continue;
+            }
+            if pinned_only && !j.pinned {
                 continue;
             }
 
@@ -129,6 +135,7 @@ impl JobStorage for MemoryStorage {
                 linked_region,
                 linked_realm,
                 linked_name,
+                pinned: j.pinned,
             });
         }
         results
@@ -210,10 +217,12 @@ impl JobStorage for MemoryStorage {
         if jobs.len() > limit {
             let mut entries: Vec<(String, String)> = jobs
                 .iter()
+                .filter(|(_, j)| !j.pinned)
                 .map(|(id, j)| (id.clone(), j.created_at.clone()))
                 .collect();
             entries.sort_by(|a, b| a.1.cmp(&b.1));
-            let to_remove = jobs.len() - limit;
+            let unpinned_count = entries.len();
+            let to_remove = unpinned_count.saturating_sub(limit);
             for (id, _) in entries.into_iter().take(to_remove) {
                 jobs.remove(&id);
             }
@@ -246,6 +255,12 @@ impl JobStorage for MemoryStorage {
             job.linked_region = region;
             job.linked_realm = realm;
             job.linked_name = name;
+        }
+    }
+
+    fn set_pinned(&self, id: &str, pinned: bool) {
+        if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+            job.pinned = pinned;
         }
     }
 

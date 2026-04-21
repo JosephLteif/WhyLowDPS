@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { API_URL } from '../lib/api';
 import type { ResolvedItem } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 /** Raw enchant shape returned by the backend (straight from enchantments.json). */
 interface RawEnchant {
@@ -131,6 +132,7 @@ export default function OptimizeItemModal({
   const [selectedEnchant, setSelectedEnchant] = useState<number>(0);
   const [selectedGem, setSelectedGem] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const modalRef = useRef<HTMLDivElement | null>(null);
 
   // Derive display lists from raw data
   const enchants = useMemo(() => deduplicateEnchants(rawEnchants), [rawEnchants]);
@@ -146,6 +148,7 @@ export default function OptimizeItemModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, item, className]);
+  useDismissOnOutside(modalRef, isOpen, onClose);
 
   async function fetchOptions() {
     if (!item) return;
@@ -182,7 +185,7 @@ export default function OptimizeItemModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl">
+      <div ref={modalRef} className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-6 py-4">
           <div className="flex items-center gap-4">

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -18,6 +18,9 @@ interface Character {
   mode: string;
 }
 
+const FAVORITES_STORAGE_KEY = 'whylowdps.characters.favorites';
+const HIDDEN_STORAGE_KEY = 'whylowdps.characters.hidden';
+
 function normalizeClassKey(value: string): string {
   return (value || '').toLowerCase().replace(/\s+/g, '_');
 }
@@ -33,25 +36,87 @@ function normalizeRegion(value: string): string {
   return (value || 'us').toLowerCase();
 }
 
-function CharacterCard({ char, faction }: { char: Character; faction: 'alliance' | 'horde' }) {
+function characterId(char: Character): string {
+  return `${normalizeRegion(char.region)}|${char.realm.toLowerCase()}|${char.name.toLowerCase()}`;
+}
+
+function StarIcon({ filled }: { filled?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill={filled ? 'currentColor' : 'none'}>
+      <path
+        d="M12 3.5l2.67 5.41 5.97.87-4.32 4.2 1.02 5.95L12 17.13l-5.34 2.8 1.02-5.95-4.32-4.2 5.97-.87L12 3.5z"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function EyeIcon({ hidden }: { hidden?: boolean }) {
+  return hidden ? (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+      <path
+        d="M3 3l18 18M10.6 10.6A2 2 0 0013.4 13.4M9.88 5.19A10.93 10.93 0 0112 5c6 0 10 7 10 7a16.7 16.7 0 01-4.26 4.82M6.68 6.68C3.8 8.43 2 12 2 12a16.9 16.9 0 005.35 5.62A10.89 10.89 0 0012 19c1.33 0 2.6-.24 3.78-.68"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
+      <path
+        d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth={1.8} />
+    </svg>
+  );
+}
+
+function CharacterCard({
+  char,
+  faction,
+  isFavorite,
+  isHidden,
+  onToggleFavorite,
+  onToggleHidden,
+}: {
+  char: Character;
+  faction: 'alliance' | 'horde';
+  isFavorite: boolean;
+  isHidden: boolean;
+  onToggleFavorite: (char: Character) => void;
+  onToggleHidden: (char: Character) => void;
+}) {
   const classKey = normalizeClassKey(char.class);
   const color = CLASS_COLORS[classKey] || '#d4d4d8';
   const isAlliance = faction === 'alliance';
+  const href = characterHref(
+    char.region,
+    char.realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-'),
+    char.name
+  );
+  const cardLabel = `${char.name} - ${char.realm} (${normalizeRegion(char.region).toUpperCase()})`;
 
   return (
-    <Link
-      href={characterHref(
-        char.region,
-        char.realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-'),
-        char.name
-      )}
-      className="group relative flex min-h-56 overflow-hidden rounded-lg border border-white/10 bg-[#0c0c0f] transition-all hover:border-gold/35"
+    <div
+      className={`group relative flex min-h-[18rem] overflow-hidden rounded-xl border bg-[#0c0c0f] transition-all ${
+        isHidden
+          ? 'border-white/10 opacity-70'
+          : 'border-white/10 hover:border-gold/40 hover:shadow-[0_0_0_1px_rgba(212,175,55,0.15)]'
+      }`}
     >
-      <div className="absolute inset-0">
+      <Link href={href} aria-label={cardLabel} className="absolute inset-0 z-10" />
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         <img
           src={`${API_URL}/api/blizzard/character/${char.realm}/${char.name}/media/main?region=${char.region}`}
           alt=""
-          className="h-full w-full object-cover object-[50%_18%]"
+          className="absolute inset-x-0 -bottom-[6%] mx-auto h-[112%] w-auto max-w-none object-contain opacity-95 transition-transform duration-300 group-hover:scale-[1.08]"
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = 'none';
           }}
@@ -59,39 +124,69 @@ function CharacterCard({ char, faction }: { char: Character; faction: 'alliance'
         <div
           className={`absolute inset-0 bg-gradient-to-t ${
             isAlliance
-              ? 'from-[#080a10] via-[#080a10]/35 to-transparent'
-              : 'from-[#100808] via-[#100808]/35 to-transparent'
+              ? 'from-[#080a10]/97 via-[#080a10]/45 to-transparent'
+              : 'from-[#100808]/97 via-[#100808]/45 to-transparent'
           }`}
         />
+        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/70 to-transparent" />
       </div>
 
-      <div className="relative z-10 flex w-full flex-col p-4">
+      <div className="pointer-events-none relative z-20 flex w-full flex-col p-4">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-lg font-black tracking-tight" style={{ color }}>
+            <p className="text-xl font-black tracking-tight" style={{ color }}>
               {char.name}
+              {isFavorite ? <span className="ml-2 align-middle text-gold">&#9733;</span> : null}
             </p>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
               {char.race} {char.class}
             </p>
           </div>
-          <span
-            className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white ${
-              isAlliance ? 'bg-blue-700' : 'bg-red-700'
-            }`}
-          >
-            {isAlliance ? 'Alliance' : 'Horde'}
-          </span>
+          <div className="pointer-events-auto relative z-30 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onToggleFavorite(char)}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                isFavorite
+                  ? 'border-gold/60 bg-gold/20 text-gold'
+                  : 'border-white/15 bg-black/35 text-zinc-300 hover:border-gold/40 hover:text-gold'
+              }`}
+              title={isFavorite ? 'Remove favorite' : 'Favorite'}
+              aria-label={isFavorite ? 'Remove favorite' : 'Favorite character'}
+            >
+              <StarIcon filled={isFavorite} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onToggleHidden(char)}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
+                isHidden
+                  ? 'border-amber-400/50 bg-amber-500/15 text-amber-300'
+                  : 'border-white/15 bg-black/35 text-zinc-300 hover:border-white/30 hover:text-white'
+              }`}
+              title={isHidden ? 'Unhide character' : 'Hide character'}
+              aria-label={isHidden ? 'Unhide character' : 'Hide character'}
+            >
+              <EyeIcon hidden={isHidden} />
+            </button>
+            <span
+              className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white ${
+                isAlliance ? 'bg-blue-700' : 'bg-red-700'
+              }`}
+            >
+              {isAlliance ? 'Alliance' : 'Horde'}
+            </span>
+          </div>
         </div>
 
         <div className="mt-auto flex items-end justify-between">
-          <p className="text-[13px] font-medium text-zinc-200">{char.realm}</p>
+          <p className="text-[13px] font-semibold text-zinc-100">{char.realm}</p>
           <p className="text-[11px] font-semibold text-zinc-300">
-            {normalizeRegion(char.region).toUpperCase()} · L{char.level}
+            {normalizeRegion(char.region).toUpperCase()} - L{char.level}
           </p>
         </div>
       </div>
-    </Link>
+    </div>
   );
 }
 
@@ -104,6 +199,11 @@ export default function CharactersPage() {
   const [regionFilter, setRegionFilter] = useState<'all' | string>('all');
   const [classFilter, setClassFilter] = useState<'all' | string>('all');
   const [realmFilter, setRealmFilter] = useState<'all' | string>('all');
+  const [viewFilter, setViewFilter] = useState<'visible' | 'all' | 'favorites' | 'hidden'>(
+    'visible'
+  );
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const [hidden, setHidden] = useState<string[]>([]);
 
   const fetchCharacters = useCallback(
     (refresh = false) => {
@@ -127,6 +227,48 @@ export default function CharactersPage() {
     fetchCharacters();
   }, [fetchCharacters]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const rawFavorites = window.localStorage.getItem(FAVORITES_STORAGE_KEY);
+      const rawHidden = window.localStorage.getItem(HIDDEN_STORAGE_KEY);
+      if (rawFavorites) {
+        const parsed = JSON.parse(rawFavorites);
+        if (Array.isArray(parsed)) setFavorites(parsed.filter((v) => typeof v === 'string'));
+      }
+      if (rawHidden) {
+        const parsed = JSON.parse(rawHidden);
+        if (Array.isArray(parsed)) setHidden(parsed.filter((v) => typeof v === 'string'));
+      }
+    } catch {
+      setFavorites([]);
+      setHidden([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
+  }, [favorites]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(hidden));
+  }, [hidden]);
+
+  const toggleFavorite = useCallback((char: Character) => {
+    const id = characterId(char);
+    setFavorites((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  }, []);
+
+  const toggleHidden = useCallback((char: Character) => {
+    const id = characterId(char);
+    setHidden((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  }, []);
+
+  const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
+  const hiddenSet = useMemo(() => new Set(hidden), [hidden]);
+
   const regions = useMemo(() => {
     const set = new Set<string>();
     for (const c of characters) set.add(normalizeRegion(c.region));
@@ -148,6 +290,13 @@ export default function CharactersPage() {
   const filteredCharacters = useMemo(() => {
     const query = search.toLowerCase().trim();
     return characters.filter((char) => {
+      const id = characterId(char);
+      const isFavorite = favoriteSet.has(id);
+      const isHidden = hiddenSet.has(id);
+
+      if (viewFilter === 'visible' && isHidden) return false;
+      if (viewFilter === 'favorites' && !isFavorite) return false;
+      if (viewFilter === 'hidden' && !isHidden) return false;
       if (regionFilter !== 'all' && normalizeRegion(char.region) !== regionFilter) return false;
       if (classFilter !== 'all' && char.class !== classFilter) return false;
       if (realmFilter !== 'all' && char.realm !== realmFilter) return false;
@@ -156,7 +305,7 @@ export default function CharactersPage() {
         `${char.name} ${char.realm} ${char.class} ${char.race} ${char.region}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [characters, search, regionFilter, classFilter, realmFilter]);
+  }, [characters, search, regionFilter, classFilter, realmFilter, viewFilter, favoriteSet, hiddenSet]);
 
   const allianceCharacters = useMemo(
     () => filteredCharacters.filter((c) => normalizeFaction(c.faction) === 'alliance'),
@@ -189,16 +338,33 @@ export default function CharactersPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-100">My Characters</h1>
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm font-medium text-gold">{user.battletag}</p>
+        <div className="lg:max-w-[330px]">
+          <h1 className="text-2xl font-bold tracking-tight text-gray-100">My Characters</h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Favorite the ones you use most and hide inactive alts from your default view.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search character, realm, class..."
-            className="h-9 w-72 max-w-full rounded-md border border-white/10 bg-black/20 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-gold/70 focus:outline-none"
+            className="h-9 w-64 max-w-full rounded-md border border-white/10 bg-black/20 px-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-gold/70 focus:outline-none"
           />
+          <select
+            value={viewFilter}
+            onChange={(e) =>
+              setViewFilter(e.target.value as 'visible' | 'all' | 'favorites' | 'hidden')
+            }
+            className="h-9 rounded-md border border-white/10 bg-[#121218] px-2.5 text-sm text-zinc-100 focus:border-gold/70 focus:outline-none"
+            style={{ colorScheme: 'dark' }}
+          >
+            <option value="visible">Visible</option>
+            <option value="favorites">Favorites</option>
+            <option value="all">All Characters</option>
+            <option value="hidden">Hidden</option>
+          </select>
           <select
             value={regionFilter}
             onChange={(e) => setRegionFilter(e.target.value)}
@@ -262,7 +428,13 @@ export default function CharactersPage() {
         </div>
       ) : filteredCharacters.length === 0 ? (
         <div className="card p-12 text-center">
-          <p className="text-zinc-400">No characters match these filters.</p>
+          <p className="text-zinc-400">
+            {viewFilter === 'favorites'
+              ? 'No favorite characters match these filters.'
+              : viewFilter === 'hidden'
+                ? 'No hidden characters match these filters.'
+                : 'No characters match these filters.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-8">
@@ -282,6 +454,10 @@ export default function CharactersPage() {
                     key={`alliance-${char.name}-${char.realm}-${idx}`}
                     char={char}
                     faction="alliance"
+                    isFavorite={favoriteSet.has(characterId(char))}
+                    isHidden={hiddenSet.has(characterId(char))}
+                    onToggleFavorite={toggleFavorite}
+                    onToggleHidden={toggleHidden}
                   />
                 ))}
               </div>
@@ -304,6 +480,10 @@ export default function CharactersPage() {
                     key={`horde-${char.name}-${char.realm}-${idx}`}
                     char={char}
                     faction="horde"
+                    isFavorite={favoriteSet.has(characterId(char))}
+                    isHidden={hiddenSet.has(characterId(char))}
+                    onToggleFavorite={toggleFavorite}
+                    onToggleHidden={toggleHidden}
                   />
                 ))}
               </div>
@@ -314,3 +494,4 @@ export default function CharactersPage() {
     </div>
   );
 }
+

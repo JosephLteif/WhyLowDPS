@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   API_URL,
   deleteSim,
+  setSimPinned,
   clearHistory,
   getHistoryStats,
   getConfig,
@@ -35,6 +36,7 @@ interface JobSummary {
   size_bytes: number;
   upgrades?: number | null;
   downgrades?: number | null;
+  pinned?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -101,6 +103,24 @@ function SearchIcon() {
   );
 }
 
+function PinIcon({ pinned }: { pinned: boolean }) {
+  return (
+    <svg
+      className={`h-4 w-4 ${pinned ? 'fill-gold text-gold' : 'text-zinc-500'}`}
+      fill={pinned ? 'currentColor' : 'none'}
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M12 17l-5.878 3.09 1.122-6.545L2.49 8.91l6.572-.955L12 2l2.938 5.955 6.572.955-4.755 4.635 1.122 6.545z"
+      />
+    </svg>
+  );
+}
+
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   if (bytes < 1024) return bytes + ' B';
@@ -144,14 +164,34 @@ function SimRow({
   compact,
   onDelete,
   siblingGroup,
+  selectable,
+  selected,
+  onSelectToggle,
+  onTogglePinned,
 }: {
   sim: JobSummary;
   compact?: boolean;
   onDelete?: (id: string) => void;
   siblingGroup?: JobSummary[];
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: (id: string, checked: boolean) => void;
+  onTogglePinned?: (id: string, pinned: boolean) => void;
 }) {
   return (
     <div className="group relative flex items-center">
+      {selectable && (
+        <div className={`shrink-0 ${compact ? 'pl-3' : 'pl-4'}`}>
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onChange={(e) => onSelectToggle?.(sim.id, e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+            className="h-4 w-4 rounded border-border bg-surface-2 text-gold focus:ring-gold"
+            aria-label={`Select simulation ${sim.id}`}
+          />
+        </div>
+      )}
       <Link
         href={simResultHref(sim.id)}
         onClick={() => {
@@ -182,6 +222,12 @@ function SimRow({
           {sim.player_name ? (
             <span className={`block truncate text-zinc-200 ${compact ? 'text-xs' : 'text-sm'}`}>
               {sim.player_name}
+              {sim.pinned && (
+                <span className="ml-2 inline-flex items-center gap-1 rounded border border-gold/30 bg-gold/10 px-1.5 py-0.5 text-[10px] font-medium text-gold">
+                  <PinIcon pinned />
+                  Pinned
+                </span>
+              )}
               {sim.player_class && <span className="ml-1.5 text-zinc-500">{sim.player_class}</span>}
               {sim.status === 'done' && sim.upgrades != null && sim.downgrades != null && (
                 <span className="ml-2 text-xs text-zinc-400">
@@ -218,6 +264,19 @@ function SimRow({
         </div>
       </Link>
       <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {onTogglePinned && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onTogglePinned(sim.id, !(sim.pinned ?? false));
+            }}
+            className={`rounded p-1 hover:bg-gold/10 ${sim.pinned ? 'text-gold' : 'text-zinc-500 hover:text-gold'}`}
+            title={sim.pinned ? 'Unpin' : 'Pin'}
+          >
+            <PinIcon pinned={!!sim.pinned} />
+          </button>
+        )}
         {onDelete && (
           <button
             onClick={(e) => {
@@ -275,15 +334,27 @@ function groupByBatch(sims: JobSummary[]): HistoryEntry[] {
 function BatchGroup({
   entry,
   onDelete,
+  selectedIds,
+  onBatchSelectToggle,
+  onRowSelectToggle,
+  onTogglePinned,
 }: {
   entry: Extract<HistoryEntry, { type: 'batch' }>;
   onDelete?: (id: string) => void;
+  selectedIds?: Set<string>;
+  onBatchSelectToggle?: (ids: string[], checked: boolean) => void;
+  onRowSelectToggle?: (id: string, checked: boolean) => void;
+  onTogglePinned?: (id: string, pinned: boolean) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const first = entry.sims[0];
   const simType = SIM_TYPE_LABELS[first?.sim_type] || first?.sim_type || 'Sim';
   const bestDps = Math.max(...entry.sims.map((s) => s.dps ?? 0));
   const batchSize = entry.sims.reduce((acc, s) => acc + s.size_bytes, 0);
+  const batchIds = entry.sims.map((s) => s.id);
+  const selectedCount = batchIds.filter((id) => selectedIds?.has(id)).length;
+  const isBatchChecked = selectedCount > 0 && selectedCount === batchIds.length;
+  const isBatchIndeterminate = selectedCount > 0 && selectedCount < batchIds.length;
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -291,6 +362,18 @@ function BatchGroup({
         className="group relative flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.03]"
         onClick={() => setIsOpen(!isOpen)}
       >
+        <input
+          type="checkbox"
+          checked={isBatchChecked}
+          ref={(el) => {
+            if (!el) return;
+            el.indeterminate = isBatchIndeterminate;
+          }}
+          onChange={(e) => onBatchSelectToggle?.(batchIds, e.target.checked)}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 shrink-0 rounded border-border bg-surface-2 text-gold focus:ring-gold"
+          aria-label={`Select batch ${entry.batchId}`}
+        />
         <ChevronIcon open={isOpen} />
 
         <span className="w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold">
@@ -344,6 +427,10 @@ function BatchGroup({
                 compact
                 onDelete={onDelete}
                 siblingGroup={entry.sims}
+                selectable
+                selected={selectedIds?.has(sim.id)}
+                onSelectToggle={onRowSelectToggle}
+                onTogglePinned={onTogglePinned}
               />
             ))}
           </div>
@@ -356,7 +443,7 @@ function BatchGroup({
 export default function HistoryPage() {
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showUnlinkedOnly, setShowUnlinkedOnly] = useState(false);
+  const [pinFilter, setPinFilter] = useState<'all' | 'pinned' | 'unpinned'>('all');
   const [character, setCharacter] = useState<{
     name: string;
     realm: string;
@@ -368,6 +455,10 @@ export default function HistoryPage() {
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [maxJobs, setMaxJobs] = useState<number>(50);
   const [search, setSearch] = useState('');
+  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkPinning, setBulkPinning] = useState(false);
 
   useEffect(() => {
     // Fetch account characters and historical characters
@@ -404,8 +495,8 @@ export default function HistoryPage() {
   const refreshHistory = useCallback(async () => {
     try {
       let url = `${API_URL}/api/sims`;
-      if (showUnlinkedOnly) {
-        url += '?unlinked_only=true';
+      if (showPinnedOnly) {
+        url += '?pinned_only=true';
       } else if (character && character.name && character.realm) {
         url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
       }
@@ -416,10 +507,11 @@ export default function HistoryPage() {
       ]);
       setSims(simsData);
       setStats(statsData);
+      setSelectedIds(new Set());
     } catch (err) {
       setSims([]);
     }
-  }, [character, showUnlinkedOnly]);
+  }, [character, showPinnedOnly]);
 
   useEffect(() => {
     setLoading(true);
@@ -433,6 +525,35 @@ export default function HistoryPage() {
     await deleteSim(id);
     refreshHistory();
   };
+
+  const handleTogglePinned = async (id: string, pinned: boolean) => {
+    setSims((prev) => prev.map((sim) => (sim.id === id ? { ...sim, pinned } : sim)));
+    try {
+      await setSimPinned(id, pinned);
+    } catch {
+      setSims((prev) => prev.map((sim) => (sim.id === id ? { ...sim, pinned: !pinned } : sim)));
+    }
+  };
+
+  const handleToggleSelection = useCallback((id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+
+  const handleToggleBatchSelection = useCallback((ids: string[], checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  }, []);
 
   const handleClear = async () => {
     if (!confirm('Are you sure you want to clear ALL history?')) return;
@@ -459,8 +580,14 @@ export default function HistoryPage() {
             s.player_class?.toLowerCase().includes(query)
         )
       : sims;
+    const pinFiltered =
+      pinFilter === 'all'
+        ? filtered
+        : pinFilter === 'pinned'
+          ? filtered.filter((s) => !!s.pinned)
+          : filtered.filter((s) => !s.pinned);
 
-    const grouped = groupByBatch(filtered);
+    const grouped = groupByBatch(pinFiltered);
 
     // Group by date
     const dateGroups: Record<string, HistoryEntry[]> = {};
@@ -472,7 +599,69 @@ export default function HistoryPage() {
     });
 
     return dateGroups;
-  }, [sims, search]);
+  }, [sims, search, pinFilter]);
+
+  const pinnedCount = useMemo(() => sims.filter((s) => !!s.pinned).length, [sims]);
+  const unpinnedCount = useMemo(() => sims.filter((s) => !s.pinned).length, [sims]);
+
+  const visibleIds = useMemo(() => {
+    const ids: string[] = [];
+    Object.values(filteredEntries).forEach((entries) => {
+      entries.forEach((entry) => {
+        if (entry.type === 'single') ids.push(entry.sim.id);
+        else ids.push(...entry.sims.map((s) => s.id));
+      });
+    });
+    return ids;
+  }, [filteredEntries]);
+
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+
+  const handleToggleSelectAllVisible = useCallback(
+    (checked: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        visibleIds.forEach((id) => {
+          if (checked) next.add(id);
+          else next.delete(id);
+        });
+        return next;
+      });
+    },
+    [visibleIds]
+  );
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} selected simulation record(s)?`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(Array.from(selectedIds).map((id) => deleteSim(id)));
+      await refreshHistory();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [selectedIds, refreshHistory]);
+
+  const handleBulkPin = useCallback(
+    async (pinned: boolean) => {
+      if (selectedIds.size === 0) return;
+      const ids = Array.from(selectedIds);
+      setBulkPinning(true);
+      setSims((prev) => prev.map((sim) => (selectedIds.has(sim.id) ? { ...sim, pinned } : sim)));
+      try {
+        await Promise.all(ids.map((id) => setSimPinned(id, pinned)));
+      } catch {
+        setSims((prev) =>
+          prev.map((sim) => (selectedIds.has(sim.id) ? { ...sim, pinned: !pinned } : sim))
+        );
+      } finally {
+        setBulkPinning(false);
+      }
+    },
+    [selectedIds]
+  );
 
   if (loading) {
     return (
@@ -491,7 +680,7 @@ export default function HistoryPage() {
           <h2 className="text-lg font-medium text-zinc-100">Simulation History</h2>
           {stats && (
             <span className="text-xs text-zinc-500">
-              {sims.length} records &middot; {formatSize(stats.size_bytes)}
+              {unpinnedCount} regular + {pinnedCount} pinned &middot; {formatSize(stats.size_bytes)}
             </span>
           )}
         </div>
@@ -501,34 +690,40 @@ export default function HistoryPage() {
             <select
               className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
               value={
-                showUnlinkedOnly
-                  ? 'unlinked'
-                  : character
-                    ? `${character.name}-${character.realm}`
-                    : 'all'
+                character ? `${character.name}-${character.realm}` : 'all'
               }
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === 'all') {
                   setCharacter(null);
-                  setShowUnlinkedOnly(false);
-                } else if (val === 'unlinked') {
-                  setCharacter(null);
-                  setShowUnlinkedOnly(true);
                 } else {
                   const [name, realm] = val.split('-');
-                  setShowUnlinkedOnly(false);
                   setCharacter({ name, realm });
                 }
               }}
             >
               <option value="all">All Sims</option>
-              <option value="unlinked">Unlinked</option>
               {bnetCharacters.map((c, i) => (
                 <option key={i} value={`${c.name}-${c.realm}`}>
                   {c.name} - {c.realm} {c.source === 'history' ? '(History)' : ''}
                 </option>
               ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2 border-r border-border pr-2">
+            <span className="text-xs text-zinc-500">Pin Filter:</span>
+            <select
+              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
+              value={pinFilter}
+              onChange={(e) => {
+                const val = e.target.value as 'all' | 'pinned' | 'unpinned';
+                setPinFilter(val);
+                setShowPinnedOnly(val === 'pinned');
+              }}
+            >
+              <option value="all">All</option>
+              <option value="pinned">Pinned</option>
+              <option value="unpinned">Not Pinned</option>
             </select>
           </div>
           <div className="relative">
@@ -569,8 +764,10 @@ export default function HistoryPage() {
           <p className="text-sm text-muted">
             {search
               ? 'No records match your search.'
-              : showUnlinkedOnly
-                ? 'No unlinked simulations found.'
+              : pinFilter === 'pinned'
+                ? 'No pinned simulations found.'
+                : pinFilter === 'unpinned'
+                  ? 'No unpinned simulations found.'
                 : character
                   ? `No simulations found for ${character.name} on ${character.realm}.`
                   : 'No simulations yet.'}
@@ -578,6 +775,24 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-8">
+          <div className="sticky top-16 z-20 flex items-center justify-between rounded-lg border border-border bg-surface/95 px-4 py-2 backdrop-blur">
+            <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                ref={(el) => {
+                  if (!el) return;
+                  el.indeterminate = !allVisibleSelected && someVisibleSelected;
+                }}
+                onChange={(e) => handleToggleSelectAllVisible(e.target.checked)}
+                className="h-4 w-4 rounded border-border bg-surface-2 text-gold focus:ring-gold"
+              />
+              Select all visible
+            </label>
+            <span className="text-xs text-zinc-500">
+              {selectedIds.size} selected
+            </span>
+          </div>
           {groupKeys.map((group) => (
             <div key={group} className="space-y-2">
               <h3 className="px-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
@@ -590,9 +805,23 @@ export default function HistoryPage() {
                   return (
                     <div key={id} className={!isLast ? 'border-b border-border' : ''}>
                       {entry.type === 'single' ? (
-                        <SimRow sim={entry.sim} onDelete={handleDelete} />
+                        <SimRow
+                          sim={entry.sim}
+                          onDelete={handleDelete}
+                          selectable
+                          selected={selectedIds.has(entry.sim.id)}
+                          onSelectToggle={handleToggleSelection}
+                          onTogglePinned={handleTogglePinned}
+                        />
                       ) : (
-                        <BatchGroup entry={entry} onDelete={handleDelete} />
+                        <BatchGroup
+                          entry={entry}
+                          onDelete={handleDelete}
+                          selectedIds={selectedIds}
+                          onBatchSelectToggle={handleToggleBatchSelection}
+                          onRowSelectToggle={handleToggleSelection}
+                          onTogglePinned={handleTogglePinned}
+                        />
                       )}
                     </div>
                   );
@@ -600,6 +829,46 @@ export default function HistoryPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex w-[min(95vw,680px)] -translate-x-1/2 items-center justify-between gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-2xl backdrop-blur">
+          <div className="text-sm text-zinc-200">
+            {selectedIds.size} record{selectedIds.size === 1 ? '' : 's'} selected
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleBulkPin(true)}
+              disabled={bulkDeleting || bulkPinning}
+              className="rounded-md border border-gold/30 px-3 py-1.5 text-xs text-gold hover:bg-gold/10 disabled:opacity-50"
+            >
+              {bulkPinning ? 'Pinning...' : 'Pin Selected'}
+            </button>
+            <button
+              onClick={() => handleBulkPin(false)}
+              disabled={bulkDeleting || bulkPinning}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-zinc-300 hover:bg-surface-2 disabled:opacity-50"
+            >
+              {bulkPinning ? 'Updating...' : 'Unpin Selected'}
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              disabled={bulkDeleting || bulkPinning}
+              className="rounded-md border border-border px-3 py-1.5 text-xs text-zinc-300 hover:bg-surface-2 disabled:opacity-50"
+            >
+              Cancel Selection
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting || bulkPinning}
+              className="inline-flex items-center gap-2 rounded-md bg-red-500/15 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+            >
+              {bulkDeleting && (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-red-200/40 border-t-red-300" />
+              )}
+              Delete Selected
+            </button>
+          </div>
         </div>
       )}
     </div>

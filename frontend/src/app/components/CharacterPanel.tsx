@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../lib/useItemInfo';
 import {
   getIconUrl,
@@ -279,101 +280,101 @@ export default function CharacterPanel({
         </a>
       </div>
 
-      {/* Upper Section: Gear & Stats */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        {/* Gear Panel */}
-        <div className="card relative flex h-full flex-col overflow-hidden p-4 sm:p-6">
-          {characterMediaUrl && (
-            <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
-              <img
-                src={characterMediaUrl}
-                alt={name}
-                className="lg:opacity-62 pointer-events-none mx-auto h-64 w-auto object-contain opacity-85 sm:h-80 lg:h-[172%] lg:-translate-y-[10%] lg:mix-blend-lighten"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                }}
+      {/* Main Section: Left Stack + Right Rail */}
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Left: Gear + Talents */}
+        <div className="flex min-w-0 flex-col gap-6">
+          {/* Gear Panel */}
+          <div className="card relative flex flex-col overflow-hidden p-4 sm:p-6">
+            {characterMediaUrl && (
+              <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
+                <img
+                  src={characterMediaUrl}
+                  alt={name}
+                  className="pointer-events-none mx-auto h-72 w-auto object-contain opacity-90 sm:h-[26rem] lg:h-[186%] lg:-translate-y-[8%] lg:opacity-65 lg:mix-blend-lighten"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_230px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_300px_minmax(0,1fr)]">
+              {/* Left Column */}
+              <div className="min-w-0 space-y-3">
+                {GEAR_ORDER_LEFT.map((slot) => (
+                  <BlizzardGearSlot
+                    key={slot}
+                    slot={slot}
+                    item={itemsBySlot[slot]}
+                    itemInfoMap={itemInfoMap}
+                    enchantInfoMap={enchantInfoMap}
+                    gemInfoMap={gemInfoMap}
+                  />
+                ))}
+              </div>
+
+              <div className="hidden lg:block" />
+
+              {/* Right Column */}
+              <div className="min-w-0 space-y-3">
+                {GEAR_ORDER_RIGHT.map((slot) => (
+                  <BlizzardGearSlot
+                    key={slot}
+                    slot={slot}
+                    item={itemsBySlot[slot]}
+                    itemInfoMap={itemInfoMap}
+                    enchantInfoMap={enchantInfoMap}
+                    gemInfoMap={gemInfoMap}
+                    align="right"
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Weapons Row */}
+            <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
+              <BlizzardGearSlot
+                slot="MAIN_HAND"
+                item={itemsBySlot.MAIN_HAND}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+                align="right"
+                compactNearIcon
+              />
+              <BlizzardGearSlot
+                slot="OFF_HAND"
+                item={itemsBySlot.OFF_HAND}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+                align="left"
               />
             </div>
-          )}
-
-          <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_210px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_260px_minmax(0,1fr)]">
-            {/* Left Column */}
-            <div className="min-w-0 space-y-3">
-              {GEAR_ORDER_LEFT.map((slot) => (
-                <BlizzardGearSlot
-                  key={slot}
-                  slot={slot}
-                  item={itemsBySlot[slot]}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                />
-              ))}
-            </div>
-
-            <div className="hidden lg:block" />
-
-            {/* Right Column */}
-            <div className="min-w-0 space-y-3">
-              {GEAR_ORDER_RIGHT.map((slot) => (
-                <BlizzardGearSlot
-                  key={slot}
-                  slot={slot}
-                  item={itemsBySlot[slot]}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                  align="right"
-                />
-              ))}
-            </div>
           </div>
 
-          {/* Bottom Weapons Row */}
-          <div className="relative z-20 mt-auto grid grid-cols-1 gap-3 pt-8 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
-            <BlizzardGearSlot
-              slot="MAIN_HAND"
-              item={itemsBySlot.MAIN_HAND}
-              itemInfoMap={itemInfoMap}
-              enchantInfoMap={enchantInfoMap}
-              gemInfoMap={gemInfoMap}
-              align="right"
-              compactNearIcon
-            />
-            <BlizzardGearSlot
-              slot="OFF_HAND"
-              item={itemsBySlot.OFF_HAND}
-              itemInfoMap={itemInfoMap}
-              enchantInfoMap={enchantInfoMap}
-              gemInfoMap={gemInfoMap}
-              align="left"
-            />
-          </div>
+          <TalentsCard
+            activeSpec={activeSpec}
+            activeLoadout={activeLoadout}
+            talentString={talentString}
+            specId={specId}
+            tree={tree}
+          />
         </div>
 
         {/* Stats Column */}
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <StatsCard statistics={statistics} />
-          <MythicPlusCard mythicPlus={mythicPlus} />
+          <MythicPlusCard mythicPlus={mythicPlus} region={region} />
           <RaidProgressCard raidEncounters={raidEncounters} />
         </div>
-      </div>
-
-      {/* Lower Section: Talents (Full Width) */}
-      <div className="w-full">
-        <TalentsCard
-          activeSpec={activeSpec}
-          activeLoadout={activeLoadout}
-          talentString={talentString}
-          specId={specId}
-          tree={tree}
-        />
       </div>
     </div>
   );
 }
 
-function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
+function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: string }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
   const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
     Record<string, MythicKeystoneDungeonDetail>
@@ -749,21 +750,61 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
                       <div className="mt-2 flex flex-wrap gap-1">
                         {run.members.slice(0, 5).map((member: any, idx: number) => {
                           const memberName =
-                            member?.profile?.name || member?.character?.name || member?.name || 'Player';
+                            member?.profile?.name ||
+                            member?.character?.name ||
+                            member?.character_name ||
+                            member?.name ||
+                            'Player';
+                          const memberRealm =
+                            member?.profile?.realm?.slug ||
+                            member?.profile?.realm?.name ||
+                            member?.character?.realm?.slug ||
+                            member?.character?.realm?.name ||
+                            member?.realm ||
+                            '';
                           const memberClass =
                             member?.profile?.character_class?.name ||
+                            member?.specialization?.name ||
                             member?.character_class?.name ||
                             member?.class?.name ||
                             member?.class ||
                             '';
+                          const memberProfile = getMemberProfileHref(member, region);
+                          const memberLabel = `${memberName}${memberClass ? ` (${memberClass})` : ''}`;
                           return (
-                            <span
-                              key={`${memberName}-${idx}`}
-                              className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300"
-                            >
-                              {memberName}
-                              {memberClass ? ` (${memberClass})` : ''}
-                            </span>
+                            memberProfile ? (
+                              memberProfile.external ? (
+                                <a
+                                  key={`${memberName}-${idx}`}
+                                  href={memberProfile.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
+                                  title={`Open ${memberName} profile`}
+                                >
+                                  {memberLabel}
+                                  {memberRealm ? ` - ${memberRealm}` : ''}
+                                </a>
+                              ) : (
+                                <Link
+                                  key={`${memberName}-${idx}`}
+                                  href={memberProfile.href}
+                                  className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
+                                  title={`Open ${memberName} profile`}
+                                >
+                                  {memberLabel}
+                                  {memberRealm ? ` - ${memberRealm}` : ''}
+                                </Link>
+                              )
+                            ) : (
+                              <span
+                                key={`${memberName}-${idx}`}
+                                className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300"
+                              >
+                                {memberLabel}
+                                {memberRealm ? ` - ${memberRealm}` : ''}
+                              </span>
+                            )
                           );
                         })}
                         {run.members.length > 5 && (
@@ -784,6 +825,72 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
       )}
     </div>
   );
+}
+
+function normalizeRealmSlug(value: unknown): string {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/'/g, '')
+    .replace(/\s+/g, '-')
+    .trim();
+}
+
+function getMemberProfileHref(
+  member: any,
+  fallbackRegion?: string
+): { href: string; external: boolean } | null {
+  const memberName =
+    member?.linked_name ||
+    member?.profile?.name ||
+    member?.character?.name ||
+    member?.character_name ||
+    member?.name ||
+    '';
+  const memberRegion =
+    member?.linked_region ||
+    member?.profile?.region ||
+    member?.character?.region ||
+    member?.region ||
+    member?.profile?.realm?.region ||
+    fallbackRegion;
+  const rawRealm =
+    member?.linked_realm ||
+    member?.profile?.realm?.slug ||
+    member?.profile?.realm?.name ||
+    member?.character?.realm?.slug ||
+    member?.character?.realm?.name ||
+    member?.realm;
+  const realmSlug = normalizeRealmSlug(rawRealm);
+
+  if (memberName && memberRegion && realmSlug) {
+    return {
+      href: `/character/${String(memberRegion).toLowerCase()}/${realmSlug}/${String(memberName).toLowerCase()}`,
+      external: false,
+    };
+  }
+
+  const externalUrl =
+    member?.linked_profile_url || member?.profile?.url || member?.character?.url || member?.url;
+  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
+    // Blizzard URLs often contain region/realm/name even when member objects are sparse.
+    const match = externalUrl.match(/\/character\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
+    if (match) {
+      const parsedRegion = String(match[1] || '').toLowerCase();
+      const parsedRealm = normalizeRealmSlug(match[2] || '');
+      const parsedName = String(match[3] || '').toLowerCase();
+      if (parsedRegion && parsedRealm && parsedName) {
+        return {
+          href: `/character/${parsedRegion}/${parsedRealm}/${parsedName}`,
+          external: false,
+        };
+      }
+    }
+  }
+
+  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
+    return { href: externalUrl, external: true };
+  }
+  return null;
 }
 
 function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {
@@ -992,7 +1099,16 @@ function BlizzardGearSlot({
   compactNearIcon?: boolean;
 }) {
   const rtl = align === 'right';
-  const label = SLOT_LABELS[slot.toLowerCase()] || slot;
+  const normalizedSlotKey = slot
+    .toLowerCase()
+    .replace(/_([12])$/, '$1')
+    .replace(/__/g, '_');
+  const label =
+    SLOT_LABELS[normalizedSlotKey] ||
+    slot
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
 
   if (!item) {
     return (
@@ -1054,8 +1170,8 @@ function BlizzardGearSlot({
           <span className="text-zinc-400">
             {item.level?.value} {label}
           </span>
-          {enchant && <span className="text-emerald-400/80">Â· {enchant.name}</span>}
-          {gem && <span className="text-sky-400/80">Â· {gem.name}</span>}
+          {enchant && <span className="text-emerald-400/80">&bull; {enchant.name}</span>}
+          {gem && <span className="text-sky-400/80">&bull; {gem.name}</span>}
         </div>
       </div>
     </a>
@@ -1196,7 +1312,7 @@ function TalentsCard({
       </div>
 
       {talentString ? (
-        <div className="bg-black/20 p-2">
+        <div className="bg-black/20 p-2 lg:max-h-[620px] lg:overflow-y-auto">
           <div
             className="origin-top scale-100 transform transition-opacity duration-500"
             style={{ opacity: loading ? 0.3 : 1 }}

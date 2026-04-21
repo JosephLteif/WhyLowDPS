@@ -135,6 +135,13 @@ export async function deleteSim(id: string): Promise<void> {
   });
 }
 
+export async function setSimPinned(id: string, pinned: boolean): Promise<void> {
+  await fetchJson(`${API_URL}/api/sim/${id}/pin`, {
+    method: 'POST',
+    body: JSON.stringify({ pinned }),
+  });
+}
+
 export interface HistoryStats {
   size_bytes: number;
   count: number;
@@ -150,12 +157,14 @@ export async function listSims(params?: {
   realm?: string;
   linked_only?: boolean;
   unlinked_only?: boolean;
+  pinned_only?: boolean;
 }): Promise<SimSummary[]> {
   const query = new URLSearchParams();
   if (params?.player) query.set('player', params.player);
   if (params?.realm) query.set('realm', params.realm);
   if (params?.linked_only) query.set('linked_only', 'true');
   if (params?.unlinked_only) query.set('unlinked_only', 'true');
+  if (params?.pinned_only) query.set('pinned_only', 'true');
   const qs = query.toString();
   return fetchJson<SimSummary[]>(`${API_URL}/api/sims${qs ? '?' + qs : ''}`);
 }

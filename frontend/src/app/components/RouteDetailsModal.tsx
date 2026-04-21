@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSimContext } from './SimContext';
 import { SavedRoute } from '../lib/types';
 import { parseCharacterInfo } from '@/lib/simc-parser';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 interface RouteDetailsModalProps {
   route: SavedRoute;
@@ -23,7 +24,9 @@ export default function RouteDetailsModal({
   useWowheadTooltips();
   const { setSimcFooter } = useSimContext();
   const router = useRouter();
+  const modalRef = useRef<HTMLDivElement | null>(null);
   const info = useMemo(() => parseCharacterInfo(route.route_data), [route.route_data]);
+  useDismissOnOutside(modalRef, true, onClose);
 
   const formatHealth =
     propFormatHealth ||
@@ -44,7 +47,7 @@ export default function RouteDetailsModal({
   if (info?.kind !== 'dungeon') {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md">
-        <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-zinc-950 p-8 text-center shadow-2xl">
+      <div ref={modalRef} className="w-full max-w-lg rounded-3xl border border-white/10 bg-zinc-950 p-8 text-center shadow-2xl">
           <p className="text-zinc-400">Failed to parse route data.</p>
           <button
             onClick={onClose}
@@ -67,7 +70,7 @@ export default function RouteDetailsModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md">
-      <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 shadow-2xl">
+      <div ref={modalRef} className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] p-6">
           <div className="flex items-center gap-4">

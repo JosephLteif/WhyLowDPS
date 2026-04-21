@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 interface NavItem {
   href: string;
@@ -49,9 +50,10 @@ const baseNavItems: NavItem[] = [
     label: 'Upgrades',
     description: 'Find and sim gear upgrades.',
     icon: 'M7 7m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0M10.5 10.5L14 14',
-    matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade'],
+    matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade', '/wishlist'],
     children: [
       { href: '/drop-finder', label: 'Drop Finder', description: 'Sim raid & dungeon loot' },
+      { href: '/wishlist', label: 'Wishlist', description: 'Saved target drops' },
       { href: '/upgrade/trinkets', label: 'Trinkets', description: 'Sim trinket pools & pairs' },
       { href: '/upgrade-compare', label: 'Crest Upgrades', description: 'Best Dawncrest path' },
     ],
@@ -82,6 +84,7 @@ const baseNavItems: NavItem[] = [
 
 const SIDEBAR_COLLAPSED_KEY = 'whylowdps_sidebar_collapsed';
 const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
+const SIDEBAR_VISIBLE_KEY = 'whylowdps_sidebar_visible';
 
 function moveLabel(order: string[], source: string, target: string): string[] {
   if (source === target) return order;
@@ -92,16 +95,44 @@ function moveLabel(order: string[], source: string, target: string): string[] {
   return withoutSource;
 }
 
+function moveLabelWithPosition(
+  order: string[],
+  source: string,
+  target: string,
+  position: 'before' | 'after'
+): string[] {
+  if (source === target) return order;
+  const withoutSource = order.filter((label) => label !== source);
+  const targetIdx = withoutSource.indexOf(target);
+  if (targetIdx === -1) return withoutSource;
+  const insertIdx = position === 'after' ? targetIdx + 1 : targetIdx;
+  withoutSource.splice(insertIdx, 0, source);
+  return withoutSource;
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const normalizedPath = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [navOrder, setNavOrder] = useState<string[] | null>(null);
+  const [visibleLabels, setVisibleLabels] = useState<string[] | null>(null);
   const [draggingLabel, setDraggingLabel] = useState<string | null>(null);
   const [dragOverLabel, setDragOverLabel] = useState<string | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<'before' | 'after'>('before');
+  const [dragPointer, setDragPointer] = useState<{
+    x: number;
+    y: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+  } | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const dragSourceRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const dragOverPosRef = useRef<'before' | 'after'>('before');
   const { user } = useAuth();
 
   const navItems = useMemo(() => {
@@ -143,6 +174,21 @@ export default function Sidebar() {
     return ordered;
   }, [navItems, navOrder]);
 
+  const visibleNavItems = useMemo(() => {
+    if (!visibleLabels || visibleLabels.length === 0) return orderedNavItems;
+    const visibleSet = new Set(visibleLabels);
+    return orderedNavItems.filter((item) => visibleSet.has(item.label));
+  }, [orderedNavItems, visibleLabels]);
+
+  const addableNavItems = useMemo(() => {
+    const currentVisible =
+      visibleLabels && visibleLabels.length > 0
+        ? visibleLabels
+        : orderedNavItems.map((i) => i.label);
+    const visibleSet = new Set(currentVisible);
+    return orderedNavItems.filter((item) => !visibleSet.has(item.label));
+  }, [orderedNavItems, visibleLabels]);
+
   useEffect(() => {
     const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
     setIsCollapsed(collapsed === '1');
@@ -155,6 +201,17 @@ export default function Sidebar() {
         }
       } catch {
         // ignore malformed stored order
+      }
+    }
+    const savedVisible = localStorage.getItem(SIDEBAR_VISIBLE_KEY);
+    if (savedVisible) {
+      try {
+        const parsed = JSON.parse(savedVisible);
+        if (Array.isArray(parsed)) {
+          setVisibleLabels(parsed.filter((v) => typeof v === 'string'));
+        }
+      } catch {
+        // ignore malformed stored visibility
       }
     }
   }, []);
@@ -170,6 +227,11 @@ export default function Sidebar() {
   }, [navOrder]);
 
   useEffect(() => {
+    if (!visibleLabels) return;
+    localStorage.setItem(SIDEBAR_VISIBLE_KEY, JSON.stringify(visibleLabels));
+  }, [visibleLabels]);
+
+  useEffect(() => {
     setNavOrder((prev) => {
       const labels = navItems.map((item) => item.label);
       if (!prev || prev.length === 0) return labels;
@@ -183,39 +245,136 @@ export default function Sidebar() {
   }, [navItems]);
 
   useEffect(() => {
+    setVisibleLabels((prev) => {
+      const labels = navItems.map((item) => item.label);
+      if (!prev || prev.length === 0) return labels;
+      const deduped = prev.filter((label, idx) => prev.indexOf(label) === idx);
+      const filtered = deduped.filter((label) => labels.includes(label));
+      return filtered.length > 0 ? filtered : labels;
+    });
+  }, [navItems]);
+
+  useEffect(() => {
     dragOverRef.current = dragOverLabel;
   }, [dragOverLabel]);
+
+  useEffect(() => {
+    dragOverPosRef.current = dragOverPosition;
+  }, [dragOverPosition]);
 
   const finishPointerDrag = useCallback(() => {
     const source = dragSourceRef.current;
     const target = dragOverRef.current;
     if (source && target && source !== target) {
-      setNavOrder((prev) => moveLabel(prev ?? orderedNavItems.map((i) => i.label), source, target));
+      setNavOrder((prev) =>
+        moveLabelWithPosition(
+          prev ?? orderedNavItems.map((i) => i.label),
+          source,
+          target,
+          dragOverPosRef.current
+        )
+      );
     }
     dragSourceRef.current = null;
     setDraggingLabel(null);
     setDragOverLabel(null);
+    setDragOverPosition('before');
+    setDragPointer(null);
   }, [orderedNavItems]);
 
   useEffect(() => {
     if (!draggingLabel) return;
+    const onPointerMove = (e: PointerEvent) => {
+      setDragPointer((prev) => {
+        if (!prev) return prev;
+        return { ...prev, x: e.clientX, y: e.clientY };
+      });
+    };
     const onPointerUp = () => finishPointerDrag();
     const onPointerCancel = () => finishPointerDrag();
+    window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('pointercancel', onPointerCancel);
     return () => {
+      window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerCancel);
     };
   }, [draggingLabel, finishPointerDrag]);
 
+  useDismissOnOutside(addMenuRef, showAddMenu, () => setShowAddMenu(false));
+
   return (
     <aside
-      className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border bg-surface/70 pb-6 pt-6 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
+      className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border bg-surface/70 pb-4 pt-3 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
     >
       <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
-        <div className="flex-1 space-y-2 overflow-y-auto">
-          {orderedNavItems.map((item) => {
+        {!isCollapsed && (
+          <div className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}>
+            {isEditMode && (
+              <div ref={addMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMenu((v) => !v)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-sm font-semibold leading-none text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                  title="Add sidebar section"
+                  aria-label="Add sidebar section"
+                >
+                  +
+                </button>
+                {showAddMenu && (
+                  <div className="absolute left-0 z-50 mt-1 w-max min-w-44 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
+                    {addableNavItems.length === 0 ? (
+                      <div className="px-2 py-1.5 text-xs text-zinc-500">No sections to add</div>
+                    ) : (
+                      addableNavItems.map((addItem) => (
+                        <button
+                          key={`add-${addItem.label}`}
+                          type="button"
+                          onClick={() => {
+                            setVisibleLabels((prev) => {
+                              const current =
+                                prev && prev.length > 0
+                                  ? prev
+                                  : orderedNavItems.map((i) => i.label);
+                              if (current.includes(addItem.label)) return current;
+                              return [...current, addItem.label];
+                            });
+                            setShowAddMenu(false);
+                          }}
+                          className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
+                        >
+                          {addItem.label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditMode((v) => !v);
+                setShowAddMenu(false);
+              }}
+              className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
+                isEditMode
+                  ? 'border-gold/60 bg-gold/15 text-gold'
+                  : 'border-white/15 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+              }`}
+              title={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
+              aria-label={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11.5 2.5l2 2L6 12H4v-2l7.5-7.5z" />
+                <path d="M10 4l2 2" />
+              </svg>
+            </button>
+          </div>
+        )}
+        <div className="flex-1 space-y-2 overflow-y-auto pb-2">
+          {visibleNavItems.map((item) => {
             const isActive = item.matchPaths.some(
               (p) => pathname === p || pathname.startsWith(p + '/')
             );
@@ -227,26 +386,47 @@ export default function Sidebar() {
                 key={item.label}
                 data-nav-label={item.label}
                 className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
-                  dragOverLabel === item.label && draggingLabel !== item.label
-                    ? 'scale-[1.01] bg-gold/[0.06] ring-1 ring-gold/40'
-                    : ''
+                  dragOverLabel === item.label && draggingLabel !== item.label ? 'bg-gold/[0.04]' : ''
                 }`}
                 onPointerEnter={() => {
                   if (draggingLabel && draggingLabel !== item.label) {
                     setDragOverLabel(item.label);
+                    setDragOverPosition('before');
+                  }
+                }}
+                onPointerMove={(e) => {
+                  if (draggingLabel && draggingLabel !== item.label) {
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                    setDragOverLabel(item.label);
+                    setDragOverPosition(position);
                   }
                 }}
               >
+                {dragOverLabel === item.label && draggingLabel !== item.label && dragOverPosition === 'before' && (
+                  <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
+                )}
                 <div className="flex items-stretch gap-1">
-                  {!isCollapsed && (
+                  {isEditMode && !isCollapsed && (
                     <button
                       type="button"
                       onPointerDown={(e) => {
+                        if (!isEditMode) return;
                         if (e.pointerType === 'mouse' && e.button !== 0) return;
                         e.preventDefault();
+                        const rect = (e.currentTarget as HTMLButtonElement).closest('[data-nav-label]')?.getBoundingClientRect();
                         dragSourceRef.current = item.label;
                         setDraggingLabel(item.label);
                         setDragOverLabel(item.label);
+                        if (rect) {
+                          setDragPointer({
+                            x: e.clientX,
+                            y: e.clientY,
+                            offsetX: e.clientX - rect.left,
+                            offsetY: e.clientY - rect.top,
+                            width: rect.width,
+                          });
+                        }
                       }}
                       className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all hover:bg-white/5 hover:text-zinc-300 active:cursor-grabbing ${
                         draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
@@ -267,6 +447,10 @@ export default function Sidebar() {
                   <Link
                     href={item.href}
                     onClick={(e) => {
+                      if (isEditMode) {
+                        e.preventDefault();
+                        return;
+                      }
                       const normalizedHref =
                         item.href.endsWith('/') && item.href !== '/' ? item.href.slice(0, -1) : item.href;
                       if (normalizedPath === normalizedHref) {
@@ -278,7 +462,7 @@ export default function Sidebar() {
                     }}
                     draggable={false}
                     className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
-                      draggingLabel === item.label ? 'scale-[0.98] opacity-65 shadow-lg' : ''
+                      draggingLabel === item.label ? 'scale-[0.98] opacity-25' : ''
                     } ${
                       isActive
                         ? 'bg-gold/15 text-gold'
@@ -308,7 +492,28 @@ export default function Sidebar() {
                       </div>
                     )}
                   </Link>
+                  {isEditMode && !isCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleLabels((prev) => {
+                          const current =
+                            prev && prev.length > 0 ? prev : orderedNavItems.map((i) => i.label);
+                          if (current.length <= 1) return current;
+                          return current.filter((label) => label !== item.label);
+                        })
+                      }
+                      className="shrink-0 rounded-md px-2 text-zinc-500 transition-colors hover:bg-red-500/15 hover:text-red-300"
+                      title={`Remove ${item.label} from sidebar`}
+                      aria-label={`Remove ${item.label} from sidebar`}
+                    >
+                      -
+                    </button>
+                  )}
                 </div>
+                {dragOverLabel === item.label && draggingLabel !== item.label && dragOverPosition === 'after' && (
+                  <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
+                )}
                 {hasChildren && isOpen && !isCollapsed && (
                   <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
                     {item.children!.map((child) => {
@@ -344,7 +549,20 @@ export default function Sidebar() {
             );
           })}
         </div>
-        <div className="mt-2 flex items-end justify-end">
+        {draggingLabel && dragPointer && (
+          <div
+            className="pointer-events-none fixed z-[70] rounded-lg border border-gold/40 bg-[#14151d]/95 px-4 py-3 shadow-[0_16px_30px_rgba(0,0,0,0.45)] ring-1 ring-gold/20"
+            style={{
+              left: dragPointer.x - dragPointer.offsetX,
+              top: dragPointer.y - dragPointer.offsetY,
+              width: dragPointer.width,
+              transform: 'rotate(-1deg)',
+            }}
+          >
+            <div className="text-[15px] font-medium text-zinc-100">{draggingLabel}</div>
+          </div>
+        )}
+        <div className="mt-3 mb-2 flex items-end justify-end">
           <button
             type="button"
             onClick={() => setIsCollapsed((v) => !v)}

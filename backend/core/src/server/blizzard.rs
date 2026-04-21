@@ -2,6 +2,7 @@ use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 use actix_web::{web, HttpResponse};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -103,6 +104,100 @@ pub async fn get_effective_token(
 pub struct ProxyQuery {
     pub region: Option<String>,
     pub refresh: Option<bool>,
+}
+
+fn parse_character_path_from_url(url: &str) -> Option<(String, String, String)> {
+    let after_character = url.split("/character/").nth(1)?;
+    let clean = after_character
+        .split('?')
+        .next()
+        .unwrap_or(after_character)
+        .split('#')
+        .next()
+        .unwrap_or(after_character);
+    let parts: Vec<&str> = clean.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() < 3 {
+        return None;
+    }
+    Some((
+        parts[0].to_lowercase(),
+        parts[1].to_lowercase(),
+        parts[2].to_lowercase(),
+    ))
+}
+
+fn enrich_member_with_profile_link(member: &mut Map<String, Value>) {
+    let profile_url = member
+        .get("profile")
+        .and_then(|p| p.get("url"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            member
+                .get("character")
+                .and_then(|c| c.get("url"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| member.get("url").and_then(Value::as_str));
+
+    let Some(url) = profile_url else { return };
+    let url_owned = url.to_string();
+
+    let Some((region, realm, name)) = parse_character_path_from_url(url) else {
+        return;
+    };
+
+    member
+        .entry("linked_region".to_string())
+        .or_insert_with(|| Value::String(region.clone()));
+    member
+        .entry("linked_realm".to_string())
+        .or_insert_with(|| Value::String(realm.clone()));
+    member
+        .entry("linked_name".to_string())
+        .or_insert_with(|| Value::String(name.clone()));
+    member
+        .entry("linked_profile_url".to_string())
+        .or_insert_with(|| Value::String(url_owned.clone()));
+
+    if let Some(profile_obj) = member.get_mut("profile").and_then(Value::as_object_mut) {
+        profile_obj
+            .entry("region".to_string())
+            .or_insert_with(|| Value::String(region.clone()));
+        profile_obj
+            .entry("name".to_string())
+            .or_insert_with(|| Value::String(name.clone()));
+        let realm_obj = profile_obj
+            .entry("realm".to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(realm_map) = realm_obj.as_object_mut() {
+            realm_map
+                .entry("slug".to_string())
+                .or_insert_with(|| Value::String(realm));
+        }
+    }
+}
+
+fn enrich_mythic_profile_member_links(value: &mut Value) {
+    match value {
+        Value::Array(arr) => {
+            for item in arr {
+                enrich_mythic_profile_member_links(item);
+            }
+        }
+        Value::Object(obj) => {
+            if let Some(Value::Array(members)) = obj.get_mut("members") {
+                for member in members {
+                    if let Some(member_obj) = member.as_object_mut() {
+                        enrich_member_with_profile_link(member_obj);
+                    }
+                }
+            }
+            for nested in obj.values_mut() {
+                enrich_mythic_profile_member_links(nested);
+            }
+        }
+        _ => {}
+    }
 }
 
 async fn proxy_blizzard_data_url(
@@ -207,7 +302,8 @@ pub async fn proxy_character_profile(
 
     match res {
         Ok(r) if r.status().is_success() => {
-            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            let mut data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            enrich_mythic_profile_member_links(&mut data);
             store.set_cache(&cache_key, data.to_string());
             HttpResponse::Ok().json(data)
         }

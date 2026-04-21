@@ -50,6 +50,7 @@ pub trait JobStorage: Send + Sync {
         realm: Option<&str>,
         linked_only: bool,
         unlinked_only: bool,
+        pinned_only: bool,
     ) -> Vec<JobSummary>;
     fn update_status(&self, id: &str, status: JobStatus);
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str);
@@ -75,6 +76,7 @@ pub trait JobStorage: Send + Sync {
         realm: Option<String>,
         name: Option<String>,
     );
+    fn set_pinned(&self, id: &str, pinned: bool);
     // User configuration storage
     fn set_user_config(&self, user_id: &str, key: &str, value: &str);
     fn get_user_config(&self, user_id: &str, key: &str) -> Option<String>;

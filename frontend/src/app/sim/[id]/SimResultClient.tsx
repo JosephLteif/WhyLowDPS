@@ -381,6 +381,7 @@ export default function SimResultClient() {
       id = foundId;
     }
   }
+  const [activeScenarioId, setActiveScenarioId] = useState(id);
 
   const [job, setJob] = useState<JobData | null>(null);
   const [fetchError, setFetchError] = useState('');
@@ -398,6 +399,12 @@ export default function SimResultClient() {
   const activeStageNameRef = useRef<string | null>(null);
   const activeStageStartedAtRef = useRef<number | null>(null);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (id && id !== '_' && id !== activeScenarioId) {
+      setActiveScenarioId(id);
+    }
+  }, [id, activeScenarioId]);
 
   const r = job?.result as any;
   const timelineFallbackData = timelineFallback;
@@ -544,12 +551,12 @@ export default function SimResultClient() {
         if (prev.some((entry) => entry.name === name)) return prev;
         const next = [...prev, { name, elapsed: Math.max(0, elapsed) }];
         if (typeof window !== 'undefined') {
-          sessionStorage.setItem(`sim_stage_timings_${id}`, JSON.stringify(next));
+          sessionStorage.setItem(`sim_stage_timings_${activeScenarioId}`, JSON.stringify(next));
         }
         return next;
       });
     },
-    [id]
+    [activeScenarioId]
   );
 
   useEffect(() => {
@@ -557,12 +564,13 @@ export default function SimResultClient() {
   }, []);
 
   useEffect(() => {
-    if (!id || id === '_') {
+    const currentJobId = job?.id || activeScenarioId;
+    if (!currentJobId || currentJobId === '_') {
       setHasSimAgainTarget(false);
       return;
     }
-    setHasSimAgainTarget(!!getSimReturnTarget(id));
-  }, [id]);
+    setHasSimAgainTarget(!!getSimReturnTarget(currentJobId));
+  }, [job?.id, activeScenarioId]);
 
   useEffect(() => {
     activeStageNameRef.current = null;
@@ -572,12 +580,12 @@ export default function SimResultClient() {
       clearInterval(stageTickRef.current);
       stageTickRef.current = null;
     }
-    if (typeof window === 'undefined' || !id || id === '_') {
+    if (typeof window === 'undefined' || !activeScenarioId || activeScenarioId === '_') {
       setStageTimings([]);
       return;
     }
     try {
-      const raw = sessionStorage.getItem(`sim_stage_timings_${id}`);
+      const raw = sessionStorage.getItem(`sim_stage_timings_${activeScenarioId}`);
       if (!raw) {
         setStageTimings([]);
         return;
@@ -598,7 +606,7 @@ export default function SimResultClient() {
     } catch {
       setStageTimings([]);
     }
-  }, [id]);
+  }, [activeScenarioId]);
 
   useEffect(() => {
     return () => {
@@ -626,7 +634,7 @@ export default function SimResultClient() {
         }
       }
       if (!active) return;
-      if (id && job?.status) statuses[id] = job.status;
+      if (activeScenarioId && job?.status) statuses[activeScenarioId] = job.status;
       setSiblingStatuses(statuses);
 
       const shouldContinue = Object.values(statuses).some(
@@ -640,12 +648,11 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [siblings, id, job?.status]);
+  }, [siblings, activeScenarioId, job?.status]);
 
   useEffect(() => {
-    console.log('[SimResult] Initializing with ID:', id);
-    if (!id || id === '_') return;
-    setJob(null); // Reset when ID changes
+    console.log('[SimResult] Initializing with ID:', activeScenarioId);
+    if (!activeScenarioId || activeScenarioId === '_') return;
     setFetchError('');
     setTimelineFallback(null);
     setAplFallback(null);
@@ -654,7 +661,7 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const data = await fetchJson<JobData>(`${API_URL}/api/sim/${id}`);
+        const data = await fetchJson<JobData>(`${API_URL}/api/sim/${activeScenarioId}`);
         if (active) setJob(data);
         if (active && (data.status === 'pending' || data.status === 'running')) {
           timer = setTimeout(poll, 2000);
@@ -668,18 +675,18 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [id]);
+  }, [activeScenarioId]);
 
   // Poll logs only when the log console is expanded and the sim is active
   useEffect(() => {
-    if (!showLogs || !id || id === '_') return;
+    if (!showLogs || !activeScenarioId || activeScenarioId === '_') return;
     if (job?.status !== 'pending' && job?.status !== 'running') return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function pollLogs() {
       try {
         const data = await fetchJson<any>(
-          `${API_URL}/api/sim/${id}/logs?after=${logCursorRef.current}`
+          `${API_URL}/api/sim/${activeScenarioId}/logs?after=${logCursorRef.current}`
         );
         if (!active) return;
         if (data.lines.length > 0) {
@@ -699,7 +706,7 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [showLogs, id, job?.status]);
+  }, [showLogs, activeScenarioId, job?.status]);
 
   useEffect(() => {
     if (!job) return;
@@ -754,7 +761,7 @@ export default function SimResultClient() {
   }, [job, appendStageTiming]);
 
   useEffect(() => {
-    if (!id || id === '_' || !job?.result) return;
+    if (!activeScenarioId || activeScenarioId === '_' || !job?.result) return;
     if (job.status !== 'done') return;
     if (job.result.timeline || job.result.apl_analysis) return;
     if (
@@ -770,7 +777,7 @@ export default function SimResultClient() {
     (async () => {
       setTimelineLoading(true);
       try {
-        const raw = await fetchJson<any>(`${API_URL}/api/sim/${id}/raw`);
+        const raw = await fetchJson<any>(`${API_URL}/api/sim/${activeScenarioId}/raw`);
         if (!active) return;
         const { timeline, apl } = buildTimelineFromRaw(raw);
         if (timeline) setTimelineFallback(timeline);
@@ -785,17 +792,9 @@ export default function SimResultClient() {
     return () => {
       active = false;
     };
-  }, [id, job]);
+  }, [activeScenarioId, job]);
 
   const handleToggleLogs = useCallback(() => setShowLogs((v) => !v), []);
-  const navigateToScenario = useCallback(
-    (scenarioId: string) => {
-      if (!scenarioId || scenarioId === id) return;
-      router.push(simResultHref(scenarioId), { scroll: false });
-    },
-    [id, router]
-  );
-
   const scenarioStatusTone = useCallback((status: string, isCurrent: boolean): string => {
     if (isCurrent) return 'text-gold';
     if (status === 'running') return 'text-blue-300';
@@ -806,10 +805,23 @@ export default function SimResultClient() {
   }, []);
 
   const handleSimAgain = useCallback(() => {
-    const returnUrl = resolveSimAgainNavigation(id);
+    const currentJobId = job?.id || activeScenarioId;
+    const returnUrl = resolveSimAgainNavigation(currentJobId);
     if (!returnUrl) return;
     router.push(returnUrl);
-  }, [id, router]);
+  }, [job?.id, activeScenarioId, router]);
+
+  const navigateToScenario = useCallback(
+    (scenarioId: string) => {
+      if (!scenarioId || scenarioId === activeScenarioId) return;
+      setActiveScenarioId(scenarioId);
+      if (typeof window !== 'undefined') {
+        const target = simResultHref(scenarioId);
+        window.history.pushState(window.history.state, '', target);
+      }
+    },
+    [activeScenarioId]
+  );
 
   if (fetchError) {
     return (
@@ -855,20 +867,13 @@ export default function SimResultClient() {
             <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">Scenarios</span>
             <span className="h-4 w-px shrink-0 bg-border" />
             {siblings.map((s) => {
-              const isCurrent = s.id === id;
+              const isCurrent = s.id === activeScenarioId;
               const status = siblingStatuses[s.id] || (isCurrent ? job.status : 'pending');
               return (
                 <button
                   key={s.id}
                   type="button"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    navigateToScenario(s.id);
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigateToScenario(s.id);
-                  }}
+                  onClick={() => navigateToScenario(s.id)}
                   className={`rounded-lg border px-2.5 py-1 text-[14px] font-medium transition-all ${
                     isCurrent
                       ? 'border-gold/40 bg-gold/[0.08] text-gold'
@@ -911,7 +916,7 @@ export default function SimResultClient() {
             </button>
           )}
           <CharacterLinkButton
-            jobId={id}
+            jobId={activeScenarioId}
             currentLinkedName={job.linked_name}
             currentLinkedRealm={job.linked_realm}
             currentLinkedRegion={job.linked_region}
@@ -936,7 +941,7 @@ export default function SimResultClient() {
           stagesCompleted={job.stages_completed}
           stageTimings={stageTimings}
           activeStageElapsed={activeStageElapsed}
-          jobId={id}
+          jobId={activeScenarioId}
           onCancelled={() => setJob({ ...job, status: 'cancelled' })}
           logLines={logLines}
           showLogs={showLogs}

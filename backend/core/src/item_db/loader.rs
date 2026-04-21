@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -260,23 +260,137 @@ pub fn load_encounter_drops() {
     *DROPS_BY_ENCOUNTER.write().unwrap() = Arc::new(drops);
 }
 
+fn inferred_season_label() -> String {
+    if let Some(name) = get_runtime_metadata()
+        .get("season_name")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return name.to_string();
+    }
+
+    let season_id = *CURRENT_SEASON_ID.read().unwrap();
+    if season_id > 0 {
+        format!("Season {}", season_id)
+    } else {
+        "Current Season".to_string()
+    }
+}
+
+fn generated_season_config() -> Value {
+    json!({
+      "season": inferred_season_label(),
+      "raidDifficulties": [
+        { "key": "lfr",    "label": "Raid Finder", "track": "Veteran",  "level": 1, "sortOrder": 1 },
+        { "key": "normal", "label": "Normal",      "track": "Champion", "level": 2, "sortOrder": 2 },
+        { "key": "heroic", "label": "Heroic",      "track": "Hero",     "level": 3, "sortOrder": 3 },
+        { "key": "mythic", "label": "Mythic",      "track": "Myth",     "level": 4, "sortOrder": 4 }
+      ],
+      "dungeonCategories": [
+        {
+          "key": "mplus",
+          "label": "Mythic+",
+          "poolInstanceId": -1,
+          "defaultDifficulty": "mythic+10",
+          "difficulties": [
+            { "key": "heroic",    "label": "Heroic",     "track": "Adventurer", "level": 2, "sortOrder": 1 },
+            { "key": "mythic",    "label": "Mythic 0",   "track": "Champion",   "level": 1, "sortOrder": 2 },
+            { "key": "mythic+2",  "label": "+2",         "track": "Champion",   "level": 2, "sortOrder": 3 },
+            { "key": "mythic+3",  "label": "+3",         "track": "Champion",   "level": 2, "sortOrder": 4 },
+            { "key": "mythic+4",  "label": "+4",         "track": "Champion",   "level": 3, "sortOrder": 5 },
+            { "key": "mythic+5",  "label": "+5",         "track": "Champion",   "level": 4, "sortOrder": 6 },
+            { "key": "mythic+6",  "label": "+6",         "track": "Champion",   "level": 5, "sortOrder": 7 },
+            { "key": "mythic+7",  "label": "+7",         "track": "Hero",       "level": 1, "sortOrder": 8 },
+            { "key": "mythic+8",  "label": "+8",         "track": "Hero",       "level": 2, "sortOrder": 9 },
+            { "key": "mythic+9",  "label": "+9",         "track": "Hero",       "level": 2, "sortOrder": 10 },
+            { "key": "mythic+10", "label": "+10",        "track": "Hero",       "level": 3, "sortOrder": 11 },
+            { "key": "vault+7-9", "label": "Vault +7-9", "track": "Hero",       "level": 4, "sortOrder": 12 },
+            { "key": "vault+10",  "label": "Vault +10",  "track": "Myth",       "level": 1, "sortOrder": 13 }
+          ]
+        },
+        {
+          "key": "normal-dungeons",
+          "label": "Dungeons",
+          "poolInstanceId": -32,
+          "defaultDifficulty": "heroic",
+          "difficulties": [
+            { "key": "normal", "label": "Normal", "track": null, "level": 0, "sortOrder": 1, "fixedIlvl": 214, "fixedQuality": 3 },
+            { "key": "heroic", "label": "Heroic", "track": "Adventurer", "level": 2, "sortOrder": 2 },
+            { "key": "mythic", "label": "Mythic", "track": "Champion", "level": 1, "sortOrder": 3 }
+          ]
+        }
+      ],
+      "encounterOverrides": [],
+      "instanceOverrides": [],
+      "raidDifficultyTracks": {
+        "lfr": "Veteran",
+        "normal": "Champion",
+        "heroic": "Hero",
+        "mythic": "Myth"
+      },
+      "encounterUpgradeLevel": {},
+      "dungeonNormal": { "ilvl": 214, "quality": 3 },
+      "dungeonDifficultyTracks": {
+        "heroic":    { "track": "Adventurer", "level": 2 },
+        "mythic":    { "track": "Champion",   "level": 1 },
+        "mythic+2":  { "track": "Champion",   "level": 2 },
+        "mythic+3":  { "track": "Champion",   "level": 2 },
+        "mythic+4":  { "track": "Champion",   "level": 3 },
+        "mythic+5":  { "track": "Champion",   "level": 4 },
+        "mythic+6":  { "track": "Champion",   "level": 5 },
+        "mythic+7":  { "track": "Hero",       "level": 1 },
+        "mythic+8":  { "track": "Hero",       "level": 2 },
+        "mythic+9":  { "track": "Hero",       "level": 2 },
+        "mythic+10": { "track": "Hero",       "level": 3 },
+        "vault+7-9": { "track": "Hero",       "level": 4 },
+        "vault+10":  { "track": "Myth",       "level": 1 }
+      },
+      "worldBossTrack": "Champion",
+      "worldBossLevel": 1,
+      "tierSetBonusId": 20,
+      "catalyst_currency_id": 3378
+    })
+}
+
 pub fn load_season_config(data_dir: &Path) {
+    let mut cfg = generated_season_config();
+
     let path = data_dir.join("season-config.json");
     let path = if path.exists() {
         path
     } else {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("season-config.json")
     };
+
     if path.exists() {
-        let file = match fs::File::open(&path) {
-            Ok(f) => f,
-            Err(_) => return,
-        };
-        let cfg: Value =
-            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or(Value::Null);
-        let mut sc = SEASON_CONFIG.write().unwrap();
-        *sc = cfg;
+        match fs::File::open(&path) {
+            Ok(file) => {
+                let parsed: Value =
+                    serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or(Value::Null);
+                if let (Some(base), Some(custom)) = (cfg.as_object_mut(), parsed.as_object()) {
+                    for (key, value) in custom {
+                        base.insert(key.clone(), value.clone());
+                    }
+                } else {
+                    eprintln!(
+                        "season-config.json at {} is invalid; using generated defaults.",
+                        path.display()
+                    );
+                }
+            }
+            Err(err) => {
+                eprintln!(
+                    "Failed to open season-config.json at {}: {}. Using generated defaults.",
+                    path.display(),
+                    err
+                );
+            }
+        }
     }
+
+    let mut sc = SEASON_CONFIG.write().unwrap();
+    *sc = cfg;
 }
 
 pub fn load_item_limit_categories(data_dir: &Path) {

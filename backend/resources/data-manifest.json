@@ -348,7 +348,7 @@
                       "label":  "Season Config",
                       "section":  "Static Config",
                       "local_path":  "season-config.json",
-                      "required":  true,
+                      "required":  false,
                       "source":  "local",
                       "entry_type":  "file",
                       "remote_path":  null,

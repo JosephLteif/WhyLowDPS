@@ -62,6 +62,7 @@ pub struct Job {
     pub linked_region: Option<String>,
     pub linked_realm: Option<String>,
     pub linked_name: Option<String>,
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +85,7 @@ pub struct JobSummary {
     pub linked_region: Option<String>,
     pub linked_realm: Option<String>,
     pub linked_name: Option<String>,
+    pub pinned: bool,
 }
 
 pub struct ResultSummary {
@@ -218,6 +220,7 @@ impl Job {
             linked_region: None,
             linked_realm: None,
             linked_name: None,
+            pinned: false,
         }
     }
 

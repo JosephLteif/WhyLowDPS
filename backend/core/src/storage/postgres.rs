@@ -58,7 +58,8 @@ impl PostgresStorage {
                 iterations INTEGER NOT NULL,
                 fight_style TEXT NOT NULL,
                 target_error DOUBLE PRECISION NOT NULL,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                pinned BOOLEAN NOT NULL DEFAULT FALSE
             );
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -109,7 +110,8 @@ impl PostgresStorage {
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS batch_id TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_region TEXT;
              ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_realm TEXT;
-             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_name TEXT;",
+             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS linked_name TEXT;
+             ALTER TABLE jobs ADD COLUMN IF NOT EXISTS pinned BOOLEAN NOT NULL DEFAULT FALSE;",
             )
             .await;
 
@@ -195,6 +197,7 @@ impl PostgresStorage {
             linked_region: row.get(20),
             linked_realm: row.get(21),
             linked_name: row.get(22),
+            pinned: row.get(23),
         }
     }
 }
@@ -212,8 +215,8 @@ impl JobStorage for PostgresStorage {
                 if let Err(e) = client.execute(
                     "INSERT INTO jobs (id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
                      error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-                     iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)",
+                     iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name, pinned)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)",
                     &[
                         &job.id,
                         &Self::status_to_str(&job.status),
@@ -238,6 +241,7 @@ impl JobStorage for PostgresStorage {
                         &job.linked_region,
                         &job.linked_realm,
                         &job.linked_name,
+                        &job.pinned,
                     ],
                 ).await {
                     eprintln!("Failed to insert job: {}. DB may be down.", e);
@@ -245,7 +249,7 @@ impl JobStorage for PostgresStorage {
 
                 // Garbage collect oldest jobs beyond limit
                 let _ = client.execute(
-                    "DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY created_at DESC LIMIT $1)",
+                    "DELETE FROM jobs WHERE pinned = FALSE AND id NOT IN (SELECT id FROM jobs WHERE pinned = FALSE ORDER BY created_at DESC LIMIT $1)",
                     &[&(limit as i64)],
                 ).await;
             });
@@ -258,7 +262,7 @@ impl JobStorage for PostgresStorage {
                 client.query_opt(
                     "SELECT id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
                      error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-                     iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name
+                     iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name, pinned
                      FROM jobs WHERE id = $1",
 
                     &[&id],
@@ -274,6 +278,7 @@ impl JobStorage for PostgresStorage {
         realm: Option<&str>,
         linked_only: bool,
         unlinked_only: bool,
+        pinned_only: bool,
     ) -> Vec<JobSummary> {
         let player = player.map(String::from);
         let realm = realm.map(String::from);
@@ -285,7 +290,7 @@ impl JobStorage for PostgresStorage {
                     limit as i64
                 };
                 let rows = client.query(
-                    "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id, raw_json, html_report, text_output, combo_metadata_json, linked_region, linked_realm, linked_name
+                    "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id, raw_json, html_report, text_output, combo_metadata_json, linked_region, linked_realm, linked_name, pinned
                      FROM jobs ORDER BY created_at DESC LIMIT $1",
                     &[&fetch_limit],
                 ).await.unwrap_or_default();
@@ -306,6 +311,7 @@ impl JobStorage for PostgresStorage {
                     let linked_region: Option<String> = row.get(14);
                     let linked_realm: Option<String> = row.get(15);
                     let linked_name: Option<String> = row.get(16);
+                    let pinned: bool = row.get(17);
 
                     JobSummary {
                         id: row.get(0),
@@ -326,9 +332,10 @@ impl JobStorage for PostgresStorage {
                         linked_region,
                         linked_realm,
                         linked_name,
+                        pinned,
                     }
                 }).collect();
-                if player.is_none() && realm.is_none() && !unlinked_only {
+                if player.is_none() && realm.is_none() && !unlinked_only && !pinned_only {
                     return all;
                 }
                 all.into_iter()
@@ -338,6 +345,9 @@ impl JobStorage for PostgresStorage {
                                 || j.linked_realm.is_some()
                                 || j.linked_region.is_some())
                         {
+                            return false;
+                        }
+                        if pinned_only && !j.pinned {
                             return false;
                         }
 
@@ -534,7 +544,7 @@ impl JobStorage for PostgresStorage {
                 ).await.ok();
 
                 client.execute(
-                    "DELETE FROM jobs WHERE id NOT IN (SELECT id FROM jobs ORDER BY created_at DESC LIMIT $1)",
+                    "DELETE FROM jobs WHERE pinned = FALSE AND id NOT IN (SELECT id FROM jobs WHERE pinned = FALSE ORDER BY created_at DESC LIMIT $1)",
                     &[&(limit as i64)],
                 ).await.ok();
             });
@@ -599,6 +609,17 @@ impl JobStorage for PostgresStorage {
                     "UPDATE jobs SET linked_region = $1, linked_realm = $2, linked_name = $3 WHERE id = $4",
                     &[&region, &realm, &name, &id],
                 ).await.ok();
+            });
+        });
+    }
+
+    fn set_pinned(&self, id: &str, pinned: bool) {
+        self.blocking(|client| {
+            self.rt.block_on(async {
+                client
+                    .execute("UPDATE jobs SET pinned = $1 WHERE id = $2", &[&pinned, &id])
+                    .await
+                    .ok();
             });
         });
     }

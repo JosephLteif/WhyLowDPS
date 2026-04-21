@@ -30,6 +30,7 @@ pub(super) async fn list_sims(
         realm,
         query.linked_only,
         query.unlinked_only,
+        query.pinned_only,
     );
     HttpResponse::Ok().json(summaries)
 }
@@ -341,7 +342,7 @@ pub(super) async fn delete_sim(
 
 pub(super) async fn get_history_stats(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
     let size = store.get_storage_size();
-    let sims = store.list_recent(1000, None, None, false, false);
+    let sims = store.list_recent(1000, None, None, false, false, false);
     HttpResponse::Ok().json(json!({
         "size_bytes": size,
         "count": sims.len(),
@@ -375,8 +376,23 @@ pub(super) async fn link_sim(
     HttpResponse::Ok().json(json!({"status": "linked"}))
 }
 
+#[derive(Deserialize)]
+pub struct PinSimRequest {
+    pub pinned: bool,
+}
+
+pub(super) async fn pin_sim(
+    path: web::Path<String>,
+    payload: web::Json<PinSimRequest>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    store.set_pinned(&id, payload.pinned);
+    HttpResponse::Ok().json(json!({"status": "updated", "pinned": payload.pinned}))
+}
+
 pub(super) async fn get_history_characters(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    let sims = store.list_recent(10000, None, None, false, false);
+    let sims = store.list_recent(10000, None, None, false, false, false);
     let mut seen = std::collections::HashSet::new();
     let mut chars = Vec::new();
 

@@ -313,6 +313,8 @@ pub(super) struct ListSimsQuery {
     pub linked_only: bool,
     #[serde(default)]
     pub unlinked_only: bool,
+    #[serde(default)]
+    pub pinned_only: bool,
 }
 
 #[derive(Deserialize)]

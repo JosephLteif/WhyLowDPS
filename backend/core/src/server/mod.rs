@@ -434,6 +434,7 @@ pub async fn start_with_storage_bind(
                     web::post().to(job_handlers::cancel_sim),
                 )
                 .route("/api/sim/{id}/link", web::post().to(job_handlers::link_sim))
+                .route("/api/sim/{id}/pin", web::post().to(job_handlers::pin_sim))
                 .route(
                     "/api/sim/{id}/input",
                     web::get().to(job_handlers::get_sim_input),

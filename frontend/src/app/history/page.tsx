@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   API_URL,
   deleteSim,
+  setSimPinned,
   clearHistory,
   getHistoryStats,
   getConfig,
@@ -35,6 +36,7 @@ interface JobSummary {
   size_bytes: number;
   upgrades?: number | null;
   downgrades?: number | null;
+  pinned?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -101,6 +103,24 @@ function SearchIcon() {
   );
 }
 
+function PinIcon({ pinned }: { pinned: boolean }) {
+  return (
+    <svg
+      className={`h-4 w-4 ${pinned ? 'fill-gold text-gold' : 'text-zinc-500'}`}
+      fill={pinned ? 'currentColor' : 'none'}
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M12 17l-5.878 3.09 1.122-6.545L2.49 8.91l6.572-.955L12 2l2.938 5.955 6.572.955-4.755 4.635 1.122 6.545z"
+      />
+    </svg>
+  );
+}
+
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   if (bytes < 1024) return bytes + ' B';
@@ -147,6 +167,7 @@ function SimRow({
   selectable,
   selected,
   onSelectToggle,
+  onTogglePinned,
 }: {
   sim: JobSummary;
   compact?: boolean;
@@ -155,6 +176,7 @@ function SimRow({
   selectable?: boolean;
   selected?: boolean;
   onSelectToggle?: (id: string, checked: boolean) => void;
+  onTogglePinned?: (id: string, pinned: boolean) => void;
 }) {
   return (
     <div className="group relative flex items-center">
@@ -236,6 +258,19 @@ function SimRow({
         </div>
       </Link>
       <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        {onTogglePinned && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onTogglePinned(sim.id, !(sim.pinned ?? false));
+            }}
+            className={`rounded p-1 hover:bg-gold/10 ${sim.pinned ? 'text-gold' : 'text-zinc-500 hover:text-gold'}`}
+            title={sim.pinned ? 'Unpin' : 'Pin'}
+          >
+            <PinIcon pinned={!!sim.pinned} />
+          </button>
+        )}
         {onDelete && (
           <button
             onClick={(e) => {
@@ -296,12 +331,14 @@ function BatchGroup({
   selectedIds,
   onBatchSelectToggle,
   onRowSelectToggle,
+  onTogglePinned,
 }: {
   entry: Extract<HistoryEntry, { type: 'batch' }>;
   onDelete?: (id: string) => void;
   selectedIds?: Set<string>;
   onBatchSelectToggle?: (ids: string[], checked: boolean) => void;
   onRowSelectToggle?: (id: string, checked: boolean) => void;
+  onTogglePinned?: (id: string, pinned: boolean) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const first = entry.sims[0];
@@ -387,6 +424,7 @@ function BatchGroup({
                 selectable
                 selected={selectedIds?.has(sim.id)}
                 onSelectToggle={onRowSelectToggle}
+                onTogglePinned={onTogglePinned}
               />
             ))}
           </div>
@@ -411,6 +449,7 @@ export default function HistoryPage() {
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [maxJobs, setMaxJobs] = useState<number>(50);
   const [search, setSearch] = useState('');
+  const [showPinnedOnly, setShowPinnedOnly] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
@@ -451,6 +490,8 @@ export default function HistoryPage() {
       let url = `${API_URL}/api/sims`;
       if (showUnlinkedOnly) {
         url += '?unlinked_only=true';
+      } else if (showPinnedOnly) {
+        url += '?pinned_only=true';
       } else if (character && character.name && character.realm) {
         url += `?player=${encodeURIComponent(character.name)}&realm=${encodeURIComponent(character.realm)}&linked_only=true`;
       }
@@ -465,7 +506,7 @@ export default function HistoryPage() {
     } catch (err) {
       setSims([]);
     }
-  }, [character, showUnlinkedOnly]);
+  }, [character, showUnlinkedOnly, showPinnedOnly]);
 
   useEffect(() => {
     setLoading(true);
@@ -477,6 +518,11 @@ export default function HistoryPage() {
 
   const handleDelete = async (id: string) => {
     await deleteSim(id);
+    refreshHistory();
+  };
+
+  const handleTogglePinned = async (id: string, pinned: boolean) => {
+    await setSimPinned(id, pinned);
     refreshHistory();
   };
 
@@ -609,6 +655,8 @@ export default function HistoryPage() {
               value={
                 showUnlinkedOnly
                   ? 'unlinked'
+                  : showPinnedOnly
+                    ? 'pinned'
                   : character
                     ? `${character.name}-${character.realm}`
                     : 'all'
@@ -618,18 +666,26 @@ export default function HistoryPage() {
                 if (val === 'all') {
                   setCharacter(null);
                   setShowUnlinkedOnly(false);
+                  setShowPinnedOnly(false);
                 } else if (val === 'unlinked') {
                   setCharacter(null);
                   setShowUnlinkedOnly(true);
+                  setShowPinnedOnly(false);
+                } else if (val === 'pinned') {
+                  setCharacter(null);
+                  setShowUnlinkedOnly(false);
+                  setShowPinnedOnly(true);
                 } else {
                   const [name, realm] = val.split('-');
                   setShowUnlinkedOnly(false);
+                  setShowPinnedOnly(false);
                   setCharacter({ name, realm });
                 }
               }}
             >
               <option value="all">All Sims</option>
               <option value="unlinked">Unlinked</option>
+              <option value="pinned">Pinned</option>
               {bnetCharacters.map((c, i) => (
                 <option key={i} value={`${c.name}-${c.realm}`}>
                   {c.name} - {c.realm} {c.source === 'history' ? '(History)' : ''}
@@ -677,6 +733,8 @@ export default function HistoryPage() {
               ? 'No records match your search.'
               : showUnlinkedOnly
                 ? 'No unlinked simulations found.'
+                : showPinnedOnly
+                  ? 'No pinned simulations found.'
                 : character
                   ? `No simulations found for ${character.name} on ${character.realm}.`
                   : 'No simulations yet.'}
@@ -720,6 +778,7 @@ export default function HistoryPage() {
                           selectable
                           selected={selectedIds.has(entry.sim.id)}
                           onSelectToggle={handleToggleSelection}
+                          onTogglePinned={handleTogglePinned}
                         />
                       ) : (
                         <BatchGroup
@@ -728,6 +787,7 @@ export default function HistoryPage() {
                           selectedIds={selectedIds}
                           onBatchSelectToggle={handleToggleBatchSelection}
                           onRowSelectToggle={handleToggleSelection}
+                          onTogglePinned={handleTogglePinned}
                         />
                       )}
                     </div>

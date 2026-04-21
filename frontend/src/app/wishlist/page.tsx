@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { API_URL, fetchJson, listCharacterProfiles } from '../lib/api';
-import { getWowheadData, useItemInfo } from '../lib/useItemInfo';
+import { getWowheadData, QUALITY_COLORS, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 import { setSimAgainState } from '../lib/sim-return';
@@ -381,7 +381,20 @@ export default function WishlistPage() {
           slotRes?.equipped?.uid === uid ||
           slotRes?.alternatives?.some((item) => item.uid === uid);
         if (!exists) {
+          const itemInfo = itemInfoMap[wish.item_id];
           const resolvedIcon = itemInfoMap[wish.item_id]?.icon || wish.icon || '';
+          const resolvedQuality =
+            typeof itemInfo?.quality === 'number' ? itemInfo.quality : wish.quality;
+          const resolvedQualityColor =
+            QUALITY_COLORS[resolvedQuality] ||
+            (resolvedQuality >= 5
+              ? '#ff8000'
+              : resolvedQuality === 4
+                ? '#a335ee'
+                : resolvedQuality === 3
+                  ? '#0070dd'
+                  : '#1eff00');
+          const resolvedUpgrade = wish.wishlist_upgrade_label || itemInfo?.upgrade || '';
           const newItem: ResolvedItem = {
             uid,
             slot,
@@ -394,17 +407,10 @@ export default function WishlistPage() {
             gem_id: 0,
             name: wish.name,
             icon: resolvedIcon,
-            quality: wish.quality,
-            quality_color:
-              wish.quality >= 5
-                ? '#ff8000'
-                : wish.quality === 4
-                  ? '#a335ee'
-                  : wish.quality === 3
-                    ? '#0070dd'
-                    : '#1eff00',
+            quality: resolvedQuality,
+            quality_color: resolvedQualityColor,
             tag: 'Wishlist',
-            upgrade: '',
+            upgrade: resolvedUpgrade,
             sockets: 0,
             enchant_name: '',
             gem_name: '',

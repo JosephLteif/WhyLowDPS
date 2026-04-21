@@ -264,7 +264,8 @@ export default function DungeonRoutesPage() {
           <select
             value={dungeonFilter}
             onChange={(e) => setDungeonFilter(e.target.value)}
-            className="rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-sm text-white focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
+            className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-100 focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
+            style={{ colorScheme: 'dark' }}
           >
             <option value="all">All Dungeons</option>
             {dungeons.map((d) => (
@@ -282,7 +283,8 @@ export default function DungeonRoutesPage() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-sm text-white focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
+            className="rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-100 focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
+            style={{ colorScheme: 'dark' }}
           >
             <option value="date">Newest First</option>
             <option value="level">Highest Level</option>

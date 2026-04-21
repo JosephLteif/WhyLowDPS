@@ -12,6 +12,7 @@ use tauri::Manager;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::WindowEvent;
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_shell::ShellExt;
 use whylowdps_core::game_data;
 use whylowdps_core::server;
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
@@ -70,6 +71,13 @@ async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), S
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    app.shell()
+        .open(url, None)
+        .map_err(|e| format!("Failed to open external URL: {e}"))
 }
 
 #[derive(serde::Serialize)]
@@ -264,6 +272,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             open_auth_window,
+            open_external_url,
             get_system_info,
             get_close_behavior_preference,
             set_close_behavior_preference,

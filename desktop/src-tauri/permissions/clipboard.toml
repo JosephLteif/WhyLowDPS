@@ -5,6 +5,7 @@ commands.allow = [
     "get_clipboard_text",
     "get_system_info",
     "open_auth_window",
+    "open_external_url",
     "get_close_behavior_preference",
     "set_close_behavior_preference",
     "apply_close_behavior_choice"

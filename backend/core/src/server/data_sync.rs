@@ -14,6 +14,8 @@ use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
 
 const IMAGE_CACHE_VERSION: &str = "bapi3";
+const EMBEDDED_DATA_MANIFEST: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../resources/data-manifest.json"));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -133,13 +135,18 @@ fn data_manifest_path() -> PathBuf {
 
 fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
     let manifest_path = data_manifest_path();
-    let content = std::fs::read_to_string(&manifest_path).map_err(|err| {
-        format!(
-            "Failed to read data manifest at {}: {}",
-            manifest_path.display(),
-            err
-        )
-    })?;
+    let content = match std::fs::read_to_string(&manifest_path) {
+        Ok(content) => content,
+        Err(err) => {
+            // Release bundles don't have the source checkout path; use embedded manifest fallback.
+            eprintln!(
+                "Failed to read data manifest at {}: {}. Falling back to embedded manifest.",
+                manifest_path.display(),
+                err
+            );
+            EMBEDDED_DATA_MANIFEST.to_string()
+        }
+    };
     let parsed: DataManifest = serde_json::from_str(&content).map_err(|err| {
         format!(
             "Failed to parse data manifest at {}: {}",

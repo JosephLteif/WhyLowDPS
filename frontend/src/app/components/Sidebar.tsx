@@ -82,6 +82,7 @@ const baseNavItems: NavItem[] = [
 
 const SIDEBAR_COLLAPSED_KEY = 'whylowdps_sidebar_collapsed';
 const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
+const SIDEBAR_VISIBLE_KEY = 'whylowdps_sidebar_visible';
 
 function moveLabel(order: string[], source: string, target: string): string[] {
   if (source === target) return order;
@@ -98,8 +99,11 @@ export default function Sidebar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [navOrder, setNavOrder] = useState<string[] | null>(null);
+  const [visibleLabels, setVisibleLabels] = useState<string[] | null>(null);
   const [draggingLabel, setDraggingLabel] = useState<string | null>(null);
   const [dragOverLabel, setDragOverLabel] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const dragSourceRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
   const { user } = useAuth();
@@ -143,6 +147,21 @@ export default function Sidebar() {
     return ordered;
   }, [navItems, navOrder]);
 
+  const visibleNavItems = useMemo(() => {
+    if (!visibleLabels || visibleLabels.length === 0) return orderedNavItems;
+    const visibleSet = new Set(visibleLabels);
+    return orderedNavItems.filter((item) => visibleSet.has(item.label));
+  }, [orderedNavItems, visibleLabels]);
+
+  const addableNavItems = useMemo(() => {
+    const currentVisible =
+      visibleLabels && visibleLabels.length > 0
+        ? visibleLabels
+        : orderedNavItems.map((i) => i.label);
+    const visibleSet = new Set(currentVisible);
+    return orderedNavItems.filter((item) => !visibleSet.has(item.label));
+  }, [orderedNavItems, visibleLabels]);
+
   useEffect(() => {
     const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
     setIsCollapsed(collapsed === '1');
@@ -155,6 +174,17 @@ export default function Sidebar() {
         }
       } catch {
         // ignore malformed stored order
+      }
+    }
+    const savedVisible = localStorage.getItem(SIDEBAR_VISIBLE_KEY);
+    if (savedVisible) {
+      try {
+        const parsed = JSON.parse(savedVisible);
+        if (Array.isArray(parsed)) {
+          setVisibleLabels(parsed.filter((v) => typeof v === 'string'));
+        }
+      } catch {
+        // ignore malformed stored visibility
       }
     }
   }, []);
@@ -170,6 +200,11 @@ export default function Sidebar() {
   }, [navOrder]);
 
   useEffect(() => {
+    if (!visibleLabels) return;
+    localStorage.setItem(SIDEBAR_VISIBLE_KEY, JSON.stringify(visibleLabels));
+  }, [visibleLabels]);
+
+  useEffect(() => {
     setNavOrder((prev) => {
       const labels = navItems.map((item) => item.label);
       if (!prev || prev.length === 0) return labels;
@@ -179,6 +214,16 @@ export default function Sidebar() {
         if (!filtered.includes(label)) filtered.push(label);
       }
       return filtered;
+    });
+  }, [navItems]);
+
+  useEffect(() => {
+    setVisibleLabels((prev) => {
+      const labels = navItems.map((item) => item.label);
+      if (!prev || prev.length === 0) return labels;
+      const deduped = prev.filter((label, idx) => prev.indexOf(label) === idx);
+      const filtered = deduped.filter((label) => labels.includes(label));
+      return filtered.length > 0 ? filtered : labels;
     });
   }, [navItems]);
 
@@ -211,11 +256,75 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border bg-surface/70 pb-6 pt-6 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
+      className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border bg-surface/70 pb-4 pt-3 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
     >
       <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
-        <div className="flex-1 space-y-2 overflow-y-auto">
-          {orderedNavItems.map((item) => {
+        {!isCollapsed && (
+          <div className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}>
+            {isEditMode && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMenu((v) => !v)}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-sm font-semibold leading-none text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                  title="Add sidebar section"
+                  aria-label="Add sidebar section"
+                >
+                  +
+                </button>
+                {showAddMenu && (
+                  <div className="absolute left-0 z-50 mt-1 w-max min-w-44 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
+                    {addableNavItems.length === 0 ? (
+                      <div className="px-2 py-1.5 text-xs text-zinc-500">No sections to add</div>
+                    ) : (
+                      addableNavItems.map((addItem) => (
+                        <button
+                          key={`add-${addItem.label}`}
+                          type="button"
+                          onClick={() => {
+                            setVisibleLabels((prev) => {
+                              const current =
+                                prev && prev.length > 0
+                                  ? prev
+                                  : orderedNavItems.map((i) => i.label);
+                              if (current.includes(addItem.label)) return current;
+                              return [...current, addItem.label];
+                            });
+                            setShowAddMenu(false);
+                          }}
+                          className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
+                        >
+                          {addItem.label}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditMode((v) => !v);
+                setShowAddMenu(false);
+              }}
+              className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
+                isEditMode
+                  ? 'border-gold/60 bg-gold/15 text-gold'
+                  : 'border-white/15 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+              }`}
+              title={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
+              aria-label={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11.5 2.5l2 2L6 12H4v-2l7.5-7.5z" />
+                <path d="M10 4l2 2" />
+              </svg>
+            </button>
+          </div>
+        )}
+        <div className="flex-1 space-y-2 overflow-y-auto pb-2">
+          {visibleNavItems.map((item) => {
             const isActive = item.matchPaths.some(
               (p) => pathname === p || pathname.startsWith(p + '/')
             );
@@ -238,10 +347,11 @@ export default function Sidebar() {
                 }}
               >
                 <div className="flex items-stretch gap-1">
-                  {!isCollapsed && (
+                  {isEditMode && !isCollapsed && (
                     <button
                       type="button"
                       onPointerDown={(e) => {
+                        if (!isEditMode) return;
                         if (e.pointerType === 'mouse' && e.button !== 0) return;
                         e.preventDefault();
                         dragSourceRef.current = item.label;
@@ -267,6 +377,10 @@ export default function Sidebar() {
                   <Link
                     href={item.href}
                     onClick={(e) => {
+                      if (isEditMode) {
+                        e.preventDefault();
+                        return;
+                      }
                       const normalizedHref =
                         item.href.endsWith('/') && item.href !== '/' ? item.href.slice(0, -1) : item.href;
                       if (normalizedPath === normalizedHref) {
@@ -308,6 +422,24 @@ export default function Sidebar() {
                       </div>
                     )}
                   </Link>
+                  {isEditMode && !isCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVisibleLabels((prev) => {
+                          const current =
+                            prev && prev.length > 0 ? prev : orderedNavItems.map((i) => i.label);
+                          if (current.length <= 1) return current;
+                          return current.filter((label) => label !== item.label);
+                        })
+                      }
+                      className="shrink-0 rounded-md px-2 text-zinc-500 transition-colors hover:bg-red-500/15 hover:text-red-300"
+                      title={`Remove ${item.label} from sidebar`}
+                      aria-label={`Remove ${item.label} from sidebar`}
+                    >
+                      -
+                    </button>
+                  )}
                 </div>
                 {hasChildren && isOpen && !isCollapsed && (
                   <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
@@ -344,7 +476,7 @@ export default function Sidebar() {
             );
           })}
         </div>
-        <div className="mt-2 flex items-end justify-end">
+        <div className="mt-3 mb-2 flex items-end justify-end">
           <button
             type="button"
             onClick={() => setIsCollapsed((v) => !v)}

@@ -25,6 +25,12 @@
         },
         {
           "url": "https://*.blizzard.com/**"
+        },
+        {
+          "url": "https://github.com/**"
+        },
+        {
+          "url": "https://*.githubusercontent.com/**"
         }
       ]
     }
@@ -33,7 +39,9 @@
     "urls": [
       "http://localhost:17384/**",
       "https://*.battle.net/**",
-      "https://*.blizzard.com/**"
+      "https://*.blizzard.com/**",
+      "https://github.com/**",
+      "https://*.githubusercontent.com/**"
     ]
   }
 }

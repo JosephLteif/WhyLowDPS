@@ -98,8 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('Failed to use Tauri internal window, falling back to shell:', err);
         try {
-          const { open } = await import('@tauri-apps/plugin-shell');
-          await open(url);
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('open_external_url', { url });
           startPolling(flowId);
           return;
         } catch (shellErr) {

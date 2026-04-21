@@ -66,6 +66,41 @@ const SIMC_CHANNELS = [{ id: 'nightly', label: 'Nightly' }] as const;
 
 type SimcChannelName = (typeof SIMC_CHANNELS)[number]['id'];
 
+type AppReleaseOption = {
+  id: string;
+  version: string;
+  publishedAt: string | null;
+  notes: string | null;
+  downloadUrl: string;
+  assetName: string;
+};
+
+const APP_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=50';
+
+function normalizeReleaseVersion(raw: string): string {
+  return String(raw || '').trim().replace(/^v/i, '');
+}
+
+function pickWindowsAssetUrl(
+  assets: Array<{ browser_download_url?: unknown; name?: unknown }>,
+): { url: string; name: string } | null {
+  const normalized = (assets || [])
+    .map((asset) => ({
+      url:
+        typeof asset.browser_download_url === 'string' ? asset.browser_download_url.trim() : '',
+      name: typeof asset.name === 'string' ? asset.name.trim() : '',
+    }))
+    .filter((asset) => asset.url.length > 0);
+  if (normalized.length === 0) return null;
+
+  const preferred =
+    normalized.find((asset) => /windows|win64|x64|nsis|setup/i.test(asset.name || asset.url)) ||
+    normalized.find((asset) => /\.(exe|msi|zip)$/i.test(asset.name || asset.url)) ||
+    normalized[0];
+
+  return { url: preferred.url, name: preferred.name || 'Release Asset' };
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -116,6 +151,10 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [releaseOptions, setReleaseOptions] = useState<AppReleaseOption[]>([]);
+  const [releaseLoading, setReleaseLoading] = useState(false);
+  const [releaseError, setReleaseError] = useState('');
+  const [selectedReleaseId, setSelectedReleaseId] = useState('');
   const [simcStatuses, setSimcStatuses] = useState<Record<SimcChannelName, SimcStatus | null>>({
     nightly: null,
   });
@@ -495,6 +534,99 @@ export default function SettingsPage() {
     setUpdateMessage(null);
     window.dispatchEvent(new CustomEvent('whylowdps-updater-check'));
   };
+
+  const loadAppReleaseOptions = useCallback(async () => {
+    setReleaseLoading(true);
+    setReleaseError('');
+    try {
+      const response = await fetch(APP_RELEASES_API, {
+        cache: 'no-store',
+        headers: { Accept: 'application/vnd.github+json' },
+      });
+      if (!response.ok) {
+        throw new Error(`GitHub releases request failed (${response.status})`);
+      }
+      const payload = (await response.json()) as Array<{
+        id?: unknown;
+        tag_name?: unknown;
+        name?: unknown;
+        draft?: unknown;
+        prerelease?: unknown;
+        published_at?: unknown;
+        body?: unknown;
+        assets?: Array<{ browser_download_url?: unknown; name?: unknown }>;
+      }>;
+
+      const options = (payload || [])
+        .filter((entry) => !entry?.draft)
+        .map((entry) => {
+          const asset = pickWindowsAssetUrl(entry.assets || []);
+          if (!asset) return null;
+          const versionRaw =
+            typeof entry.tag_name === 'string'
+              ? entry.tag_name
+              : typeof entry.name === 'string'
+                ? entry.name
+                : '';
+          const version = normalizeReleaseVersion(versionRaw);
+          if (!version) return null;
+          const idRaw =
+            typeof entry.id === 'number' || typeof entry.id === 'string'
+              ? String(entry.id)
+              : version;
+          return {
+            id: idRaw,
+            version,
+            publishedAt: typeof entry.published_at === 'string' ? entry.published_at : null,
+            notes: typeof entry.body === 'string' ? entry.body : null,
+            downloadUrl: asset.url,
+            assetName: asset.name,
+          } satisfies AppReleaseOption;
+        })
+        .filter((entry): entry is AppReleaseOption => !!entry);
+
+      setReleaseOptions(options);
+      setSelectedReleaseId((prev) => {
+        if (prev && options.some((opt) => opt.id === prev)) return prev;
+        return options[0]?.id || '';
+      });
+      if (options.length === 0) {
+        setReleaseError('No downloadable releases were found on GitHub.');
+      }
+    } catch (err: any) {
+      setReleaseError(err?.message || 'Failed to fetch releases from GitHub.');
+    } finally {
+      setReleaseLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !user) return;
+    void loadAppReleaseOptions();
+  }, [user, loadAppReleaseOptions]);
+
+  const selectedRelease = releaseOptions.find((opt) => opt.id === selectedReleaseId) || null;
+
+  const downloadSelectedRelease = useCallback(async () => {
+    if (!selectedRelease?.downloadUrl) return;
+    setReleaseError('');
+    const targetUrl = selectedRelease.downloadUrl;
+
+    if (isDesktop) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('open_external_url', { url: targetUrl });
+        return;
+      } catch (err: any) {
+        setReleaseError(err?.message || 'Failed to open selected release URL.');
+      }
+    }
+
+    const popup = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    if (!popup) {
+      window.location.assign(targetUrl);
+    }
+  }, [selectedRelease]);
 
   const updateCloseBehavior = async (nextValue: boolean) => {
     if (!isDesktop) return;
@@ -1124,13 +1256,62 @@ export default function SettingsPage() {
         <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
         <p className="mb-5 text-sm text-zinc-400">Check if a newer desktop version is available.</p>
         <div className="max-w-2xl space-y-4">
-          <button
-            onClick={checkForUpdatesNow}
-            disabled={updateCheckState === 'checking'}
-            className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-          >
-            {updateCheckState === 'checking' ? 'Checking...' : 'Check for Updates'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={checkForUpdatesNow}
+              disabled={updateCheckState === 'checking'}
+              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+            >
+              {updateCheckState === 'checking' ? 'Checking...' : 'Check for Updates'}
+            </button>
+            <button
+              onClick={() => void loadAppReleaseOptions()}
+              disabled={releaseLoading}
+              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+            >
+              {releaseLoading ? 'Loading Versions...' : 'Refresh Version List'}
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-border bg-surface-2 p-4">
+            <p className="mb-2 text-sm font-medium text-zinc-200">Download Specific Version</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={selectedReleaseId}
+                onChange={(e) => setSelectedReleaseId(e.target.value)}
+                disabled={releaseLoading || releaseOptions.length === 0}
+                className="min-w-[320px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
+              >
+                {releaseOptions.length === 0 ? (
+                  <option value="">
+                    {releaseLoading ? 'Loading versions...' : 'No versions available'}
+                  </option>
+                ) : (
+                  releaseOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.version}
+                      {opt.publishedAt
+                        ? ` - ${new Date(opt.publishedAt).toLocaleDateString()}`
+                        : ''}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                onClick={downloadSelectedRelease}
+                disabled={!selectedRelease || releaseLoading}
+                className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+              >
+                Download Selected Version
+              </button>
+            </div>
+            {selectedRelease && (
+              <p className="mt-2 text-xs text-zinc-400">
+                Asset: {selectedRelease.assetName}
+              </p>
+            )}
+            {!!releaseError && <p className="mt-2 text-xs text-red-300">{releaseError}</p>}
+          </div>
 
           {updateMessage && (
             <div

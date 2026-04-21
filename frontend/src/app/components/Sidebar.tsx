@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 interface NavItem {
   href: string;
@@ -129,6 +130,7 @@ export default function Sidebar() {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const dragSourceRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
   const dragOverPosRef = useRef<'before' | 'after'>('before');
   const { user } = useAuth();
 
@@ -299,6 +301,8 @@ export default function Sidebar() {
     };
   }, [draggingLabel, finishPointerDrag]);
 
+  useDismissOnOutside(addMenuRef, showAddMenu, () => setShowAddMenu(false));
+
   return (
     <aside
       className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border bg-surface/70 pb-4 pt-3 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
@@ -307,7 +311,7 @@ export default function Sidebar() {
         {!isCollapsed && (
           <div className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}>
             {isEditMode && (
-              <div className="relative">
+              <div ref={addMenuRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setShowAddMenu((v) => !v)}

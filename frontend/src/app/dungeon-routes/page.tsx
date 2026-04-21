@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { deleteSavedRoute, listInstances, listSavedRoutes, saveRoute } from '../lib/api';
 import { SavedRoute } from '../lib/types';
 import { parseCharacterInfo } from '@/lib/simc-parser';
@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
 import RouteDetailsModal from '../components/RouteDetailsModal';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 export default function DungeonRoutesPage() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function DungeonRoutesPage() {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const addRouteModalRef = useRef<HTMLDivElement | null>(null);
   const [newRoute, setNewRoute] = useState({
     name: '',
     dungeon: '',
@@ -38,6 +40,7 @@ export default function DungeonRoutesPage() {
   const [customDungeonName, setCustomDungeonName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [viewingRoute, setViewingRoute] = useState<SavedRoute | null>(null);
+  useDismissOnOutside(addRouteModalRef, isModalOpen, () => setIsModalOpen(false));
 
   const formatHealth = (hp: number) => {
     if (hp >= 1_000_000) return `${(hp / 1_000_000).toFixed(1)}M`;
@@ -435,6 +438,7 @@ export default function DungeonRoutesPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
           <div
+            ref={addRouteModalRef}
             className="animate-in fade-in zoom-in w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-900 p-6 shadow-2xl duration-200">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-xl font-bold text-white">Add New Dungeon Route</h2>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { getWowheadData } from '../lib/useItemInfo';
@@ -8,6 +8,7 @@ import { type ExternalItem, useAddItemState } from './add-item/useAddItemState';
 import AddItemDifficultyToggle from './add-item/AddItemDifficultyToggle';
 import AddItemInstanceSidebar from './add-item/AddItemInstanceSidebar';
 import AddItemSearchOverlay from './add-item/AddItemSearchOverlay';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -76,6 +77,7 @@ export default function AddItemModal({
   preferredSlot,
 }: AddItemModalProps) {
   const state = useAddItemState(isOpen, className, spec, preferredSlot);
+  const searchOverlayRootRef = useRef<HTMLDivElement | null>(null);
 
   const inventoryTypeToSlot = useMemo<Record<number, string>>(
     () => ({
@@ -127,6 +129,8 @@ export default function AddItemModal({
     groupBy,
     setGroupBy,
   } = state;
+
+  useDismissOnOutside(searchOverlayRootRef, showSearchDropdown, () => setShowSearchDropdown(false));
 
   const filteredInstances = useMemo(() => {
     if (selectedInstance === -2)
@@ -398,7 +402,7 @@ export default function AddItemModal({
             </button>
           </div>
           <div className="relative flex items-center gap-6">
-            <div className="group relative flex-1">
+            <div ref={searchOverlayRootRef} className="group relative flex-1">
               <input
                 type="text"
                 placeholder="Global Item Search..."

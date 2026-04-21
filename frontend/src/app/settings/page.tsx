@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import { API_URL, downloadLatestSimc, fetchJson, getSimcStatus, isDesktop, type SimcStatus } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3 },
@@ -130,6 +131,12 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const dataStateModalRef = useRef<HTMLDivElement | null>(null);
+  const dataFilePreviewModalRef = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutside(dataStateModalRef, dataStateOpen && !dataFilePreviewOpen, () =>
+    setDataStateOpen(false)
+  );
+  useDismissOnOutside(dataFilePreviewModalRef, dataFilePreviewOpen, () => setDataFilePreviewOpen(false));
 
   useEffect(() => {
     if (!user) {
@@ -1149,7 +1156,7 @@ export default function SettingsPage() {
 
       {dataStateOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4">
-          <div className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-[#121212] shadow-2xl">
+          <div ref={dataStateModalRef} className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-[#121212] shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-white">Game Data File States</h3>
@@ -1296,7 +1303,7 @@ export default function SettingsPage() {
 
       {dataFilePreviewOpen && (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 p-4">
-          <div className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-[#101010] shadow-2xl">
+          <div ref={dataFilePreviewModalRef} className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-[#101010] shadow-2xl">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-white">
@@ -1344,4 +1351,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

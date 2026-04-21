@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { ResolvedItem } from '../../lib/types';
+import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -30,8 +32,13 @@ export default function TopGearUpgradeButton({
   onCatalystConvert,
   onOptimize,
 }: TopGearUpgradeButtonProps) {
-  if (!item.upgrade && !onCatalystConvert && !onOptimize) return null;
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const canRender = !!item.upgrade || !!onCatalystConvert || !!onOptimize;
   const isMenuOpen = upgradeMenuFor === item.uid;
+  useDismissOnOutside(rootRef, isMenuOpen, () => {
+    onUpgradeClick();
+  });
+  if (!canRender) return null;
   const upgradeLower = item.upgrade.toLowerCase();
   const track = upgradeLower.includes('champion')
     ? 'Champion'
@@ -60,7 +67,7 @@ export default function TopGearUpgradeButton({
           : 'border-white/10 bg-white/[0.03]';
 
   return (
-    <div className="relative flex shrink-0 items-center gap-1">
+    <div ref={rootRef} className="relative flex shrink-0 items-center gap-1">
       {onOptimize && (
         <button
           type="button"

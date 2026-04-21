@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL, fetchJson } from '../lib/api';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 interface Character {
   name: string;
@@ -30,6 +31,7 @@ export default function CharacterLinkButton({
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(false);
   const [linking, setLinking] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (isOpen && characters.length === 0) {
@@ -111,8 +113,10 @@ export default function CharacterLinkButton({
     ? `${currentLinkedName} - ${currentLinkedRealm}`
     : 'Not Linked';
 
+  useDismissOnOutside(rootRef, isOpen, () => setIsOpen(false));
+
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-surface-3"

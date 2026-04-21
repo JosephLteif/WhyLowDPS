@@ -279,95 +279,95 @@ export default function CharacterPanel({
         </a>
       </div>
 
-      {/* Upper Section: Gear & Stats */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-        {/* Gear Panel */}
-        <div className="card relative flex h-full flex-col overflow-hidden p-4 sm:p-6">
-          {characterMediaUrl && (
-            <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
-              <img
-                src={characterMediaUrl}
-                alt={name}
-                className="lg:opacity-62 pointer-events-none mx-auto h-64 w-auto object-contain opacity-85 sm:h-80 lg:h-[172%] lg:-translate-y-[10%] lg:mix-blend-lighten"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                }}
+      {/* Main Section: Left Stack + Right Rail */}
+      <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Left: Gear + Talents */}
+        <div className="flex min-w-0 flex-col gap-6">
+          {/* Gear Panel */}
+          <div className="card relative flex flex-col overflow-hidden p-4 sm:p-6">
+            {characterMediaUrl && (
+              <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
+                <img
+                  src={characterMediaUrl}
+                  alt={name}
+                  className="pointer-events-none mx-auto h-72 w-auto object-contain opacity-90 sm:h-[26rem] lg:h-[186%] lg:-translate-y-[8%] lg:opacity-65 lg:mix-blend-lighten"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_230px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_300px_minmax(0,1fr)]">
+              {/* Left Column */}
+              <div className="min-w-0 space-y-3">
+                {GEAR_ORDER_LEFT.map((slot) => (
+                  <BlizzardGearSlot
+                    key={slot}
+                    slot={slot}
+                    item={itemsBySlot[slot]}
+                    itemInfoMap={itemInfoMap}
+                    enchantInfoMap={enchantInfoMap}
+                    gemInfoMap={gemInfoMap}
+                  />
+                ))}
+              </div>
+
+              <div className="hidden lg:block" />
+
+              {/* Right Column */}
+              <div className="min-w-0 space-y-3">
+                {GEAR_ORDER_RIGHT.map((slot) => (
+                  <BlizzardGearSlot
+                    key={slot}
+                    slot={slot}
+                    item={itemsBySlot[slot]}
+                    itemInfoMap={itemInfoMap}
+                    enchantInfoMap={enchantInfoMap}
+                    gemInfoMap={gemInfoMap}
+                    align="right"
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Weapons Row */}
+            <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
+              <BlizzardGearSlot
+                slot="MAIN_HAND"
+                item={itemsBySlot.MAIN_HAND}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+                align="right"
+                compactNearIcon
+              />
+              <BlizzardGearSlot
+                slot="OFF_HAND"
+                item={itemsBySlot.OFF_HAND}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+                align="left"
               />
             </div>
-          )}
-
-          <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_210px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_260px_minmax(0,1fr)]">
-            {/* Left Column */}
-            <div className="min-w-0 space-y-3">
-              {GEAR_ORDER_LEFT.map((slot) => (
-                <BlizzardGearSlot
-                  key={slot}
-                  slot={slot}
-                  item={itemsBySlot[slot]}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                />
-              ))}
-            </div>
-
-            <div className="hidden lg:block" />
-
-            {/* Right Column */}
-            <div className="min-w-0 space-y-3">
-              {GEAR_ORDER_RIGHT.map((slot) => (
-                <BlizzardGearSlot
-                  key={slot}
-                  slot={slot}
-                  item={itemsBySlot[slot]}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                  align="right"
-                />
-              ))}
-            </div>
           </div>
 
-          {/* Bottom Weapons Row */}
-          <div className="relative z-20 mt-auto grid grid-cols-1 gap-3 pt-8 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
-            <BlizzardGearSlot
-              slot="MAIN_HAND"
-              item={itemsBySlot.MAIN_HAND}
-              itemInfoMap={itemInfoMap}
-              enchantInfoMap={enchantInfoMap}
-              gemInfoMap={gemInfoMap}
-              align="right"
-              compactNearIcon
-            />
-            <BlizzardGearSlot
-              slot="OFF_HAND"
-              item={itemsBySlot.OFF_HAND}
-              itemInfoMap={itemInfoMap}
-              enchantInfoMap={enchantInfoMap}
-              gemInfoMap={gemInfoMap}
-              align="left"
-            />
-          </div>
+          <TalentsCard
+            activeSpec={activeSpec}
+            activeLoadout={activeLoadout}
+            talentString={talentString}
+            specId={specId}
+            tree={tree}
+          />
         </div>
 
         {/* Stats Column */}
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <StatsCard statistics={statistics} />
           <MythicPlusCard mythicPlus={mythicPlus} />
           <RaidProgressCard raidEncounters={raidEncounters} />
         </div>
-      </div>
-
-      {/* Lower Section: Talents (Full Width) */}
-      <div className="w-full">
-        <TalentsCard
-          activeSpec={activeSpec}
-          activeLoadout={activeLoadout}
-          talentString={talentString}
-          specId={specId}
-          tree={tree}
-        />
       </div>
     </div>
   );
@@ -992,7 +992,16 @@ function BlizzardGearSlot({
   compactNearIcon?: boolean;
 }) {
   const rtl = align === 'right';
-  const label = SLOT_LABELS[slot.toLowerCase()] || slot;
+  const normalizedSlotKey = slot
+    .toLowerCase()
+    .replace(/_([12])$/, '$1')
+    .replace(/__/g, '_');
+  const label =
+    SLOT_LABELS[normalizedSlotKey] ||
+    slot
+      .toLowerCase()
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
 
   if (!item) {
     return (
@@ -1054,8 +1063,8 @@ function BlizzardGearSlot({
           <span className="text-zinc-400">
             {item.level?.value} {label}
           </span>
-          {enchant && <span className="text-emerald-400/80">Â· {enchant.name}</span>}
-          {gem && <span className="text-sky-400/80">Â· {gem.name}</span>}
+          {enchant && <span className="text-emerald-400/80">&bull; {enchant.name}</span>}
+          {gem && <span className="text-sky-400/80">&bull; {gem.name}</span>}
         </div>
       </div>
     </a>
@@ -1196,7 +1205,7 @@ function TalentsCard({
       </div>
 
       {talentString ? (
-        <div className="bg-black/20 p-2">
+        <div className="bg-black/20 p-2 lg:max-h-[620px] lg:overflow-y-auto">
           <div
             className="origin-top scale-100 transform transition-opacity duration-500"
             style={{ opacity: loading ? 0.3 : 1 }}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../lib/useItemInfo';
 import {
   getIconUrl,
@@ -365,7 +366,7 @@ export default function CharacterPanel({
         {/* Stats Column */}
         <div className="flex min-w-0 flex-col gap-4">
           <StatsCard statistics={statistics} />
-          <MythicPlusCard mythicPlus={mythicPlus} />
+          <MythicPlusCard mythicPlus={mythicPlus} region={region} />
           <RaidProgressCard raidEncounters={raidEncounters} />
         </div>
       </div>
@@ -373,7 +374,7 @@ export default function CharacterPanel({
   );
 }
 
-function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
+function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: string }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
   const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
     Record<string, MythicKeystoneDungeonDetail>
@@ -749,21 +750,61 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
                       <div className="mt-2 flex flex-wrap gap-1">
                         {run.members.slice(0, 5).map((member: any, idx: number) => {
                           const memberName =
-                            member?.profile?.name || member?.character?.name || member?.name || 'Player';
+                            member?.profile?.name ||
+                            member?.character?.name ||
+                            member?.character_name ||
+                            member?.name ||
+                            'Player';
+                          const memberRealm =
+                            member?.profile?.realm?.slug ||
+                            member?.profile?.realm?.name ||
+                            member?.character?.realm?.slug ||
+                            member?.character?.realm?.name ||
+                            member?.realm ||
+                            '';
                           const memberClass =
                             member?.profile?.character_class?.name ||
+                            member?.specialization?.name ||
                             member?.character_class?.name ||
                             member?.class?.name ||
                             member?.class ||
                             '';
+                          const memberProfile = getMemberProfileHref(member, region);
+                          const memberLabel = `${memberName}${memberClass ? ` (${memberClass})` : ''}`;
                           return (
-                            <span
-                              key={`${memberName}-${idx}`}
-                              className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300"
-                            >
-                              {memberName}
-                              {memberClass ? ` (${memberClass})` : ''}
-                            </span>
+                            memberProfile ? (
+                              memberProfile.external ? (
+                                <a
+                                  key={`${memberName}-${idx}`}
+                                  href={memberProfile.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
+                                  title={`Open ${memberName} profile`}
+                                >
+                                  {memberLabel}
+                                  {memberRealm ? ` - ${memberRealm}` : ''}
+                                </a>
+                              ) : (
+                                <Link
+                                  key={`${memberName}-${idx}`}
+                                  href={memberProfile.href}
+                                  className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
+                                  title={`Open ${memberName} profile`}
+                                >
+                                  {memberLabel}
+                                  {memberRealm ? ` - ${memberRealm}` : ''}
+                                </Link>
+                              )
+                            ) : (
+                              <span
+                                key={`${memberName}-${idx}`}
+                                className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300"
+                              >
+                                {memberLabel}
+                                {memberRealm ? ` - ${memberRealm}` : ''}
+                              </span>
+                            )
                           );
                         })}
                         {run.members.length > 5 && (
@@ -784,6 +825,72 @@ function MythicPlusCard({ mythicPlus }: { mythicPlus: any }) {
       )}
     </div>
   );
+}
+
+function normalizeRealmSlug(value: unknown): string {
+  return String(value ?? '')
+    .toLowerCase()
+    .replace(/'/g, '')
+    .replace(/\s+/g, '-')
+    .trim();
+}
+
+function getMemberProfileHref(
+  member: any,
+  fallbackRegion?: string
+): { href: string; external: boolean } | null {
+  const memberName =
+    member?.linked_name ||
+    member?.profile?.name ||
+    member?.character?.name ||
+    member?.character_name ||
+    member?.name ||
+    '';
+  const memberRegion =
+    member?.linked_region ||
+    member?.profile?.region ||
+    member?.character?.region ||
+    member?.region ||
+    member?.profile?.realm?.region ||
+    fallbackRegion;
+  const rawRealm =
+    member?.linked_realm ||
+    member?.profile?.realm?.slug ||
+    member?.profile?.realm?.name ||
+    member?.character?.realm?.slug ||
+    member?.character?.realm?.name ||
+    member?.realm;
+  const realmSlug = normalizeRealmSlug(rawRealm);
+
+  if (memberName && memberRegion && realmSlug) {
+    return {
+      href: `/character/${String(memberRegion).toLowerCase()}/${realmSlug}/${String(memberName).toLowerCase()}`,
+      external: false,
+    };
+  }
+
+  const externalUrl =
+    member?.linked_profile_url || member?.profile?.url || member?.character?.url || member?.url;
+  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
+    // Blizzard URLs often contain region/realm/name even when member objects are sparse.
+    const match = externalUrl.match(/\/character\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
+    if (match) {
+      const parsedRegion = String(match[1] || '').toLowerCase();
+      const parsedRealm = normalizeRealmSlug(match[2] || '');
+      const parsedName = String(match[3] || '').toLowerCase();
+      if (parsedRegion && parsedRealm && parsedName) {
+        return {
+          href: `/character/${parsedRegion}/${parsedRealm}/${parsedName}`,
+          external: false,
+        };
+      }
+    }
+  }
+
+  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
+    return { href: externalUrl, external: true };
+  }
+  return null;
 }
 
 function RaidProgressCard({ raidEncounters }: { raidEncounters: any }) {

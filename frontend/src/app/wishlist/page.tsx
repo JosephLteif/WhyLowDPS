@@ -1,0 +1,491 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import ErrorAlert from '../components/ErrorAlert';
+import { useSimContext } from '../components/SimContext';
+import { API_URL, fetchJson, listCharacterProfiles } from '../lib/api';
+import { getWowheadData, useItemInfo } from '../lib/useItemInfo';
+import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
+import { useSimSubmit } from '../lib/useSimSubmit';
+import { parseCharacterInfo } from '../../lib/simc-parser';
+import {
+  WISHLIST_STORAGE_KEY,
+  buildWishlistOwnerKey,
+  clearWishlist,
+  listWishlistOwners,
+  loadWishlist,
+  parseWishlistOwnerKey,
+  removeFromWishlist,
+  type WishlistOwnerSummary,
+  type WishlistItem,
+} from '../lib/wishlist';
+
+type SelectedItemsMap = Record<string, string[]>;
+type ItemsBySlotMap = Record<string, ResolvedItem[]>;
+
+function makeUid(
+  itemId: number,
+  bonusIds: number[],
+  origin: string,
+  slot: string,
+  enchantId = 0,
+  gemId = 0
+): string {
+  const sorted = [...bonusIds].sort((a, b) => a - b);
+  return `${itemId}:${sorted.join(':')}:${origin}:e${enchantId}:g${gemId}:${slot}`;
+}
+
+function slotCandidates(item: WishlistItem): string[] {
+  switch (item.inventory_type) {
+    case 1:
+      return ['head'];
+    case 2:
+      return ['neck'];
+    case 3:
+      return ['shoulder'];
+    case 5:
+    case 20:
+      return ['chest'];
+    case 6:
+      return ['waist'];
+    case 7:
+      return ['legs'];
+    case 8:
+      return ['feet'];
+    case 9:
+      return ['wrist'];
+    case 10:
+      return ['hands'];
+    case 11:
+      return ['finger1', 'finger2'];
+    case 12:
+      return ['trinket1', 'trinket2'];
+    case 13:
+    case 17:
+    case 21:
+      return ['main_hand'];
+    case 14:
+    case 22:
+    case 23:
+      return ['off_hand'];
+    case 16:
+      return ['back'];
+    default: {
+      const fallback = (item.wishlist_slot || '').toLowerCase();
+      if (fallback.includes('head')) return ['head'];
+      if (fallback.includes('neck')) return ['neck'];
+      if (fallback.includes('shoulder')) return ['shoulder'];
+      if (fallback.includes('back')) return ['back'];
+      if (fallback.includes('chest')) return ['chest'];
+      if (fallback.includes('wrist')) return ['wrist'];
+      if (fallback.includes('hand')) return ['hands'];
+      if (fallback.includes('waist')) return ['waist'];
+      if (fallback.includes('leg')) return ['legs'];
+      if (fallback.includes('feet')) return ['feet'];
+      if (fallback.includes('finger') || fallback.includes('ring')) return ['finger1', 'finger2'];
+      if (fallback.includes('trinket')) return ['trinket1', 'trinket2'];
+      if (fallback.includes('main')) return ['main_hand'];
+      if (fallback.includes('off')) return ['off_hand'];
+      return [];
+    }
+  }
+}
+
+function groupLabel(item: WishlistItem): string {
+  const instance = item.instance_name || 'Unknown Instance';
+  const source = item.source_type || 'Unknown Source';
+  return `${instance} - ${source}`;
+}
+
+function iconCandidates(icon: string): string[] {
+  const clean = (icon || '').trim().replace(/\.(jpg|jpeg|png|webp)$/i, '');
+  if (!clean) return [];
+  if (/^https?:\/\//i.test(clean)) return [clean];
+  return [
+    `https://render.worldofwarcraft.com/icons/56/${clean}.jpg`,
+    `https://wow.zamimg.com/images/wow/icons/large/${clean}.jpg`,
+    `https://wow.zamimg.com/images/wow/icons/small/${clean}.jpg`,
+  ];
+}
+
+function WishlistItemIcon({ icon, name }: { icon: string; name: string }) {
+  const sources = useMemo(() => iconCandidates(icon), [icon]);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [icon]);
+
+  if (sources.length === 0) {
+    return (
+      <div className="flex h-8 w-8 items-center justify-center rounded border border-border bg-surface text-[10px] text-zinc-500">
+        ?
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={sources[index]}
+      alt={name}
+      className="h-8 w-8 rounded border border-border object-cover"
+      onError={() => {
+        setIndex((prev) => (prev + 1 < sources.length ? prev + 1 : prev));
+      }}
+    />
+  );
+}
+
+async function resolveSimcInputForOwner(opts: {
+  selectedOwnerKey: string;
+  activeOwnerKey: string;
+  activeSimcInput: string;
+}): Promise<string> {
+  if (opts.selectedOwnerKey === opts.activeOwnerKey && opts.activeSimcInput.trim()) {
+    return opts.activeSimcInput.trim();
+  }
+
+  const parsed = parseWishlistOwnerKey(opts.selectedOwnerKey);
+  if (!parsed.name || !parsed.realm || !parsed.region) {
+    return opts.activeSimcInput.trim();
+  }
+
+  const profiles = await listCharacterProfiles({
+    name: parsed.name,
+    realm: parsed.realm,
+    region: parsed.region,
+  });
+  const latest = [...profiles].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+  return latest?.simc_input?.trim() || opts.activeSimcInput.trim();
+}
+
+export default function WishlistPage() {
+  const { simcInput, maxCombinations } = useSimContext();
+  const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
+  const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
+
+  const characterInfo = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
+
+  const activeCharacterOwnerKey = useMemo(() => {
+    if (characterInfo?.kind === 'character') {
+      return buildWishlistOwnerKey({
+        name: characterInfo.name,
+        realm: characterInfo.server,
+        region: characterInfo.region,
+        className: characterInfo.className,
+      });
+    }
+    return buildWishlistOwnerKey({});
+  }, [characterInfo]);
+
+  const [selectedOwnerKey, setSelectedOwnerKey] = useState(activeCharacterOwnerKey);
+
+  useEffect(() => {
+    setSelectedOwnerKey(activeCharacterOwnerKey);
+  }, [activeCharacterOwnerKey]);
+
+  const selectedOwnerSummary = useMemo(
+    () => owners.find((owner) => owner.key === selectedOwnerKey) || null,
+    [owners, selectedOwnerKey]
+  );
+
+  const canGenerateForSelectedOwner =
+    selectedOwnerKey === activeCharacterOwnerKey || !!selectedOwnerSummary?.name;
+  const hasSimSource = !!simcInput.trim() || !!selectedOwnerSummary?.name;
+
+  const itemQueries = useMemo(
+    () =>
+      wishlist.map((item) => ({
+        item_id: item.item_id,
+        bonus_ids: item.bonus_ids || (item.wishlist_bonus_id ? [item.wishlist_bonus_id] : []),
+      })),
+    [wishlist]
+  );
+  const itemInfoMap = useItemInfo(itemQueries);
+  useWowheadTooltips([itemInfoMap]);
+
+  const refreshWishlist = useCallback(() => {
+    const latestOwners = listWishlistOwners();
+    setOwners(latestOwners);
+    setWishlist(loadWishlist(selectedOwnerKey));
+  }, [selectedOwnerKey]);
+
+  useEffect(() => {
+    refreshWishlist();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === WISHLIST_STORAGE_KEY) refreshWishlist();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [refreshWishlist]);
+
+  useEffect(() => {
+    setWishlist(loadWishlist(selectedOwnerKey));
+  }, [selectedOwnerKey]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, WishlistItem[]>();
+    for (const item of wishlist) {
+      const key = groupLabel(item);
+      const list = map.get(key) || [];
+      list.push(item);
+      map.set(key, list);
+    }
+    return [...map.entries()];
+  }, [wishlist]);
+
+  const buildPayload = useCallback(async () => {
+    const effectiveSimcInput = await resolveSimcInputForOwner({
+      selectedOwnerKey,
+      activeOwnerKey: activeCharacterOwnerKey,
+      activeSimcInput: simcInput,
+    });
+    if (!effectiveSimcInput) return null;
+    if (wishlist.length === 0) return null;
+
+    const resolved = await fetchJson<ResolveGearResponse>(`${API_URL}/api/gear/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ simc_input: effectiveSimcInput, max_upgrade: false, catalyst: false }),
+    });
+
+    const itemsBySlot: ItemsBySlotMap = {};
+    const selectedItems: SelectedItemsMap = {};
+
+    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
+      const items: ResolvedItem[] = [];
+      if (slotRes.equipped) items.push(slotRes.equipped);
+      items.push(...slotRes.alternatives);
+      itemsBySlot[slot] = items;
+    }
+
+    for (const wish of wishlist) {
+      const slots = slotCandidates(wish).filter((slot) => !!itemsBySlot[slot]);
+      if (slots.length === 0) continue;
+      const bonusIds = Array.isArray(wish.bonus_ids) ? wish.bonus_ids : [];
+      const finalBonusIds =
+        bonusIds.length > 0
+          ? bonusIds
+          : wish.wishlist_bonus_id
+            ? [wish.wishlist_bonus_id]
+            : [];
+      const simcString =
+        finalBonusIds.length > 0
+          ? `,id=${wish.item_id},bonus_id=${finalBonusIds.join('/')},ilevel=${wish.wishlist_ilvl || wish.ilevel}`
+          : `,id=${wish.item_id},ilevel=${wish.wishlist_ilvl || wish.ilevel}`;
+
+      for (const slot of slots) {
+        const uid = makeUid(wish.item_id, finalBonusIds, 'bags', slot);
+        const exists = itemsBySlot[slot]?.some((item) => item.uid === uid);
+        if (!exists) {
+          itemsBySlot[slot].push({
+            uid,
+            slot,
+            item_id: wish.item_id,
+            ilevel: wish.wishlist_ilvl || wish.ilevel,
+            simc_string: simcString,
+            origin: 'bags',
+            bonus_ids: finalBonusIds,
+            enchant_id: 0,
+            gem_id: 0,
+            name: wish.name,
+            icon: wish.icon,
+            quality: wish.quality,
+            quality_color:
+              wish.quality >= 5
+                ? '#ff8000'
+                : wish.quality === 4
+                  ? '#a335ee'
+                  : wish.quality === 3
+                    ? '#0070dd'
+                    : '#1eff00',
+            tag: 'Wishlist',
+            upgrade: '',
+            sockets: 0,
+            enchant_name: '',
+            gem_name: '',
+            gem_icon: '',
+            encounter: wish.encounter,
+            instance_name: wish.instance_name,
+            source_type: wish.source_type,
+            inventory_type: wish.inventory_type,
+          });
+        }
+        if (!selectedItems[slot]) selectedItems[slot] = [];
+        if (!selectedItems[slot].includes(uid)) selectedItems[slot].push(uid);
+      }
+    }
+
+    return {
+      simc_input: effectiveSimcInput,
+      selected_items: selectedItems,
+      items_by_slot: itemsBySlot,
+      max_upgrade: false,
+      copy_enchants: true,
+      ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
+    };
+  }, [selectedOwnerKey, activeCharacterOwnerKey, simcInput, wishlist, maxCombinations]);
+
+  const validate = useCallback(() => {
+    if (!simcInput.trim() && !selectedOwnerSummary?.name) {
+      return 'Load a SimC export or pick a saved character wishlist.';
+    }
+    if (!canGenerateForSelectedOwner) {
+      return 'Switch to the active character in Wishlist to generate this sim.';
+    }
+    if (wishlist.length === 0) return 'Your wishlist is empty.';
+    return null;
+  }, [simcInput, wishlist, canGenerateForSelectedOwner, selectedOwnerSummary]);
+
+  const { submit, submitting, error, buttonLabel } = useSimSubmit({
+    endpoint: '/api/top-gear/sim',
+    buildPayload,
+    validate,
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-100">Wishlist</h2>
+          <p className="text-sm text-zinc-400">{wishlist.length} saved item(s)</p>
+          <p className="text-xs text-zinc-500">
+            Active character:{' '}
+            {characterInfo?.kind === 'character'
+              ? `${characterInfo.name} - ${characterInfo.server || 'unknown realm'} (${characterInfo.region || 'unknown region'})`
+              : 'No active character loaded'}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            <label className="text-xs uppercase tracking-wider text-zinc-500">Character</label>
+            <select
+              value={selectedOwnerKey}
+              onChange={(e) => setSelectedOwnerKey(e.target.value)}
+              className="rounded border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-100"
+            >
+              {(() => {
+                const options = [...owners];
+                if (!options.some((owner) => owner.key === activeCharacterOwnerKey)) {
+                  options.unshift({
+                    key: activeCharacterOwnerKey,
+                    label:
+                      characterInfo?.kind === 'character'
+                        ? `${characterInfo.name} - ${characterInfo.className || 'character'}`
+                        : 'Active character',
+                    count: loadWishlist(activeCharacterOwnerKey).length,
+                  });
+                }
+                return options.map((owner) => (
+                  <option key={owner.key} value={owner.key}>
+                    {owner.label} ({owner.count})
+                  </option>
+                ));
+              })()}
+            </select>
+          </div>
+          <button
+            onClick={() => {
+              clearWishlist(selectedOwnerKey);
+              refreshWishlist();
+            }}
+            className="rounded border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs text-red-300 hover:bg-red-500/20"
+            disabled={wishlist.length === 0}
+          >
+            Clear All
+          </button>
+          <button
+            onClick={() => void submit()}
+            disabled={
+              submitting ||
+              wishlist.length === 0 ||
+              !hasSimSource ||
+              !canGenerateForSelectedOwner
+            }
+            className="rounded bg-gold/20 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/30 disabled:opacity-50"
+            title={
+              !hasSimSource
+                ? 'Load a SimC export or select a character wishlist with a saved profile'
+                : !canGenerateForSelectedOwner
+                  ? 'Select the active character wishlist to generate this sim'
+                  : undefined
+            }
+          >
+            {submitting ? 'Generating...' : buttonLabel('Generate Wishlist Sim')}
+          </button>
+        </div>
+      </div>
+
+      {selectedOwnerSummary && (
+        <p className="text-xs text-zinc-500">
+          Viewing wishlist for: {selectedOwnerSummary.label}
+        </p>
+      )}
+
+      <ErrorAlert message={error} />
+
+      {wishlist.length === 0 ? (
+        <div className="card p-8 text-center text-sm text-zinc-500">
+          No wishlist items yet. Add items from Drop Finder.
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {grouped.map(([group, items]) => (
+            <div key={group} className="card p-4">
+              <h3 className="mb-3 text-sm font-semibold text-zinc-200">{group}</h3>
+              <div className="space-y-2">
+                {items.map((item) => (
+                  <div
+                    key={item.item_id}
+                    className="flex items-center justify-between rounded border border-border bg-surface-2 px-3 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <WishlistItemIcon
+                        icon={itemInfoMap[item.item_id]?.icon || item.icon}
+                        name={itemInfoMap[item.item_id]?.name || item.name}
+                      />
+                      <div className="min-w-0">
+                        <a
+                          href={`https://www.wowhead.com/item=${item.item_id}`}
+                          data-wowhead={`item=${item.item_id}${
+                            (() => {
+                              const extra = getWowheadData(
+                                item.bonus_ids ||
+                                  (item.wishlist_bonus_id ? [item.wishlist_bonus_id] : undefined),
+                                item.wishlist_ilvl || item.ilevel
+                              );
+                              return extra ? `&${extra}` : '';
+                            })()
+                          }`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="truncate text-sm font-medium text-zinc-100 hover:text-gold"
+                        >
+                          {itemInfoMap[item.item_id]?.name || item.name}
+                        </a>
+                        <p className="text-xs text-zinc-400">
+                          {item.encounter || 'Unknown Encounter'} - ilvl{' '}
+                          {item.wishlist_ilvl || item.ilevel}
+                          {item.wishlist_upgrade_label ? ` - ${item.wishlist_upgrade_label}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        removeFromWishlist(item.item_id, selectedOwnerKey);
+                        refreshWishlist();
+                      }}
+                      className="rounded border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/15"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

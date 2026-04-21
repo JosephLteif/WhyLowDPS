@@ -50,9 +50,10 @@ const baseNavItems: NavItem[] = [
     label: 'Upgrades',
     description: 'Find and sim gear upgrades.',
     icon: 'M7 7m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0M10.5 10.5L14 14',
-    matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade'],
+    matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade', '/wishlist'],
     children: [
       { href: '/drop-finder', label: 'Drop Finder', description: 'Sim raid & dungeon loot' },
+      { href: '/wishlist', label: 'Wishlist', description: 'Saved target drops' },
       { href: '/upgrade/trinkets', label: 'Trinkets', description: 'Sim trinket pools & pairs' },
       { href: '/upgrade-compare', label: 'Crest Upgrades', description: 'Best Dawncrest path' },
     ],

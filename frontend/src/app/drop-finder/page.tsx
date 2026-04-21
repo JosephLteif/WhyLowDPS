@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
@@ -24,6 +25,8 @@ import {
   type Instance,
   type UpgradeTracks,
 } from './types';
+import { parseCharacterInfo } from '../../lib/simc-parser';
+import { buildWishlistOwnerKey, loadWishlist, toggleWishlistEntry } from '../lib/wishlist';
 
 type Category = 'raids' | string;
 type SimDropItem = DropItem & { slot?: string };
@@ -347,12 +350,28 @@ export default function DropFinderPage() {
 
   const hasCharacter = simcInput.trim().length >= 10;
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [wishlistIds, setWishlistIds] = useState<Set<number>>(new Set());
   const [difficulty, setDifficulty] = useState('heroic');
   const [dungeonDiff, setDungeonDiff] = useState('mythic+10');
   const [upgradeLevel, setUpgradeLevel] = useState(0);
   const [category, setCategory] = useState<Category | ''>('');
   const skipNextDetectedSpecSyncRef = useRef(false);
   const skipNextDropsResetRef = useRef(false);
+
+  const wishlistOwnerKey = useMemo(() => {
+    const parsed = parseCharacterInfo(simcInput);
+    if (parsed?.kind === 'character') {
+      return buildWishlistOwnerKey({
+        name: parsed.name,
+        realm: parsed.server,
+        region: parsed.region,
+        className: parsed.className,
+      });
+    }
+    return buildWishlistOwnerKey({
+      className: className || detectedClass || undefined,
+    });
+  }, [simcInput, className, detectedClass]);
 
   useEffect(() => {
     const restored = consumeSimAgainState<DropFinderSimAgainState>(DROP_FINDER_SIM_AGAIN_KEY);
@@ -395,6 +414,10 @@ export default function DropFinderPage() {
     }
     setSelected(new Set());
   }, [drops]);
+
+  useEffect(() => {
+    setWishlistIds(new Set(loadWishlist(wishlistOwnerKey).map((item) => item.item_id)));
+  }, [wishlistOwnerKey]);
 
   const isRaid = category === 'raids';
   const activeDungeonCat = dungeonCats.find((dc) => dc.cat.key === category);
@@ -721,6 +744,14 @@ export default function DropFinderPage() {
 
       {drops && (
         <>
+          <div className="flex justify-end">
+            <Link
+              href="/wishlist"
+              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 hover:border-zinc-500 hover:text-white"
+            >
+              Open Wishlist
+            </Link>
+          </div>
           <DropSlotList
             drops={drops}
             selected={selected}
@@ -741,6 +772,11 @@ export default function DropFinderPage() {
             upgradeLevel={upgradeLevel}
             upgradeTracks={upgradeTracks}
             headerLabel={headerLabel}
+            isWishlisted={(itemId) => wishlistIds.has(itemId)}
+            onToggleWishlist={(item, slotLabel, meta) => {
+              const next = toggleWishlistEntry({ item, slot: slotLabel, meta }, wishlistOwnerKey);
+              setWishlistIds(new Set(next.map((entry) => entry.item_id)));
+            }}
           />
 
           <ErrorAlert message={error} />
@@ -769,7 +805,7 @@ export default function DropFinderPage() {
                       strokeLinecap="round"
                     />
                   </svg>
-                  Starting sim…
+                  Starting sim...
                 </>
               ) : (
                 submitLabel

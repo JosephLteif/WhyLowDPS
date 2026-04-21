@@ -34,6 +34,12 @@ interface DropSlotListProps {
   upgradeLevel: number;
   upgradeTracks: UpgradeTracks;
   headerLabel: string;
+  isWishlisted: (itemId: number) => boolean;
+  onToggleWishlist: (
+    item: DropItem,
+    slotLabel: string,
+    meta?: { ilvl?: number; bonusId?: number; upgradeLabel?: string }
+  ) => void;
 }
 
 export default function DropSlotList({
@@ -49,6 +55,8 @@ export default function DropSlotList({
   upgradeLevel,
   upgradeTracks,
   headerLabel,
+  isWishlisted,
+  onToggleWishlist,
 }: DropSlotListProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
   const visibleDrops = useMemo(() => {
@@ -170,6 +178,8 @@ export default function DropSlotList({
                 item={item}
                 isSelected={selected.has(item.item_id)}
                 onToggle={() => onToggle(item.item_id)}
+                isWishlisted={isWishlisted(item.item_id)}
+                onToggleWishlist={(meta) => onToggleWishlist(item, String(groupLabel), meta)}
                 difficulty={difficulty}
                 dungeonDiff={dungeonDiff}
                 upgradeLevel={upgradeLevel}
@@ -187,6 +197,8 @@ function DropItemCard({
   item,
   isSelected,
   onToggle,
+  isWishlisted,
+  onToggleWishlist,
   difficulty,
   dungeonDiff,
   upgradeLevel,
@@ -195,24 +207,68 @@ function DropItemCard({
   item: DropItem;
   isSelected: boolean;
   onToggle: () => void;
+  isWishlisted: boolean;
+  onToggleWishlist: (meta?: { ilvl?: number; bonusId?: number; upgradeLabel?: string }) => void;
   difficulty: string;
   dungeonDiff: string;
   upgradeLevel: number;
   upgradeTracks: UpgradeTracks;
 }) {
   const resolved = resolveUpgrade(item, difficulty, dungeonDiff, upgradeLevel, upgradeTracks);
-  const effectiveBonusId = getTrackInfo(item, difficulty, dungeonDiff)?.bonus_id;
+  const trackInfo = getTrackInfo(item, difficulty, dungeonDiff);
+  const effectiveBonusId = trackInfo?.bonus_id;
   const isOffSpec = item.off_spec === true;
+  const upgradeLabel = trackInfo?.track
+    ? `${trackInfo.track}${trackInfo.level ? ` ${trackInfo.level}` : ''}`
+    : undefined;
 
   return (
-    <button
+    <div
       onClick={onToggle}
-      className={`flex items-start gap-3 rounded-lg border px-3.5 py-2.5 text-left transition-all ${
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+      className={`relative flex items-start gap-3 rounded-lg border px-3.5 py-2.5 pr-10 text-left transition-all ${
         isSelected
           ? 'border-gold/40 bg-gold/10'
           : 'border-border bg-surface-2 hover:border-gray-500'
       }`}
     >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onToggleWishlist({
+            ilvl: resolved.ilvl,
+            bonusId: resolved.bonus_id || undefined,
+            upgradeLabel,
+          });
+        }}
+        className={`absolute right-2 top-2 rounded p-1 transition-colors ${
+          isWishlisted
+            ? 'text-rose-300 hover:bg-rose-500/20'
+            : 'text-zinc-500 hover:bg-white/10 hover:text-zinc-200'
+        }`}
+        title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+      >
+        <svg
+          viewBox="0 0 16 16"
+          className="h-4 w-4"
+          fill={isWishlisted ? 'currentColor' : 'none'}
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M8 13.2l-4.5-4.2a2.8 2.8 0 010-4 2.9 2.9 0 014 0L8 5.5l.5-.5a2.9 2.9 0 014 0 2.8 2.8 0 010 4L8 13.2z" />
+        </svg>
+      </button>
       <div className="relative shrink-0">
         <img
           src={`https://render.worldofwarcraft.com/icons/56/${item.icon}.jpg`}
@@ -248,6 +304,6 @@ function DropItemCard({
           {resolved.ilvl}
         </span>
       </div>
-    </button>
+    </div>
   );
 }

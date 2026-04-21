@@ -986,6 +986,10 @@ export default function SimResultClient() {
   }
 
   const isTopGear = r.type === 'top_gear';
+  const isDropFinderResult =
+    job.sim_type === 'droptimizer' ||
+    job.sim_type === 'drop_finder' ||
+    job.sim_type === 'drop-finder';
   const isTrinketTierHeatmap = job.sim_type === 'trinket_tier_heatmap';
   const isExternalBuffMatrix = job.sim_type === 'external_buff_matrix';
   const isConsumableMatrix = job.sim_type === 'consumable_matrix';
@@ -1043,6 +1047,7 @@ export default function SimResultClient() {
             stageTimings={stageTimings}
             talentString={r.talent_string as string | undefined}
             currencies={r.currencies as any}
+            enableWishlistActions={isDropFinderResult}
           />
         </>
       ) : isStatWeights ? (

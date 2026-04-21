@@ -2162,7 +2162,7 @@ export default function SimSharedConfig() {
             <button
               type="button"
               onClick={() => setHistoryDropdownOpen(!historyDropdownOpen)}
-              className="flex min-w-[220px] items-center justify-between gap-3 rounded-md border border-gold/35 bg-zinc-950/95 px-3 py-1.5 text-left shadow-sm shadow-black/40 transition-colors hover:border-gold/60 hover:bg-zinc-900"
+              className="flex min-w-[220px] items-center justify-between gap-3 rounded-md border border-gold/35 bg-surface-2/95 px-3 py-1.5 text-left shadow-sm shadow-black/30 transition-colors hover:border-gold/60 hover:bg-surface"
             >
               <div className="min-w-0">
                 {selectedProfileMeta?.name && selectedProfileMeta?.classLabel ? (
@@ -2196,7 +2196,8 @@ export default function SimSharedConfig() {
             </button>
             {historyDropdownOpen && (
               <div
-                className="absolute right-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950/95 shadow-2xl backdrop-blur">
+                className="absolute right-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur"
+              >
                 <div className="flex border-b border-border">
                   <button
                     type="button"
@@ -2231,7 +2232,7 @@ export default function SimSharedConfig() {
                       bnetProfiles.map((profile) => (
                         <div
                           key={profile.id}
-                          className="flex items-center justify-between px-3 py-2.5 hover:bg-white/5"
+                          className="flex items-center justify-between px-3 py-2.5 hover:bg-surface-2/70"
                         >
                           <button
                             type="button"
@@ -2291,8 +2292,8 @@ export default function SimSharedConfig() {
                       return (
                         <div
                           key={idx}
-                          className={`flex items-center justify-between px-3 py-2 hover:bg-white/5 ${
-                            selectedHistoryIdx === idx ? 'bg-white/5' : ''
+                          className={`flex items-center justify-between px-3 py-2 hover:bg-surface-2/70 ${
+                            selectedHistoryIdx === idx ? 'bg-surface-2/70' : ''
                           }`}
                         >
                           <button

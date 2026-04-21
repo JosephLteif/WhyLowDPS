@@ -60,6 +60,48 @@ const DISPLAY_GROUPS: DisplayGroup[] = [
 ];
 
 const UPGRADE_TRACK_MAX_LEVEL = 6;
+const SOURCE_TAG_STYLES: Record<string, string> = {
+  wishlist: 'text-rose-300 bg-rose-500/15 border-rose-400/40',
+  vault: 'text-amber-300 bg-amber-500/15 border-amber-400/40',
+  crafter: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
+  crafted: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
+  catalyst: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
+  bags: 'text-zinc-200 bg-white/[0.06] border-white/15',
+};
+
+function toTitleCase(input: string): string {
+  return input
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function resolveSourceTags(item: ResolvedItem): Array<{ text: string; color: string }> {
+  const tags: Array<{ text: string; color: string }> = [];
+
+  const pushTag = (rawText: string) => {
+    const text = toTitleCase(rawText || '');
+    if (!text) return;
+    if (tags.some((t) => t.text.toLowerCase() === text.toLowerCase())) return;
+    const key = text.toLowerCase();
+    tags.push({
+      text,
+      color: SOURCE_TAG_STYLES[key] || 'text-zinc-200 bg-white/[0.06] border-white/15',
+    });
+  };
+
+  if (item.origin === 'vault') pushTag('Vault');
+  if (item.tag) pushTag(item.tag);
+
+  const sourceType = String((item as any).source_type || '').toLowerCase();
+  if (sourceType.includes('wishlist')) pushTag('Wishlist');
+  if (sourceType.includes('vault')) pushTag('Vault');
+  if (sourceType.includes('craft')) pushTag('Crafter');
+
+  if (tags.length === 0 && item.origin) pushTag(item.origin);
+  return tags;
+}
 
 function getWowheadUrl(itemId: number): string {
   return `https://www.wowhead.com/item=${itemId}`;
@@ -573,15 +615,16 @@ export default function TopGearItemSelector({
       tooltip?: string;
     }[] = [];
 
-    if (item.origin === 'vault')
+    for (const sourceTag of resolveSourceTags(item)) {
       parts.push({
-        text: 'Great Vault',
-        color: 'text-amber-300 bg-amber-500/15 border-amber-400/40',
+        text: sourceTag.text,
+        color: sourceTag.color,
       });
+    }
     if (item.is_catalyst)
       parts.push({
         text: 'Catalyst',
-        color: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
+        color: SOURCE_TAG_STYLES.catalyst,
       });
     if (item.upgrade)
       parts.push({

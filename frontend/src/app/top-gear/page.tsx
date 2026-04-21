@@ -12,6 +12,7 @@ import type { ResolveGearResponse } from '../lib/types';
 const TOP_GEAR_SIM_AGAIN_KEY = 'top-gear';
 
 interface TopGearSimAgainState {
+  simcInput?: string;
   selectedUids?: Record<string, string[]>;
   localItems?: { slot: string; simc_string: string; origin: string }[];
   maxUpgrade?: boolean;
@@ -22,7 +23,7 @@ interface TopGearSimAgainState {
 }
 
 export default function TopGearPage() {
-  const { simcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
+  const { simcInput, setSimcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
   const [resolved, setResolved] = useState<ResolveGearResponse | null>(null);
   const [selectedUids, setSelectedUids] = useState<Record<string, Set<string>>>({});
   const [localItems, setLocalItems] = useState<
@@ -44,6 +45,12 @@ export default function TopGearPage() {
   useEffect(() => {
     const restored = consumeSimAgainState<TopGearSimAgainState>(TOP_GEAR_SIM_AGAIN_KEY);
     if (!restored) return;
+
+    const restoredInput =
+      typeof restored.simcInput === 'string' && restored.simcInput.trim().length > 0
+        ? restored.simcInput.trim()
+        : null;
+    if (restoredInput) setSimcInput(restoredInput);
 
     if (restored.selectedUids && typeof restored.selectedUids === 'object') {
       const next: Record<string, Set<string>> = {};
@@ -76,14 +83,14 @@ export default function TopGearPage() {
       skipNextResolveRef.current = true;
     }
 
-    prevInputRef.current = simcInput.trim();
+    prevInputRef.current = restoredInput ?? simcInput.trim();
     prevUpgradeRef.current =
       typeof restored.maxUpgrade === 'boolean' ? restored.maxUpgrade : maxUpgrade;
     prevCatalystRef.current =
       typeof restored.catalyst === 'boolean' ? restored.catalyst : catalyst;
 
     skipNextInputResetRef.current = true;
-  }, [simcInput, maxUpgrade, catalyst]);
+  }, [simcInput, maxUpgrade, catalyst, setSimcInput]);
 
   // Resolve gear when simc input, maxUpgrade, or catalyst changes
   useEffect(() => {

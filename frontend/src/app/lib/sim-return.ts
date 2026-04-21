@@ -113,3 +113,12 @@ export function consumeSimAgainState<T>(pageKey: string): T | null {
     return null;
   }
 }
+
+export function setSimAgainState(pageKey: string, state: unknown): void {
+  const key = (pageKey || '').trim();
+  if (!key || typeof window === 'undefined') return;
+  const storageKey = `${RESTORE_PREFIX}${key}`;
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(state));
+  } catch {}
+}

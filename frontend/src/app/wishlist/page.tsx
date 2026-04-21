@@ -1,13 +1,14 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { API_URL, fetchJson, listCharacterProfiles } from '../lib/api';
-import { getWowheadData, useItemInfo } from '../lib/useItemInfo';
+import { getWowheadData, QUALITY_COLORS, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
-import { useSimSubmit } from '../lib/useSimSubmit';
+import { setSimAgainState } from '../lib/sim-return';
 import { parseCharacterInfo } from '../../lib/simc-parser';
 import {
   WISHLIST_STORAGE_KEY,
@@ -22,7 +23,14 @@ import {
 } from '../lib/wishlist';
 
 type SelectedItemsMap = Record<string, string[]>;
-type ItemsBySlotMap = Record<string, ResolvedItem[]>;
+type BnetCharacter = {
+  name?: string;
+  realm?: string;
+  region?: string;
+  class?: string;
+  className?: string;
+  character_class?: { name?: string };
+};
 
 function makeUid(
   itemId: number,
@@ -79,14 +87,16 @@ function slotCandidates(item: WishlistItem): string[] {
       if (fallback.includes('back')) return ['back'];
       if (fallback.includes('chest')) return ['chest'];
       if (fallback.includes('wrist')) return ['wrist'];
+      // Match weapon hands before generic "hands" so "main hand"/"off hand"
+      // does not get misclassified as glove slot.
+      if (fallback.includes('main')) return ['main_hand'];
+      if (fallback.includes('off')) return ['off_hand'];
       if (fallback.includes('hand')) return ['hands'];
       if (fallback.includes('waist')) return ['waist'];
       if (fallback.includes('leg')) return ['legs'];
       if (fallback.includes('feet')) return ['feet'];
       if (fallback.includes('finger') || fallback.includes('ring')) return ['finger1', 'finger2'];
       if (fallback.includes('trinket')) return ['trinket1', 'trinket2'];
-      if (fallback.includes('main')) return ['main_hand'];
-      if (fallback.includes('off')) return ['off_hand'];
       return [];
     }
   }
@@ -96,6 +106,23 @@ function groupLabel(item: WishlistItem): string {
   const instance = item.instance_name || 'Unknown Instance';
   const source = item.source_type || 'Unknown Source';
   return `${instance} - ${source}`;
+}
+
+function slotGroupLabel(item: WishlistItem): string {
+  const slot = (item.wishlist_slot || '').trim();
+  if (slot) {
+    return slot
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  const first = slotCandidates(item)[0];
+  if (!first) return 'Unknown Slot';
+  return first
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function iconCandidates(icon: string): string[] {
@@ -161,9 +188,14 @@ async function resolveSimcInputForOwner(opts: {
 }
 
 export default function WishlistPage() {
-  const { simcInput, maxCombinations } = useSimContext();
+  const router = useRouter();
+  const { simcInput, setSimcInput } = useSimContext();
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
+  const [bnetCharacters, setBnetCharacters] = useState<BnetCharacter[]>([]);
+  const [groupBy, setGroupBy] = useState<'instance' | 'slot'>('instance');
+  const [preparingTopGear, setPreparingTopGear] = useState(false);
+  const [error, setError] = useState('');
 
   const characterInfo = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
 
@@ -224,18 +256,81 @@ export default function WishlistPage() {
     setWishlist(loadWishlist(selectedOwnerKey));
   }, [selectedOwnerKey]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<{ characters?: BnetCharacter[] } | BnetCharacter[]>(`${API_URL}/api/bnet/user/characters`)
+      .then((response) => {
+        if (cancelled) return;
+        const list = Array.isArray(response) ? response : response?.characters || [];
+        setBnetCharacters(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBnetCharacters([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectorOwners = useMemo(() => {
+    const byKey = new Map<string, WishlistOwnerSummary>();
+    for (const owner of owners) {
+      byKey.set(owner.key, owner);
+    }
+
+    for (const char of bnetCharacters) {
+      const name = (char.name || '').trim();
+      const realm = (char.realm || '').trim();
+      const region = (char.region || '').trim();
+      if (!name || !realm || !region) continue;
+      const className =
+        (char.className || '').trim() ||
+        (char.class || '').trim() ||
+        (char.character_class?.name || '').trim();
+      const key = buildWishlistOwnerKey({ name, realm, region, className });
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        key,
+        count: loadWishlist(key).length,
+        name,
+        realm,
+        region,
+        className: className || undefined,
+        label: name,
+      });
+    }
+
+    if (!byKey.has(activeCharacterOwnerKey)) {
+      byKey.set(activeCharacterOwnerKey, {
+        key: activeCharacterOwnerKey,
+        label: characterInfo?.kind === 'character' ? characterInfo.name : 'Active character',
+        count: loadWishlist(activeCharacterOwnerKey).length,
+      });
+    }
+
+    return [...byKey.values()].sort((a, b) => {
+      const aIsGlobal = a.key === 'global';
+      const bIsGlobal = b.key === 'global';
+      if (aIsGlobal && !bIsGlobal) return -1;
+      if (!aIsGlobal && bIsGlobal) return 1;
+      if (a.count !== b.count) return b.count - a.count;
+      return a.label.localeCompare(b.label);
+    });
+  }, [owners, bnetCharacters, activeCharacterOwnerKey, characterInfo]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, WishlistItem[]>();
     for (const item of wishlist) {
-      const key = groupLabel(item);
+      const key = groupBy === 'slot' ? slotGroupLabel(item) : groupLabel(item);
       const list = map.get(key) || [];
       list.push(item);
       map.set(key, list);
     }
-    return [...map.entries()];
-  }, [wishlist]);
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
+  }, [wishlist, groupBy]);
 
-  const buildPayload = useCallback(async () => {
+  const buildTopGearRestoreState = useCallback(async () => {
     const effectiveSimcInput = await resolveSimcInputForOwner({
       selectedOwnerKey,
       activeOwnerKey: activeCharacterOwnerKey,
@@ -249,18 +344,23 @@ export default function WishlistPage() {
       body: JSON.stringify({ simc_input: effectiveSimcInput, max_upgrade: false, catalyst: false }),
     });
 
-    const itemsBySlot: ItemsBySlotMap = {};
     const selectedItems: SelectedItemsMap = {};
-
-    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
-      const items: ResolvedItem[] = [];
-      if (slotRes.equipped) items.push(slotRes.equipped);
-      items.push(...slotRes.alternatives);
-      itemsBySlot[slot] = items;
-    }
+    const nextResolved: ResolveGearResponse = {
+      ...resolved,
+      slots: Object.fromEntries(
+        Object.entries(resolved.slots).map(([slot, slotRes]) => [
+          slot,
+          {
+            ...slotRes,
+            equipped: slotRes.equipped ? { ...slotRes.equipped } : null,
+            alternatives: [...slotRes.alternatives],
+          },
+        ])
+      ),
+    };
 
     for (const wish of wishlist) {
-      const slots = slotCandidates(wish).filter((slot) => !!itemsBySlot[slot]);
+      const slots = slotCandidates(wish).filter((slot) => !!nextResolved.slots[slot]);
       if (slots.length === 0) continue;
       const bonusIds = Array.isArray(wish.bonus_ids) ? wish.bonus_ids : [];
       const finalBonusIds =
@@ -276,9 +376,26 @@ export default function WishlistPage() {
 
       for (const slot of slots) {
         const uid = makeUid(wish.item_id, finalBonusIds, 'bags', slot);
-        const exists = itemsBySlot[slot]?.some((item) => item.uid === uid);
+        const slotRes = nextResolved.slots[slot];
+        const exists =
+          slotRes?.equipped?.uid === uid ||
+          slotRes?.alternatives?.some((item) => item.uid === uid);
         if (!exists) {
-          itemsBySlot[slot].push({
+          const itemInfo = itemInfoMap[wish.item_id];
+          const resolvedIcon = itemInfoMap[wish.item_id]?.icon || wish.icon || '';
+          const resolvedQuality =
+            typeof itemInfo?.quality === 'number' ? itemInfo.quality : wish.quality;
+          const resolvedQualityColor =
+            QUALITY_COLORS[resolvedQuality] ||
+            (resolvedQuality >= 5
+              ? '#ff8000'
+              : resolvedQuality === 4
+                ? '#a335ee'
+                : resolvedQuality === 3
+                  ? '#0070dd'
+                  : '#1eff00');
+          const resolvedUpgrade = wish.wishlist_upgrade_label || itemInfo?.upgrade || '';
+          const newItem: ResolvedItem = {
             uid,
             slot,
             item_id: wish.item_id,
@@ -289,18 +406,11 @@ export default function WishlistPage() {
             enchant_id: 0,
             gem_id: 0,
             name: wish.name,
-            icon: wish.icon,
-            quality: wish.quality,
-            quality_color:
-              wish.quality >= 5
-                ? '#ff8000'
-                : wish.quality === 4
-                  ? '#a335ee'
-                  : wish.quality === 3
-                    ? '#0070dd'
-                    : '#1eff00',
+            icon: resolvedIcon,
+            quality: resolvedQuality,
+            quality_color: resolvedQualityColor,
             tag: 'Wishlist',
-            upgrade: '',
+            upgrade: resolvedUpgrade,
             sockets: 0,
             enchant_name: '',
             gem_name: '',
@@ -309,7 +419,8 @@ export default function WishlistPage() {
             instance_name: wish.instance_name,
             source_type: wish.source_type,
             inventory_type: wish.inventory_type,
-          });
+          };
+          slotRes.alternatives.push(newItem);
         }
         if (!selectedItems[slot]) selectedItems[slot] = [];
         if (!selectedItems[slot].includes(uid)) selectedItems[slot].push(uid);
@@ -317,31 +428,58 @@ export default function WishlistPage() {
     }
 
     return {
-      simc_input: effectiveSimcInput,
-      selected_items: selectedItems,
-      items_by_slot: itemsBySlot,
-      max_upgrade: false,
-      copy_enchants: true,
-      ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
+      simcInput: effectiveSimcInput,
+      selectedUids: selectedItems,
+      localItems: [],
+      maxUpgrade: false,
+      copyEnchants: true,
+      catalyst: false,
+      catalystCharges: null,
+      resolved: nextResolved,
     };
-  }, [selectedOwnerKey, activeCharacterOwnerKey, simcInput, wishlist, maxCombinations]);
+  }, [selectedOwnerKey, activeCharacterOwnerKey, simcInput, wishlist, itemInfoMap]);
 
-  const validate = useCallback(() => {
+  const handleGenerateWishlistSim = useCallback(async () => {
     if (!simcInput.trim() && !selectedOwnerSummary?.name) {
-      return 'Load a SimC export or pick a saved character wishlist.';
+      setError('Load a SimC export or pick a saved character wishlist.');
+      return;
     }
     if (!canGenerateForSelectedOwner) {
-      return 'Switch to the active character in Wishlist to generate this sim.';
+      setError('Switch to the active character in Wishlist to prepare this in Top Gear.');
+      return;
     }
-    if (wishlist.length === 0) return 'Your wishlist is empty.';
-    return null;
-  }, [simcInput, wishlist, canGenerateForSelectedOwner, selectedOwnerSummary]);
+    if (wishlist.length === 0) {
+      setError('Your wishlist is empty.');
+      return;
+    }
 
-  const { submit, submitting, error, buttonLabel } = useSimSubmit({
-    endpoint: '/api/top-gear/sim',
-    buildPayload,
-    validate,
-  });
+    setPreparingTopGear(true);
+    setError('');
+    try {
+      const state = await buildTopGearRestoreState();
+      if (!state) {
+        setError('Could not prepare Top Gear state from this wishlist.');
+        return;
+      }
+      if (typeof state.simcInput === 'string' && state.simcInput.trim().length > 0) {
+        setSimcInput(state.simcInput);
+      }
+      setSimAgainState('top-gear', state);
+      router.push('/top-gear');
+    } catch {
+      setError('Failed to prepare Top Gear with wishlist items.');
+    } finally {
+      setPreparingTopGear(false);
+    }
+  }, [
+    simcInput,
+    selectedOwnerSummary,
+    canGenerateForSelectedOwner,
+    wishlist.length,
+    buildTopGearRestoreState,
+    setSimcInput,
+    router,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -349,12 +487,6 @@ export default function WishlistPage() {
         <div>
           <h2 className="text-lg font-semibold text-zinc-100">Wishlist</h2>
           <p className="text-sm text-zinc-400">{wishlist.length} saved item(s)</p>
-          <p className="text-xs text-zinc-500">
-            Active character:{' '}
-            {characterInfo?.kind === 'character'
-              ? `${characterInfo.name} - ${characterInfo.server || 'unknown realm'} (${characterInfo.region || 'unknown region'})`
-              : 'No active character loaded'}
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
@@ -364,24 +496,11 @@ export default function WishlistPage() {
               onChange={(e) => setSelectedOwnerKey(e.target.value)}
               className="rounded border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-100"
             >
-              {(() => {
-                const options = [...owners];
-                if (!options.some((owner) => owner.key === activeCharacterOwnerKey)) {
-                  options.unshift({
-                    key: activeCharacterOwnerKey,
-                    label:
-                      characterInfo?.kind === 'character'
-                        ? `${characterInfo.name} - ${characterInfo.className || 'character'}`
-                        : 'Active character',
-                    count: loadWishlist(activeCharacterOwnerKey).length,
-                  });
-                }
-                return options.map((owner) => (
-                  <option key={owner.key} value={owner.key}>
-                    {owner.label} ({owner.count})
-                  </option>
-                ));
-              })()}
+              {selectorOwners.map((owner) => (
+                <option key={owner.key} value={owner.key}>
+                  {owner.label} ({owner.count})
+                </option>
+              ))}
             </select>
           </div>
           <button
@@ -395,9 +514,9 @@ export default function WishlistPage() {
             Clear All
           </button>
           <button
-            onClick={() => void submit()}
+            onClick={() => void handleGenerateWishlistSim()}
             disabled={
-              submitting ||
+              preparingTopGear ||
               wishlist.length === 0 ||
               !hasSimSource ||
               !canGenerateForSelectedOwner
@@ -411,18 +530,40 @@ export default function WishlistPage() {
                   : undefined
             }
           >
-            {submitting ? 'Generating...' : buttonLabel('Generate Wishlist Sim')}
+            {preparingTopGear ? 'Preparing Top Gear...' : 'Generate Wishlist Sim'}
           </button>
         </div>
       </div>
 
-      {selectedOwnerSummary && (
-        <p className="text-xs text-zinc-500">
-          Viewing wishlist for: {selectedOwnerSummary.label}
-        </p>
-      )}
-
       <ErrorAlert message={error} />
+
+      <div className="flex items-center gap-2">
+        <span className="text-xs uppercase tracking-wider text-zinc-500">Group By</span>
+        <div className="inline-flex rounded border border-border bg-surface-2 p-0.5">
+          <button
+            type="button"
+            onClick={() => setGroupBy('instance')}
+            className={`rounded px-2 py-1 text-xs transition ${
+              groupBy === 'instance'
+                ? 'bg-gold/20 text-gold'
+                : 'text-zinc-300 hover:bg-surface-3 hover:text-zinc-100'
+            }`}
+          >
+            By Instance
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupBy('slot')}
+            className={`rounded px-2 py-1 text-xs transition ${
+              groupBy === 'slot'
+                ? 'bg-gold/20 text-gold'
+                : 'text-zinc-300 hover:bg-surface-3 hover:text-zinc-100'
+            }`}
+          >
+            By Slot
+          </button>
+        </div>
+      </div>
 
       {wishlist.length === 0 ? (
         <div className="card p-8 text-center text-sm text-zinc-500">

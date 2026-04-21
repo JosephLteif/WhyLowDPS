@@ -42,9 +42,31 @@ function normalizeItemList(items: unknown): WishlistItem[] {
   return items.filter((item) => item && typeof item.item_id === 'number');
 }
 
+function dedupeItemList(items: WishlistItem[]): WishlistItem[] {
+  const seen = new Set<number>();
+  const out: WishlistItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.item_id)) continue;
+    seen.add(item.item_id);
+    out.push(item);
+  }
+  return out;
+}
+
 function resolveOwnerKey(ownerKey?: string): string {
   const normalized = (ownerKey || '').trim().toLowerCase();
   return normalized || GLOBAL_WISHLIST_OWNER_KEY;
+}
+
+function canonicalOwnerKey(ownerKey?: string): string {
+  const resolved = resolveOwnerKey(ownerKey);
+  if (resolved === GLOBAL_WISHLIST_OWNER_KEY) return resolved;
+  const parsed = parseWishlistOwnerKey(resolved);
+  return buildWishlistOwnerKey({
+    name: parsed.name,
+    realm: parsed.realm,
+    region: parsed.region,
+  });
 }
 
 function emptyStorage(): WishlistStorageV2 {
@@ -78,12 +100,23 @@ function readStorage(): WishlistStorageV2 {
       parsed.by_owner &&
       typeof parsed.by_owner === 'object'
     ) {
-      const normalizedEntries = Object.entries(parsed.by_owner as Record<string, unknown>).map(
-        ([key, value]) => [resolveOwnerKey(key), normalizeItemList(value)] as const
-      );
+      const byOwner: Record<string, WishlistItem[]> = {};
+      for (const [key, value] of Object.entries(parsed.by_owner as Record<string, unknown>)) {
+        const resolvedKey = resolveOwnerKey(key);
+        const parsedOwner = parseWishlistOwnerKey(resolvedKey);
+        const canonicalKey = buildWishlistOwnerKey({
+          name: parsedOwner.name,
+          realm: parsedOwner.realm,
+          region: parsedOwner.region,
+        });
+        byOwner[canonicalKey] = dedupeItemList([
+          ...(byOwner[canonicalKey] || []),
+          ...normalizeItemList(value),
+        ]);
+      }
       return {
         version: 2,
-        by_owner: Object.fromEntries(normalizedEntries),
+        by_owner: byOwner,
       };
     }
 
@@ -102,10 +135,11 @@ export function buildWishlistOwnerKey(owner: WishlistOwnerInput): string {
   const name = (owner.name || '').trim().toLowerCase();
   const realm = (owner.realm || '').trim().toLowerCase();
   const region = (owner.region || '').trim().toLowerCase();
-  const className = (owner.className || '').trim().toLowerCase();
 
-  if (!name && !realm && !region && !className) return GLOBAL_WISHLIST_OWNER_KEY;
-  return `${region}:${realm}:${name}:${className}`;
+  // Canonical owner key: character identity only.
+  // Excluding class avoids duplicate buckets when class labels drift.
+  if (!name && !realm && !region) return GLOBAL_WISHLIST_OWNER_KEY;
+  return `${region}:${realm}:${name}`;
 }
 
 export function parseWishlistOwnerKey(ownerKey: string): WishlistOwnerInput {
@@ -134,20 +168,20 @@ function ownerLabel(ownerKey: string): string {
 
 export function loadWishlist(ownerKey?: string): WishlistItem[] {
   const storage = readStorage();
-  const key = resolveOwnerKey(ownerKey);
+  const key = canonicalOwnerKey(ownerKey);
   return normalizeItemList(storage.by_owner[key]);
 }
 
 export function saveWishlist(items: WishlistItem[], ownerKey?: string): void {
   const storage = readStorage();
-  const key = resolveOwnerKey(ownerKey);
+  const key = canonicalOwnerKey(ownerKey);
   storage.by_owner[key] = normalizeItemList(items);
   writeStorage(storage);
 }
 
 export function clearWishlist(ownerKey?: string): void {
   const storage = readStorage();
-  const key = resolveOwnerKey(ownerKey);
+  const key = canonicalOwnerKey(ownerKey);
   delete storage.by_owner[key];
   writeStorage(storage);
 }

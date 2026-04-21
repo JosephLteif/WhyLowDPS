@@ -23,6 +23,14 @@ import {
 
 type SelectedItemsMap = Record<string, string[]>;
 type ItemsBySlotMap = Record<string, ResolvedItem[]>;
+type BnetCharacter = {
+  name?: string;
+  realm?: string;
+  region?: string;
+  class?: string;
+  className?: string;
+  character_class?: { name?: string };
+};
 
 function makeUid(
   itemId: number,
@@ -164,6 +172,7 @@ export default function WishlistPage() {
   const { simcInput, maxCombinations } = useSimContext();
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
+  const [bnetCharacters, setBnetCharacters] = useState<BnetCharacter[]>([]);
 
   const characterInfo = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
 
@@ -223,6 +232,65 @@ export default function WishlistPage() {
   useEffect(() => {
     setWishlist(loadWishlist(selectedOwnerKey));
   }, [selectedOwnerKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<{ characters?: BnetCharacter[] } | BnetCharacter[]>(`${API_URL}/api/bnet/user/characters`)
+      .then((response) => {
+        if (cancelled) return;
+        const list = Array.isArray(response) ? response : response?.characters || [];
+        setBnetCharacters(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBnetCharacters([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectorOwners = useMemo(() => {
+    const byKey = new Map<string, WishlistOwnerSummary>();
+    for (const owner of owners) {
+      byKey.set(owner.key, owner);
+    }
+
+    for (const char of bnetCharacters) {
+      const name = (char.name || '').trim();
+      const realm = (char.realm || '').trim();
+      const region = (char.region || '').trim();
+      if (!name || !realm || !region) continue;
+      const className =
+        (char.className || '').trim() ||
+        (char.class || '').trim() ||
+        (char.character_class?.name || '').trim();
+      const key = buildWishlistOwnerKey({ name, realm, region, className });
+      if (byKey.has(key)) continue;
+      byKey.set(key, {
+        key,
+        count: loadWishlist(key).length,
+        name,
+        realm,
+        region,
+        className: className || undefined,
+        label: `${name} - ${className || 'character'} (${realm} / ${region.toLowerCase()})`,
+      });
+    }
+
+    if (!byKey.has(activeCharacterOwnerKey)) {
+      byKey.set(activeCharacterOwnerKey, {
+        key: activeCharacterOwnerKey,
+        label:
+          characterInfo?.kind === 'character'
+            ? `${characterInfo.name} - ${characterInfo.className || 'character'}`
+            : 'Active character',
+        count: loadWishlist(activeCharacterOwnerKey).length,
+      });
+    }
+
+    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [owners, bnetCharacters, activeCharacterOwnerKey, characterInfo]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, WishlistItem[]>();
@@ -364,24 +432,11 @@ export default function WishlistPage() {
               onChange={(e) => setSelectedOwnerKey(e.target.value)}
               className="rounded border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-100"
             >
-              {(() => {
-                const options = [...owners];
-                if (!options.some((owner) => owner.key === activeCharacterOwnerKey)) {
-                  options.unshift({
-                    key: activeCharacterOwnerKey,
-                    label:
-                      characterInfo?.kind === 'character'
-                        ? `${characterInfo.name} - ${characterInfo.className || 'character'}`
-                        : 'Active character',
-                    count: loadWishlist(activeCharacterOwnerKey).length,
-                  });
-                }
-                return options.map((owner) => (
-                  <option key={owner.key} value={owner.key}>
-                    {owner.label} ({owner.count})
-                  </option>
-                ));
-              })()}
+              {selectorOwners.map((owner) => (
+                <option key={owner.key} value={owner.key}>
+                  {owner.label} ({owner.count})
+                </option>
+              ))}
             </select>
           </div>
           <button

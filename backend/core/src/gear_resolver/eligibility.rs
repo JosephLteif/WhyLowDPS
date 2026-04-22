@@ -2,7 +2,8 @@ use crate::item_db;
 use crate::types::class_data;
 use crate::types::*;
 
-/// Build a stable UID for deduplication: "item_id:sorted_bonus_ids:origin:raw_slot"
+/// Build a stable UID for deduplication:
+/// "item_id:sorted_bonus_ids:origin:i<ilevel>:e<enchant>:g<gem>:raw_slot"
 pub fn make_uid(item: &RawParsedItem, slot: &str) -> String {
     let mut sorted = item.bonus_ids.clone();
     sorted.sort();
@@ -12,17 +13,19 @@ pub fn make_uid(item: &RawParsedItem, slot: &str) -> String {
         .collect::<Vec<_>>()
         .join(":");
     format!(
-        "{}:{}:{}:e{}:g{}:{}",
+        "{}:{}:{}:i{}:e{}:g{}:{}",
         item.item_id,
         bonus_key,
         item.origin.as_str(),
+        item.ilevel,
         item.enchant_id,
         item.gem_id,
         slot
     )
 }
 
-/// Dedup key: item_id + sorted bonus_ids (ignores origin/slot).
+/// Dedup key used within a slot list.
+/// Keep origin so tagged variants (e.g. vault vs bags) remain distinct.
 pub fn dedup_key(item: &RawParsedItem) -> String {
     let mut sorted = item.bonus_ids.clone();
     sorted.sort();
@@ -32,8 +35,13 @@ pub fn dedup_key(item: &RawParsedItem) -> String {
         .collect::<Vec<_>>()
         .join(":");
     format!(
-        "{}:{}:e{}:g{}",
-        item.item_id, bonus_key, item.enchant_id, item.gem_id
+        "{}:{}:{}:i{}:e{}:g{}",
+        item.item_id,
+        bonus_key,
+        item.origin.as_str(),
+        item.ilevel,
+        item.enchant_id,
+        item.gem_id
     )
 }
 

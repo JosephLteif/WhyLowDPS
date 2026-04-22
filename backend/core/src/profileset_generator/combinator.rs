@@ -160,7 +160,16 @@ pub fn gear_set_identity_key(gs: &HashMap<String, ResolvedItem>) -> String {
                 .map(|b| b.to_string())
                 .collect::<Vec<_>>()
                 .join(":");
-            let item_key = format!("{}:{}:e{}:g{}", i.item_id, b_key, i.enchant_id, i.gem_id);
+            // Include origin so source-tagged variants do not collapse to one identity.
+            let item_key = format!(
+                "{}:{}:{}:i{}:e{}:g{}",
+                i.item_id,
+                b_key,
+                i.origin.as_str(),
+                i.ilevel,
+                i.enchant_id,
+                i.gem_id
+            );
 
             match *slot {
                 "finger1" | "finger2" => finger_items.push(item_key),

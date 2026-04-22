@@ -121,22 +121,24 @@ function makeUid(item: {
   bonus_ids: number[];
   origin: string;
   slot: string;
+  ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
 }
 
 function makeIdentity(item: {
   item_id: number;
   bonus_ids: number[];
   origin: string;
+  ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
 }
 
 function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {
@@ -241,36 +243,61 @@ export default function TopGearItemSelector({
         /bonus_id=[0-9/:]+/,
         `bonus_id=${newBonusIds.join('/')}`
       );
-      const copyOrigin = 'bags';
-      const copy: ResolvedItem = {
-        ...item,
-        origin: copyOrigin as any,
-        uid: makeUid({
+      const copyOrigin = item.origin === 'equipped' ? 'bags' : item.origin;
+      const targetSlots =
+        item.slot === 'finger1'
+          ? ['finger1', 'finger2']
+          : item.slot === 'finger2'
+            ? ['finger1', 'finger2']
+            : item.slot === 'trinket1'
+              ? ['trinket1', 'trinket2']
+              : item.slot === 'trinket2'
+                ? ['trinket1', 'trinket2']
+                : [item.slot];
+
+      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+      for (const slot of targetSlots) {
+        const uid = makeUid({
           item_id: item.item_id,
           bonus_ids: newBonusIds,
           origin: copyOrigin,
-          slot: item.slot,
+          slot,
+          ilevel: option.itemLevel,
           enchant_id: item.enchant_id,
           gem_id: item.gem_id,
-        }),
-        bonus_ids: newBonusIds,
-        simc_string: newSimcString,
-        ilevel: option.itemLevel,
-        upgrade: option.fullName,
-      };
-
-      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
-      const slotRes = nextResolved.slots[item.slot];
-      if (slotRes) {
+        });
+        const slotRes = nextResolved.slots[slot];
+        if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
+        const copy: ResolvedItem = {
+          ...item,
+          slot,
+          origin: copyOrigin as any,
+          uid,
+          bonus_ids: newBonusIds,
+          simc_string: newSimcString,
+          ilevel: option.itemLevel,
+          upgrade: option.fullName,
+        };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }
       onResolvedChange(nextResolved);
-      onItemAdded(item.slot, newSimcString, item.origin);
+      onItemAdded(item.slot, newSimcString, copyOrigin);
       const nextSelected = {
         ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
       };
-      if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
-      nextSelected[item.slot].add(copy.uid);
+      for (const slot of targetSlots) {
+        const uid = makeUid({
+          item_id: item.item_id,
+          bonus_ids: newBonusIds,
+          origin: copyOrigin,
+          slot,
+          ilevel: option.itemLevel,
+          enchant_id: item.enchant_id,
+          gem_id: item.gem_id,
+        });
+        if (!nextSelected[slot]) nextSelected[slot] = new Set();
+        nextSelected[slot].add(uid);
+      }
       onSelectionChange(nextSelected);
       setUpgradeMenuFor(null);
     },
@@ -308,6 +335,7 @@ export default function TopGearItemSelector({
         bonus_ids: item.bonus_ids,
         origin: 'bags',
         slot: item.slot,
+        ilevel: item.ilevel,
         enchant_id: enchantId,
         gem_id: firstGemId,
       });
@@ -384,7 +412,13 @@ export default function TopGearItemSelector({
           ? `${difficultyInfo.track} ${difficultyInfo.level}/${UPGRADE_TRACK_MAX_LEVEL}`
           : '';
 
-      const uid = makeUid({ item_id: item.item_id, bonus_ids: bonusIds, origin: 'bags', slot });
+      const uid = makeUid({
+        item_id: item.item_id,
+        bonus_ids: bonusIds,
+        origin: 'bags',
+        slot,
+        ilevel: ilvl,
+      });
       const newItem: ResolvedItem = {
         uid,
         slot,
@@ -423,6 +457,7 @@ export default function TopGearItemSelector({
             bonus_ids: bonusIds,
             origin: 'bags',
             slot: s,
+            ilevel: ilvl,
           });
           targetSlot.alternatives = [
             ...targetSlot.alternatives,
@@ -439,6 +474,7 @@ export default function TopGearItemSelector({
           bonus_ids: bonusIds,
           origin: 'bags',
           slot: s,
+          ilevel: ilvl,
         });
         if (!nextSelected[s]) nextSelected[s] = new Set();
         nextSelected[s].add(slotUid);

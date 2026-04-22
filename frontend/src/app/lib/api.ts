@@ -197,51 +197,6 @@ export async function updateConfig(config: Partial<AppConfig>): Promise<void> {
   });
 }
 
-export interface SimcStatus {
-  channel: string;
-  channel_path?: string;
-  installed_path: string;
-  installed_exists: boolean;
-  installed_version: string | null;
-  installed_date?: string | null;
-  installed_channel?: string | null;
-  latest_version: string | null;
-  latest_download: string | null;
-  available_versions?: Record<string, string | null>;
-  available_downloads?: Record<string, string | null>;
-  update_available: boolean;
-  checking_failed: boolean;
-  detail: string | null;
-  is_updating: boolean;
-  download_progress?: {
-    channel: string;
-    phase: string;
-    unit: 'bytes' | 'files';
-    bytes_downloaded: number;
-    bytes_total: number | null;
-    speed_bps: number | null;
-    percent: number | null;
-    eta_seconds: number | null;
-    elapsed_seconds: number;
-  } | null;
-}
-
-export async function getSimcStatus(): Promise<SimcStatus> {
-  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/status`);
-}
-
-export async function downloadLatestSimc(): Promise<SimcStatus> {
-  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/download-latest`, {
-    method: 'POST',
-  });
-}
-
-export async function removeSimcChannel(): Promise<SimcStatus> {
-  return fetchJson<SimcStatus>(`${API_URL}/api/system/simc/remove`, {
-    method: 'POST',
-  });
-}
-
 export async function listSavedRoutes(): Promise<SavedRoute[]> {
   return fetchJson<SavedRoute[]>(`${API_URL}/api/routes`);
 }

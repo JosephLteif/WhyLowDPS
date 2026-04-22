@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { APP_VERSION } from '../lib/version';
+import {
+  classifyReleaseChannel,
+  readStoredUpdateChannel,
+  type UpdateChannel,
+} from '../lib/update-channel';
 
 type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error';
 type CacheRefreshState = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
@@ -19,6 +24,7 @@ type UpdateDetails = {
   currentVersion?: string;
   manualDownloadUrl?: string;
   fallbackOnly?: boolean;
+  channel?: UpdateChannel;
 };
 
 type DownloadProgress = {
@@ -37,8 +43,7 @@ const CACHE_REFRESH_CHECK_EVENT = 'whylowdps-cache-refresh-start';
 const CACHE_REFRESH_STATUS_EVENT = 'whylowdps-cache-refresh-status';
 const UPDATER_MANIFEST_URL =
   'https://github.com/JosephLteif/simcraft/releases/latest/download/latest.json';
-const GITHUB_RELEASES_LATEST_API =
-  'https://api.github.com/repos/JosephLteif/simcraft/releases/latest';
+const GITHUB_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
 
 function isDesktopRuntime(): boolean {
   if (typeof window === 'undefined') return false;
@@ -58,23 +63,66 @@ function normalizeVersion(version: string): string {
   return version.trim().replace(/^v/i, '');
 }
 
+type ParsedSemver = {
+  major: number;
+  minor: number;
+  patch: number;
+  prerelease: string[];
+};
+
+function parseVersion(value: string): ParsedSemver | null {
+  const raw = normalizeVersion(value);
+  const match = raw.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/);
+  if (!match) return null;
+  const major = Number.parseInt(match[1], 10);
+  const minor = Number.parseInt(match[2], 10);
+  const patch = Number.parseInt(match[3], 10);
+  if ([major, minor, patch].some((part) => Number.isNaN(part))) return null;
+  const prerelease = match[4] ? match[4].split('.').filter(Boolean) : [];
+  return { major, minor, patch, prerelease };
+}
+
+function comparePrerelease(left: string[], right: string[]): number {
+  if (left.length === 0 && right.length === 0) return 0;
+  if (left.length === 0) return 1;
+  if (right.length === 0) return -1;
+
+  const maxLen = Math.max(left.length, right.length);
+  for (let i = 0; i < maxLen; i += 1) {
+    const l = left[i];
+    const r = right[i];
+    if (l == null) return -1;
+    if (r == null) return 1;
+
+    const lNum = /^\d+$/.test(l) ? Number.parseInt(l, 10) : null;
+    const rNum = /^\d+$/.test(r) ? Number.parseInt(r, 10) : null;
+    if (lNum != null && rNum != null) {
+      if (lNum < rNum) return -1;
+      if (lNum > rNum) return 1;
+      continue;
+    }
+    if (lNum != null) return -1;
+    if (rNum != null) return 1;
+    if (l < r) return -1;
+    if (l > r) return 1;
+  }
+
+  return 0;
+}
+
 function compareVersions(a: string, b: string): number | null {
-  const parse = (value: string) => {
-    const parts = normalizeVersion(value)
-      .split('.')
-      .map((part) => Number.parseInt(part, 10));
-    if (parts.some((part) => Number.isNaN(part))) return null;
-    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
-  };
-  const left = parse(a);
-  const right = parse(b);
+  const left = parseVersion(a);
+  const right = parseVersion(b);
   if (!left || !right) return null;
 
-  for (let i = 0; i < 3; i += 1) {
-    if (left[i] < right[i]) return -1;
-    if (left[i] > right[i]) return 1;
-  }
-  return 0;
+  if (left.major < right.major) return -1;
+  if (left.major > right.major) return 1;
+  if (left.minor < right.minor) return -1;
+  if (left.minor > right.minor) return 1;
+  if (left.patch < right.patch) return -1;
+  if (left.patch > right.patch) return 1;
+
+  return comparePrerelease(left.prerelease, right.prerelease);
 }
 
 function resolveCurrentVersion(tauriVersion: string | null): string | null {
@@ -106,6 +154,32 @@ type RemoteReleaseInfo = {
   notes?: string;
   downloadUrl?: string;
 };
+
+type GitHubRelease = {
+  tag_name?: unknown;
+  name?: unknown;
+  draft?: unknown;
+  prerelease?: unknown;
+  body?: unknown;
+  assets?: Array<{ browser_download_url?: unknown; name?: unknown }>;
+};
+
+function pickWindowsAssetUrl(
+  assets: Array<{ browser_download_url?: unknown; name?: unknown }>,
+): string | undefined {
+  const urls = (assets || [])
+    .map((asset) => ({
+      url: typeof asset.browser_download_url === 'string' ? asset.browser_download_url : '',
+      name: typeof asset.name === 'string' ? asset.name : '',
+    }))
+    .filter((asset) => asset.url.length > 0);
+  if (urls.length === 0) return undefined;
+  const preferred =
+    urls.find((asset) => /windows|win64|x64|setup|nsis/i.test(asset.name || asset.url)) ||
+    urls.find((asset) => /\.(exe|msi|zip)$/i.test(asset.name || asset.url)) ||
+    urls[0];
+  return preferred.url;
+}
 
 async function fetchManifestVersionFromLatestJson(): Promise<RemoteReleaseInfo | null> {
   try {
@@ -146,9 +220,9 @@ async function fetchManifestVersionFromLatestJson(): Promise<RemoteReleaseInfo |
   }
 }
 
-async function fetchManifestVersionFromGitHubApi(): Promise<RemoteReleaseInfo | null> {
+async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
   try {
-    const response = await fetch(GITHUB_RELEASES_LATEST_API, {
+    const response = await fetch(GITHUB_RELEASES_API, {
       cache: 'no-store',
       headers: {
         Accept: 'application/vnd.github+json',
@@ -156,42 +230,48 @@ async function fetchManifestVersionFromGitHubApi(): Promise<RemoteReleaseInfo | 
     });
     if (!response.ok) return null;
 
-    const payload = (await response.json()) as {
-      tag_name?: unknown;
-      name?: unknown;
-      body?: unknown;
-      assets?: Array<{ browser_download_url?: unknown; name?: unknown }>;
-    };
+    const payload = (await response.json()) as GitHubRelease[];
+    const match = (payload || []).find((entry) => {
+      if (entry?.draft) return false;
+      const tagRaw =
+        typeof entry.tag_name === 'string'
+          ? entry.tag_name
+          : typeof entry.name === 'string'
+            ? entry.name
+            : '';
+      if (!tagRaw) return false;
+      const releaseChannel = classifyReleaseChannel(tagRaw);
+      if (releaseChannel !== channel) return false;
+      if (channel === 'stable' && entry?.prerelease) return false;
+      return true;
+    });
+    if (!match) return null;
 
     const versionRaw =
-      typeof payload.tag_name === 'string'
-        ? payload.tag_name
-        : typeof payload.name === 'string'
-          ? payload.name
+      typeof match.tag_name === 'string'
+        ? match.tag_name
+        : typeof match.name === 'string'
+          ? match.name
           : '';
     const version = normalizeVersion(versionRaw);
     if (!version) return null;
 
-    const assetUrls = (payload.assets || [])
-      .map((asset) => (typeof asset.browser_download_url === 'string' ? asset.browser_download_url : ''))
-      .filter((url) => url.length > 0);
-    const preferredUrl =
-      assetUrls.find((url) => /windows|x64|setup|nsis/i.test(url)) || assetUrls[0];
-
     return {
       version,
-      notes: typeof payload.body === 'string' ? payload.body : undefined,
-      downloadUrl: preferredUrl,
+      notes: typeof match.body === 'string' ? match.body : undefined,
+      downloadUrl: pickWindowsAssetUrl(match.assets || []),
     };
   } catch {
     return null;
   }
 }
 
-async function fetchManifestVersion(): Promise<RemoteReleaseInfo | null> {
-  const fromLatestJson = await fetchManifestVersionFromLatestJson();
-  if (fromLatestJson) return fromLatestJson;
-  return fetchManifestVersionFromGitHubApi();
+async function fetchManifestVersion(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
+  if (channel === 'stable') {
+    const fromLatestJson = await fetchManifestVersionFromLatestJson();
+    if (fromLatestJson) return fromLatestJson;
+  }
+  return fetchManifestVersionFromGitHubApi(channel);
 }
 
 export default function UpdatePrompt() {
@@ -233,8 +313,9 @@ export default function UpdatePrompt() {
     return Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100));
   }, [cacheProgress]);
 
-  const checkForUpdates = useCallback(async () => {
+  const checkForUpdates = useCallback(async (channelOverride?: UpdateChannel) => {
     if (!isDesktopRuntime() || isCheckingRef.current) return;
+    const selectedChannel = channelOverride ?? readStoredUpdateChannel();
     isCheckingRef.current = true;
     setState('checking');
     setErrorText('');
@@ -249,7 +330,7 @@ export default function UpdatePrompt() {
           return;
         }
         updateRef.current = null;
-        setDetails({ version: result.version });
+        setDetails({ version: result.version, channel: selectedChannel });
         setDismissed(false);
         setBackgroundMode(false);
         setState('available');
@@ -263,28 +344,30 @@ export default function UpdatePrompt() {
 
       const tauriVersion = await getCurrentAppVersion();
       const currentVersion = resolveCurrentVersion(tauriVersion);
-      const update = await updaterModule.check();
+      const canUseNativeUpdater = selectedChannel === 'stable';
+      const update = canUseNativeUpdater ? await updaterModule.check() : null;
       if (!update) {
-        const manifest = await fetchManifestVersion();
+        const manifest = await fetchManifestVersion(selectedChannel);
         const hasNewerManifest =
           manifest &&
-          currentVersion &&
-          compareVersions(currentVersion, String(manifest.version)) === -1;
+          (!currentVersion ||
+            compareVersions(currentVersion, String(manifest.version)) === -1);
 
         if (hasNewerManifest) {
           setDetails({
             version: String(manifest.version),
             notes: manifest.notes,
-            currentVersion,
+            currentVersion: currentVersion ?? undefined,
             manualDownloadUrl: manifest.downloadUrl,
             fallbackOnly: true,
+            channel: selectedChannel,
           });
           setDismissed(false);
           setBackgroundMode(false);
           setState('available');
           emitUpdaterStatus(
             'available',
-            `Update ${manifest.version} is available (current ${currentVersion}).`,
+            `${selectedChannel[0].toUpperCase()}${selectedChannel.slice(1)} update ${manifest.version} is available (current ${currentVersion}).`,
           );
           return;
         }
@@ -302,7 +385,13 @@ export default function UpdatePrompt() {
       updateRef.current = update;
       const version = String(update.version ?? update.versionName ?? 'latest');
       const notes = typeof update.body === 'string' ? update.body : undefined;
-      setDetails({ version, notes, currentVersion: currentVersion ?? undefined, fallbackOnly: false });
+      setDetails({
+        version,
+        notes,
+        currentVersion: currentVersion ?? undefined,
+        fallbackOnly: false,
+        channel: selectedChannel,
+      });
       setDismissed(false);
       setBackgroundMode(false);
       setState('available');
@@ -322,11 +411,12 @@ export default function UpdatePrompt() {
   }, [checkForUpdates]);
 
   useEffect(() => {
-    const onManualCheck = () => {
-      void checkForUpdates();
+    const wrapped = (event: Event) => {
+      const detail = (event as CustomEvent<{ channel?: UpdateChannel }>).detail;
+      void checkForUpdates(detail?.channel);
     };
-    window.addEventListener(UPDATE_CHECK_EVENT, onManualCheck as EventListener);
-    return () => window.removeEventListener(UPDATE_CHECK_EVENT, onManualCheck as EventListener);
+    window.addEventListener(UPDATE_CHECK_EVENT, wrapped as EventListener);
+    return () => window.removeEventListener(UPDATE_CHECK_EVENT, wrapped as EventListener);
   }, [checkForUpdates]);
 
   useEffect(() => {
@@ -454,6 +544,9 @@ export default function UpdatePrompt() {
                 <p className="mt-1 text-sm text-zinc-300">
                   {details ? (
                     <>
+                      {details.channel && details.channel !== 'stable'
+                        ? `${details.channel[0].toUpperCase()}${details.channel.slice(1)} `
+                        : ''}
                       Version <span className="font-semibold text-gold">{details.version}</span> is
                       ready.
                     </>
@@ -523,7 +616,7 @@ export default function UpdatePrompt() {
                       onClick={() => window.open(details.manualDownloadUrl, '_blank', 'noopener,noreferrer')}
                       className="btn-primary px-4 py-2 text-sm"
                     >
-                      Open Download
+                      Download Build
                     </button>
                   ) : (
                   <button onClick={handleInstall} className="btn-primary px-4 py-2 text-sm">

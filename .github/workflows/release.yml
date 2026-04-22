@@ -1,12 +1,30 @@
 name: Release
+
 on:
   push:
     tags:
       - 'v*'
+  schedule:
+    - cron: '0 1 * * *'
+    - cron: '0 2 * * 1'
   workflow_dispatch:
     inputs:
+      source_ref:
+        description: 'Git ref to release from (tag, branch, or commit SHA)'
+        required: true
+        default: master
+        type: string
+      release_mode:
+        description: 'Release mode'
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - weekly
+          - nightly
       release_type:
-        description: 'Semantic version bump type'
+        description: 'Semantic version bump type (stable mode only)'
         required: true
         default: patch
         type: choice
@@ -16,8 +34,8 @@ on:
           - major
 
 jobs:
-  bump-version:
-    if: github.event_name == 'workflow_dispatch'
+  bump-version-stable:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_mode == 'stable'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,7 +43,7 @@ jobs:
       - name: Checkout master
         uses: actions/checkout@v4
         with:
-          ref: master
+          ref: ${{ github.event.inputs.source_ref }}
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
@@ -71,6 +89,89 @@ jobs:
           git push origin master
           git push origin "v${{ steps.bump.outputs.new_version }}"
 
+  create-channel-tag:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_mode != 'stable')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.source_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Compute channel version
+        id: channel
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CHANNEL="${{ github.event.inputs.release_mode }}"
+          else
+            case "${{ github.event.schedule }}" in
+              '0 2 * * 1') CHANNEL="weekly" ;;
+              *) CHANNEL="nightly" ;;
+            esac
+          fi
+
+          BASE_VERSION="$(tr -d '\r\n' < VERSION)"
+          if [[ "$CHANNEL" == "nightly" ]]; then
+            STAMP="$(date -u +%Y%m%d)"
+          elif [[ "$CHANNEL" == "weekly" ]]; then
+            STAMP="$(date -u +%G%V)"
+          else
+            echo "Unsupported channel: $CHANNEL"
+            exit 1
+          fi
+
+          NEW_VERSION="${BASE_VERSION}-${CHANNEL}.${STAMP}"
+          TAG="v${NEW_VERSION}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare channel version files
+        if: steps.channel.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ steps.channel.outputs.new_version }}" > VERSION
+          npm run sync:version
+          npm install --package-lock-only
+          npm install --package-lock-only --prefix frontend
+
+      - name: Commit and push channel tag
+        if: steps.channel.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json
+          git commit -m "chore(release): ${{ steps.channel.outputs.channel }} build v${{ steps.channel.outputs.new_version }}"
+          git tag "${{ steps.channel.outputs.tag }}"
+          git push origin "${{ steps.channel.outputs.tag }}"
+
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -86,6 +187,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Determine release channel
+        id: release_channel
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          if [[ "$TAG" == *"-nightly."* ]]; then
+            echo "channel=nightly" >> "$GITHUB_OUTPUT"
+          elif [[ "$TAG" == *"-weekly."* ]]; then
+            echo "channel=weekly" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: setup node
         uses: actions/setup-node@v4
@@ -127,36 +241,27 @@ jobs:
           touch backend/resources/data/.keep
           touch backend/resources/simc/.keep
 
-      # -- SimC Preparation (Disabled: App now downloads SimC on demand) --
-      # - name: Resolve SimC version
-      #   id: simc-version
-      #   shell: bash
-      #   run: |
-      #     HASH=$(git ls-remote https://github.com/simulationcraft/simc.git HEAD | cut -f1)
-      #     echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+      - name: Refresh bundled SimC for channel releases
+        if: steps.release_channel.outputs.channel != 'stable' && matrix.platform == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p backend/resources/simc
+          rm -f backend/resources/simc/simc.exe backend/resources/simc/simc
+          curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/master/simc-nightly-win64-midnight.zip" -o simc_win.zip
+          unzip -o simc_win.zip -d backend/resources/simc/
+          find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
+          SIMC_PATH="$(find backend/resources/simc -iname "simc.exe" | head -n 1)"
+          if [[ -z "$SIMC_PATH" ]]; then
+            echo "Failed to locate extracted simc.exe"
+            exit 1
+          fi
+          cp "$SIMC_PATH" backend/resources/simc/simc.exe
+          echo "${GITHUB_REF_NAME#v}" > backend/resources/simc/simc-version
+          touch backend/resources/simc/.keep
 
-      # - name: Cache SimC binary
-      #   id: simc-cache
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: backend/resources/simc
-      #     key: ${{ runner.os }}-simc-${{ steps.simc-version.outputs.hash }}
-
-      # - name: Download SimC binary (Windows)
-      #   if: steps.simc-cache.outputs.cache-hit != 'true' && matrix.platform == 'windows'
-      #   shell: bash
-      #   run: |
-      #     mkdir -p backend/resources/simc
-      #     curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/master/simc-nightly-win64-midnight.zip" -o simc_win.zip
-      #     unzip simc_win.zip -d backend/resources/simc/
-      #     find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
-      #     find backend/resources/simc -name "simc.exe" -exec mv {} backend/resources/simc/ \;
-      #     touch backend/resources/simc/.keep
-
-      # Game data is synchronized at app launch; skip heavy data-fetch step during release builds.
-
-      # -- Build and Release --
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build and release desktop app
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -169,5 +274,5 @@ jobs:
           releaseName: "WhyLowDps ${{ github.ref_name }}"
           releaseBody: "See the assets below for the installers."
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-nightly.') || contains(github.ref_name, '-weekly.') }}
           args: ${{ matrix.args }}

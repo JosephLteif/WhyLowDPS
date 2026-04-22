@@ -33,7 +33,15 @@ export default function TopGearUpgradeButton({
   onOptimize,
 }: TopGearUpgradeButtonProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const canRender = !!item.upgrade || !!onCatalystConvert || !!onOptimize;
+  const upgradeMatch = item.upgrade.match(/(\d+)\s*\/\s*(\d+)/);
+  const currentLevel = upgradeMatch ? Number.parseInt(upgradeMatch[1], 10) : null;
+  const maxLevel = upgradeMatch ? Number.parseInt(upgradeMatch[2], 10) : null;
+  const isTrackMaxed =
+    currentLevel != null && maxLevel != null && Number.isFinite(currentLevel) && Number.isFinite(maxLevel)
+      ? currentLevel >= maxLevel
+      : false;
+  const showUpgradeButton = !!item.upgrade && !isTrackMaxed;
+  const canRender = showUpgradeButton || !!onCatalystConvert || !!onOptimize;
   const isMenuOpen = upgradeMenuFor === item.uid;
   useDismissOnOutside(rootRef, isMenuOpen, () => {
     onUpgradeClick();
@@ -85,7 +93,7 @@ export default function TopGearUpgradeButton({
         </button>
       )}
 
-      {item.upgrade && (
+      {showUpgradeButton && (
         <button
           type="button"
           onClick={(e) => {
@@ -131,9 +139,9 @@ export default function TopGearUpgradeButton({
               Convert to Catalyst
             </button>
           )}
-          {onCatalystConvert && item.upgrade && <div className="my-1 border-t border-border/50" />}
+          {onCatalystConvert && showUpgradeButton && <div className="my-1 border-t border-border/50" />}
 
-          {item.upgrade && (
+          {showUpgradeButton && (
             <div className="max-h-[300px] overflow-y-auto">
               {loadingUpgrades ? (
                 <div className="px-3 py-2 text-xs italic text-muted">Loading options...</div>

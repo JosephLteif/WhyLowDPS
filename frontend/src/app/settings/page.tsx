@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { API_URL, downloadLatestSimc, fetchJson, getSimcStatus, isDesktop, type SimcStatus } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
+import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3 },
@@ -810,6 +811,8 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
         <p className="mt-2 text-zinc-400">Manage your account and API credentials.</p>
       </header>
+
+      <DefaultOptionsSettingsCard />
 
       <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-6 text-xl font-semibold text-white">Blizzard API (BYOK)</h2>

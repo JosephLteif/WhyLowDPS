@@ -27,7 +27,10 @@ import { convertMdtToSimc, isMdtString, parseMdtString } from '@/lib/mdt-parser'
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
-import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
+import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
+import { getAllAppDefaultOptions, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
+import ConsumableSelect, { buildQualityMaxByFamily } from './shared/ConsumableSelect';
+import RaidBuffGrid from './shared/RaidBuffGrid';
 import RouteDetailsModal from './RouteDetailsModal';
 import ConfirmModal from './ConfirmModal';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
@@ -59,83 +62,6 @@ function validateChecksum(input: string): 'valid' | 'invalid' | null {
   if (adler32(body) === expected) return 'valid';
   if (adler32(body.replace(/\n/g, '\r\n')) === expected) return 'valid';
   return 'invalid';
-}
-
-const SPELL_ICON_CACHE = new Map<number, string>();
-const ITEM_ICON_CACHE = new Map<number, string>();
-
-function useSpellIcons(spellIds: number[]) {
-  const [icons, setIcons] = useState<Map<number, string>>(new Map());
-  const depKey = spellIds.join(',');
-
-  useEffect(() => {
-    const missing = spellIds.filter((id) => id > 0 && !SPELL_ICON_CACHE.has(id));
-    if (missing.length === 0) {
-      setIcons(new Map(SPELL_ICON_CACHE));
-      return;
-    }
-
-    let cancelled = false;
-    Promise.all(
-      missing.map(async (id) => {
-        try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`,
-          );
-          if (!res.ok) return;
-          const data = await res.json();
-          if (data?.icon) SPELL_ICON_CACHE.set(id, data.icon);
-        } catch {
-          // Ignore fetch failures and fall back to the catalog slug.
-        }
-      })
-    ).then(() => {
-      if (!cancelled) setIcons(new Map(SPELL_ICON_CACHE));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return icons;
-}
-
-function useItemIcons(itemIds: number[]) {
-  const [icons, setIcons] = useState<Map<number, string>>(new Map());
-  const depKey = itemIds.join(',');
-
-  useEffect(() => {
-    const missing = itemIds.filter((id) => id > 0 && !ITEM_ICON_CACHE.has(id));
-    if (missing.length === 0) {
-      setIcons(new Map(ITEM_ICON_CACHE));
-      return;
-    }
-
-    let cancelled = false;
-    Promise.all(
-      missing.map(async (id) => {
-        try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`,
-          );
-          if (!res.ok) return;
-          const data = await res.json();
-          if (data?.icon) ITEM_ICON_CACHE.set(id, data.icon);
-        } catch {
-          // Ignore fetch failures
-        }
-      })
-    ).then(() => {
-      if (!cancelled) setIcons(new Map(ITEM_ICON_CACHE));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return icons;
 }
 
 function looksLikeSimcInput(input: string) {
@@ -735,303 +661,43 @@ function DungeonInfoBar({
   );
 }
 
-function optionQualityFamily(opt: OptionEntry | null) {
-  const token = (opt?.token || opt?.key || '').replace(/^main_hand:/, '');
-  return token.replace(/_[1-3]$/i, '');
-}
-
-function remapQuality(quality: number | undefined, familyMax: number | undefined) {
-  if (!quality || quality < 1 || quality > 3) return undefined;
-  // 2-tier groups: 1=silver, 2=gold
-  if (familyMax === 2) {
-    if (quality === 1) return 2;
-    if (quality === 2) return 3;
-  }
-  // 3-tier groups: 1=bronze, 2=silver, 3=gold
-  return quality;
-}
-
-function optionSelectLabel(opt: OptionEntry) {
-  return (opt.label || '')
-    .replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '')
-    .replace(/\s+[1-3]\s*$/i, '')
-    .replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '');
-}
-
-function QualityBadge({ quality }: { quality?: number }) {
-  if (!quality || quality < 1 || quality > 3) return null;
-  const tierName = quality === 3 ? 'Gold' : quality === 2 ? 'Silver' : 'Bronze';
-  const style =
-    quality === 3
-      ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
-      : quality === 2
-        ? 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
-        : 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]';
-  return (
-    <span
-      className={`h-3 w-3 shrink-0 rounded-[2px] border ${style}`}
-      title={`Quality: ${tierName}`}
-      aria-label={`Quality: ${tierName}`}
-    />
-  );
-}
-
-function ConsumableSelect({
-  label,
-  value,
-  onChange,
-  options,
-  qualityMaxByFamily,
-  disabled = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: OptionEntry[];
-  qualityMaxByFamily: Map<string, number>;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  useWowheadTooltips([open, value, options.length]);
-
-  const itemIds = useMemo(() => {
-    return options.map((o) => o.itemId).filter((id): id is number => !!id);
-  }, [options]);
-  const itemIcons = useItemIcons(itemIds);
-
-  useEffect(() => {
-    if (disabled) setOpen(false);
-  }, [disabled]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocDown = (e: MouseEvent) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onDocDown);
-    return () => document.removeEventListener('mousedown', onDocDown);
-  }, [open]);
-
-  const selected = options.find((opt) => (opt.token || '') === value) || null;
-  const selectedQuality = remapQuality(
-    selected?.craftingQuality,
-    qualityMaxByFamily.get(optionQualityFamily(selected))
-  );
-
-  const groups = useMemo(() => {
-    const map = new Map<
-      string,
-      { label: string; icon: string; itemId?: number; items: OptionEntry[]; familyMax: number }
-    >();
-    for (const opt of options) {
-      const family = optionQualityFamily(opt);
-      if (!map.has(family)) {
-        const icon = (opt.itemId && itemIcons.get(opt.itemId)) || opt.icon || '';
-        map.set(family, {
-          label: optionSelectLabel(opt),
-          icon,
-          itemId: opt.itemId,
-          items: [],
-          familyMax: qualityMaxByFamily.get(family) || 0,
-        });
-      }
-      map.get(family)!.items.push(opt);
-    }
-    return Array.from(map.values());
-  }, [options, qualityMaxByFamily, itemIcons]);
-
-  return (
-    <div className="space-y-1.5 text-[13px] text-zinc-300">
-      <span className="block">{label}</span>
-      <div ref={rootRef} className="relative">
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => !disabled && setOpen((v) => !v)}
-          className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm ${
-            disabled
-              ? 'cursor-not-allowed text-zinc-500 opacity-70'
-              : 'cursor-pointer text-zinc-200'
-          }`}
-        >
-          {selected?.icon || (selected?.itemId && itemIcons.get(selected.itemId)) ? (
-            <a
-              href="#"
-              onClick={(e) => e.preventDefault()}
-              data-wowhead={
-                selected.itemId
-                  ? `item=${selected.itemId}`
-                  : selected.spellId
-                    ? `spell=${selected.spellId}`
-                    : undefined
-              }
-              className="flex shrink-0 items-center"
-            >
-              <img
-                src={`https://wow.zamimg.com/images/wow/icons/small/${
-                  (selected.itemId && itemIcons.get(selected.itemId)) || selected.icon
-                }.jpg`}
-                alt=""
-                className="h-4 w-4 shrink-0 rounded-[3px]"
-              />
-            </a>
-          ) : (
-            <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
-          )}
-          <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
-            className="flex min-w-0 items-center gap-1.5"
-            data-wowhead={
-              selected?.itemId
-                ? `item=${selected.itemId}`
-                : selected?.spellId
-                  ? `spell=${selected.spellId}`
-                  : undefined
-            }
-          >
-            <span className="truncate">{selected ? optionSelectLabel(selected) : 'None'}</span>
-            <QualityBadge quality={selectedQuality} />
-          </a>
-          <svg
-            className={`ml-auto h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 6l4 4 4-4" />
-          </svg>
-        </div>
-        {open && (
-          <div className="absolute z-30 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-xl">
-            <button
-              type="button"
-              onClick={() => {
-                onChange('');
-                setOpen(false);
-              }}
-              className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
-            >
-              <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
-              <span className="truncate">None</span>
-            </button>
-            <div className="my-1 h-px bg-border/50" />
-            {groups.map((group) => {
-              const hasQuality = group.familyMax > 0;
-              const isSelectedFamily =
-                selected && optionQualityFamily(selected) === optionQualityFamily(group.items[0]);
-
-              return (
-                <div
-                  key={group.label}
-                  className={`flex items-center justify-between gap-2 rounded px-2.5 py-2 text-sm transition-colors ${
-                    !hasQuality ? 'cursor-pointer hover:bg-white/[0.04]' : ''
-                  } ${isSelectedFamily && !hasQuality ? 'bg-gold/[0.08] text-white' : 'text-zinc-300'}`}
-                  onClick={() => {
-                    if (!hasQuality) {
-                      onChange(group.items[0].token || '');
-                      setOpen(false);
-                    }
-                  }}
-                >
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      if (!hasQuality) {
-                        e.preventDefault();
-                      }
-                    }}
-                    data-wowhead={
-                      group.itemId
-                        ? `item=${group.itemId}`
-                        : group.items[0]?.spellId
-                          ? `spell=${group.items[0].spellId}`
-                          : undefined
-                    }
-                    className="flex min-w-0 flex-1 items-center gap-2 no-underline hover:no-underline"
-                  >
-                    <img
-                      src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
-                      alt=""
-                      className="h-4 w-4 shrink-0 rounded-[3px]"
-                    />
-                    <span className="truncate">{group.label}</span>
-                  </a>
-                  {hasQuality && (
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {group.items
-                        .sort((a, b) => (a.craftingQuality || 0) - (b.craftingQuality || 0))
-                        .map((opt) => {
-                          const q = remapQuality(opt.craftingQuality, group.familyMax);
-                          const isOptSelected = value === opt.token;
-                          const qStyle =
-                            q === 3
-                              ? isOptSelected
-                                ? 'border-amber-300/60 bg-amber-500 shadow-[0_0_8px_rgba(251,191,36,0.3)]'
-                                : 'border-amber-300/30 bg-amber-500/10 hover:border-amber-300/60 hover:bg-amber-500/20'
-                              : q === 2
-                                ? isOptSelected
-                                  ? 'border-zinc-300/60 bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.3)]'
-                                  : 'border-zinc-300/30 bg-zinc-400/10 hover:border-zinc-300/60 hover:bg-zinc-400/20'
-                                : isOptSelected
-                                  ? 'border-orange-400/60 bg-orange-600 shadow-[0_0_8px_rgba(234,88,12,0.3)]'
-                                  : 'border-orange-400/30 bg-orange-600/10 hover:border-orange-400/60 hover:bg-orange-600/20';
-
-                          const qName = q === 3 ? 'Gold' : q === 2 ? 'Silver' : 'Bronze';
-
-                          return (
-                            <a
-                              key={opt.key}
-                              href="#"
-                              title={`Quality: ${qName}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onChange(opt.token || '');
-                                setOpen(false);
-                              }}
-                              data-wowhead={
-                                opt.itemId
-                                  ? `item=${opt.itemId}`
-                                  : opt.spellId
-                                    ? `spell=${opt.spellId}`
-                                    : undefined
-                              }
-                              className={`block h-3.5 w-3.5 rounded-[2px] border transition-all ${qStyle}`}
-                            />
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function FightSetupOptions() {
-  const { fightStyle, setFightStyle, targetCount, setTargetCount, fightLength, setFightLength } =
-    useSimContext();
+  const {
+    simcInput,
+    fightStyle,
+    setFightStyle,
+    targetCount,
+    setTargetCount,
+    fightLength,
+    setFightLength,
+  } = useSimContext();
   const fightStyleRules = getFightStyleParamRules(fightStyle);
   const showFightLength = fightStyleRules.usesFightLength;
   const showTargetCount = fightStyleRules.usesTargetCount;
 
   return (
     <div className="card space-y-4 p-5">
-      <div>
-        <p className="text-[15px] font-medium text-zinc-100">Fight Setup</p>
-        <p className="text-[14px] text-zinc-300">
-          Configure fight style and scenario variants together.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[15px] font-medium text-zinc-100">Fight Setup</p>
+          <p className="text-[14px] text-zinc-300">
+            Configure fight style and scenario variants together.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const defaults = getAllAppDefaultOptions({
+              characterKey: getCharacterDefaultsKeyFromSimcInput(simcInput),
+            });
+            setFightStyle(defaults['fight.fightStyle']);
+            setFightLength(defaults['fight.fightLength']);
+            setTargetCount(defaults['fight.targetCount']);
+          }}
+          className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
+        >
+          Apply Defaults
+        </button>
       </div>
 
       <div
@@ -1101,6 +767,7 @@ function FightSetupOptions() {
 
 function ConsumablesAndRaidBuffsOptions() {
   const {
+    simcInput,
     simcChannel,
     setSimcChannel,
     externalBuffChaosBrand,
@@ -1140,16 +807,10 @@ function ConsumablesAndRaidBuffsOptions() {
   const [installedSimcChannels, setInstalledSimcChannels] = useState<string[]>(['nightly']);
 
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
-  const qualityMaxByFamily = useMemo(() => {
-    const map = new Map<string, number>();
-    const all = [...flasks, ...potions, ...augments, ...tempEnchants];
-    for (const opt of all) {
-      const family = optionQualityFamily(opt);
-      const q = opt.craftingQuality || 0;
-      map.set(family, Math.max(map.get(family) || 0, q));
-    }
-    return map;
-  }, [flasks, potions, augments, tempEnchants]);
+  const qualityMaxByFamily = useMemo(
+    () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
+    [flasks, potions, augments, tempEnchants]
+  );
   const refreshInstalledSimcChannels = useCallback(async () => {
     if (!isDesktop) {
       setInstalledSimcChannels(['nightly']);
@@ -1173,8 +834,6 @@ function ConsumablesAndRaidBuffsOptions() {
       setSimcChannel(installedSimcChannels[0] || 'nightly');
     }
   }, [installedSimcChannels, setSimcChannel, simcChannel]);
-  const raidBuffIcons = useSpellIcons(RAID_BUFF_MATRIX_OPTIONS.map((buff) => buff.spellId || 0));
-
   const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
     bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
     arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },
@@ -1220,11 +879,40 @@ function ConsumablesAndRaidBuffsOptions() {
 
   return (
     <div className="card space-y-5 p-5">
-      <div>
-        <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
-        <p className="text-[14px] text-zinc-300">
-          Manage consumable picks and raid buff assumptions outside of Advanced Options.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
+          <p className="text-[14px] text-zinc-300">
+            Manage consumable picks and raid buff assumptions outside of Advanced Options.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const defaults = getAllAppDefaultOptions({
+              characterKey: getCharacterDefaultsKeyFromSimcInput(simcInput),
+            });
+            setConsumableFlask(defaults['consumable.flask']);
+            setConsumableFood(defaults['consumable.food']);
+            setConsumablePotion(defaults['consumable.potion']);
+            setConsumableAugmentation(defaults['consumable.augmentation']);
+            setConsumableTemporaryEnchant(defaults['consumable.temporaryEnchant']);
+            setRaidBuffBloodlust(defaults['raid.bloodlust']);
+            setRaidBuffArcaneIntellect(defaults['raid.arcaneIntellect']);
+            setRaidBuffPowerWordFortitude(defaults['raid.powerWordFortitude']);
+            setRaidBuffMarkOfTheWild(defaults['raid.markOfTheWild']);
+            setRaidBuffBattleShout(defaults['raid.battleShout']);
+            setRaidBuffHuntersMark(defaults['raid.huntersMark']);
+            setRaidBuffBleeding(defaults['raid.bleeding']);
+            setExternalBuffMysticTouch(defaults['raid.mysticTouch']);
+            setExternalBuffChaosBrand(defaults['raid.chaosBrand']);
+            setExternalBuffSkyfury(defaults['raid.skyfury']);
+            setExternalBuffPowerInfusion(defaults['raid.powerInfusion']);
+          }}
+          className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
+        >
+          Apply Defaults
+        </button>
       </div>
 
       <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
@@ -1307,80 +995,32 @@ function ConsumablesAndRaidBuffsOptions() {
       </div>
 
       <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
-            <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                Object.values(raidBuffBindings).forEach((b) => b.setChecked(true));
-              }}
-              className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
-            >
-              Select All
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                Object.values(raidBuffBindings).forEach((b) => b.setChecked(false));
-              }}
-              className="rounded-md border border-zinc-600 bg-zinc-900/70 px-2.5 py-1 text-[12px] font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
-            >
-              Clear
-            </button>
-          </div>
+        <div>
+          <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
+          <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
+        <RaidBuffGrid
+          entries={RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
             const binding = raidBuffBindings[buff.key] || {
               checked: false,
               setChecked: (_: boolean) => {},
             };
-            return (
-              <label
-                key={buff.key}
-                className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
-                  binding.checked
-                    ? 'border-gold/40 bg-gold/[0.08]'
-                    : 'border-border bg-surface hover:border-zinc-600'
-                }`}
-              >
-                <a
-                  href={`https://www.wowhead.com/spell=${buff.spellId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  data-wowhead={`spell=${buff.spellId}`}
-                  className="flex min-w-0 items-center gap-2 text-zinc-100 hover:text-white"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <img
-                    src={`https://wow.zamimg.com/images/wow/icons/small/${
-                      raidBuffIcons.get(buff.spellId || 0) || buff.icon
-                    }.jpg`}
-                    onError={(e) => {
-                      const img = e.currentTarget;
-                      if (img.dataset.fallbackApplied === '1') return;
-                      img.dataset.fallbackApplied = '1';
-                      img.src = `https://wow.zamimg.com/images/wow/icons/small/${buff.icon}.jpg`;
-                    }}
-                    alt=""
-                    className="h-4 w-4 shrink-0 rounded-[3px]"
-                  />
-                  <span className="truncate text-[14px]">{buff.label}</span>
-                </a>
-                <input
-                  type="checkbox"
-                  checked={binding.checked}
-                  onChange={(e) => binding.setChecked(e.target.checked)}
-                  className="h-4 w-4 accent-gold"
-                />
-              </label>
-            );
+            return {
+              id: buff.key,
+              label: buff.label,
+              spellId: buff.spellId || 0,
+              icon: buff.icon,
+              checked: binding.checked,
+              onChange: binding.setChecked,
+            };
           })}
-        </div>
+          onSelectAll={() => {
+            Object.values(raidBuffBindings).forEach((b) => b.setChecked(true));
+          }}
+          onClear={() => {
+            Object.values(raidBuffBindings).forEach((b) => b.setChecked(false));
+          }}
+        />
         <p className="text-[12px] text-zinc-300">
           If your character provides one of these buffs, SimC may still include it.
         </p>

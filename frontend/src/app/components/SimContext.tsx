@@ -1,8 +1,13 @@
 'use client';
 
-import { createContext, type ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { FightScenario } from '../lib/types';
 import { API_URL, fetchJson } from '../lib/api';
+import {
+  getAppDefaultOption,
+  getCharacterDefaultsKeyFromSimcInput,
+  setLastActiveCharacterDefaultsKey,
+} from '../lib/default-options';
 
 interface SimContextType {
   simcInput: string;
@@ -128,12 +133,12 @@ function readSessionString(key: string, fallback: string): string {
 
 export function SimProvider({ children }: { children: ReactNode }) {
   const [simcInput, _setSimcInput] = useState('');
-  const [fightStyle, setFightStyle] = useState('Patchwerk');
+  const [fightStyle, _setFightStyle] = useState('Patchwerk');
   const [threads, _setThreads] = useState(0);
   const [maxCombinations, _setMaxCombinations] = useState<number | undefined>(undefined);
   const [selectedTalent, setSelectedTalent] = useState('');
-  const [targetCount, setTargetCount] = useState(1);
-  const [fightLength, setFightLength] = useState(300);
+  const [targetCount, _setTargetCount] = useState(1);
+  const [fightLength, _setFightLength] = useState(300);
   const [customApl, setCustomApl] = useState('');
   const [simcChannel, _setSimcChannel] = useState('stable');
   const [includeTimeline, _setIncludeTimeline] = useState(true);
@@ -166,36 +171,199 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [simcFooter, setSimcFooter] = useState('');
   const [talentBuilds, setTalentBuilds] = useState<{ name: string; talentString: string }[]>([]);
   const [scenarios, setScenarios] = useState<FightScenario[]>([]);
+  const lastAppliedDefaultsCharacterKeyRef = useRef<string | null>(null);
+
+  const applyDefaultsForCharacter = useCallback((characterKey: string | null) => {
+    const fightStyleDefault = getAppDefaultOption('fight.fightStyle', { characterKey });
+    const fightLengthDefault = getAppDefaultOption('fight.fightLength', { characterKey });
+    const targetCountDefault = getAppDefaultOption('fight.targetCount', { characterKey });
+    const raidBloodlustDefault = getAppDefaultOption('raid.bloodlust', { characterKey });
+    const raidArcaneIntellectDefault = getAppDefaultOption('raid.arcaneIntellect', { characterKey });
+    const raidFortitudeDefault = getAppDefaultOption('raid.powerWordFortitude', { characterKey });
+    const raidMarkOfTheWildDefault = getAppDefaultOption('raid.markOfTheWild', { characterKey });
+    const raidBattleShoutDefault = getAppDefaultOption('raid.battleShout', { characterKey });
+    const raidHuntersMarkDefault = getAppDefaultOption('raid.huntersMark', { characterKey });
+    const raidBleedingDefault = getAppDefaultOption('raid.bleeding', { characterKey });
+    const externalChaosBrandDefault = getAppDefaultOption('raid.chaosBrand', { characterKey });
+    const externalMysticTouchDefault = getAppDefaultOption('raid.mysticTouch', { characterKey });
+    const externalSkyfuryDefault = getAppDefaultOption('raid.skyfury', { characterKey });
+    const externalPowerInfusionDefault = getAppDefaultOption('raid.powerInfusion', { characterKey });
+    const consumableFlaskDefault = getAppDefaultOption('consumable.flask', { characterKey });
+    const consumableFoodDefault = getAppDefaultOption('consumable.food', { characterKey });
+    const consumablePotionDefault = getAppDefaultOption('consumable.potion', { characterKey });
+    const consumableAugmentationDefault = getAppDefaultOption('consumable.augmentation', { characterKey });
+    const consumableTemporaryEnchantDefault = getAppDefaultOption('consumable.temporaryEnchant', { characterKey });
+
+    _setFightStyle(fightStyleDefault);
+    _setFightLength(fightLengthDefault);
+    _setTargetCount(targetCountDefault);
+    _setRaidBuffBloodlust(raidBloodlustDefault);
+    _setRaidBuffArcaneIntellect(raidArcaneIntellectDefault);
+    _setRaidBuffPowerWordFortitude(raidFortitudeDefault);
+    _setRaidBuffMarkOfTheWild(raidMarkOfTheWildDefault);
+    _setRaidBuffBattleShout(raidBattleShoutDefault);
+    _setRaidBuffHuntersMark(raidHuntersMarkDefault);
+    _setRaidBuffBleeding(raidBleedingDefault);
+    _setExternalBuffChaosBrand(externalChaosBrandDefault);
+    _setExternalBuffMysticTouch(externalMysticTouchDefault);
+    _setExternalBuffSkyfury(externalSkyfuryDefault);
+    _setExternalBuffPowerInfusion(externalPowerInfusionDefault);
+    _setConsumableFlask(consumableFlaskDefault);
+    _setConsumableFood(consumableFoodDefault);
+    _setConsumablePotion(consumablePotionDefault);
+    _setConsumableAugmentation(consumableAugmentationDefault);
+    _setConsumableTemporaryEnchant(consumableTemporaryEnchantDefault);
+
+    try {
+      localStorage.setItem('whylowdps_fight_style', fightStyleDefault);
+      localStorage.setItem('whylowdps_fight_length', String(fightLengthDefault));
+      localStorage.setItem('whylowdps_target_count', String(targetCountDefault));
+      localStorage.setItem('whylowdps_raid_buff_bloodlust', String(raidBloodlustDefault));
+      localStorage.setItem('whylowdps_raid_buff_arcane_intellect', String(raidArcaneIntellectDefault));
+      localStorage.setItem('whylowdps_raid_buff_power_word_fortitude', String(raidFortitudeDefault));
+      localStorage.setItem('whylowdps_raid_buff_mark_of_the_wild', String(raidMarkOfTheWildDefault));
+      localStorage.setItem('whylowdps_raid_buff_battle_shout', String(raidBattleShoutDefault));
+      localStorage.setItem('whylowdps_raid_buff_hunters_mark', String(raidHuntersMarkDefault));
+      localStorage.setItem('whylowdps_raid_buff_bleeding', String(raidBleedingDefault));
+      localStorage.setItem('whylowdps_ext_buff_chaos_brand', String(externalChaosBrandDefault));
+      localStorage.setItem('whylowdps_ext_buff_mystic_touch', String(externalMysticTouchDefault));
+      localStorage.setItem('whylowdps_ext_buff_skyfury', String(externalSkyfuryDefault));
+      localStorage.setItem('whylowdps_ext_buff_power_infusion', String(externalPowerInfusionDefault));
+      localStorage.setItem('whylowdps_consumable_flask', consumableFlaskDefault);
+      localStorage.setItem('whylowdps_consumable_food', consumableFoodDefault);
+      localStorage.setItem('whylowdps_consumable_potion', consumablePotionDefault);
+      localStorage.setItem('whylowdps_consumable_augmentation', consumableAugmentationDefault);
+      localStorage.setItem('whylowdps_consumable_temporary_enchant', consumableTemporaryEnchantDefault);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     try {
-      _setSimcInput(readSessionString('whylowdps_simc_input', ''));
+      const storedSimcInput = readSessionString('whylowdps_simc_input', '');
+      const characterKey = getCharacterDefaultsKeyFromSimcInput(storedSimcInput);
+      if (characterKey) setLastActiveCharacterDefaultsKey(characterKey);
+      lastAppliedDefaultsCharacterKeyRef.current = characterKey;
+      _setSimcInput(storedSimcInput);
+      _setFightStyle(
+        readStoredString(
+          'whylowdps_fight_style',
+          getAppDefaultOption('fight.fightStyle', { characterKey })
+        )
+      );
       _setThreads(readStored('whylowdps_threads', 0));
       _setMaxCombinations(readStoredOptionalNumber('whylowdps_max_combinations'));
+      _setTargetCount(
+        readStored(
+          'whylowdps_target_count',
+          getAppDefaultOption('fight.targetCount', { characterKey })
+        )
+      );
+      _setFightLength(
+        readStored(
+          'whylowdps_fight_length',
+          getAppDefaultOption('fight.fightLength', { characterKey })
+        )
+      );
       _setIncludeTimeline(readStoredBool('whylowdps_include_timeline', true));
-      _setExternalBuffChaosBrand(readStoredBool('whylowdps_ext_buff_chaos_brand', true));
-      _setExternalBuffMysticTouch(readStoredBool('whylowdps_ext_buff_mystic_touch', true));
-      _setExternalBuffSkyfury(readStoredBool('whylowdps_ext_buff_skyfury', true));
-      _setExternalBuffPowerInfusion(readStoredBool('whylowdps_ext_buff_power_infusion', false));
+      _setExternalBuffChaosBrand(
+        readStoredBool(
+          'whylowdps_ext_buff_chaos_brand',
+          getAppDefaultOption('raid.chaosBrand', { characterKey })
+        )
+      );
+      _setExternalBuffMysticTouch(
+        readStoredBool(
+          'whylowdps_ext_buff_mystic_touch',
+          getAppDefaultOption('raid.mysticTouch', { characterKey })
+        )
+      );
+      _setExternalBuffSkyfury(
+        readStoredBool(
+          'whylowdps_ext_buff_skyfury',
+          getAppDefaultOption('raid.skyfury', { characterKey })
+        )
+      );
+      _setExternalBuffPowerInfusion(
+        readStoredBool(
+          'whylowdps_ext_buff_power_infusion',
+          getAppDefaultOption('raid.powerInfusion', { characterKey })
+        )
+      );
       _setExternalBuffBlessingOfBronze(
         readStoredBool('whylowdps_ext_buff_blessing_of_bronze', false)
       );
       _setExternalBuffAugmentation(readStoredBool('whylowdps_ext_buff_augmentation', false));
-      _setRaidBuffBloodlust(readStoredBool('whylowdps_raid_buff_bloodlust', true));
-      _setRaidBuffArcaneIntellect(readStoredBool('whylowdps_raid_buff_arcane_intellect', true));
-      _setRaidBuffPowerWordFortitude(
-        readStoredBool('whylowdps_raid_buff_power_word_fortitude', true)
+      _setRaidBuffBloodlust(
+        readStoredBool(
+          'whylowdps_raid_buff_bloodlust',
+          getAppDefaultOption('raid.bloodlust', { characterKey })
+        )
       );
-      _setRaidBuffMarkOfTheWild(readStoredBool('whylowdps_raid_buff_mark_of_the_wild', true));
-      _setRaidBuffBattleShout(readStoredBool('whylowdps_raid_buff_battle_shout', true));
-      _setRaidBuffHuntersMark(readStoredBool('whylowdps_raid_buff_hunters_mark', true));
-      _setRaidBuffBleeding(readStoredBool('whylowdps_raid_buff_bleeding', true));
-      _setConsumableFlask(readStoredString('whylowdps_consumable_flask', ''));
-      _setConsumableFood(readStoredString('whylowdps_consumable_food', ''));
-      _setConsumablePotion(readStoredString('whylowdps_consumable_potion', ''));
-      _setConsumableAugmentation(readStoredString('whylowdps_consumable_augmentation', ''));
+      _setRaidBuffArcaneIntellect(
+        readStoredBool(
+          'whylowdps_raid_buff_arcane_intellect',
+          getAppDefaultOption('raid.arcaneIntellect', { characterKey })
+        )
+      );
+      _setRaidBuffPowerWordFortitude(
+        readStoredBool(
+          'whylowdps_raid_buff_power_word_fortitude',
+          getAppDefaultOption('raid.powerWordFortitude', { characterKey })
+        )
+      );
+      _setRaidBuffMarkOfTheWild(
+        readStoredBool(
+          'whylowdps_raid_buff_mark_of_the_wild',
+          getAppDefaultOption('raid.markOfTheWild', { characterKey })
+        )
+      );
+      _setRaidBuffBattleShout(
+        readStoredBool(
+          'whylowdps_raid_buff_battle_shout',
+          getAppDefaultOption('raid.battleShout', { characterKey })
+        )
+      );
+      _setRaidBuffHuntersMark(
+        readStoredBool(
+          'whylowdps_raid_buff_hunters_mark',
+          getAppDefaultOption('raid.huntersMark', { characterKey })
+        )
+      );
+      _setRaidBuffBleeding(
+        readStoredBool(
+          'whylowdps_raid_buff_bleeding',
+          getAppDefaultOption('raid.bleeding', { characterKey })
+        )
+      );
+      _setConsumableFlask(
+        readStoredString(
+          'whylowdps_consumable_flask',
+          getAppDefaultOption('consumable.flask', { characterKey })
+        )
+      );
+      _setConsumableFood(
+        readStoredString(
+          'whylowdps_consumable_food',
+          getAppDefaultOption('consumable.food', { characterKey })
+        )
+      );
+      _setConsumablePotion(
+        readStoredString(
+          'whylowdps_consumable_potion',
+          getAppDefaultOption('consumable.potion', { characterKey })
+        )
+      );
+      _setConsumableAugmentation(
+        readStoredString(
+          'whylowdps_consumable_augmentation',
+          getAppDefaultOption('consumable.augmentation', { characterKey })
+        )
+      );
       _setConsumableTemporaryEnchant(
-        readStoredString('whylowdps_consumable_temporary_enchant', '')
+        readStoredString(
+          'whylowdps_consumable_temporary_enchant',
+          getAppDefaultOption('consumable.temporaryEnchant', { characterKey })
+        )
       );
       _setSimcChannel(readStoredString('whylowdps_simc_channel', 'weekly') || 'weekly');
       _setAutoClipboardPasteSimc(readStoredBool('whylowdps_auto_clipboard_paste_simc', true));
@@ -226,8 +394,19 @@ export function SimProvider({ children }: { children: ReactNode }) {
     _setSimcInput(v);
     try {
       sessionStorage.setItem('whylowdps_simc_input', v);
+      const characterKey = getCharacterDefaultsKeyFromSimcInput(v);
+      if (characterKey) {
+        setLastActiveCharacterDefaultsKey(characterKey);
+        const prevKey = lastAppliedDefaultsCharacterKeyRef.current;
+        if (prevKey !== characterKey) {
+          applyDefaultsForCharacter(characterKey);
+          lastAppliedDefaultsCharacterKeyRef.current = characterKey;
+        }
+      } else {
+        lastAppliedDefaultsCharacterKeyRef.current = null;
+      }
     } catch {}
-  }, []);
+  }, [applyDefaultsForCharacter]);
 
   const setThreads = useCallback((v: number) => {
     _setThreads(v);
@@ -244,6 +423,27 @@ export function SimProvider({ children }: { children: ReactNode }) {
       } else {
         localStorage.setItem('whylowdps_max_combinations', String(v));
       }
+    } catch {}
+  }, []);
+
+  const setFightStyle = useCallback((v: string) => {
+    _setFightStyle(v);
+    try {
+      localStorage.setItem('whylowdps_fight_style', v);
+    } catch {}
+  }, []);
+
+  const setTargetCount = useCallback((v: number) => {
+    _setTargetCount(v);
+    try {
+      localStorage.setItem('whylowdps_target_count', String(v));
+    } catch {}
+  }, []);
+
+  const setFightLength = useCallback((v: number) => {
+    _setFightLength(v);
+    try {
+      localStorage.setItem('whylowdps_fight_length', String(v));
     } catch {}
   }, []);
 

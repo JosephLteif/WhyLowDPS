@@ -32,7 +32,7 @@ interface TopGearStateProps {
 
 function makeIdentity(item: ResolvedItem): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
 }
 
 export function useTopGearState({
@@ -69,23 +69,8 @@ export function useTopGearState({
     };
   }, []);
 
-  const openAddItem = useCallback((slot?: string) => {
-    setAddItemSlot(slot || null);
-    setAddItemOpen(true);
-  }, []);
-
-  const openOptimize = useCallback((item: ResolvedItem) => {
-    setOptimizeItem(item);
-    setOptimizeOpen(true);
-  }, []);
-
-  const openUpgradeMenu = useCallback(
+  const loadUpgradeOptions = useCallback(
     async (item: ResolvedItem) => {
-      if (upgradeMenuFor === item.uid) {
-        setUpgradeMenuFor(null);
-        return;
-      }
-      setUpgradeMenuFor(item.uid);
       setLoadingUpgrades(true);
       try {
         const res = await fetch(
@@ -103,7 +88,29 @@ export function useTopGearState({
       }
       setLoadingUpgrades(false);
     },
-    [normalizeUpgradeOption, upgradeMenuFor]
+    [normalizeUpgradeOption]
+  );
+
+  const openAddItem = useCallback((slot?: string) => {
+    setAddItemSlot(slot || null);
+    setAddItemOpen(true);
+  }, []);
+
+  const openOptimize = useCallback((item: ResolvedItem) => {
+    setOptimizeItem(item);
+    setOptimizeOpen(true);
+  }, []);
+
+  const openUpgradeMenu = useCallback(
+    async (item: ResolvedItem) => {
+      if (upgradeMenuFor === item.uid) {
+        setUpgradeMenuFor(null);
+        return;
+      }
+      setUpgradeMenuFor(item.uid);
+      await loadUpgradeOptions(item);
+    },
+    [loadUpgradeOptions, upgradeMenuFor]
   );
 
   const deselectAll = useCallback(() => onSelectionChange({}), [onSelectionChange]);
@@ -233,6 +240,7 @@ export function useTopGearState({
     openAddItem,
     openOptimize,
     openUpgradeMenu,
+    loadUpgradeOptions,
     deselectAll,
     selectAll,
     toggleSlotAll,

@@ -27,6 +27,8 @@ interface TopGearSlotGroupProps {
   onUpgradeSelect: (item: ResolvedItem, opt: UpgradeOption) => void;
   onCatalystConvert: (item: ResolvedItem) => void;
   onOptimize: (item: ResolvedItem) => void;
+  canOptimizeItem: (item: ResolvedItem) => boolean;
+  onItemContextMenu: (item: ResolvedItem, event: React.MouseEvent) => void;
   itemDetails: (item: ResolvedItem) => {
     text: string;
     color?: string;
@@ -57,6 +59,8 @@ export default function TopGearSlotGroup({
   onUpgradeSelect,
   onCatalystConvert,
   onOptimize,
+  canOptimizeItem,
+  onItemContextMenu,
   itemDetails,
   isItemSelected,
   onToggleAll,
@@ -125,6 +129,7 @@ export default function TopGearSlotGroup({
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
             optimized={item.enchant_id > 0 || item.gem_id > 0}
+            onContextMenu={(event) => onItemContextMenu(item, event)}
           >
             <TopGearUpgradeButton
               item={item}
@@ -134,7 +139,7 @@ export default function TopGearSlotGroup({
               onUpgradeClick={() => onUpgradeClick(item)}
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={() => onOptimize(item)}
+              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
             />
           </GearItemRow>
         ))}
@@ -160,6 +165,7 @@ export default function TopGearSlotGroup({
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
             optimized={item.enchant_id > 0 || item.gem_id > 0}
+            onContextMenu={(event) => onItemContextMenu(item, event)}
           >
             <TopGearUpgradeButton
               item={item}
@@ -169,7 +175,7 @@ export default function TopGearSlotGroup({
               onUpgradeClick={() => onUpgradeClick(item)}
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={() => onOptimize(item)}
+              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
             />
           </GearItemRow>
         ))}

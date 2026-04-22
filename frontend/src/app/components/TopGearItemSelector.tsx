@@ -7,6 +7,7 @@ import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import AddItemModal from './AddItemModal';
 import OptimizeItemModal from './OptimizeItemModal';
 import { useSimContext } from './SimContext';
+import TopGearItemContextMenu from './top-gear/TopGearItemContextMenu';
 import TopGearQuickSelect from './top-gear/TopGearQuickSelect';
 import TopGearSlotGroup from './top-gear/TopGearSlotGroup';
 import { useTopGearState } from './top-gear/useTopGearState';
@@ -40,6 +41,20 @@ interface EnchantInfo {
   icon: string;
   item_id: number;
   quality: number;
+}
+
+interface ItemActionAvailability {
+  canAddEnchant: boolean;
+  canAddGem: boolean;
+}
+
+interface UpgradeOption {
+  bonus_id: number;
+  level: number;
+  max: number;
+  name: string;
+  fullName: string;
+  itemLevel: number;
 }
 
 const DISPLAY_GROUPS: DisplayGroup[] = [
@@ -121,22 +136,24 @@ function makeUid(item: {
   bonus_ids: number[];
   origin: string;
   slot: string;
+  ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
 }
 
 function makeIdentity(item: {
   item_id: number;
   bonus_ids: number[];
   origin: string;
+  ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
 }
 
 function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {
@@ -160,6 +177,17 @@ export default function TopGearItemSelector({
   const [headerVisible, setHeaderVisible] = useState(true);
   const [gemInfoById, setGemInfoById] = useState<Record<number, GemInfo>>({});
   const [enchantInfoById, setEnchantInfoById] = useState<Record<number, EnchantInfo>>({});
+  const [enchantAvailabilityBySlot, setEnchantAvailabilityBySlot] = useState<Record<string, boolean>>(
+    {}
+  );
+  const [otherTierOptions, setOtherTierOptions] = useState<UpgradeOption[]>([]);
+  const [loadingOtherTierOptions, setLoadingOtherTierOptions] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    item: ResolvedItem;
+    x: number;
+    y: number;
+    availability: ItemActionAvailability;
+  } | null>(null);
 
   const {
     upgradeMenuFor,
@@ -175,6 +203,7 @@ export default function TopGearItemSelector({
     openAddItem,
     openOptimize,
     openUpgradeMenu,
+    loadUpgradeOptions,
     deselectAll,
     selectAll,
     toggleSlotAll,
@@ -196,6 +225,7 @@ export default function TopGearItemSelector({
 
   const convertToCatalyst = useCallback(
     async (item: ResolvedItem) => {
+      setContextMenu(null);
       setUpgradeMenuFor(null);
       try {
         const res = await fetch(`${API_URL}/api/gear/catalyst-convert`, {
@@ -227,6 +257,146 @@ export default function TopGearItemSelector({
     [resolved, onResolvedChange, selectedUids, onSelectionChange, setUpgradeMenuFor]
   );
 
+  const updateAlternativesByIdentity = useCallback(
+    (
+      source: ResolvedItem,
+      mutate: (item: ResolvedItem) => ResolvedItem
+    ): { updated: boolean; uidMap: Map<string, string> } => {
+      const targetIdentity = makeIdentity(source);
+      const uidMap = new Map<string, string>();
+      let updated = false;
+      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+
+      for (const [slot, slotRes] of Object.entries(nextResolved.slots)) {
+        const nextAlternatives = slotRes.alternatives.map((alt) => {
+          if (makeIdentity(alt) !== targetIdentity) return alt;
+          const nextItem = mutate(alt);
+          const nextUid = makeUid({
+            item_id: nextItem.item_id,
+            bonus_ids: nextItem.bonus_ids,
+            origin: nextItem.origin,
+            slot: nextItem.slot || slot,
+            ilevel: nextItem.ilevel,
+            enchant_id: nextItem.enchant_id,
+            gem_id: nextItem.gem_id,
+          });
+          if (nextUid !== alt.uid) {
+            uidMap.set(alt.uid, nextUid);
+          }
+          updated = true;
+          return { ...nextItem, uid: nextUid, slot: nextItem.slot || slot };
+        });
+        slotRes.alternatives = nextAlternatives;
+      }
+
+      if (updated) {
+        onResolvedChange(nextResolved);
+      }
+
+      return { updated, uidMap };
+    },
+    [resolved, onResolvedChange]
+  );
+
+  const remapSelections = useCallback(
+    (uidMap: Map<string, string>) => {
+      if (uidMap.size === 0) return;
+      const nextSelected = {
+        ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+      };
+      for (const set of Object.values(nextSelected)) {
+        for (const [oldUid, newUid] of uidMap.entries()) {
+          if (!set.has(oldUid)) continue;
+          set.delete(oldUid);
+          set.add(newUid);
+        }
+      }
+      onSelectionChange(nextSelected);
+    },
+    [selectedUids, onSelectionChange]
+  );
+
+  const setItemOrigin = useCallback(
+    (item: ResolvedItem, origin: 'bags' | 'vault') => {
+      const { updated, uidMap } = updateAlternativesByIdentity(item, (alt) => ({ ...alt, origin }));
+      if (!updated) return;
+      remapSelections(uidMap);
+      setContextMenu(null);
+    },
+    [updateAlternativesByIdentity, remapSelections]
+  );
+
+  const setItemWishlist = useCallback(
+    (item: ResolvedItem, enabled: boolean) => {
+      const { updated } = updateAlternativesByIdentity(item, (alt) => {
+        const nextTag = enabled
+          ? alt.tag && alt.tag.toLowerCase() !== 'vault'
+            ? alt.tag
+            : 'Wishlist'
+          : alt.tag.toLowerCase() === 'wishlist'
+            ? ''
+            : alt.tag;
+        return {
+          ...alt,
+          tag: nextTag,
+          source_type: enabled ? 'wishlist' : '',
+        };
+      });
+      if (!updated) return;
+      setContextMenu(null);
+    },
+    [updateAlternativesByIdentity]
+  );
+
+  const openItemContextMenu = useCallback(
+    (item: ResolvedItem, event: React.MouseEvent) => {
+      const getGemAvailability = (target: ResolvedItem): boolean =>
+        target.sockets > 0 || target.gem_id > 0 || /(?:^|,)gem_id=/.test(target.simc_string);
+
+      const getEnchantAvailability = async (target: ResolvedItem): Promise<boolean> => {
+        const className = resolved.character.class_name || '';
+        const cacheKey = `${target.slot}|${className}`;
+        if (Object.prototype.hasOwnProperty.call(enchantAvailabilityBySlot, cacheKey)) {
+          return !!enchantAvailabilityBySlot[cacheKey];
+        }
+        try {
+          const res = await fetch(
+            `${API_URL}/api/gear/enchant-options?slot=${target.slot}${
+              className ? `&class_name=${encodeURIComponent(className)}` : ''
+            }`,
+            { credentials: 'include' }
+          );
+          if (!res.ok) return false;
+          const data = await res.json();
+          const available = Array.isArray(data) && data.length > 0;
+          setEnchantAvailabilityBySlot((prev) => ({ ...prev, [cacheKey]: available }));
+          return available;
+        } catch {
+          return false;
+        }
+      };
+
+      const openAsync = async () => {
+        const canAddGem = getGemAvailability(item);
+        const canAddEnchant = await getEnchantAvailability(item);
+        setContextMenu({
+          item,
+          x: event.clientX,
+          y: event.clientY,
+          availability: {
+            canAddEnchant,
+            canAddGem,
+          },
+        });
+      };
+
+      event.preventDefault();
+      event.stopPropagation();
+      void openAsync();
+    },
+    [resolved.character.class_name, enchantAvailabilityBySlot]
+  );
+
   const addUpgradedCopy = useCallback(
     (item: ResolvedItem, option: any) => {
       const currentUpgradeBonusId = upgradeOptions.find((o) =>
@@ -241,36 +411,61 @@ export default function TopGearItemSelector({
         /bonus_id=[0-9/:]+/,
         `bonus_id=${newBonusIds.join('/')}`
       );
-      const copyOrigin = 'bags';
-      const copy: ResolvedItem = {
-        ...item,
-        origin: copyOrigin as any,
-        uid: makeUid({
+      const copyOrigin = item.origin === 'equipped' ? 'bags' : item.origin;
+      const targetSlots =
+        item.slot === 'finger1'
+          ? ['finger1', 'finger2']
+          : item.slot === 'finger2'
+            ? ['finger1', 'finger2']
+            : item.slot === 'trinket1'
+              ? ['trinket1', 'trinket2']
+              : item.slot === 'trinket2'
+                ? ['trinket1', 'trinket2']
+                : [item.slot];
+
+      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+      for (const slot of targetSlots) {
+        const uid = makeUid({
           item_id: item.item_id,
           bonus_ids: newBonusIds,
           origin: copyOrigin,
-          slot: item.slot,
+          slot,
+          ilevel: option.itemLevel,
           enchant_id: item.enchant_id,
           gem_id: item.gem_id,
-        }),
-        bonus_ids: newBonusIds,
-        simc_string: newSimcString,
-        ilevel: option.itemLevel,
-        upgrade: option.fullName,
-      };
-
-      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
-      const slotRes = nextResolved.slots[item.slot];
-      if (slotRes) {
+        });
+        const slotRes = nextResolved.slots[slot];
+        if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
+        const copy: ResolvedItem = {
+          ...item,
+          slot,
+          origin: copyOrigin as any,
+          uid,
+          bonus_ids: newBonusIds,
+          simc_string: newSimcString,
+          ilevel: option.itemLevel,
+          upgrade: option.fullName,
+        };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }
       onResolvedChange(nextResolved);
-      onItemAdded(item.slot, newSimcString, item.origin);
+      onItemAdded(item.slot, newSimcString, copyOrigin);
       const nextSelected = {
         ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
       };
-      if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
-      nextSelected[item.slot].add(copy.uid);
+      for (const slot of targetSlots) {
+        const uid = makeUid({
+          item_id: item.item_id,
+          bonus_ids: newBonusIds,
+          origin: copyOrigin,
+          slot,
+          ilevel: option.itemLevel,
+          enchant_id: item.enchant_id,
+          gem_id: item.gem_id,
+        });
+        if (!nextSelected[slot]) nextSelected[slot] = new Set();
+        nextSelected[slot].add(uid);
+      }
       onSelectionChange(nextSelected);
       setUpgradeMenuFor(null);
     },
@@ -284,6 +479,118 @@ export default function TopGearItemSelector({
       setUpgradeMenuFor,
     ]
   );
+
+  const applyTierCopy = useCallback(
+    (item: ResolvedItem, option: UpgradeOption) => {
+      const currentUpgradeBonusId = upgradeOptions.find((o) =>
+        item.bonus_ids.includes(o.bonus_id)
+      )?.bonus_id;
+      if (!currentUpgradeBonusId) return;
+
+      const newBonusIds = item.bonus_ids.map((b) =>
+        b === currentUpgradeBonusId ? option.bonus_id : b
+      );
+      const newSimcString = item.simc_string.replace(
+        /bonus_id=[0-9/:]+/,
+        `bonus_id=${newBonusIds.join('/')}`
+      );
+      const copyOrigin = item.origin === 'equipped' ? 'bags' : item.origin;
+      const targetSlots =
+        item.slot === 'finger1'
+          ? ['finger1', 'finger2']
+          : item.slot === 'finger2'
+            ? ['finger1', 'finger2']
+            : item.slot === 'trinket1'
+              ? ['trinket1', 'trinket2']
+              : item.slot === 'trinket2'
+                ? ['trinket1', 'trinket2']
+                : [item.slot];
+
+      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+      for (const slot of targetSlots) {
+        const uid = makeUid({
+          item_id: item.item_id,
+          bonus_ids: newBonusIds,
+          origin: copyOrigin,
+          slot,
+          ilevel: option.itemLevel,
+          enchant_id: item.enchant_id,
+          gem_id: item.gem_id,
+        });
+        const slotRes = nextResolved.slots[slot];
+        if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
+        const copy: ResolvedItem = {
+          ...item,
+          slot,
+          origin: copyOrigin as any,
+          uid,
+          bonus_ids: newBonusIds,
+          simc_string: newSimcString,
+          ilevel: option.itemLevel,
+          upgrade: option.fullName,
+        };
+        slotRes.alternatives = [...slotRes.alternatives, copy];
+      }
+      onResolvedChange(nextResolved);
+      onItemAdded(item.slot, newSimcString, copyOrigin);
+      const nextSelected = {
+        ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+      };
+      for (const slot of targetSlots) {
+        const uid = makeUid({
+          item_id: item.item_id,
+          bonus_ids: newBonusIds,
+          origin: copyOrigin,
+          slot,
+          ilevel: option.itemLevel,
+          enchant_id: item.enchant_id,
+          gem_id: item.gem_id,
+        });
+        if (!nextSelected[slot]) nextSelected[slot] = new Set();
+        nextSelected[slot].add(uid);
+      }
+      onSelectionChange(nextSelected);
+      setContextMenu(null);
+    },
+    [resolved, upgradeOptions, onResolvedChange, onItemAdded, selectedUids, onSelectionChange]
+  );
+
+  const loadOtherTierOptions = useCallback(async () => {
+    if (otherTierOptions.length > 0 || loadingOtherTierOptions) return;
+    setLoadingOtherTierOptions(true);
+    try {
+      const res = await fetch(`${API_URL}/api/upgrade-tracks`, { credentials: 'include' });
+      if (!res.ok) {
+        setOtherTierOptions([]);
+        setLoadingOtherTierOptions(false);
+        return;
+      }
+      const data = await res.json();
+      const normalized: UpgradeOption[] = (Array.isArray(data) ? data : [])
+        .map((opt: any) => {
+          const bonusId = Number(opt?.bonus_id ?? 0);
+          const level = Number(opt?.level ?? 0);
+          const max = Number(opt?.max ?? opt?.max_level ?? 0);
+          const itemLevel = Number(opt?.itemLevel ?? opt?.ilevel ?? 0);
+          const trackName = String(opt?.name || '').trim();
+          if (!bonusId || !trackName) return null;
+          return {
+            bonus_id: bonusId,
+            level,
+            max,
+            name: trackName,
+            fullName: `${trackName} ${level}/${max}`,
+            itemLevel,
+          };
+        })
+        .filter((o: UpgradeOption | null): o is UpgradeOption => o !== null)
+        .sort((a, b) => a.itemLevel - b.itemLevel);
+      setOtherTierOptions(normalized);
+    } catch {
+      setOtherTierOptions([]);
+    }
+    setLoadingOtherTierOptions(false);
+  }, [otherTierOptions.length, loadingOtherTierOptions]);
 
   const handleOptimize = useCallback(
     (enchantId: number, gemIds: number[]) => {
@@ -308,6 +615,7 @@ export default function TopGearItemSelector({
         bonus_ids: item.bonus_ids,
         origin: 'bags',
         slot: item.slot,
+        ilevel: item.ilevel,
         enchant_id: enchantId,
         gem_id: firstGemId,
       });
@@ -384,7 +692,13 @@ export default function TopGearItemSelector({
           ? `${difficultyInfo.track} ${difficultyInfo.level}/${UPGRADE_TRACK_MAX_LEVEL}`
           : '';
 
-      const uid = makeUid({ item_id: item.item_id, bonus_ids: bonusIds, origin: 'bags', slot });
+      const uid = makeUid({
+        item_id: item.item_id,
+        bonus_ids: bonusIds,
+        origin: 'bags',
+        slot,
+        ilevel: ilvl,
+      });
       const newItem: ResolvedItem = {
         uid,
         slot,
@@ -423,6 +737,7 @@ export default function TopGearItemSelector({
             bonus_ids: bonusIds,
             origin: 'bags',
             slot: s,
+            ilevel: ilvl,
           });
           targetSlot.alternatives = [
             ...targetSlot.alternatives,
@@ -439,6 +754,7 @@ export default function TopGearItemSelector({
           bonus_ids: bonusIds,
           origin: 'bags',
           slot: s,
+          ilevel: ilvl,
         });
         if (!nextSelected[s]) nextSelected[s] = new Set();
         nextSelected[s].add(slotUid);
@@ -595,6 +911,50 @@ export default function TopGearItemSelector({
     };
   }, [enchantIds, enchantInfoById]);
 
+  useEffect(() => {
+    const className = resolved.character.class_name || '';
+    const slots = Object.keys(resolved.slots);
+    const missing = slots.filter((slot) => {
+      const key = `${slot}|${className}`;
+      return !Object.prototype.hasOwnProperty.call(enchantAvailabilityBySlot, key);
+    });
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const fetched = await Promise.all(
+        missing.map(async (slot) => {
+          try {
+            const res = await fetch(
+              `${API_URL}/api/gear/enchant-options?slot=${slot}${
+                className ? `&class_name=${encodeURIComponent(className)}` : ''
+              }`,
+              { credentials: 'include' }
+            );
+            if (!res.ok) return [slot, false] as const;
+            const data = await res.json();
+            return [slot, Array.isArray(data) && data.length > 0] as const;
+          } catch {
+            return [slot, false] as const;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setEnchantAvailabilityBySlot((prev) => {
+        const next = { ...prev };
+        for (const [slot, available] of fetched) {
+          next[`${slot}|${className}`] = available;
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolved, enchantAvailabilityBySlot]);
+
   const itemDetails = (item: ResolvedItem) => {
     const gemIconFallback = 'inv_misc_questionmark';
     const effectiveGemId =
@@ -674,6 +1034,20 @@ export default function TopGearItemSelector({
     return parts;
   };
 
+  const canOptimizeItem = useCallback(
+    (item: ResolvedItem): boolean => {
+      const className = resolved.character.class_name || '';
+      const cacheKey = `${item.slot}|${className}`;
+      const hasEnchantOptions = enchantAvailabilityBySlot[cacheKey] === true;
+      const hasGemOptions =
+        item.sockets > 0 || item.gem_id > 0 || /(?:^|,)gem_id=/.test(item.simc_string);
+      const hasExistingEnhancements =
+        item.enchant_id > 0 || item.gem_id > 0 || /(?:^|,)enchant_id=/.test(item.simc_string);
+      return hasEnchantOptions || hasGemOptions || hasExistingEnhancements;
+    },
+    [resolved.character.class_name, enchantAvailabilityBySlot]
+  );
+
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);
   const quickSelect = (
     <TopGearQuickSelect
@@ -711,6 +1085,26 @@ export default function TopGearItemSelector({
         item={optimizeItem}
         className={resolved.character.class_name}
         onApply={handleOptimize}
+      />
+      <TopGearItemContextMenu
+        item={contextMenu?.item || null}
+        x={contextMenu?.x || 0}
+        y={contextMenu?.y || 0}
+        canAddEnchant={contextMenu?.availability.canAddEnchant || false}
+        canAddGem={contextMenu?.availability.canAddGem || false}
+        otherTierOptions={otherTierOptions}
+        loadingOtherTierOptions={loadingOtherTierOptions}
+        upgradeOptions={upgradeOptions}
+        loadingUpgrades={loadingUpgrades}
+        onClose={() => setContextMenu(null)}
+        onLoadUpgradeOptions={loadUpgradeOptions}
+        onLoadOtherTierOptions={loadOtherTierOptions}
+        onUpgradeSelect={addUpgradedCopy}
+        onApplyOtherTier={applyTierCopy}
+        onCatalystConvert={convertToCatalyst}
+        onOptimize={openOptimize}
+        onSetOrigin={setItemOrigin}
+        onSetWishlist={setItemWishlist}
       />
 
       {!headerVisible && (
@@ -761,6 +1155,8 @@ export default function TopGearItemSelector({
             onUpgradeSelect={addUpgradedCopy}
             onCatalystConvert={convertToCatalyst}
             onOptimize={openOptimize}
+            canOptimizeItem={canOptimizeItem}
+            onItemContextMenu={openItemContextMenu}
             onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}
             isItemSelected={(item) => {

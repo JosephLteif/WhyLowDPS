@@ -135,7 +135,8 @@ impl ItemInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ResolvedItem {
-    /// Stable identity: "item_id:sorted_bonus_ids:origin:raw_slot"
+    /// Stable identity:
+    /// "item_id:sorted_bonus_ids:origin:i<ilevel>:e<enchant>:g<gem>:raw_slot"
     #[serde(default)]
     pub uid: String,
     #[serde(default)]

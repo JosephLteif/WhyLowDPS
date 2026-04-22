@@ -86,7 +86,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
           <img
             src="/icon.png"
             alt="WhyLowDps"
-            className="relative h-24 w-24 rounded-3xl shadow-2xl ring-1 ring-white/10"
+            className="relative h-24 w-24 object-contain drop-shadow-2xl"
           />
         </div>
 

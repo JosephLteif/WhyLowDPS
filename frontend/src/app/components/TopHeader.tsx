@@ -212,7 +212,7 @@ export default function TopHeader() {
               <img
                 src="/icon.png"
                 alt="WhyLowDps"
-                className="h-8 w-8 rounded-md shadow-sm ring-1 ring-white/10"
+                className="h-8 w-8 object-contain drop-shadow-sm"
               />
               <span className="text-[18px] font-bold tracking-tight text-gray-100 transition-colors group-hover:text-white">
                 WhyLowDps

@@ -347,6 +347,14 @@ fn main() {
 
             tray_builder.build(app)?;
 
+            // Force-apply the bundled icon on startup so native window chrome
+            // does not keep showing stale/cached icon resources.
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    let _ = window.set_icon(icon);
+                }
+            }
+
             tauri::async_runtime::spawn(async move {
                 let client = reqwest::Client::new();
                 let mut baseline_ready = false;

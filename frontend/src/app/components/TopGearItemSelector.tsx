@@ -911,6 +911,50 @@ export default function TopGearItemSelector({
     };
   }, [enchantIds, enchantInfoById]);
 
+  useEffect(() => {
+    const className = resolved.character.class_name || '';
+    const slots = Object.keys(resolved.slots);
+    const missing = slots.filter((slot) => {
+      const key = `${slot}|${className}`;
+      return !Object.prototype.hasOwnProperty.call(enchantAvailabilityBySlot, key);
+    });
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const fetched = await Promise.all(
+        missing.map(async (slot) => {
+          try {
+            const res = await fetch(
+              `${API_URL}/api/gear/enchant-options?slot=${slot}${
+                className ? `&class_name=${encodeURIComponent(className)}` : ''
+              }`,
+              { credentials: 'include' }
+            );
+            if (!res.ok) return [slot, false] as const;
+            const data = await res.json();
+            return [slot, Array.isArray(data) && data.length > 0] as const;
+          } catch {
+            return [slot, false] as const;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setEnchantAvailabilityBySlot((prev) => {
+        const next = { ...prev };
+        for (const [slot, available] of fetched) {
+          next[`${slot}|${className}`] = available;
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolved, enchantAvailabilityBySlot]);
+
   const itemDetails = (item: ResolvedItem) => {
     const gemIconFallback = 'inv_misc_questionmark';
     const effectiveGemId =
@@ -989,6 +1033,20 @@ export default function TopGearItemSelector({
     }
     return parts;
   };
+
+  const canOptimizeItem = useCallback(
+    (item: ResolvedItem): boolean => {
+      const className = resolved.character.class_name || '';
+      const cacheKey = `${item.slot}|${className}`;
+      const hasEnchantOptions = enchantAvailabilityBySlot[cacheKey] === true;
+      const hasGemOptions =
+        item.sockets > 0 || item.gem_id > 0 || /(?:^|,)gem_id=/.test(item.simc_string);
+      const hasExistingEnhancements =
+        item.enchant_id > 0 || item.gem_id > 0 || /(?:^|,)enchant_id=/.test(item.simc_string);
+      return hasEnchantOptions || hasGemOptions || hasExistingEnhancements;
+    },
+    [resolved.character.class_name, enchantAvailabilityBySlot]
+  );
 
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);
   const quickSelect = (
@@ -1097,6 +1155,7 @@ export default function TopGearItemSelector({
             onUpgradeSelect={addUpgradedCopy}
             onCatalystConvert={convertToCatalyst}
             onOptimize={openOptimize}
+            canOptimizeItem={canOptimizeItem}
             onItemContextMenu={openItemContextMenu}
             onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}

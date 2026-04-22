@@ -27,6 +27,7 @@ interface TopGearSlotGroupProps {
   onUpgradeSelect: (item: ResolvedItem, opt: UpgradeOption) => void;
   onCatalystConvert: (item: ResolvedItem) => void;
   onOptimize: (item: ResolvedItem) => void;
+  canOptimizeItem: (item: ResolvedItem) => boolean;
   onItemContextMenu: (item: ResolvedItem, event: React.MouseEvent) => void;
   itemDetails: (item: ResolvedItem) => {
     text: string;
@@ -58,6 +59,7 @@ export default function TopGearSlotGroup({
   onUpgradeSelect,
   onCatalystConvert,
   onOptimize,
+  canOptimizeItem,
   onItemContextMenu,
   itemDetails,
   isItemSelected,
@@ -137,7 +139,7 @@ export default function TopGearSlotGroup({
               onUpgradeClick={() => onUpgradeClick(item)}
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={() => onOptimize(item)}
+              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
             />
           </GearItemRow>
         ))}
@@ -173,7 +175,7 @@ export default function TopGearSlotGroup({
               onUpgradeClick={() => onUpgradeClick(item)}
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={() => onOptimize(item)}
+              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
             />
           </GearItemRow>
         ))}

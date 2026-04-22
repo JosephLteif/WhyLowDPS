@@ -46,6 +46,8 @@ interface GearItemRowProps {
   optimized?: boolean;
   /** Optional content rendered after the details (e.g. upgrade button) */
   children?: React.ReactNode;
+  /** Optional context menu handler (e.g. right-click item actions) */
+  onContextMenu?: (event: React.MouseEvent) => void;
 }
 
 function getIconUrl(iconName: string): string {
@@ -74,6 +76,7 @@ export default function GearItemRow({
   wowheadData,
   optimized: _optimized,
   children,
+  onContextMenu,
 }: GearItemRowProps) {
   const hasLeadingControl = showCheckbox && (selectable || equipped);
   const detailsIndentClass = hasLeadingControl ? 'pl-[1.875rem]' : 'pl-0';
@@ -290,6 +293,7 @@ export default function GearItemRow({
   if (selectable) {
     return (
       <label
+        onContextMenu={onContextMenu}
         className={`group cursor-pointer ${baseClass} ${
           checked
             ? vault
@@ -309,5 +313,12 @@ export default function GearItemRow({
     );
   }
 
-  return <div className={`${baseClass} ${equipped ? 'bg-white/[0.03]' : ''}`}>{content}</div>;
+  return (
+    <div
+      onContextMenu={onContextMenu}
+      className={`${baseClass} ${equipped ? 'bg-white/[0.03]' : ''}`}
+    >
+      {content}
+    </div>
+  );
 }

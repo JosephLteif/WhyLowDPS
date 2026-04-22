@@ -216,28 +216,16 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
         .app_data_dir()
         .unwrap_or_else(|_| PathBuf::from("./"));
     let data_dir = app_data_dir.join("data");
-    let simc_dir = app_data_dir.join("simc");
+    let simc_dir = app
+        .path()
+        .resolve("simc", BaseDirectory::Resource)
+        .unwrap_or_else(|_| app_data_dir.join("simc"));
     // Specifically check for critical files
     let classes_json = data_dir.join("classes.json");
-    let simc_exe_legacy = if cfg!(windows) {
+    let simc_exe = if cfg!(windows) {
         simc_dir.join("simc.exe")
     } else {
         simc_dir.join("simc")
-    };
-    let simc_exe_latest = if cfg!(windows) {
-        simc_dir.join("channels").join("latest").join("simc.exe")
-    } else {
-        simc_dir.join("channels").join("latest").join("simc")
-    };
-    let simc_exe_weekly = if cfg!(windows) {
-        simc_dir.join("channels").join("weekly").join("simc.exe")
-    } else {
-        simc_dir.join("channels").join("weekly").join("simc")
-    };
-    let simc_exe_nightly = if cfg!(windows) {
-        simc_dir.join("channels").join("nightly").join("simc.exe")
-    } else {
-        simc_dir.join("channels").join("nightly").join("simc")
     };
 
     Ok(SystemInfo {
@@ -248,12 +236,9 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
         data_dir: data_dir.to_string_lossy().to_string(),
         simc_dir: simc_dir.to_string_lossy().to_string(),
         data_valid: classes_json.exists(),
-        simc_valid: simc_exe_legacy.exists()
-            || simc_exe_latest.exists()
-            || simc_exe_weekly.exists()
-            || simc_exe_nightly.exists(),
+        simc_valid: simc_exe.exists(),
         api_url: "http://localhost:17384".to_string(),
-        version: "0.2.4-STABILITY-V2".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }
 
@@ -346,6 +331,14 @@ fn main() {
             }
 
             tray_builder.build(app)?;
+
+            // Force-apply the bundled icon on startup so native window chrome
+            // does not keep showing stale/cached icon resources.
+            if let Some(window) = app.get_webview_window("main") {
+                if let Some(icon) = app.default_window_icon().cloned() {
+                    let _ = window.set_icon(icon);
+                }
+            }
 
             tauri::async_runtime::spawn(async move {
                 let client = reqwest::Client::new();
@@ -441,7 +434,9 @@ fn main() {
             };
 
             let bundled_data_dir = resolve_bundled_resource("data", "../../backend/resources/data");
+            let bundled_simc_dir = resolve_bundled_resource("simc", "../../backend/resources/simc");
             println!("Resolved bundled_data_dir: {:?}", bundled_data_dir);
+            println!("Resolved bundled_simc_dir: {:?}", bundled_simc_dir);
 
             // 2. Resolve writable runtime paths (persistent app data)
             let app_data_dir = app_handle
@@ -458,17 +453,22 @@ fn main() {
             }
             seed_runtime_data_if_missing(&bundled_data_dir, &data_dir);
 
-            let runtime_simc_dir = app_data_dir.join("simc");
-            if !runtime_simc_dir.exists() {
-                let _ = std::fs::create_dir_all(&runtime_simc_dir);
-            }
-
-            let simc_bin = if cfg!(windows) {
-                runtime_simc_dir.join("simc.exe")
+            let bundled_simc_bin = if cfg!(windows) {
+                bundled_simc_dir.join("simc.exe")
             } else {
-                runtime_simc_dir.join("simc")
+                bundled_simc_dir.join("simc")
             };
-            println!("Using runtime simc_bin path: {:?}", simc_bin);
+            let legacy_runtime_simc_bin = if cfg!(windows) {
+                app_data_dir.join("simc").join("simc.exe")
+            } else {
+                app_data_dir.join("simc").join("simc")
+            };
+            let simc_bin = if bundled_simc_bin.exists() {
+                bundled_simc_bin
+            } else {
+                legacy_runtime_simc_bin
+            };
+            println!("Using bundled simc_bin path: {:?}", simc_bin);
 
             let db_path = app_data_dir.join("whylowdps.db");
             let db_path_str = db_path.to_string_lossy().to_string();

@@ -211,7 +211,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         iterations: 10000,
         target_error: 0.1,
         threads,
-        simc_channel: simcChannel || 'weekly',
+        simc_channel: simcChannel || 'bundled',
         ...(batchId ? { batch_id: batchId } : {}),
         ...(selectedTalent ? { talents: selectedTalent } : {}),
         ...(customApl ? { custom_apl: customApl } : {}),

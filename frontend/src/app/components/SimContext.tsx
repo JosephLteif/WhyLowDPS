@@ -140,7 +140,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [targetCount, _setTargetCount] = useState(1);
   const [fightLength, _setFightLength] = useState(300);
   const [customApl, setCustomApl] = useState('');
-  const [simcChannel, _setSimcChannel] = useState('stable');
+  const [simcChannel, _setSimcChannel] = useState('bundled');
   const [includeTimeline, _setIncludeTimeline] = useState(true);
   const [externalBuffChaosBrand, _setExternalBuffChaosBrand] = useState(true);
   const [externalBuffMysticTouch, _setExternalBuffMysticTouch] = useState(true);
@@ -365,12 +365,12 @@ export function SimProvider({ children }: { children: ReactNode }) {
           getAppDefaultOption('consumable.temporaryEnchant', { characterKey })
         )
       );
-      _setSimcChannel(readStoredString('whylowdps_simc_channel', 'weekly') || 'weekly');
+      _setSimcChannel(readStoredString('whylowdps_simc_channel', 'bundled') || 'bundled');
       _setAutoClipboardPasteSimc(readStoredBool('whylowdps_auto_clipboard_paste_simc', true));
       _setDataCacheRefreshMinutes(readStored('whylowdps_data_cache_refresh_minutes', 0));
-      const rawChannel = readStoredString('whylowdps_simc_channel', 'stable') || 'stable';
+      const rawChannel = readStoredString('whylowdps_simc_channel', 'bundled') || 'bundled';
       const normalizedChannel =
-        rawChannel === 'weekly' || rawChannel === 'latest' ? 'stable' : rawChannel;
+        rawChannel === 'weekly' || rawChannel === 'latest' ? 'bundled' : rawChannel;
       _setSimcChannel(normalizedChannel);
     } catch {}
   }, []);
@@ -581,10 +581,10 @@ export function SimProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSimcChannel = useCallback((v: string) => {
-    let normalized = (v || 'stable').toLowerCase();
+    let normalized = (v || 'bundled').toLowerCase();
     // Normalize legacy channel names
     if (normalized === 'weekly' || normalized === 'latest') {
-      normalized = 'stable';
+      normalized = 'bundled';
     }
     _setSimcChannel(normalized);
     try {

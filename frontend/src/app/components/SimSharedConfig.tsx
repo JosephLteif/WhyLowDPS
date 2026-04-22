@@ -13,7 +13,6 @@ import {
   deleteCharacterProfile,
   deleteSavedRoute,
   fetchJson,
-  getSimcStatus,
   isDesktop,
   listCharacterProfiles,
   listSavedRoutes,
@@ -768,8 +767,6 @@ function FightSetupOptions() {
 function ConsumablesAndRaidBuffsOptions() {
   const {
     simcInput,
-    simcChannel,
-    setSimcChannel,
     externalBuffChaosBrand,
     setExternalBuffChaosBrand,
     externalBuffMysticTouch,
@@ -804,36 +801,12 @@ function ConsumablesAndRaidBuffsOptions() {
     setConsumableTemporaryEnchant,
     lockSingleConsumableOptions,
   } = useSimContext();
-  const [installedSimcChannels, setInstalledSimcChannels] = useState<string[]>(['nightly']);
 
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
   const qualityMaxByFamily = useMemo(
     () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
     [flasks, potions, augments, tempEnchants]
   );
-  const refreshInstalledSimcChannels = useCallback(async () => {
-    if (!isDesktop) {
-      setInstalledSimcChannels(['nightly']);
-      return;
-    }
-    try {
-      const nightly = await getSimcStatus();
-      const installed = [nightly.installed_exists ? 'nightly' : null].filter(Boolean) as string[];
-      setInstalledSimcChannels(installed.length > 0 ? installed : ['nightly']);
-    } catch {
-      setInstalledSimcChannels(['nightly']);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshInstalledSimcChannels();
-  }, [refreshInstalledSimcChannels]);
-
-  useEffect(() => {
-    if (!installedSimcChannels.includes(simcChannel)) {
-      setSimcChannel(installedSimcChannels[0] || 'nightly');
-    }
-  }, [installedSimcChannels, setSimcChannel, simcChannel]);
   const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
     bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
     arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },

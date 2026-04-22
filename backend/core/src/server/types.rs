@@ -357,7 +357,7 @@ fn default_max_time() -> u32 {
     300
 }
 fn default_simc_channel() -> String {
-    "weekly".to_string()
+    "bundled".to_string()
 }
 fn default_include_timeline() -> bool {
     true

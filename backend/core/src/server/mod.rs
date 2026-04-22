@@ -19,8 +19,6 @@ mod job_handlers;
 mod route_handlers;
 #[cfg(feature = "web")]
 mod sim_handlers;
-#[cfg(all(feature = "desktop", feature = "web"))]
-mod simc_updater;
 #[cfg(feature = "web")]
 mod types;
 #[cfg(feature = "web")]
@@ -225,10 +223,6 @@ pub async fn start_with_storage_bind(
         let log_data = web::Data::new(Arc::new(LogBuffer::new()));
         #[cfg(feature = "desktop")]
         let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
-        #[cfg(feature = "desktop")]
-        let simc_updater_data = web::Data::new(simc_updater::SimcUpdaterState::new());
-        #[cfg(feature = "desktop")]
-        simc_updater::migrate_legacy_channel_dirs(simc_data.get_ref());
         let frontend = frontend_dir.clone();
         let data = data_dir.clone();
 
@@ -386,9 +380,7 @@ pub async fn start_with_storage_bind(
 
             #[cfg(feature = "desktop")]
             {
-                app = app
-                    .app_data(stats_data.clone())
-                    .app_data(simc_updater_data.clone());
+                app = app.app_data(stats_data.clone());
             }
 
             // Simulation routes
@@ -609,20 +601,7 @@ pub async fn start_with_storage_bind(
 
             #[cfg(feature = "desktop")]
             {
-                app = app
-                    .route("/api/system-stats", web::get().to(system_stats))
-                    .route(
-                        "/api/system/simc/status",
-                        web::get().to(simc_updater::simc_status),
-                    )
-                    .route(
-                        "/api/system/simc/download-latest",
-                        web::post().to(simc_updater::download_latest_simc),
-                    )
-                    .route(
-                        "/api/system/simc/remove",
-                        web::post().to(simc_updater::remove_simc_channel),
-                    );
+                app = app.route("/api/system-stats", web::get().to(system_stats));
             }
 
             let data_dir_inner = data.clone();

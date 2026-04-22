@@ -20,13 +20,12 @@ fn resolve_simc_binary_for_request(
 ) -> Result<PathBuf, String> {
     #[cfg(feature = "desktop")]
     {
-        if let Some(path) =
-            super::simc_updater::resolve_installed_binary_for_channel(simc_path, None)
-        {
-            return Ok(path);
+        if simc_path.exists() {
+            return Ok(simc_path.to_path_buf());
         }
         Err(
-            "SimC nightly is not installed. Open Settings -> SimulationCraft Engine and install/update it first.".to_string()
+            "Bundled SimulationCraft is missing from this app build. Reinstall the app or switch to another release channel build."
+                .to_string(),
         )
     }
 

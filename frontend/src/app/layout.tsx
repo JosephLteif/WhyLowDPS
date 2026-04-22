@@ -3,7 +3,6 @@ import Script from 'next/script';
 import { SimProvider } from './components/SimContext';
 import SimSharedConfig from './components/SimSharedConfig';
 import Sidebar from './components/Sidebar';
-import SimcRequiredModal from './components/SimcRequiredModal';
 import TopHeader from './components/TopHeader';
 import UpdatePrompt from './components/UpdatePrompt';
 import CloseBehaviorPrompt from './components/CloseBehaviorPrompt';
@@ -39,7 +38,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <DataGuard>
             <SimProvider>
               <TopHeader />
-              <SimcRequiredModal />
               <UpdatePrompt />
               <CloseBehaviorPrompt />
               <ScrollToTopOnRouteChange />

@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
+import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import { API_URL } from '../lib/api';
+import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState } from '../lib/sim-return';
 import type { ResolveGearResponse } from '../lib/types';
@@ -24,14 +26,21 @@ interface TopGearSimAgainState {
 
 export default function TopGearPage() {
   const { simcInput, setSimcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
+  const characterDefaultsKey = getCharacterDefaultsKeyFromSimcInput(simcInput);
   const [resolved, setResolved] = useState<ResolveGearResponse | null>(null);
   const [selectedUids, setSelectedUids] = useState<Record<string, Set<string>>>({});
   const [localItems, setLocalItems] = useState<
     { slot: string; simc_string: string; origin: string }[]
   >([]);
-  const [maxUpgrade, setMaxUpgrade] = useState(false);
-  const [copyEnchants, setCopyEnchants] = useState(true);
-  const [catalyst, setCatalyst] = useState(false);
+  const [maxUpgrade, setMaxUpgrade] = useState(() =>
+    getAppDefaultOption('topgear.maxUpgrade', { characterKey: characterDefaultsKey })
+  );
+  const [copyEnchants, setCopyEnchants] = useState(() =>
+    getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
+  );
+  const [catalyst, setCatalyst] = useState(() =>
+    getAppDefaultOption('topgear.catalyst', { characterKey: characterDefaultsKey })
+  );
   const [catalystCharges, setCatalystCharges] = useState<number | null>(null);
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
@@ -41,6 +50,7 @@ export default function TopGearPage() {
   const prevCatalystRef = useRef(false);
   const skipNextInputResetRef = useRef(false);
   const skipNextResolveRef = useRef(false);
+  const previousSimcInputRef = useRef(simcInput);
 
   useEffect(() => {
     const restored = consumeSimAgainState<TopGearSimAgainState>(TOP_GEAR_SIM_AGAIN_KEY);
@@ -91,6 +101,20 @@ export default function TopGearPage() {
 
     skipNextInputResetRef.current = true;
   }, [simcInput, maxUpgrade, catalyst, setSimcInput]);
+
+  useEffect(() => {
+    if (simcInput === previousSimcInputRef.current) return;
+    previousSimcInputRef.current = simcInput;
+    setCopyEnchants(
+      getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
+    );
+    setMaxUpgrade(
+      getAppDefaultOption('topgear.maxUpgrade', { characterKey: characterDefaultsKey })
+    );
+    setCatalyst(
+      getAppDefaultOption('topgear.catalyst', { characterKey: characterDefaultsKey })
+    );
+  }, [simcInput, characterDefaultsKey]);
 
   // Resolve gear when simc input, maxUpgrade, or catalyst changes
   useEffect(() => {
@@ -364,71 +388,49 @@ export default function TopGearPage() {
 
   return (
     <div className="space-y-6">
-      <div className="card flex flex-col gap-4 p-5 sm:flex-row">
-        <label className="group flex flex-1 cursor-pointer items-center gap-3">
-          <div
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-              copyEnchants ? 'bg-gold' : 'border border-border bg-surface-2'
-            }`}
-            onClick={() => setCopyEnchants(!copyEnchants)}
+      <div className="card space-y-4 p-5">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setCopyEnchants(
+                getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
+              );
+              setMaxUpgrade(
+                getAppDefaultOption('topgear.maxUpgrade', { characterKey: characterDefaultsKey })
+              );
+              setCatalyst(
+                getAppDefaultOption('topgear.catalyst', { characterKey: characterDefaultsKey })
+              );
+            }}
+            className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
           >
-            <div
-              className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
-                copyEnchants ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
-              }`}
-            />
-          </div>
-          <div>
-            <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
-              Copy Enchants
-            </span>
-            <p className="text-[13px] text-gray-600">
-              Apply equipped enchants to items that don&apos;t have one
-            </p>
-          </div>
-        </label>
-        <label className="group flex flex-1 cursor-pointer items-center gap-3">
-          <div
-            className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-              maxUpgrade ? 'bg-gold' : 'border border-border bg-surface-2'
-            }`}
-            onClick={() => setMaxUpgrade(!maxUpgrade)}
-          >
-            <div
-              className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
-                maxUpgrade ? 'left-[18px] bg-black' : 'left-0.5 bg-gray-500'
-              }`}
-            />
-          </div>
-          <div>
-            <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
-              Sim Highest Upgrade
-            </span>
-            <p className="text-[13px] text-gray-600">
-              Treat all selected gear as their maximum upgrade level
-            </p>
-          </div>
-        </label>
+            Apply Defaults
+          </button>
+        </div>
+        <div className="flex flex-col gap-4 sm:flex-row">
+        <ToggleOptionCard
+          checked={copyEnchants}
+          onToggle={() => setCopyEnchants(!copyEnchants)}
+          title="Copy Enchants"
+          description="Apply equipped enchants to items that don't have one"
+        />
+        <ToggleOptionCard
+          checked={maxUpgrade}
+          onToggle={() => setMaxUpgrade(!maxUpgrade)}
+          title="Sim Highest Upgrade"
+          description="Treat all selected gear as their maximum upgrade level"
+        />
         {catalystCharges != null && catalystCharges > 0 && (
-          <div className="group flex flex-1 items-center gap-3">
-            <div
-              className={`relative h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
-                catalyst ? 'bg-purple-500' : 'border border-border bg-surface-2'
-              }`}
-              onClick={() => setCatalyst(!catalyst)}
-            >
-              <div
-                className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${
-                  catalyst ? 'left-[18px] bg-white' : 'left-0.5 bg-gray-500'
-                }`}
-              />
-            </div>
-            <div className="flex-1 cursor-pointer" onClick={() => setCatalyst(!catalyst)}>
-              <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
-                Revival Catalyst
-              </span>
-              <p className="text-[13px] text-gray-600">Convert highest item per slot</p>
-            </div>
+          <div className="flex flex-1 items-center gap-3">
+            <ToggleOptionCard
+              checked={catalyst}
+              onToggle={() => setCatalyst(!catalyst)}
+              title="Revival Catalyst"
+              description="Convert highest item per slot"
+              activeClassName="bg-purple-500"
+              activeKnobClassName="bg-white"
+            />
             <div className="flex items-center gap-1.5">
               <input
                 type="number"
@@ -445,6 +447,7 @@ export default function TopGearPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       <TopGearItemSelector

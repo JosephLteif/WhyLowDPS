@@ -1,0 +1,125 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+interface RaidBuffEntry {
+  id: string;
+  label: string;
+  spellId: number;
+  icon: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+interface RaidBuffGridProps {
+  entries: RaidBuffEntry[];
+  onSelectAll?: () => void;
+  onClear?: () => void;
+}
+
+const SPELL_ICON_CACHE = new Map<number, string>();
+
+function useSpellIcons(spellIds: number[]) {
+  const [icons, setIcons] = useState<Map<number, string>>(new Map());
+  const depKey = spellIds.join(',');
+
+  useEffect(() => {
+    const missing = spellIds.filter((id) => id > 0 && !SPELL_ICON_CACHE.has(id));
+    if (missing.length === 0) {
+      setIcons(new Map(SPELL_ICON_CACHE));
+      return;
+    }
+
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (id) => {
+        try {
+          const res = await fetch(`https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.icon) SPELL_ICON_CACHE.set(id, data.icon);
+        } catch {
+          // Ignore fetch failures and keep fallback icon.
+        }
+      })
+    ).then(() => {
+      if (!cancelled) setIcons(new Map(SPELL_ICON_CACHE));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return icons;
+}
+
+export default function RaidBuffGrid({ entries, onSelectAll, onClear }: RaidBuffGridProps) {
+  const spellIcons = useSpellIcons(entries.map((entry) => entry.spellId || 0));
+
+  return (
+    <div className="space-y-3">
+      {(onSelectAll || onClear) && (
+        <div className="flex items-center justify-end gap-2">
+          {onSelectAll && (
+            <button
+              type="button"
+              onClick={onSelectAll}
+              className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
+            >
+              Select All
+            </button>
+          )}
+          {onClear && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="rounded-md border border-zinc-600 bg-zinc-900/70 px-2.5 py-1 text-[12px] font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {entries.map((entry) => (
+          <label
+            key={entry.id}
+            className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
+              entry.checked ? 'border-gold/40 bg-gold/[0.08]' : 'border-border bg-surface hover:border-zinc-600'
+            }`}
+          >
+            <a
+              href={`https://www.wowhead.com/spell=${entry.spellId}`}
+              target="_blank"
+              rel="noreferrer"
+              data-wowhead={`spell=${entry.spellId}`}
+              className="flex min-w-0 items-center gap-2 text-zinc-100 hover:text-white"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={`https://wow.zamimg.com/images/wow/icons/small/${spellIcons.get(entry.spellId) || entry.icon}.jpg`}
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  if (img.dataset.fallbackApplied === '1') return;
+                  img.dataset.fallbackApplied = '1';
+                  img.src = `https://wow.zamimg.com/images/wow/icons/small/${entry.icon}.jpg`;
+                }}
+                alt=""
+                className="h-4 w-4 shrink-0 rounded-[3px]"
+              />
+              <span className="truncate text-[14px]">{entry.label}</span>
+            </a>
+            <input
+              type="checkbox"
+              checked={entry.checked}
+              onChange={(e) => entry.onChange(e.target.checked)}
+              className="h-4 w-4 accent-gold"
+            />
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}

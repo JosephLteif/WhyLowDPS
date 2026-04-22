@@ -1,6 +1,6 @@
 {
   "name": "whylowdps",
-  "version": "1.2.3",
+  "version": "1.2.3-weekly.202617",
   "private": true,
   "devDependencies": {
     "@tauri-apps/cli": "^2",

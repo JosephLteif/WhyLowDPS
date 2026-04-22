@@ -1,6 +1,6 @@
 {
   "name": "whylowdps-frontend",
-  "version": "1.2.3",
+  "version": "1.2.3-weekly.202617",
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",

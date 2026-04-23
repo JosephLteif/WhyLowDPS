@@ -692,6 +692,12 @@ pub async fn get_user_configs(
     let has_secret = store
         .get_user_config(&claims.sub, "blizzard_client_secret")
         .is_some();
+    let warcraftlogs_client_id = store
+        .get_user_config(&claims.sub, "warcraftlogs_client_id")
+        .unwrap_or_default();
+    let has_warcraftlogs_secret = store
+        .get_user_config(&claims.sub, "warcraftlogs_client_secret")
+        .is_some();
     let sim_threads = store
         .get_user_config(&claims.sub, "sim_threads")
         .unwrap_or_default();
@@ -711,6 +717,8 @@ pub async fn get_user_configs(
     HttpResponse::Ok().json(json!({
         "blizzard_client_id": client_id,
         "has_blizzard_client_secret": has_secret,
+        "warcraftlogs_client_id": warcraftlogs_client_id,
+        "has_warcraftlogs_client_secret": has_warcraftlogs_secret,
         "sim_threads": sim_threads,
         "max_gear_combinations": max_gear_combinations,
         "simc_download_channel": simc_download_channel,
@@ -732,6 +740,8 @@ pub async fn set_user_config(
 
     if body.key != "blizzard_client_id"
         && body.key != "blizzard_client_secret"
+        && body.key != "warcraftlogs_client_id"
+        && body.key != "warcraftlogs_client_secret"
         && body.key != "sim_threads"
         && body.key != "max_gear_combinations"
         && body.key != "simc_download_channel"

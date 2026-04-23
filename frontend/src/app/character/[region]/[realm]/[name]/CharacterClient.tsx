@@ -96,7 +96,6 @@ export default function CharacterClient() {
           professions,
           mythicPlus,
           raidEncounters,
-          dungeons,
         ] = await Promise.all([
           fetchJson<any>(`${baseUrl}/profile${query}`),
           fetchJson<any>(`${baseUrl}/equipment${query}`).catch(() => ({ equipped_items: [] })),
@@ -105,7 +104,6 @@ export default function CharacterClient() {
           fetchJson<any>(`${baseUrl}/professions${query}`).catch(() => ({})),
           fetchJson<any>(`${baseUrl}/mythic-keystone-profile${query}`).catch(() => ({})),
           fetchJson<any>(`${baseUrl}/encounters/raids${query}`).catch(() => ({})),
-          fetchJson<any>(`${baseUrl}/encounters/dungeons${query}`).catch(() => ({})),
         ]);
 
         setData({
@@ -116,7 +114,6 @@ export default function CharacterClient() {
           professions,
           mythicPlus,
           raidEncounters,
-          dungeons,
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch character');
@@ -243,7 +240,6 @@ export default function CharacterClient() {
         professions={data.professions}
         mythicPlus={data.mythicPlus}
         raidEncounters={data.raidEncounters}
-        dungeons={data.dungeons}
         characterMediaUrl={characterMediaUrl}
       />
       <ConfirmModal

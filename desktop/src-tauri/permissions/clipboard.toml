@@ -8,5 +8,7 @@ commands.allow = [
     "open_external_url",
     "get_close_behavior_preference",
     "set_close_behavior_preference",
-    "apply_close_behavior_choice"
+    "apply_close_behavior_choice",
+    "restart_app",
+    "download_and_install_release"
 ]

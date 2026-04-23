@@ -8,7 +8,6 @@ import { useSimContext } from '../components/SimContext';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 import {
-  classifyReleaseChannel,
   isValidUpdateChannel,
   readStoredUpdateChannel,
   UPDATE_CHANNEL_OPTIONS,
@@ -71,41 +70,7 @@ type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
 };
 
-type AppReleaseOption = {
-  id: string;
-  version: string;
-  publishedAt: string | null;
-  notes: string | null;
-  downloadUrl: string;
-  assetName: string;
-  channel: UpdateChannel;
-};
-
-const APP_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=50';
-
-function normalizeReleaseVersion(raw: string): string {
-  return String(raw || '').trim().replace(/^v/i, '');
-}
-
-function pickWindowsAssetUrl(
-  assets: Array<{ browser_download_url?: unknown; name?: unknown }>,
-): { url: string; name: string } | null {
-  const normalized = (assets || [])
-    .map((asset) => ({
-      url:
-        typeof asset.browser_download_url === 'string' ? asset.browser_download_url.trim() : '',
-      name: typeof asset.name === 'string' ? asset.name.trim() : '',
-    }))
-    .filter((asset) => asset.url.length > 0);
-  if (normalized.length === 0) return null;
-
-  const preferred =
-    normalized.find((asset) => /windows|win64|x64|nsis|setup/i.test(asset.name || asset.url)) ||
-    normalized.find((asset) => /\.(exe|msi|zip)$/i.test(asset.name || asset.url)) ||
-    normalized[0];
-
-  return { url: preferred.url, name: preferred.name || 'Release Asset' };
-}
+type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -124,11 +89,18 @@ export default function SettingsPage() {
   const [clientSecret, setClientSecret] = useState('');
   const [secretTouched, setSecretTouched] = useState(false);
   const [hasSecret, setHasSecret] = useState(false);
+  const [warcraftLogsClientId, setWarcraftLogsClientId] = useState('');
+  const [warcraftLogsClientSecret, setWarcraftLogsClientSecret] = useState('');
+  const [warcraftLogsSecretTouched, setWarcraftLogsSecretTouched] = useState(false);
+  const [hasWarcraftLogsSecret, setHasWarcraftLogsSecret] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [blizzardSaving, setBlizzardSaving] = useState(false);
+  const [blizzardTesting, setBlizzardTesting] = useState(false);
+  const [blizzardMessage, setBlizzardMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [warcraftLogsSaving, setWarcraftLogsSaving] = useState(false);
+  const [warcraftLogsTesting, setWarcraftLogsTesting] = useState(false);
+  const [warcraftLogsMessage, setWarcraftLogsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [performanceSaved, setPerformanceSaved] = useState(false);
   const [cacheSyncing, setCacheSyncing] = useState(false);
   const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
@@ -152,16 +124,13 @@ export default function SettingsPage() {
   const initialRefresh = chooseBestUnit(dataCacheRefreshMinutes);
   const [refreshEveryValue, setRefreshEveryValue] = useState(initialRefresh.value);
   const [refreshEveryUnit, setRefreshEveryUnit] = useState<RefreshUnit>(initialRefresh.unit);
-  const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking'>('idle');
+  const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking' | 'installing'>('idle');
   const [updateMessage, setUpdateMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const [releaseOptions, setReleaseOptions] = useState<AppReleaseOption[]>([]);
-  const [releaseLoading, setReleaseLoading] = useState(false);
-  const [releaseError, setReleaseError] = useState('');
-  const [selectedReleaseId, setSelectedReleaseId] = useState('');
   const [selectedUpdateChannel, setSelectedUpdateChannel] = useState<UpdateChannel>('stable');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('simulation');
   const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(true);
   const [closeBehaviorLoading, setCloseBehaviorLoading] = useState(false);
   const [closeBehaviorMessage, setCloseBehaviorMessage] = useState<{
@@ -185,6 +154,8 @@ export default function SettingsPage() {
       .then((data) => {
         setClientId(data.blizzard_client_id || '');
         setHasSecret(data.has_blizzard_client_secret || false);
+        setWarcraftLogsClientId(data.warcraftlogs_client_id || '');
+        setHasWarcraftLogsSecret(data.has_warcraftlogs_client_secret || false);
         const serverUpdateChannel =
           typeof data.app_update_channel === 'string'
             ? data.app_update_channel.toLowerCase()
@@ -262,7 +233,17 @@ export default function SettingsPage() {
       if (status === 'available') {
         setUpdateMessage({
           type: 'success',
-          text: message || 'Update found. Use "Update Now" in the popup.',
+          text: message || 'Update available. Use the bottom-right updater popup to install.',
+        });
+      } else if (status === 'downloading') {
+        setUpdateMessage({
+          type: 'success',
+          text: message || 'Downloading and installing update...',
+        });
+      } else if (status === 'downloaded') {
+        setUpdateMessage({
+          type: 'success',
+          text: message || 'Update installed. Restart the app to apply.',
         });
       } else if (status === 'none') {
         setUpdateMessage({ type: 'success', text: message || 'You are on the latest version.' });
@@ -325,9 +306,9 @@ export default function SettingsPage() {
     setRefreshEveryUnit(derived.unit);
   }, [dataCacheRefreshMinutes]);
 
-  const testCredentials = async () => {
-    setTesting(true);
-    setMessage(null);
+  const testBlizzardCredentials = async () => {
+    setBlizzardTesting(true);
+    setBlizzardMessage(null);
     try {
       const payload: Record<string, string> = { client_id: clientId.trim() };
       payload.client_secret = clientSecret.trim();
@@ -337,17 +318,17 @@ export default function SettingsPage() {
         body: JSON.stringify(payload),
       });
 
-      setMessage({ type: 'success', text: 'Credentials verified successfully!' });
+      setBlizzardMessage({ type: 'success', text: 'Blizzard credentials verified successfully.' });
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Failed to verify credentials.' });
+      setBlizzardMessage({ type: 'error', text: err.message || 'Failed to verify Blizzard credentials.' });
     }
-    setTesting(false);
+    setBlizzardTesting(false);
   };
 
-  const saveAllSettings = async () => {
-    if (!clientId.trim()) return;
-    setSaving(true);
-    setMessage(null);
+  const saveBlizzardSettings = async () => {
+    if (!clientId.trim() && !clientSecret.trim()) return;
+    setBlizzardSaving(true);
+    setBlizzardMessage(null);
     try {
       await fetchJson(`${API_URL}/api/user/config`, {
         method: 'POST',
@@ -368,12 +349,84 @@ export default function SettingsPage() {
         setClientSecret('');
         setSecretTouched(false);
       }
-
-      setMessage({ type: 'success', text: 'Settings saved successfully.' });
-    } catch {
-      setMessage({ type: 'error', text: 'Failed to save settings.' });
+      setBlizzardMessage({ type: 'success', text: 'Blizzard settings saved successfully.' });
+    } catch (err: any) {
+      setBlizzardMessage({ type: 'error', text: err?.message || 'Failed to save Blizzard settings.' });
     } finally {
-      setSaving(false);
+      setBlizzardSaving(false);
+    }
+  };
+
+  const testWarcraftLogsCredentials = async () => {
+    if (!warcraftLogsClientId.trim() || !warcraftLogsClientSecret.trim()) {
+      setWarcraftLogsMessage({
+        type: 'error',
+        text: 'Enter Warcraft Logs Client ID and Client Secret first.',
+      });
+      return;
+    }
+    setWarcraftLogsTesting(true);
+    setWarcraftLogsMessage(null);
+    try {
+      const basic = btoa(`${warcraftLogsClientId.trim()}:${warcraftLogsClientSecret.trim()}`);
+      const response = await fetch('https://www.warcraftlogs.com/oauth/token', {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${basic}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'grant_type=client_credentials',
+      });
+      if (!response.ok) {
+        const raw = await response.text();
+        throw new Error(raw || `Warcraft Logs returned ${response.status}`);
+      }
+      setWarcraftLogsMessage({
+        type: 'success',
+        text: 'Warcraft Logs credentials verified successfully.',
+      });
+    } catch (err: any) {
+      setWarcraftLogsMessage({
+        type: 'error',
+        text: err?.message || 'Failed to verify Warcraft Logs credentials.',
+      });
+    } finally {
+      setWarcraftLogsTesting(false);
+    }
+  };
+
+  const saveWarcraftLogsSettings = async () => {
+    if (!warcraftLogsClientId.trim() && !warcraftLogsClientSecret.trim()) return;
+    setWarcraftLogsSaving(true);
+    setWarcraftLogsMessage(null);
+    try {
+      await fetchJson(`${API_URL}/api/user/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'warcraftlogs_client_id', value: warcraftLogsClientId.trim() }),
+      });
+
+      if (warcraftLogsClientSecret.trim()) {
+        await fetchJson(`${API_URL}/api/user/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: 'warcraftlogs_client_secret',
+            value: warcraftLogsClientSecret.trim(),
+          }),
+        });
+        setHasWarcraftLogsSecret(true);
+        setWarcraftLogsClientSecret('');
+        setWarcraftLogsSecretTouched(false);
+      }
+      setWarcraftLogsMessage({ type: 'success', text: 'Warcraft Logs settings saved successfully.' });
+    } catch (err: any) {
+      setWarcraftLogsMessage({
+        type: 'error',
+        text: err?.message || 'Failed to save Warcraft Logs settings.',
+      });
+    } finally {
+      setWarcraftLogsSaving(false);
     }
   };
 
@@ -471,103 +524,15 @@ export default function SettingsPage() {
     );
   };
 
-  const loadAppReleaseOptions = useCallback(async () => {
-    setReleaseLoading(true);
-    setReleaseError('');
-    try {
-      const response = await fetch(APP_RELEASES_API, {
-        cache: 'no-store',
-        headers: { Accept: 'application/vnd.github+json' },
-      });
-      if (!response.ok) {
-        throw new Error(`GitHub releases request failed (${response.status})`);
-      }
-      const payload = (await response.json()) as Array<{
-        id?: unknown;
-        tag_name?: unknown;
-        name?: unknown;
-        draft?: unknown;
-        prerelease?: unknown;
-        published_at?: unknown;
-        body?: unknown;
-        assets?: Array<{ browser_download_url?: unknown; name?: unknown }>;
-      }>;
-
-      const options = (payload || [])
-        .filter((entry) => !entry?.draft)
-        .map((entry) => {
-          const asset = pickWindowsAssetUrl(entry.assets || []);
-          if (!asset) return null;
-          const versionRaw =
-            typeof entry.tag_name === 'string'
-              ? entry.tag_name
-              : typeof entry.name === 'string'
-                ? entry.name
-                : '';
-          const version = normalizeReleaseVersion(versionRaw);
-          if (!version) return null;
-          const idRaw =
-            typeof entry.id === 'number' || typeof entry.id === 'string'
-              ? String(entry.id)
-              : version;
-          const channel = classifyReleaseChannel(versionRaw);
-          return {
-            id: idRaw,
-            version,
-            publishedAt: typeof entry.published_at === 'string' ? entry.published_at : null,
-            notes: typeof entry.body === 'string' ? entry.body : null,
-            downloadUrl: asset.url,
-            assetName: asset.name,
-            channel,
-          } satisfies AppReleaseOption;
-        })
-        .filter((entry): entry is AppReleaseOption => !!entry)
-        .filter((entry) => entry.channel === selectedUpdateChannel);
-
-      setReleaseOptions(options);
-      setSelectedReleaseId((prev) => {
-        if (prev && options.some((opt) => opt.id === prev)) return prev;
-        return options[0]?.id || '';
-      });
-      if (options.length === 0) {
-        setReleaseError(
-          `No downloadable ${selectedUpdateChannel} releases were found on GitHub.`
-        );
-      }
-    } catch (err: any) {
-      setReleaseError(err?.message || 'Failed to fetch releases from GitHub.');
-    } finally {
-      setReleaseLoading(false);
-    }
-  }, [selectedUpdateChannel]);
-
-  useEffect(() => {
-    if (!isDesktop || !user) return;
-    void loadAppReleaseOptions();
-  }, [user, loadAppReleaseOptions]);
-
-  const selectedRelease = releaseOptions.find((opt) => opt.id === selectedReleaseId) || null;
-
-  const downloadSelectedRelease = useCallback(async () => {
-    if (!selectedRelease?.downloadUrl) return;
-    setReleaseError('');
-    const targetUrl = selectedRelease.downloadUrl;
-
-    if (isDesktop) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('open_external_url', { url: targetUrl });
-        return;
-      } catch (err: any) {
-        setReleaseError(err?.message || 'Failed to open selected release URL.');
-      }
-    }
-
-    const popup = window.open(targetUrl, '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      window.location.assign(targetUrl);
-    }
-  }, [selectedRelease]);
+  const downloadAndInstallLatest = () => {
+    setUpdateCheckState('installing');
+    setUpdateMessage(null);
+    window.dispatchEvent(
+      new CustomEvent('whylowdps-updater-install', {
+        detail: { channel: selectedUpdateChannel },
+      })
+    );
+  };
 
   const updateCloseBehavior = async (nextValue: boolean) => {
     if (!isDesktop) return;
@@ -749,28 +714,62 @@ export default function SettingsPage() {
     <div className="animate-in fade-in slide-in-from-bottom-4 space-y-8 duration-500">
       <header>
         <h1 className="text-3xl font-bold tracking-tight text-white">Settings</h1>
-        <p className="mt-2 text-zinc-400">Manage your account and API credentials.</p>
+        <p className="mt-2 text-zinc-400">Manage your account and integrations.</p>
       </header>
 
-      <DefaultOptionsSettingsCard />
-
-      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-6 text-xl font-semibold text-white">Blizzard API (BYOK)</h2>
-        <p className="mb-8 text-sm text-zinc-400">
-          Provide your own Blizzard API credentials to fetch your characters and gear. If not
-          provided, the system will use global default keys.
-          <br />
-          <a
-            href="https://develop.battle.net/access/clients"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-1 inline-block text-gold hover:underline"
+      <div className="flex flex-wrap gap-2">
+        {[
+          { id: 'simulation', label: 'Simulation' },
+          { id: 'integrations', label: 'Integrations' },
+          { id: 'data', label: 'Data Cache' },
+          { id: 'updates', label: 'App Updates' },
+          { id: 'about', label: 'About' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as SettingsTab)}
+            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
+              activeTab === tab.id
+                ? 'border-gold/40 bg-gold/15 text-gold'
+                : 'border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10'
+            }`}
           >
-            Create a client on the Blizzard Developer Portal &rarr;
-          </a>
-        </p>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'simulation' && <DefaultOptionsSettingsCard />}
+
+      {activeTab === 'integrations' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+        <h2 className="mb-6 text-xl font-semibold text-white">API Integrations</h2>
 
         <div className="max-w-2xl space-y-6">
+          <div className="rounded-lg border border-border/70 bg-surface px-4 py-3">
+            <p className="text-sm font-semibold text-zinc-200">Blizzard API (BYOK)</p>
+            <p className="mt-1 text-[13px] text-zinc-400">
+              Provide your own Blizzard API credentials to fetch your characters and gear.
+            </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-zinc-500">
+              <span className="font-semibold text-zinc-300">Setup Instructions:</span>
+              <br />
+              1. Create a client on the{' '}
+              <a
+                href="https://develop.battle.net/access/clients"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gold hover:underline"
+              >
+                Blizzard Developer Portal
+              </a>
+              .
+              <br />
+              2. Add{' '}
+              <code className="text-zinc-300">http://localhost:17384/api/auth/bnet/callback</code>{' '}
+              to your Redirect URIs.
+            </p>
+          </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium text-zinc-300">Client ID</label>
             <input
@@ -807,41 +806,145 @@ export default function SettingsPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-4 pt-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={testCredentials}
-                disabled={testing || !clientId.trim() || (!clientSecret.trim() && !hasSecret)}
-                className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-              >
-                {testing ? 'Testing...' : 'Test Connection'}
-              </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={testBlizzardCredentials}
+              disabled={blizzardTesting || !clientId.trim() || (!clientSecret.trim() && !hasSecret)}
+              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+            >
+              {blizzardTesting ? 'Testing Blizzard...' : 'Test Blizzard Connection'}
+            </button>
 
-              <button
-                onClick={saveAllSettings}
-                disabled={saving || !clientId.trim()}
-                className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : 'Save Settings'}
-              </button>
-            </div>
-
-            {message && (
-              <div
-                className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                  message.type === 'success'
-                    ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                    : 'border border-red-500/20 bg-red-500/10 text-red-400'
-                }`}
-              >
-                {message.text}
-              </div>
-            )}
+            <button
+              onClick={saveBlizzardSettings}
+              disabled={blizzardSaving || (!clientId.trim() && !clientSecret.trim())}
+              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+            >
+              {blizzardSaving ? 'Saving Blizzard...' : 'Save Blizzard Settings'}
+            </button>
           </div>
-        </div>
-      </section>
 
-      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          {blizzardMessage && (
+            <div
+              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
+                blizzardMessage.type === 'success'
+                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
+              }`}
+            >
+              {blizzardMessage.text}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-border/70 bg-surface px-4 py-3">
+            <p className="text-sm font-semibold text-zinc-200">Warcraft Logs API (for later use)</p>
+            <p className="mt-1 text-[13px] text-zinc-400">
+              Store Warcraft Logs API credentials now; they will be used in a future feature.
+            </p>
+            <p className="mt-2 text-[12px] leading-relaxed text-zinc-500">
+              <span className="font-semibold text-zinc-300">Setup Instructions:</span>
+              <br />
+              1. Open{' '}
+              <a
+                href="https://www.warcraftlogs.com/api/clients/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gold hover:underline"
+              >
+                Warcraft Logs API Clients
+              </a>{' '}
+              and create a new client.
+              <br />
+              2. Fill the form with:
+              <br />
+              &nbsp;&nbsp;• <span className="text-zinc-300">Application Name:</span> WhyLowDps
+              <br />
+              &nbsp;&nbsp;• <span className="text-zinc-300">Redirect URIs:</span>{' '}
+              <code className="text-zinc-300">
+                http://localhost:17384/api/auth/warcraftlogs/callback
+              </code>
+              <br />
+              &nbsp;&nbsp;• <span className="text-zinc-300">Public Client:</span> leave unchecked
+              <br />
+              3. Copy your Client ID and Client Secret here.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-300">Warcraft Logs Client ID</label>
+            <input
+              type="text"
+              value={warcraftLogsClientId}
+              onChange={(e) => setWarcraftLogsClientId(e.target.value)}
+              placeholder="Enter Warcraft Logs Client ID"
+              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-zinc-300">Warcraft Logs Client Secret</label>
+            <input
+              type="password"
+              value={
+                warcraftLogsSecretTouched
+                  ? warcraftLogsClientSecret
+                  : hasWarcraftLogsSecret
+                    ? '••••••••••••••••'
+                    : warcraftLogsClientSecret
+              }
+              onFocus={() => {
+                if (!warcraftLogsSecretTouched && hasWarcraftLogsSecret) {
+                  setWarcraftLogsSecretTouched(true);
+                  setWarcraftLogsClientSecret('');
+                }
+              }}
+              onChange={(e) => {
+                setWarcraftLogsSecretTouched(true);
+                setWarcraftLogsClientSecret(e.target.value);
+              }}
+              placeholder="Enter Warcraft Logs Client Secret"
+              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
+            />
+            <p className="text-[12px] text-zinc-500">
+              {hasWarcraftLogsSecret && !warcraftLogsClientSecret
+                ? 'A Warcraft Logs secret is already saved and hidden. Type to replace it.'
+                : 'Your Warcraft Logs secret is hidden in this field.'}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={testWarcraftLogsCredentials}
+              disabled={warcraftLogsTesting || !warcraftLogsClientId.trim() || !warcraftLogsClientSecret.trim()}
+              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+            >
+              {warcraftLogsTesting ? 'Testing Warcraft Logs...' : 'Test Warcraft Logs Connection'}
+            </button>
+
+            <button
+              onClick={saveWarcraftLogsSettings}
+              disabled={warcraftLogsSaving || (!warcraftLogsClientId.trim() && !warcraftLogsClientSecret.trim())}
+              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+            >
+              {warcraftLogsSaving ? 'Saving Warcraft Logs...' : 'Save Warcraft Logs Settings'}
+            </button>
+          </div>
+
+          {warcraftLogsMessage && (
+            <div
+              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
+                warcraftLogsMessage.type === 'success'
+                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
+              }`}
+            >
+              {warcraftLogsMessage.text}
+            </div>
+          )}
+        </div>
+      </section>}
+
+      {activeTab === 'simulation' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-6 text-xl font-semibold text-white">Simulation Performance</h2>
         <div className="max-w-2xl space-y-6">
           {maxThreads > 0 && (
@@ -946,9 +1049,9 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-      </section>
+      </section>}
 
-      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+      {activeTab === 'simulation' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
         <p className="mb-5 text-sm text-zinc-400">
           When the app regains focus, it can check the latest clipboard text and auto-fill the SimC
@@ -982,9 +1085,9 @@ export default function SettingsPage() {
             </button>
           </div>
         </div>
-      </section>
+      </section>}
 
-      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+      {activeTab === 'data' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">Game Data Cache</h2>
         <p className="mb-5 text-sm text-zinc-400">
           Refetch game data and reload the backend cache used for gems, enchants, items, raids, and
@@ -1090,21 +1193,18 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-      </section>
+      </section>}
 
-      <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+      {activeTab === 'updates' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
-        <p className="mb-5 text-sm text-zinc-400">
-          Choose a release channel and check for new desktop builds.
-        </p>
-        <div className="max-w-2xl space-y-4">
-          <div className="rounded-lg border border-border bg-surface-2 p-4">
-            <p className="mb-2 text-sm font-medium text-zinc-200">Update Channel</p>
+        <div className="max-w-2xl space-y-3">
+          <div className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-zinc-300">Channel</span>
               <select
                 value={selectedUpdateChannel}
                 onChange={(e) => setSelectedUpdateChannel(e.target.value as UpdateChannel)}
-                className="min-w-[220px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
+                className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
               >
                 {UPDATE_CHANNEL_OPTIONS.map((channel) => (
                   <option key={channel.id} value={channel.id}>
@@ -1112,69 +1212,21 @@ export default function SettingsPage() {
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-zinc-500">
-                Stable for manual releases, Weekly/Nightly for automated channel builds.
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={checkForUpdatesNow}
-              disabled={updateCheckState === 'checking'}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {updateCheckState === 'checking' ? 'Checking...' : 'Check for Updates'}
-            </button>
-            <button
-              onClick={() => void loadAppReleaseOptions()}
-              disabled={releaseLoading}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {releaseLoading ? 'Loading Versions...' : 'Refresh Version List'}
-            </button>
-          </div>
-
-          <div className="rounded-lg border border-border bg-surface-2 p-4">
-            <p className="mb-2 text-sm font-medium text-zinc-200">Download Specific Version</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={selectedReleaseId}
-                onChange={(e) => setSelectedReleaseId(e.target.value)}
-                disabled={releaseLoading || releaseOptions.length === 0}
-                className="min-w-[320px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
-              >
-                {releaseOptions.length === 0 ? (
-                  <option value="">
-                    {releaseLoading
-                      ? 'Loading versions...'
-                      : `No ${selectedUpdateChannel} versions available`}
-                  </option>
-                ) : (
-                  releaseOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.version}
-                      {opt.publishedAt
-                        ? ` - ${new Date(opt.publishedAt).toLocaleDateString()}`
-                        : ''}
-                    </option>
-                  ))
-                )}
-              </select>
               <button
-                onClick={downloadSelectedRelease}
-                disabled={!selectedRelease || releaseLoading}
+                onClick={checkForUpdatesNow}
+                disabled={updateCheckState !== 'idle'}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              >
+                {updateCheckState === 'checking' ? 'Checking...' : 'Check'}
+              </button>
+              <button
+                onClick={downloadAndInstallLatest}
+                disabled={updateCheckState !== 'idle'}
                 className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
               >
-                Download Selected Version
+                {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
               </button>
             </div>
-            {selectedRelease && (
-              <p className="mt-2 text-xs text-zinc-400">
-                Asset: {selectedRelease.assetName}
-              </p>
-            )}
-            {!!releaseError && <p className="mt-2 text-xs text-red-300">{releaseError}</p>}
           </div>
 
           {updateMessage && (
@@ -1189,15 +1241,15 @@ export default function SettingsPage() {
             </div>
           )}
         </div>
-      </section>
+      </section>}
 
-      <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
+      {activeTab === 'about' && <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
         <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
         <p className="text-sm text-zinc-400">
           Your credentials are used solely to fetch character data directly from Blizzard. They are
           stored in our secure database and are never shared with third parties.
         </p>
-      </section>
+      </section>}
 
       {dataStateOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4">

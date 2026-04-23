@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 
 type DifficultyKey = 'lfr' | 'normal' | 'heroic' | 'mythic';
 
@@ -56,53 +56,13 @@ function normalizeExpansionLabel(input: unknown): string {
   const raw = String(input ?? '').trim();
   if (!raw) return 'Unknown expansion';
   const lower = raw.toLowerCase();
-  if (lower === 'current season' || lower === 'current expansion') return 'Midnight';
+  if (lower === 'current season' || lower === 'current expansion') return 'Current expansion';
   return raw;
 }
 
 function parseNumber(input: unknown): number {
   const value = Number(input ?? 0);
   return Number.isFinite(value) ? value : 0;
-}
-
-function formatRelativeTime(ts: number): string {
-  if (!ts || ts <= 0) return 'Never';
-  const deltaMs = Date.now() - ts;
-  if (deltaMs <= 0) return 'Just now';
-  const dayMs = 24 * 60 * 60 * 1000;
-  const hourMs = 60 * 60 * 1000;
-  const minuteMs = 60 * 1000;
-  if (deltaMs >= dayMs) {
-    const days = Math.floor(deltaMs / dayMs);
-    return days === 1 ? '1 day ago' : `${days} days ago`;
-  }
-  if (deltaMs >= hourMs) {
-    const hours = Math.floor(deltaMs / hourMs);
-    return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
-  }
-  const minutes = Math.max(1, Math.floor(deltaMs / minuteMs));
-  return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
-}
-
-function encounterTooltip(boss: BossProgress): string {
-  const parts = [
-    `LFR: ${boss.byDifficulty.lfr.kills} kills`,
-    `Normal: ${boss.byDifficulty.normal.kills} kills`,
-    `Heroic: ${boss.byDifficulty.heroic.kills} kills`,
-    `Mythic: ${boss.byDifficulty.mythic.kills} kills`,
-  ];
-  return `${parts.join(' | ')}. Last killed: ${formatRelativeTime(boss.lastKillTs)}.`;
-}
-
-function formatBossModeSummary(boss: BossProgress): string {
-  const active = DIFFICULTIES.map((diff) => {
-    const kills = boss.byDifficulty[diff].kills;
-    if (kills <= 0) return null;
-    const label = diff === 'lfr' ? 'LFR' : diff[0].toUpperCase() + diff.slice(1);
-    return `${label} ${kills}x`;
-  }).filter((v): v is string => Boolean(v));
-  if (active.length === 0) return 'No kills yet';
-  return active.join(' • ');
 }
 
 function getProgressionBossKey(bosses: BossProgress[]): string | null {
@@ -231,38 +191,43 @@ function parseRaidData(raidEncounters: any): {
 export default function RaidProgressionGrid({
   raidEncounters,
   selectedExpansion,
+  selectedRaidName,
+  onActiveRaidNameChange,
 }: {
   raidEncounters: any;
   selectedExpansion: string;
+  selectedRaidName?: string;
+  onActiveRaidNameChange?: (raidName: string | null) => void;
 }) {
   const parsed = useMemo(() => parseRaidData(raidEncounters), [raidEncounters]);
-  const [selectedRaidKey, setSelectedRaidKey] = useState<string>('auto');
 
   const visibleRaids = useMemo(() => {
     if (selectedExpansion === 'all') return parsed.raids;
     return parsed.raids.filter((raid) => raid.expansionKey === selectedExpansion);
   }, [parsed.raids, selectedExpansion]);
 
-  useEffect(() => {
-    if (visibleRaids.length === 0) {
-      setSelectedRaidKey('auto');
-      return;
-    }
-    if (selectedRaidKey === 'auto') return;
-    const stillVisible = visibleRaids.some((raid) => raid.key === selectedRaidKey);
-    if (!stillVisible) setSelectedRaidKey('auto');
-  }, [selectedRaidKey, visibleRaids]);
-
   const currentRaid = useMemo(() => {
     if (visibleRaids.length === 0) return null;
-    if (selectedRaidKey !== 'auto') {
-      return visibleRaids.find((raid) => raid.key === selectedRaidKey) || visibleRaids[0];
+    if (selectedRaidName && selectedRaidName !== 'all') {
+      const direct = visibleRaids.find(
+        (raid) => raid.name.toLowerCase() === selectedRaidName.toLowerCase(),
+      );
+      if (direct) return direct;
     }
     return [...visibleRaids].sort((a, b) => {
       if (b.lastKillTs !== a.lastKillTs) return b.lastKillTs - a.lastKillTs;
       return b.bosses.length - a.bosses.length;
     })[0];
-  }, [selectedRaidKey, visibleRaids]);
+  }, [visibleRaids, selectedRaidName]);
+
+  useEffect(() => {
+    if (!onActiveRaidNameChange) return;
+    if (selectedRaidName && selectedRaidName !== 'all') {
+      onActiveRaidNameChange(selectedRaidName);
+      return;
+    }
+    onActiveRaidNameChange(null);
+  }, [onActiveRaidNameChange, selectedRaidName]);
 
   const difficultyTotals = useMemo(() => {
     if (!currentRaid) return { lfr: 0, normal: 0, heroic: 0, mythic: 0 };
@@ -295,66 +260,6 @@ export default function RaidProgressionGrid({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <select
-            value={selectedRaidKey}
-            onChange={(e) => setSelectedRaidKey(e.target.value)}
-            className="input-field h-10 min-w-0 flex-1 text-sm"
-          >
-            <option value="auto">Most recently progressed</option>
-            {visibleRaids.map((raid) => (
-              <option key={raid.key} value={raid.key}>
-                {raid.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          {currentRaid.bosses.map((boss) => {
-            const isKilled = boss.totalKills > 0;
-            const isProgression = currentRaid.progressionBossKey === boss.key;
-            return (
-              <article
-                key={boss.key}
-                title={encounterTooltip(boss)}
-                className={`group relative rounded-md border px-3 py-2 transition-all ${
-                  isKilled
-                    ? 'border-emerald-400/30 bg-emerald-500/[0.07]'
-                    : 'border-white/10 bg-white/[0.03]'
-                } ${isProgression ? 'border-gold/60 bg-gold/[0.08] ring-1 ring-gold/45' : ''}`}
-              >
-                {isProgression && (
-                  <span className="absolute right-2 top-2 z-10 rounded bg-gold/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-black">
-                    Progression
-                  </span>
-                )}
-                <div className="pr-24">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${
-                        isKilled ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.65)]' : 'bg-zinc-600'
-                      }`}
-                    />
-                    <p className="truncate text-[12px] font-semibold text-zinc-100">{boss.name}</p>
-                  </div>
-                  <p className="mt-1 text-[10px] text-zinc-400">{formatBossModeSummary(boss)}</p>
-                  <p className="mt-0.5 text-[10px] text-zinc-500">
-                    Last kill: {formatRelativeTime(boss.lastKillTs)}
-                  </p>
-                </div>
-                {boss.totalKills > 0 && (
-                  <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-zinc-200">
-                    {boss.totalKills}x
-                  </span>
-                )}
-              </article>
-            );
-          })}
-        </div>
-      </div>
-
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
           Difficulty Comparison (Selected Raid)

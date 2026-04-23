@@ -196,6 +196,9 @@ pub struct ResolvedItem {
     /// Whether this item can be converted via Revival Catalyst.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub can_catalyst: bool,
+    /// Whether this item may not be intended for the active spec.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub off_spec: bool,
     /// Upgrade costs from the baseline equipped item (if this is an upgrade option).
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub upgrade_costs: std::collections::HashMap<u64, u64>,
@@ -272,6 +275,8 @@ pub struct GameItem {
     pub classes: Option<Vec<u64>>,
     #[serde(default)]
     pub specs: Option<Vec<u64>>,
+    #[serde(default)]
+    pub stats: Option<Vec<GameItemStat>>,
     pub sources: Option<Vec<ItemSource>>,
 }
 
@@ -293,6 +298,19 @@ impl GameItem {
             }
         }
         out
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GameItemStat {
+    pub id: u64,
+    pub alloc: Option<u64>,
+}
+
+impl Default for GameItemStat {
+    fn default() -> Self {
+        Self { id: 0, alloc: None }
     }
 }
 

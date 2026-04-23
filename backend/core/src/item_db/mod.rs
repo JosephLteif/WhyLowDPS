@@ -24,11 +24,13 @@ pub use upgrades::*;
 pub fn load(data_dir: &Path) {
     loader::load_classes(data_dir);
     loader::load_items(data_dir);
+    loader::derive_class_profiles_from_items();
 
     loader::load_enchants(data_dir);
     loader::load_bonuses(data_dir);
     loader::load_bus_and_seasons(data_dir);
     loader::load_instances(data_dir);
+    loader::hydrate_runtime_metadata(&data_dir.join("blizzard-runtime-data.json"));
     loader::load_encounter_drops();
     loader::load_season_config(data_dir);
     loader::load_item_limit_categories(data_dir);

@@ -13,6 +13,137 @@ use crate::types::class_data::{ARMOR_SLOTS, GEAR_SLOTS};
 use crate::types::*;
 use eligibility::{dedup_key, eligible_slots, enrich, make_uid};
 
+fn restrictions_match_active_spec(
+    item_restrictions: &[u64],
+    active_spec_ids: &[u64],
+    active_class_id: Option<u64>,
+) -> bool {
+    if item_restrictions.is_empty() {
+        return true;
+    }
+    let has_spec_entries = item_restrictions.iter().any(|id| *id > 13);
+    if has_spec_entries {
+        return !active_spec_ids.is_empty()
+            && active_spec_ids
+                .iter()
+                .any(|sid| item_restrictions.contains(sid));
+    }
+    active_class_id.is_some_and(|cid| item_restrictions.contains(&cid))
+}
+
+fn item_matches_primary_stats(item: &GameItem, allowed_primary: &HashSet<u64>) -> bool {
+    if allowed_primary.is_empty() {
+        return true;
+    }
+    let Some(stats) = &item.stats else {
+        // Keep items without explicit primary stat tokens (many proc trinkets).
+        return true;
+    };
+
+    let mut saw_primary_token = false;
+    for stat in stats {
+        let expanded = crate::types::class_data::expand_primary_stat(stat.id);
+        if expanded.is_empty() {
+            continue;
+        }
+        saw_primary_token = true;
+        if expanded.iter().any(|id| allowed_primary.contains(id)) {
+            return true;
+        }
+    }
+
+    !saw_primary_token
+}
+
+fn primary_stat_filtered_slot(item_class: i64, inv_type: i64) -> bool {
+    item_class == 2 || inv_type == 12 || inv_type == 14 || inv_type == 23
+}
+
+fn mark_off_spec_items(
+    slots: &mut HashMap<String, SlotResolution>,
+    class_name: &str,
+    spec_name: &str,
+) {
+    let class_name = class_name.trim();
+    let spec_name = spec_name
+        .split(',')
+        .next()
+        .unwrap_or(spec_name)
+        .trim();
+    if class_name.is_empty() || spec_name.is_empty() {
+        return;
+    }
+
+    let active_spec_ids = crate::types::class_data::class_spec_ids(class_name, Some(spec_name));
+    if active_spec_ids.is_empty() {
+        return;
+    }
+    let active_class_id = crate::types::class_data::class_wow_id(class_name);
+    let spec_profile = crate::types::class_data::spec_weapon_profile(class_name, spec_name);
+    let allowed_weapons = crate::types::class_data::class_allowed_weapons(class_name);
+    let allowed_primary: HashSet<u64> = spec_profile
+        .as_ref()
+        .map(|p| p.primary_stats.iter().copied().collect())
+        .unwrap_or_default();
+
+    let mut cache: HashMap<u64, bool> = HashMap::new();
+    let mut compute_off_spec = |item_id: u64| -> bool {
+        if let Some(flag) = cache.get(&item_id).copied() {
+            return flag;
+        }
+
+        let off_spec = item_db::get_raw_item(item_id).is_some_and(|raw| {
+            let restrictions = raw.restriction_ids();
+            if !restrictions_match_active_spec(&restrictions, &active_spec_ids, active_class_id) {
+                return true;
+            }
+
+            let item_class = raw.class.unwrap_or(0);
+            let inv_type = raw.inventory_type.unwrap_or(0);
+            let weapon_sub = raw.subclass.unwrap_or(0) as u64;
+
+            if item_class == 2 || inv_type == 14 || inv_type == 23 {
+                if let Some(profile) = &spec_profile {
+                    let can_use = if item_class == 2 {
+                        profile.weapon_subclasses.contains(&weapon_sub)
+                    } else if inv_type == 14 {
+                        profile.can_use_shield
+                    } else {
+                        profile.can_use_offhand
+                    };
+                    if !can_use {
+                        return true;
+                    }
+                } else if let Some(weapons) = &allowed_weapons {
+                    if item_class == 2 && !weapons.contains(&weapon_sub) {
+                        return true;
+                    }
+                }
+            }
+
+            if primary_stat_filtered_slot(item_class, inv_type)
+                && !item_matches_primary_stats(&raw, &allowed_primary)
+            {
+                return true;
+            }
+
+            false
+        });
+
+        cache.insert(item_id, off_spec);
+        off_spec
+    };
+
+    for slot in slots.values_mut() {
+        if let Some(eq) = slot.equipped.as_mut() {
+            eq.off_spec = compute_off_spec(eq.item_id);
+        }
+        for alt in &mut slot.alternatives {
+            alt.off_spec = compute_off_spec(alt.item_id);
+        }
+    }
+}
+
 /// Resolve a flat list of parsed items into a slot-organized, enriched gear set.
 pub fn resolve_gear(parse_result: &ParseResult) -> ResolveGearResponse {
     resolve_gear_impl(parse_result, None)
@@ -165,6 +296,8 @@ fn resolve_gear_impl(
             catalyst::generate_catalyst_alternatives(&mut slots, class_id);
         }
     }
+
+    mark_off_spec_items(&mut slots, class_name, spec);
 
     ResolveGearResponse {
         character: CharacterResolveInfo {

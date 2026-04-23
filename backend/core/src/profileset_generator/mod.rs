@@ -115,7 +115,68 @@ pub fn generate_top_gear_input_with_talents(
 pub fn generate_droptimizer_input(
     base_profile: &str,
     drop_items: &[ResolvedItem],
+    copy_enchants: bool,
 ) -> (String, usize, HashMap<String, Value>) {
+    fn normalize_sim_slot_label(slot: &str) -> Option<&'static str> {
+        let normalized = slot
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['-', '_'], " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        match normalized.as_str() {
+            "head" => Some("head"),
+            "neck" => Some("neck"),
+            "shoulder" | "shoulders" => Some("shoulder"),
+            "back" => Some("back"),
+            "chest" => Some("chest"),
+            "wrist" | "wrists" => Some("wrist"),
+            "hands" | "hand" => Some("hands"),
+            "waist" => Some("waist"),
+            "legs" | "leg" => Some("legs"),
+            "feet" | "foot" => Some("feet"),
+            "finger1" | "finger 1" => Some("finger1"),
+            "finger2" | "finger 2" => Some("finger2"),
+            "trinket1" | "trinket 1" => Some("trinket1"),
+            "trinket2" | "trinket 2" => Some("trinket2"),
+            "main hand" => Some("main_hand"),
+            "off hand" => Some("off_hand"),
+            _ => None,
+        }
+    }
+
+    fn parse_first_numeric(value: &str) -> u64 {
+        let first = value
+            .split(['/', ':'])
+            .next()
+            .unwrap_or("")
+            .trim();
+        first.parse::<u64>().unwrap_or(0)
+    }
+
+    fn parse_affix_ids(simc: &str) -> (u64, u64) {
+        let mut enchant_id = 0;
+        let mut gem_id = 0;
+        for part in simc.split(',') {
+            let p = part.trim();
+            if enchant_id == 0 {
+                if let Some(raw) = p.strip_prefix("enchant_id=") {
+                    enchant_id = parse_first_numeric(raw);
+                }
+            }
+            if gem_id == 0 {
+                if let Some(raw) = p.strip_prefix("gem_id=") {
+                    gem_id = parse_first_numeric(raw);
+                }
+            }
+            if enchant_id > 0 && gem_id > 0 {
+                break;
+            }
+        }
+        (enchant_id, gem_id)
+    }
+
     fn infer_token_slot(item_name: &str) -> Option<&'static str> {
         let n = item_name.to_lowercase();
         if n.contains("hungering") {
@@ -193,16 +254,23 @@ pub fn generate_droptimizer_input(
     let mut combo_idx = 2;
     for item in drop_items {
         let mut candidates: Vec<(String, ResolvedItem)> = Vec::new();
-        let mut slots =
-            crate::types::class_data::inv_type_to_slots(item.inventory_type as u64, &spec);
+        let mut slots: Vec<String> = Vec::new();
+        if let Some(slot) = normalize_sim_slot_label(&item.slot) {
+            slots.push(slot.to_string());
+        } else {
+            slots = crate::types::class_data::inv_type_to_slots(item.inventory_type as u64, &spec)
+                .into_iter()
+                .map(std::string::ToString::to_string)
+                .collect();
+        }
 
         if has_2h && !(spec == "fury" && item.inventory_type == 17) {
-            slots.retain(|s| *s != "off_hand");
+            slots.retain(|s| s != "off_hand");
         }
 
         if !slots.is_empty() {
-            for slot in &slots {
-                candidates.push(((*slot).to_string(), item.clone()));
+            for slot in slots {
+                candidates.push((slot, item.clone()));
             }
         } else if let Some(cid) = class_id {
             // Some drop-finder entries (e.g. tier tokens in "Other") do not provide
@@ -224,17 +292,30 @@ pub fn generate_droptimizer_input(
             if simc.is_empty() {
                 continue;
             }
-            if let Some(eq) = equipped_gear.get(slot.as_str()) {
-                // Restore only enchant/gem IDs from equipped gear.
-                // Do NOT append the whole suffix because it may include old bonus_id values.
-                for part in eq.split(',') {
-                    let p = part.trim();
-                    if p.starts_with("enchant_id=") || p.starts_with("gem_id=") {
-                        simc.push(',');
-                        simc.push_str(p);
+            if copy_enchants {
+                if let Some(eq) = equipped_gear.get(slot.as_str()) {
+                    // Restore only enchant/gem IDs from equipped gear.
+                    // Do NOT append the whole suffix because it may include old bonus_id values.
+                    for part in eq.split(',') {
+                        let p = part.trim();
+                        if p.starts_with("enchant_id=") || p.starts_with("gem_id=") {
+                            simc.push(',');
+                            simc.push_str(p);
+                        }
                     }
                 }
             }
+            let (parsed_enchant_id, parsed_gem_id) = parse_affix_ids(&simc);
+            let enchant_id = if parsed_enchant_id > 0 {
+                parsed_enchant_id
+            } else {
+                candidate_item.enchant_id
+            };
+            let gem_id = if parsed_gem_id > 0 {
+                parsed_gem_id
+            } else {
+                candidate_item.gem_id
+            };
 
             let c_name = format!("Combo {}", combo_idx);
             lines.push(format!("### {}", c_name));
@@ -255,8 +336,8 @@ pub fn generate_droptimizer_input(
                     "ilevel": candidate_item.ilevel,
                     "name": candidate_item.name,
                     "bonus_ids": candidate_item.bonus_ids,
-                    "enchant_id": 0,
-                    "gem_id": 0,
+                    "enchant_id": enchant_id,
+                    "gem_id": gem_id,
                     "is_kept": false,
                     "origin": "bags",
                     "encounter": candidate_item.encounter,

@@ -45,10 +45,12 @@ pub fn build_catalyst_item(
     // Build catalyst bonus_ids: keep only ilevel-related bonuses from the source,
     // then add the tier set marker bonus for tier set items.
     let mut catalyst_bonus_ids = item_db::filter_ilevel_bonus_ids(&source.bonus_ids);
+    catalyst_bonus_ids.extend(tier_info.bonus_ids.iter().copied());
     if tier_info.has_set {
         catalyst_bonus_ids.push(item_db::tier_set_bonus_id());
     }
-    catalyst_bonus_ids.sort();
+    catalyst_bonus_ids.sort_unstable();
+    catalyst_bonus_ids.dedup();
 
     // Build simc_string
     let bonus_str = catalyst_bonus_ids

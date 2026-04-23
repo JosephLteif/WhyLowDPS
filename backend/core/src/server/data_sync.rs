@@ -1934,6 +1934,7 @@ async fn perform_sync(
             let runtime_data = json!({
                 "current_season_id": current_season_id,
                 "season_name": season_name,
+                "season_api_data": season_data,
                 "mplus_rotation": rotation_dungeons,
                 "dungeon_details": dungeon_details,
                 "last_sync": chrono::Utc::now().to_rfc3339(),
@@ -2274,6 +2275,7 @@ async fn perform_dungeon_sync(
             let runtime_data = json!({
                 "current_season_id": current_season_id,
                 "season_name": season_name,
+                "season_api_data": season_data,
                 "mplus_rotation": rotation_dungeons,
                 "dungeon_details": dungeon_details,
                 "last_sync": chrono::Utc::now().to_rfc3339(),

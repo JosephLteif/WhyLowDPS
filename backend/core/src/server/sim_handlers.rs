@@ -2116,8 +2116,11 @@ pub(super) async fn create_droptimizer_sim(
     let parse_result = addon_parser::parse_simc_input(&simc_input);
     let base_profile = parse_result.base_profile.clone();
 
-    let (generated_input, combo_count, combo_metadata) =
-        profileset_generator::generate_droptimizer_input(&base_profile, &req.drop_items);
+    let (generated_input, combo_count, combo_metadata) = profileset_generator::generate_droptimizer_input(
+        &base_profile,
+        &req.drop_items,
+        req.copy_enchants,
+    );
 
     if combo_count == 0 {
         return HttpResponse::BadRequest().json(json!({

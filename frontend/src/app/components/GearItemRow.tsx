@@ -48,6 +48,10 @@ interface GearItemRowProps {
   children?: React.ReactNode;
   /** Optional context menu handler (e.g. right-click item actions) */
   onContextMenu?: (event: React.MouseEvent) => void;
+  /** Optional inline warning shown below item details */
+  specWarning?: string;
+  /** Dims the row content for lower-priority items (e.g. off-spec) */
+  dimmed?: boolean;
 }
 
 function getIconUrl(iconName: string): string {
@@ -77,6 +81,8 @@ export default function GearItemRow({
   optimized: _optimized,
   children,
   onContextMenu,
+  specWarning,
+  dimmed = false,
 }: GearItemRowProps) {
   const hasLeadingControl = showCheckbox && (selectable || equipped);
   const detailsIndentClass = hasLeadingControl ? 'pl-[1.875rem]' : 'pl-0';
@@ -129,7 +135,7 @@ export default function GearItemRow({
           data-wowhead={wowheadData}
           className={`mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded ${
             vault
-              ? 'ring-2 ring-amber-400/70'
+              ? 'ring-2 ring-violet-400/70'
               : catalyst
                 ? 'ring-2 ring-purple-400/70'
                 : 'ring-1 ring-white/5'
@@ -147,7 +153,7 @@ export default function GearItemRow({
               alt={name}
               width={32}
               height={32}
-              className="h-full w-full"
+              className={`h-full w-full ${dimmed ? 'brightness-90 saturate-75' : ''}`}
               loading="lazy"
             />
           ) : (
@@ -158,7 +164,7 @@ export default function GearItemRow({
         <div
           className={`mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded ${
             vault
-              ? 'ring-2 ring-amber-400/70'
+              ? 'ring-2 ring-violet-400/70'
               : catalyst
                 ? 'ring-2 ring-purple-400/70'
                 : 'ring-1 ring-white/5'
@@ -170,7 +176,7 @@ export default function GearItemRow({
               alt={name}
               width={32}
               height={32}
-              className="h-full w-full"
+              className={`h-full w-full ${dimmed ? 'brightness-90 saturate-75' : ''}`}
               loading="lazy"
             />
           ) : (
@@ -182,7 +188,9 @@ export default function GearItemRow({
       {/* Name + details */}
       <div className="min-w-0 flex-1">
         <span
-          className="block whitespace-normal break-words text-[16px] leading-tight"
+          className={`block min-w-0 whitespace-normal break-words text-[16px] leading-tight ${
+            dimmed ? 'opacity-70' : ''
+          }`}
           style={{ color: nameColor }}
         >
           {name}
@@ -192,13 +200,17 @@ export default function GearItemRow({
       {/* Right side: children + ilvl */}
       {children}
       {ilevel != null && ilevel > 0 && (
-        <span className="mt-0.5 shrink-0 font-mono text-[15px] font-semibold tabular-nums text-zinc-200">
+        <span
+          className={`mt-0.5 shrink-0 font-mono text-[15px] font-semibold tabular-nums text-zinc-200 ${
+            dimmed ? 'opacity-70' : ''
+          }`}
+        >
           {ilevel}
         </span>
       )}
 
       {details && details.length > 0 && (
-        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass}`}>
+        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass} ${dimmed ? 'opacity-75' : ''}`}>
           <div className="flex flex-wrap items-center gap-1.5">
             {details.map((p, i) =>
               p.kind === 'gemIcon' && p.icon ? (
@@ -283,6 +295,19 @@ export default function GearItemRow({
           </div>
         </div>
       )}
+
+      {specWarning && (
+        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass}`}>
+          <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-amber-400/40 bg-amber-500/12 px-2 py-1 text-[12px] font-semibold text-amber-200">
+            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-amber-500/20 text-amber-300">
+              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                <path d="M10 2.5L18 16.5H2L10 2.5zm0 5.1a1 1 0 00-1 1v3.3a1 1 0 002 0V8.6a1 1 0 00-1-1zm0 7.1a1.1 1.1 0 100-2.2 1.1 1.1 0 000 2.2z" />
+              </svg>
+            </span>
+            <span className="min-w-0 whitespace-normal break-words">{specWarning}</span>
+          </div>
+        </div>
+      )}
     </>
   );
 
@@ -297,12 +322,12 @@ export default function GearItemRow({
         className={`group cursor-pointer ${baseClass} ${
           checked
             ? vault
-              ? 'border border-transparent bg-amber-400/[0.14] ring-[1.5px] ring-inset ring-amber-300/90'
+              ? 'border border-violet-200/70 bg-violet-300/[0.22] ring-2 ring-inset ring-violet-100 shadow-[0_0_0_1px_rgba(167,139,250,0.45)]'
               : catalyst
                 ? 'border border-transparent bg-purple-400/[0.14] ring-[1.5px] ring-inset ring-purple-300/90'
                 : 'border border-transparent bg-gold/[0.14] ring-[1.5px] ring-inset ring-gold-light/90'
             : vault
-              ? 'border border-zinc-600/70 bg-amber-400/[0.04] ring-1 ring-amber-400/30 hover:border-zinc-500/80 hover:bg-amber-400/[0.08] hover:ring-amber-400/50'
+              ? 'border border-zinc-700/90 bg-violet-500/[0.015] ring-1 ring-violet-500/20 hover:border-violet-400/45 hover:bg-violet-500/[0.06] hover:ring-violet-400/35'
               : catalyst
                 ? 'border border-zinc-600/70 bg-purple-400/[0.04] ring-1 ring-purple-400/30 hover:border-zinc-500/80 hover:bg-purple-400/[0.08] hover:ring-purple-400/50'
                 : 'border border-zinc-700/80 bg-white/[0.01] hover:border-zinc-500/80 hover:bg-white/[0.03]'

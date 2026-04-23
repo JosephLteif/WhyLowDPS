@@ -1,7 +1,7 @@
 //! Game data facade — re-exports item_db lookups and contains drop-resolver logic.
 
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::item_db;
 use crate::types::class_data;
@@ -17,6 +17,55 @@ pub use crate::item_db::{
 };
 
 pub use crate::types::class_data::{quality_name, QUALITY_NAMES};
+
+/// Values <= 13 are class IDs; values > 13 are spec IDs.
+fn restrictions_match_active_specs(
+    item_restrictions: &[u64],
+    allowed_specs: &[u64],
+    allowed_class_id: Option<u64>,
+) -> bool {
+    if item_restrictions.is_empty() {
+        return true;
+    }
+
+    let has_spec_entries = item_restrictions.iter().any(|id| *id > 13);
+    if has_spec_entries {
+        // When explicit spec IDs exist, do not fall back to class IDs.
+        return !allowed_specs.is_empty() && allowed_specs.iter().any(|s| item_restrictions.contains(s));
+    }
+
+    allowed_class_id.is_some_and(|cid| item_restrictions.contains(&cid))
+}
+
+fn item_matches_primary_stats(item: &crate::types::GameItem, allowed_primary: &HashSet<u64>) -> bool {
+    if allowed_primary.is_empty() {
+        return true;
+    }
+
+    let Some(stats) = &item.stats else {
+        // Keep items with no explicit primary stat token (many proc trinkets).
+        return true;
+    };
+
+    let mut saw_primary_token = false;
+    for stat in stats {
+        let expanded = class_data::expand_primary_stat(stat.id);
+        if expanded.is_empty() {
+            continue;
+        }
+        saw_primary_token = true;
+        if expanded.iter().any(|id| allowed_primary.contains(id)) {
+            return true;
+        }
+    }
+
+    // If the item had primary tokens but none matched the active spec set, reject it.
+    !saw_primary_token
+}
+
+fn primary_stat_filtered_slot(item_class: i64, inv_type: i64) -> bool {
+    item_class == 2 || inv_type == 12 || inv_type == 14 || inv_type == 23
+}
 
 pub fn get_instances() -> Vec<Value> {
     item_db::instances()
@@ -85,6 +134,31 @@ pub fn get_instance_drops(
             .collect(),
         (Some(c), None) => class_data::class_spec_ids(c, None),
         _ => Vec::new(),
+    };
+    let allowed_primary_stats: HashSet<u64> = if let Some(cn) = class_name {
+        if !active_spec_names.is_empty() {
+            active_spec_names
+                .iter()
+                .filter_map(|spec| class_data::spec_weapon_profile(cn, spec))
+                .flat_map(|profile| profile.primary_stats)
+                .collect()
+        } else {
+            class_data::class_primary_stats(cn)
+                .unwrap_or_default()
+                .into_iter()
+                .collect()
+        }
+    } else {
+        HashSet::new()
+    };
+    let main_spec_primary_stats: HashSet<u64> = if let (Some(cn), Some(main_spec)) =
+        (class_name, active_spec_names.first().copied())
+    {
+        class_data::spec_weapon_profile(cn, main_spec)
+            .map(|profile| profile.primary_stats.into_iter().collect())
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
     };
 
     let instance_name = instance
@@ -261,14 +335,20 @@ pub fn get_instance_drops(
 
                 // Filter spec/class restrictions when present on the item.
                 let item_restrictions = item.restriction_ids();
-                if !item_restrictions.is_empty() {
-                    let spec_match = !allowed_specs.is_empty()
-                        && allowed_specs.iter().any(|s| item_restrictions.contains(s));
-                    let class_match =
-                        allowed_class_id.is_some_and(|cid| item_restrictions.contains(&cid));
-                    if !spec_match && !class_match {
-                        continue;
-                    }
+                if !restrictions_match_active_specs(
+                    &item_restrictions,
+                    &allowed_specs,
+                    allowed_class_id,
+                ) {
+                    continue;
+                }
+
+                // Filter fixed-primary weapons/trinkets/off-hands by active spec primary stat.
+                if primary_stat_filtered_slot(item_class, inv_type)
+                    && !allowed_primary_stats.is_empty()
+                    && !item_matches_primary_stats(item, &allowed_primary_stats)
+                {
+                    continue;
                 }
 
                 let slot = class_data::inventory_type_display_slot(inv_type as u64);
@@ -378,6 +458,11 @@ pub fn get_instance_drops(
 
                 // Include item's spec restriction list (if any) for frontend off-spec indicators
                 let item_specs: Vec<u64> = item.restriction_ids();
+                let is_catalyst = is_catalyst_tier_item(item_id);
+                let can_catalyst = allowed_class_id
+                    .and_then(|cid| catalyst_tier_item(cid, inv_type as u64))
+                    .is_some()
+                    && !is_catalyst;
 
                 let mut item_json = serde_json::json!({
                     "item_id": item_id,
@@ -389,6 +474,8 @@ pub fn get_instance_drops(
                     "encounter": encounter_ids.get(eid).cloned().unwrap_or_default(),
                     "instance_name": source_instance_name,
                     "source_type": source_type_name,
+                    "is_catalyst": is_catalyst,
+                    "can_catalyst": can_catalyst,
                 });
 
                 if has_mplus_source {
@@ -410,10 +497,11 @@ pub fn get_instance_drops(
 
                     // Check spec restrictions (if item has a specs list)
                     if !item_specs.is_empty() {
-                        let spec_match = main_spec_ids.iter().any(|id| item_specs.contains(id));
-                        let class_match =
-                            allowed_class_id.is_some_and(|cid| item_specs.contains(&cid));
-                        if !spec_match && !class_match {
+                        if !restrictions_match_active_specs(
+                            &item_specs,
+                            &main_spec_ids,
+                            allowed_class_id,
+                        ) {
                             main_can_use = false;
                         }
                     }
@@ -429,6 +517,14 @@ pub fn get_instance_drops(
                                 profile.can_use_offhand
                             };
                         }
+                    }
+
+                    if main_can_use
+                        && primary_stat_filtered_slot(item_class, inv_type)
+                        && !main_spec_primary_stats.is_empty()
+                        && !item_matches_primary_stats(item, &main_spec_primary_stats)
+                    {
+                        main_can_use = false;
                     }
 
                     if !main_can_use {

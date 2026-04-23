@@ -3,6 +3,8 @@ import { ResolvedItem } from '../../lib/types';
 import GearItemRow from '../GearItemRow';
 import TopGearUpgradeButton from './TopGearUpgradeButton';
 
+const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
+
 interface UpgradeOption {
   bonus_id: number;
   level: number;
@@ -122,6 +124,8 @@ export default function TopGearSlotGroup({
             icon={item.icon}
             name={item.name}
             nameColor={item.quality_color}
+            specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            dimmed={item.off_spec === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}
             equipped
@@ -154,6 +158,8 @@ export default function TopGearSlotGroup({
             icon={item.icon}
             name={item.name}
             nameColor={item.quality_color}
+            specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            dimmed={item.off_spec === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}
             selectable

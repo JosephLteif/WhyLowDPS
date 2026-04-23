@@ -228,6 +228,8 @@ pub struct TopGearRequest {
 pub struct DroptimizerRequest {
     pub simc_input: String,
     pub drop_items: Vec<crate::types::ResolvedItem>,
+    #[serde(default = "default_copy_enchants")]
+    pub copy_enchants: bool,
     #[serde(flatten)]
     pub options: SimOptions,
 }
@@ -358,6 +360,9 @@ fn default_max_time() -> u32 {
 }
 fn default_simc_channel() -> String {
     "bundled".to_string()
+}
+fn default_copy_enchants() -> bool {
+    true
 }
 fn default_include_timeline() -> bool {
     true

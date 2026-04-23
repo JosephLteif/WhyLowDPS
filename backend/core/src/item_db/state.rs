@@ -86,6 +86,8 @@ pub struct CatalystTierItem {
     pub name: String,
     pub icon: String,
     pub has_set: bool,
+    #[serde(default)]
+    pub bonus_ids: Vec<u64>,
 }
 
 /// Catalyst conversion data for the current season.

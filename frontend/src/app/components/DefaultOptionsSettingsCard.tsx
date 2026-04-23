@@ -292,7 +292,7 @@ export default function DefaultOptionsSettingsCard() {
         <div className="card flex flex-col gap-4 p-5 sm:flex-row">
           {(
             [
-              ['topgear.copyEnchants', 'Copy Enchants', "Apply equipped enchants to items that don't have one"],
+              ['topgear.copyEnchants', 'Copy Enchants/Gems', "Apply equipped enchants and gems to items that don't have one"],
               ['topgear.maxUpgrade', 'Sim Highest Upgrade', 'Treat all selected gear as their maximum upgrade level'],
               ['topgear.catalyst', 'Revival Catalyst', 'Convert highest item per slot'],
             ] as const

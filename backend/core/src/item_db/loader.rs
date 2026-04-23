@@ -1,11 +1,11 @@
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
 use super::state::*;
 use crate::types::class_data;
-use crate::types::{BonusData, EnchantData, GameItem};
+use crate::types::{class_data::ClassDef, class_data::SpecDef, BonusData, EnchantData, GameItem};
 use std::sync::Arc;
 
 pub fn load_items(data_dir: &Path) {
@@ -278,15 +278,15 @@ fn inferred_season_label() -> String {
     }
 }
 
-fn read_active_season_metadata(data_dir: &Path) -> (Option<String>, Option<u64>) {
+fn read_active_season_metadata(data_dir: &Path) -> (Option<String>, Option<u64>, Option<u64>) {
     let path = data_dir.join("seasons.json");
     if !path.exists() {
-        return (None, None);
+        return (None, None, None);
     }
 
     let file = match fs::File::open(&path) {
         Ok(f) => f,
-        Err(_) => return (None, None),
+        Err(_) => return (None, None, None),
     };
     let seasons: Vec<Value> =
         serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
@@ -303,8 +303,35 @@ fn read_active_season_metadata(data_dir: &Path) -> (Option<String>, Option<u64>)
     let catalyst_currency = active
         .and_then(|s| s.get("itemConversionCurrency"))
         .and_then(|v| v.as_u64());
+    let conversion_group_id = active
+        .and_then(|s| s.get("itemConversionId"))
+        .and_then(|v| v.as_u64());
 
-    (season_name, catalyst_currency)
+    (season_name, catalyst_currency, conversion_group_id)
+}
+
+fn read_conversion_bonus_id(data_dir: &Path, preferred_group_id: Option<u64>) -> Option<u64> {
+    let path = data_dir.join("item-conversions.json");
+    if !path.exists() {
+        return None;
+    }
+    let file = fs::File::open(&path).ok()?;
+    let data: HashMap<String, Value> =
+        serde_json::from_reader(std::io::BufReader::new(file)).ok()?;
+
+    let selected_group = preferred_group_id
+        .and_then(|id| data.get(&id.to_string()))
+        .or_else(|| {
+            data.iter()
+                .filter_map(|(k, v)| k.parse::<u64>().ok().map(|id| (id, v)))
+                .max_by_key(|(id, _)| *id)
+                .map(|(_, v)| v)
+        })?;
+
+    selected_group
+        .get("bonusIds")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.iter().find_map(|v| v.as_u64()))
 }
 
 fn track_rank_index(name: &str) -> usize {
@@ -369,10 +396,254 @@ fn clamp_level(level: u64, max_level: u64) -> u64 {
     }
 }
 
+fn slugify_key(label: &str) -> String {
+    label
+        .trim()
+        .to_ascii_lowercase()
+        .replace([' ', '_'], "-")
+        .replace("--", "-")
+}
+
+fn localized_or_string(value: &Value) -> Option<String> {
+    if let Some(s) = value.as_str() {
+        let trimmed = s.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let obj = value.as_object()?;
+    if let Some(en) = obj.get("en_US").and_then(|v| v.as_str()) {
+        let trimmed = en.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    obj.values().find_map(|v| {
+        v.as_str().and_then(|s| {
+            let trimmed = s.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+    })
+}
+
+fn parse_u64_flexible(value: &Value) -> Option<u64> {
+    if let Some(v) = value.as_u64() {
+        return Some(v);
+    }
+    let s = value.as_str()?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let head = s.split('/').next().unwrap_or("").trim();
+    if !head.is_empty() {
+        if let Ok(v) = head.parse::<u64>() {
+            return Some(v);
+        }
+    }
+    let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        None
+    } else {
+        digits.parse::<u64>().ok()
+    }
+}
+
+fn runtime_track_name(value: &Value) -> Option<String> {
+    if let Some(s) = localized_or_string(value) {
+        return Some(s);
+    }
+    let obj = value.as_object()?;
+    if let Some(name) = obj.get("name").and_then(localized_or_string) {
+        return Some(name);
+    }
+    if let Some(label) = obj.get("label").and_then(localized_or_string) {
+        return Some(label);
+    }
+    obj.get("track").and_then(localized_or_string)
+}
+
+fn parse_runtime_difficulty_entry(
+    entry: &Value,
+    idx: usize,
+    available_tracks: &[String],
+) -> Option<Value> {
+    let obj = entry.as_object()?;
+    let label = obj
+        .get("label")
+        .or_else(|| obj.get("name"))
+        .or_else(|| obj.get("difficultyLabel"))
+        .and_then(localized_or_string)
+        .unwrap_or_default();
+    let key = obj
+        .get("key")
+        .and_then(localized_or_string)
+        .or_else(|| {
+            obj.get("id")
+                .and_then(parse_u64_flexible)
+                .map(|n| n.to_string())
+        })
+        .unwrap_or_else(|| {
+            if label.is_empty() {
+                format!("runtime-{}", idx)
+            } else {
+                slugify_key(&label)
+            }
+        });
+    let label = if label.is_empty() { key.clone() } else { label };
+
+    let track_raw = [
+        "track",
+        "trackName",
+        "track_name",
+        "upgradeTrack",
+        "upgrade_track",
+        "upgradeTrackName",
+        "upgrade_track_name",
+    ]
+    .iter()
+    .find_map(|k| obj.get(*k).and_then(runtime_track_name))
+    .unwrap_or_default();
+    if track_raw.trim().is_empty() {
+        return None;
+    }
+    let track = pick_track_name(track_raw.trim(), available_tracks);
+    let max_level = track_max_level(&track);
+    let requested_level = [
+        "level",
+        "upgradeLevel",
+        "upgrade_level",
+        "trackLevel",
+        "track_level",
+    ]
+    .iter()
+    .find_map(|k| obj.get(*k).and_then(parse_u64_flexible))
+    .unwrap_or(1);
+    let level = clamp_level(requested_level.max(1), max_level);
+    let sort_order = ["sortOrder", "sort_order", "order", "position"]
+        .iter()
+        .find_map(|k| obj.get(*k).and_then(parse_u64_flexible))
+        .unwrap_or(100 + idx as u64);
+
+    let mut out = serde_json::Map::new();
+    out.insert("key".to_string(), json!(key));
+    out.insert("label".to_string(), json!(label));
+    out.insert("track".to_string(), json!(track));
+    out.insert("level".to_string(), json!(level));
+    out.insert("sortOrder".to_string(), json!(sort_order));
+    if let Some(v) = obj.get("fixedIlvl").and_then(parse_u64_flexible) {
+        out.insert("fixedIlvl".to_string(), json!(v));
+    }
+    if let Some(v) = obj.get("fixedQuality").and_then(parse_u64_flexible) {
+        out.insert("fixedQuality".to_string(), json!(v));
+    }
+    Some(Value::Object(out))
+}
+
+fn parse_runtime_difficulty_entries(entries: &[Value], available_tracks: &[String]) -> Vec<Value> {
+    entries
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, entry)| parse_runtime_difficulty_entry(entry, idx, available_tracks))
+        .collect()
+}
+
+fn parse_runtime_difficulty_map(
+    entries: &Map<String, Value>,
+    available_tracks: &[String],
+) -> Vec<Value> {
+    entries
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, (key, value))| {
+            let mut entry_obj = value.as_object().cloned()?;
+            entry_obj
+                .entry("key".to_string())
+                .or_insert_with(|| json!(key.clone()));
+            parse_runtime_difficulty_entry(&Value::Object(entry_obj), idx, available_tracks)
+        })
+        .collect()
+}
+
+fn is_difficulty_container_key(key: &str) -> bool {
+    let k = key.to_ascii_lowercase();
+    k.contains("dungeon_difficult")
+        || k.contains("mplus_difficult")
+        || k.contains("keystone_difficult")
+        || k == "difficulty_overrides"
+        || k == "dungeon_difficulty_overrides"
+        || k == "mplusdifficultyoverrides"
+}
+
+fn collect_runtime_difficulty_entries(
+    container: &Value,
+    available_tracks: &[String],
+    out: &mut Vec<Value>,
+    depth: usize,
+) {
+    if depth > 8 {
+        return;
+    }
+    let Some(obj) = container.as_object() else {
+        return;
+    };
+
+    for (key, value) in obj {
+        if is_difficulty_container_key(key) {
+            if let Some(arr) = value.as_array() {
+                out.extend(parse_runtime_difficulty_entries(arr, available_tracks));
+            }
+            if let Some(map) = value.as_object() {
+                out.extend(parse_runtime_difficulty_map(map, available_tracks));
+            }
+        }
+        collect_runtime_difficulty_entries(value, available_tracks, out, depth + 1);
+    }
+}
+
+fn runtime_mplus_difficulty_overrides(available_tracks: &[String]) -> Vec<Value> {
+    let runtime = get_runtime_metadata();
+    let mut collected: Vec<Value> = Vec::new();
+    collect_runtime_difficulty_entries(&runtime, available_tracks, &mut collected, 0);
+    collected
+}
+
+fn merge_mplus_difficulties(base: Vec<Value>, overrides: Vec<Value>) -> Vec<Value> {
+    let mut merged: HashMap<String, Value> = HashMap::new();
+    for entry in base {
+        if let Some(key) = entry.get("key").and_then(|v| v.as_str()) {
+            merged.insert(key.to_string(), entry);
+        }
+    }
+    for entry in overrides {
+        if let Some(key) = entry.get("key").and_then(|v| v.as_str()) {
+            merged.insert(key.to_string(), entry);
+        }
+    }
+
+    let mut values: Vec<Value> = merged.into_values().collect();
+    values.sort_by(|a, b| {
+        let sa = a.get("sortOrder").and_then(|v| v.as_u64()).unwrap_or(999);
+        let sb = b.get("sortOrder").and_then(|v| v.as_u64()).unwrap_or(999);
+        sa.cmp(&sb).then_with(|| {
+            a.get("key")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .cmp(b.get("key").and_then(|v| v.as_str()).unwrap_or(""))
+        })
+    });
+    values
+}
+
 fn generated_season_config(data_dir: &Path) -> Value {
-    let (season_name_from_file, catalyst_currency_from_file) = read_active_season_metadata(data_dir);
+    let (season_name_from_file, catalyst_currency_from_file, conversion_group_id) =
+        read_active_season_metadata(data_dir);
     let season_name = season_name_from_file.unwrap_or_else(inferred_season_label);
     let catalyst_currency_id = catalyst_currency_from_file.unwrap_or(3378);
+    let tier_set_bonus_id = read_conversion_bonus_id(data_dir, conversion_group_id).unwrap_or(20);
 
     let available_tracks = available_track_names();
     let adventurer_track = pick_track_name("Adventurer", &available_tracks);
@@ -397,6 +668,51 @@ fn generated_season_config(data_dir: &Path) -> Value {
     let mplus10_level = clamp_level(3, hero_max);
     let vault79_level = clamp_level(4, hero_max);
     let vault10_level = clamp_level(1, myth_max);
+    let base_mplus_difficulties = vec![
+        json!({ "key": "heroic",    "label": "Heroic",     "track": adventurer_track, "level": heroic_level, "sortOrder": 1 }),
+        json!({ "key": "mythic",    "label": "Mythic 0",   "track": champion_track,   "level": mythic_zero_level, "sortOrder": 2 }),
+        json!({ "key": "mythic+2",  "label": "+2",         "track": champion_track,   "level": mplus2_level, "sortOrder": 3 }),
+        json!({ "key": "mythic+3",  "label": "+3",         "track": champion_track,   "level": mplus2_level, "sortOrder": 4 }),
+        json!({ "key": "mythic+4",  "label": "+4",         "track": champion_track,   "level": mplus4_level, "sortOrder": 5 }),
+        json!({ "key": "mythic+5",  "label": "+5",         "track": champion_track,   "level": mplus5_level, "sortOrder": 6 }),
+        json!({ "key": "mythic+6",  "label": "+6",         "track": champion_track,   "level": mplus6_level, "sortOrder": 7 }),
+        json!({ "key": "mythic+7",  "label": "+7",         "track": hero_track,       "level": mplus7_level, "sortOrder": 8 }),
+        json!({ "key": "mythic+8",  "label": "+8",         "track": hero_track,       "level": mplus8_level, "sortOrder": 9 }),
+        json!({ "key": "mythic+9",  "label": "+9",         "track": hero_track,       "level": mplus8_level, "sortOrder": 10 }),
+        json!({ "key": "mythic+10", "label": "+10",        "track": hero_track,       "level": mplus10_level, "sortOrder": 11 }),
+        json!({ "key": "vault+7-9", "label": "Vault +7-9", "track": hero_track,       "level": vault79_level, "sortOrder": 12 }),
+        json!({ "key": "vault+10",  "label": "Vault +10",  "track": myth_track,       "level": vault10_level, "sortOrder": 13 }),
+    ];
+    let runtime_overrides = runtime_mplus_difficulty_overrides(&available_tracks);
+    let mplus_difficulties = merge_mplus_difficulties(base_mplus_difficulties, runtime_overrides);
+    let default_mplus_difficulty = if mplus_difficulties
+        .iter()
+        .any(|d| d.get("key").and_then(|v| v.as_str()) == Some("mythic+10"))
+    {
+        "mythic+10".to_string()
+    } else {
+        mplus_difficulties
+            .first()
+            .and_then(|v| v.get("key"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("mythic")
+            .to_string()
+    };
+
+    let mut dungeon_difficulty_tracks = serde_json::Map::new();
+    for difficulty in &mplus_difficulties {
+        let Some(key) = difficulty.get("key").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(track) = difficulty.get("track").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(level) = difficulty.get("level").and_then(|v| v.as_u64()) else {
+            continue;
+        };
+        dungeon_difficulty_tracks
+            .insert(key.to_string(), json!({ "track": track, "level": level }));
+    }
 
     json!({
       "season": season_name,
@@ -411,22 +727,8 @@ fn generated_season_config(data_dir: &Path) -> Value {
           "key": "mplus",
           "label": "Mythic+",
           "poolInstanceId": -1,
-          "defaultDifficulty": "mythic+10",
-          "difficulties": [
-            { "key": "heroic",    "label": "Heroic",     "track": adventurer_track, "level": heroic_level, "sortOrder": 1 },
-            { "key": "mythic",    "label": "Mythic 0",   "track": champion_track,   "level": mythic_zero_level, "sortOrder": 2 },
-            { "key": "mythic+2",  "label": "+2",         "track": champion_track,   "level": mplus2_level, "sortOrder": 3 },
-            { "key": "mythic+3",  "label": "+3",         "track": champion_track,   "level": mplus2_level, "sortOrder": 4 },
-            { "key": "mythic+4",  "label": "+4",         "track": champion_track,   "level": mplus4_level, "sortOrder": 5 },
-            { "key": "mythic+5",  "label": "+5",         "track": champion_track,   "level": mplus5_level, "sortOrder": 6 },
-            { "key": "mythic+6",  "label": "+6",         "track": champion_track,   "level": mplus6_level, "sortOrder": 7 },
-            { "key": "mythic+7",  "label": "+7",         "track": hero_track,       "level": mplus7_level, "sortOrder": 8 },
-            { "key": "mythic+8",  "label": "+8",         "track": hero_track,       "level": mplus8_level, "sortOrder": 9 },
-            { "key": "mythic+9",  "label": "+9",         "track": hero_track,       "level": mplus8_level, "sortOrder": 10 },
-            { "key": "mythic+10", "label": "+10",        "track": hero_track,       "level": mplus10_level, "sortOrder": 11 },
-            { "key": "vault+7-9", "label": "Vault +7-9", "track": hero_track,       "level": vault79_level, "sortOrder": 12 },
-            { "key": "vault+10",  "label": "Vault +10",  "track": myth_track,       "level": vault10_level, "sortOrder": 13 }
-          ]
+          "defaultDifficulty": default_mplus_difficulty,
+          "difficulties": mplus_difficulties
         },
         {
           "key": "normal-dungeons",
@@ -450,24 +752,10 @@ fn generated_season_config(data_dir: &Path) -> Value {
       },
       "encounterUpgradeLevel": {},
       "dungeonNormal": { "ilvl": 214, "quality": 3 },
-      "dungeonDifficultyTracks": {
-        "heroic":    { "track": adventurer_track, "level": heroic_level },
-        "mythic":    { "track": champion_track,   "level": mythic_zero_level },
-        "mythic+2":  { "track": champion_track,   "level": mplus2_level },
-        "mythic+3":  { "track": champion_track,   "level": mplus2_level },
-        "mythic+4":  { "track": champion_track,   "level": mplus4_level },
-        "mythic+5":  { "track": champion_track,   "level": mplus5_level },
-        "mythic+6":  { "track": champion_track,   "level": mplus6_level },
-        "mythic+7":  { "track": hero_track,       "level": mplus7_level },
-        "mythic+8":  { "track": hero_track,       "level": mplus8_level },
-        "mythic+9":  { "track": hero_track,       "level": mplus8_level },
-        "mythic+10": { "track": hero_track,       "level": mplus10_level },
-        "vault+7-9": { "track": hero_track,       "level": vault79_level },
-        "vault+10":  { "track": myth_track,       "level": vault10_level }
-      },
+      "dungeonDifficultyTracks": dungeon_difficulty_tracks,
       "worldBossTrack": champion_track,
       "worldBossLevel": mythic_zero_level,
-      "tierSetBonusId": 20,
+      "tierSetBonusId": tier_set_bonus_id,
       "catalyst_currency_id": catalyst_currency_id
     })
 }
@@ -599,8 +887,12 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
     let data: HashMap<String, Value> =
         serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
-    let latest_group = data.iter().filter_map(|(k, _)| k.parse::<u64>().ok()).max();
-    if let Some(group_id) = latest_group {
+    let (_, _, preferred_group_id) = read_active_season_metadata(data_dir);
+    let selected_group_id = preferred_group_id
+        .filter(|id| data.contains_key(&id.to_string()))
+        .or_else(|| data.iter().filter_map(|(k, _)| k.parse::<u64>().ok()).max());
+
+    if let Some(group_id) = selected_group_id {
         if let Some(group) = data.get(&group_id.to_string()) {
             let mut tier_items: HashMap<(u64, u64), CatalystTierItem> = HashMap::new();
             let mut tier_item_ids: HashSet<u64> = HashSet::new();
@@ -625,6 +917,11 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
                     if has_set {
                         tier_item_ids.insert(item_id);
                     }
+                    let bonus_ids: Vec<u64> = item
+                        .get("bonusLists")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_u64()).collect())
+                        .unwrap_or_default();
 
                     let tier_item = CatalystTierItem {
                         item_id,
@@ -639,6 +936,7 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
                             .unwrap_or("")
                             .to_string(),
                         has_set,
+                        bonus_ids,
                     };
 
                     let classes = item
@@ -669,17 +967,22 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
 
 pub fn load_classes(data_dir: &Path) {
     class_data::set_class_trait_spec_ids(HashMap::new());
+    class_data::set_class_wow_ids(HashMap::new());
+    class_data::set_spec_to_wow_class(HashMap::new());
 
     // Primary source: class-traits.json (contains authoritative class -> spec ID mapping).
     let traits_path = data_dir.join("class-traits.json");
-    if traits_path.exists() {
-        let trait_map = fs::read_to_string(&traits_path)
+    let mut class_id_map: HashMap<String, u64> = HashMap::new();
+    let mut spec_class_map: HashMap<u64, u64> = HashMap::new();
+    let trait_map: HashMap<String, Vec<u64>> = if traits_path.exists() {
+        fs::read_to_string(&traits_path)
             .ok()
             .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
             .and_then(|root| root.as_array().cloned())
             .map(|rows| {
                 let mut out: HashMap<String, Vec<u64>> = HashMap::new();
                 for row in rows {
+                    let class_id = row.get("classId").and_then(|v| v.as_u64()).unwrap_or(0);
                     let class_name = row
                         .get("className")
                         .and_then(|v| v.as_str())
@@ -695,6 +998,12 @@ pub fn load_classes(data_dir: &Path) {
                     if specs.is_empty() {
                         continue;
                     }
+                    if class_id > 0 {
+                        class_id_map.insert(class_name.clone(), class_id);
+                        for sid in &specs {
+                            spec_class_map.insert(*sid, class_id);
+                        }
+                    }
                     let entry = out.entry(class_name).or_default();
                     for spec_id in specs {
                         if !entry.contains(&spec_id) {
@@ -704,18 +1013,245 @@ pub fn load_classes(data_dir: &Path) {
                 }
                 out
             })
-            .unwrap_or_default();
-        if !trait_map.is_empty() {
-            println!(
-                "Loaded class trait spec map for {} classes",
-                trait_map.len()
-            );
-            class_data::set_class_trait_spec_ids(trait_map);
+            .unwrap_or_default()
+    } else {
+        HashMap::new()
+    };
+    if !trait_map.is_empty() || !class_id_map.is_empty() || !spec_class_map.is_empty() {
+        println!(
+            "Loaded class trait spec map for {} classes",
+            trait_map.len()
+        );
+        class_data::set_class_trait_spec_ids(trait_map);
+        class_data::set_class_wow_ids(class_id_map);
+        class_data::set_spec_to_wow_class(spec_class_map);
+    }
+
+    // Enrich with spec names from talents.json to avoid hardcoded class/spec tables.
+    let mut spec_name_by_id: HashMap<u64, String> = HashMap::new();
+    if let Ok(file) = fs::File::open(data_dir.join("talents.json")) {
+        let data: Vec<Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
+        for row in data {
+            let sid = row.get("specId").and_then(|v| v.as_u64()).unwrap_or(0);
+            let sname = row
+                .get("specName")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if sid > 0 && !sname.is_empty() {
+                spec_name_by_id.insert(sid, sname.to_string());
+            }
         }
     }
 
-    // Legacy class metadata file is intentionally not used anymore.
-    *class_data::CLASSES.write().unwrap() = Arc::new(Vec::new());
+    let mut classes: Vec<ClassDef> = Vec::new();
+    for (class_name, spec_ids) in class_data::CLASS_TRAIT_SPEC_IDS.read().unwrap().iter() {
+        let mut specs: Vec<SpecDef> = spec_ids
+            .iter()
+            .map(|sid| SpecDef {
+                name: spec_name_by_id
+                    .get(sid)
+                    .cloned()
+                    .unwrap_or_else(|| format!("spec_{}", sid)),
+                id: *sid,
+                weapon_subclasses: Vec::new(),
+                primary_stats: Vec::new(),
+                can_dual_wield: false,
+                can_use_shield: false,
+                can_use_offhand: false,
+            })
+            .collect();
+        specs.sort_by_key(|s| s.id);
+
+        let aliases = match class_name.as_str() {
+            "death_knight" => vec!["deathknight".to_string()],
+            "demon_hunter" => vec!["demonhunter".to_string()],
+            _ => Vec::new(),
+        };
+
+        classes.push(ClassDef {
+            name: class_name.clone(),
+            aliases,
+            max_armor: 0,
+            weapons: Vec::new(),
+            specs,
+        });
+    }
+    classes.sort_by(|a, b| a.name.cmp(&b.name));
+    *class_data::CLASSES.write().unwrap() = Arc::new(classes);
+}
+
+pub fn derive_class_profiles_from_items() {
+    let items = ITEMS.read().unwrap().clone();
+    if items.is_empty() {
+        return;
+    }
+
+    let mut classes = class_data::CLASSES.read().unwrap().as_ref().clone();
+    if classes.is_empty() {
+        return;
+    }
+
+    let mut class_idx_by_id: HashMap<u64, usize> = HashMap::new();
+    for (idx, class_def) in classes.iter().enumerate() {
+        if let Some(cid) = class_data::class_wow_id(&class_def.name) {
+            class_idx_by_id.insert(cid, idx);
+        }
+    }
+    if class_idx_by_id.is_empty() {
+        return;
+    }
+
+    let mut spec_idx_by_id: HashMap<u64, (usize, usize)> = HashMap::new();
+    for (ci, class_def) in classes.iter().enumerate() {
+        for (si, spec) in class_def.specs.iter().enumerate() {
+            spec_idx_by_id.insert(spec.id, (ci, si));
+        }
+    }
+
+    let mut class_weapon_sets: Vec<HashSet<u64>> = vec![HashSet::new(); classes.len()];
+    let mut class_primary_counts: Vec<HashMap<u64, u64>> = vec![HashMap::new(); classes.len()];
+    let mut class_max_armor: Vec<u64> = vec![0; classes.len()];
+    let mut spec_weapon_sets: Vec<Vec<HashSet<u64>>> = classes
+        .iter()
+        .map(|c| (0..c.specs.len()).map(|_| HashSet::new()).collect())
+        .collect();
+    let mut spec_primary_counts: Vec<Vec<HashMap<u64, u64>>> = classes
+        .iter()
+        .map(|c| (0..c.specs.len()).map(|_| HashMap::new()).collect())
+        .collect();
+    let mut spec_can_shield: Vec<Vec<bool>> = classes
+        .iter()
+        .map(|c| (0..c.specs.len()).map(|_| false).collect())
+        .collect();
+    let mut spec_can_offhand: Vec<Vec<bool>> = classes
+        .iter()
+        .map(|c| (0..c.specs.len()).map(|_| false).collect())
+        .collect();
+    let mut spec_can_dual: Vec<Vec<bool>> = classes
+        .iter()
+        .map(|c| (0..c.specs.len()).map(|_| false).collect())
+        .collect();
+
+    for item in items.values() {
+        let inv_type = item.inventory_type.unwrap_or(0) as u64;
+        let item_class = item.class.unwrap_or(0) as u64;
+        let sub = item.subclass.unwrap_or(0) as u64;
+        let item_primary_stats: HashSet<u64> = item
+            .stats
+            .as_ref()
+            .map(|stats| {
+                let mut out = HashSet::<u64>::new();
+                for stat in stats {
+                    if matches!(stat.id, 3 | 4 | 5) {
+                        out.insert(stat.id);
+                    }
+                }
+                out
+            })
+            .unwrap_or_default();
+
+        let mut explicit_class_ids: HashSet<u64> = item
+            .classes
+            .as_ref()
+            .map(|v| v.iter().copied().collect())
+            .unwrap_or_default();
+        if let Some(specs) = &item.specs {
+            for id in specs {
+                if *id > 0 && *id <= 13 {
+                    explicit_class_ids.insert(*id);
+                }
+            }
+        }
+
+        for class_id in explicit_class_ids {
+            if let Some(&ci) = class_idx_by_id.get(&class_id) {
+                if item_class == 2 {
+                    class_weapon_sets[ci].insert(sub);
+                }
+                for primary in &item_primary_stats {
+                    *class_primary_counts[ci].entry(*primary).or_insert(0) += 1;
+                }
+                if item_class == 4
+                    && class_data::ARMOR_INVENTORY_TYPES.contains(&inv_type)
+                    && inv_type != 2
+                    && sub > 0
+                {
+                    class_max_armor[ci] = class_max_armor[ci].max(sub);
+                }
+            }
+        }
+
+        if let Some(specs) = &item.specs {
+            for spec_id in specs.iter().copied().filter(|sid| *sid > 13) {
+                if let Some(&(ci, si)) = spec_idx_by_id.get(&spec_id) {
+                    if item_class == 2 {
+                        class_weapon_sets[ci].insert(sub);
+                        spec_weapon_sets[ci][si].insert(sub);
+                        if inv_type == 22 {
+                            spec_can_dual[ci][si] = true;
+                        }
+                    }
+                    for primary in &item_primary_stats {
+                        *class_primary_counts[ci].entry(*primary).or_insert(0) += 1;
+                        *spec_primary_counts[ci][si].entry(*primary).or_insert(0) += 1;
+                    }
+                    if inv_type == 14 {
+                        spec_can_shield[ci][si] = true;
+                    }
+                    if inv_type == 23 {
+                        spec_can_offhand[ci][si] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    let dominant_primary_stats = |counts: &HashMap<u64, u64>| -> Vec<u64> {
+        let max_count = counts.values().copied().max().unwrap_or(0);
+        if max_count == 0 {
+            return Vec::new();
+        }
+        let mut out: Vec<u64> = counts
+            .iter()
+            .filter_map(|(stat, count)| {
+                if *count == max_count {
+                    Some(*stat)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        out.sort_unstable();
+        out
+    };
+
+    for ci in 0..classes.len() {
+        let mut class_weapons: Vec<u64> = class_weapon_sets[ci].iter().copied().collect();
+        class_weapons.sort_unstable();
+        classes[ci].weapons = class_weapons;
+        classes[ci].max_armor = class_max_armor[ci];
+
+        for si in 0..classes[ci].specs.len() {
+            let mut spec_weapons: Vec<u64> = spec_weapon_sets[ci][si].iter().copied().collect();
+            spec_weapons.sort_unstable();
+            classes[ci].specs[si].weapon_subclasses = spec_weapons;
+
+            let spec_primaries: Vec<u64> = if spec_primary_counts[ci][si].is_empty() {
+                dominant_primary_stats(&class_primary_counts[ci])
+            } else {
+                dominant_primary_stats(&spec_primary_counts[ci][si])
+            };
+            classes[ci].specs[si].primary_stats = spec_primaries;
+
+            classes[ci].specs[si].can_use_shield = spec_can_shield[ci][si];
+            classes[ci].specs[si].can_use_offhand = spec_can_offhand[ci][si];
+            classes[ci].specs[si].can_dual_wield = spec_can_dual[ci][si];
+        }
+    }
+
+    *class_data::CLASSES.write().unwrap() = Arc::new(classes);
 }
 
 pub fn load_consumables(data_dir: &Path) {
@@ -755,11 +1291,15 @@ pub fn set_runtime_data(data: Value) {
 
 pub fn hydrate_runtime_metadata(runtime_path: &Path) {
     if !runtime_path.exists() {
+        set_runtime_data(json!({}));
         return;
     }
     let data: Value = match fs::read_to_string(runtime_path) {
-        Ok(s) => serde_json::from_str(&s).unwrap_or(Value::Null),
-        Err(_) => return,
+        Ok(s) => serde_json::from_str(&s).unwrap_or_else(|_| json!({})),
+        Err(_) => {
+            set_runtime_data(json!({}));
+            return;
+        }
     };
 
     // Store for later access

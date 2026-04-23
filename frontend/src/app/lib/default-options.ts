@@ -45,8 +45,8 @@ const FIGHT_STYLE_CHOICES: DefaultChoice[] = [
 export const APP_DEFAULTS_REGISTRY = {
   'topgear.copyEnchants': {
     key: 'topgear.copyEnchants',
-    label: 'Copy Enchants',
-    description: 'Apply equipped enchants to Top Gear alternatives by default.',
+    label: 'Copy Enchants/Gems',
+    description: 'Apply equipped enchants and gems to Top Gear alternatives by default.',
     group: 'Top Gear',
     type: 'boolean',
     defaultValue: true,

@@ -56,7 +56,7 @@ function normalizeExpansionLabel(input: unknown): string {
   const raw = String(input ?? '').trim();
   if (!raw) return 'Unknown expansion';
   const lower = raw.toLowerCase();
-  if (lower === 'current season' || lower === 'current expansion') return 'Midnight';
+  if (lower === 'current season' || lower === 'current expansion') return 'Current expansion';
   return raw;
 }
 
@@ -242,17 +242,6 @@ export default function RaidProgressionGrid({
     );
   }, [currentRaid]);
 
-  const vaultProgress = useMemo(() => {
-    if (!currentRaid) return { defeated: 0, slots: 0, nextTarget: 2, maxTarget: 6 };
-    const defeated = currentRaid.bosses.filter((boss) =>
-      DIFFICULTIES.some((diff) => boss.byDifficulty[diff].kills > 0),
-    ).length;
-    const thresholds = [2, 4, 6];
-    const slots = thresholds.filter((t) => defeated >= t).length;
-    const nextTarget = thresholds.find((t) => defeated < t) ?? thresholds[thresholds.length - 1];
-    return { defeated, slots, nextTarget, maxTarget: thresholds[thresholds.length - 1] };
-  }, [currentRaid]);
-
   const maxDifficultyCount = Math.max(
     1,
     difficultyTotals.lfr,
@@ -271,57 +260,6 @@ export default function RaidProgressionGrid({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Weekly Vault Tracker</p>
-          <p className="mt-1 text-[11px] text-zinc-300">
-            Completed bosses counted: <span className="font-bold text-zinc-100">{vaultProgress.defeated}</span>
-          </p>
-
-          <div className="mt-3 space-y-2">
-            {[
-              { slot: 1, threshold: 2 },
-              { slot: 2, threshold: 4 },
-              { slot: 3, threshold: 6 },
-            ].map((entry) => {
-              const unlocked = vaultProgress.defeated >= entry.threshold;
-              const remaining = Math.max(0, entry.threshold - vaultProgress.defeated);
-              const pct = Math.min(100, (vaultProgress.defeated / entry.threshold) * 100);
-              return (
-                <div key={entry.slot} className="rounded border border-white/10 bg-black/20 p-2">
-                  <div className="mb-1 flex items-center justify-between">
-                    <p className="text-[11px] font-bold text-zinc-100">Slot {entry.slot}</p>
-                    <p className={`text-[11px] font-bold ${unlocked ? 'text-emerald-300' : 'text-zinc-400'}`}>
-                      {unlocked ? 'Unlocked' : `${remaining} more`}
-                    </p>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/80'}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] text-zinc-500">Unlocks at {entry.threshold} boss{entry.threshold > 1 ? 'es' : ''}</p>
-                </div>
-              );
-            })}
-
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <span className="rounded border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
-              LFR {difficultyTotals.lfr}
-            </span>
-            <span className="rounded border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-bold text-sky-300">
-              Normal {difficultyTotals.normal}
-            </span>
-            <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
-              Heroic {difficultyTotals.heroic}
-            </span>
-            <span className="rounded border border-violet-400/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-300">
-              Mythic {difficultyTotals.mythic}
-            </span>
-          </div>
-        </div>
-      </div>
-
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
           Difficulty Comparison (Selected Raid)

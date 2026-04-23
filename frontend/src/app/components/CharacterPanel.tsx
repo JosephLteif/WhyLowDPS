@@ -879,6 +879,22 @@ function normalizeRealmSlug(value: unknown): string {
     .trim();
 }
 
+function isCurrentExpansionPlaceholder(value: unknown): boolean {
+  const lower = String(value ?? '').trim().toLowerCase();
+  return lower === 'current season' || lower === 'current expansion';
+}
+
+function isLikelyCurrentExpansionLabel(value: unknown): boolean {
+  const lower = String(value ?? '').trim().toLowerCase();
+  if (!lower) return false;
+  return (
+    lower === 'midnight' ||
+    lower.startsWith('the war within') ||
+    lower.startsWith('11.') ||
+    lower.startsWith('12.')
+  );
+}
+
 function normalizeCharacterName(value: unknown): string {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -967,35 +983,52 @@ function RaidSectionCard({
   name: string;
 }) {
   const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
+  const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
   const [selectedRaidName, setSelectedRaidName] = useState<string>('all');
-  const [activeProgressRaidName, setActiveProgressRaidName] = useState<string | null>(null);
 
   const expansionOptions = useMemo(() => {
     const normalizeExpansionKey = (value: unknown) => {
       const raw = String(value ?? '').trim();
-      const lower = raw.toLowerCase();
-      const canonical = lower === 'current season' || lower === 'current expansion' ? 'Midnight' : raw;
+      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Midnight' : raw;
       return canonical.toLowerCase().replace(/[\s_]+/g, '-');
     };
     const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    const out = new Map<string, string>();
+    const out = new Map<string, { label: string; isCurrent: boolean; isPlaceholderLabel: boolean }>();
     for (const exp of expansions) {
       const raw =
         exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || 'Unknown expansion';
       const rawLabel = String(raw || 'Unknown expansion').trim() || 'Unknown expansion';
-      const lower = rawLabel.toLowerCase();
-      const label = lower === 'current season' || lower === 'current expansion' ? 'Midnight' : rawLabel;
+      const isCurrent = isCurrentExpansionPlaceholder(rawLabel);
+      const label = isCurrent ? 'Midnight' : rawLabel;
       const key = normalizeExpansionKey(label) || 'unknown-expansion';
-      if (!out.has(key)) out.set(key, label);
+      const existing = out.get(key);
+      if (!existing) {
+        out.set(key, { label, isCurrent, isPlaceholderLabel: isCurrent });
+      } else {
+        if (!existing.isCurrent && isCurrent) {
+          existing.isCurrent = true;
+        }
+        if (existing.isPlaceholderLabel && !isCurrent) {
+          existing.label = label;
+          existing.isPlaceholderLabel = false;
+        }
+      }
     }
-    return [{ key: 'all', label: 'All expansions' }, ...Array.from(out.entries()).map(([key, label]) => ({ key, label }))];
+    const entries = Array.from(out.entries()).map(([key, value]) => ({
+      key,
+      label: value.label,
+      isCurrent: value.isCurrent || isLikelyCurrentExpansionLabel(value.label),
+    }));
+    return [
+      { key: 'all', label: 'All expansions', isCurrent: false },
+      ...entries,
+    ];
   }, [raidEncounters]);
 
   const raidOptions = useMemo(() => {
     const normalizeExpansionKey = (value: unknown) => {
       const raw = String(value ?? '').trim();
-      const lower = raw.toLowerCase();
-      const canonical = lower === 'current season' || lower === 'current expansion' ? 'Midnight' : raw;
+      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Current expansion' : raw;
       return canonical.toLowerCase().replace(/[\s_]+/g, '-');
     };
     const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
@@ -1019,7 +1052,14 @@ function RaidSectionCard({
     if (!raidOptions.includes(selectedRaidName)) setSelectedRaidName('all');
   }, [raidOptions, selectedRaidName]);
 
-  const effectiveRaidFilter = selectedRaidName === 'all' ? activeProgressRaidName || 'all' : selectedRaidName;
+  useEffect(() => {
+    if (hasInitializedExpansion) return;
+    const preferred =
+      expansionOptions.find((opt) => opt.isCurrent && opt.key !== 'all') ||
+      expansionOptions.find((opt) => opt.key !== 'all');
+    if (preferred) setSelectedExpansion(preferred.key);
+    setHasInitializedExpansion(true);
+  }, [expansionOptions, hasInitializedExpansion]);
 
   return (
     <div className="card p-5">
@@ -1054,29 +1094,17 @@ function RaidSectionCard({
           </select>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">Progress</p>
-          <RaidProgressCard
-            raidEncounters={raidEncounters}
-            embedded
-            selectedExpansion={selectedExpansion}
-            selectedRaidName={selectedRaidName}
-            onActiveRaidNameChange={setActiveProgressRaidName}
-          />
-        </div>
-        <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">Parses</p>
-          <WarcraftLogsParsesCard
-            region={region}
-            realm={realm}
-            name={name}
-            raidEncounters={raidEncounters}
-            selectedExpansion={selectedExpansion}
-            selectedRaidName={effectiveRaidFilter}
-            embedded
-          />
-        </div>
+      <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">Parses</p>
+        <WarcraftLogsParsesCard
+          region={region}
+          realm={realm}
+          name={name}
+          raidEncounters={raidEncounters}
+          selectedExpansion={selectedExpansion}
+          selectedRaidName={selectedRaidName}
+          embedded
+        />
       </div>
     </div>
   );
@@ -1146,22 +1174,19 @@ function RaidProgressCard({
         .replace(/[\s_]+/g, '-');
 
     const canonicalExpansionKey = (value: string | null) => {
-      const lower = (value || '').trim().toLowerCase();
-      if (lower === 'current season' || lower === 'current expansion') return 'midnight';
+      if (isCurrentExpansionPlaceholder(value || '')) return 'current-expansion';
       return normalize(value);
     };
 
     const canonicalExpansionLabel = (value: string | null) => {
       const raw = (value || '').trim();
       if (!raw) return 'Unknown expansion';
-      const lower = raw.toLowerCase();
-      if (lower === 'current season' || lower === 'current expansion') return 'Midnight';
+      if (isCurrentExpansionPlaceholder(raw)) return 'Current expansion';
       return raw;
     };
 
     const isPlaceholderExpansion = (value: string | null) => {
-      const lower = (value || '').trim().toLowerCase();
-      return lower === 'current season' || lower === 'current expansion';
+      return isCurrentExpansionPlaceholder(value || '');
     };
 
     for (const exp of expansions) {
@@ -1566,8 +1591,7 @@ function WarcraftLogsParsesCard({
         .replace(/\s+/g, ' ');
     const normalizeExpansionKey = (value: unknown) => {
       const raw = String(value ?? '').trim();
-      const lower = raw.toLowerCase();
-      const canonical = lower === 'current season' || lower === 'current expansion' ? 'Midnight' : raw;
+      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Current expansion' : raw;
       return canonical.toLowerCase().replace(/[\s_]+/g, '-');
     };
     const allowedRaidNames = new Set<string>();

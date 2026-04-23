@@ -11,6 +11,7 @@ use tauri::Emitter;
 use tauri::Manager;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::WindowEvent;
+use tokio::io::AsyncWriteExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_shell::ShellExt;
 use whylowdps_core::game_data;
@@ -182,6 +183,109 @@ fn apply_close_behavior_choice(
     Ok(())
 }
 
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
+#[derive(Clone, serde::Serialize)]
+struct DirectInstallProgressEvent {
+    status: String,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    message: Option<String>,
+}
+
+#[tauri::command]
+async fn download_and_install_release(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let parsed_url = url::Url::parse(&url).map_err(|e| format!("Invalid update URL: {e}"))?;
+    let filename = parsed_url
+        .path_segments()
+        .and_then(|segments| segments.last())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("whylowdps-update-installer.exe")
+        .to_string();
+
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    let updates_dir = app_data_dir.join("updates");
+    std::fs::create_dir_all(&updates_dir).map_err(|e| format!("Failed to create updates dir: {e}"))?;
+    let installer_path = updates_dir.join(filename);
+
+    let client = reqwest::Client::new();
+    let mut response = client
+        .get(parsed_url)
+        .send()
+        .await
+        .map_err(|e| format!("Update download request failed: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("Update download failed: {e}"))?;
+    let total_bytes = response.content_length();
+
+    let _ = app.emit(
+        "whylowdps-direct-install-progress",
+        DirectInstallProgressEvent {
+            status: "started".to_string(),
+            downloaded_bytes: 0,
+            total_bytes,
+            message: Some("Downloading installer...".to_string()),
+        },
+    );
+
+    let mut file = tokio::fs::File::create(&installer_path)
+        .await
+        .map_err(|e| format!("Failed to create installer file: {e}"))?;
+    let mut downloaded_bytes: u64 = 0;
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("Failed while downloading installer: {e}"))?
+    {
+        downloaded_bytes += chunk.len() as u64;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Failed while writing installer file: {e}"))?;
+        let _ = app.emit(
+            "whylowdps-direct-install-progress",
+            DirectInstallProgressEvent {
+                status: "progress".to_string(),
+                downloaded_bytes,
+                total_bytes,
+                message: None,
+            },
+        );
+    }
+    file.flush()
+        .await
+        .map_err(|e| format!("Failed to finalize installer file: {e}"))?;
+    // Important on Windows: close file handle before launching the installer.
+    drop(file);
+
+    let _ = app.emit(
+        "whylowdps-direct-install-progress",
+        DirectInstallProgressEvent {
+            status: "finished".to_string(),
+            downloaded_bytes,
+            total_bytes,
+            message: Some("Installer downloaded. Launching installer...".to_string()),
+        },
+    );
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.hide();
+    }
+
+    std::process::Command::new(&installer_path)
+        .spawn()
+        .map_err(|e| format!("Failed to launch installer: {e}"))?;
+    // Give the UI thread a tiny window to process "finished" event, then exit cleanly.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    app.exit(0);
+    Ok(())
+}
+
 fn is_active_status(status: &str) -> bool {
     status == "pending" || status == "running"
 }
@@ -261,7 +365,9 @@ fn main() {
             get_system_info,
             get_close_behavior_preference,
             set_close_behavior_preference,
-            apply_close_behavior_choice
+            apply_close_behavior_choice,
+            restart_app,
+            download_and_install_release
         ])
         .setup(|app| {
             let app_data_dir = app

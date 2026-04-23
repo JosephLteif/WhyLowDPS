@@ -8,7 +8,6 @@ import { useSimContext } from '../components/SimContext';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 import {
-  classifyReleaseChannel,
   isValidUpdateChannel,
   readStoredUpdateChannel,
   UPDATE_CHANNEL_OPTIONS,
@@ -71,42 +70,6 @@ type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
 };
 
-type AppReleaseOption = {
-  id: string;
-  version: string;
-  publishedAt: string | null;
-  notes: string | null;
-  downloadUrl: string;
-  assetName: string;
-  channel: UpdateChannel;
-};
-
-const APP_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=50';
-
-function normalizeReleaseVersion(raw: string): string {
-  return String(raw || '').trim().replace(/^v/i, '');
-}
-
-function pickWindowsAssetUrl(
-  assets: Array<{ browser_download_url?: unknown; name?: unknown }>,
-): { url: string; name: string } | null {
-  const normalized = (assets || [])
-    .map((asset) => ({
-      url:
-        typeof asset.browser_download_url === 'string' ? asset.browser_download_url.trim() : '',
-      name: typeof asset.name === 'string' ? asset.name.trim() : '',
-    }))
-    .filter((asset) => asset.url.length > 0);
-  if (normalized.length === 0) return null;
-
-  const preferred =
-    normalized.find((asset) => /windows|win64|x64|nsis|setup/i.test(asset.name || asset.url)) ||
-    normalized.find((asset) => /\.(exe|msi|zip)$/i.test(asset.name || asset.url)) ||
-    normalized[0];
-
-  return { url: preferred.url, name: preferred.name || 'Release Asset' };
-}
-
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -152,15 +115,11 @@ export default function SettingsPage() {
   const initialRefresh = chooseBestUnit(dataCacheRefreshMinutes);
   const [refreshEveryValue, setRefreshEveryValue] = useState(initialRefresh.value);
   const [refreshEveryUnit, setRefreshEveryUnit] = useState<RefreshUnit>(initialRefresh.unit);
-  const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking'>('idle');
+  const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking' | 'installing'>('idle');
   const [updateMessage, setUpdateMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const [releaseOptions, setReleaseOptions] = useState<AppReleaseOption[]>([]);
-  const [releaseLoading, setReleaseLoading] = useState(false);
-  const [releaseError, setReleaseError] = useState('');
-  const [selectedReleaseId, setSelectedReleaseId] = useState('');
   const [selectedUpdateChannel, setSelectedUpdateChannel] = useState<UpdateChannel>('stable');
   const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(true);
   const [closeBehaviorLoading, setCloseBehaviorLoading] = useState(false);
@@ -262,7 +221,17 @@ export default function SettingsPage() {
       if (status === 'available') {
         setUpdateMessage({
           type: 'success',
-          text: message || 'Update found. Use "Update Now" in the popup.',
+          text: message || 'Update available. Use the bottom-right updater popup to install.',
+        });
+      } else if (status === 'downloading') {
+        setUpdateMessage({
+          type: 'success',
+          text: message || 'Downloading and installing update...',
+        });
+      } else if (status === 'downloaded') {
+        setUpdateMessage({
+          type: 'success',
+          text: message || 'Update installed. Restart the app to apply.',
         });
       } else if (status === 'none') {
         setUpdateMessage({ type: 'success', text: message || 'You are on the latest version.' });
@@ -471,103 +440,15 @@ export default function SettingsPage() {
     );
   };
 
-  const loadAppReleaseOptions = useCallback(async () => {
-    setReleaseLoading(true);
-    setReleaseError('');
-    try {
-      const response = await fetch(APP_RELEASES_API, {
-        cache: 'no-store',
-        headers: { Accept: 'application/vnd.github+json' },
-      });
-      if (!response.ok) {
-        throw new Error(`GitHub releases request failed (${response.status})`);
-      }
-      const payload = (await response.json()) as Array<{
-        id?: unknown;
-        tag_name?: unknown;
-        name?: unknown;
-        draft?: unknown;
-        prerelease?: unknown;
-        published_at?: unknown;
-        body?: unknown;
-        assets?: Array<{ browser_download_url?: unknown; name?: unknown }>;
-      }>;
-
-      const options = (payload || [])
-        .filter((entry) => !entry?.draft)
-        .map((entry) => {
-          const asset = pickWindowsAssetUrl(entry.assets || []);
-          if (!asset) return null;
-          const versionRaw =
-            typeof entry.tag_name === 'string'
-              ? entry.tag_name
-              : typeof entry.name === 'string'
-                ? entry.name
-                : '';
-          const version = normalizeReleaseVersion(versionRaw);
-          if (!version) return null;
-          const idRaw =
-            typeof entry.id === 'number' || typeof entry.id === 'string'
-              ? String(entry.id)
-              : version;
-          const channel = classifyReleaseChannel(versionRaw);
-          return {
-            id: idRaw,
-            version,
-            publishedAt: typeof entry.published_at === 'string' ? entry.published_at : null,
-            notes: typeof entry.body === 'string' ? entry.body : null,
-            downloadUrl: asset.url,
-            assetName: asset.name,
-            channel,
-          } satisfies AppReleaseOption;
-        })
-        .filter((entry): entry is AppReleaseOption => !!entry)
-        .filter((entry) => entry.channel === selectedUpdateChannel);
-
-      setReleaseOptions(options);
-      setSelectedReleaseId((prev) => {
-        if (prev && options.some((opt) => opt.id === prev)) return prev;
-        return options[0]?.id || '';
-      });
-      if (options.length === 0) {
-        setReleaseError(
-          `No downloadable ${selectedUpdateChannel} releases were found on GitHub.`
-        );
-      }
-    } catch (err: any) {
-      setReleaseError(err?.message || 'Failed to fetch releases from GitHub.');
-    } finally {
-      setReleaseLoading(false);
-    }
-  }, [selectedUpdateChannel]);
-
-  useEffect(() => {
-    if (!isDesktop || !user) return;
-    void loadAppReleaseOptions();
-  }, [user, loadAppReleaseOptions]);
-
-  const selectedRelease = releaseOptions.find((opt) => opt.id === selectedReleaseId) || null;
-
-  const downloadSelectedRelease = useCallback(async () => {
-    if (!selectedRelease?.downloadUrl) return;
-    setReleaseError('');
-    const targetUrl = selectedRelease.downloadUrl;
-
-    if (isDesktop) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('open_external_url', { url: targetUrl });
-        return;
-      } catch (err: any) {
-        setReleaseError(err?.message || 'Failed to open selected release URL.');
-      }
-    }
-
-    const popup = window.open(targetUrl, '_blank', 'noopener,noreferrer');
-    if (!popup) {
-      window.location.assign(targetUrl);
-    }
-  }, [selectedRelease]);
+  const downloadAndInstallLatest = () => {
+    setUpdateCheckState('installing');
+    setUpdateMessage(null);
+    window.dispatchEvent(
+      new CustomEvent('whylowdps-updater-install', {
+        detail: { channel: selectedUpdateChannel },
+      })
+    );
+  };
 
   const updateCloseBehavior = async (nextValue: boolean) => {
     if (!isDesktop) return;
@@ -1094,17 +975,14 @@ export default function SettingsPage() {
 
       <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
-        <p className="mb-5 text-sm text-zinc-400">
-          Choose a release channel and check for new desktop builds.
-        </p>
-        <div className="max-w-2xl space-y-4">
-          <div className="rounded-lg border border-border bg-surface-2 p-4">
-            <p className="mb-2 text-sm font-medium text-zinc-200">Update Channel</p>
+        <div className="max-w-2xl space-y-3">
+          <div className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-zinc-300">Channel</span>
               <select
                 value={selectedUpdateChannel}
                 onChange={(e) => setSelectedUpdateChannel(e.target.value as UpdateChannel)}
-                className="min-w-[220px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
+                className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
               >
                 {UPDATE_CHANNEL_OPTIONS.map((channel) => (
                   <option key={channel.id} value={channel.id}>
@@ -1112,69 +990,21 @@ export default function SettingsPage() {
                   </option>
                 ))}
               </select>
-              <span className="text-xs text-zinc-500">
-                Stable for manual releases, Weekly/Nightly for automated channel builds.
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={checkForUpdatesNow}
-              disabled={updateCheckState === 'checking'}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {updateCheckState === 'checking' ? 'Checking...' : 'Check for Updates'}
-            </button>
-            <button
-              onClick={() => void loadAppReleaseOptions()}
-              disabled={releaseLoading}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {releaseLoading ? 'Loading Versions...' : 'Refresh Version List'}
-            </button>
-          </div>
-
-          <div className="rounded-lg border border-border bg-surface-2 p-4">
-            <p className="mb-2 text-sm font-medium text-zinc-200">Download Specific Version</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={selectedReleaseId}
-                onChange={(e) => setSelectedReleaseId(e.target.value)}
-                disabled={releaseLoading || releaseOptions.length === 0}
-                className="min-w-[320px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
-              >
-                {releaseOptions.length === 0 ? (
-                  <option value="">
-                    {releaseLoading
-                      ? 'Loading versions...'
-                      : `No ${selectedUpdateChannel} versions available`}
-                  </option>
-                ) : (
-                  releaseOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.version}
-                      {opt.publishedAt
-                        ? ` - ${new Date(opt.publishedAt).toLocaleDateString()}`
-                        : ''}
-                    </option>
-                  ))
-                )}
-              </select>
               <button
-                onClick={downloadSelectedRelease}
-                disabled={!selectedRelease || releaseLoading}
+                onClick={checkForUpdatesNow}
+                disabled={updateCheckState !== 'idle'}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              >
+                {updateCheckState === 'checking' ? 'Checking...' : 'Check'}
+              </button>
+              <button
+                onClick={downloadAndInstallLatest}
+                disabled={updateCheckState !== 'idle'}
                 className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
               >
-                Download Selected Version
+                {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
               </button>
             </div>
-            {selectedRelease && (
-              <p className="mt-2 text-xs text-zinc-400">
-                Asset: {selectedRelease.assetName}
-              </p>
-            )}
-            {!!releaseError && <p className="mt-2 text-xs text-red-300">{releaseError}</p>}
           </div>
 
           {updateMessage && (

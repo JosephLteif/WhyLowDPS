@@ -14,6 +14,9 @@ export function isValidUpdateChannel(value: string): value is UpdateChannel {
 
 export function classifyReleaseChannel(tagOrVersion: string): UpdateChannel {
   const value = String(tagOrVersion || '').toLowerCase();
+  // Match channel markers after x.y.z, e.g. 1.2.3-nightly.20260423, 1.2.3-nightly, 1.2.3+nightly
+  if (/\d+\.\d+\.\d+[-+][^ ]*nightly/.test(value)) return 'nightly';
+  if (/\d+\.\d+\.\d+[-+][^ ]*weekly/.test(value)) return 'weekly';
   if (value.includes('-nightly.')) return 'nightly';
   if (value.includes('-weekly.')) return 'weekly';
   return 'stable';
@@ -37,4 +40,3 @@ export function readStoredUpdateChannel(
   }
   return detectVersionChannel(fallbackVersion);
 }
-

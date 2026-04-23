@@ -316,100 +316,91 @@ export default function CharacterPanel({
         </div>
       </div>
 
-      {/* Main Section: Left Stack + Right Rail */}
-      <div
-        className={`grid grid-cols-1 items-start gap-6 ${
-          pageTab === 'raiding' ? 'xl:grid-cols-1' : 'xl:grid-cols-[minmax(0,1fr)_320px]'
-        }`}
-      >
-        {/* Left: Gear + Talents */}
-        <div className="flex min-w-0 flex-col gap-6">
-          {/* Gear Panel */}
-          <div className="card relative flex flex-col overflow-hidden p-4 sm:p-6">
-            {characterMediaUrl && (
-              <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
-                <img
-                  src={characterMediaUrl}
-                  alt={name}
-                  className="pointer-events-none mx-auto h-72 w-auto object-contain opacity-90 sm:h-[26rem] lg:h-[186%] lg:-translate-y-[8%] lg:opacity-65 lg:mix-blend-lighten"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  }}
+      {pageTab === 'profile' && (
+        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="flex min-w-0 flex-col gap-6">
+            <div className="card relative flex flex-col overflow-hidden p-4 sm:p-6">
+              {characterMediaUrl && (
+                <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
+                  <img
+                    src={characterMediaUrl}
+                    alt={name}
+                    className="pointer-events-none mx-auto h-72 w-auto object-contain opacity-90 sm:h-[26rem] lg:h-[186%] lg:-translate-y-[8%] lg:opacity-65 lg:mix-blend-lighten"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_230px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_300px_minmax(0,1fr)]">
+                <div className="min-w-0 space-y-3">
+                  {GEAR_ORDER_LEFT.map((slot) => (
+                    <BlizzardGearSlot
+                      key={slot}
+                      slot={slot}
+                      item={itemsBySlot[slot]}
+                      itemInfoMap={itemInfoMap}
+                      enchantInfoMap={enchantInfoMap}
+                      gemInfoMap={gemInfoMap}
+                    />
+                  ))}
+                </div>
+
+                <div className="hidden lg:block" />
+
+                <div className="min-w-0 space-y-3">
+                  {GEAR_ORDER_RIGHT.map((slot) => (
+                    <BlizzardGearSlot
+                      key={slot}
+                      slot={slot}
+                      item={itemsBySlot[slot]}
+                      itemInfoMap={itemInfoMap}
+                      enchantInfoMap={enchantInfoMap}
+                      gemInfoMap={gemInfoMap}
+                      align="right"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
+                <BlizzardGearSlot
+                  slot="MAIN_HAND"
+                  item={itemsBySlot.MAIN_HAND}
+                  itemInfoMap={itemInfoMap}
+                  enchantInfoMap={enchantInfoMap}
+                  gemInfoMap={gemInfoMap}
+                  align="right"
+                  compactNearIcon
+                />
+                <BlizzardGearSlot
+                  slot="OFF_HAND"
+                  item={itemsBySlot.OFF_HAND}
+                  itemInfoMap={itemInfoMap}
+                  enchantInfoMap={enchantInfoMap}
+                  gemInfoMap={gemInfoMap}
+                  align="left"
                 />
               </div>
-            )}
-
-            <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_230px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_300px_minmax(0,1fr)]">
-              {/* Left Column */}
-              <div className="min-w-0 space-y-3">
-                {GEAR_ORDER_LEFT.map((slot) => (
-                  <BlizzardGearSlot
-                    key={slot}
-                    slot={slot}
-                    item={itemsBySlot[slot]}
-                    itemInfoMap={itemInfoMap}
-                    enchantInfoMap={enchantInfoMap}
-                    gemInfoMap={gemInfoMap}
-                  />
-                ))}
-              </div>
-
-              <div className="hidden lg:block" />
-
-              {/* Right Column */}
-              <div className="min-w-0 space-y-3">
-                {GEAR_ORDER_RIGHT.map((slot) => (
-                  <BlizzardGearSlot
-                    key={slot}
-                    slot={slot}
-                    item={itemsBySlot[slot]}
-                    itemInfoMap={itemInfoMap}
-                    enchantInfoMap={enchantInfoMap}
-                    gemInfoMap={gemInfoMap}
-                    align="right"
-                  />
-                ))}
-              </div>
             </div>
 
-            {/* Bottom Weapons Row */}
-            <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
-              <BlizzardGearSlot
-                slot="MAIN_HAND"
-                item={itemsBySlot.MAIN_HAND}
-                itemInfoMap={itemInfoMap}
-                enchantInfoMap={enchantInfoMap}
-                gemInfoMap={gemInfoMap}
-                align="right"
-                compactNearIcon
-              />
-              <BlizzardGearSlot
-                slot="OFF_HAND"
-                item={itemsBySlot.OFF_HAND}
-                itemInfoMap={itemInfoMap}
-                enchantInfoMap={enchantInfoMap}
-                gemInfoMap={gemInfoMap}
-                align="left"
-              />
-            </div>
+            <TalentsCard
+              activeSpec={activeSpec}
+              activeLoadout={activeLoadout}
+              talentString={talentString}
+              specId={specId}
+              tree={tree}
+            />
           </div>
 
-          <TalentsCard
-            activeSpec={activeSpec}
-            activeLoadout={activeLoadout}
-            talentString={talentString}
-            specId={specId}
-            tree={tree}
-          />
-        </div>
-
-        {pageTab !== 'raiding' && (
           <div className="flex min-w-0 flex-col gap-4">
-            {pageTab === 'profile' && <StatsCard statistics={statistics} />}
-            {pageTab === 'mythic' && <MythicPlusCard mythicPlus={mythicPlus} region={region} />}
+            <StatsCard statistics={statistics} />
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {pageTab === 'mythic' && <MythicPlusCard mythicPlus={mythicPlus} region={region} />}
 
       {pageTab === 'raiding' && (
         <RaidSectionCard raidEncounters={raidEncounters} region={region} realm={realm} name={name} />

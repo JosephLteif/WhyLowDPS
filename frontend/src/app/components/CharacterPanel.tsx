@@ -28,6 +28,7 @@ import {
   getMythicKeystoneDungeonIndex,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
+import { characterHref } from '../lib/routes';
 
 const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
 const GEAR_ORDER_RIGHT = [
@@ -878,6 +879,22 @@ function normalizeRealmSlug(value: unknown): string {
     .trim();
 }
 
+function normalizeCharacterName(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function normalizeRegionCode(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function tryDecodeSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function getMemberProfileHref(
   member: any,
   fallbackRegion?: string
@@ -903,11 +920,13 @@ function getMemberProfileHref(
     member?.character?.realm?.slug ||
     member?.character?.realm?.name ||
     member?.realm;
+  const memberRegionCode = normalizeRegionCode(memberRegion);
+  const memberNameSlug = normalizeCharacterName(memberName);
   const realmSlug = normalizeRealmSlug(rawRealm);
 
-  if (memberName && memberRegion && realmSlug) {
+  if (memberNameSlug && memberRegionCode && realmSlug) {
     return {
-      href: `/character/${String(memberRegion).toLowerCase()}/${realmSlug}/${String(memberName).toLowerCase()}`,
+      href: characterHref(memberRegionCode, realmSlug, memberNameSlug),
       external: false,
     };
   }
@@ -918,12 +937,12 @@ function getMemberProfileHref(
     // Blizzard URLs often contain region/realm/name even when member objects are sparse.
     const match = externalUrl.match(/\/character\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
     if (match) {
-      const parsedRegion = String(match[1] || '').toLowerCase();
-      const parsedRealm = normalizeRealmSlug(match[2] || '');
-      const parsedName = String(match[3] || '').toLowerCase();
+      const parsedRegion = normalizeRegionCode(tryDecodeSegment(String(match[1] || '')));
+      const parsedRealm = normalizeRealmSlug(tryDecodeSegment(String(match[2] || '')));
+      const parsedName = normalizeCharacterName(tryDecodeSegment(String(match[3] || '')));
       if (parsedRegion && parsedRealm && parsedName) {
         return {
-          href: `/character/${parsedRegion}/${parsedRealm}/${parsedName}`,
+          href: characterHref(parsedRegion, parsedRealm, parsedName),
           external: false,
         };
       }

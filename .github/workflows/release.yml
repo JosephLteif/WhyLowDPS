@@ -241,8 +241,8 @@ jobs:
           touch backend/resources/data/.keep
           touch backend/resources/simc/.keep
 
-      - name: Refresh bundled SimC for channel releases
-        if: steps.release_channel.outputs.channel != 'stable' && matrix.platform == 'windows'
+      - name: Refresh bundled SimC for all release channels
+        if: matrix.platform == 'windows'
         shell: bash
         run: |
           set -euo pipefail

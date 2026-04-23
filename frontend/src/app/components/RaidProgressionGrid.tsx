@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 
 type DifficultyKey = 'lfr' | 'normal' | 'heroic' | 'mythic';
 
@@ -63,46 +63,6 @@ function normalizeExpansionLabel(input: unknown): string {
 function parseNumber(input: unknown): number {
   const value = Number(input ?? 0);
   return Number.isFinite(value) ? value : 0;
-}
-
-function formatRelativeTime(ts: number): string {
-  if (!ts || ts <= 0) return 'Never';
-  const deltaMs = Date.now() - ts;
-  if (deltaMs <= 0) return 'Just now';
-  const dayMs = 24 * 60 * 60 * 1000;
-  const hourMs = 60 * 60 * 1000;
-  const minuteMs = 60 * 1000;
-  if (deltaMs >= dayMs) {
-    const days = Math.floor(deltaMs / dayMs);
-    return days === 1 ? '1 day ago' : `${days} days ago`;
-  }
-  if (deltaMs >= hourMs) {
-    const hours = Math.floor(deltaMs / hourMs);
-    return hours === 1 ? '1 hour ago' : `${hours} hours ago`;
-  }
-  const minutes = Math.max(1, Math.floor(deltaMs / minuteMs));
-  return minutes === 1 ? '1 minute ago' : `${minutes} minutes ago`;
-}
-
-function encounterTooltip(boss: BossProgress): string {
-  const parts = [
-    `LFR: ${boss.byDifficulty.lfr.kills} kills`,
-    `Normal: ${boss.byDifficulty.normal.kills} kills`,
-    `Heroic: ${boss.byDifficulty.heroic.kills} kills`,
-    `Mythic: ${boss.byDifficulty.mythic.kills} kills`,
-  ];
-  return `${parts.join(' | ')}. Last killed: ${formatRelativeTime(boss.lastKillTs)}.`;
-}
-
-function formatBossModeSummary(boss: BossProgress): string {
-  const active = DIFFICULTIES.map((diff) => {
-    const kills = boss.byDifficulty[diff].kills;
-    if (kills <= 0) return null;
-    const label = diff === 'lfr' ? 'LFR' : diff[0].toUpperCase() + diff.slice(1);
-    return `${label} ${kills}x`;
-  }).filter((v): v is string => Boolean(v));
-  if (active.length === 0) return 'No kills yet';
-  return active.join(' • ');
 }
 
 function getProgressionBossKey(bosses: BossProgress[]): string | null {
@@ -240,7 +200,6 @@ export default function RaidProgressionGrid({
   onActiveRaidNameChange?: (raidName: string | null) => void;
 }) {
   const parsed = useMemo(() => parseRaidData(raidEncounters), [raidEncounters]);
-  const [selectedRaidKey, setSelectedRaidKey] = useState<string>('auto');
 
   const visibleRaids = useMemo(() => {
     if (selectedExpansion === 'all') return parsed.raids;
@@ -255,15 +214,11 @@ export default function RaidProgressionGrid({
       );
       if (direct) return direct;
     }
-    if (selectedRaidKey !== 'auto') {
-      const direct = visibleRaids.find((raid) => raid.key === selectedRaidKey);
-      if (direct) return direct;
-    }
     return [...visibleRaids].sort((a, b) => {
       if (b.lastKillTs !== a.lastKillTs) return b.lastKillTs - a.lastKillTs;
       return b.bosses.length - a.bosses.length;
     })[0];
-  }, [visibleRaids, selectedRaidName, selectedRaidKey]);
+  }, [visibleRaids, selectedRaidName]);
 
   useEffect(() => {
     if (!onActiveRaidNameChange) return;
@@ -271,14 +226,8 @@ export default function RaidProgressionGrid({
       onActiveRaidNameChange(selectedRaidName);
       return;
     }
-    // Only drive external filtering when user explicitly picks a raid.
-    // "auto" keeps external filter disabled so parses table can still show all raids.
-    if (selectedRaidKey === 'auto') {
-      onActiveRaidNameChange(null);
-      return;
-    }
-    onActiveRaidNameChange(currentRaid?.name ?? null);
-  }, [currentRaid?.name, onActiveRaidNameChange, selectedRaidKey, selectedRaidName]);
+    onActiveRaidNameChange(null);
+  }, [onActiveRaidNameChange, selectedRaidName]);
 
   const difficultyTotals = useMemo(() => {
     if (!currentRaid) return { lfr: 0, normal: 0, heroic: 0, mythic: 0 };
@@ -291,6 +240,17 @@ export default function RaidProgressionGrid({
       },
       { lfr: 0, normal: 0, heroic: 0, mythic: 0 },
     );
+  }, [currentRaid]);
+
+  const vaultProgress = useMemo(() => {
+    if (!currentRaid) return { defeated: 0, slots: 0, nextTarget: 2, maxTarget: 6 };
+    const defeated = currentRaid.bosses.filter((boss) =>
+      DIFFICULTIES.some((diff) => boss.byDifficulty[diff].kills > 0),
+    ).length;
+    const thresholds = [2, 4, 6];
+    const slots = thresholds.filter((t) => defeated >= t).length;
+    const nextTarget = thresholds.find((t) => defeated < t) ?? thresholds[thresholds.length - 1];
+    return { defeated, slots, nextTarget, maxTarget: thresholds[thresholds.length - 1] };
   }, [currentRaid]);
 
   const maxDifficultyCount = Math.max(
@@ -312,68 +272,53 @@ export default function RaidProgressionGrid({
   return (
     <div className="space-y-4">
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          {selectedRaidName === 'all' ? (
-            <select
-              value={selectedRaidKey}
-              onChange={(e) => setSelectedRaidKey(e.target.value)}
-              className="input-field h-10 min-w-0 flex-1 text-sm"
-            >
-              <option value="auto">Most recently progressed</option>
-              {visibleRaids.map((raid) => (
-                <option key={raid.key} value={raid.key}>
-                  {raid.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="input-field h-10 min-w-0 flex-1 px-3 py-2 text-sm text-zinc-200">
-              {currentRaid?.name || selectedRaidName || 'Most recently progressed'}
-            </div>
-          )}
-        </div>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Weekly Vault Tracker</p>
+          <p className="mt-1 text-[11px] text-zinc-300">
+            Completed bosses counted: <span className="font-bold text-zinc-100">{vaultProgress.defeated}</span>
+          </p>
 
-        <div className="space-y-2">
-          {currentRaid.bosses.map((boss) => {
-            const isKilled = boss.totalKills > 0;
-            const isProgression = currentRaid.progressionBossKey === boss.key;
-            return (
-              <article
-                key={boss.key}
-                title={encounterTooltip(boss)}
-                className={`group relative rounded-md border px-3 py-2 transition-all ${
-                  isKilled
-                    ? 'border-emerald-400/30 bg-emerald-500/[0.07]'
-                    : 'border-white/10 bg-white/[0.03]'
-                } ${isProgression ? 'border-gold/60 bg-gold/[0.08] ring-1 ring-gold/45' : ''}`}
-              >
-                {isProgression && (
-                  <span className="absolute right-2 top-2 z-10 rounded bg-gold/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-black">
-                    Progression
-                  </span>
-                )}
-                <div className="pr-24">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${
-                        isKilled ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.65)]' : 'bg-zinc-600'
-                      }`}
-                    />
-                    <p className="truncate text-[12px] font-semibold text-zinc-100">{boss.name}</p>
+          <div className="mt-3 space-y-2">
+            {[
+              { slot: 1, threshold: 2 },
+              { slot: 2, threshold: 4 },
+              { slot: 3, threshold: 6 },
+            ].map((entry) => {
+              const unlocked = vaultProgress.defeated >= entry.threshold;
+              const remaining = Math.max(0, entry.threshold - vaultProgress.defeated);
+              const pct = Math.min(100, (vaultProgress.defeated / entry.threshold) * 100);
+              return (
+                <div key={entry.slot} className="rounded border border-white/10 bg-black/20 p-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <p className="text-[11px] font-bold text-zinc-100">Slot {entry.slot}</p>
+                    <p className={`text-[11px] font-bold ${unlocked ? 'text-emerald-300' : 'text-zinc-400'}`}>
+                      {unlocked ? 'Unlocked' : `${remaining} more`}
+                    </p>
                   </div>
-                  <p className="mt-1 text-[10px] text-zinc-400">{formatBossModeSummary(boss)}</p>
-                  <p className="mt-0.5 text-[10px] text-zinc-500">
-                    Last kill: {formatRelativeTime(boss.lastKillTs)}
-                  </p>
+                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/80'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-zinc-500">Unlocks at {entry.threshold} boss{entry.threshold > 1 ? 'es' : ''}</p>
                 </div>
-                {boss.totalKills > 0 && (
-                  <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-zinc-200">
-                    {boss.totalKills}x
-                  </span>
-                )}
-              </article>
-            );
-          })}
+              );
+            })}
+
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="rounded border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300">
+              LFR {difficultyTotals.lfr}
+            </span>
+            <span className="rounded border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-bold text-sky-300">
+              Normal {difficultyTotals.normal}
+            </span>
+            <span className="rounded border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-300">
+              Heroic {difficultyTotals.heroic}
+            </span>
+            <span className="rounded border border-violet-400/30 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-bold text-violet-300">
+              Mythic {difficultyTotals.mythic}
+            </span>
+          </div>
         </div>
       </div>
 

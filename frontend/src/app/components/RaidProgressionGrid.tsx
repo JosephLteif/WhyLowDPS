@@ -231,9 +231,13 @@ function parseRaidData(raidEncounters: any): {
 export default function RaidProgressionGrid({
   raidEncounters,
   selectedExpansion,
+  selectedRaidName,
+  onActiveRaidNameChange,
 }: {
   raidEncounters: any;
   selectedExpansion: string;
+  selectedRaidName?: string;
+  onActiveRaidNameChange?: (raidName: string | null) => void;
 }) {
   const parsed = useMemo(() => parseRaidData(raidEncounters), [raidEncounters]);
   const [selectedRaidKey, setSelectedRaidKey] = useState<string>('auto');
@@ -243,26 +247,38 @@ export default function RaidProgressionGrid({
     return parsed.raids.filter((raid) => raid.expansionKey === selectedExpansion);
   }, [parsed.raids, selectedExpansion]);
 
-  useEffect(() => {
-    if (visibleRaids.length === 0) {
-      setSelectedRaidKey('auto');
-      return;
-    }
-    if (selectedRaidKey === 'auto') return;
-    const stillVisible = visibleRaids.some((raid) => raid.key === selectedRaidKey);
-    if (!stillVisible) setSelectedRaidKey('auto');
-  }, [selectedRaidKey, visibleRaids]);
-
   const currentRaid = useMemo(() => {
     if (visibleRaids.length === 0) return null;
+    if (selectedRaidName && selectedRaidName !== 'all') {
+      const direct = visibleRaids.find(
+        (raid) => raid.name.toLowerCase() === selectedRaidName.toLowerCase(),
+      );
+      if (direct) return direct;
+    }
     if (selectedRaidKey !== 'auto') {
-      return visibleRaids.find((raid) => raid.key === selectedRaidKey) || visibleRaids[0];
+      const direct = visibleRaids.find((raid) => raid.key === selectedRaidKey);
+      if (direct) return direct;
     }
     return [...visibleRaids].sort((a, b) => {
       if (b.lastKillTs !== a.lastKillTs) return b.lastKillTs - a.lastKillTs;
       return b.bosses.length - a.bosses.length;
     })[0];
-  }, [selectedRaidKey, visibleRaids]);
+  }, [visibleRaids, selectedRaidName, selectedRaidKey]);
+
+  useEffect(() => {
+    if (!onActiveRaidNameChange) return;
+    if (selectedRaidName && selectedRaidName !== 'all') {
+      onActiveRaidNameChange(selectedRaidName);
+      return;
+    }
+    // Only drive external filtering when user explicitly picks a raid.
+    // "auto" keeps external filter disabled so parses table can still show all raids.
+    if (selectedRaidKey === 'auto') {
+      onActiveRaidNameChange(null);
+      return;
+    }
+    onActiveRaidNameChange(currentRaid?.name ?? null);
+  }, [currentRaid?.name, onActiveRaidNameChange, selectedRaidKey, selectedRaidName]);
 
   const difficultyTotals = useMemo(() => {
     if (!currentRaid) return { lfr: 0, normal: 0, heroic: 0, mythic: 0 };
@@ -297,18 +313,24 @@ export default function RaidProgressionGrid({
     <div className="space-y-4">
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
         <div className="mb-3 flex items-start justify-between gap-3">
-          <select
-            value={selectedRaidKey}
-            onChange={(e) => setSelectedRaidKey(e.target.value)}
-            className="input-field h-10 min-w-0 flex-1 text-sm"
-          >
-            <option value="auto">Most recently progressed</option>
-            {visibleRaids.map((raid) => (
-              <option key={raid.key} value={raid.key}>
-                {raid.name}
-              </option>
-            ))}
-          </select>
+          {selectedRaidName === 'all' ? (
+            <select
+              value={selectedRaidKey}
+              onChange={(e) => setSelectedRaidKey(e.target.value)}
+              className="input-field h-10 min-w-0 flex-1 text-sm"
+            >
+              <option value="auto">Most recently progressed</option>
+              {visibleRaids.map((raid) => (
+                <option key={raid.key} value={raid.key}>
+                  {raid.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="input-field h-10 min-w-0 flex-1 px-3 py-2 text-sm text-zinc-200">
+              {currentRaid?.name || selectedRaidName || 'Most recently progressed'}
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">

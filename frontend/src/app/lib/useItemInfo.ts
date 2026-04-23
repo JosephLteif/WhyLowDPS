@@ -111,6 +111,9 @@ export function useItemInfo(queries: ItemQuery[]): Record<number, ItemInfo> {
 export interface EnchantInfo {
   enchant_id: number;
   name: string;
+  icon?: string;
+  item_id?: number;
+  quality?: number;
 }
 
 const enchantCache: Record<number, EnchantInfo> = {};

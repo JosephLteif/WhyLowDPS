@@ -143,10 +143,10 @@ export default function ResultRow({
         className="absolute inset-y-0 left-0 bg-white/[0.03]"
         style={{ width: `${barWidth}%` }}
       />
-      <div className="relative flex items-center justify-between gap-4 px-4 py-2.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="relative flex items-center justify-between gap-4 px-4 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {rank != null && (
-            <span className="w-6 shrink-0 text-right font-mono text-[13px] tabular-nums text-zinc-400">
+            <span className="w-6 shrink-0 text-right font-mono text-[14px] tabular-nums text-zinc-300">
               {rank}
             </span>
           )}
@@ -157,7 +157,7 @@ export default function ResultRow({
             if (isEquipped) {
               return (
                 <div className="flex items-center gap-2">
-                  <span className="text-[15px] font-medium text-zinc-200">Currently Equipped</span>
+                  <span className="text-[16px] font-semibold text-zinc-100">Currently Equipped</span>
                   {talentBadge}
                 </div>
               );
@@ -168,7 +168,7 @@ export default function ResultRow({
             }
 
             return (
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {displayItems.map((it, i) => (
                   <ItemTag
                     key={i}

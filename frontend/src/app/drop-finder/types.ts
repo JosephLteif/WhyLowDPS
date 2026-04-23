@@ -31,6 +31,66 @@ export interface TrackLevel {
 
 export type UpgradeTracks = Record<string, TrackLevel[]>;
 
+function normalizeTrackName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export function normalizeUpgradeTracks(input: unknown): UpgradeTracks {
+  if (!input) return {};
+
+  if (Array.isArray(input)) {
+    const grouped: UpgradeTracks = {};
+    for (const row of input as any[]) {
+      const name = typeof row?.name === 'string' ? row.name.trim() : '';
+      if (!name) continue;
+      if (!grouped[name]) grouped[name] = [];
+      grouped[name].push({
+        level: Number(row.level || 0),
+        max_level: Number(row.max || row.max_level || 0),
+        ilvl: Number(row.itemLevel || row.ilevel || row.ilvl || 0),
+        bonus_id: Number(row.bonus_id || 0),
+        quality: Number(row.quality || 0),
+      });
+    }
+    for (const key of Object.keys(grouped)) {
+      grouped[key].sort((a, b) => a.level - b.level);
+    }
+    return grouped;
+  }
+
+  if (typeof input === 'object') {
+    const grouped: UpgradeTracks = {};
+    for (const [rawName, rows] of Object.entries(input as Record<string, unknown>)) {
+      const name = rawName.trim();
+      if (!name) continue;
+      if (!Array.isArray(rows)) continue;
+      grouped[name] = rows
+        .map((row: any) => ({
+          level: Number(row?.level || 0),
+          max_level: Number(row?.max_level || row?.max || 0),
+          ilvl: Number(row?.ilvl || row?.itemLevel || row?.ilevel || 0),
+          bonus_id: Number(row?.bonus_id || 0),
+          quality: Number(row?.quality || 0),
+        }))
+        .filter((row) => row.level > 0 && row.ilvl > 0)
+        .sort((a, b) => a.level - b.level);
+    }
+    return grouped;
+  }
+
+  return {};
+}
+
+function getTrackLevelsForName(tracks: UpgradeTracks, trackName: string): TrackLevel[] | null {
+  if (!trackName) return null;
+  const normalized = normalizeTrackName(trackName);
+  const direct = Object.keys(tracks).find((k) => normalizeTrackName(k) === normalized);
+  if (direct) return tracks[direct];
+  const lowered = trackName.trim().toLowerCase();
+  const matched = Object.keys(tracks).find((k) => k.trim().toLowerCase() === lowered);
+  return matched ? tracks[matched] : null;
+}
+
 export interface DropItem {
   item_id: number;
   name: string;
@@ -82,7 +142,7 @@ export function resolveUpgrade(
       quality: base?.quality ?? item.quality,
     };
   }
-  const trackLevels = tracks[base.track];
+  const trackLevels = getTrackLevelsForName(tracks, base.track);
   if (!trackLevels) return { ilvl: base.ilvl, bonus_id: base.bonus_id, quality: base.quality };
   const target = trackLevels.find((t) => t.level === upgradeLevel);
   if (!target) return { ilvl: base.ilvl, bonus_id: base.bonus_id, quality: base.quality };
@@ -90,15 +150,43 @@ export function resolveUpgrade(
 }
 
 export function detectClass(simcInput: string): string | null {
-  const m = simcInput.match(
-    /^(warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|demon_hunter|demonhunter|druid|evoker)\s*=/m
-  );
-  return m ? m[1] : null;
+  const classRe =
+    /^(warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|demon_hunter|demonhunter|druid|evoker)\s*=/i;
+
+  for (const raw of simcInput.split('\n')) {
+    const line = raw
+      .trim()
+      .replace(/^[\uFEFF\u200B\u200E\u200F]+/, '')
+      .toLowerCase();
+    const m = line.match(classRe);
+    if (!m) continue;
+    const klass = m[1];
+    if (klass === 'deathknight') return 'death_knight';
+    if (klass === 'demonhunter') return 'demon_hunter';
+    return klass;
+  }
+
+  return null;
 }
 
 export function detectSpec(simcInput: string): string | null {
-  const m = simcInput.match(/^spec=(\w+)/m);
-  return m ? m[1] : null;
+  const normalize = (value: string) => value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+  for (const raw of simcInput.split('\n')) {
+    const line = raw
+      .trim()
+      .replace(/^[\uFEFF\u200B\u200E\u200F]+/, '');
+    const specMatch = line.match(/^spec\s*=\s*([a-z_]+)/i);
+    if (specMatch) return normalize(specMatch[1]);
+  }
+
+  // Fallback for exports that include loot_spec but no explicit spec line.
+  const lootSpecMatch = simcInput.match(/^#\s*loot_spec\s*=\s*([^\r\n#]+)/im);
+  if (lootSpecMatch) {
+    return normalize(lootSpecMatch[1]);
+  }
+
+  return null;
 }
 
 const CLASS_SPECS: Record<string, string[]> = {
@@ -204,6 +292,27 @@ export function getSpecId(className: string, specName: string): number | null {
 
 export function getClassId(className: string): number | null {
   return CLASS_IDS[className] ?? null;
+}
+
+export function itemMatchesActiveLootSpec(
+  itemSpecs: number[] | undefined,
+  activeSpecIds: number[],
+  classId: number | null
+): boolean {
+  if (!itemSpecs || itemSpecs.length === 0) return true;
+
+  // Values > 13 are spec IDs. If present, they are authoritative.
+  const specEntries = itemSpecs.filter((id) => id > 13);
+  if (specEntries.length > 0) {
+    if (activeSpecIds.length === 0) return true;
+    return specEntries.some((id) => activeSpecIds.includes(id));
+  }
+
+  // Class-only restriction list (allowableClasses).
+  const classEntries = itemSpecs.filter((id) => id > 0 && id <= 13);
+  if (classEntries.length === 0) return true;
+  if (classId == null) return true;
+  return classEntries.includes(classId);
 }
 
 export function formatSpecName(spec: string): string {

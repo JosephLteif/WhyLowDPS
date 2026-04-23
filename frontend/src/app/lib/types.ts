@@ -28,6 +28,7 @@ export interface ResolvedItem {
   source_type?: string;
   is_catalyst?: boolean;
   can_catalyst?: boolean;
+  off_spec?: boolean;
   inventory_type?: number;
   season_id?: number;
 }

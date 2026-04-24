@@ -1065,10 +1065,13 @@ export default function TopGearItemSelector({
   );
 
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);
+  const comboBreakdown =
+    comboCount > 0 ? `${comboCount.toLocaleString()} normal combos • +1 Currently Equipped` : null;
   const quickSelect = (
     <TopGearQuickSelect
       comboCount={comboCount}
       maxCombinations={effectiveMaxCombinations}
+      comboBreakdown={comboBreakdown}
       hasSelection={hasSelection}
       vaultCount={vaultUids.length}
       allVaultSelected={

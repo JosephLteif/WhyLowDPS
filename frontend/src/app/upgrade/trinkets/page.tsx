@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../../components/ErrorAlert';
-import ComboPill from '../../components/ComboPill';
+import ComboSummary from '../../components/ComboSummary';
 import { useSimContext } from '../../components/SimContext';
 import { API_URL } from '../../lib/api';
 import { getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../../lib/useItemInfo';
@@ -692,7 +692,7 @@ export default function UpgradeTrinketsPage() {
                 : `${expectedStats.trinketCount.toLocaleString()} trinkets in pool`}
             </p>
           </div>
-          <ComboPill
+          <ComboSummary
             comboCount={poolLoading ? 0 : expectedStats.combos}
             size="md"
             glowWhenActive

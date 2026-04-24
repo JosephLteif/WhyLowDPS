@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ComboPill from '../components/ComboPill';
+import ComboSummary from '../components/ComboSummary';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import ToggleButtonGroup from '../components/ToggleButtonGroup';
@@ -1394,25 +1394,23 @@ export default function DropFinderPage() {
       {drops && (
         <>
           <div className="flex justify-end">
-            <div className="flex flex-col items-end gap-1">
-              <ComboPill
-                comboCount={estimatedComboCount}
-                maxCombinations={maxCombinations ?? undefined}
-                size="md"
-                glowWhenActive
-              />
-              {typeof estimatedComboBreakdown !== 'number' && (
-                <p className="text-xs text-zinc-400">
-                  {estimatedComboBreakdown.gearCombos.toLocaleString()} normal
-                  {estimatedComboBreakdown.gearCombos === 1 ? ' combo' : ' combos'}
-                  {' • '}
-                  +1 Currently Equipped
-                  {estimatedComboBreakdown.autoCatalystCombos > 0
-                    ? ` • ${estimatedComboBreakdown.autoCatalystCombos} Auto Catalyst`
-                    : ''}
-                </p>
-              )}
-            </div>
+            <ComboSummary
+              comboCount={estimatedComboCount}
+              maxCombinations={maxCombinations ?? undefined}
+              size="md"
+              glowWhenActive
+              breakdown={
+                typeof estimatedComboBreakdown !== 'number'
+                  ? `${estimatedComboBreakdown.gearCombos.toLocaleString()} normal${
+                      estimatedComboBreakdown.gearCombos === 1 ? ' combo' : ' combos'
+                    } • +1 Currently Equipped${
+                      estimatedComboBreakdown.autoCatalystCombos > 0
+                        ? ` • ${estimatedComboBreakdown.autoCatalystCombos} Auto Catalyst`
+                        : ''
+                    }`
+                  : null
+              }
+            />
           </div>
           <DropSlotList
             drops={drops}

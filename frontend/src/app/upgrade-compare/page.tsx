@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
+import ComboSummary from '../components/ComboSummary';
 import GearItemRow from '../components/GearItemRow';
 import { useSimContext } from '../components/SimContext';
 import { API_URL } from '../lib/api';
@@ -469,11 +470,11 @@ export default function UpgradeComparePage() {
               </button>
             </div>
           </div>
-          {displayComboCount > 0 && (
-            <span className="rounded-md bg-surface-2 px-2.5 py-1 font-mono text-xs text-white">
-              {displayComboCount.toLocaleString()} combo{displayComboCount !== 1 ? 's' : ''}
-            </span>
-          )}
+            <ComboSummary
+              comboCount={displayComboCount}
+              maxCombinations={maxCombinations ?? undefined}
+              breakdown={comboCount !== 0?`${comboCount.toLocaleString()} normal combos • +1 Currently Equipped`:null}
+            />
         </div>
 
         {loading ? (

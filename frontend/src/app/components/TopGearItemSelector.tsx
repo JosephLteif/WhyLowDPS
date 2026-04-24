@@ -77,7 +77,7 @@ const DISPLAY_GROUPS: DisplayGroup[] = [
 const UPGRADE_TRACK_MAX_LEVEL = 6;
 const SOURCE_TAG_STYLES: Record<string, string> = {
   wishlist: 'text-rose-300 bg-rose-500/15 border-rose-400/40',
-  vault: 'text-amber-300 bg-amber-500/15 border-amber-400/40',
+  vault: 'text-violet-200 bg-violet-500/18 border-violet-400/45',
   crafter: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
   crafted: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
   catalyst: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
@@ -252,9 +252,17 @@ export default function TopGearItemSelector({
         if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
         nextSelected[item.slot].add(catalystItem.uid);
         onSelectionChange(nextSelected);
+        onItemAdded(item.slot, catalystItem.simc_string, catalystItem.origin);
       } catch {}
     },
-    [resolved, onResolvedChange, selectedUids, onSelectionChange, setUpgradeMenuFor]
+    [
+      resolved,
+      onResolvedChange,
+      selectedUids,
+      onSelectionChange,
+      setUpgradeMenuFor,
+      onItemAdded,
+    ]
   );
 
   const updateAlternativesByIdentity = useCallback(
@@ -726,6 +734,14 @@ export default function TopGearItemSelector({
         enchant_name: '',
         gem_name: '',
         gem_icon: '',
+        encounter: item.encounter || '',
+        instance_name: item.instance_name || '',
+        source_type: item.source_type || '',
+        is_catalyst: !!item.is_catalyst,
+        can_catalyst: !!item.can_catalyst,
+        off_spec: !!item.off_spec,
+        inventory_type: Number.isFinite(item.inventory_type) ? item.inventory_type : undefined,
+        season_id: Number.isFinite(item.season_id) ? item.season_id : undefined,
       };
 
       const nextResolved = { ...resolved, slots: { ...resolved.slots } };

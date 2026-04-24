@@ -12,6 +12,11 @@ export interface ExternalItem {
   inventory_type: number;
   encounter: string;
   instance_name: string;
+  source_type?: string;
+  is_catalyst?: boolean;
+  can_catalyst?: boolean;
+  off_spec?: boolean;
+  season_id?: number;
   difficulty_info?: Record<string, any>;
   dungeon_info?: Record<string, any>;
 }
@@ -63,7 +68,7 @@ export function useAddItemState(
   const [seasonConfig, setSeasonConfig] = useState<SeasonConfigResponse | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('heroic');
   const [filterSlot, setFilterSlot] = useState<string | null>(null);
-  const [category, setCategory] = useState<'raid' | 'dungeon'>('raid');
+  const [category, setCategory] = useState<'raid' | 'dungeon' | 'world_bosses'>('raid');
   const [upgradeTracks, setUpgradeTracks] = useState<Record<string, any>>({});
   const [itemTiers, setItemTiers] = useState<Record<number, number>>({});
   const [allPossibleDrops, setAllPossibleDrops] = useState<Record<string, ExternalItem[]>>({});

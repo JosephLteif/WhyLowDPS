@@ -3,8 +3,13 @@ import { API_URL } from '../lib/api';
 import type { Instance } from './types';
 
 interface DungeonGridProps {
-  value: string;
-  onChange: (value: string) => void;
+  value?: string;
+  onChange?: (value: string) => void;
+  multi?: boolean;
+  selectedValues?: Set<string>;
+  allSelected?: boolean;
+  onToggleValue?: (value: string) => void;
+  onToggleAll?: () => void;
   instances: Instance[];
   allKey: string;
   allLabel: string;
@@ -38,10 +43,19 @@ function MissingImageFallback() {
 export default function DungeonGrid({
   value,
   onChange,
+  multi = false,
+  selectedValues,
+  allSelected = false,
+  onToggleValue,
+  onToggleAll,
   instances,
   allKey,
   allLabel,
 }: DungeonGridProps) {
+  const isTileActive = (key: string) =>
+    multi ? (selectedValues?.has(key) ?? false) : value === key;
+  const isAllActive = multi ? allSelected : value === allKey;
+
   const allTileImages = instances
     .filter((inst) => inst.id !== 1312 && inst.name !== 'World Bosses')
     .map((inst) => ({ inst, src: instanceImageSrc(inst) }))
@@ -52,10 +66,13 @@ export default function DungeonGrid({
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
       {/* "All" tile */}
       <button
-        onClick={() => onChange(allKey)}
+        onClick={() => {
+          if (multi) onToggleAll?.();
+          else onChange?.(allKey);
+        }}
         className={`group relative flex aspect-[16/9] items-end overflow-hidden rounded-lg border transition-all duration-150 ${
-          value === allKey
-            ? 'border-gold/50 shadow-[0_0_12px_rgba(200,153,42,0.15)]'
+          isAllActive
+            ? 'border-gold/60 ring-1 ring-gold/30 shadow-[0_0_12px_rgba(200,153,42,0.14)]'
             : 'border-border hover:border-gold/20'
         }`}
       >
@@ -75,7 +92,7 @@ export default function DungeonGrid({
         </div>
         <div className="relative w-full px-3 pb-3 pt-1">
           <p
-            className={`text-base font-bold leading-snug drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] ${value === allKey ? 'text-gold' : 'text-white'}`}
+            className={`text-base font-bold leading-snug drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] ${isAllActive ? 'text-gold' : 'text-white'}`}
           >
             {allLabel}
           </p>
@@ -86,10 +103,13 @@ export default function DungeonGrid({
       {instances.map((inst) => (
         <button
           key={inst.id}
-          onClick={() => onChange(String(inst.id))}
+          onClick={() => {
+            if (multi) onToggleValue?.(String(inst.id));
+            else onChange?.(String(inst.id));
+          }}
           className={`group relative flex aspect-[16/9] items-end overflow-hidden rounded-lg border transition-all duration-150 ${
-            value === String(inst.id)
-              ? 'border-gold/50 shadow-[0_0_12px_rgba(200,153,42,0.15)]'
+            isTileActive(String(inst.id))
+              ? 'border-gold/60 ring-1 ring-gold/30 shadow-[0_0_10px_rgba(200,153,42,0.14)]'
               : 'border-border hover:border-gold/20'
           }`}
         >
@@ -106,7 +126,7 @@ export default function DungeonGrid({
           <div className="relative w-full px-3 pb-3 pt-1">
             <p
               className={`text-base font-bold leading-snug drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] ${
-                value === String(inst.id) ? 'text-gold' : 'text-white'
+                isTileActive(String(inst.id)) ? 'text-gold' : 'text-white'
               }`}
             >
               {inst.name}

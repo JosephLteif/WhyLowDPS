@@ -13,10 +13,39 @@ import type { ResolveGearResponse } from '../lib/types';
 
 const TOP_GEAR_SIM_AGAIN_KEY = 'top-gear';
 
+interface LocalGearItem {
+  slot: string;
+  simc_string: string;
+  origin: string;
+}
+
+function appendLocalItemsToSimcInput(baseInput: string, localItems: LocalGearItem[]): string {
+  let result = baseInput;
+  if (localItems.length === 0) return result;
+
+  const vaultItems = localItems.filter((li) => li.origin === 'vault');
+  const bagItems = localItems.filter((li) => li.origin !== 'vault');
+
+  if (vaultItems.length > 0) {
+    const vaultLines = vaultItems.map((li) => `# ${li.slot}=${li.simc_string}`).join('\n');
+    const endMarker = '### End of Weekly Reward Choices';
+    if (result.includes(endMarker)) {
+      result = result.replace(endMarker, vaultLines + '\n' + endMarker);
+    } else {
+      result = result + '\n' + vaultLines;
+    }
+  }
+  if (bagItems.length > 0) {
+    const bagLines = bagItems.map((li) => `# ${li.slot}=${li.simc_string}`).join('\n');
+    result = result + '\n' + bagLines;
+  }
+  return result;
+}
+
 interface TopGearSimAgainState {
   simcInput?: string;
   selectedUids?: Record<string, string[]>;
-  localItems?: { slot: string; simc_string: string; origin: string }[];
+  localItems?: LocalGearItem[];
   maxUpgrade?: boolean;
   copyEnchants?: boolean;
   catalyst?: boolean;
@@ -29,9 +58,7 @@ export default function TopGearPage() {
   const characterDefaultsKey = getCharacterDefaultsKeyFromSimcInput(simcInput);
   const [resolved, setResolved] = useState<ResolveGearResponse | null>(null);
   const [selectedUids, setSelectedUids] = useState<Record<string, Set<string>>>({});
-  const [localItems, setLocalItems] = useState<
-    { slot: string; simc_string: string; origin: string }[]
-  >([]);
+  const [localItems, setLocalItems] = useState<LocalGearItem[]>([]);
   const [maxUpgrade, setMaxUpgrade] = useState(() =>
     getAppDefaultOption('topgear.maxUpgrade', { characterKey: characterDefaultsKey })
   );
@@ -51,6 +78,11 @@ export default function TopGearPage() {
   const skipNextInputResetRef = useRef(false);
   const skipNextResolveRef = useRef(false);
   const previousSimcInputRef = useRef(simcInput);
+  const localItemsRef = useRef<LocalGearItem[]>(localItems);
+
+  useEffect(() => {
+    localItemsRef.current = localItems;
+  }, [localItems]);
 
   useEffect(() => {
     const restored = consumeSimAgainState<TopGearSimAgainState>(TOP_GEAR_SIM_AGAIN_KEY);
@@ -150,7 +182,11 @@ export default function TopGearPage() {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ simc_input: simcInput, max_upgrade: maxUpgrade, catalyst }),
+            body: JSON.stringify({
+              simc_input: appendLocalItemsToSimcInput(simcInput, localItemsRef.current),
+              max_upgrade: maxUpgrade,
+              catalyst,
+            }),
           });
           if (!res.ok) {
             setResolved(null);
@@ -196,26 +232,7 @@ export default function TopGearPage() {
   }, [simcInput, maxUpgrade, catalyst]);
 
   const buildSubmitInput = useCallback((): string => {
-    let result = simcInput;
-    if (localItems.length > 0) {
-      const vaultItems = localItems.filter((li) => li.origin === 'vault');
-      const bagItems = localItems.filter((li) => li.origin !== 'vault');
-
-      if (vaultItems.length > 0) {
-        const vaultLines = vaultItems.map((li) => `# ${li.slot}=${li.simc_string}`).join('\n');
-        const endMarker = '### End of Weekly Reward Choices';
-        if (result.includes(endMarker)) {
-          result = result.replace(endMarker, vaultLines + '\n' + endMarker);
-        } else {
-          result = result + '\n' + vaultLines;
-        }
-      }
-      if (bagItems.length > 0) {
-        const bagLines = bagItems.map((li) => `# ${li.slot}=${li.simc_string}`).join('\n');
-        result = result + '\n' + bagLines;
-      }
-    }
-    return result;
+    return appendLocalItemsToSimcInput(simcInput, localItems);
   }, [simcInput, localItems]);
 
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
@@ -412,8 +429,8 @@ export default function TopGearPage() {
         <ToggleOptionCard
           checked={copyEnchants}
           onToggle={() => setCopyEnchants(!copyEnchants)}
-          title="Copy Enchants"
-          description="Apply equipped enchants to items that don't have one"
+          title="Copy Enchants/Gems"
+          description="Apply equipped enchants and gems to items that don't have one"
         />
         <ToggleOptionCard
           checked={maxUpgrade}

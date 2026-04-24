@@ -414,6 +414,37 @@ pub(super) async fn get_instance_drops(
     }
 }
 
+pub(super) async fn get_multi_instance_drops(query: web::Query<MultiDropsQuery>) -> HttpResponse {
+    let instance_ids: Vec<i64> = query
+        .ids
+        .split(',')
+        .filter_map(|raw| raw.trim().parse::<i64>().ok())
+        .collect();
+
+    if instance_ids.is_empty() {
+        return HttpResponse::BadRequest()
+            .json(json!({"detail": "Provide at least one valid instance id in ids="}));
+    }
+
+    let class_name = if query.class_name.is_empty() {
+        None
+    } else {
+        Some(query.class_name.as_str())
+    };
+    let spec = if query.spec.is_empty() {
+        None
+    } else {
+        Some(query.spec.as_str())
+    };
+
+    match game_data::get_drops_by_instances(&instance_ids, class_name, spec) {
+        Some(drops) => HttpResponse::Ok().json(drops),
+        None => {
+            HttpResponse::NotFound().json(json!({"detail": "No drops found for requested instances"}))
+        }
+    }
+}
+
 pub async fn get_dungeon_data() -> HttpResponse {
     use crate::server::dungeon_data::{
         DungeonAffix, DungeonDataSource, DungeonInfo, DungeonSeasonData,

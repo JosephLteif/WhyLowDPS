@@ -9,6 +9,7 @@ import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import { API_URL, fetchJson } from '../lib/api';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState } from '../lib/sim-return';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import type { SeasonConfigResponse, DifficultyDef, DungeonCategory } from '../lib/types';
 import CategorySelector from './CategorySelector';
@@ -35,6 +36,103 @@ import { buildWishlistOwnerKey, loadWishlist, toggleWishlistEntry } from '../lib
 
 type Category = 'raids' | string;
 type SimDropItem = DropItem & { slot?: string };
+type UpgradeSimulationMode = 'current' | 'highest' | 'both';
+
+const UPGRADE_SIMULATION_MODE_OPTIONS: Array<{
+  value: UpgradeSimulationMode;
+  label: string;
+  desc: string;
+}> = [
+  {
+    value: 'current',
+    label: 'Current only',
+    desc: 'Sim drops at the selected difficulty level only.',
+  },
+  {
+    value: 'highest',
+    label: 'Highest only',
+    desc: 'Sim drops at the max level of the selected track.',
+  },
+  {
+    value: 'both',
+    label: 'Current + Highest',
+    desc: 'Sim both current and max-track versions together.',
+  },
+];
+
+function UpgradeSimulationModeSelector({
+  value,
+  onChange,
+  showDescription = true,
+}: {
+  value: UpgradeSimulationMode;
+  onChange: (value: UpgradeSimulationMode) => void;
+  showDescription?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const activeMode = UPGRADE_SIMULATION_MODE_OPTIONS.find((mode) => mode.value === value);
+  const activeLabel = activeMode?.label ?? 'Current only';
+  const activeDescription = activeMode?.desc ?? '';
+
+  useDismissOnOutside(rootRef, open, () => setOpen(false));
+
+  return (
+    <div className="space-y-1.5">
+      <div ref={rootRef} className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="input-field flex w-full items-center justify-between text-[15px] font-medium"
+        >
+          <span>{activeLabel}</span>
+          <svg
+            className={`h-4 w-4 text-zinc-300 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+        {open && (
+          <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface-2 py-1 shadow-lg shadow-black/40">
+            {UPGRADE_SIMULATION_MODE_OPTIONS.map((mode) => (
+              <button
+                key={mode.value}
+                type="button"
+                onMouseDown={() => {
+                  onChange(mode.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full flex-col px-3.5 py-2 text-left transition-colors ${
+                  mode.value === value
+                    ? 'bg-gold/[0.08] text-gold'
+                    : 'text-zinc-200 hover:bg-white/[0.04] hover:text-white'
+                }`}
+              >
+                <span className="text-[15px]">{mode.label}</span>
+                <span
+                  className={`mt-0.5 text-[13px] ${
+                    mode.value === value ? 'text-gold/90' : 'text-zinc-300'
+                  }`}
+                >
+                  {mode.desc}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {showDescription && activeDescription && (
+        <p className="text-[13px] text-zinc-300">{activeDescription}</p>
+      )}
+    </div>
+  );
+}
 
 const DROP_FINDER_SIM_AGAIN_KEY = 'drop-finder';
 
@@ -44,6 +142,7 @@ interface DropFinderSimAgainState {
   difficulty?: string;
   dungeonDiff?: string;
   upgradeLevel?: number;
+  upgradeSimulationMode?: UpgradeSimulationMode;
   simHighestTrackLevel?: boolean;
   category?: string;
   selectedId?: string;
@@ -552,10 +651,16 @@ export default function DropFinderPage() {
   const [difficulty, setDifficulty] = useState('heroic');
   const [dungeonDiff, setDungeonDiff] = useState('mythic+10');
   const [upgradeLevel, setUpgradeLevel] = useState(0);
-  const [simHighestTrackLevel, setSimHighestTrackLevel] = useState(false);
-  const [autoCatalyze, setAutoCatalyze] = useState(true);
+  const [upgradeSimulationMode, setUpgradeSimulationMode] = useState<UpgradeSimulationMode>(() =>
+    getAppDefaultOption('dropfinder.upgradeMode', {
+      characterKey: characterDefaultsKey,
+    }) as UpgradeSimulationMode
+  );
+  const [autoCatalyze, setAutoCatalyze] = useState(() =>
+    getAppDefaultOption('dropfinder.autoCatalyst', { characterKey: characterDefaultsKey })
+  );
   const [copyEnchantsGems, setCopyEnchantsGems] = useState(() =>
-    getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
+    getAppDefaultOption('dropfinder.copyEnchants', { characterKey: characterDefaultsKey })
   );
   const [category, setCategory] = useState<Category | ''>('');
   const skipNextDetectedSpecSyncRef = useRef(false);
@@ -580,8 +685,16 @@ export default function DropFinderPage() {
   useEffect(() => {
     if (simcInput === previousSimcInputRef.current) return;
     previousSimcInputRef.current = simcInput;
+    setUpgradeSimulationMode(
+      getAppDefaultOption('dropfinder.upgradeMode', {
+        characterKey: characterDefaultsKey,
+      }) as UpgradeSimulationMode
+    );
+    setAutoCatalyze(
+      getAppDefaultOption('dropfinder.autoCatalyst', { characterKey: characterDefaultsKey })
+    );
     setCopyEnchantsGems(
-      getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
+      getAppDefaultOption('dropfinder.copyEnchants', { characterKey: characterDefaultsKey })
     );
   }, [simcInput, characterDefaultsKey]);
 
@@ -606,8 +719,15 @@ export default function DropFinderPage() {
     if (typeof restored.upgradeLevel === 'number' && Number.isFinite(restored.upgradeLevel)) {
       setUpgradeLevel(Math.max(0, Math.floor(restored.upgradeLevel)));
     }
-    if (typeof restored.simHighestTrackLevel === 'boolean') {
-      setSimHighestTrackLevel(restored.simHighestTrackLevel);
+    if (
+      restored.upgradeSimulationMode === 'current' ||
+      restored.upgradeSimulationMode === 'highest' ||
+      restored.upgradeSimulationMode === 'both'
+    ) {
+      setUpgradeSimulationMode(restored.upgradeSimulationMode);
+    } else if (typeof restored.simHighestTrackLevel === 'boolean') {
+      // Backward compatibility for previously saved state.
+      setUpgradeSimulationMode(restored.simHighestTrackLevel ? 'both' : 'current');
     }
     if (typeof restored.autoCatalyze === 'boolean') {
       setAutoCatalyze(restored.autoCatalyze);
@@ -747,11 +867,22 @@ export default function DropFinderPage() {
     return upgradeLevelOptions.reduce((max, opt) => Math.max(max, Number(opt.key)), 0);
   }, [currentTrackInfo, upgradeLevelOptions]);
 
-  const effectiveUpgradeLevel = useMemo(() => {
-    if (!simHighestTrackLevel) return upgradeLevel;
-    if (highestUpgradeLevel == null || highestUpgradeLevel <= 0) return upgradeLevel;
-    return highestUpgradeLevel;
-  }, [simHighestTrackLevel, highestUpgradeLevel, upgradeLevel]);
+  const simulationUpgradeLevels = useMemo(() => {
+    const levels = new Set<number>();
+    const hasHighest = highestUpgradeLevel != null && highestUpgradeLevel > 0;
+
+    if (upgradeSimulationMode === 'current' || upgradeSimulationMode === 'both') {
+      levels.add(upgradeLevel);
+    }
+    if (upgradeSimulationMode === 'highest' || upgradeSimulationMode === 'both') {
+      levels.add(hasHighest ? highestUpgradeLevel : upgradeLevel);
+    }
+    if (levels.size === 0) {
+      levels.add(upgradeLevel);
+    }
+
+    return [...levels].sort((a, b) => a - b);
+  }, [upgradeSimulationMode, highestUpgradeLevel, upgradeLevel]);
 
   const estimatedComboCount = useMemo(() => {
     if (!drops || selected.size === 0) return 0;
@@ -764,48 +895,51 @@ export default function DropFinderPage() {
         if (!selected.has(item.item_id)) continue;
         if (!itemMatchesActiveLootSpec(item.specs, activeSpecIds, classId)) continue;
 
-        const resolved = resolveUpgrade(
-          item,
-          difficulty,
-          dungeonDiff,
-          effectiveUpgradeLevel,
-          upgradeTracks
-        );
-        const baseBonus = resolved.bonus_id ? [resolved.bonus_id] : [];
-        const baseBonusKey = [...baseBonus].sort((a, b) => a - b).join(':');
         const candidateSlots = getDroptimizerCandidateSlots(slot, item.inventory_type);
         if (candidateSlots.length === 0) continue;
 
-        for (const candidateSlot of candidateSlots) {
-          const baseKey = [
-            candidateSlot,
-            item.item_id,
-            resolved.ilvl,
-            baseBonusKey,
-            item.inventory_type ?? 0,
-            0,
-          ].join('|');
-          if (!seen.has(baseKey)) {
-            seen.add(baseKey);
-            combos += 1;
-          }
-        }
+        for (const candidateLevel of simulationUpgradeLevels) {
+          const resolved = resolveUpgrade(
+            item,
+            difficulty,
+            dungeonDiff,
+            candidateLevel,
+            upgradeTracks
+          );
+          const baseBonus = resolved.bonus_id ? [resolved.bonus_id] : [];
+          const baseBonusKey = [...baseBonus].sort((a, b) => a - b).join(':');
 
-        if (autoCatalyze && item.can_catalyst) {
-          const convertSlot =
-            slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slotLabelToSimSlot(slot);
-          if (!convertSlot) continue;
-          // Catalyst conversion for a given class/slot resolves to the same tier target item.
-          // Count one catalyst candidate per resulting slot+upgrade state, not per source item.
-          const catalystKey = [
-            convertSlot,
-            resolved.ilvl,
-            baseBonusKey,
-            1,
-          ].join('|');
-          if (!seen.has(catalystKey)) {
-            seen.add(catalystKey);
-            combos += 1;
+          for (const candidateSlot of candidateSlots) {
+            const baseKey = [
+              candidateSlot,
+              item.item_id,
+              resolved.ilvl,
+              baseBonusKey,
+              item.inventory_type ?? 0,
+              0,
+            ].join('|');
+            if (!seen.has(baseKey)) {
+              seen.add(baseKey);
+              combos += 1;
+            }
+          }
+
+          if (autoCatalyze && item.can_catalyst) {
+            const convertSlot =
+              slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slotLabelToSimSlot(slot);
+            if (!convertSlot) continue;
+            // Catalyst conversion for a given class/slot resolves to the same tier target item.
+            // Count one catalyst candidate per resulting slot+upgrade state, not per source item.
+            const catalystKey = [
+              convertSlot,
+              resolved.ilvl,
+              baseBonusKey,
+              1,
+            ].join('|');
+            if (!seen.has(catalystKey)) {
+              seen.add(catalystKey);
+              combos += 1;
+            }
           }
         }
       }
@@ -819,7 +953,7 @@ export default function DropFinderPage() {
     classId,
     difficulty,
     dungeonDiff,
-    effectiveUpgradeLevel,
+    simulationUpgradeLevels,
     upgradeTracks,
     autoCatalyze,
   ]);
@@ -908,51 +1042,53 @@ export default function DropFinderPage() {
           if (!itemMatchesActiveLootSpec(item.specs, activeSpecIds, classId)) {
             continue;
           }
-          const resolved = resolveUpgrade(
-            item,
-            difficulty,
-            dungeonDiff,
-            effectiveUpgradeLevel,
-            upgradeTracks
-          );
-          let simItem: SimDropItem = {
-            ...item,
-            ilevel: resolved.ilvl,
-            quality: resolved.quality,
-            bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
-            slot,
-          };
+          for (const candidateLevel of simulationUpgradeLevels) {
+            const resolved = resolveUpgrade(
+              item,
+              difficulty,
+              dungeonDiff,
+              candidateLevel,
+              upgradeTracks
+            );
+            const simItem: SimDropItem = {
+              ...item,
+              ilevel: resolved.ilvl,
+              quality: resolved.quality,
+              bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
+              slot,
+            };
 
-          // Always keep the original selected item in the sim pool.
-          pushCandidate(simItem);
+            // Always keep the original selected item in the sim pool.
+            pushCandidate(simItem);
 
-          // Auto Catalyst should add an extra converted candidate, not replace the original.
-          if (autoCatalyze && item.can_catalyst) {
-            const convertSlot =
-              slot === 'Other'
-                ? slotFromInventoryType(item.inventory_type)
-                : slotLabelToSimSlot(slot);
-            if (convertSlot) {
-              try {
-                const catalyzed = await fetchJson<SimDropItem>(`${API_URL}/api/gear/catalyst-convert`, {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    class_name: className,
-                    slot: convertSlot,
-                    item: {
-                      ...item,
-                      ilevel: resolved.ilvl,
-                      quality: resolved.quality,
-                      bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
-                    },
-                  }),
-                });
-                pushCandidate({
-                  ...catalyzed,
-                  slot: catalyzed.slot || convertSlot,
-                });
-              } catch {
-                // Keep original candidate only when conversion fails.
+            // Auto Catalyst should add an extra converted candidate, not replace the original.
+            if (autoCatalyze && item.can_catalyst) {
+              const convertSlot =
+                slot === 'Other'
+                  ? slotFromInventoryType(item.inventory_type)
+                  : slotLabelToSimSlot(slot);
+              if (convertSlot) {
+                try {
+                  const catalyzed = await fetchJson<SimDropItem>(`${API_URL}/api/gear/catalyst-convert`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      class_name: className,
+                      slot: convertSlot,
+                      item: {
+                        ...item,
+                        ilevel: resolved.ilvl,
+                        quality: resolved.quality,
+                        bonus_ids: resolved.bonus_id ? [resolved.bonus_id] : [],
+                      },
+                    }),
+                  });
+                  pushCandidate({
+                    ...catalyzed,
+                    slot: catalyzed.slot || convertSlot,
+                  });
+                } catch {
+                  // Keep original candidate only when conversion fails.
+                }
               }
             }
           }
@@ -970,7 +1106,7 @@ export default function DropFinderPage() {
     simcInput,
     difficulty,
     dungeonDiff,
-    effectiveUpgradeLevel,
+    simulationUpgradeLevels,
     autoCatalyze,
     copyEnchantsGems,
     upgradeTracks,
@@ -1001,7 +1137,7 @@ export default function DropFinderPage() {
         difficulty,
         dungeonDiff,
         upgradeLevel,
-        simHighestTrackLevel,
+        upgradeSimulationMode,
         autoCatalyze,
         copyEnchantsGems,
         category,
@@ -1146,24 +1282,44 @@ export default function DropFinderPage() {
 
       {(isRaid || isDungeon) && selectedId && activeDifficulties.length > 0 && (
         <div className="card p-5">
-          <div className="flex flex-col gap-4 sm:flex-row">
-            <ToggleOptionCard
-              checked={simHighestTrackLevel}
-              onToggle={() => setSimHighestTrackLevel((prev) => !prev)}
-              title={currentTrackInfo?.name ? `Sim at Highest Level (${currentTrackInfo.name})` : 'Sim at Highest Level'}
-              description="Treat selected drops as max level in the selected track."
-            />
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="flex-1">
+              <div className="flex min-h-[72px] flex-col justify-center">
+                <div className="min-w-0 flex-1">
+                  <UpgradeSimulationModeSelector
+                    value={upgradeSimulationMode}
+                    onChange={setUpgradeSimulationMode}
+                    showDescription={false}
+                  />
+                </div>
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-[13px]">
+                  <p className="truncate text-zinc-300">
+                    {
+                      UPGRADE_SIMULATION_MODE_OPTIONS.find((mode) => mode.value === upgradeSimulationMode)
+                        ?.desc
+                    }
+                  </p>
+                  {currentTrackInfo?.name && (
+                    <p className="whitespace-nowrap text-zinc-300">{`Track: ${currentTrackInfo.name}`}</p>
+                  )}
+                </div>
+              </div>
+            </div>
             <ToggleOptionCard
               checked={autoCatalyze}
               onToggle={() => setAutoCatalyze((prev) => !prev)}
               title="Auto Catalyst"
               description="Add catalyst-converted alternatives for eligible items."
+              titleClassName="text-[15px] font-medium text-zinc-100 transition-colors group-hover:text-white"
+              descriptionClassName="text-[13px] text-zinc-300"
             />
             <ToggleOptionCard
               checked={copyEnchantsGems}
               onToggle={() => setCopyEnchantsGems((prev) => !prev)}
               title="Copy Enchants/Gems"
               description="Apply equipped enchants and gems to items that don't have one."
+              titleClassName="text-[15px] font-medium text-zinc-100 transition-colors group-hover:text-white"
+              descriptionClassName="text-[13px] text-zinc-300"
             />
           </div>
         </div>
@@ -1253,7 +1409,7 @@ export default function DropFinderPage() {
             classId={classId}
             difficulty={difficulty}
             dungeonDiff={dungeonDiff}
-            upgradeLevel={effectiveUpgradeLevel}
+            upgradeLevel={upgradeLevel}
             upgradeTracks={upgradeTracks}
             headerLabel={headerLabel}
             isWishlisted={(itemId) => wishlistIds.has(itemId)}

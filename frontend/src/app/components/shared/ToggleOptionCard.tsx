@@ -7,6 +7,8 @@ interface ToggleOptionCardProps {
   onToggle: () => void;
   title: string;
   description: string;
+  titleClassName?: string;
+  descriptionClassName?: string;
   activeClassName?: string;
   activeKnobClassName?: string;
   inactiveClassName?: string;
@@ -19,6 +21,8 @@ export default function ToggleOptionCard({
   onToggle,
   title,
   description,
+  titleClassName = 'text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white',
+  descriptionClassName = 'text-[13px] text-gray-600',
   activeClassName = 'bg-gold',
   activeKnobClassName = 'bg-black',
   inactiveClassName = 'border border-border bg-surface-2',
@@ -42,10 +46,10 @@ export default function ToggleOptionCard({
         />
       </button>
       <div>
-        <span className="text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white">
+        <span className={titleClassName}>
           {title}
         </span>
-        <p className="text-[13px] text-gray-600">{description}</p>
+        <p className={descriptionClassName}>{description}</p>
         {note ? <div className="mt-1 text-[12px]">{note}</div> : null}
       </div>
     </div>

@@ -1539,6 +1539,7 @@ export default function SimSharedConfig() {
     normalizedPath === '/top-gear' ||
     normalizedPath === '/drop-finder' ||
     normalizedPath === '/stat-weights' ||
+    normalizedPath.startsWith('/analysis') ||
     normalizedPath.startsWith('/upgrade');
 
   const selectedProfileMeta = useMemo(() => {

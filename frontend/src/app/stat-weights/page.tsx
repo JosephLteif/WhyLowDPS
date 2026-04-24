@@ -20,9 +20,10 @@ const PLOT_STATS = [
 ];
 
 const STAT_WEIGHTS_SIM_AGAIN_KEY = 'stat-weights';
+export type StatWeightsMode = 'stat_weights' | 'stat_plot' | 'consumable_matrix' | 'tier_heatmap';
 
 interface StatWeightsSimAgainState {
-  mode?: 'stat_weights' | 'stat_plot' | 'consumable_matrix' | 'tier_heatmap';
+  mode?: StatWeightsMode;
   plotStats?: string[];
   plotRange?: number;
   plotStep?: number;
@@ -128,13 +129,15 @@ function remapQuality(quality: number | undefined, familyMax: number | undefined
   return quality;
 }
 
-export default function StatWeightsPage() {
+interface StatWeightsPageContentProps {
+  forcedMode?: StatWeightsMode;
+}
+
+export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentProps = {}) {
   const { simcInput, setLockSingleConsumableOptions } = useSimContext();
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
 
-  const [mode, setMode] = useState<
-    'stat_weights' | 'stat_plot' | 'consumable_matrix' | 'tier_heatmap'
-  >('stat_weights');
+  const [mode, setMode] = useState<StatWeightsMode>(forcedMode ?? 'stat_weights');
 
   const [plotStats, setPlotStats] = useState<string[]>([
     'haste_rating',
@@ -157,6 +160,10 @@ export default function StatWeightsPage() {
   );
 
   useEffect(() => {
+    if (forcedMode) {
+      setMode(forcedMode);
+      return;
+    }
     const restored = consumeSimAgainState<StatWeightsSimAgainState>(STAT_WEIGHTS_SIM_AGAIN_KEY);
     if (!restored) return;
     if (
@@ -191,7 +198,7 @@ export default function StatWeightsPage() {
       setMatrixTempEnchants(restored.matrixTempEnchants.filter((v) => typeof v === 'string'));
     if (Array.isArray(restored.matrixRaidBuffs))
       setMatrixRaidBuffs(restored.matrixRaidBuffs.filter((v) => typeof v === 'string'));
-  }, []);
+  }, [forcedMode]);
 
   const consumableCount =
     matrixFlasks.length +
@@ -368,32 +375,34 @@ export default function StatWeightsPage() {
       >
         <ErrorAlert message={error} />
 
-        <div className="grid gap-4 md:grid-cols-4">
-          {[
-            ['stat_weights', 'Quick Weights', 'Fast single-point stat values.'],
-            ['stat_plot', 'Stat Plot', 'Curve DPS across a stat range.'],
-            [
-              'consumable_matrix',
-              'Consumable Matrix',
-              'Find best flask/food/potion/rune/raid buffs.',
-            ],
-            ['tier_heatmap', 'Tier Slot Matrix', 'Sim tier-slot impact matrix only.'],
-          ].map(([key, title, desc]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setMode(key as typeof mode)}
-              className={`rounded-md border px-4 py-3 text-left transition-colors ${
-                mode === key
-                  ? 'border-gold/40 bg-gold/[0.08] text-zinc-100'
-                  : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600'
-              }`}
-            >
-              <div className="text-sm font-semibold">{title}</div>
-              <div className="mt-1 text-xs text-zinc-400">{desc}</div>
-            </button>
-          ))}
-        </div>
+        {!forcedMode && (
+          <div className="grid gap-4 md:grid-cols-4">
+            {[
+              ['stat_weights', 'Quick Weights', 'Fast single-point stat values.'],
+              ['stat_plot', 'Stat Plot', 'Curve DPS across a stat range.'],
+              [
+                'consumable_matrix',
+                'Consumable Matrix',
+                'Find best flask/food/potion/rune/raid buffs.',
+              ],
+              ['tier_heatmap', 'Tier Slot Matrix', 'Sim tier-slot impact matrix only.'],
+            ].map(([key, title, desc]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setMode(key as StatWeightsMode)}
+                className={`rounded-md border px-4 py-3 text-left transition-colors ${
+                  mode === key
+                    ? 'border-gold/40 bg-gold/[0.08] text-zinc-100'
+                    : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-600'
+                }`}
+              >
+                <div className="text-sm font-semibold">{title}</div>
+                <div className="mt-1 text-xs text-zinc-400">{desc}</div>
+              </button>
+            ))}
+          </div>
+        )}
 
         {mode === 'stat_plot' && (
           <div className="grid gap-4 rounded-lg border border-border bg-surface-2 p-4 md:grid-cols-2">
@@ -782,4 +791,8 @@ export default function StatWeightsPage() {
       </form>
     </div>
   );
+}
+
+export default function StatWeightsPage() {
+  return <StatWeightsPageContent />;
 }

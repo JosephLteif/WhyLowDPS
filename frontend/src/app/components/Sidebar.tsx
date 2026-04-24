@@ -26,44 +26,57 @@ const baseNavItems: NavItem[] = [
   },
   {
     href: '/quick-sim',
-    label: 'Quick Sim',
-    description: 'DPS, ability breakdown, stat weights.',
+    label: 'Sim',
+    description: 'Run sims and optimize setups.',
     icon: 'M13 8l-5 5-5-5M3 3h10',
-    matchPaths: ['/quick-sim'],
-  },
-  {
-    href: '/stat-weights',
-    label: 'Stat Weights',
-    description: 'Find stat scaling curves.',
-    icon: 'M4 8V6a6 6 0 1 1 12 0v2m1-2a7 7 0 1 1-14 0m7 7v4M8 11.232v4.5A4.5 4.5 0 0 0 12.5 11.232H3.5a4.5 4.5 0 0 0 4.5 4.5',
-    matchPaths: ['/stat-weights'],
-  },
-  {
-    href: '/top-gear',
-    label: 'Top Gear',
-    description: 'Find the best gear from your bags.',
-    icon: 'M8 1l2 4 4.5.7-3.2 3.1.8 4.5L8 11l-4.1 2.3.8-4.5L1.5 5.7 6 5z',
-    matchPaths: ['/top-gear'],
+    matchPaths: ['/quick-sim', '/top-gear'],
+    children: [
+      { href: '/quick-sim', label: 'Quick Sim', description: 'DPS and ability breakdown' },
+      { href: '/top-gear', label: 'Top Gear', description: 'Best gear from your bags' },
+    ],
   },
   {
     href: '/drop-finder',
     label: 'Upgrades',
     description: 'Find and sim gear upgrades.',
     icon: 'M7 7m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0M10.5 10.5L14 14',
-    matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade', '/wishlist'],
+    matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade'],
     children: [
       { href: '/drop-finder', label: 'Drop Finder', description: 'Sim raid & dungeon loot' },
-      { href: '/wishlist', label: 'Wishlist', description: 'Saved target drops' },
-      { href: '/upgrade/trinkets', label: 'Trinkets', description: 'Sim trinket pools & pairs' },
       { href: '/upgrade-compare', label: 'Crest Upgrades', description: 'Best Dawncrest path' },
     ],
   },
   {
-    href: '/history',
-    label: 'History',
-    description: 'View recent simulation results.',
-    icon: 'M8 8m-6.5 0a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M8 4.5V8l2.5 2.5',
-    matchPaths: ['/history'],
+    href: '/analysis/quick-weights',
+    label: 'Analysis',
+    description: 'Weights and matrix analysis.',
+    icon: 'M4 8V6a6 6 0 1 1 12 0v2m1-2a7 7 0 1 1-14 0m7 7v4M8 11.232v4.5A4.5 4.5 0 0 0 12.5 11.232H3.5a4.5 4.5 0 0 0 4.5 4.5',
+    matchPaths: [
+      '/stat-weights',
+      '/analysis/quick-weights',
+      '/analysis/stat-plot',
+      '/analysis/consumable-matrix',
+      '/analysis/tier-slot-matrix',
+    ],
+    children: [
+      {
+        href: '/analysis/quick-weights',
+        label: 'Quick Weights',
+        description: 'Fast stat weight summary',
+      },
+      { href: '/analysis/stat-plot', label: 'Stat Plot', description: 'Stat scaling chart' },
+      {
+        href: '/analysis/consumable-matrix',
+        label: 'Consumable Matrix',
+        description: 'Consumable comparisons',
+      },
+      {
+        href: '/analysis/tier-slot-matrix',
+        label: 'Tier Slot Matrix',
+        description: 'Tier-slot impact matrix',
+      },
+      { href: '/upgrade/trinkets', label: 'Trinkets', description: 'Sim trinket pools & pairs' },
+    ],
   },
   {
     href: '/dungeons',
@@ -80,21 +93,18 @@ const baseNavItems: NavItem[] = [
       },
     ],
   },
+  {
+    href: '/history',
+    label: 'History',
+    description: 'View recent simulation results.',
+    icon: 'M8 8m-6.5 0a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M8 4.5V8l2.5 2.5',
+    matchPaths: ['/history'],
+  },
 ];
 
 const SIDEBAR_COLLAPSED_KEY = 'whylowdps_sidebar_collapsed';
 const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
 const SIDEBAR_VISIBLE_KEY = 'whylowdps_sidebar_visible';
-
-function moveLabel(order: string[], source: string, target: string): string[] {
-  if (source === target) return order;
-  const withoutSource = order.filter((label) => label !== source);
-  const targetIdx = withoutSource.indexOf(target);
-  if (targetIdx === -1) return withoutSource;
-  withoutSource.splice(targetIdx, 0, source);
-  return withoutSource;
-}
-
 function moveLabelWithPosition(
   order: string[],
   source: string,
@@ -138,12 +148,16 @@ export default function Sidebar() {
   const navItems = useMemo(() => {
     const items = [...baseNavItems];
     if (user) {
-      items.splice(1, 0, {
+      items.push({
         href: '/characters',
         label: 'My Characters',
         description: 'View your Battle.net roster.',
         icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
-        matchPaths: ['/characters'],
+        matchPaths: ['/characters', '/wishlist'],
+        children: [
+          { href: '/characters', label: 'Roster', description: 'Your Battle.net characters' },
+          { href: '/wishlist', label: 'Wishlist', description: 'Saved target drops by character' },
+        ],
       });
 
       items.push({

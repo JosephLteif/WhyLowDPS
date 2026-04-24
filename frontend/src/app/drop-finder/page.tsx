@@ -1393,25 +1393,6 @@ export default function DropFinderPage() {
 
       {drops && (
         <>
-          <div className="flex justify-end">
-            <ComboSummary
-              comboCount={estimatedComboCount}
-              maxCombinations={maxCombinations ?? undefined}
-              size="md"
-              glowWhenActive
-              breakdown={
-                typeof estimatedComboBreakdown !== 'number'
-                  ? `${estimatedComboBreakdown.gearCombos.toLocaleString()} normal${
-                      estimatedComboBreakdown.gearCombos === 1 ? ' combo' : ' combos'
-                    } • +1 Currently Equipped${
-                      estimatedComboBreakdown.autoCatalystCombos > 0
-                        ? ` • ${estimatedComboBreakdown.autoCatalystCombos} Auto Catalyst`
-                        : ''
-                    }`
-                  : null
-              }
-            />
-          </div>
           <DropSlotList
             drops={drops}
             selected={selected}
@@ -1432,6 +1413,25 @@ export default function DropFinderPage() {
             upgradeLevel={upgradeLevel}
             upgradeTracks={upgradeTracks}
             headerLabel={headerLabel}
+            headerActions={
+              <ComboSummary
+                comboCount={estimatedComboCount}
+                maxCombinations={maxCombinations ?? undefined}
+                size="md"
+                glowWhenActive
+                breakdown={
+                  typeof estimatedComboBreakdown !== 'number'
+                    ? `${estimatedComboBreakdown.gearCombos.toLocaleString()} normal${
+                        estimatedComboBreakdown.gearCombos === 1 ? ' combo' : ' combos'
+                      } | +1 Currently Equipped${
+                        estimatedComboBreakdown.autoCatalystCombos > 0
+                          ? ` | ${estimatedComboBreakdown.autoCatalystCombos} Auto Catalyst`
+                          : ''
+                      }`
+                    : null
+                }
+              />
+            }
             isWishlisted={(itemId) => wishlistIds.has(itemId)}
             onToggleWishlist={(item, slotLabel, meta) => {
               const next = toggleWishlistEntry({ item, slot: slotLabel, meta }, wishlistOwnerKey);

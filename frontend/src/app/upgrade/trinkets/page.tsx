@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../../components/ErrorAlert';
 import ComboSummary from '../../components/ComboSummary';
+import StickyPageHeader from '../../components/StickyPageHeader';
 import { useSimContext } from '../../components/SimContext';
 import { API_URL } from '../../lib/api';
 import { getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../../lib/useItemInfo';
@@ -43,6 +44,13 @@ type TrackRow = {
 type IlevelOption = {
   ilevel: number;
   label: string;
+};
+
+type TierOption = {
+  key: string;
+  label: string;
+  ilevelOptions: IlevelOption[];
+  maxIlevel: number;
 };
 
 enum RolePool {
@@ -284,6 +292,7 @@ export default function UpgradeTrinketsPage() {
   }, [className, specName]);
 
   const [targetIlevel, setTargetIlevel] = useState(289);
+  const [selectedTier, setSelectedTier] = useState<string>('all');
   const [includeRaid, setIncludeRaid] = useState(true);
   const [includeDungeon, setIncludeDungeon] = useState(true);
   const [simMode, setSimMode] = useState<TrinketSimMode>('matrix');
@@ -521,12 +530,75 @@ export default function UpgradeTrinketsPage() {
       });
   }, [filteredPool, ilvlTrackHints, ilvlTrackRows, hasUpgradeableTrackMetadata]);
 
-  useEffect(() => {
-    if (ilevelOptions.length === 0) return;
-    if (!ilevelOptions.some((o) => o.ilevel === targetIlevel)) {
-      setTargetIlevel(ilevelOptions[0].ilevel);
+  const tierOptions = useMemo<TierOption[]>(() => {
+    const options: TierOption[] = [];
+
+    for (const [trackName, rows] of Object.entries(upgradeTracks)) {
+      const sortedRows = [...rows]
+        .filter((row) => Number.isFinite(row.itemLevel) && row.itemLevel > 0)
+        .sort((a, b) => b.itemLevel - a.itemLevel);
+      if (sortedRows.length === 0) continue;
+
+      const maxLvl = sortedRows.reduce((m, r) => Math.max(m, r.max || 0), 0);
+      const byIlevel = new Map<number, string[]>();
+      for (const row of sortedRows) {
+        const maxForRow = row.max || maxLvl || row.level;
+        const list = byIlevel.get(row.itemLevel) || [];
+        list.push(`${row.level}/${maxForRow}`);
+        byIlevel.set(row.itemLevel, list);
+      }
+
+      const tierIlevels = [...byIlevel.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([ilvl, levels]) => ({
+          ilevel: ilvl,
+          label: `${ilvl} - ${normalizeTrackName(trackName)} ${[...new Set(levels)].join(' or ')}`,
+        }));
+      if (tierIlevels.length === 0) continue;
+
+      options.push({
+        key: trackName,
+        label: normalizeTrackName(trackName),
+        ilevelOptions: tierIlevels,
+        maxIlevel: tierIlevels[0].ilevel,
+      });
     }
-  }, [ilevelOptions, targetIlevel]);
+
+    return options.sort((a, b) => b.maxIlevel - a.maxIlevel);
+  }, [upgradeTracks]);
+
+  const selectedTierOption = useMemo(
+    () => tierOptions.find((tier) => tier.key === selectedTier) ?? null,
+    [tierOptions, selectedTier]
+  );
+
+  const targetIlevelOptions = useMemo<IlevelOption[]>(() => {
+    if (selectedTierOption) return selectedTierOption.ilevelOptions;
+    return ilevelOptions;
+  }, [selectedTierOption, ilevelOptions]);
+
+  useEffect(() => {
+    if (tierOptions.length === 0) {
+      setSelectedTier('all');
+      return;
+    }
+
+    // Keep user selection when still valid.
+    if (tierOptions.some((tier) => tier.key === selectedTier)) return;
+
+    // Try to infer a tier from currently selected ilvl first.
+    const inferred = tierOptions.find((tier) =>
+      tier.ilevelOptions.some((opt) => opt.ilevel === targetIlevel)
+    );
+    setSelectedTier((inferred ?? tierOptions[0]).key);
+  }, [tierOptions, selectedTier, targetIlevel]);
+
+  useEffect(() => {
+    if (targetIlevelOptions.length === 0) return;
+    if (!targetIlevelOptions.some((o) => o.ilevel === targetIlevel)) {
+      setTargetIlevel(targetIlevelOptions[0].ilevel);
+    }
+  }, [targetIlevelOptions, targetIlevel]);
 
   const expectedStats = useMemo(() => {
     const variants = filteredPool
@@ -640,6 +712,15 @@ export default function UpgradeTrinketsPage() {
     [itemInfo]
   );
 
+  const hasCharacter = simcInput.trim().length >= 10;
+  if (!hasCharacter) {
+    return (
+      <p className="py-6 text-center text-sm text-muted">
+        Paste your SimC addon export above to use Upgrade Trinkets.
+      </p>
+    );
+  }
+
   return (
     <form
       onSubmit={(e) => {
@@ -657,55 +738,83 @@ export default function UpgradeTrinketsPage() {
 
       <ErrorAlert message={error} />
 
-      <div className="space-y-4 rounded-xl border border-zinc-700/70 bg-zinc-900/50 p-5 text-sm text-zinc-300">
-        <p>Choose the trinket pool and ilvl target for the heatmap simulation.</p>
-
-        <label className="block space-y-1.5 text-sm text-zinc-300">
-          <span className="block">Target Trinket iLvl</span>
-          <select
-            value={targetIlevel}
-            onChange={(e) => setTargetIlevel(Number(e.target.value) || targetIlevel)}
-            className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 focus:border-gold focus:outline-none"
-          >
-            {(ilevelOptions.length > 0 ? ilevelOptions : [{ ilevel: 289, label: '289' }]).map(
-              (opt) => (
-                <option key={opt.ilevel} value={opt.ilevel}>
-                  {opt.label}
-                </option>
-              ),
-            )}
-          </select>
-          <span className="block text-[11px] text-zinc-500">
-            Options are derived from current drop-pool data and upgrade tracks (auto-updates each
-            season).
+      <StickyPageHeader
+        left={
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
+            Expected Run Size
           </span>
-        </label>
-
-        <div className="flex items-center justify-between rounded-md border border-zinc-700/70 bg-zinc-900/60 px-3 py-2.5">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-              Expected Run Size
-            </p>
-            <p className="mt-0.5 text-xs text-zinc-400">
-              {poolLoading
-                ? 'Calculating from drop pool...'
-                : `${expectedStats.trinketCount.toLocaleString()} trinkets in pool`}
-            </p>
-          </div>
+        }
+        right={
           <ComboSummary
             comboCount={poolLoading ? 0 : expectedStats.combos}
             size="md"
             glowWhenActive
             activeBy="items"
             itemCount={poolLoading ? 0 : expectedStats.trinketCount}
+            breakdown={
+              poolLoading
+                ? null
+                : `${expectedStats.trinketCount.toLocaleString()} trinkets in pool`
+            }
           />
+        }
+      />
+
+      <div className="space-y-4 rounded-xl border border-zinc-700/70 bg-zinc-900/50 p-5 text-sm text-zinc-300">
+        <p>Choose the trinket pool and ilvl target for the heatmap simulation.</p>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="block space-y-1.5 text-sm text-zinc-300">
+            <span className="block">Tier</span>
+            <select
+              value={selectedTier}
+              onChange={(e) => setSelectedTier(e.target.value)}
+              disabled={tierOptions.length === 0}
+              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 focus:border-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {tierOptions.length > 0 ? (
+                tierOptions.map((tier) => (
+                  <option key={tier.key} value={tier.key}>
+                    {tier.label}
+                  </option>
+                ))
+              ) : (
+                <option value="all">All Available</option>
+              )}
+            </select>
+          </label>
+
+          <label className="block space-y-1.5 text-sm text-zinc-300">
+            <span className="block">Target Trinket iLvl</span>
+            <select
+              value={targetIlevel}
+              onChange={(e) => setTargetIlevel(Number(e.target.value) || targetIlevel)}
+              className="w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100 focus:border-gold focus:outline-none"
+            >
+              {(targetIlevelOptions.length > 0
+                ? targetIlevelOptions
+                : [{ ilevel: 289, label: '289' }]
+              ).map((opt) => (
+                <option key={`${selectedTier}:${opt.ilevel}`} value={opt.ilevel}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+
+        <span className="block text-[11px] text-zinc-500">
+          Tier and ilvl options are derived from current drop-pool data and upgrade tracks.
+        </span>
 
         <div className="space-y-1.5 text-sm text-zinc-300">
           <span className="block">Simulation Mode</span>
           <div className="grid gap-2 sm:grid-cols-3">
-            <label className="flex min-h-12 items-center justify-between rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
-              <span className="text-zinc-100">Full Matrix</span>
+            <label className="flex min-h-12 items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-zinc-100">Full Matrix</span>
+                <span className="block text-[11px] text-zinc-400">No trinket is fixed</span>
+              </span>
               <input
                 type="radio"
                 name="trinket-sim-mode"
@@ -714,8 +823,11 @@ export default function UpgradeTrinketsPage() {
                 className="h-5 w-5 accent-gold"
               />
             </label>
-            <label className="flex min-h-12 items-center justify-between rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
-              {lockLabel(equippedTrinket1, 'Lock Trinket 1')}
+            <label className="flex min-h-12 items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-[11px] text-zinc-400">Fixed: Trinket 1</span>
+                {lockLabel(equippedTrinket1, 'Lock Trinket 1')}
+              </span>
               <input
                 type="radio"
                 name="trinket-sim-mode"
@@ -724,8 +836,11 @@ export default function UpgradeTrinketsPage() {
                 className="h-5 w-5 accent-gold"
               />
             </label>
-            <label className="flex min-h-12 items-center justify-between rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
-              {lockLabel(equippedTrinket2, 'Lock Trinket 2')}
+            <label className="flex min-h-12 items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/70 px-3 py-2.5">
+              <span className="min-w-0">
+                <span className="block text-[11px] text-zinc-400">Fixed: Trinket 2</span>
+                {lockLabel(equippedTrinket2, 'Lock Trinket 2')}
+              </span>
               <input
                 type="radio"
                 name="trinket-sim-mode"

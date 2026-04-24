@@ -45,8 +45,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <Sidebar />
 
-              <main className="ml-[var(--sidebar-width)] mt-14 min-h-[calc(100vh-3.5rem)] px-8 py-8 transition-[margin-left] duration-200 lg:px-12">
-                <div className="mx-auto max-w-8xl">
+              <main className="ml-[var(--sidebar-width)] mt-14 min-h-[calc(100vh-3.5rem)] px-3 py-8 transition-[margin-left] duration-200 lg:px-24">
+                <div
+                  className="mx-auto w-full"
+                  style={{
+                    maxWidth: 'min(2200px, calc(100vw - var(--sidebar-width) - 1.5rem))',
+                  }}
+                >
                   <SimSharedConfig />
                   {children}
                 </div>

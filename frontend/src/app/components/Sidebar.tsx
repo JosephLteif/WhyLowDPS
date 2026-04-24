@@ -217,7 +217,9 @@ export default function Sidebar() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--sidebar-width', isCollapsed ? '5rem' : '18rem');
+    const width = isCollapsed ? '5rem' : '18rem';
+    document.documentElement.style.setProperty('--sidebar-width', width);
+    document.body.style.setProperty('--sidebar-width', width);
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed ? '1' : '0');
   }, [isCollapsed]);
 

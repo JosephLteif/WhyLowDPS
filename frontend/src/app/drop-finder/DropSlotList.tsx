@@ -34,10 +34,6 @@ interface DropSlotListProps {
   upgradeLevel: number;
   upgradeTracks: UpgradeTracks;
   headerLabel: string;
-  autoCatalyze: boolean;
-  onToggleAutoCatalyze: () => void;
-  copyEnchantsGems: boolean;
-  onToggleCopyEnchantsGems: () => void;
   isWishlisted: (itemId: number) => boolean;
   onToggleWishlist: (
     item: DropItem,
@@ -59,14 +55,11 @@ export default function DropSlotList({
   upgradeLevel,
   upgradeTracks,
   headerLabel,
-  autoCatalyze,
-  onToggleAutoCatalyze,
-  copyEnchantsGems,
-  onToggleCopyEnchantsGems,
   isWishlisted,
   onToggleWishlist,
 }: DropSlotListProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
+
   const visibleDrops = useMemo(() => {
     const next: Record<string, DropItem[]> = {};
     for (const [slot, items] of Object.entries(drops)) {
@@ -137,52 +130,6 @@ export default function DropSlotList({
           )}
         </p>
         <div className="flex items-center gap-3">
-          <button
-            onClick={onToggleAutoCatalyze}
-            aria-pressed={autoCatalyze}
-            className={`inline-flex items-center gap-2 whitespace-nowrap rounded border px-3 py-1.5 text-sm font-medium transition-all ${
-              autoCatalyze
-                ? 'border-gold/40 bg-gold/[0.08] text-gold'
-                : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
-            }`}
-            title="Convert catalyst-eligible raid and dungeon items before simming."
-          >
-            <span
-              className={`relative h-4 w-7 rounded-full transition-colors ${
-                autoCatalyze ? 'bg-gold/70' : 'bg-zinc-600'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
-                  autoCatalyze ? 'left-3.5' : 'left-0.5'
-                }`}
-              />
-            </span>
-            Auto Catalyst
-          </button>
-          <button
-            onClick={onToggleCopyEnchantsGems}
-            aria-pressed={copyEnchantsGems}
-            className={`inline-flex items-center gap-2 whitespace-nowrap rounded border px-3 py-1.5 text-sm font-medium transition-all ${
-              copyEnchantsGems
-                ? 'border-gold/40 bg-gold/[0.08] text-gold'
-                : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
-            }`}
-            title="Copy enchant and gem IDs from your equipped slot onto drop items before simming."
-          >
-            <span
-              className={`relative h-4 w-7 rounded-full transition-colors ${
-                copyEnchantsGems ? 'bg-gold/70' : 'bg-zinc-600'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
-                  copyEnchantsGems ? 'left-3.5' : 'left-0.5'
-                }`}
-              />
-            </span>
-            Copy Enchants/Gems
-          </button>
           <div className="flex gap-1.5">
             {(
               [
@@ -229,7 +176,7 @@ export default function DropSlotList({
           <div className="flex flex-wrap gap-2">
             {items.map((item) => (
               <DropItemCard
-                key={item.item_id}
+                key={`${item.item_id}:${item.encounter || ''}:${item.instance_name || ''}:${groupLabel}`}
                 item={item}
                 isSelected={selected.has(item.item_id)}
                 onToggle={() => onToggle(item.item_id)}

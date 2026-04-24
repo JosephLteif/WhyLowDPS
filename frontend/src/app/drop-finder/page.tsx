@@ -1,10 +1,11 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ComboPill from '../components/ComboPill';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import ToggleButtonGroup from '../components/ToggleButtonGroup';
+import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import { API_URL, fetchJson } from '../lib/api';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState } from '../lib/sim-return';
@@ -43,6 +44,7 @@ interface DropFinderSimAgainState {
   difficulty?: string;
   dungeonDiff?: string;
   upgradeLevel?: number;
+  simHighestTrackLevel?: boolean;
   category?: string;
   selectedId?: string;
   autoCatalyze?: boolean;
@@ -137,6 +139,100 @@ function slotLabelToSimSlot(slot: string): string | null {
     default:
       return null;
   }
+}
+
+function getDroptimizerCandidateSlots(slotLabel: string, inventoryType?: number): string[] {
+  const normalizedExplicit = slotLabelToSimSlot(slotLabel);
+  if (normalizedExplicit) return [normalizedExplicit];
+
+  switch (inventoryType) {
+    case 1:
+      return ['head'];
+    case 2:
+      return ['neck'];
+    case 3:
+      return ['shoulder'];
+    case 5:
+    case 20:
+      return ['chest'];
+    case 6:
+      return ['waist'];
+    case 7:
+      return ['legs'];
+    case 8:
+      return ['feet'];
+    case 9:
+      return ['wrist'];
+    case 10:
+      return ['hands'];
+    case 11:
+      return ['finger1', 'finger2'];
+    case 12:
+      return ['trinket1', 'trinket2'];
+    case 13:
+    case 17:
+    case 21:
+      return ['main_hand'];
+    case 14:
+    case 22:
+    case 23:
+      return ['off_hand'];
+    case 16:
+      return ['back'];
+    default:
+      return [];
+  }
+}
+
+function coerceDropsResponse(input: unknown): Record<string, DropItem[]> | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+
+  const normalized: Record<string, DropItem[]> = {};
+  for (const [slot, rawItems] of Object.entries(input as Record<string, unknown>)) {
+    if (!Array.isArray(rawItems)) continue;
+
+    const items: DropItem[] = [];
+    for (const raw of rawItems) {
+      if (!raw || typeof raw !== 'object') continue;
+      const item = raw as DropItem;
+      if (!Number.isFinite(item.item_id)) continue;
+      items.push(item);
+    }
+
+    if (items.length > 0) normalized[slot] = items;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function parseInstanceSelectionIds(selection: string): string[] {
+  if (!selection) return [];
+  if (!selection.startsWith('ids:')) return [selection];
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const raw of selection.slice(4).split(',')) {
+    const value = raw.trim();
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    ids.push(value);
+  }
+  return ids;
+}
+
+function encodeInstanceSelectionIds(ids: string[]): string {
+  const seen = new Set<string>();
+  const unique = ids
+    .map((id) => id.trim())
+    .filter((id) => {
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    })
+    .sort((a, b) => Number(a) - Number(b));
+
+  if (unique.length === 0) return '';
+  if (unique.length === 1) return unique[0];
+  return `ids:${unique.join(',')}`;
 }
 
 const FALLBACK_SEASON_CONFIG: SeasonConfigResponse = {
@@ -318,12 +414,26 @@ function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
     const params = new URLSearchParams();
     if (className) params.set('class_name', className);
     if (specParam) params.set('spec', specParam);
+    let url = '';
+    if (selectedId.startsWith('type:')) {
+      url = `${API_URL}/api/instances/type/${selectedId.slice(5)}/drops`;
+    } else if (selectedId.startsWith('ids:')) {
+      const ids = parseInstanceSelectionIds(selectedId)
+        .filter((id) => id !== '-1' && id !== '-32')
+        .join(',');
+      if (!ids) {
+        setDrops(null);
+        setLoading(false);
+        return;
+      }
+      params.set('ids', ids);
+      url = `${API_URL}/api/instances/drops`;
+    } else {
+      url = `${API_URL}/api/instances/${selectedId}/drops`;
+    }
     const qs = params.toString();
-    const url = selectedId.startsWith('type:')
-      ? `${API_URL}/api/instances/type/${selectedId.slice(5)}/drops`
-      : `${API_URL}/api/instances/${selectedId}/drops`;
     fetchJson<any>(`${url}${qs ? `?${qs}` : ''}`)
-      .then((data) => setDrops(data.detail ? null : data))
+      .then((data) => setDrops(data?.detail ? null : coerceDropsResponse(data)))
       .catch(() => setDrops(null))
       .finally(() => setLoading(false));
   }, [selectedId, className, specParam]);
@@ -359,7 +469,7 @@ function Spinner() {
 // --- Page ---
 
 export default function DropFinderPage() {
-  const { simcInput } = useSimContext();
+  const { simcInput, maxCombinations } = useSimContext();
   const characterDefaultsKey = getCharacterDefaultsKeyFromSimcInput(simcInput);
   // Spec selection: main spec on by default, off-specs toggleable
   const parsedCharacter = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
@@ -442,6 +552,7 @@ export default function DropFinderPage() {
   const [difficulty, setDifficulty] = useState('heroic');
   const [dungeonDiff, setDungeonDiff] = useState('mythic+10');
   const [upgradeLevel, setUpgradeLevel] = useState(0);
+  const [simHighestTrackLevel, setSimHighestTrackLevel] = useState(false);
   const [autoCatalyze, setAutoCatalyze] = useState(true);
   const [copyEnchantsGems, setCopyEnchantsGems] = useState(() =>
     getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
@@ -495,6 +606,9 @@ export default function DropFinderPage() {
     if (typeof restored.upgradeLevel === 'number' && Number.isFinite(restored.upgradeLevel)) {
       setUpgradeLevel(Math.max(0, Math.floor(restored.upgradeLevel)));
     }
+    if (typeof restored.simHighestTrackLevel === 'boolean') {
+      setSimHighestTrackLevel(restored.simHighestTrackLevel);
+    }
     if (typeof restored.autoCatalyze === 'boolean') {
       setAutoCatalyze(restored.autoCatalyze);
     }
@@ -529,8 +643,29 @@ export default function DropFinderPage() {
   const isRaid = category === 'raids';
   const activeDungeonCat = dungeonCats.find((dc) => dc.cat.key === category);
   const isDungeon = !!activeDungeonCat;
+  const dungeonInstances = useMemo(() => activeDungeonCat?.instances ?? [], [activeDungeonCat]);
+  const activeInstances = isRaid ? raids : dungeonInstances;
+  const hasImages = activeInstances.some((i) => i.id > 0 || !!i.image_url?.trim());
+
+  const allKey = isRaid
+    ? 'type:raid'
+    : String(activeDungeonCat?.cat.poolInstanceId ?? 'type:dungeon');
+
+  const selectedDungeonIds = useMemo(() => {
+    if (!isDungeon) return new Set<string>();
+    if (selectedId === allKey) {
+      return new Set(dungeonInstances.map((inst) => String(inst.id)));
+    }
+    return new Set(parseInstanceSelectionIds(selectedId));
+  }, [isDungeon, selectedId, allKey, dungeonInstances]);
+
+  const allDungeonsSelected =
+    isDungeon && dungeonInstances.length > 0 && selectedDungeonIds.size === dungeonInstances.length;
+
   const selectedInstance =
-    selectedId && !selectedId.startsWith('type:')
+    selectedId &&
+    !selectedId.startsWith('type:') &&
+    !selectedId.startsWith('ids:')
       ? instances.find((i) => String(i.id) === selectedId)
       : null;
 
@@ -574,14 +709,6 @@ export default function DropFinderPage() {
     return null;
   }, [selectedDifficultyDef, upgradeTracks, drops, difficulty, dungeonDiff]);
 
-  const dungeonInstances = useMemo(() => activeDungeonCat?.instances ?? [], [activeDungeonCat]);
-  const activeInstances = isRaid ? raids : dungeonInstances;
-  const hasImages = activeInstances.some((i) => i.id > 0 || !!i.image_url?.trim());
-
-  const allKey = isRaid
-    ? 'type:raid'
-    : String(activeDungeonCat?.cat.poolInstanceId ?? 'type:dungeon');
-
   const instanceOptions = useMemo(() => {
     const list = isRaid ? raids : dungeonInstances;
     return [
@@ -615,13 +742,142 @@ export default function DropFinderPage() {
     });
   }, [currentTrackInfo, upgradeLevelOptions]);
 
+  const highestUpgradeLevel = useMemo(() => {
+    if (!currentTrackInfo || upgradeLevelOptions.length === 0) return null;
+    return upgradeLevelOptions.reduce((max, opt) => Math.max(max, Number(opt.key)), 0);
+  }, [currentTrackInfo, upgradeLevelOptions]);
+
+  const effectiveUpgradeLevel = useMemo(() => {
+    if (!simHighestTrackLevel) return upgradeLevel;
+    if (highestUpgradeLevel == null || highestUpgradeLevel <= 0) return upgradeLevel;
+    return highestUpgradeLevel;
+  }, [simHighestTrackLevel, highestUpgradeLevel, upgradeLevel]);
+
+  const estimatedComboCount = useMemo(() => {
+    if (!drops || selected.size === 0) return 0;
+
+    const seen = new Set<string>();
+    let combos = 0;
+
+    for (const [slot, items] of Object.entries(drops)) {
+      for (const item of items) {
+        if (!selected.has(item.item_id)) continue;
+        if (!itemMatchesActiveLootSpec(item.specs, activeSpecIds, classId)) continue;
+
+        const resolved = resolveUpgrade(
+          item,
+          difficulty,
+          dungeonDiff,
+          effectiveUpgradeLevel,
+          upgradeTracks
+        );
+        const baseBonus = resolved.bonus_id ? [resolved.bonus_id] : [];
+        const baseBonusKey = [...baseBonus].sort((a, b) => a - b).join(':');
+        const candidateSlots = getDroptimizerCandidateSlots(slot, item.inventory_type);
+        if (candidateSlots.length === 0) continue;
+
+        for (const candidateSlot of candidateSlots) {
+          const baseKey = [
+            candidateSlot,
+            item.item_id,
+            resolved.ilvl,
+            baseBonusKey,
+            item.inventory_type ?? 0,
+            0,
+          ].join('|');
+          if (!seen.has(baseKey)) {
+            seen.add(baseKey);
+            combos += 1;
+          }
+        }
+
+        if (autoCatalyze && item.can_catalyst) {
+          const convertSlot =
+            slot === 'Other' ? slotFromInventoryType(item.inventory_type) : slotLabelToSimSlot(slot);
+          if (!convertSlot) continue;
+          // Catalyst conversion for a given class/slot resolves to the same tier target item.
+          // Count one catalyst candidate per resulting slot+upgrade state, not per source item.
+          const catalystKey = [
+            convertSlot,
+            resolved.ilvl,
+            baseBonusKey,
+            1,
+          ].join('|');
+          if (!seen.has(catalystKey)) {
+            seen.add(catalystKey);
+            combos += 1;
+          }
+        }
+      }
+    }
+
+    return combos;
+  }, [
+    drops,
+    selected,
+    activeSpecIds,
+    classId,
+    difficulty,
+    dungeonDiff,
+    effectiveUpgradeLevel,
+    upgradeTracks,
+    autoCatalyze,
+  ]);
+
   function selectAll(itemIds: number[]) {
     setSelected(new Set(itemIds));
   }
 
-  const headerLabel =
-    selectedInstance?.name ||
-    (selectedId.startsWith('type:') ? `All ${isRaid ? 'Raids' : 'Dungeons'}` : '');
+  const toggleAllDungeons = useCallback(() => {
+    if (!isDungeon) return;
+    if (allDungeonsSelected) {
+      setSelectedId('');
+      return;
+    }
+    setSelectedId(allKey);
+  }, [isDungeon, allDungeonsSelected, allKey, setSelectedId]);
+
+  const toggleDungeonSelection = useCallback(
+    (instanceId: string) => {
+      if (!isDungeon) return;
+      const next = new Set(selectedDungeonIds);
+      if (next.has(instanceId)) next.delete(instanceId);
+      else next.add(instanceId);
+
+      if (next.size === 0) {
+        setSelectedId('');
+        return;
+      }
+      if (next.size === dungeonInstances.length && dungeonInstances.length > 0) {
+        setSelectedId(allKey);
+        return;
+      }
+      setSelectedId(encodeInstanceSelectionIds([...next]));
+    },
+    [isDungeon, selectedDungeonIds, dungeonInstances.length, allKey, setSelectedId]
+  );
+
+  const headerLabel = useMemo(() => {
+    if (selectedInstance?.name) return selectedInstance.name;
+    if (selectedId.startsWith('type:')) return `All ${isRaid ? 'Raids' : 'Dungeons'}`;
+    if (isDungeon && selectedId === allKey) return `All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`;
+    if (isDungeon && selectedDungeonIds.size > 1) return `${selectedDungeonIds.size} Dungeons`;
+    if (isDungeon && selectedDungeonIds.size === 1) {
+      const [onlyId] = [...selectedDungeonIds];
+      const inst = dungeonInstances.find((item) => String(item.id) === onlyId);
+      return inst?.name ?? '';
+    }
+    return '';
+  }, [
+    selectedInstance,
+    selectedId,
+    isRaid,
+    isDungeon,
+    allKey,
+    activeDungeonCat,
+    selectedDungeonIds,
+    dungeonInstances,
+  ]);
 
   // Sim submission
   const buildPayload = useCallback(async () => {
@@ -652,7 +908,13 @@ export default function DropFinderPage() {
           if (!itemMatchesActiveLootSpec(item.specs, activeSpecIds, classId)) {
             continue;
           }
-          const resolved = resolveUpgrade(item, difficulty, dungeonDiff, upgradeLevel, upgradeTracks);
+          const resolved = resolveUpgrade(
+            item,
+            difficulty,
+            dungeonDiff,
+            effectiveUpgradeLevel,
+            upgradeTracks
+          );
           let simItem: SimDropItem = {
             ...item,
             ilevel: resolved.ilvl,
@@ -708,7 +970,7 @@ export default function DropFinderPage() {
     simcInput,
     difficulty,
     dungeonDiff,
-    upgradeLevel,
+    effectiveUpgradeLevel,
     autoCatalyze,
     copyEnchantsGems,
     upgradeTracks,
@@ -739,6 +1001,7 @@ export default function DropFinderPage() {
         difficulty,
         dungeonDiff,
         upgradeLevel,
+        simHighestTrackLevel,
         autoCatalyze,
         copyEnchantsGems,
         category,
@@ -768,6 +1031,11 @@ export default function DropFinderPage() {
         <DungeonGrid
           value={selectedId}
           onChange={setSelectedId}
+          multi={isDungeon}
+          selectedValues={isDungeon ? selectedDungeonIds : undefined}
+          allSelected={isDungeon ? allDungeonsSelected : undefined}
+          onToggleValue={isDungeon ? toggleDungeonSelection : undefined}
+          onToggleAll={isDungeon ? toggleAllDungeons : undefined}
           instances={activeInstances}
           allKey={allKey}
           allLabel={isRaid ? 'All Raids' : `All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`}
@@ -775,11 +1043,42 @@ export default function DropFinderPage() {
       ) : category ? (
         <div className="card p-5">
           <label className="label-text">{isRaid ? 'Select Raid' : 'Select Dungeon'}</label>
-          <ToggleButtonGroup
-            value={selectedId}
-            onChange={setSelectedId}
-            options={instanceOptions}
-          />
+          {isRaid ? (
+            <ToggleButtonGroup
+              value={selectedId}
+              onChange={setSelectedId}
+              options={instanceOptions}
+            />
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={toggleAllDungeons}
+                className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
+                  allDungeonsSelected
+                    ? 'border-gold/40 bg-gold/[0.08] text-gold'
+                    : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+                }`}
+              >
+                {`All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`}
+              </button>
+              {dungeonInstances.map((inst) => {
+                const active = selectedDungeonIds.has(String(inst.id));
+                return (
+                  <button
+                    key={inst.id}
+                    onClick={() => toggleDungeonSelection(String(inst.id))}
+                    className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
+                      active
+                        ? 'border-gold/40 bg-gold/[0.08] text-gold'
+                        : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+                    }`}
+                  >
+                    {inst.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -842,29 +1141,31 @@ export default function DropFinderPage() {
             </div>
           </div>
 
-          {selectedDifficultyDef?.track && currentTrackInfo && drops && upgradeLevelOptions.length > 0 && (
-            <div>
-              <label className="label-text">Upgrade Level</label>
-              <div className="max-w-md">
-                <label className="flex items-center gap-3 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm">
-                  <span className="shrink-0 text-zinc-300">Upgrade up to:</span>
-                  <select
-                    value={upgradeLevel}
-                    onChange={(e) => setUpgradeLevel(Number(e.target.value))}
-                    className="w-full bg-transparent text-zinc-100 outline-none"
-                  >
-                    {upgradeLevelOptions.map((opt) => (
-                      <option key={opt.key} value={opt.key} className="bg-zinc-900 text-zinc-100">
-                        {opt.sublabel
-                          ? `${opt.sublabel} - ${opt.label}`
-                          : String(opt.label)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            </div>
-          )}
+        </div>
+      )}
+
+      {(isRaid || isDungeon) && selectedId && activeDifficulties.length > 0 && (
+        <div className="card p-5">
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <ToggleOptionCard
+              checked={simHighestTrackLevel}
+              onToggle={() => setSimHighestTrackLevel((prev) => !prev)}
+              title={currentTrackInfo?.name ? `Sim at Highest Level (${currentTrackInfo.name})` : 'Sim at Highest Level'}
+              description="Treat selected drops as max level in the selected track."
+            />
+            <ToggleOptionCard
+              checked={autoCatalyze}
+              onToggle={() => setAutoCatalyze((prev) => !prev)}
+              title="Auto Catalyst"
+              description="Add catalyst-converted alternatives for eligible items."
+            />
+            <ToggleOptionCard
+              checked={copyEnchantsGems}
+              onToggle={() => setCopyEnchantsGems((prev) => !prev)}
+              title="Copy Enchants/Gems"
+              description="Apply equipped enchants and gems to items that don't have one."
+            />
+          </div>
         </div>
       )}
 
@@ -926,12 +1227,14 @@ export default function DropFinderPage() {
       {drops && (
         <>
           <div className="flex justify-end">
-            <Link
-              href="/wishlist"
-              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 hover:border-zinc-500 hover:text-white"
-            >
-              Open Wishlist
-            </Link>
+            <div className="flex items-center gap-2">
+              <ComboPill
+                comboCount={estimatedComboCount}
+                maxCombinations={maxCombinations ?? undefined}
+                size="md"
+                glowWhenActive
+              />
+            </div>
           </div>
           <DropSlotList
             drops={drops}
@@ -950,13 +1253,9 @@ export default function DropFinderPage() {
             classId={classId}
             difficulty={difficulty}
             dungeonDiff={dungeonDiff}
-            upgradeLevel={upgradeLevel}
+            upgradeLevel={effectiveUpgradeLevel}
             upgradeTracks={upgradeTracks}
             headerLabel={headerLabel}
-            autoCatalyze={autoCatalyze}
-            onToggleAutoCatalyze={() => setAutoCatalyze((prev) => !prev)}
-            copyEnchantsGems={copyEnchantsGems}
-            onToggleCopyEnchantsGems={() => setCopyEnchantsGems((prev) => !prev)}
             isWishlisted={(itemId) => wishlistIds.has(itemId)}
             onToggleWishlist={(item, slotLabel, meta) => {
               const next = toggleWishlistEntry({ item, slot: slotLabel, meta }, wishlistOwnerKey);

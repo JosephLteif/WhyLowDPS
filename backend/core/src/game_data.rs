@@ -67,6 +67,187 @@ fn primary_stat_filtered_slot(item_class: i64, inv_type: i64) -> bool {
     item_class == 2 || inv_type == 12 || inv_type == 14 || inv_type == 23
 }
 
+fn normalize_drop_key_part(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+fn canonical_drop_key(encounter_scope_id: i64, item: &crate::types::GameItem) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        encounter_scope_id,
+        item.inventory_type.unwrap_or(0),
+        item.class.unwrap_or(0),
+        item.subclass.unwrap_or(0),
+        normalize_drop_key_part(&item.name)
+    )
+}
+
+fn drop_candidate_score(
+    item: &crate::types::GameItem,
+    can_catalyst: bool,
+    is_catalyst: bool,
+    has_diff_info: bool,
+    has_dungeon_info: bool,
+) -> i64 {
+    let mut score = (item.quality as i64) * 10_000 + item.base_ilevel.unwrap_or(0);
+    if can_catalyst {
+        score += 500;
+    }
+    if is_catalyst {
+        score += 250;
+    }
+    if has_diff_info {
+        score += 100;
+    }
+    if has_dungeon_info {
+        score += 100;
+    }
+    score
+}
+
+fn drop_value_dedupe_key(slot: &str, item: &Value) -> String {
+    let name = item
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(normalize_drop_key_part)
+        .unwrap_or_default();
+    let encounter = item
+        .get("encounter")
+        .and_then(|v| v.as_str())
+        .map(normalize_drop_key_part)
+        .unwrap_or_default();
+    let instance = item
+        .get("instance_name")
+        .and_then(|v| v.as_str())
+        .map(normalize_drop_key_part)
+        .unwrap_or_default();
+    let inv_type = item
+        .get("inventory_type")
+        .and_then(|v| v.as_i64())
+        .unwrap_or_default();
+
+    format!(
+        "{}|{}|{}|{}|{}",
+        normalize_drop_key_part(slot),
+        name,
+        encounter,
+        instance,
+        inv_type
+    )
+}
+
+fn drop_value_score(item: &Value) -> i64 {
+    let quality = item.get("quality").and_then(|v| v.as_i64()).unwrap_or_default();
+    let ilevel = item.get("ilevel").and_then(|v| v.as_i64()).unwrap_or_default();
+    let can_catalyst = item
+        .get("can_catalyst")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let is_catalyst = item
+        .get("is_catalyst")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let has_diff_info = item
+        .get("difficulty_info")
+        .and_then(|v| v.as_object())
+        .is_some_and(|obj| !obj.is_empty());
+    let has_dungeon_info = item
+        .get("dungeon_info")
+        .and_then(|v| v.as_object())
+        .is_some_and(|obj| !obj.is_empty());
+
+    let mut score = quality * 10_000 + ilevel;
+    if can_catalyst {
+        score += 500;
+    }
+    if is_catalyst {
+        score += 250;
+    }
+    if has_diff_info {
+        score += 100;
+    }
+    if has_dungeon_info {
+        score += 100;
+    }
+    score
+}
+
+fn upsert_slot_candidate(
+    by_slot: &mut HashMap<String, HashMap<String, (i64, Value)>>,
+    slot: &str,
+    dedupe_key: String,
+    score: i64,
+    item_json: Value,
+) {
+    let slot_map = by_slot.entry(slot.to_string()).or_default();
+    let should_replace = match slot_map.get(&dedupe_key) {
+        Some((existing_score, _)) => score >= *existing_score,
+        None => true,
+    };
+
+    if should_replace {
+        slot_map.insert(dedupe_key, (score, item_json));
+    }
+}
+
+fn merge_drop_map_into(
+    merged: &mut HashMap<String, HashMap<String, (i64, Value)>>,
+    drops: &serde_json::Map<String, Value>,
+) {
+    for (slot, items) in drops {
+        let Some(arr) = items.as_array() else {
+            continue;
+        };
+        for item in arr {
+            let key = drop_value_dedupe_key(slot, item);
+            let score = drop_value_score(item);
+            upsert_slot_candidate(merged, slot, key, score, item.clone());
+        }
+    }
+}
+
+fn finalize_slot_map(
+    mut by_slot: HashMap<String, HashMap<String, (i64, Value)>>,
+) -> serde_json::Map<String, Value> {
+    let mut ordered = serde_json::Map::new();
+
+    for &slot in class_data::SLOT_DISPLAY_ORDER {
+        if let Some(slot_items) = by_slot.remove(slot) {
+            let mut values: Vec<Value> = slot_items
+                .into_values()
+                .map(|(_, item)| item)
+                .collect();
+            values.sort_by(|a, b| {
+                b.get("ilevel")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0)
+                    .cmp(&a.get("ilevel").and_then(|v| v.as_u64()).unwrap_or(0))
+            });
+            ordered.insert(slot.to_string(), Value::Array(values));
+        }
+    }
+
+    for (slot, slot_items) in by_slot {
+        let mut values: Vec<Value> = slot_items
+            .into_values()
+            .map(|(_, item)| item)
+            .collect();
+        values.sort_by(|a, b| {
+            b.get("ilevel")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                .cmp(&a.get("ilevel").and_then(|v| v.as_u64()).unwrap_or(0))
+        });
+        ordered.insert(slot, Value::Array(values));
+    }
+
+    ordered
+}
+
 pub fn get_instances() -> Vec<Value> {
     item_db::instances()
         .into_iter()
@@ -259,16 +440,12 @@ pub fn get_instance_drops(
 
     let drops_map = item_db::drops_by_encounter();
     let armor_slot_types = class_data::ARMOR_INVENTORY_TYPES;
-    let mut by_slot: HashMap<&str, Vec<Value>> = HashMap::new();
-    let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut by_slot: HashMap<String, HashMap<String, (i64, Value)>> = HashMap::new();
 
     for eid in encounter_ids.keys() {
         if let Some(items_list) = drops_map.get(eid) {
             for item in items_list {
                 let item_id = item.id;
-                if !seen.insert(item_id) {
-                    continue;
-                }
 
                 let inv_type = item.inventory_type.unwrap_or(0);
                 let item_class = item.class.unwrap_or(0);
@@ -531,38 +708,28 @@ pub fn get_instance_drops(
                         item_json["off_spec"] = serde_json::json!(true);
                     }
                 }
-                if !diff_info.is_empty() {
+                let has_diff_info = !diff_info.is_empty();
+                let has_dungeon_info = !dungeon_info.is_empty();
+                if has_diff_info {
                     item_json["difficulty_info"] = Value::Object(diff_info);
                 }
-                if !dungeon_info.is_empty() {
+                if has_dungeon_info {
                     item_json["dungeon_info"] = Value::Object(dungeon_info);
                 }
-                by_slot.entry(slot).or_default().push(item_json);
+                let dedupe_key = canonical_drop_key(*eid, item);
+                let score = drop_candidate_score(
+                    item,
+                    can_catalyst,
+                    is_catalyst,
+                    has_diff_info,
+                    has_dungeon_info,
+                );
+                upsert_slot_candidate(&mut by_slot, slot, dedupe_key, score, item_json);
             }
         }
     }
 
-    let mut ordered = serde_json::Map::new();
-    for &slot in class_data::SLOT_DISPLAY_ORDER {
-        if let Some(mut slot_items) = by_slot.remove(slot) {
-            slot_items.sort_by(|a, b| {
-                b.get("ilevel")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0)
-                    .cmp(&a.get("ilevel").and_then(|v| v.as_u64()).unwrap_or(0))
-            });
-            ordered.insert(slot.to_string(), Value::Array(slot_items));
-        }
-    }
-    for (slot, mut slot_items) in by_slot {
-        slot_items.sort_by(|a, b| {
-            b.get("ilevel")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0)
-                .cmp(&a.get("ilevel").and_then(|v| v.as_u64()).unwrap_or(0))
-        });
-        ordered.insert(slot.to_string(), Value::Array(slot_items));
-    }
+    let ordered = finalize_slot_map(by_slot);
 
     if ordered.is_empty() {
         None
@@ -577,8 +744,7 @@ pub fn get_drops_by_type(
     spec_name: Option<&str>,
 ) -> Option<serde_json::Map<String, Value>> {
     let instances = item_db::instances();
-    let mut merged: HashMap<&str, Vec<Value>> = HashMap::new();
-    let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    let mut merged: HashMap<String, HashMap<String, (i64, Value)>> = HashMap::new();
 
     for inst in instances {
         let itype = inst.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -587,54 +753,37 @@ pub fn get_drops_by_type(
         }
         let inst_id = inst.get("id").and_then(|id| id.as_i64()).unwrap_or(0);
         if let Some(drops) = get_instance_drops(inst_id, class_name, spec_name) {
-            for (slot, items) in &drops {
-                if let Some(arr) = items.as_array() {
-                    for item in arr {
-                        let item_id = item.get("item_id").and_then(|v| v.as_u64()).unwrap_or(0);
-                        if seen.insert(item_id) {
-                            let slot_str = match slot.as_str() {
-                                "Head" => "Head",
-                                "Neck" => "Neck",
-                                "Shoulder" => "Shoulder",
-                                "Back" => "Back",
-                                "Chest" => "Chest",
-                                "Wrist" => "Wrist",
-                                "Hands" => "Hands",
-                                "Waist" => "Waist",
-                                "Legs" => "Legs",
-                                "Feet" => "Feet",
-                                "Finger" => "Finger",
-                                "Trinket" => "Trinket",
-                                "One-Hand" => "One-Hand",
-                                "Main Hand" => "Main Hand",
-                                "Off Hand" => "Off Hand",
-                                "Two-Hand" => "Two-Hand",
-                                "Held In Off-Hand" => "Held In Off-Hand",
-                                "Shield" => "Shield",
-                                "Ranged" => "Ranged",
-                                _ => "Other",
-                            };
-                            merged.entry(slot_str).or_default().push(item.clone());
-                        }
-                    }
-                }
-            }
+            merge_drop_map_into(&mut merged, &drops);
         }
     }
 
-    let mut ordered = serde_json::Map::new();
-    for &slot in class_data::SLOT_DISPLAY_ORDER {
-        if let Some(mut slot_items) = merged.remove(slot) {
-            slot_items.sort_by(|a, b| {
-                b.get("ilevel")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0)
-                    .cmp(&a.get("ilevel").and_then(|v| v.as_u64()).unwrap_or(0))
-            });
-            ordered.insert(slot.to_string(), Value::Array(slot_items));
+    let ordered = finalize_slot_map(merged);
+
+    if ordered.is_empty() {
+        None
+    } else {
+        Some(ordered)
+    }
+}
+
+pub fn get_drops_by_instances(
+    instance_ids: &[i64],
+    class_name: Option<&str>,
+    spec_name: Option<&str>,
+) -> Option<serde_json::Map<String, Value>> {
+    let mut seen_ids = HashSet::new();
+    let mut merged: HashMap<String, HashMap<String, (i64, Value)>> = HashMap::new();
+
+    for instance_id in instance_ids {
+        if !seen_ids.insert(*instance_id) {
+            continue;
+        }
+        if let Some(drops) = get_instance_drops(*instance_id, class_name, spec_name) {
+            merge_drop_map_into(&mut merged, &drops);
         }
     }
 
+    let ordered = finalize_slot_map(merged);
     if ordered.is_empty() {
         None
     } else {

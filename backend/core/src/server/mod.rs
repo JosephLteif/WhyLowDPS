@@ -585,6 +585,10 @@ pub async fn start_with_storage_bind(
                     web::get().to(game_data_handlers::get_drops_by_type),
                 )
                 .route(
+                    "/api/instances/drops",
+                    web::get().to(game_data_handlers::get_multi_instance_drops),
+                )
+                .route(
                     "/api/instances/{id}/drops",
                     web::get().to(game_data_handlers::get_instance_drops),
                 )

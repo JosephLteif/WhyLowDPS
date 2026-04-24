@@ -334,6 +334,16 @@ pub(super) struct DropsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub(super) struct MultiDropsQuery {
+    #[serde(default)]
+    pub ids: String,
+    #[serde(default)]
+    pub class_name: String,
+    #[serde(default)]
+    pub spec: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub(super) struct EnchantOptionsQuery {
     pub slot: String,
     #[serde(default)]

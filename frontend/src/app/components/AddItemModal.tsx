@@ -32,12 +32,22 @@ const RAID_TRACK_BY_DIFFICULTY: Record<string, string> = {
 
 const UPGRADE_TRACK_MAX_LEVEL = 6;
 
+function isWorldBossInstance(inst: { name?: string; type?: string }): boolean {
+  const name = String(inst.name || '').toLowerCase();
+  const type = String(inst.type || '').toLowerCase();
+  return (
+    name.includes('world boss') ||
+    type.includes('world-boss') ||
+    type.includes('world_boss')
+  );
+}
+
 const getMappedTrackName = (
   selectedDifficulty: string,
   info: { track?: string } | null | undefined
 ): string => {
   const raidTrack = RAID_TRACK_BY_DIFFICULTY[selectedDifficulty?.toLowerCase()];
-  return raidTrack || info?.track || '';
+  return info?.track || raidTrack || '';
 };
 
 const getEffectiveTier = (
@@ -133,14 +143,19 @@ export default function AddItemModal({
   useDismissOnOutside(searchOverlayRootRef, showSearchDropdown, () => setShowSearchDropdown(false));
 
   const filteredInstances = useMemo(() => {
-    if (selectedInstance === -2)
-      return [{ id: -2, name: 'Search Results', type: 'search' }, ...instances];
-    return instances.filter((inst) => {
+    const byCategory = instances.filter((inst) => {
       const type = inst.type.toLowerCase();
-      if (category === 'raid') return type === 'raid';
+      if (category === 'world_bosses') return isWorldBossInstance(inst);
+      if (category === 'raid') return type === 'raid' && !isWorldBossInstance(inst);
       return type === 'dungeon' || type === 'expansion-dungeon' || type === 'mplus-chest';
     });
+    if (selectedInstance === -2) {
+      return [{ id: -2, name: 'Search Results', type: 'search' }, ...byCategory];
+    }
+    return byCategory;
   }, [instances, category, selectedInstance]);
+
+  const effectiveDifficulty = category === 'world_bosses' ? 'normal' : selectedDifficulty;
 
   // Reset per-item ilvl slider selections when top filters change.
   useEffect(() => {
@@ -183,7 +198,7 @@ export default function AddItemModal({
           )
         : drops;
 
-    if (groupBy === 'boss' && category === 'raid') {
+    if (groupBy === 'boss' && category !== 'dungeon') {
       // Flatten items then regroup by boss
       const flattened = Object.values(sourceData).flat();
       for (const item of flattened) {
@@ -257,6 +272,7 @@ export default function AddItemModal({
 
   const difficulties = useMemo(() => {
     if (!seasonConfig) return [];
+    if (category === 'world_bosses') return [];
 
     // If we are in Raid category, prioritize raid difficulties
     if (category === 'raid') return seasonConfig.raid_difficulties;
@@ -281,6 +297,10 @@ export default function AddItemModal({
 
   // Ensure selected difficulty is valid for the current instance/category
   useEffect(() => {
+    if (category === 'world_bosses') {
+      if (selectedDifficulty !== 'normal') setSelectedDifficulty('normal');
+      return;
+    }
     if (difficulties.length > 0) {
       const isValid = difficulties.some((d: any) => d.key === selectedDifficulty);
       if (!isValid) {
@@ -300,8 +320,8 @@ export default function AddItemModal({
 
   const handleAdd = (item: ExternalItem) => {
     const info =
-      item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
-    const trackName = getMappedTrackName(selectedDifficulty, info);
+      item.difficulty_info?.[effectiveDifficulty] || item.dungeon_info?.[effectiveDifficulty];
+    const trackName = getMappedTrackName(effectiveDifficulty, info);
     const selectedLevel = itemTiers[item.item_id];
     const baseBonusIds = info?.bonus_id ? [info.bonus_id] : [];
 
@@ -309,7 +329,7 @@ export default function AddItemModal({
       const track = upgradeTracks[trackName];
       const levelInfo = track.find((t: any) => t.level === selectedLevel);
       if (levelInfo) {
-        onAdd(item, selectedDifficulty, {
+        onAdd(item, effectiveDifficulty, {
           bonus_ids: Array.from(new Set([...baseBonusIds, levelInfo.bonus_id])),
           ilvl: levelInfo.ilvl,
           track_name: trackName,
@@ -320,7 +340,7 @@ export default function AddItemModal({
     }
     onAdd(
       item,
-      selectedDifficulty,
+      effectiveDifficulty,
       info
         ? {
             bonus_ids: baseBonusIds,
@@ -348,25 +368,36 @@ export default function AddItemModal({
                 </p>
               </div>
               <div className="flex rounded-2xl border border-white/5 bg-black/40 p-1.5 shadow-inner">
-                {['raid', 'dungeon'].map((cat: any) => (
+                {([
+                  { key: 'raid', label: 'RAID' },
+                  { key: 'dungeon', label: 'DUNGEON' },
+                  { key: 'world_bosses', label: 'WORLD BOSSES' },
+                ] as const).map((cat) => (
                   <button
-                    key={cat}
+                    key={cat.key}
                     onClick={() => {
-                      setCategory(cat);
+                      setCategory(cat.key);
                       setGlobalSearch('');
                       setShowSearchDropdown(false);
-                      const first = instances.find(
-                        (i) => i.type.toLowerCase() === (cat === 'raid' ? 'raid' : 'dungeon')
-                      );
+                      const first = instances.find((i) => {
+                        const type = i.type.toLowerCase();
+                        if (cat.key === 'world_bosses') return isWorldBossInstance(i);
+                        if (cat.key === 'raid') return type === 'raid' && !isWorldBossInstance(i);
+                        return (
+                          type === 'dungeon' ||
+                          type === 'expansion-dungeon' ||
+                          type === 'mplus-chest'
+                        );
+                      });
                       if (first) setSelectedInstance(first.id);
                     }}
-                    className={`rounded-xl px-5 py-2 text-xs font-bold transition-all ${category === cat ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    className={`rounded-xl px-5 py-2 text-xs font-bold transition-all ${category === cat.key ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                   >
-                    {cat.toUpperCase()}
+                    {cat.label}
                   </button>
                 ))}
               </div>
-              {category === 'raid' && (
+              {category !== 'dungeon' && (
                 <div className="flex rounded-2xl border border-white/5 bg-black/40 p-1.5 shadow-inner">
                   {[
                     { id: 'slot', label: 'Slot' },
@@ -442,11 +473,13 @@ export default function AddItemModal({
                 }}
               />
             </div>
-            <AddItemDifficultyToggle
-              difficulties={difficulties}
-              selectedDifficulty={selectedDifficulty}
-              onSelect={setSelectedDifficulty}
-            />
+            {category !== 'world_bosses' && (
+              <AddItemDifficultyToggle
+                difficulties={difficulties}
+                selectedDifficulty={selectedDifficulty}
+                onSelect={setSelectedDifficulty}
+              />
+            )}
           </div>
         </div>
 
@@ -473,10 +506,10 @@ export default function AddItemModal({
                       {slot}
                     </h3>
                     <div className="space-y-2">
-                      {items.map((item) => {
+                      {items.map((item, index) => {
                         const tier = getEffectiveTier(
                           item,
-                          selectedDifficulty,
+                          effectiveDifficulty,
                           itemTiers,
                           upgradeTracks
                         );
@@ -487,7 +520,7 @@ export default function AddItemModal({
                         );
                         return (
                           <div
-                            key={`${item.item_id}-${item.encounter}`}
+                            key={`${item.item_id}-${item.encounter}-${item.instance_name}-${item.inventory_type}-${index}`}
                             className="group relative rounded-2xl border border-white/5 bg-white/[0.03] p-3 shadow-sm transition-all hover:border-white/10 hover:bg-white/[0.06] hover:shadow-blue-900/10"
                           >
                             <div

@@ -884,11 +884,12 @@ export default function DropFinderPage() {
     return [...levels].sort((a, b) => a - b);
   }, [upgradeSimulationMode, highestUpgradeLevel, upgradeLevel]);
 
-  const estimatedComboCount = useMemo(() => {
+  const estimatedComboBreakdown = useMemo(() => {
     if (!drops || selected.size === 0) return 0;
 
     const seen = new Set<string>();
-    let combos = 0;
+    let gearCombos = 0;
+    let autoCatalystCombos = 0;
 
     for (const [slot, items] of Object.entries(drops)) {
       for (const item of items) {
@@ -920,7 +921,7 @@ export default function DropFinderPage() {
             ].join('|');
             if (!seen.has(baseKey)) {
               seen.add(baseKey);
-              combos += 1;
+              gearCombos += 1;
             }
           }
 
@@ -938,14 +939,19 @@ export default function DropFinderPage() {
             ].join('|');
             if (!seen.has(catalystKey)) {
               seen.add(catalystKey);
-              combos += 1;
+              autoCatalystCombos += 1;
             }
           }
         }
       }
     }
 
-    return combos;
+    return {
+      gearCombos,
+      autoCatalystCombos,
+      totalWithoutBaseline: gearCombos + autoCatalystCombos,
+      totalWithBaseline: gearCombos + autoCatalystCombos + 1,
+    };
   }, [
     drops,
     selected,
@@ -957,6 +963,11 @@ export default function DropFinderPage() {
     upgradeTracks,
     autoCatalyze,
   ]);
+
+  const estimatedComboCount =
+    typeof estimatedComboBreakdown === 'number'
+      ? estimatedComboBreakdown
+      : estimatedComboBreakdown.totalWithBaseline;
 
   function selectAll(itemIds: number[]) {
     setSelected(new Set(itemIds));
@@ -1383,13 +1394,24 @@ export default function DropFinderPage() {
       {drops && (
         <>
           <div className="flex justify-end">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col items-end gap-1">
               <ComboPill
                 comboCount={estimatedComboCount}
                 maxCombinations={maxCombinations ?? undefined}
                 size="md"
                 glowWhenActive
               />
+              {typeof estimatedComboBreakdown !== 'number' && (
+                <p className="text-xs text-zinc-400">
+                  {estimatedComboBreakdown.gearCombos.toLocaleString()} normal
+                  {estimatedComboBreakdown.gearCombos === 1 ? ' combo' : ' combos'}
+                  {' • '}
+                  +1 Currently Equipped
+                  {estimatedComboBreakdown.autoCatalystCombos > 0
+                    ? ` • ${estimatedComboBreakdown.autoCatalystCombos} Auto Catalyst`
+                    : ''}
+                </p>
+              )}
             </div>
           </div>
           <DropSlotList

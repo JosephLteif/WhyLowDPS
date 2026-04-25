@@ -13,6 +13,8 @@ import {
 } from '../lib/useItemInfo';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import GearAffixIndicators from './GearAffixIndicators';
+import GearItemCore from './GearItemCore';
 
 export interface GearItem {
   slot: string;
@@ -42,6 +44,20 @@ const GEAR_ORDER_RIGHT = [
   'trinket1',
   'trinket2',
 ];
+
+const ENCHANTABLE_SLOTS = new Set([
+  'head',
+  'neck',
+  'back',
+  'chest',
+  'wrist',
+  'legs',
+  'feet',
+  'finger1',
+  'finger2',
+  'main_hand',
+  'off_hand',
+]);
 
 function dropBaselineKey(item: GearItem): string {
   const slot = String(item.slot || '').toLowerCase();
@@ -344,6 +360,7 @@ export function GearSlotRow({
   const info = itemInfoMap[item.item_id];
   const enchant = item.enchant_id ? enchantInfoMap[item.enchant_id] : undefined;
   const gem = item.gem_id ? gemInfoMap[item.gem_id] : undefined;
+  const displayTag = info?.tag && info.tag.toLowerCase() !== 'socket' ? info.tag : '';
   const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
   const name = info?.name || item.name || `Item ${item.item_id}`;
   const icon = info?.icon || 'inv_misc_questionmark';
@@ -361,6 +378,14 @@ export function GearSlotRow({
   const needsEnchant =
     Number(item.enchant_id || 0) > 0 &&
     Number(equippedItem?.enchant_id || 0) !== Number(item.enchant_id || 0);
+  const gemEligible =
+    Number((info as any)?.sockets || 0) > 0 ||
+    Number(item.gem_id || 0) > 0 ||
+    Number(equippedItem?.gem_id || 0) > 0;
+  const enchantEligible =
+    ENCHANTABLE_SLOTS.has(String(slot || '').toLowerCase()) ||
+    Number(item.enchant_id || 0) > 0 ||
+    Number(equippedItem?.enchant_id || 0) > 0;
   const upgradeState: 'upgrade' | 'downgrade' | null = isDowngrade
     ? 'downgrade'
     : needsUpgrade || isUpgrade
@@ -395,122 +420,117 @@ export function GearSlotRow({
           }}
         />
       )}
-      <a
-        href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
-        data-wowhead={whData}
-        className={`${compact ? 'h-10 w-10' : 'h-8 w-8'} shrink-0 overflow-hidden rounded border border-border`}
-        title={name}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.preventDefault()}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={getIconUrl(icon)}
-          alt=""
-          width={compact ? 40 : 32}
-          height={compact ? 40 : 32}
-          className="h-full w-full"
-          loading="lazy"
-        />
-      </a>
-      <div className={`min-w-0 flex-1 ${rtl ? 'text-right' : ''}`}>
-        <div className={`flex items-center gap-1.5 ${rtl ? 'flex-row-reverse' : ''}`}>
-          <a
-            href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
-            data-wowhead={whData}
-            className={`${compact ? 'text-[1.08rem]' : 'text-sm'} ${compact ? 'max-w-none' : 'truncate'} font-semibold leading-tight no-underline`}
-            style={{ color: qc }}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.preventDefault()}
-          >
-            {name}
-          </a>
-          {upgradeState === 'upgrade' && (
-            <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              Upgrade
-            </span>
-          )}
-          {upgradeState === 'downgrade' && (
-            <span className="shrink-0 rounded bg-red-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-red-300">
-              Downgrade
-            </span>
-          )}
-          {item.origin === 'vault' && (
-            <span className="shrink-0 rounded bg-amber-400/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-amber-300">
-              Vault
-            </span>
-          )}
-        </div>
-        <p
-          className={`${compact ? 'whitespace-normal break-words text-[1.08rem]' : 'truncate text-sm'} text-zinc-300`}
-        >
-          {!compact && `${SLOT_LABELS[slot] || slot}`}
-          {!compact && item.ilevel > 0 && (
-            <span
-              title={
-                levelChanged
-                  ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
-                  : undefined
-              }
-              className={
-                upgradeState === 'upgrade'
+      <GearItemCore
+        align={rtl ? 'right' : 'left'}
+        itemHref={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
+        itemWowheadData={whData}
+        itemName={name}
+        itemNameColor={qc}
+        itemNameClassName={`${compact ? 'text-[1.08rem]' : 'text-sm'} ${compact ? 'max-w-none' : 'truncate'} font-semibold leading-tight no-underline`}
+        iconSrc={getIconUrl(icon)}
+        iconWidth={compact ? 40 : 32}
+        iconHeight={compact ? 40 : 32}
+        iconContainerClassName={`${compact ? 'h-10 w-10' : 'h-8 w-8'} shrink-0 overflow-hidden rounded border border-border`}
+        indicators={
+          <GearAffixIndicators
+            gemEligible={gemEligible}
+            enchantEligible={enchantEligible}
+            align={rtl ? 'right' : 'left'}
+            size={18}
+            gem={
+              gem
+                ? {
+                    icon: gem.icon,
+                    name: gem.name,
+                    href: gem.gem_id ? getWowheadUrl(gem.gem_id) : undefined,
+                    wowheadData: gem.gem_id ? `item=${gem.gem_id}` : undefined,
+                    changed: needsGem,
+                  }
+                : undefined
+            }
+            enchant={
+              enchant
+                ? {
+                    icon: enchant.icon,
+                    name: enchant.name,
+                    href: enchant.item_id ? getWowheadUrl(enchant.item_id) : undefined,
+                    wowheadData: enchant.item_id
+                      ? `item=${enchant.item_id}`
+                      : enchant.enchant_id
+                        ? `spell=${enchant.enchant_id}`
+                        : undefined,
+                    changed: needsEnchant,
+                  }
+                : undefined
+            }
+          />
+        }
+        headerExtras={
+          <>
+            {upgradeState === 'upgrade' && (
+              <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+                Upgrade
+              </span>
+            )}
+            {upgradeState === 'downgrade' && (
+              <span className="shrink-0 rounded bg-red-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-red-300">
+                Downgrade
+              </span>
+            )}
+            {item.origin === 'vault' && (
+              <span className="shrink-0 rounded bg-amber-400/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                Vault
+              </span>
+            )}
+          </>
+        }
+        detailsClassName={`${compact ? 'whitespace-normal break-words text-[1.08rem]' : 'truncate text-sm'} text-zinc-300`}
+        details={
+          <>
+            {!compact && `${SLOT_LABELS[slot] || slot}`}
+            {!compact && item.ilevel > 0 && (
+              <span
+                title={
+                  levelChanged
+                    ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
+                    : undefined
+                }
+                className={
+                  upgradeState === 'upgrade'
                   ? 'text-emerald-300'
                   : upgradeState === 'downgrade'
                     ? 'text-red-300'
                     : ''
-              }
-            >
-              {` - ${item.ilevel}`}
-            </span>
-          )}
-          {compact && item.ilevel > 0 && (
-            <span
-              title={
-                levelChanged
-                  ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
-                  : undefined
-              }
-              className={
-                upgradeState === 'upgrade'
+                }
+              >
+                {upgradeState === 'upgrade' ? ' - ↑ ' : ' - '}
+                {item.ilevel}
+              </span>
+            )}
+            {compact && item.ilevel > 0 && (
+              <span
+                title={
+                  levelChanged
+                    ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
+                    : undefined
+                }
+                className={
+                  upgradeState === 'upgrade'
                   ? 'text-emerald-300'
                   : upgradeState === 'downgrade'
                     ? 'text-red-300'
                     : ''
-              }
-            >
-              {`${item.ilevel}`}
-            </span>
-          )}
-          {compact && info?.tag && ` - ${info.tag}`}
-          {!compact && info?.tag && ` - ${info.tag}`}
-          {gem?.name ? (
-            <span
-              className={
-                needsGem
-                  ? 'rounded bg-sky-500/20 px-1 text-sky-200 ring-1 ring-sky-300/50'
-                  : 'text-sky-300/90'
-              }
-            >
-              {` - ${gem.name}`}
-            </span>
-          ) : (
-            (info?.sockets ?? 0) > 0 && <span className="text-sky-300/90"> - Socket</span>
-          )}
-          {enchant?.name && (
-            <span
-              className={
-                needsEnchant
-                  ? 'rounded bg-emerald-500/20 px-1 text-emerald-200 ring-1 ring-emerald-300/50'
-                  : 'text-emerald-300/90'
-              }
-            >
-              {` - ${enchant.name}`}
-            </span>
-          )}
-        </p>
-      </div>
+                }
+              >
+                {upgradeState === 'upgrade' ? '↑ ' : ''}
+                {item.ilevel}
+              </span>
+            )}
+            {compact && displayTag && ` - ${displayTag}`}
+            {!compact && displayTag && ` - ${displayTag}`}
+          </>
+        }
+      />
     </div>
   );
 }

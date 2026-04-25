@@ -15,6 +15,8 @@ import {
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { BlizzardItem } from '../lib/simc-generator';
+import GearAffixIndicators from './GearAffixIndicators';
+import GearItemCore from './GearItemCore';
 import TalentTree from './TalentTree';
 import { useTalentTree } from '../lib/useTalentTree';
 import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
@@ -41,6 +43,19 @@ const GEAR_ORDER_RIGHT = [
   'TRINKET_1',
   'TRINKET_2',
 ];
+const ENCHANTABLE_GEAR_SLOTS = new Set([
+  'HEAD',
+  'NECK',
+  'BACK',
+  'CHEST',
+  'WRIST',
+  'LEGS',
+  'FEET',
+  'FINGER_1',
+  'FINGER_2',
+  'MAIN_HAND',
+  'OFF_HAND',
+]);
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
 
 function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
@@ -2106,50 +2121,76 @@ function BlizzardGearSlot({
 
   const enchant = enchantId ? enchantInfoMap[enchantId] : undefined;
   const gem = gemId ? gemInfoMap[gemId] : undefined;
+  const gemEligible = (item.sockets?.length || 0) > 0 || !!gemId;
+  const enchantEligible = ENCHANTABLE_GEAR_SLOTS.has(slot) || !!enchantId;
 
   const whData = getWowheadData(item.bonus_list, item.level?.value, enchantId, gemId);
 
   return (
-    <a
-      href={getWowheadUrl(item.item.id)}
-      data-wowhead={whData}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
       className={`flex w-full min-w-0 items-start gap-3 rounded-md px-1 py-1 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
     >
-      <div
-        className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105 sm:h-12 sm:w-12"
-        style={{ borderColor: `${qc}44` }}
-      >
-        <img src={getIconUrl(icon)} alt="" className="h-full w-full object-cover" />
-        <div
-          className="absolute inset-0 ring-1 ring-inset ring-white/10"
-          style={{ boxShadow: `inset 0 0 10px ${qc}33` }}
-        />
-      </div>
-      <div
-        className={`min-w-0 ${compactNearIcon ? 'w-auto max-w-[420px]' : 'flex-1'} ${rtl ? 'text-right' : ''}`}
-      >
-        <span
-          title={item.name}
-          className="block truncate text-[13px] font-bold leading-tight hover:underline sm:text-[14px]"
-          style={{ color: qc }}
-        >
-          {item.name}
-        </span>
-        <div
-          className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium text-zinc-500 ${
-            compactNearIcon && rtl ? 'justify-end' : ''
-          }`}
-        >
-          <span className="text-zinc-400">
-            {item.level?.value} {label}
-          </span>
-          {enchant && <span className="text-emerald-400/80">&bull; {enchant.name}</span>}
-          {gem && <span className="text-sky-400/80">&bull; {gem.name}</span>}
-        </div>
-      </div>
-    </a>
+      <GearItemCore
+        align={rtl ? 'right' : 'left'}
+        itemHref={getWowheadUrl(item.item.id)}
+        itemWowheadData={whData}
+        itemName={item.name}
+        itemNameTitle={item.name}
+        itemNameColor={qc}
+        itemNameClassName="block truncate text-[13px] font-bold leading-tight hover:underline sm:text-[14px]"
+        iconSrc={getIconUrl(icon)}
+        iconWidth={48}
+        iconHeight={48}
+        iconContainerClassName="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105 sm:h-12 sm:w-12"
+        iconImageClassName="h-full w-full object-cover"
+        iconContainerStyle={{ borderColor: `${qc}44` }}
+        iconOverlay={
+          <div
+            className="absolute inset-0 ring-1 ring-inset ring-white/10"
+            style={{ boxShadow: `inset 0 0 10px ${qc}33` }}
+          />
+        }
+        indicators={
+          <div className="mt-0.5">
+            <GearAffixIndicators
+              gemEligible={gemEligible}
+              enchantEligible={enchantEligible}
+              align={rtl ? 'right' : 'left'}
+              size={16}
+              gem={
+                gem
+                  ? {
+                      icon: gem.icon,
+                      name: gem.name,
+                      href: gemId ? getWowheadUrl(gemId) : undefined,
+                      wowheadData: gemId ? `item=${gemId}` : undefined,
+                    }
+                  : undefined
+              }
+              enchant={
+                enchant
+                  ? {
+                      icon: enchant.icon,
+                      name: enchant.name,
+                      href: enchant.item_id ? getWowheadUrl(enchant.item_id) : undefined,
+                      wowheadData: enchant.item_id
+                        ? `item=${enchant.item_id}`
+                        : enchant.enchant_id
+                          ? `spell=${enchant.enchant_id}`
+                          : undefined,
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        }
+        textContainerClassName={`min-w-0 ${compactNearIcon ? 'w-auto max-w-[420px]' : 'flex-1'}`}
+        detailsClassName={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium text-zinc-500 ${
+          compactNearIcon && rtl ? 'justify-end' : ''
+        }`}
+        details={<span className="text-zinc-400">{item.level?.value} {label}</span>}
+      />
+    </div>
   );
 }
 

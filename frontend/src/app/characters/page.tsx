@@ -204,6 +204,7 @@ export default function CharactersPage() {
   );
   const [favorites, setFavorites] = useState<string[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
+  const [storageHydrated, setStorageHydrated] = useState(false);
 
   const fetchCharacters = useCallback(
     (refresh = false) => {
@@ -243,18 +244,20 @@ export default function CharactersPage() {
     } catch {
       setFavorites([]);
       setHidden([]);
+    } finally {
+      setStorageHydrated(true);
     }
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !storageHydrated) return;
     window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
-  }, [favorites]);
+  }, [favorites, storageHydrated]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !storageHydrated) return;
     window.localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(hidden));
-  }, [hidden]);
+  }, [hidden, storageHydrated]);
 
   const toggleFavorite = useCallback((char: Character) => {
     const id = characterId(char);

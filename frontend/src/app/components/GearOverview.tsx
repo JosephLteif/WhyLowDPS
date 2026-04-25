@@ -25,6 +25,9 @@ export interface GearItem {
   is_kept?: boolean;
   upgrade_levels?: number;
   origin?: string;
+  source_type?: string;
+  encounter?: string;
+  instance_name?: string;
 }
 
 // WoW character sheet order
@@ -40,10 +43,21 @@ const GEAR_ORDER_RIGHT = [
   'trinket2',
 ];
 
+function dropBaselineKey(item: GearItem): string {
+  const slot = String(item.slot || '').toLowerCase();
+  const itemId = Number(item.item_id || 0);
+  const sourceType = String(item.source_type || '').toLowerCase().trim();
+  const instance = String(item.instance_name || '').toLowerCase().trim();
+  const encounter = String(item.encounter || '').toLowerCase().trim();
+  return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
+}
+
 interface GearOverviewProps {
   gear: Record<string, GearItem>;
   title?: string;
   characterRenderUrl?: string | null;
+  equippedGear?: Record<string, GearItem>;
+  dropBaselineIlevelByKey?: Record<string, number>;
   /** Slots to highlight as upgrades */
   upgradeSlots?: Set<string>;
   /** Slots to highlight as downgrades */
@@ -55,6 +69,8 @@ export default function GearOverview({
   gear,
   title = 'Equipped Gear',
   characterRenderUrl,
+  equippedGear,
+  dropBaselineIlevelByKey = {},
   upgradeSlots,
   downgradeSlots,
   currencies,
@@ -180,6 +196,8 @@ export default function GearOverview({
                       key={slot}
                       slot={slot}
                       item={gear[slot]}
+                      equippedItem={equippedGear?.[slot]}
+                      dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                       isUpgrade={upgradeSlots?.has(slot)}
                       isDowngrade={downgradeSlots?.has(slot)}
                       itemInfoMap={itemInfoMap}
@@ -195,6 +213,8 @@ export default function GearOverview({
                       key={slot}
                       slot={slot}
                       item={gear[slot]}
+                      equippedItem={equippedGear?.[slot]}
+                      dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                       isUpgrade={upgradeSlots?.has(slot)}
                       isDowngrade={downgradeSlots?.has(slot)}
                       itemInfoMap={itemInfoMap}
@@ -211,6 +231,8 @@ export default function GearOverview({
                     <GearSlotRow
                       slot="main_hand"
                       item={gear.main_hand}
+                      equippedItem={equippedGear?.main_hand}
+                      dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                       isUpgrade={upgradeSlots?.has('main_hand')}
                       isDowngrade={downgradeSlots?.has('main_hand')}
                       itemInfoMap={itemInfoMap}
@@ -224,6 +246,8 @@ export default function GearOverview({
                     <GearSlotRow
                       slot="off_hand"
                       item={gear.off_hand}
+                      equippedItem={equippedGear?.off_hand}
+                      dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                       isUpgrade={upgradeSlots?.has('off_hand')}
                       isDowngrade={downgradeSlots?.has('off_hand')}
                       itemInfoMap={itemInfoMap}
@@ -239,6 +263,8 @@ export default function GearOverview({
                   <GearSlotRow
                     slot="main_hand"
                     item={gear.main_hand}
+                    equippedItem={equippedGear?.main_hand}
+                    dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                     isUpgrade={upgradeSlots?.has('main_hand')}
                     isDowngrade={downgradeSlots?.has('main_hand')}
                     itemInfoMap={itemInfoMap}
@@ -250,6 +276,8 @@ export default function GearOverview({
                   <GearSlotRow
                     slot="off_hand"
                     item={gear.off_hand}
+                    equippedItem={equippedGear?.off_hand}
+                    dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                     isUpgrade={upgradeSlots?.has('off_hand')}
                     isDowngrade={downgradeSlots?.has('off_hand')}
                     itemInfoMap={itemInfoMap}
@@ -271,6 +299,8 @@ export default function GearOverview({
 export function GearSlotRow({
   slot,
   item,
+  equippedItem,
+  dropBaselineIlevelByKey = {},
   isUpgrade,
   isDowngrade,
   itemInfoMap,
@@ -281,6 +311,8 @@ export function GearSlotRow({
 }: {
   slot: string;
   item?: GearItem;
+  equippedItem?: GearItem;
+  dropBaselineIlevelByKey?: Record<string, number>;
   isUpgrade?: boolean;
   isDowngrade?: boolean;
   itemInfoMap: Record<number, ItemInfo>;
@@ -319,6 +351,25 @@ export function GearSlotRow({
     item.item_id > 0
       ? getWowheadData(item.bonus_ids, item.ilevel, item.enchant_id, item.gem_id)
       : undefined;
+  const baselineDropIlevel = Number(dropBaselineIlevelByKey[dropBaselineKey(item)] || 0);
+  const needsEquip = !equippedItem || equippedItem.item_id <= 0 || equippedItem.item_id !== item.item_id;
+  const needsUpgrade =
+    Number(item.upgrade_levels || 0) > 0 ||
+    (baselineDropIlevel > 0 && Number(item.ilevel || 0) > baselineDropIlevel);
+  const levelChanged = Number(equippedItem?.ilevel || 0) > 0 && Number(equippedItem?.ilevel || 0) !== Number(item.ilevel || 0);
+  const needsGem = Number(item.gem_id || 0) > 0 && Number(equippedItem?.gem_id || 0) !== Number(item.gem_id || 0);
+  const needsEnchant =
+    Number(item.enchant_id || 0) > 0 &&
+    Number(equippedItem?.enchant_id || 0) !== Number(item.enchant_id || 0);
+  const upgradeState: 'upgrade' | 'downgrade' | null = isDowngrade
+    ? 'downgrade'
+    : needsUpgrade || isUpgrade
+      ? 'upgrade'
+      : levelChanged
+        ? Number(item.ilevel || 0) > Number(equippedItem?.ilevel || 0)
+          ? 'upgrade'
+          : 'downgrade'
+        : null;
 
   const fadeDir = rtl ? 'to left' : 'to right';
 
@@ -376,19 +427,16 @@ export function GearSlotRow({
           >
             {name}
           </a>
-          {isUpgrade && item.upgrade_levels ? (
-            <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              +{item.upgrade_levels} {item.upgrade_levels === 1 ? 'level' : 'levels'}
-            </span>
-          ) : isUpgrade ? (
+          {upgradeState === 'upgrade' && (
             <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-emerald-300">
               Upgrade
             </span>
-          ) : isDowngrade ? (
+          )}
+          {upgradeState === 'downgrade' && (
             <span className="shrink-0 rounded bg-red-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-red-300">
               Downgrade
             </span>
-          ) : null}
+          )}
           {item.origin === 'vault' && (
             <span className="shrink-0 rounded bg-amber-400/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-amber-300">
               Vault
@@ -399,16 +447,68 @@ export function GearSlotRow({
           className={`${compact ? 'whitespace-normal break-words text-[1.08rem]' : 'truncate text-sm'} text-zinc-300`}
         >
           {!compact && `${SLOT_LABELS[slot] || slot}`}
-          {!compact && item.ilevel > 0 && ` - ${item.ilevel}`}
-          {compact && item.ilevel > 0 && `${item.ilevel}`}
+          {!compact && item.ilevel > 0 && (
+            <span
+              title={
+                levelChanged
+                  ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
+                  : undefined
+              }
+              className={
+                upgradeState === 'upgrade'
+                  ? 'text-emerald-300'
+                  : upgradeState === 'downgrade'
+                    ? 'text-red-300'
+                    : ''
+              }
+            >
+              {` - ${item.ilevel}`}
+            </span>
+          )}
+          {compact && item.ilevel > 0 && (
+            <span
+              title={
+                levelChanged
+                  ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
+                  : undefined
+              }
+              className={
+                upgradeState === 'upgrade'
+                  ? 'text-emerald-300'
+                  : upgradeState === 'downgrade'
+                    ? 'text-red-300'
+                    : ''
+              }
+            >
+              {`${item.ilevel}`}
+            </span>
+          )}
           {compact && info?.tag && ` - ${info.tag}`}
           {!compact && info?.tag && ` - ${info.tag}`}
           {gem?.name ? (
-            <span className="text-sky-300/90"> - {gem.name}</span>
+            <span
+              className={
+                needsGem
+                  ? 'rounded bg-sky-500/20 px-1 text-sky-200 ring-1 ring-sky-300/50'
+                  : 'text-sky-300/90'
+              }
+            >
+              {` - ${gem.name}`}
+            </span>
           ) : (
             (info?.sockets ?? 0) > 0 && <span className="text-sky-300/90"> - Socket</span>
           )}
-          {enchant?.name && <span className="text-emerald-300/90"> - {enchant.name}</span>}
+          {enchant?.name && (
+            <span
+              className={
+                needsEnchant
+                  ? 'rounded bg-emerald-500/20 px-1 text-emerald-200 ring-1 ring-emerald-300/50'
+                  : 'text-emerald-300/90'
+              }
+            >
+              {` - ${enchant.name}`}
+            </span>
+          )}
         </p>
       </div>
     </div>

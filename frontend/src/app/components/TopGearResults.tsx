@@ -38,6 +38,15 @@ interface TopGearResultsProps {
   enableWishlistActions?: boolean;
 }
 
+function dropBaselineKey(item: ResultItem): string {
+  const slot = String(item.slot || '').toLowerCase();
+  const itemId = Number(item.item_id || 0);
+  const sourceType = String(item.source_type || '').toLowerCase().trim();
+  const instance = String(item.instance_name || '').toLowerCase().trim();
+  const encounter = String(item.encounter || '').toLowerCase().trim();
+  return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
+}
+
 function CollapsibleSection({
   title,
   defaultOpen = true,
@@ -164,6 +173,19 @@ export default function TopGearResults({
 
   const gemInfoMap = useGemInfo(allGemIds);
   useWowheadTooltips([itemInfoMap]);
+  const dropBaselineIlevelByKey = useMemo(() => {
+    const baseline: Record<string, number> = {};
+    for (const r of results) {
+      for (const it of r.items) {
+        if (it.is_kept || it.item_id <= 0) continue;
+        const key = dropBaselineKey(it);
+        const ilvl = Number(it.ilevel || 0);
+        if (ilvl <= 0) continue;
+        if (!baseline[key] || ilvl < baseline[key]) baseline[key] = ilvl;
+      }
+    }
+    return baseline;
+  }, [results]);
 
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
   const [wishlistFeedback, setWishlistFeedback] = useState('');
@@ -299,6 +321,8 @@ export default function TopGearResults({
                 : 'Best Gear'
             }
             characterRenderUrl={characterRenderUrl}
+            equippedGear={equippedGear}
+            dropBaselineIlevelByKey={dropBaselineIlevelByKey}
             upgradeSlots={upgradeSlots}
             downgradeSlots={downgradeSlots}
             currencies={currencies}
@@ -395,6 +419,7 @@ export default function TopGearResults({
                         enchantInfoMap={enchantInfoMap}
                         gemInfoMap={gemInfoMap}
                         currencies={currencies}
+                        dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                       />
                     ))}
                   </div>
@@ -415,6 +440,7 @@ export default function TopGearResults({
             selectedResultName={selectedResultName}
             onSelectResult={setSelectedResultName}
             currencies={currencies}
+            dropBaselineIlevelByKey={dropBaselineIlevelByKey}
           />
         )}
       </CollapsibleSection>

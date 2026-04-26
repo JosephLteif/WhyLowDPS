@@ -139,6 +139,8 @@ export default function Sidebar() {
   } | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const dragSourceRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
@@ -231,11 +233,30 @@ export default function Sidebar() {
   }, []);
 
   useEffect(() => {
+    const media = window.matchMedia('(max-width: 1280px)');
+    const syncNarrow = () => setIsNarrowViewport(media.matches);
+    syncNarrow();
+    media.addEventListener('change', syncNarrow);
+    return () => media.removeEventListener('change', syncNarrow);
+  }, []);
+
+  useEffect(() => {
+    if (!isNarrowViewport) {
+      setIsMobileOpen(false);
+      return;
+    }
+    const onToggle = () => setIsMobileOpen((v) => !v);
+    window.addEventListener('whylowdps:toggle-sidebar', onToggle);
+    return () => window.removeEventListener('whylowdps:toggle-sidebar', onToggle);
+  }, [isNarrowViewport]);
+
+  useEffect(() => {
     const width = isCollapsed ? '5rem' : '18rem';
-    document.documentElement.style.setProperty('--sidebar-width', width);
-    document.body.style.setProperty('--sidebar-width', width);
+    const effectiveWidth = isNarrowViewport ? '0rem' : width;
+    document.documentElement.style.setProperty('--sidebar-width', effectiveWidth);
+    document.body.style.setProperty('--sidebar-width', effectiveWidth);
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed ? '1' : '0');
-  }, [isCollapsed]);
+  }, [isCollapsed, isNarrowViewport]);
 
   useEffect(() => {
     if (!navOrder) return;
@@ -321,9 +342,20 @@ export default function Sidebar() {
   useDismissOnOutside(addMenuRef, showAddMenu, () => setShowAddMenu(false));
 
   return (
-    <aside
-      className={`fixed bottom-0 left-0 top-14 z-40 flex flex-col justify-between border-r border-border bg-surface/70 pb-4 pt-3 transition-all duration-200 ${isCollapsed ? 'w-20' : 'w-72'}`}
-    >
+    <>
+      {isNarrowViewport && isMobileOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={() => setIsMobileOpen(false)}
+          className="fixed inset-0 top-14 z-40 bg-black/55 backdrop-blur-[1px]"
+        />
+      )}
+      <aside
+        className={`fixed bottom-0 left-0 top-14 z-50 flex flex-col justify-between border-r border-border bg-surface/90 pb-4 pt-3 transition-all duration-200 ${
+          isCollapsed ? 'w-20' : 'w-72'
+        } ${isNarrowViewport ? (isMobileOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
+      >
       <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
         {!isCollapsed && (
           <div className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}>
@@ -472,9 +504,11 @@ export default function Sidebar() {
                       if (normalizedPath === normalizedHref) {
                         e.preventDefault();
                         window.scrollTo(0, 0);
+                        if (isNarrowViewport) setIsMobileOpen(false);
                         return;
                       }
                       if (hasChildren) setOpenMenu(isOpen ? null : item.label);
+                      if (isNarrowViewport) setIsMobileOpen(false);
                     }}
                     draggable={false}
                     className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
@@ -548,6 +582,7 @@ export default function Sidebar() {
                               e.preventDefault();
                               window.scrollTo(0, 0);
                             }
+                            if (isNarrowViewport) setIsMobileOpen(false);
                           }}
                           className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
                             childActive
@@ -578,7 +613,8 @@ export default function Sidebar() {
             <div className="text-[15px] font-medium text-zinc-100">{draggingLabel}</div>
           </div>
         )}
-        <div className="mt-3 mb-2 flex items-end justify-end">
+        {!isNarrowViewport && (
+          <div className="mb-2 mt-3 flex items-end justify-end">
           <button
             type="button"
             onClick={() => setIsCollapsed((v) => !v)}
@@ -587,7 +623,8 @@ export default function Sidebar() {
           >
             {isCollapsed ? '>>' : '<<'}
           </button>
-        </div>
+          </div>
+        )}
       </nav>
 
       <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
@@ -595,6 +632,7 @@ export default function Sidebar() {
           {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

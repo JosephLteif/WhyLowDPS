@@ -2,27 +2,14 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { EnchantInfo, GemInfo, ItemInfo } from '../lib/useItemInfo';
-import {
-  getIconUrl,
-  getWowheadData,
-  getWowheadUrl,
-  QUALITY_COLORS,
-  useEnchantInfo,
-  useGemInfo,
-  useItemInfo,
-} from '../lib/useItemInfo';
-import { SLOT_LABELS } from '../lib/types';
-import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { BlizzardItem } from '../lib/simc-generator';
-import GearAffixIndicators from './GearAffixIndicators';
-import GearItemCore from './GearItemCore';
 import TalentTree from './TalentTree';
 import { useTalentTree } from '../lib/useTalentTree';
 import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
 import type { NodeSelection } from '../lib/talentDecode';
 import { decodeHeader } from '../lib/talentDecode';
 import RaidProgressionGrid from './RaidProgressionGrid';
+import GearOverview, { type GearItem as OverviewGearItem } from './GearOverview';
 import {
   API_URL,
   fetchJson,
@@ -32,30 +19,6 @@ import {
 } from '../lib/api';
 import { characterHref } from '../lib/routes';
 
-const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
-const GEAR_ORDER_RIGHT = [
-  'HANDS',
-  'WAIST',
-  'LEGS',
-  'FEET',
-  'FINGER_1',
-  'FINGER_2',
-  'TRINKET_1',
-  'TRINKET_2',
-];
-const ENCHANTABLE_GEAR_SLOTS = new Set([
-  'HEAD',
-  'NECK',
-  'BACK',
-  'CHEST',
-  'WRIST',
-  'LEGS',
-  'FEET',
-  'FINGER_1',
-  'FINGER_2',
-  'MAIN_HAND',
-  'OFF_HAND',
-]);
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
 
 function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
@@ -135,14 +98,6 @@ export default function CharacterPanel({
 }: CharacterPanelProps) {
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const armoryUrl = `https://worldofwarcraft.blizzard.com/en-us/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`;
-
-  const itemsBySlot = useMemo(() => {
-    const map: Record<string, BlizzardItem> = {};
-    for (const item of equipment.equipped_items || []) {
-      map[item.slot.type] = item;
-    }
-    return map;
-  }, [equipment]);
 
   // --- Talent & Spec Logic (Lifted for SimC Generation) ---
   const activeSpec = useMemo(() => {
@@ -228,39 +183,24 @@ export default function CharacterPanel({
   }, [activeLoadout, tree, specId, activeSpec]);
   // --- End Talent & SimC Logic ---
 
-  const allItemQueries = useMemo(() => {
-    return (equipment.equipped_items || []).map((it) => ({
-      item_id: it.item.id,
-      bonus_ids: it.bonus_list,
-    }));
-  }, [equipment]);
-
-  const itemInfoMap = useItemInfo(allItemQueries);
-
-  const allEnchantIds = useMemo(() => {
-    const ids = new Set<number>();
+  const profileGear = useMemo(() => {
+    const normalized: Record<string, OverviewGearItem> = {};
     for (const it of equipment.equipped_items || []) {
-      for (const e of it.enchantments || []) {
-        if (e.enchantment_id) ids.add(e.enchantment_id);
-      }
+      const rawSlot = String(it.slot?.type || '').toUpperCase();
+      if (!rawSlot) continue;
+      const slot = rawSlot.toLowerCase().replace(/_(1|2)$/i, '$1');
+      normalized[slot] = {
+        slot,
+        item_id: Number(it.item?.id || 0),
+        ilevel: Number(it.level?.value || 0),
+        name: it.name || '',
+        bonus_ids: Array.isArray(it.bonus_list) ? it.bonus_list : [],
+        enchant_id: Number(it.enchantments?.[0]?.enchantment_id || 0) || undefined,
+        gem_id: Number(it.sockets?.[0]?.item?.id || 0) || undefined,
+      };
     }
-    return [...ids];
+    return normalized;
   }, [equipment]);
-
-  const enchantInfoMap = useEnchantInfo(allEnchantIds);
-
-  const allGemIds = useMemo(() => {
-    const ids = new Set<number>();
-    for (const it of equipment.equipped_items || []) {
-      for (const s of it.sockets || []) {
-        if (s.item?.id) ids.add(s.item.id);
-      }
-    }
-    return [...ids];
-  }, [equipment]);
-
-  const gemInfoMap = useGemInfo(allGemIds);
-  useWowheadTooltips([equipment, itemInfoMap]);
   const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic'>('raiding');
 
   return (
@@ -334,71 +274,11 @@ export default function CharacterPanel({
       {pageTab === 'profile' && (
         <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex min-w-0 flex-col gap-6">
-            <div className="card relative flex flex-col overflow-hidden p-4 sm:p-6">
-              {characterMediaUrl && (
-                <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
-                  <img
-                    src={characterMediaUrl}
-                    alt={name}
-                    className="pointer-events-none mx-auto h-72 w-auto object-contain opacity-90 sm:h-[26rem] lg:h-[186%] lg:-translate-y-[8%] lg:opacity-65 lg:mix-blend-lighten"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
-
-              <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_230px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_300px_minmax(0,1fr)]">
-                <div className="min-w-0 space-y-3">
-                  {GEAR_ORDER_LEFT.map((slot) => (
-                    <BlizzardGearSlot
-                      key={slot}
-                      slot={slot}
-                      item={itemsBySlot[slot]}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                    />
-                  ))}
-                </div>
-
-                <div className="hidden lg:block" />
-
-                <div className="min-w-0 space-y-3">
-                  {GEAR_ORDER_RIGHT.map((slot) => (
-                    <BlizzardGearSlot
-                      key={slot}
-                      slot={slot}
-                      item={itemsBySlot[slot]}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                      align="right"
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
-                <BlizzardGearSlot
-                  slot="MAIN_HAND"
-                  item={itemsBySlot.MAIN_HAND}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                  align="right"
-                  compactNearIcon
-                />
-                <BlizzardGearSlot
-                  slot="OFF_HAND"
-                  item={itemsBySlot.OFF_HAND}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                  align="left"
-                />
-              </div>
-            </div>
+            <GearOverview
+              gear={profileGear}
+              title="Equipped Gear"
+              characterRenderUrl={characterMediaUrl}
+            />
 
             <TalentsCard
               activeSpec={activeSpec}
@@ -2067,129 +1947,6 @@ function StatRow({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between text-[13px]">
       <span className="text-zinc-400">{label}</span>
       <span className="font-mono font-bold text-zinc-200">{value}</span>
-    </div>
-  );
-}
-
-function BlizzardGearSlot({
-  slot,
-  item,
-  itemInfoMap,
-  enchantInfoMap,
-  gemInfoMap,
-  align = 'left',
-  compactNearIcon = false,
-}: {
-  slot: string;
-  item?: BlizzardItem;
-  itemInfoMap: Record<number, ItemInfo>;
-  enchantInfoMap: Record<number, EnchantInfo>;
-  gemInfoMap: Record<number, GemInfo>;
-  align?: 'left' | 'right';
-  compactNearIcon?: boolean;
-}) {
-  const rtl = align === 'right';
-  const normalizedSlotKey = slot
-    .toLowerCase()
-    .replace(/_([12])$/, '$1')
-    .replace(/__/g, '_');
-  const label =
-    SLOT_LABELS[normalizedSlotKey] ||
-    slot
-      .toLowerCase()
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-
-  if (!item) {
-    return (
-      <div className={`flex items-center gap-3 ${rtl ? 'flex-row-reverse' : ''}`}>
-        <div className="h-12 w-12 shrink-0 rounded-lg border border-white/5 bg-white/[0.02]" />
-        <div className={rtl ? 'text-right' : ''}>
-          <p className="text-[13px] font-medium text-zinc-500">{label}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const info = itemInfoMap[item.item.id];
-  const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
-  const icon = info?.icon || 'inv_misc_questionmark';
-
-  // Extract first enchant and gem for display
-  const enchantId = item.enchantments?.[0]?.enchantment_id;
-  const gemId = item.sockets?.[0]?.item?.id;
-
-  const enchant = enchantId ? enchantInfoMap[enchantId] : undefined;
-  const gem = gemId ? gemInfoMap[gemId] : undefined;
-  const gemEligible = (item.sockets?.length || 0) > 0 || !!gemId;
-  const enchantEligible = ENCHANTABLE_GEAR_SLOTS.has(slot) || !!enchantId;
-
-  const whData = getWowheadData(item.bonus_list, item.level?.value, enchantId, gemId);
-
-  return (
-    <div
-      className={`flex w-full min-w-0 items-start gap-3 rounded-md px-1 py-1 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
-    >
-      <GearItemCore
-        align={rtl ? 'right' : 'left'}
-        itemHref={getWowheadUrl(item.item.id)}
-        itemWowheadData={whData}
-        itemName={item.name}
-        itemNameTitle={item.name}
-        itemNameColor={qc}
-        itemNameClassName="block truncate text-[13px] font-bold leading-tight hover:underline sm:text-[14px]"
-        iconSrc={getIconUrl(icon)}
-        iconWidth={48}
-        iconHeight={48}
-        iconContainerClassName="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105 sm:h-12 sm:w-12"
-        iconImageClassName="h-full w-full object-cover"
-        iconContainerStyle={{ borderColor: `${qc}44` }}
-        iconOverlay={
-          <div
-            className="absolute inset-0 ring-1 ring-inset ring-white/10"
-            style={{ boxShadow: `inset 0 0 10px ${qc}33` }}
-          />
-        }
-        indicators={
-          <div className="mt-0.5">
-            <GearAffixIndicators
-              gemEligible={gemEligible}
-              enchantEligible={enchantEligible}
-              align={rtl ? 'right' : 'left'}
-              size={16}
-              gem={
-                gem
-                  ? {
-                      icon: gem.icon,
-                      name: gem.name,
-                      href: gemId ? getWowheadUrl(gemId) : undefined,
-                      wowheadData: gemId ? `item=${gemId}` : undefined,
-                    }
-                  : undefined
-              }
-              enchant={
-                enchant
-                  ? {
-                      icon: enchant.icon,
-                      name: enchant.name,
-                      href: enchant.item_id ? getWowheadUrl(enchant.item_id) : undefined,
-                      wowheadData: enchant.item_id
-                        ? `item=${enchant.item_id}`
-                        : enchant.enchant_id
-                          ? `spell=${enchant.enchant_id}`
-                          : undefined,
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        }
-        textContainerClassName={`min-w-0 ${compactNearIcon ? 'w-auto max-w-[420px]' : 'flex-1'}`}
-        detailsClassName={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium text-zinc-500 ${
-          compactNearIcon && rtl ? 'justify-end' : ''
-        }`}
-        details={<span className="text-zinc-400">{item.level?.value} {label}</span>}
-      />
     </div>
   );
 }

@@ -33,15 +33,32 @@ export default function TopHeader() {
     router.push('/');
   };
 
+  const handleSidebarToggle = () => {
+    window.dispatchEvent(new Event('whylowdps:toggle-sidebar'));
+  };
+
   return (
     <>
       <header className="fixed top-0 z-50 w-full border-b border-border/80 bg-bg/90 backdrop-blur-xl">
-        <div className="flex h-14 items-center justify-between px-6">
+        <div className="flex h-14 items-center justify-between gap-2 px-3 md:px-6">
           <div className="flex items-center gap-3">
             <button
               type="button"
+              onClick={handleSidebarToggle}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-all hover:border-zinc-500 hover:bg-white/5 hover:text-white xl:hidden"
+              title="Toggle sidebar"
+              aria-label="Toggle sidebar"
+            >
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                <path d="M2.5 4h11" />
+                <path d="M2.5 8h11" />
+                <path d="M2.5 12h11" />
+              </svg>
+            </button>
+            <button
+              type="button"
               onClick={handleBack}
-              className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3 py-1.5 text-[13px] font-medium text-zinc-300 transition-all hover:border-zinc-500 hover:bg-white/5 hover:text-white"
+              className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[13px] font-medium text-zinc-300 transition-all hover:border-zinc-500 hover:bg-white/5 hover:text-white sm:px-3"
               title="Go back"
               aria-label="Go back"
             >
@@ -57,7 +74,7 @@ export default function TopHeader() {
                 <path d="M7 3L2 8l5 5" />
                 <path d="M3 8h10" />
               </svg>
-              Back
+              <span className="hidden sm:inline">Back</span>
             </button>
             <Link href="/" className="group flex items-center gap-2.5">
               <img
@@ -65,19 +82,20 @@ export default function TopHeader() {
                 alt="WhyLowDps"
                 className="h-8 w-8 object-contain drop-shadow-sm"
               />
-              <span className="text-[18px] font-bold tracking-tight text-gray-100 transition-colors group-hover:text-white">
+              <span className="text-[17px] font-bold tracking-tight text-gray-100 transition-colors group-hover:text-white sm:text-[18px]">
                 WhyLowDps
               </span>
             </Link>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             {!loading && (
               <>
                 {user ? (
-                  <div className="flex items-center gap-4">
-                    <div className="flex flex-col items-end">
-                      <span className="text-[13px] font-medium text-gold">{user.battletag}</span>
+                  <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                    <div className="hidden h-6 w-px bg-border sm:block" />
+                    <div className="hidden min-w-0 flex-col items-end sm:flex">
+                      <span className="truncate text-[13px] font-medium text-gold">{user.battletag}</span>
                       <Link
                         href="/characters"
                         className="text-[13px] text-zinc-300 transition-colors hover:text-white"
@@ -85,7 +103,6 @@ export default function TopHeader() {
                         My Characters
                       </Link>
                     </div>
-                    <div className="h-6 w-px bg-border" />
                     <button
                       onClick={() => logout(true)}
                       className="text-[14px] font-medium text-zinc-300 transition-colors hover:text-white"

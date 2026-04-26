@@ -215,8 +215,8 @@ export default function ResultRow({
         className="absolute inset-y-0 left-0 bg-white/[0.03]"
         style={{ width: `${barWidth}%` }}
       />
-      <div className="relative flex items-center justify-between gap-4 px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+      <div className="relative flex flex-col gap-2 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5 lg:items-center">
           {rank != null && (
             <span className="w-6 shrink-0 text-right font-mono text-[14px] tabular-nums text-zinc-300">
               {rank}
@@ -273,9 +273,9 @@ export default function ResultRow({
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="grid shrink-0 grid-cols-3 gap-3 lg:flex lg:items-center">
           <span
-            className={`flex w-32 items-center justify-end gap-1.5 font-mono text-[15px] tabular-nums ${
+            className={`flex min-w-0 items-center justify-start gap-1.5 font-mono text-[14px] tabular-nums lg:w-32 lg:justify-end lg:text-[15px] ${
               !isEquipped && result.delta > 0
                 ? 'text-emerald-400'
                 : !isEquipped && result.delta < 0
@@ -295,11 +295,11 @@ export default function ResultRow({
               </span>
             )}
           </span>
-          <span className="w-20 text-right font-mono text-[15px] tabular-nums text-zinc-200">
+          <span className="text-left font-mono text-[14px] tabular-nums text-zinc-200 lg:w-20 lg:text-right lg:text-[15px]">
             {Math.round(result.dps).toLocaleString()}
           </span>
-          <div className="flex w-28 flex-col items-end gap-0.5">
-            <span className="text-[14px] tabular-nums text-zinc-200">
+          <div className="flex min-w-0 flex-col items-start gap-0.5 lg:w-28 lg:items-end">
+            <span className="text-[13px] tabular-nums text-zinc-200 lg:text-[14px]">
               {(baseAvgIlevel + ilvlGain).toFixed(2)}
               {ilvlGain !== 0 && (
                 <span

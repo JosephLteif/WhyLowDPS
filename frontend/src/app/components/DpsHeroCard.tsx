@@ -151,18 +151,18 @@ export default function DpsHeroCard({
           />
         )}
 
-        <div className="relative flex min-h-[108px] items-center justify-center gap-3 px-5 py-3 sm:px-6">
+        <div className="relative flex min-h-[120px] items-center justify-center gap-3 px-3 py-3 sm:px-5">
           <div className="relative text-center">
             <div className="mb-0.5 flex items-center justify-center gap-2">
               {playerRealm ? (
                 <Link
                   href={characterHref(playerRegion || 'us', playerRealm, playerName)}
-                  className="text-[1.75rem] font-black leading-none tracking-tight text-white transition-colors hover:text-gold"
+                  className="text-[1.35rem] font-black leading-none tracking-tight text-white transition-colors hover:text-gold sm:text-[1.75rem]"
                 >
                   {playerName}
                 </Link>
               ) : (
-                <p className="text-[1.75rem] font-black leading-none tracking-tight text-white">{playerName}</p>
+                <p className="text-[1.35rem] font-black leading-none tracking-tight text-white sm:text-[1.75rem]">{playerName}</p>
               )}
               {faction && (
                 <span className="rounded-md border border-white/20 bg-black/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-200">
@@ -170,16 +170,16 @@ export default function DpsHeroCard({
                 </span>
               )}
             </div>
-            <p className="text-[1rem] font-medium leading-tight" style={{ color: playerClassColor || undefined }}>
+            <p className="text-[0.95rem] font-medium leading-tight sm:text-[1rem]" style={{ color: playerClassColor || undefined }}>
               {playerClass}
             </p>
-            <p className="mt-1 text-[3.2rem] font-black tabular-nums leading-none tracking-tight text-white">
+            <p className="mt-1 text-[2.35rem] font-black tabular-nums leading-none tracking-tight text-white sm:text-[3.2rem]">
               {Math.round(dps).toLocaleString()}
             </p>
             <p className="mt-0.5 text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-zinc-100">
               Damage Per Second
             </p>
-            <div className="mt-1 flex justify-center">{children}</div>
+            <div className="mt-2 flex w-full max-w-full flex-wrap items-center justify-center gap-2 px-2 sm:px-0">{children}</div>
           </div>
 
           {faction && FACTION_ICONS[faction] && factionIconVisible && (
@@ -200,7 +200,7 @@ export default function DpsHeroCard({
         </div>
       </div>
       {hasMetadata && (
-        <div className="flex items-center justify-center gap-px border-t border-border bg-surface-2">
+        <div className="flex flex-wrap items-stretch justify-center gap-px border-t border-border bg-surface-2">
           {avgIlevel != null && (
             <MetaStat
               label="Item Level"
@@ -280,12 +280,12 @@ function MetaStat({
     : [];
 
   return (
-    <div className="group relative flex-1 px-4 py-3 text-center">
-      <p className="text-sm uppercase tracking-wider text-zinc-300">{label}</p>
-      <p className="mt-0.5 text-sm font-medium tabular-nums text-zinc-100">
+    <div className="group relative min-w-[120px] flex-1 px-2 py-2 text-center sm:min-w-[140px] sm:px-3">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-300 sm:text-xs">{label}</p>
+      <p className="mt-0.5 text-[15px] font-medium tabular-nums text-zinc-100 sm:text-base">
         {value}
         {note && (
-          <span className={`ml-1 text-sm font-normal ${noteColor || 'text-zinc-300'}`}>{note}</span>
+          <span className={`ml-1 text-[13px] font-normal sm:text-sm ${noteColor || 'text-zinc-300'}`}>{note}</span>
         )}
       </p>
       {tooltipLines.length > 0 && (

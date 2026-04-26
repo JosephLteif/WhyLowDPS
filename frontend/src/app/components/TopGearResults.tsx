@@ -337,11 +337,11 @@ export default function TopGearResults({
       )}
 
       <CollapsibleSection title="Rankings">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-zinc-300">
             Rankings
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {enableWishlistActions && (
               <div className="flex items-center gap-2">
                 <button
@@ -382,7 +382,7 @@ export default function TopGearResults({
                 ))}
               </div>
             </div>
-            <span className="font-mono text-[14px] text-zinc-300">{results.length} results</span>
+            <span className="font-mono text-[13px] text-zinc-300 sm:text-[14px]">{results.length} results</span>
           </div>
         </div>
         {enableWishlistActions && wishlistFeedback && (

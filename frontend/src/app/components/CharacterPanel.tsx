@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
@@ -1170,7 +1170,6 @@ type WarcraftLogsParse = {
   percentile?: number | null;
   dps?: number | null;
   median_percentile?: number | null;
-  attempts?: number | null;
   kills?: number | null;
   fastest_kill_seconds?: number | null;
   all_stars_points?: number | null;
@@ -1226,11 +1225,8 @@ function WarcraftLogsParsesCard({
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [refreshSeq, setRefreshSeq] = useState(0);
   const [difficultyFilter, setDifficultyFilter] = useState<'LFR' | 'Normal' | 'Heroic' | 'Mythic'>('Heroic');
-  const [sortKey, setSortKey] = useState<
-    'boss' | 'best' | 'latest' | 'high' | 'attempts' | 'kills' | 'fastest' | 'none'
-  >('none');
+  const [sortKey, setSortKey] = useState<'boss' | 'best' | 'latest' | 'high' | 'kills' | 'fastest' | 'none'>('none');
   const [sortDir, setSortDir] = useState<'asc' | 'desc' | 'none'>('none');
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [rawDebugOpen, setRawDebugOpen] = useState(false);
   const [rawDebugLoading, setRawDebugLoading] = useState(false);
   const [rawDebugText, setRawDebugText] = useState('');
@@ -1352,18 +1348,8 @@ function WarcraftLogsParsesCard({
         medianPercentile: number | null;
         latestDps: number | null;
         highestDps: number | null;
-        attempts: number;
         kills: number;
         fastestSeconds: number | null;
-        attemptsHistory: Array<{
-          percentile: number | null;
-          dps: number | null;
-          fastestSeconds: number | null;
-          reportCode: string | null;
-          reportTitle: string | null;
-          timestamp: number | null;
-          lockedIn: boolean | null;
-        }>;
         lockedIn: boolean | null;
       }
     >();
@@ -1374,9 +1360,7 @@ function WarcraftLogsParsesCard({
       const key = `${encounter.toLowerCase()}::${zone.toLowerCase()}`;
       const percentile = row.percentile ?? null;
       const dps = row.dps ?? null;
-      const attemptsRaw = Number(row.attempts ?? 0);
       const kills = Number(row.kills ?? 0);
-      const attempts = Math.max(Number.isFinite(attemptsRaw) ? attemptsRaw : 0, kills);
       const normalizedDifficulty = normalizeParseDifficultyLabel(row.difficulty);
       if (normalizedDifficulty === 'Unknown') continue;
       const lockedIn = typeof row.locked_in === 'boolean' ? row.locked_in : null;
@@ -1395,21 +1379,9 @@ function WarcraftLogsParsesCard({
           medianPercentile: row.median_percentile ?? null,
           latestDps: dps,
           highestDps: dps,
-          attempts,
           kills,
           fastestSeconds: row.fastest_kill_seconds ?? null,
           lockedIn,
-          attemptsHistory: [
-            {
-              percentile,
-              dps,
-              fastestSeconds: row.fastest_kill_seconds ?? null,
-              reportCode: row.report_code ?? null,
-              reportTitle: row.report_title ?? null,
-              timestamp: row.report_end_time ?? row.start_time ?? null,
-              lockedIn,
-            },
-          ],
         });
         continue;
       }
@@ -1419,45 +1391,13 @@ function WarcraftLogsParsesCard({
       bucketExisting.medianPercentile = bucketExisting.medianPercentile ?? row.median_percentile ?? null;
       bucketExisting.latestDps = bucketExisting.latestDps ?? dps;
       bucketExisting.highestDps = Math.max(bucketExisting.highestDps ?? 0, dps ?? 0) || bucketExisting.highestDps;
-      bucketExisting.attempts = Math.max(bucketExisting.attempts, attempts);
       bucketExisting.kills = Math.max(bucketExisting.kills, kills);
       bucketExisting.fastestSeconds = bucketExisting.fastestSeconds ?? row.fastest_kill_seconds ?? null;
       if (lockedIn === false) bucketExisting.lockedIn = false;
       else if (bucketExisting.lockedIn === null && lockedIn !== null) bucketExisting.lockedIn = lockedIn;
-      bucketExisting.attemptsHistory.push({
-        percentile,
-        dps,
-        fastestSeconds: row.fastest_kill_seconds ?? null,
-        reportCode: row.report_code ?? null,
-        reportTitle: row.report_title ?? null,
-        timestamp: row.report_end_time ?? row.start_time ?? null,
-        lockedIn,
-      });
     }
 
-    return Array.from(map.values())
-      .map((entry) => ({
-        ...entry,
-        attemptsHistory: (() => {
-          const sorted = [...entry.attemptsHistory].sort(
-            (a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0),
-          );
-          const expectedAttempts = Math.max(entry.attempts || 0, 0);
-          if (expectedAttempts <= 1 || sorted.length >= expectedAttempts) return sorted;
-          const missing = expectedAttempts - sorted.length;
-          const placeholders = Array.from({ length: missing }, () => ({
-            percentile: null,
-            dps: null,
-            fastestSeconds: null,
-            reportCode: null,
-            reportTitle: null,
-            timestamp: null,
-            lockedIn: entry.lockedIn,
-          }));
-          return [...sorted, ...placeholders];
-        })(),
-      }))
-      .sort((a, b) => (b.bestPercentile ?? 0) - (a.bestPercentile ?? 0));
+    return Array.from(map.values()).sort((a, b) => (b.bestPercentile ?? 0) - (a.bestPercentile ?? 0));
   }, [data]);
 
   const difficultyOptions: Array<'LFR' | 'Normal' | 'Heroic' | 'Mythic'> = [
@@ -1574,8 +1514,6 @@ function WarcraftLogsParsesCard({
           return numCmp(a.latestDps, b.latestDps);
         case 'high':
           return numCmp(a.highestDps, b.highestDps);
-        case 'attempts':
-          return numCmp(a.attempts, b.attempts);
         case 'kills':
           return numCmp(a.kills, b.kills);
         case 'fastest':
@@ -1592,19 +1530,16 @@ function WarcraftLogsParsesCard({
     if (displayedRows.length === 0) return null;
     const avg =
       displayedRows.reduce((acc, item) => acc + (item.bestPercentile ?? 0), 0) / displayedRows.length;
-    const attempts = displayedRows.reduce((acc, item) => acc + item.attempts, 0);
     const kills = displayedRows.reduce((acc, item) => acc + item.kills, 0);
     const latestTryDps =
       displayedRows
         .map((item) => item.latestDps ?? 0)
         .filter((v) => v > 0)
         .sort((a, b) => b - a)[0] || 0;
-    return { avg, attempts, kills, latestTryDps };
+    return { avg, kills, latestTryDps };
   }, [displayedRows]);
 
-  const cycleSort = (
-    key: 'boss' | 'best' | 'latest' | 'high' | 'attempts' | 'kills' | 'fastest',
-  ) => {
+  const cycleSort = (key: 'boss' | 'best' | 'latest' | 'high' | 'kills' | 'fastest') => {
     if (sortKey !== key || sortDir === 'none') {
       setSortKey(key);
       setSortDir('desc');
@@ -1618,15 +1553,9 @@ function WarcraftLogsParsesCard({
     setSortDir('none');
   };
 
-  const sortIndicator = (
-    key: 'boss' | 'best' | 'latest' | 'high' | 'attempts' | 'kills' | 'fastest',
-  ) => {
+  const sortIndicator = (key: 'boss' | 'best' | 'latest' | 'high' | 'kills' | 'fastest') => {
     if (sortKey !== key || sortDir === 'none') return '';
     return sortDir === 'desc' ? ' ▼' : ' ▲';
-  };
-
-  const toggleExpanded = (key: string) => {
-    setExpandedRows((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const fetchRawGraphqlOutput = async () => {
@@ -1789,10 +1718,7 @@ function WarcraftLogsParsesCard({
                   {summary.latestTryDps > 0 ? Math.round(summary.latestTryDps).toLocaleString() : '-'}
                 </p>
               </div>
-              <div>
-                <p className="text-zinc-500">Attempts</p>
-                <p className="text-[14px] font-black text-zinc-100">{summary.attempts}</p>
-              </div>
+
               <div>
                 <p className="text-zinc-500">Kills</p>
                 <p className="text-[14px] font-black text-zinc-100">{summary.kills}</p>
@@ -1801,7 +1727,7 @@ function WarcraftLogsParsesCard({
           )}
 
           <div className="max-h-[62vh] overflow-auto rounded-md border border-white/5">
-            <table className="w-full min-w-[980px] text-[12px]">
+            <table className="w-full min-w-[860px] text-[12px]">
               <thead className="bg-white/[0.04] text-zinc-400">
                 <tr>
                   <th className="px-2 py-2 text-left font-semibold">
@@ -1824,11 +1750,7 @@ function WarcraftLogsParsesCard({
                       High DPS{sortIndicator('high')}
                     </button>
                   </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('attempts')} className="hover:text-zinc-100">
-                      Attempts{sortIndicator('attempts')}
-                    </button>
-                  </th>
+
                   <th className="px-2 py-2 text-right font-semibold">
                     <button type="button" onClick={() => cycleSort('kills')} className="hover:text-zinc-100">
                       Kills{sortIndicator('kills')}
@@ -1843,22 +1765,9 @@ function WarcraftLogsParsesCard({
               </thead>
               <tbody>
                 {displayedRows.map((g) => (
-                  <Fragment key={g.key}>
-                  <tr className="border-t border-white/5">
+                  <tr className="border-t border-white/5" key={g.key}>
                     <td className="px-2 py-2">
                       <div className="flex items-center gap-2">
-                        {g.attemptsHistory.length > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(g.key)}
-                            className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-white/10"
-                            aria-label={`Toggle attempts for ${g.encounter}`}
-                          >
-                            {expandedRows[g.key]
-                              ? 'Hide'
-                              : `+${Math.max(g.attemptsHistory.length - 1, 0)} more`}
-                          </button>
-                        ) : null}
                         <p className="font-semibold text-zinc-100">{g.encounter}</p>
                         {g.lockedIn === false ? (
                           <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">
@@ -1883,65 +1792,9 @@ function WarcraftLogsParsesCard({
                     <td className="px-2 py-2 text-right font-mono text-zinc-300">
                       {g.highestDps != null ? Math.round(g.highestDps).toLocaleString() : '-'}
                     </td>
-                    <td className="px-2 py-2 text-right text-zinc-200">{g.attempts || '-'}</td>
                     <td className="px-2 py-2 text-right text-zinc-200">{g.kills || '-'}</td>
                     <td className="px-2 py-2 text-right text-zinc-300">{fmtDuration(g.fastestSeconds)}</td>
                   </tr>
-                  {expandedRows[g.key] && g.attemptsHistory.length > 1 ? (
-                    <tr className="border-t border-white/5 bg-white/[0.02]">
-                      <td colSpan={7} className="px-3 py-2">
-                        {(() => {
-                          const extras = g.attemptsHistory.slice(1);
-                          const hasDetailedRows = extras.some(
-                            (a) => a.reportCode || a.timestamp || a.dps != null || a.percentile != null,
-                          );
-
-                          if (!hasDetailedRows) {
-                            return (
-                              <p className="text-[11px] text-zinc-400">
-                                Warcraft Logs returned aggregate attempts for this boss, but no per-attempt details
-                                in this response.
-                              </p>
-                            );
-                          }
-
-                          return (
-                            <div className="space-y-1">
-                              {extras.map((a, idx) => (
-                                <div
-                                  key={`${g.key}-attempt-${idx}`}
-                                  className="grid grid-cols-[1fr_90px_140px_70px] items-center gap-2 text-[10px] text-zinc-300"
-                                >
-                                  <span className="truncate text-zinc-400">
-                                    Attempt #{idx + 2}
-                                    {a.reportTitle ? ` · ${a.reportTitle}` : ''}
-                                    {a.timestamp ? ` · ${new Date(a.timestamp).toLocaleString()}` : ''}
-                                  </span>
-                                  <span className={percentileClass(a.percentile)}>
-                                    {a.percentile != null ? `${Math.round(a.percentile)}%` : '-'}
-                                  </span>
-                                  <span>{a.dps != null ? `${Math.round(a.dps).toLocaleString()} DPS` : '-'}</span>
-                                  {a.reportCode ? (
-                                    <a
-                                      href={`https://www.warcraftlogs.com/reports/${a.reportCode}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-[#ff6666] hover:text-[#ff7d7d]"
-                                    >
-                                      Report
-                                    </a>
-                                  ) : (
-                                    <span className="text-zinc-500">-</span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })()}
-                      </td>
-                    </tr>
-                  ) : null}
-                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -2160,3 +2013,5 @@ function TalentsCard({
     </div>
   );
 }
+
+

@@ -214,6 +214,81 @@ fn parse_report_index(character_node: &Value) -> std::collections::HashMap<Strin
     out
 }
 
+fn parse_report_fights(
+    report_node: &Value,
+    report_code: &str,
+) -> Vec<WarcraftLogsParse> {
+    let report_title = parse_string(report_node.get("title"));
+    let report_end_time = parse_i64(report_node.get("endTime"));
+    // Use a stable raid zone label so report-fight rows merge with zoneRankings rows in the UI.
+    let zone_name = "Raid".to_string();
+    let fights = report_node
+        .get("fights")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut out = Vec::new();
+    for fight in fights {
+        let encounter_name = parse_string(fight.get("name"))
+            .or_else(|| parse_string(fight.get("encounterName")))
+            .or_else(|| parse_string(fight.get("encounter_name")))
+            .or_else(|| {
+                fight
+                    .get("encounter")
+                    .and_then(|v| parse_string(v.get("name")))
+            })
+            .unwrap_or_else(|| "Encounter".to_string());
+
+        // Report fights often use legacy numeric IDs where 3/4/5 map to Normal/Heroic/Mythic.
+        let difficulty = match parse_i64(fight.get("difficulty")) {
+            Some(17) | Some(1) => "LFR".to_string(),
+            Some(14) | Some(3) => "Normal".to_string(),
+            Some(15) | Some(4) => "Heroic".to_string(),
+            Some(16) | Some(5) => "Mythic".to_string(),
+            _ => difficulty_label(fight.get("difficulty")),
+        };
+        if !matches!(difficulty.as_str(), "LFR" | "Normal" | "Heroic" | "Mythic") {
+            continue;
+        }
+
+        let start_time = parse_i64(fight.get("startTime"))
+            .or_else(|| parse_i64(fight.get("start_time")));
+        let end_time = parse_i64(fight.get("endTime"))
+            .or_else(|| parse_i64(fight.get("end_time")))
+            .or(report_end_time);
+        let fastest_kill_seconds = match (start_time, end_time) {
+            (Some(start), Some(end)) if end > start => Some((end - start) as f64 / 1000.0),
+            _ => None,
+        };
+
+        let kill = parse_bool(fight.get("kill"))
+            .or_else(|| parse_bool(fight.get("killed")))
+            .unwrap_or(false);
+
+        out.push(WarcraftLogsParse {
+            zone_name: zone_name.clone(),
+            encounter_name,
+            difficulty,
+            percentile: None,
+            dps: None,
+            median_percentile: None,
+            attempts: Some(1),
+            kills: Some(if kill { 1 } else { 0 }),
+            fastest_kill_seconds,
+            all_stars_points: None,
+            all_stars_rank: None,
+            report_code: Some(report_code.to_string()),
+            report_title: report_title.clone(),
+            report_end_time,
+            start_time,
+            locked_in: Some(true),
+        });
+    }
+
+    out
+}
+
 fn parse_parses(
     zone_rankings: &Value,
     report_index: &std::collections::HashMap<String, (String, i64)>,
@@ -477,6 +552,28 @@ query CharacterParsesByDifficulty($name: String!, $serverSlug: String!, $serverR
 }
 "#;
 
+    let graphql_query_report_fights = r#"
+query ReportFights($code: String!) {
+  reportData {
+    report(code: $code) {
+      title
+      endTime
+      zone {
+        name
+      }
+      fights {
+        encounterID
+        name
+        difficulty
+        kill
+        startTime
+        endTime
+      }
+    }
+  }
+}
+"#;
+
     let graphql_hosts = [
         "https://www.warcraftlogs.com/api/v2/client",
         "https://warcraftlogs.com/api/v2/client",
@@ -637,12 +734,16 @@ query CharacterParsesByDifficulty($name: String!, $serverSlug: String!, $serverR
 
         for row in bucket_rows {
             let dedupe_key = format!(
-                "{}::{}::{}::{}::{}",
+                "{}::{}::{}::{}::{}::{:.3}::{:.3}::{:.3}::{}",
                 row.zone_name.to_lowercase(),
                 row.encounter_name.to_lowercase(),
                 row.difficulty.to_lowercase(),
                 row.start_time.unwrap_or(0),
-                row.report_code.clone().unwrap_or_default().to_lowercase()
+                row.report_code.clone().unwrap_or_default().to_lowercase(),
+                row.percentile.unwrap_or(-1.0),
+                row.dps.unwrap_or(-1.0),
+                row.fastest_kill_seconds.unwrap_or(-1.0),
+                row.kills.unwrap_or(-1)
             );
             if seen_rows.insert(dedupe_key) {
                 combined_parses.push(row);
@@ -708,6 +809,90 @@ query CharacterParsesByDifficulty($name: String!, $serverSlug: String!, $serverR
                         matches!(row.difficulty.as_str(), "LFR" | "Normal" | "Heroic" | "Mythic")
                     });
                     combined_parses.append(&mut parses);
+                }
+            }
+        }
+    }
+
+    // Add per-report fight rows so the frontend can expand bosses into recent parse history.
+    // zoneRankings provides aggregate rows only; report fights provide the per-attempt timeline.
+    if !report_index.is_empty() {
+        for (report_code, _) in &report_index {
+            let mut report_body: Option<Value> = None;
+            for host in graphql_hosts {
+                let graphql_payload = json!({
+                    "query": graphql_query_report_fights,
+                    "variables": {
+                        "code": report_code
+                    }
+                });
+                let attempt = client
+                    .post(host)
+                    .bearer_auth(&token)
+                    .header("accept", "application/json")
+                    .json(&graphql_payload)
+                    .send()
+                    .await;
+
+                match attempt {
+                    Ok(resp) if resp.status().is_success() => match resp.json::<Value>().await {
+                        Ok(v) => {
+                            let has_graphql_errors = v
+                                .get("errors")
+                                .and_then(Value::as_array)
+                                .map(|arr| !arr.is_empty())
+                                .unwrap_or(false);
+                            if debug_raw {
+                                debug_raw_payloads.push(json!({
+                                    "bucket": "report-fights",
+                                    "report_code": report_code,
+                                    "host": host,
+                                    "response": v.clone(),
+                                }));
+                            }
+                            if !has_graphql_errors {
+                                report_body = Some(v);
+                                break;
+                            }
+                        }
+                        Err(_err) => {}
+                    },
+                    Ok(resp) => {
+                        if resp.status().as_u16() != 404 {
+                            break;
+                        }
+                    }
+                    Err(_err) => {}
+                }
+            }
+
+            let Some(body) = report_body else {
+                continue;
+            };
+            let Some(report_node) = body
+                .get("data")
+                .and_then(|v| v.get("reportData"))
+                .and_then(|v| v.get("report"))
+            else {
+                continue;
+            };
+
+            let report_fights = parse_report_fights(report_node, report_code);
+            for row in report_fights {
+                let dedupe_key = format!(
+                    "{}::{}::{}::{}::{}::{:.3}::{:.3}::{:.3}::{}",
+                    row.zone_name.to_lowercase(),
+                    row.encounter_name.to_lowercase(),
+                    row.difficulty.to_lowercase(),
+                    row.start_time.unwrap_or(0),
+                    row.report_code.clone().unwrap_or_default().to_lowercase(),
+                    row.percentile.unwrap_or(-1.0),
+                    row.dps.unwrap_or(-1.0),
+                    row.fastest_kill_seconds.unwrap_or(-1.0),
+                    row.kills.unwrap_or(-1)
+                );
+                if seen_rows.insert(dedupe_key) {
+                    combined_parses.push(row);
                 }
             }
         }

@@ -1438,9 +1438,24 @@ function WarcraftLogsParsesCard({
     return Array.from(map.values())
       .map((entry) => ({
         ...entry,
-        attemptsHistory: [...entry.attemptsHistory].sort(
-          (a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0),
-        ),
+        attemptsHistory: (() => {
+          const sorted = [...entry.attemptsHistory].sort(
+            (a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0),
+          );
+          const expectedAttempts = Math.max(entry.attempts || 0, 0);
+          if (expectedAttempts <= 1 || sorted.length >= expectedAttempts) return sorted;
+          const missing = expectedAttempts - sorted.length;
+          const placeholders = Array.from({ length: missing }, () => ({
+            percentile: null,
+            dps: null,
+            fastestSeconds: null,
+            reportCode: null,
+            reportTitle: null,
+            timestamp: null,
+            lockedIn: entry.lockedIn,
+          }));
+          return [...sorted, ...placeholders];
+        })(),
       }))
       .sort((a, b) => (b.bestPercentile ?? 0) - (a.bestPercentile ?? 0));
   }, [data]);
@@ -1839,7 +1854,9 @@ function WarcraftLogsParsesCard({
                             className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-white/10"
                             aria-label={`Toggle attempts for ${g.encounter}`}
                           >
-                            {expandedRows[g.key] ? '-' : '+'}
+                            {expandedRows[g.key]
+                              ? 'Hide'
+                              : `+${Math.max(g.attemptsHistory.length - 1, 0)} more`}
                           </button>
                         ) : null}
                         <p className="font-semibold text-zinc-100">{g.encounter}</p>
@@ -1873,34 +1890,54 @@ function WarcraftLogsParsesCard({
                   {expandedRows[g.key] && g.attemptsHistory.length > 1 ? (
                     <tr className="border-t border-white/5 bg-white/[0.02]">
                       <td colSpan={7} className="px-3 py-2">
-                        <div className="space-y-1">
-                          {g.attemptsHistory.map((a, idx) => (
-                            <div
-                              key={`${g.key}-attempt-${idx}`}
-                              className="grid grid-cols-[1fr_90px_120px_90px] items-center gap-2 text-[10px] text-zinc-300"
-                            >
-                              <span className="truncate text-zinc-400">
-                                {a.reportTitle || 'Attempt'}{a.timestamp ? ` · ${new Date(a.timestamp).toLocaleString()}` : ''}
-                              </span>
-                              <span className={percentileClass(a.percentile)}>
-                                {a.percentile != null ? `${Math.round(a.percentile)}%` : '-'}
-                              </span>
-                              <span>{a.dps != null ? `${Math.round(a.dps).toLocaleString()} DPS` : '-'}</span>
-                              {a.reportCode ? (
-                                <a
-                                  href={`https://www.warcraftlogs.com/reports/${a.reportCode}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[#ff6666] hover:text-[#ff7d7d]"
+                        {(() => {
+                          const extras = g.attemptsHistory.slice(1);
+                          const hasDetailedRows = extras.some(
+                            (a) => a.reportCode || a.timestamp || a.dps != null || a.percentile != null,
+                          );
+
+                          if (!hasDetailedRows) {
+                            return (
+                              <p className="text-[11px] text-zinc-400">
+                                Warcraft Logs returned aggregate attempts for this boss, but no per-attempt details
+                                in this response.
+                              </p>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-1">
+                              {extras.map((a, idx) => (
+                                <div
+                                  key={`${g.key}-attempt-${idx}`}
+                                  className="grid grid-cols-[1fr_90px_140px_70px] items-center gap-2 text-[10px] text-zinc-300"
                                 >
-                                  Report
-                                </a>
-                              ) : (
-                                <span className="text-zinc-500">-</span>
-                              )}
+                                  <span className="truncate text-zinc-400">
+                                    Attempt #{idx + 2}
+                                    {a.reportTitle ? ` · ${a.reportTitle}` : ''}
+                                    {a.timestamp ? ` · ${new Date(a.timestamp).toLocaleString()}` : ''}
+                                  </span>
+                                  <span className={percentileClass(a.percentile)}>
+                                    {a.percentile != null ? `${Math.round(a.percentile)}%` : '-'}
+                                  </span>
+                                  <span>{a.dps != null ? `${Math.round(a.dps).toLocaleString()} DPS` : '-'}</span>
+                                  {a.reportCode ? (
+                                    <a
+                                      href={`https://www.warcraftlogs.com/reports/${a.reportCode}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[#ff6666] hover:text-[#ff7d7d]"
+                                    >
+                                      Report
+                                    </a>
+                                  ) : (
+                                    <span className="text-zinc-500">-</span>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ) : null}

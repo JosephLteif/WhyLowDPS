@@ -499,6 +499,11 @@ export default function Sidebar() {
                         e.preventDefault();
                         return;
                       }
+                      if (hasChildren) {
+                        e.preventDefault();
+                        setOpenMenu(isOpen ? null : item.label);
+                        return;
+                      }
                       const normalizedHref =
                         item.href.endsWith('/') && item.href !== '/' ? item.href.slice(0, -1) : item.href;
                       if (normalizedPath === normalizedHref) {
@@ -507,7 +512,6 @@ export default function Sidebar() {
                         if (isNarrowViewport) setIsMobileOpen(false);
                         return;
                       }
-                      if (hasChildren) setOpenMenu(isOpen ? null : item.label);
                       if (isNarrowViewport) setIsMobileOpen(false);
                     }}
                     draggable={false}

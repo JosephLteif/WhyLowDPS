@@ -17,9 +17,12 @@ import {
   getMythicKeystoneDungeonIndex,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
+import { QUALITY_COLORS, getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../lib/useItemInfo';
 import { characterHref } from '../lib/routes';
 
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
+const MPLUS_VAULT_THRESHOLDS = [1, 4, 8] as const;
+const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
 
 function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
   const trimmed = value.trim();
@@ -83,6 +86,7 @@ interface CharacterPanelProps {
   raidEncounters: any;
   dungeons?: any;
   characterMediaUrl?: string | null;
+  latestSimcInput?: string | null;
 }
 
 export default function CharacterPanel({
@@ -95,6 +99,7 @@ export default function CharacterPanel({
   mythicPlus,
   raidEncounters,
   characterMediaUrl,
+  latestSimcInput,
 }: CharacterPanelProps) {
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const armoryUrl = `https://worldofwarcraft.blizzard.com/en-us/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`;
@@ -201,7 +206,7 @@ export default function CharacterPanel({
     }
     return normalized;
   }, [equipment]);
-  const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic'>('raiding');
+  const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic' | 'vault'>('raiding');
 
   return (
     <div className="flex flex-col gap-6">
@@ -240,7 +245,7 @@ export default function CharacterPanel({
       </div>
 
       <div className="card p-2">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
             onClick={() => setPageTab('profile')}
@@ -267,6 +272,15 @@ export default function CharacterPanel({
             }`}
           >
             Mythic+
+          </button>
+          <button
+            type="button"
+            onClick={() => setPageTab('vault')}
+            className={`rounded-md px-2 py-2 text-xs font-bold ${
+              pageTab === 'vault' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
+            }`}
+          >
+            Vault
           </button>
         </div>
       </div>
@@ -302,6 +316,248 @@ export default function CharacterPanel({
       {pageTab === 'raiding' && (
         <RaidSectionCard raidEncounters={raidEncounters} region={region} realm={realm} name={name} />
       )}
+      {pageTab === 'vault' && (
+        <VaultOverviewCard mythicPlus={mythicPlus} raidEncounters={raidEncounters} latestSimcInput={latestSimcInput} />
+      )}
+    </div>
+  );
+}
+
+function VaultOverviewCard({
+  mythicPlus,
+  raidEncounters,
+  latestSimcInput,
+}: {
+  mythicPlus: any;
+  raidEncounters: any;
+  latestSimcInput?: string | null;
+}) {
+  const mythicRunsThisWeek = useMemo(() => {
+    const recentRuns = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : [];
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    return recentRuns.filter((run: any) => {
+      const ts = Number(run?.completed_timestamp ?? run?.completedTimestamp ?? run?.timestamp ?? 0);
+      return ts > 0 && ts >= weekAgo;
+    }).length;
+  }, [mythicPlus]);
+
+  const raidBossesThisWeek = useMemo(() => {
+    const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let count = 0;
+    for (const expansion of expansions) {
+      for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
+        for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
+          const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
+          for (const encounter of encounters) {
+            const ts = Number(encounter?.last_kill_timestamp ?? 0);
+            if (ts >= weekAgo) count += 1;
+          }
+        }
+      }
+    }
+    return count;
+  }, [raidEncounters]);
+
+  const vaultItems = useMemo(() => {
+    const input = String(latestSimcInput || '');
+    if (!input.trim()) return [] as Array<{ slot: string; itemId: string; ilevel: string; bonusIds: number[] }>;
+    const lines = input.split(/\r?\n/);
+    const blocks: string[][] = [];
+    let currentBlock: string[] | null = null;
+    for (const raw of lines) {
+      const line = raw.trim();
+      const lower = line.toLowerCase();
+      if (lower.includes('weekly reward choices') && !lower.includes('end of weekly reward choices')) {
+        currentBlock = [];
+        blocks.push(currentBlock);
+        continue;
+      }
+      if (lower.includes('end of weekly reward choices')) {
+        currentBlock = null;
+        continue;
+      }
+      if (currentBlock) currentBlock.push(line);
+    }
+
+    const parseItemLines = (itemLines: string[]) => {
+      const parsed: Array<{ slot: string; itemId: string; ilevel: string; bonusIds: number[] }> = [];
+      const seen = new Set<string>();
+      for (const line of itemLines) {
+        const body = line.replace(/^#\s*/, '').trim();
+        const match = body.match(/^([a-z0-9_]+)\s*=\s*(.+)$/i);
+        if (!match) continue;
+        const slot = match[1].trim();
+        const simc = match[2].trim();
+        const idMatch = simc.match(/id=(\d+)/i);
+        if (!idMatch) continue;
+        const ilevelMatch = simc.match(/ilevel=(\d+)/i);
+        const bonusMatch = simc.match(/bonus_id=([0-9/]+)/i);
+        const bonusIds = bonusMatch
+          ? bonusMatch[1]
+              .split('/')
+              .map((v) => Number(v))
+              .filter((v) => Number.isFinite(v) && v > 0)
+          : [];
+        const item = { slot, itemId: idMatch[1], ilevel: ilevelMatch?.[1] || '-', bonusIds };
+        const key = `${item.slot}|${item.itemId}|${item.ilevel}|${item.bonusIds.join('/')}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        parsed.push(item);
+      }
+      return parsed;
+    };
+
+    // Use only the latest explicit vault block.
+    if (blocks.length > 0) {
+      for (let i = blocks.length - 1; i >= 0; i -= 1) {
+        const parsed = parseItemLines(blocks[i]);
+        if (parsed.length > 0) return parsed;
+      }
+      return [];
+    }
+
+    // Fallback for old/no-marker SimC strings.
+    return parseItemLines(lines);
+  }, [latestSimcInput]);
+  const vaultItemInfo = useItemInfo(
+    vaultItems.map((item) => ({
+      item_id: Number(item.itemId),
+      bonus_ids: item.bonusIds,
+    })),
+  );
+
+  const mythicSlots = useMemo(
+    () =>
+      MPLUS_VAULT_THRESHOLDS.map((threshold, idx) => ({
+        slot: idx + 1,
+        threshold,
+        unlocked: mythicRunsThisWeek >= threshold,
+      })),
+    [mythicRunsThisWeek],
+  );
+
+  const raidSlots = useMemo(
+    () =>
+      RAID_VAULT_THRESHOLDS.map((threshold, idx) => ({
+        slot: idx + 1,
+        threshold,
+        unlocked: raidBossesThisWeek >= threshold,
+      })),
+    [raidBossesThisWeek],
+  );
+
+  const unlockedRewardCount = useMemo(() => {
+    return mythicSlots.filter((s) => s.unlocked).length + raidSlots.filter((s) => s.unlocked).length;
+  }, [mythicSlots, raidSlots]);
+
+  const topRewardText = unlockedRewardCount > 0 ? `${unlockedRewardCount} reward choices available` : 'No rewards unlocked yet';
+
+  return (
+    <div className="card p-5 space-y-4">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Overall Vault Progress</h3>
+      <div className="rounded border border-gold/20 bg-gold/10 p-3">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-gold/80">Current Vault Rewards</p>
+        <p className="mt-1 text-sm font-semibold text-zinc-100">{topRewardText}</p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3">
+        <div className="rounded border border-white/10 bg-black/20 p-3">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mythic+ Track</p>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            {mythicSlots.map((slot) => (
+              <div key={`mplus-${slot.slot}`} className={`rounded border p-2 ${slot.unlocked ? 'border-emerald-400/40 bg-emerald-500/10' : 'border-white/10 bg-black/25'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-zinc-200">Slot {slot.slot}</span>
+                  <span className={`text-[10px] font-bold ${slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}`}>
+                    {slot.unlocked ? 'Unlocked' : 'Locked'}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-400">Requires {slot.threshold} runs</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-zinc-500">{mythicRunsThisWeek} runs completed this week.</p>
+        </div>
+
+        <div className="rounded border border-white/10 bg-black/20 p-3">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Raid Track</p>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            {raidSlots.map((slot) => (
+              <div key={`raid-${slot.slot}`} className={`rounded border p-2 ${slot.unlocked ? 'border-emerald-400/40 bg-emerald-500/10' : 'border-white/10 bg-black/25'}`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-zinc-200">Slot {slot.slot}</span>
+                  <span className={`text-[10px] font-bold ${slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}`}>
+                    {slot.unlocked ? 'Unlocked' : 'Locked'}
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-zinc-400">Requires {slot.threshold} boss kills</p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-zinc-500">{raidBossesThisWeek} boss kills completed this week.</p>
+        </div>
+      </div>
+
+      <div className="rounded border border-white/10 bg-black/20 p-3">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Vault item choices (from latest SimC)</p>
+        {vaultItems.length === 0 ? (
+          <p className="text-[11px] italic text-zinc-600">No vault item lines found in the latest saved SimC profile.</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {vaultItems.map((item, idx) => (
+              <div
+                key={`${item.slot}-${item.itemId}-${idx}`}
+                className="rounded border border-white/10 bg-black/25 p-2"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {vaultItemInfo[Number(item.itemId)]?.icon ? (
+                      <img
+                        src={getIconUrl(vaultItemInfo[Number(item.itemId)].icon)}
+                        alt=""
+                        className="h-8 w-8 rounded border border-white/10"
+                      />
+                    ) : (
+                      <div className="h-8 w-8 rounded border border-white/10 bg-black/30" />
+                    )}
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">{item.slot}</span>
+                      <a
+                        href={getWowheadUrl(Number(item.itemId))}
+                        target="_blank"
+                        rel="noreferrer"
+                        data-wowhead={`item=${item.itemId}${(() => {
+                          const extra = getWowheadData(
+                            item.bonusIds,
+                            Number(vaultItemInfo[Number(item.itemId)]?.ilevel || item.ilevel || 0),
+                          );
+                          return extra ? `&${extra}` : '';
+                        })()}`}
+                        className="block truncate text-[12px] font-semibold hover:underline"
+                        style={{
+                          color: QUALITY_COLORS[vaultItemInfo[Number(item.itemId)]?.quality ?? 1] || '#ffffff',
+                        }}
+                      >
+                        {vaultItemInfo[Number(item.itemId)]?.name || `Item ${item.itemId}`}
+                      </a>
+                    </div>
+                  </div>
+                  <span className="rounded border border-gold/20 bg-gold/10 px-1.5 py-0.5 text-[10px] font-bold text-gold">
+                    ilvl {vaultItemInfo[Number(item.itemId)]?.ilevel || item.ilevel}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-2">
+                  <p className="font-mono text-[11px] text-zinc-400">Item ID: {item.itemId}</p>
+                  <span className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
+                    Tier: {vaultItemInfo[Number(item.itemId)]?.upgrade || '-'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

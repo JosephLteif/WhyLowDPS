@@ -241,6 +241,7 @@ export default function CharacterClient() {
         mythicPlus={data.mythicPlus}
         raidEncounters={data.raidEncounters}
         characterMediaUrl={characterMediaUrl}
+        latestSimcInput={savedProfiles[0]?.simc_input || null}
       />
       <ConfirmModal
         isOpen={deleteModalOpen}

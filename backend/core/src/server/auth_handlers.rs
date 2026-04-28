@@ -713,6 +713,9 @@ pub async fn get_user_configs(
     let app_update_channel = store
         .get_user_config(&claims.sub, "app_update_channel")
         .unwrap_or_default();
+    let main_character = store
+        .get_user_config(&claims.sub, "main_character")
+        .unwrap_or_default();
 
     HttpResponse::Ok().json(json!({
         "blizzard_client_id": client_id,
@@ -724,6 +727,7 @@ pub async fn get_user_configs(
         "simc_download_channel": simc_download_channel,
         "simc_sim_channel": simc_sim_channel,
         "app_update_channel": app_update_channel,
+        "main_character": main_character,
     }))
 }
 
@@ -747,6 +751,7 @@ pub async fn set_user_config(
         && body.key != "simc_download_channel"
         && body.key != "simc_sim_channel"
         && body.key != "app_update_channel"
+        && body.key != "main_character"
     {
         return HttpResponse::BadRequest().json(json!({"error": "Invalid config key"}));
     }

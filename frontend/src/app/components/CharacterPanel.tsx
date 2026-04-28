@@ -23,6 +23,7 @@ import { characterHref } from '../lib/routes';
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
 const MPLUS_VAULT_THRESHOLDS = [1, 4, 8] as const;
 const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
+const MYTHIC_VAULT_THRESHOLDS = [1, 4, 8] as const;
 
 function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
   const trimmed = value.trim();
@@ -332,66 +333,7 @@ function VaultOverviewCard({
   raidEncounters: any;
   latestSimcInput?: string | null;
 }) {
-  const mythicRunsThisWeek = useMemo(() => {
-    const isRunLike = (value: any) =>
-      value &&
-      typeof value === 'object' &&
-      (typeof value.keystone_level === 'number' ||
-        typeof value.keystoneLevel === 'number' ||
-        value.keystone_dungeon ||
-        value.dungeon ||
-        value.completed_challenge_mode);
-
-    const collectRuns = (root: any): any[] => {
-      const out: any[] = [];
-      const stack: any[] = [root];
-      const seen = new Set<any>();
-      while (stack.length > 0) {
-        const current = stack.pop();
-        if (!current || seen.has(current)) continue;
-        seen.add(current);
-        if (Array.isArray(current)) {
-          if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
-          else for (const item of current) if (item && typeof item === 'object') stack.push(item);
-          continue;
-        }
-        if (typeof current === 'object') {
-          if (isRunLike(current)) out.push(current);
-          for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
-        }
-      }
-      return out;
-    };
-
-    const toMs = (raw: number) => {
-      if (!Number.isFinite(raw) || raw <= 0) return 0;
-      return raw < 1_000_000_000_000 ? raw * 1000 : raw;
-    };
-
-    const getRunTimestampMs = (run: any) => {
-      const raw = Number(
-        run?.completed_timestamp ??
-          run?.completedTimestamp ??
-          run?.end_timestamp ??
-          run?.endTimestamp ??
-          run?.start_timestamp ??
-          run?.startTimestamp ??
-          run?.timestamp ??
-          0,
-      );
-      return toMs(raw);
-    };
-
-    const allRuns = collectRuns(mythicPlus).filter((run) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0) > 0);
-    const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const recentWeekCount = recentSource.filter((run: any) => {
-      const ts = getRunTimestampMs(run);
-      return ts > 0 && ts >= weekAgo;
-    }).length;
-    const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).length;
-    return Math.max(recentWeekCount, currentPeriodCount);
-  }, [mythicPlus]);
+  const mythicRunsThisWeek = useMemo(() => computeMythicVaultProgress(mythicPlus).runsForVault, [mythicPlus]);
 
   const raidBossesThisWeek = useMemo(() => {
     const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
@@ -479,15 +421,8 @@ function VaultOverviewCard({
     })),
   );
 
-  const mythicSlots = useMemo(
-    () =>
-      MPLUS_VAULT_THRESHOLDS.map((threshold, idx) => ({
-        slot: idx + 1,
-        threshold,
-        unlocked: mythicRunsThisWeek >= threshold,
-      })),
-    [mythicRunsThisWeek],
-  );
+  const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus), [mythicPlus]);
+  const mythicSlots = mythicVaultProgress.slots;
 
   const raidSlots = useMemo(
     () =>
@@ -515,11 +450,19 @@ function VaultOverviewCard({
                     {slot.unlocked ? 'Unlocked' : 'Locked'}
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] text-zinc-400">Requires {slot.threshold} runs</p>
+                <p className="mt-1 text-[11px] text-zinc-400">
+                  {slot.unlocked ? `Based on ${mythicVaultProgress.runsForVault} runs` : `${slot.remaining} more runs`}
+                </p>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-full rounded-full ${slot.unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                    style={{ width: `${Math.max(6, slot.progress * 100)}%` }}
+                  />
+                </div>
               </div>
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-zinc-500">{mythicRunsThisWeek} runs completed this week.</p>
+          <p className="mt-2 text-[11px] text-zinc-500">{mythicVaultProgress.runsForVault} runs completed this week.</p>
         </div>
 
         <div className="rounded border border-white/10 bg-black/20 p-3">
@@ -804,10 +747,11 @@ function MythicPlusCard({
 
     const currentPeriodCandidates = collectRuns(mythicPlus?.current_period || {});
     const currentPeriodCount = currentPeriodCandidates.length;
-    const runsForVault = Math.max(recentWeekCount, currentPeriodCount);
+    const vaultProgress = computeMythicVaultProgress(mythicPlus);
+    const runsForVault = vaultProgress.runsForVault;
     const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
     const rewardMap = collectRewardMap(mythicPlus?.current_period || mythicPlus);
-    const slotThresholds = [1, 4, 8];
+    const slotThresholds = vaultProgress.slotThresholds;
     const vaultSlots = slotThresholds.map((threshold, i) => {
       const unlocked = runsForVault >= threshold;
       const keyLevel = topLevels[threshold - 1] || null;
@@ -1088,6 +1032,92 @@ function normalizeRealmSlug(value: unknown): string {
     .replace(/'/g, '')
     .replace(/\s+/g, '-')
     .trim();
+}
+
+function computeMythicVaultProgress(mythicPlus: any): {
+  runsForVault: number;
+  slotThresholds: number[];
+  slots: Array<{ slot: number; threshold: number; unlocked: boolean; remaining: number; progress: number }>;
+} {
+  if (!mythicPlus || typeof mythicPlus !== 'object') {
+    const thresholds = [...MYTHIC_VAULT_THRESHOLDS];
+    return {
+      runsForVault: 0,
+      slotThresholds: thresholds,
+      slots: thresholds.map((threshold, idx) => ({
+        slot: idx + 1,
+        threshold,
+        unlocked: false,
+        remaining: threshold,
+        progress: 0,
+      })),
+    };
+  }
+
+  const isRunLike = (value: any) =>
+    value &&
+    typeof value === 'object' &&
+    (typeof value.keystone_level === 'number' ||
+      typeof value.keystoneLevel === 'number' ||
+      value.keystone_dungeon ||
+      value.dungeon ||
+      value.completed_challenge_mode);
+
+  const collectRuns = (root: any): any[] => {
+    const out: any[] = [];
+    const stack: any[] = [root];
+    const seen = new Set<any>();
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || seen.has(current)) continue;
+      seen.add(current);
+      if (Array.isArray(current)) {
+        if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+        else for (const item of current) if (item && typeof item === 'object') stack.push(item);
+        continue;
+      }
+      if (typeof current === 'object') {
+        if (isRunLike(current)) out.push(current);
+        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+      }
+    }
+    return out;
+  };
+
+  const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+  const getRunTimestamp = (run: any) =>
+    Number(
+      run?.completed_timestamp ??
+        run?.completedTimestamp ??
+        run?.end_timestamp ??
+        run?.endTimestamp ??
+        run?.start_timestamp ??
+        run?.startTimestamp ??
+        run?.timestamp ??
+        0,
+    );
+
+  const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
+  const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
+  const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentWeekCount = recentRuns.filter((run) => {
+    const ts = getRunTimestamp(run);
+    return ts > 0 && ts >= weekAgo;
+  }).length;
+  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).length;
+  const runsForVault = Math.max(recentWeekCount, currentPeriodCount);
+
+  const slotThresholds = [...MYTHIC_VAULT_THRESHOLDS];
+  const slots = slotThresholds.map((threshold, idx) => ({
+    slot: idx + 1,
+    threshold,
+    unlocked: runsForVault >= threshold,
+    remaining: Math.max(0, threshold - runsForVault),
+    progress: Math.min(1, runsForVault / threshold),
+  }));
+
+  return { runsForVault, slotThresholds, slots };
 }
 
 function isCurrentExpansionPlaceholder(value: unknown): boolean {

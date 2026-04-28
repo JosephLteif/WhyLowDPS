@@ -333,12 +333,64 @@ function VaultOverviewCard({
   latestSimcInput?: string | null;
 }) {
   const mythicRunsThisWeek = useMemo(() => {
-    const recentRuns = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : [];
+    const isRunLike = (value: any) =>
+      value &&
+      typeof value === 'object' &&
+      (typeof value.keystone_level === 'number' ||
+        typeof value.keystoneLevel === 'number' ||
+        value.keystone_dungeon ||
+        value.dungeon ||
+        value.completed_challenge_mode);
+
+    const collectRuns = (root: any): any[] => {
+      const out: any[] = [];
+      const stack: any[] = [root];
+      const seen = new Set<any>();
+      while (stack.length > 0) {
+        const current = stack.pop();
+        if (!current || seen.has(current)) continue;
+        seen.add(current);
+        if (Array.isArray(current)) {
+          if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+          else for (const item of current) if (item && typeof item === 'object') stack.push(item);
+          continue;
+        }
+        if (typeof current === 'object') {
+          if (isRunLike(current)) out.push(current);
+          for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+        }
+      }
+      return out;
+    };
+
+    const toMs = (raw: number) => {
+      if (!Number.isFinite(raw) || raw <= 0) return 0;
+      return raw < 1_000_000_000_000 ? raw * 1000 : raw;
+    };
+
+    const getRunTimestampMs = (run: any) => {
+      const raw = Number(
+        run?.completed_timestamp ??
+          run?.completedTimestamp ??
+          run?.end_timestamp ??
+          run?.endTimestamp ??
+          run?.start_timestamp ??
+          run?.startTimestamp ??
+          run?.timestamp ??
+          0,
+      );
+      return toMs(raw);
+    };
+
+    const allRuns = collectRuns(mythicPlus).filter((run) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0) > 0);
+    const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    return recentRuns.filter((run: any) => {
-      const ts = Number(run?.completed_timestamp ?? run?.completedTimestamp ?? run?.timestamp ?? 0);
+    const recentWeekCount = recentSource.filter((run: any) => {
+      const ts = getRunTimestampMs(run);
       return ts > 0 && ts >= weekAgo;
     }).length;
+    const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).length;
+    return Math.max(recentWeekCount, currentPeriodCount);
   }, [mythicPlus]);
 
   const raidBossesThisWeek = useMemo(() => {
@@ -447,19 +499,9 @@ function VaultOverviewCard({
     [raidBossesThisWeek],
   );
 
-  const unlockedRewardCount = useMemo(() => {
-    return mythicSlots.filter((s) => s.unlocked).length + raidSlots.filter((s) => s.unlocked).length;
-  }, [mythicSlots, raidSlots]);
-
-  const topRewardText = unlockedRewardCount > 0 ? `${unlockedRewardCount} reward choices available` : 'No rewards unlocked yet';
-
   return (
     <div className="card p-5 space-y-4">
       <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Overall Vault Progress</h3>
-      <div className="rounded border border-gold/20 bg-gold/10 p-3">
-        <p className="text-[11px] font-bold uppercase tracking-wide text-gold/80">Current Vault Rewards</p>
-        <p className="mt-1 text-sm font-semibold text-zinc-100">{topRewardText}</p>
-      </div>
 
       <div className="grid grid-cols-1 gap-3">
         <div className="rounded border border-white/10 bg-black/20 p-3">

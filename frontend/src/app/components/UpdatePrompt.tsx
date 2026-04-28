@@ -52,6 +52,8 @@ const DIRECT_INSTALL_PROGRESS_EVENT = 'whylowdps-direct-install-progress';
 const UPDATE_STATUS_EVENT = 'whylowdps-updater-status';
 const CACHE_REFRESH_CHECK_EVENT = 'whylowdps-cache-refresh-start';
 const CACHE_REFRESH_STATUS_EVENT = 'whylowdps-cache-refresh-status';
+const PARSES_REFRESH_CHECK_EVENT = 'whylowdps-parses-refresh-start';
+const PARSES_REFRESH_STATUS_EVENT = 'whylowdps-parses-refresh-status';
 const UPDATER_MANIFEST_URL =
   'https://github.com/JosephLteif/simcraft/releases/latest/download/latest.json';
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
@@ -383,6 +385,10 @@ export default function UpdatePrompt() {
   const [dismissed, setDismissed] = useState(false);
   const [backgroundMode, setBackgroundMode] = useState(false);
   const [cacheBackgroundMode, setCacheBackgroundMode] = useState(false);
+  const [parsesRefreshState, setParsesRefreshState] = useState<CacheRefreshState>('idle');
+  const [parsesRefreshDetails, setParsesRefreshDetails] = useState<string>('');
+  const [parsesRefreshErrorText, setParsesRefreshErrorText] = useState<string>('');
+  const [parsesRefreshBackgroundMode, setParsesRefreshBackgroundMode] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress>({ downloadedBytes: 0 });
   const [cacheProgress, setCacheProgress] = useState<{ current: number; total: number }>({
     current: 0,
@@ -840,6 +846,54 @@ export default function UpdatePrompt() {
     };
   }, []);
 
+  useEffect(() => {
+    const onParsesRefreshStart = () => {
+      setParsesRefreshState('checking');
+      setParsesRefreshDetails('Preparing Warcraft Logs refresh...');
+      setParsesRefreshErrorText('');
+      setParsesRefreshBackgroundMode(true);
+      setDismissed(true);
+    };
+
+    const onParsesRefreshStatus = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ status?: string; progress?: string; message?: string }>
+      ).detail;
+      const status = detail?.status || '';
+      const message = detail?.message || '';
+      const progressText = detail?.progress || '';
+
+      if (status === 'downloading' || status === 'checking' || status === 'syncing') {
+        setParsesRefreshState('downloading');
+        setParsesRefreshDetails(message || progressText || 'Refreshing raid and Mythic+ parses...');
+        setParsesRefreshErrorText('');
+        return;
+      }
+
+      if (status === 'available' || status === 'ready' || status === 'done') {
+        setParsesRefreshState('downloaded');
+        setParsesRefreshDetails(message || 'Warcraft Logs parses refreshed.');
+        setParsesRefreshErrorText('');
+        return;
+      }
+
+      if (status === 'error' || status.startsWith('error:')) {
+        setParsesRefreshState('error');
+        const normalizedError = status.startsWith('error:') ? status.replace(/^error:/, '') : '';
+        setParsesRefreshErrorText(
+          message || normalizedError || 'Failed to refresh Warcraft Logs parses.'
+        );
+      }
+    };
+
+    window.addEventListener(PARSES_REFRESH_CHECK_EVENT, onParsesRefreshStart as EventListener);
+    window.addEventListener(PARSES_REFRESH_STATUS_EVENT, onParsesRefreshStatus as EventListener);
+    return () => {
+      window.removeEventListener(PARSES_REFRESH_CHECK_EVENT, onParsesRefreshStart as EventListener);
+      window.removeEventListener(PARSES_REFRESH_STATUS_EVENT, onParsesRefreshStatus as EventListener);
+    };
+  }, []);
+
   return (
     <>
       {isUpdateToastVisible && (
@@ -1103,6 +1157,63 @@ export default function UpdatePrompt() {
             onClick={() => {
               setCacheBackgroundMode(false);
               setCacheState('idle');
+            }}
+            className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {parsesRefreshBackgroundMode && parsesRefreshState === 'downloading' && (
+        <div className="fixed bottom-4 right-4 z-[85] w-72 rounded-lg border border-border bg-surface px-4 py-3 shadow-xl">
+          <p className="text-sm font-semibold text-white">Refreshing Warcraft Logs parses</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {parsesRefreshDetails || 'Running in background...'}
+          </p>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+            <div className="h-full w-1/3 animate-pulse bg-gold" />
+          </div>
+          <button
+            onClick={() => {
+              setParsesRefreshBackgroundMode(false);
+              setParsesRefreshState('idle');
+            }}
+            className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {parsesRefreshBackgroundMode && parsesRefreshState === 'downloaded' && (
+        <div className="fixed bottom-4 right-4 z-[85] w-72 rounded-lg border border-emerald-500/20 bg-surface px-4 py-3 shadow-xl">
+          <p className="text-sm font-semibold text-white">Parses refreshed</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {parsesRefreshDetails || 'Raid and Mythic+ parses updated.'}
+          </p>
+          <button
+            onClick={() => {
+              setParsesRefreshBackgroundMode(false);
+              setParsesRefreshState('idle');
+            }}
+            className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {parsesRefreshBackgroundMode && parsesRefreshState === 'error' && (
+        <div className="fixed bottom-4 right-4 z-[85] w-72 rounded-lg border border-red-500/20 bg-surface px-4 py-3 shadow-xl">
+          <p className="text-sm font-semibold text-white">Parses refresh failed</p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {parsesRefreshErrorText || 'Could not complete Warcraft Logs parse refresh.'}
+          </p>
+          <button
+            onClick={() => {
+              setParsesRefreshBackgroundMode(false);
+              setParsesRefreshState('idle');
             }}
             className="mt-3 rounded-md border border-white/10 px-3 py-1.5 text-xs text-zinc-200 hover:bg-white/[0.06]"
           >

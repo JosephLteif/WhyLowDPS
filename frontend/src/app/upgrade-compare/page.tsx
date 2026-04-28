@@ -3,7 +3,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
+import ComboSummary from '../components/ComboSummary';
 import GearItemRow from '../components/GearItemRow';
+import StickyPageHeader from '../components/StickyPageHeader';
 import { useSimContext } from '../components/SimContext';
 import { API_URL } from '../lib/api';
 import { SLOT_LABELS } from '../lib/types';
@@ -446,35 +448,66 @@ export default function UpgradeComparePage() {
 
       {/* Upgradeable Items */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <p className="text-xs font-medium uppercase tracking-widest text-muted">
-              Select Items to Upgrade
-            </p>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={toggleAll}
-                className="text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
-              >
-                All
-              </button>
-              <span className="h-3 w-px bg-zinc-700" />
-              <button
-                type="button"
-                onClick={() => setSelectedSlots(new Set())}
-                className="text-[11px] font-bold text-zinc-500 transition-colors hover:text-zinc-300"
-              >
-                Clear
-              </button>
+        <StickyPageHeader
+          left={
+            <div className="flex flex-wrap items-center gap-4">
+              <p className="text-xs font-medium uppercase tracking-widest text-muted">
+                Select Items to Upgrade
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
+                >
+                  All
+                </button>
+                <span className="h-3 w-px bg-zinc-700" />
+                <button
+                  type="button"
+                  onClick={() => setSelectedSlots(new Set())}
+                  className="text-[11px] font-bold text-zinc-500 transition-colors hover:text-zinc-300"
+                >
+                  Clear
+                </button>
+              </div>
+              {hasCurrencies && (
+                <div className="hidden flex-wrap items-center gap-1.5 xl:flex">
+                  {Object.values(currencies)
+                    .filter((c) => c.name)
+                    .sort((a, b) => a.id - b.id)
+                    .map((c) => (
+                      <div
+                        key={c.id}
+                        className="flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1"
+                      >
+                        <img
+                          src={getIconUrl(c.icon || 'inv_misc_questionmark')}
+                          alt=""
+                          className="h-3.5 w-3.5 shrink-0 rounded-sm"
+                        />
+                        <span className="max-w-24 truncate text-[11px] text-zinc-300">{c.name}</span>
+                        <span className="font-mono text-[11px] tabular-nums text-zinc-100">
+                          {effectiveCurrencies[String(c.id)]?.amount ?? c.amount}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
-          </div>
-          {displayComboCount > 0 && (
-            <span className="rounded-md bg-surface-2 px-2.5 py-1 font-mono text-xs text-white">
-              {displayComboCount.toLocaleString()} combo{displayComboCount !== 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
+          }
+          right={
+            <ComboSummary
+              comboCount={displayComboCount}
+              maxCombinations={maxCombinations ?? undefined}
+              breakdown={
+                comboCount !== 0
+                  ? `${comboCount.toLocaleString()} normal combos | +1 Currently Equipped`
+                  : null
+              }
+            />
+          }
+        />
 
         {loading ? (
           <div className="card flex justify-center p-8">
@@ -533,7 +566,7 @@ export default function UpgradeComparePage() {
                         nameColor={qc}
                         details={[
                           { text: SLOT_LABELS[c.slot] || c.slot },
-                          { text: `${c.ilevel} → ${c.target_ilevel}` },
+                          { text: `${c.ilevel} -> ${c.target_ilevel}` },
                           {
                             text: formatCosts(c.costs, effectiveCurrencies),
                             color: 'text-gold/70',
@@ -577,7 +610,7 @@ export default function UpgradeComparePage() {
                   strokeLinecap="round"
                 />
               </svg>
-              Starting sim…
+              Starting sim...
             </>
           ) : (
             submitLabel
@@ -587,3 +620,4 @@ export default function UpgradeComparePage() {
     </div>
   );
 }
+

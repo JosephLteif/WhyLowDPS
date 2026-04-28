@@ -12,6 +12,41 @@ pub use sqlite::SqliteStorage;
 
 use crate::models::{Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute};
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WarcraftLogsStoredParse {
+    pub mode: String,
+    pub dedupe_key: String,
+    pub expansion: Option<String>,
+    pub season: Option<String>,
+    pub raid_name: Option<String>,
+    pub raid_group: Option<String>,
+    pub zone_name: String,
+    pub encounter_name: String,
+    pub difficulty: String,
+    pub percentile: Option<f64>,
+    pub dps: Option<f64>,
+    pub median_percentile: Option<f64>,
+    pub attempts: Option<i64>,
+    pub kills: Option<i64>,
+    pub fastest_kill_seconds: Option<f64>,
+    pub all_stars_points: Option<f64>,
+    pub all_stars_rank: Option<i64>,
+    pub report_code: Option<String>,
+    pub report_title: Option<String>,
+    pub report_end_time: Option<i64>,
+    pub start_time: Option<i64>,
+    pub locked_in: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct WarcraftLogsParseFilter {
+    pub expansion: Option<String>,
+    pub season: Option<String>,
+    pub raid_name: Option<String>,
+    pub raid_group: Option<String>,
+}
 
 /// Maximum number of jobs to retain. Oldest jobs are deleted on insert.
 /// Override with MAX_JOBS env var. Defaults: desktop=50, web=200.
@@ -96,4 +131,50 @@ pub trait JobStorage: Send + Sync {
         region: Option<&str>,
     ) -> Vec<SavedCharacterProfile>;
     fn delete_character_profile(&self, id: &str);
+
+    // Warcraft Logs durable parse storage
+    fn upsert_wcl_parses(
+        &self,
+        _user_id: &str,
+        _region: &str,
+        _realm: &str,
+        _name: &str,
+        _mode: &str,
+        _rows: &[WarcraftLogsStoredParse],
+    ) {
+    }
+    fn get_wcl_parses(
+        &self,
+        _user_id: &str,
+        _region: &str,
+        _realm: &str,
+        _name: &str,
+        _mode: &str,
+    ) -> Vec<WarcraftLogsStoredParse> {
+        Vec::new()
+    }
+    fn get_wcl_parses_filtered(
+        &self,
+        user_id: &str,
+        region: &str,
+        realm: &str,
+        name: &str,
+        mode: &str,
+        filter: &WarcraftLogsParseFilter,
+    ) -> Vec<WarcraftLogsStoredParse> {
+        let mut rows = self.get_wcl_parses(user_id, region, realm, name, mode);
+        if let Some(expansion) = filter.expansion.as_ref() {
+            rows.retain(|r| r.expansion.as_ref() == Some(expansion));
+        }
+        if let Some(season) = filter.season.as_ref() {
+            rows.retain(|r| r.season.as_ref() == Some(season));
+        }
+        if let Some(raid_name) = filter.raid_name.as_ref() {
+            rows.retain(|r| r.raid_name.as_ref() == Some(raid_name));
+        }
+        if let Some(raid_group) = filter.raid_group.as_ref() {
+            rows.retain(|r| r.raid_group.as_ref() == Some(raid_group));
+        }
+        rows
+    }
 }

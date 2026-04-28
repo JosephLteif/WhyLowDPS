@@ -13,6 +13,7 @@ import {
 } from '../lib/useItemInfo';
 import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import GearItemRow from './GearItemRow';
 
 export interface GearItem {
   slot: string;
@@ -25,9 +26,11 @@ export interface GearItem {
   is_kept?: boolean;
   upgrade_levels?: number;
   origin?: string;
+  source_type?: string;
+  encounter?: string;
+  instance_name?: string;
 }
 
-// WoW character sheet order
 const GEAR_ORDER_LEFT = ['head', 'neck', 'shoulder', 'back', 'chest', 'wrist'];
 const GEAR_ORDER_RIGHT = [
   'hands',
@@ -39,14 +42,55 @@ const GEAR_ORDER_RIGHT = [
   'trinket1',
   'trinket2',
 ];
+const GEAR_ORDER_STACKED = [...GEAR_ORDER_LEFT, ...GEAR_ORDER_RIGHT, 'main_hand', 'off_hand'];
+const ENCHANTABLE_SLOTS = new Set([
+  'head',
+  'neck',
+  'back',
+  'chest',
+  'wrist',
+  'legs',
+  'feet',
+  'finger1',
+  'finger2',
+  'main_hand',
+  'off_hand',
+]);
+
+function dropBaselineKey(item: GearItem): string {
+  const slot = String(item.slot || '').toLowerCase();
+  const itemId = Number(item.item_id || 0);
+  const sourceType = String(item.source_type || '').toLowerCase().trim();
+  const instance = String(item.instance_name || '').toLowerCase().trim();
+  const encounter = String(item.encounter || '').toLowerCase().trim();
+  return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
+}
+
+function slotLabel(slot: string): string {
+  const normalized = String(slot || '').toLowerCase();
+  const upper = normalized.toUpperCase();
+  const underscored = upper
+    .replace('FINGER1', 'FINGER_1')
+    .replace('FINGER2', 'FINGER_2')
+    .replace('TRINKET1', 'TRINKET_1')
+    .replace('TRINKET2', 'TRINKET_2');
+
+  return (
+    SLOT_LABELS[slot] ||
+    SLOT_LABELS[normalized] ||
+    SLOT_LABELS[upper] ||
+    SLOT_LABELS[underscored] ||
+    normalized.replace(/_/g, ' ')
+  );
+}
 
 interface GearOverviewProps {
   gear: Record<string, GearItem>;
   title?: string;
   characterRenderUrl?: string | null;
-  /** Slots to highlight as upgrades */
+  equippedGear?: Record<string, GearItem>;
+  dropBaselineIlevelByKey?: Record<string, number>;
   upgradeSlots?: Set<string>;
-  /** Slots to highlight as downgrades */
   downgradeSlots?: Set<string>;
   currencies?: Record<string, { id: number; name: string; icon: string }>;
 }
@@ -55,6 +99,8 @@ export default function GearOverview({
   gear,
   title = 'Equipped Gear',
   characterRenderUrl,
+  equippedGear,
+  dropBaselineIlevelByKey = {},
   upgradeSlots,
   downgradeSlots,
   currencies,
@@ -152,12 +198,12 @@ export default function GearOverview({
   if (Object.keys(gear).length === 0) return null;
 
   return (
-    <div className="card relative overflow-hidden p-5">
+    <div className="card relative mx-auto w-full max-w-6xl overflow-hidden p-4 sm:p-5">
       {characterRenderUrl && (
         <img
           src={characterRenderUrl}
           alt=""
-          className="pointer-events-none absolute inset-0 mx-auto h-[130%] w-auto -translate-y-[12%] object-contain opacity-30"
+          className="pointer-events-none absolute inset-0 mx-auto hidden h-[120%] w-auto -translate-y-[8%] object-contain opacity-26 md:block"
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = 'none';
           }}
@@ -169,100 +215,92 @@ export default function GearOverview({
           {totalCostsDisplay && <div className="hidden md:block">{totalCostsDisplay}</div>}
         </div>
         {totalCostsDisplay && <div className="mb-4 md:hidden">{totalCostsDisplay}</div>}
-        {(() => {
-          const gridCols = characterRenderUrl ? 'grid-cols-[1fr_auto_1fr]' : 'grid-cols-2';
-          return (
-            <>
-              <div className={`grid gap-x-4 ${gridCols}`}>
-                <div className="space-y-1">
-                  {GEAR_ORDER_LEFT.map((slot) => (
-                    <GearSlotRow
-                      key={slot}
-                      slot={slot}
-                      item={gear[slot]}
-                      isUpgrade={upgradeSlots?.has(slot)}
-                      isDowngrade={downgradeSlots?.has(slot)}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                    />
-                  ))}
-                </div>
-                {characterRenderUrl && <div />}
-                <div className="space-y-1">
-                  {GEAR_ORDER_RIGHT.map((slot) => (
-                    <GearSlotRow
-                      key={slot}
-                      slot={slot}
-                      item={gear[slot]}
-                      isUpgrade={upgradeSlots?.has(slot)}
-                      isDowngrade={downgradeSlots?.has(slot)}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                      align="right"
-                    />
-                  ))}
-                </div>
-              </div>
-              {characterRenderUrl ? (
-                <div className="mt-2 flex items-center justify-center gap-4">
-                  <div className="w-[360px] max-w-[44vw]">
-                    <GearSlotRow
-                      slot="main_hand"
-                      item={gear.main_hand}
-                      isUpgrade={upgradeSlots?.has('main_hand')}
-                      isDowngrade={downgradeSlots?.has('main_hand')}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                      align="right"
-                      compact
-                    />
-                  </div>
-                  <div className="w-[360px] max-w-[44vw]">
-                    <GearSlotRow
-                      slot="off_hand"
-                      item={gear.off_hand}
-                      isUpgrade={upgradeSlots?.has('off_hand')}
-                      isDowngrade={downgradeSlots?.has('off_hand')}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                      align="left"
-                      compact
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-1 grid grid-cols-2 gap-x-4">
-                  <GearSlotRow
-                    slot="main_hand"
-                    item={gear.main_hand}
-                    isUpgrade={upgradeSlots?.has('main_hand')}
-                    isDowngrade={downgradeSlots?.has('main_hand')}
-                    itemInfoMap={itemInfoMap}
-                    enchantInfoMap={enchantInfoMap}
-                    gemInfoMap={gemInfoMap}
-                    align="right"
-                    compact
-                  />
-                  <GearSlotRow
-                    slot="off_hand"
-                    item={gear.off_hand}
-                    isUpgrade={upgradeSlots?.has('off_hand')}
-                    isDowngrade={downgradeSlots?.has('off_hand')}
-                    itemInfoMap={itemInfoMap}
-                    enchantInfoMap={enchantInfoMap}
-                    gemInfoMap={gemInfoMap}
-                    align="left"
-                    compact
-                  />
-                </div>
-              )}
-            </>
-          );
-        })()}
+
+        <div className="space-y-1 md:hidden">
+          {GEAR_ORDER_STACKED.map((slot) => (
+            <GearSlotRow
+              key={slot}
+              slot={slot}
+              item={gear[slot]}
+              equippedItem={equippedGear?.[slot]}
+              dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+              isUpgrade={upgradeSlots?.has(slot)}
+              isDowngrade={downgradeSlots?.has(slot)}
+              itemInfoMap={itemInfoMap}
+              enchantInfoMap={enchantInfoMap}
+              gemInfoMap={gemInfoMap}
+            />
+          ))}
+        </div>
+
+        <div className={`hidden md:grid ${characterRenderUrl ? 'md:grid-cols-[1fr_200px_1fr] lg:grid-cols-[1fr_230px_1fr] xl:grid-cols-[1fr_260px_1fr]' : 'md:grid-cols-2'} md:gap-x-4 lg:gap-x-6`}>
+          <div className="space-y-1">
+            {GEAR_ORDER_LEFT.map((slot) => (
+              <GearSlotRow
+                key={slot}
+                slot={slot}
+                item={gear[slot]}
+                equippedItem={equippedGear?.[slot]}
+                dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+                isUpgrade={upgradeSlots?.has(slot)}
+                isDowngrade={downgradeSlots?.has(slot)}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+              />
+            ))}
+          </div>
+          {characterRenderUrl && <div className="hidden md:block" />}
+          <div className="space-y-1">
+            {GEAR_ORDER_RIGHT.map((slot) => (
+              <GearSlotRow
+                key={slot}
+                slot={slot}
+                item={gear[slot]}
+                equippedItem={equippedGear?.[slot]}
+                dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+                isUpgrade={upgradeSlots?.has(slot)}
+                isDowngrade={downgradeSlots?.has(slot)}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+                reverse
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="hidden md:flex md:justify-center">
+          <div className="grid w-full max-w-4xl grid-cols-2 gap-6 pt-4">
+            <div className="justify-self-end w-full max-w-md">
+              <GearSlotRow
+                slot="main_hand"
+                item={gear.main_hand}
+                equippedItem={equippedGear?.main_hand}
+                dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+                isUpgrade={upgradeSlots?.has('main_hand')}
+                isDowngrade={downgradeSlots?.has('main_hand')}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+                reverse
+              />
+            </div>
+            <div className="justify-self-start w-full max-w-md">
+              <GearSlotRow
+                slot="off_hand"
+                item={gear.off_hand}
+                equippedItem={equippedGear?.off_hand}
+                dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+                isUpgrade={upgradeSlots?.has('off_hand')}
+                isDowngrade={downgradeSlots?.has('off_hand')}
+                itemInfoMap={itemInfoMap}
+                enchantInfoMap={enchantInfoMap}
+                gemInfoMap={gemInfoMap}
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -271,40 +309,40 @@ export default function GearOverview({
 export function GearSlotRow({
   slot,
   item,
+  equippedItem,
+  dropBaselineIlevelByKey = {},
   isUpgrade,
   isDowngrade,
   itemInfoMap,
   enchantInfoMap,
   gemInfoMap,
-  align = 'left',
-  compact = false,
+  reverse = false,
 }: {
   slot: string;
   item?: GearItem;
+  equippedItem?: GearItem;
+  dropBaselineIlevelByKey?: Record<string, number>;
   isUpgrade?: boolean;
   isDowngrade?: boolean;
   itemInfoMap: Record<number, ItemInfo>;
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
-  align?: 'left' | 'right';
-  compact?: boolean;
+  reverse?: boolean;
 }) {
-  const rtl = align === 'right';
+  const label = slotLabel(slot);
 
   if (!item || item.item_id <= 0) {
     return (
-      <div
-        className={`flex items-center gap-2 rounded-lg ${compact ? 'px-2 py-1.5' : 'px-2.5 py-2'} ${rtl ? 'flex-row-reverse' : ''}`}
-      >
-        <div
-          className={`${compact ? 'h-10 w-10' : 'h-8 w-8'} shrink-0 rounded border border-border bg-white/[0.03]`}
+      <div className="rounded-lg">
+        <GearItemRow
+          icon="inv_misc_questionmark"
+          name={label}
+          nameColor="#d4d4d8"
+          details={[{ text: 'Empty', kind: 'plain', color: 'text-zinc-400' }]}
+          showCheckbox={false}
+          dimmed
+          reverse={reverse}
         />
-        <div className={rtl ? 'text-right' : ''}>
-          <p className={`${compact ? 'text-[13px]' : 'text-sm'} text-zinc-200`}>
-            {SLOT_LABELS[slot] || slot}
-          </p>
-          <p className={`${compact ? 'text-[13px]' : 'text-sm'} text-zinc-300`}>Empty</p>
-        </div>
       </div>
     );
   }
@@ -312,6 +350,7 @@ export function GearSlotRow({
   const info = itemInfoMap[item.item_id];
   const enchant = item.enchant_id ? enchantInfoMap[item.enchant_id] : undefined;
   const gem = item.gem_id ? gemInfoMap[item.gem_id] : undefined;
+  const displayTag = info?.tag && info.tag.toLowerCase() !== 'socket' ? info.tag : '';
   const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
   const name = info?.name || item.name || `Item ${item.item_id}`;
   const icon = info?.icon || 'inv_misc_questionmark';
@@ -320,97 +359,137 @@ export function GearSlotRow({
       ? getWowheadData(item.bonus_ids, item.ilevel, item.enchant_id, item.gem_id)
       : undefined;
 
-  const fadeDir = rtl ? 'to left' : 'to right';
+  const baselineDropIlevel = Number(dropBaselineIlevelByKey[dropBaselineKey(item)] || 0);
+  const needsUpgrade =
+    Number(item.upgrade_levels || 0) > 0 ||
+    (baselineDropIlevel > 0 && Number(item.ilevel || 0) > baselineDropIlevel);
+  const levelChanged =
+    Number(equippedItem?.ilevel || 0) > 0 &&
+    Number(equippedItem?.ilevel || 0) !== Number(item.ilevel || 0);
+  const upgradeState: 'upgrade' | 'downgrade' | null = isDowngrade
+    ? 'downgrade'
+    : needsUpgrade || isUpgrade
+      ? 'upgrade'
+      : levelChanged
+        ? Number(item.ilevel || 0) > Number(equippedItem?.ilevel || 0)
+          ? 'upgrade'
+          : 'downgrade'
+        : null;
+
+  const gemEligible =
+    Number((info as any)?.sockets || 0) > 0 || Number(item.gem_id || 0) > 0;
+  const enchantEligible = ENCHANTABLE_SLOTS.has(slot);
+
+  const details = [
+    {
+      text: `${label} - ${item.ilevel || 0}${displayTag ? ` - ${displayTag}` : ''}`,
+      kind: 'plain' as const,
+      color:
+        upgradeState === 'upgrade'
+          ? 'text-emerald-300'
+          : upgradeState === 'downgrade'
+            ? 'text-red-300'
+            : 'text-zinc-300',
+      tooltip: levelChanged ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}` : undefined,
+    },
+  ];
 
   return (
     <div
-      className={`relative flex items-center gap-2 rounded-lg ${compact ? 'px-2 py-1.5' : 'px-2.5 py-2.5'} ${rtl ? 'flex-row-reverse' : ''}`}
+      className={`rounded-lg ${
+        upgradeState === 'upgrade'
+          ? 'bg-emerald-500/[0.08] ring-2 ring-emerald-400/45'
+          : upgradeState === 'downgrade'
+            ? 'bg-red-500/[0.08] ring-1 ring-red-500/25'
+            : ''
+      }`}
     >
-      {isUpgrade && (
-        <div
-          className="pointer-events-none absolute inset-0 rounded-lg bg-emerald-500/[0.15] ring-1 ring-emerald-500/30"
-          style={{
-            maskImage: `linear-gradient(${fadeDir}, black 20%, transparent 85%)`,
-            WebkitMaskImage: `linear-gradient(${fadeDir}, black 20%, transparent 85%)`,
-          }}
-        />
-      )}
-      {isDowngrade && (
-        <div
-          className="pointer-events-none absolute inset-0 rounded-lg bg-red-500/[0.15] ring-1 ring-red-500/30"
-          style={{
-            maskImage: `linear-gradient(${fadeDir}, black 20%, transparent 85%)`,
-            WebkitMaskImage: `linear-gradient(${fadeDir}, black 20%, transparent 85%)`,
-          }}
-        />
-      )}
-      <a
+      <GearItemRow
+        icon={icon}
+        name={name}
+        nameColor={qc}
+        details={details}
+        selectable={false}
+        showCheckbox={false}
+        reverse={reverse}
+        vault={item.origin === 'vault'}
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
-        data-wowhead={whData}
-        className={`${compact ? 'h-10 w-10' : 'h-8 w-8'} shrink-0 overflow-hidden rounded border border-border`}
-        title={name}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.preventDefault()}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={getIconUrl(icon)}
-          alt=""
-          width={compact ? 40 : 32}
-          height={compact ? 40 : 32}
-          className="h-full w-full"
-          loading="lazy"
-        />
-      </a>
-      <div className={`min-w-0 flex-1 ${rtl ? 'text-right' : ''}`}>
-        <div className={`flex items-center gap-1.5 ${rtl ? 'flex-row-reverse' : ''}`}>
-          <a
-            href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
-            data-wowhead={whData}
-            className={`${compact ? 'text-[1.08rem]' : 'text-sm'} ${compact ? 'max-w-none' : 'truncate'} font-semibold leading-tight no-underline`}
-            style={{ color: qc }}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.preventDefault()}
-          >
-            {name}
-          </a>
-          {isUpgrade && item.upgrade_levels ? (
-            <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              +{item.upgrade_levels} {item.upgrade_levels === 1 ? 'level' : 'levels'}
-            </span>
-          ) : isUpgrade ? (
-            <span className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-              Upgrade
-            </span>
-          ) : isDowngrade ? (
-            <span className="shrink-0 rounded bg-red-500/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-red-300">
-              Downgrade
-            </span>
-          ) : null}
-          {item.origin === 'vault' && (
-            <span className="shrink-0 rounded bg-amber-400/10 px-1.5 py-px text-[11px] font-bold uppercase tracking-wider text-amber-300">
-              Vault
-            </span>
-          )}
-        </div>
-        <p
-          className={`${compact ? 'whitespace-normal break-words text-[1.08rem]' : 'truncate text-sm'} text-zinc-300`}
-        >
-          {!compact && `${SLOT_LABELS[slot] || slot}`}
-          {!compact && item.ilevel > 0 && ` - ${item.ilevel}`}
-          {compact && item.ilevel > 0 && `${item.ilevel}`}
-          {compact && info?.tag && ` - ${info.tag}`}
-          {!compact && info?.tag && ` - ${info.tag}`}
-          {gem?.name ? (
-            <span className="text-sky-300/90"> - {gem.name}</span>
-          ) : (
-            (info?.sockets ?? 0) > 0 && <span className="text-sky-300/90"> - Socket</span>
-          )}
-          {enchant?.name && <span className="text-emerald-300/90"> - {enchant.name}</span>}
-        </p>
-      </div>
+        wowheadData={whData}
+        iconExtras={
+          <>
+            {gemEligible &&
+              (gem?.icon ? (
+                <a
+                  href={gem.gem_id ? getWowheadUrl(gem.gem_id) : undefined}
+                  data-wowhead={gem.gem_id ? `item=${gem.gem_id}` : undefined}
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-sky-500/10 ${
+                    upgradeState === 'upgrade'
+                      ? 'border-2 border-sky-300/85'
+                      : 'border border-sky-400/45'
+                  }`}
+                  title={gem.name || 'Gem'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.preventDefault()}
+                >
+                  <img src={getIconUrl(gem.icon)} alt="" className="h-full w-full" loading="lazy" />
+                </a>
+              ) : (
+                <span
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-sky-500/5 text-[9px] font-bold leading-none text-sky-200 ${
+                    upgradeState === 'upgrade'
+                      ? 'border-2 border-sky-300/85'
+                      : 'border border-sky-400/35'
+                  }`}
+                  title="Gem slot available"
+                >
+                  G
+                </span>
+              ))}
+            {enchantEligible &&
+              (enchant?.icon ? (
+                <a
+                  href={
+                    enchant.item_id
+                      ? getWowheadUrl(enchant.item_id)
+                      : enchant.enchant_id
+                        ? `https://www.wowhead.com/spell=${enchant.enchant_id}`
+                        : undefined
+                  }
+                  data-wowhead={
+                    enchant.item_id
+                      ? `item=${enchant.item_id}`
+                      : enchant.enchant_id
+                        ? `spell=${enchant.enchant_id}`
+                        : undefined
+                  }
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-emerald-500/10 ${
+                    upgradeState === 'upgrade'
+                      ? 'border-2 border-emerald-300/85'
+                      : 'border border-emerald-400/45'
+                  }`}
+                  title={enchant.name || 'Enchant'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.preventDefault()}
+                >
+                  <img src={getIconUrl(enchant.icon)} alt="" className="h-full w-full" loading="lazy" />
+                </a>
+              ) : (
+                <span
+                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-emerald-500/5 text-[9px] font-bold leading-none text-emerald-200 ${
+                    upgradeState === 'upgrade'
+                      ? 'border-2 border-emerald-300/85'
+                      : 'border border-emerald-400/35'
+                  }`}
+                  title="Enchant slot available"
+                >
+                  E
+                </span>
+              ))}
+          </>
+        }
+      />
     </div>
   );
 }

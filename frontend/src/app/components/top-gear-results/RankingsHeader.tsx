@@ -1,6 +1,6 @@
 export default function RankingsHeader() {
   return (
-    <div className="px-4 pb-2.5 pt-2">
+    <div className="hidden px-4 pb-2.5 pt-2 lg:block">
       <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="w-6 shrink-0 text-right text-[12px] uppercase tracking-[0.15em] text-zinc-300">

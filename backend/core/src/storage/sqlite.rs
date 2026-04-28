@@ -1,7 +1,7 @@
 use rusqlite::{params, Connection};
 use std::sync::Mutex;
 
-use super::JobStorage;
+use super::{JobStorage, WarcraftLogsParseFilter, WarcraftLogsStoredParse};
 use crate::models::{
     extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
 };
@@ -69,6 +69,57 @@ impl SqliteStorage {
                 spec TEXT,
                 simc_input TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS wcl_characters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                region TEXT NOT NULL,
+                realm_slug TEXT NOT NULL,
+                character_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, region, realm_slug, character_name)
+            );
+            CREATE TABLE IF NOT EXISTS wcl_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_id INTEGER NOT NULL,
+                report_code TEXT NOT NULL,
+                title TEXT,
+                report_end_time INTEGER,
+                zone_name TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(character_id, report_code),
+                FOREIGN KEY(character_id) REFERENCES wcl_characters(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS wcl_parses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                character_id INTEGER NOT NULL,
+                report_id INTEGER,
+                mode TEXT NOT NULL,
+                dedupe_key TEXT NOT NULL,
+                expansion TEXT,
+                season TEXT,
+                raid_name TEXT,
+                raid_group TEXT,
+                zone_name TEXT NOT NULL,
+                encounter_name TEXT NOT NULL,
+                difficulty TEXT NOT NULL,
+                percentile REAL,
+                dps REAL,
+                median_percentile REAL,
+                attempts INTEGER,
+                kills INTEGER,
+                fastest_kill_seconds REAL,
+                all_stars_points REAL,
+                all_stars_rank INTEGER,
+                start_time INTEGER,
+                locked_in INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(character_id, mode, dedupe_key),
+                FOREIGN KEY(character_id) REFERENCES wcl_characters(id) ON DELETE CASCADE,
+                FOREIGN KEY(report_id) REFERENCES wcl_reports(id) ON DELETE SET NULL
             );",
         )
         .expect("Failed to create tables");
@@ -89,6 +140,10 @@ impl SqliteStorage {
         let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN pull_count INTEGER;");
         let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN timer_seconds INTEGER;");
         let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN affixes TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE wcl_parses ADD COLUMN expansion TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE wcl_parses ADD COLUMN season TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE wcl_parses ADD COLUMN raid_name TEXT;");
+        let _ = conn.execute_batch("ALTER TABLE wcl_parses ADD COLUMN raid_group TEXT;");
 
         let max_jobs = conn
             .query_row(
@@ -680,5 +735,216 @@ impl JobStorage for SqliteStorage {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM character_profiles WHERE id = ?1", params![id])
             .ok();
+    }
+
+    fn upsert_wcl_parses(
+        &self,
+        user_id: &str,
+        region: &str,
+        realm: &str,
+        name: &str,
+        mode: &str,
+        rows: &[WarcraftLogsStoredParse],
+    ) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let region_l = region.to_lowercase();
+        let realm_l = realm.to_lowercase();
+        let name_l = name.to_lowercase();
+        let mode_l = mode.to_lowercase();
+        let conn = self.conn.lock().unwrap();
+        let tx = match conn.unchecked_transaction() {
+            Ok(tx) => tx,
+            Err(_) => return,
+        };
+
+        let _ = tx.execute(
+            "INSERT INTO wcl_characters (user_id, region, realm_slug, character_name, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(user_id, region, realm_slug, character_name)
+             DO UPDATE SET updated_at = excluded.updated_at",
+            params![user_id, region_l, realm_l, name_l, now, now],
+        );
+
+        let character_id: i64 = match tx.query_row(
+            "SELECT id FROM wcl_characters WHERE user_id = ?1 AND region = ?2 AND realm_slug = ?3 AND character_name = ?4",
+            params![user_id, region_l, realm_l, name_l],
+            |row| row.get(0),
+        ) {
+            Ok(id) => id,
+            Err(_) => {
+                let _ = tx.rollback();
+                return;
+            }
+        };
+
+        for row in rows {
+            let mut report_id: Option<i64> = None;
+            if let Some(report_code) = row.report_code.as_ref().filter(|s| !s.trim().is_empty()) {
+                let _ = tx.execute(
+                    "INSERT INTO wcl_reports (character_id, report_code, title, report_end_time, zone_name, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                     ON CONFLICT(character_id, report_code)
+                     DO UPDATE SET title = COALESCE(excluded.title, wcl_reports.title),
+                                   report_end_time = COALESCE(excluded.report_end_time, wcl_reports.report_end_time),
+                                   zone_name = COALESCE(excluded.zone_name, wcl_reports.zone_name),
+                                   updated_at = excluded.updated_at",
+                    params![
+                        character_id,
+                        report_code,
+                        row.report_title,
+                        row.report_end_time,
+                        row.zone_name,
+                        now,
+                        now
+                    ],
+                );
+                report_id = tx
+                    .query_row(
+                        "SELECT id FROM wcl_reports WHERE character_id = ?1 AND report_code = ?2",
+                        params![character_id, report_code],
+                        |r| r.get(0),
+                    )
+                    .ok();
+            }
+
+            let _ = tx.execute(
+                "INSERT INTO wcl_parses (
+                    character_id, report_id, mode, dedupe_key, expansion, season, raid_name, raid_group,
+                    zone_name, encounter_name, difficulty,
+                    percentile, dps, median_percentile, attempts, kills, fastest_kill_seconds,
+                    all_stars_points, all_stars_rank, start_time, locked_in, created_at, updated_at
+                 ) VALUES (
+                    ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                    ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                    ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23
+                 )
+                 ON CONFLICT(character_id, mode, dedupe_key) DO NOTHING",
+                params![
+                    character_id,
+                    report_id,
+                    mode_l,
+                    row.dedupe_key,
+                    row.expansion,
+                    row.season,
+                    row.raid_name,
+                    row.raid_group,
+                    row.zone_name,
+                    row.encounter_name,
+                    row.difficulty,
+                    row.percentile,
+                    row.dps,
+                    row.median_percentile,
+                    row.attempts,
+                    row.kills,
+                    row.fastest_kill_seconds,
+                    row.all_stars_points,
+                    row.all_stars_rank,
+                    row.start_time,
+                    row.locked_in.map(|b| if b { 1_i64 } else { 0_i64 }),
+                    now,
+                    now
+                ],
+            );
+        }
+
+        let _ = tx.commit();
+    }
+
+    fn get_wcl_parses(
+        &self,
+        user_id: &str,
+        region: &str,
+        realm: &str,
+        name: &str,
+        mode: &str,
+    ) -> Vec<WarcraftLogsStoredParse> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = match conn.prepare(
+            "SELECT
+                p.mode, p.dedupe_key, p.expansion, p.season, p.raid_name, p.raid_group,
+                p.zone_name, p.encounter_name, p.difficulty,
+                p.percentile, p.dps, p.median_percentile, p.attempts, p.kills, p.fastest_kill_seconds,
+                p.all_stars_points, p.all_stars_rank, r.report_code, r.title, r.report_end_time,
+                p.start_time, p.locked_in
+             FROM wcl_parses p
+             JOIN wcl_characters c ON c.id = p.character_id
+             LEFT JOIN wcl_reports r ON r.id = p.report_id
+             WHERE c.user_id = ?1
+               AND c.region = ?2
+               AND c.realm_slug = ?3
+               AND c.character_name = ?4
+               AND p.mode = ?5
+             ORDER BY p.start_time DESC, p.id DESC",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+
+        stmt.query_map(
+            params![
+                user_id,
+                region.to_lowercase(),
+                realm.to_lowercase(),
+                name.to_lowercase(),
+                mode.to_lowercase()
+            ],
+            |row| {
+                Ok(WarcraftLogsStoredParse {
+                    mode: row.get(0)?,
+                    dedupe_key: row.get(1)?,
+                    expansion: row.get(2)?,
+                    season: row.get(3)?,
+                    raid_name: row.get(4)?,
+                    raid_group: row.get(5)?,
+                    zone_name: row.get(6)?,
+                    encounter_name: row.get(7)?,
+                    difficulty: row.get(8)?,
+                    percentile: row.get(9)?,
+                    dps: row.get(10)?,
+                    median_percentile: row.get(11)?,
+                    attempts: row.get(12)?,
+                    kills: row.get(13)?,
+                    fastest_kill_seconds: row.get(14)?,
+                    all_stars_points: row.get(15)?,
+                    all_stars_rank: row.get(16)?,
+                    report_code: row.get(17)?,
+                    report_title: row.get(18)?,
+                    report_end_time: row.get(19)?,
+                    start_time: row.get(20)?,
+                    locked_in: row
+                        .get::<_, Option<i64>>(21)?
+                        .map(|v| v != 0),
+                })
+            },
+        )
+        .ok()
+        .into_iter()
+        .flat_map(|iter| iter.filter_map(|r| r.ok()))
+        .collect()
+    }
+
+    fn get_wcl_parses_filtered(
+        &self,
+        user_id: &str,
+        region: &str,
+        realm: &str,
+        name: &str,
+        mode: &str,
+        filter: &WarcraftLogsParseFilter,
+    ) -> Vec<WarcraftLogsStoredParse> {
+        let mut rows = self.get_wcl_parses(user_id, region, realm, name, mode);
+        if let Some(expansion) = filter.expansion.as_ref() {
+            rows.retain(|r| r.expansion.as_ref() == Some(expansion));
+        }
+        if let Some(season) = filter.season.as_ref() {
+            rows.retain(|r| r.season.as_ref() == Some(season));
+        }
+        if let Some(raid_name) = filter.raid_name.as_ref() {
+            rows.retain(|r| r.raid_name.as_ref() == Some(raid_name));
+        }
+        if let Some(raid_group) = filter.raid_group.as_ref() {
+            rows.retain(|r| r.raid_group.as_ref() == Some(raid_group));
+        }
+        rows
     }
 }

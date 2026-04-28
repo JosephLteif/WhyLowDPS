@@ -74,11 +74,12 @@ function useFaction(
 
   useEffect(() => {
     if (!realm || !name) return;
+    const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
     let cancelled = false;
     (async () => {
       try {
         const url = new URL(
-          `${API_URL}/api/blizzard/character/${encodeURIComponent(realm.toLowerCase())}/${encodeURIComponent(name.toLowerCase())}/profile`,
+          `${API_URL}/api/blizzard/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(name.toLowerCase())}/profile`,
           window.location.origin
         );
         if (region) url.searchParams.set('region', region.toLowerCase());
@@ -131,84 +132,75 @@ export default function DpsHeroCard({
   const faction = useFaction(playerRealm, playerName, playerRegion);
   const playerClassColor = classColorFromLabel(playerClass);
 
-  const insetUrl =
-    playerRealm && playerName
-      ? `${API_URL}/api/blizzard/character/${encodeURIComponent(playerRealm.toLowerCase())}/${encodeURIComponent(playerName.toLowerCase())}/media/inset${playerRegion ? `?region=${playerRegion.toLowerCase()}` : ''}`
-      : null;
+  const [factionIconVisible, setFactionIconVisible] = useState(true);
 
   return (
     <div className="card overflow-hidden">
-      <div className="relative overflow-hidden px-8 pb-6 pt-8 text-center">
-        {faction && (faction === 'horde' || faction === 'alliance') && (
-          <div
-            className={`pointer-events-none absolute inset-0 ${
-              faction === 'horde' ? 'bg-red-950/50' : 'bg-blue-950/50'
-            }`}
-            style={{
-              maskImage: 'linear-gradient(to left, black 20%, transparent 60%)',
-              WebkitMaskImage: 'linear-gradient(to left, black 20%, transparent 60%)',
-            }}
-          />
-        )}
+      <div className="relative overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#091022] via-[#101027] to-[#2a0a0f]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(118,88,255,0.26),transparent_38%),radial-gradient(circle_at_86%_32%,rgba(190,42,42,0.22),transparent_45%)]" />
+
         {faction && FACTION_BGS[faction] && (
           <img
-            src={`${API_URL}${FACTION_BGS[faction]}`}
+            src={FACTION_BGS[faction]}
             alt=""
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-20"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-18"
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = 'none';
             }}
           />
         )}
-        {insetUrl && (
-          <img
-            src={insetUrl}
-            alt=""
-            className="pointer-events-none absolute bottom-0 left-0 h-[130%] w-auto -translate-x-1/4 object-contain opacity-50"
-            style={{
-              maskImage: 'linear-gradient(to right, black 50%, transparent 95%)',
-              WebkitMaskImage: 'linear-gradient(to right, black 50%, transparent 95%)',
-            }}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
-          />
-        )}
-        {faction && FACTION_ICONS[faction] && (
-          <img
-            src={`${API_URL}${FACTION_ICONS[faction]}`}
-            alt=""
-            className="pointer-events-none absolute bottom-0 right-[5%] top-[0%] h-[100%] w-auto object-contain opacity-20"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = 'none';
-            }}
-          />
-        )}
-        <div className="relative">
-          {playerRealm ? (
-            <Link
-              href={characterHref(playerRegion || 'us', playerRealm, playerName)}
-              className="text-2xl font-bold tracking-tight text-white transition-colors hover:text-gold"
-            >
-              {playerName}
-            </Link>
-          ) : (
-            <p className="text-2xl font-bold tracking-tight text-white">{playerName}</p>
+
+        <div className="relative flex min-h-[120px] items-center justify-center gap-3 px-3 py-3 sm:px-5">
+          <div className="relative text-center">
+            <div className="mb-0.5 flex items-center justify-center gap-2">
+              {playerRealm ? (
+                <Link
+                  href={characterHref(playerRegion || 'us', playerRealm, playerName)}
+                  className="text-[1.35rem] font-black leading-none tracking-tight text-white transition-colors hover:text-gold sm:text-[1.75rem]"
+                >
+                  {playerName}
+                </Link>
+              ) : (
+                <p className="text-[1.35rem] font-black leading-none tracking-tight text-white sm:text-[1.75rem]">{playerName}</p>
+              )}
+              {faction && (
+                <span className="rounded-md border border-white/20 bg-black/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-200">
+                  {faction}
+                </span>
+              )}
+            </div>
+            <p className="text-[0.95rem] font-medium leading-tight sm:text-[1rem]" style={{ color: playerClassColor || undefined }}>
+              {playerClass}
+            </p>
+            <p className="mt-1 text-[2.35rem] font-black tabular-nums leading-none tracking-tight text-white sm:text-[3.2rem]">
+              {Math.round(dps).toLocaleString()}
+            </p>
+            <p className="mt-0.5 text-[0.66rem] font-semibold uppercase tracking-[0.18em] text-zinc-100">
+              Damage Per Second
+            </p>
+            <div className="mt-2 flex w-full max-w-full flex-wrap items-center justify-center gap-2 px-2 sm:px-0">{children}</div>
+          </div>
+
+          {faction && FACTION_ICONS[faction] && factionIconVisible && (
+            <div className="pointer-events-none absolute right-5 top-1/2 hidden -translate-y-1/2 md:block">
+              <div
+                className={`absolute inset-0 rounded-full blur-3xl ${
+                  faction === 'horde' ? 'bg-red-600/20' : 'bg-blue-600/20'
+                }`}
+              />
+              <img
+                src={FACTION_ICONS[faction]}
+                alt={faction}
+                className="relative h-14 w-14 object-contain opacity-90"
+                onError={() => setFactionIconVisible(false)}
+              />
+            </div>
           )}
-          <p className="mt-0.5 text-sm font-medium" style={{ color: playerClassColor || undefined }}>
-            {playerClass}
-          </p>
-          <p className="mt-4 text-5xl font-bold tabular-nums tracking-tight text-white">
-            {Math.round(dps).toLocaleString()}
-          </p>
-          <p className="mt-1.5 text-sm font-medium uppercase tracking-widest text-zinc-200">
-            Damage Per Second
-          </p>
-          {children}
         </div>
       </div>
       {hasMetadata && (
-        <div className="flex items-center justify-center gap-px border-t border-border bg-surface-2">
+        <div className="flex flex-wrap items-stretch justify-center gap-px border-t border-border bg-surface-2">
           {avgIlevel != null && (
             <MetaStat
               label="Item Level"
@@ -288,12 +280,12 @@ function MetaStat({
     : [];
 
   return (
-    <div className="group relative flex-1 px-4 py-3 text-center">
-      <p className="text-sm uppercase tracking-wider text-zinc-300">{label}</p>
-      <p className="mt-0.5 text-sm font-medium tabular-nums text-zinc-100">
+    <div className="group relative min-w-[120px] flex-1 px-2 py-2 text-center sm:min-w-[140px] sm:px-3">
+      <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-300 sm:text-xs">{label}</p>
+      <p className="mt-0.5 text-[15px] font-medium tabular-nums text-zinc-100 sm:text-base">
         {value}
         {note && (
-          <span className={`ml-1 text-sm font-normal ${noteColor || 'text-zinc-300'}`}>{note}</span>
+          <span className={`ml-1 text-[13px] font-normal sm:text-sm ${noteColor || 'text-zinc-300'}`}>{note}</span>
         )}
       </p>
       {tooltipLines.length > 0 && (

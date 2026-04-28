@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_URL, fetchJsonCached } from '../lib/api';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
@@ -11,6 +11,7 @@ import TopGearItemContextMenu from './top-gear/TopGearItemContextMenu';
 import TopGearQuickSelect from './top-gear/TopGearQuickSelect';
 import TopGearSlotGroup from './top-gear/TopGearSlotGroup';
 import { useTopGearState } from './top-gear/useTopGearState';
+import StickyPageHeader from './StickyPageHeader';
 
 interface TopGearItemSelectorProps {
   resolved: ResolveGearResponse;
@@ -173,8 +174,6 @@ export default function TopGearItemSelector({
 }: TopGearItemSelectorProps) {
   const { maxCombinations } = useSimContext();
   const effectiveMaxCombinations = maxCombinations ?? 500;
-  const headerRef = useRef<HTMLDivElement>(null);
-  const [headerVisible, setHeaderVisible] = useState(true);
   const [gemInfoById, setGemInfoById] = useState<Record<number, GemInfo>>({});
   const [enchantInfoById, setEnchantInfoById] = useState<Record<number, EnchantInfo>>({});
   const [enchantAvailabilityBySlot, setEnchantAvailabilityBySlot] = useState<Record<string, boolean>>(
@@ -210,16 +209,6 @@ export default function TopGearItemSelector({
     toggleGroup,
     toggleItem,
   } = useTopGearState({ resolved, selectedUids, onSelectionChange, onResolvedChange, onItemAdded });
-
-  useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-    const obs = new IntersectionObserver(([entry]) => setHeaderVisible(entry.isIntersecting), {
-      threshold: 0,
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
 
   useWowheadTooltips([resolved, gemInfoById, enchantInfoById]);
 
@@ -1065,10 +1054,13 @@ export default function TopGearItemSelector({
   );
 
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);
+  const comboBreakdown =
+    comboCount > 0 ? `${comboCount.toLocaleString()} normal combos | +1 Currently Equipped` : null;
   const quickSelect = (
     <TopGearQuickSelect
       comboCount={comboCount}
       maxCombinations={effectiveMaxCombinations}
+      comboBreakdown={comboBreakdown}
       hasSelection={hasSelection}
       vaultCount={vaultUids.length}
       allVaultSelected={
@@ -1123,35 +1115,22 @@ export default function TopGearItemSelector({
         onSetWishlist={setItemWishlist}
       />
 
-      {!headerVisible && (
-        <div className="fixed left-0 right-0 top-12 z-50 flex items-center justify-between border-b border-border/50 bg-surface/90 px-4 py-2 shadow-lg backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Items</p>
+      <StickyPageHeader
+        left={
+          <div className="flex items-center gap-4">
+            <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-zinc-300">
+              Select Items
+            </h2>
             <button
               onClick={() => openAddItem()}
-              className="flex items-center gap-1.5 rounded-md bg-gold/10 px-2 py-1 text-[10px] font-bold tracking-wider text-gold hover:bg-gold/20"
+              className="flex items-center gap-1.5 rounded-md bg-gold/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.08em] text-gold hover:bg-gold/20"
             >
-              Add
+              Add Item
             </button>
           </div>
-          {quickSelect}
-        </div>
-      )}
-
-      <div ref={headerRef} className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-zinc-300">
-            Select Items
-          </h2>
-          <button
-            onClick={() => openAddItem()}
-            className="flex items-center gap-1.5 rounded-md bg-gold/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.08em] text-gold hover:bg-gold/20"
-          >
-            Add Item
-          </button>
-        </div>
-        {quickSelect}
-      </div>
+        }
+        right={quickSelect}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {visibleGroups.map(({ group, equipped, alternatives }) => (

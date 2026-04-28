@@ -11,7 +11,7 @@ export interface DefaultOptionDefinition<T extends DefaultOptionValue = DefaultO
   key: string;
   label: string;
   description: string;
-  group: 'Top Gear' | 'Fight Setup' | 'Raid Buffs' | 'Consumables';
+  group: 'Top Gear' | 'Drop Finder' | 'Fight Setup' | 'Raid Buffs' | 'Consumables';
   type: 'boolean' | 'number' | 'string' | 'select';
   defaultValue: T;
   min?: number;
@@ -66,6 +66,35 @@ export const APP_DEFAULTS_REGISTRY = {
     group: 'Top Gear',
     type: 'boolean',
     defaultValue: false,
+  },
+  'dropfinder.copyEnchants': {
+    key: 'dropfinder.copyEnchants',
+    label: 'Copy Enchants/Gems',
+    description: 'Apply equipped enchants and gems to Drop Finder items by default.',
+    group: 'Drop Finder',
+    type: 'boolean',
+    defaultValue: true,
+  },
+  'dropfinder.autoCatalyst': {
+    key: 'dropfinder.autoCatalyst',
+    label: 'Auto Catalyst',
+    description: 'Add catalyst-converted alternatives by default in Drop Finder.',
+    group: 'Drop Finder',
+    type: 'boolean',
+    defaultValue: true,
+  },
+  'dropfinder.upgradeMode': {
+    key: 'dropfinder.upgradeMode',
+    label: 'Upgrade Simulation Mode',
+    description: 'Default upgrade simulation mode in Drop Finder.',
+    group: 'Drop Finder',
+    type: 'select',
+    defaultValue: 'current',
+    options: [
+      { value: 'current', label: 'Current only' },
+      { value: 'highest', label: 'Highest only' },
+      { value: 'both', label: 'Current + Highest' },
+    ],
   },
   'fight.fightStyle': {
     key: 'fight.fightStyle',

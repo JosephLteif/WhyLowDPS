@@ -208,13 +208,13 @@ function SimRow({
           }));
           storeScenarioSiblings(siblings);
         }}
-        className={`flex min-w-0 flex-1 items-center gap-3 transition-colors hover:bg-white/[0.03] ${compact ? 'px-4 py-2' : 'px-5 py-3'}`}
+        className={`flex min-w-0 flex-1 items-center gap-2 transition-colors hover:bg-white/[0.03] ${compact ? 'px-3 py-2 sm:px-4' : 'px-3 py-3 sm:px-5'}`}
       >
         <span
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_COLORS[sim.status] || STATUS_COLORS.pending}`}
         />
         {!compact && (
-          <span className="w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold">
+          <span className="hidden w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold lg:inline-block">
             {SIM_TYPE_LABELS[sim.sim_type] || sim.sim_type}
           </span>
         )}
@@ -248,13 +248,13 @@ function SimRow({
             </span>
           )}
         </div>
-        <span className="w-20 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-200">
+        <span className="w-16 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-200 sm:w-20">
           {sim.dps ? Math.round(sim.dps).toLocaleString() : '—'}
         </span>
         <span className="hidden w-20 shrink-0 text-right text-[13px] text-zinc-500 sm:block">
           {FIGHT_STYLE_SHORT[sim.fight_style] || sim.fight_style}
         </span>
-        <div className="w-20 shrink-0 text-right group-hover:opacity-0">
+        <div className="hidden w-20 shrink-0 text-right group-hover:opacity-0 sm:block">
           <div className="text-[12px] text-zinc-500">{timeAgo(sim.created_at)}</div>
           {sim.size_bytes > 0 && (
             <div className="text-[10px] tabular-nums text-zinc-600">
@@ -359,7 +359,7 @@ function BatchGroup({
   return (
     <div className="border-b border-border last:border-b-0">
       <div
-        className="group relative flex cursor-pointer items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.03]"
+        className="group relative flex cursor-pointer items-center gap-2 px-3 py-3 transition-colors hover:bg-white/[0.03] sm:gap-3 sm:px-5"
         onClick={() => setIsOpen(!isOpen)}
       >
         <input
@@ -376,7 +376,7 @@ function BatchGroup({
         />
         <ChevronIcon open={isOpen} />
 
-        <span className="w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold">
+        <span className="hidden w-[80px] shrink-0 rounded-md bg-gold/[0.08] px-2 py-0.5 text-center text-[12px] font-medium text-gold lg:inline-block">
           {simType}
         </span>
 
@@ -386,13 +386,13 @@ function BatchGroup({
           </span>
         </div>
 
-        <span className="w-20 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-200">
+        <span className="w-16 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-200 sm:w-20">
           {bestDps > 0 ? Math.round(bestDps).toLocaleString() : '—'}
         </span>
 
         <span className="hidden w-20 shrink-0 sm:block" />
 
-        <div className="w-20 shrink-0 text-right group-hover:opacity-0">
+        <div className="hidden w-20 shrink-0 text-right group-hover:opacity-0 sm:block">
           <div className="text-[12px] text-zinc-600">{timeAgo(first?.created_at)}</div>
           {batchSize > 0 && (
             <div className="text-[10px] tabular-nums text-zinc-700">{formatSize(batchSize)}</div>
@@ -675,7 +675,7 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 px-1 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 px-1 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex items-baseline gap-2">
           <h2 className="text-lg font-medium text-zinc-100">Simulation History</h2>
           {stats && (
@@ -684,11 +684,11 @@ export default function HistoryPage() {
             </span>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 border-r border-border pr-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:flex xl:flex-wrap xl:items-center">
+          <div className="flex min-w-0 items-center gap-2 xl:border-r xl:border-border xl:pr-2">
             <span className="text-xs text-zinc-500">Filter by Character:</span>
             <select
-              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
+              className="min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none xl:w-48 xl:flex-none"
               value={
                 character ? `${character.name}-${character.realm}` : 'all'
               }
@@ -710,10 +710,10 @@ export default function HistoryPage() {
               ))}
             </select>
           </div>
-          <div className="flex items-center gap-2 border-r border-border pr-2">
+          <div className="flex min-w-0 items-center gap-2 xl:border-r xl:border-border xl:pr-2">
             <span className="text-xs text-zinc-500">Pin Filter:</span>
             <select
-              className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none"
+              className="min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none xl:w-28 xl:flex-none"
               value={pinFilter}
               onChange={(e) => {
                 const val = e.target.value as 'all' | 'pinned' | 'unpinned';
@@ -726,7 +726,7 @@ export default function HistoryPage() {
               <option value="unpinned">Not Pinned</option>
             </select>
           </div>
-          <div className="relative">
+          <div className="relative min-w-0">
             <div className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center">
               <SearchIcon />
             </div>
@@ -735,7 +735,7 @@ export default function HistoryPage() {
               placeholder="Search history..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-48 rounded-md border border-border bg-surface-2 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-gold focus:outline-none"
+              className="w-full rounded-md border border-border bg-surface-2 py-1.5 pl-8 pr-3 text-xs text-zinc-200 placeholder:text-zinc-500 focus:border-gold focus:outline-none xl:w-48"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -751,7 +751,7 @@ export default function HistoryPage() {
           {sims.length > 0 && (
             <button
               onClick={handleClear}
-              className="rounded bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
+              className="rounded bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 xl:ml-auto"
             >
               Clear All
             </button>
@@ -775,7 +775,7 @@ export default function HistoryPage() {
         </div>
       ) : (
         <div className="space-y-8">
-          <div className="sticky top-16 z-20 flex items-center justify-between rounded-lg border border-border bg-surface/95 px-4 py-2 backdrop-blur">
+          <div className="sticky top-16 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface/95 px-4 py-2 backdrop-blur">
             <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
               <input
                 type="checkbox"

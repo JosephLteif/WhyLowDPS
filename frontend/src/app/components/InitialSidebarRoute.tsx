@@ -7,15 +7,27 @@ import { useAuth } from './AuthContext';
 const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
 
 const LABEL_TO_HREF: Record<string, string> = {
+  Sim: '/quick-sim',
+  Analysis: '/analysis/quick-weights',
   Dashboard: '/',
-  'Quick Sim': '/quick-sim',
-  'Stat Weights': '/stat-weights',
-  'Top Gear': '/top-gear',
   Upgrades: '/drop-finder',
-  History: '/history',
   'Dungeons & Routes': '/dungeons',
+  History: '/history',
   'My Characters': '/characters',
   Settings: '/settings',
+
+  // Legacy labels kept for backward compatibility with older saved sidebar order/state.
+  'Quick Sim': '/quick-sim',
+  'Stat Weights': '/analysis/quick-weights',
+  'Top Gear': '/top-gear',
+  'Quick Weights': '/analysis/quick-weights',
+  'Stat Plot': '/analysis/stat-plot',
+  'Consumable Matrix': '/analysis/consumable-matrix',
+  'Tier Slot Matrix': '/analysis/tier-slot-matrix',
+  'Drop Finder': '/drop-finder',
+  Wishlist: '/wishlist',
+  Trinkets: '/upgrade/trinkets',
+  'Crest Upgrades': '/upgrade-compare',
 };
 
 const AUTH_ONLY_LABELS = new Set<string>(['My Characters', 'Settings']);

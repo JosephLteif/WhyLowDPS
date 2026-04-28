@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::JobStorage;
+use super::WarcraftLogsStoredParse;
 use crate::models::{
     extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
 };
@@ -13,6 +14,7 @@ pub struct MemoryStorage {
     user_configs: Mutex<HashMap<(String, String), String>>,
     routes: Mutex<HashMap<String, SavedRoute>>,
     character_profiles: Mutex<HashMap<String, SavedCharacterProfile>>,
+    wcl_parses: Mutex<HashMap<String, Vec<WarcraftLogsStoredParse>>>,
 }
 
 impl Default for MemoryStorage {
@@ -30,6 +32,7 @@ impl MemoryStorage {
             user_configs: Mutex::new(HashMap::new()),
             routes: Mutex::new(HashMap::new()),
             character_profiles: Mutex::new(HashMap::new()),
+            wcl_parses: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -337,5 +340,62 @@ impl JobStorage for MemoryStorage {
     fn delete_character_profile(&self, id: &str) {
         let mut profiles = self.character_profiles.lock().unwrap();
         profiles.remove(id);
+    }
+
+    fn upsert_wcl_parses(
+        &self,
+        user_id: &str,
+        region: &str,
+        realm: &str,
+        name: &str,
+        mode: &str,
+        rows: &[WarcraftLogsStoredParse],
+    ) {
+        let key = format!(
+            "{}::{}::{}::{}::{}",
+            user_id,
+            region.to_lowercase(),
+            realm.to_lowercase(),
+            name.to_lowercase(),
+            mode.to_lowercase()
+        );
+        let mut map = self.wcl_parses.lock().unwrap();
+        let bucket = map.entry(key).or_default();
+        let mut seen: HashMap<String, usize> = bucket
+            .iter()
+            .enumerate()
+            .map(|(idx, row)| (row.dedupe_key.clone(), idx))
+            .collect();
+        for row in rows {
+            if seen.contains_key(&row.dedupe_key) {
+                continue;
+            }
+            seen.insert(row.dedupe_key.clone(), bucket.len());
+            bucket.push(row.clone());
+        }
+    }
+
+    fn get_wcl_parses(
+        &self,
+        user_id: &str,
+        region: &str,
+        realm: &str,
+        name: &str,
+        mode: &str,
+    ) -> Vec<WarcraftLogsStoredParse> {
+        let key = format!(
+            "{}::{}::{}::{}::{}",
+            user_id,
+            region.to_lowercase(),
+            realm.to_lowercase(),
+            name.to_lowercase(),
+            mode.to_lowercase()
+        );
+        self.wcl_parses
+            .lock()
+            .unwrap()
+            .get(&key)
+            .cloned()
+            .unwrap_or_default()
     }
 }

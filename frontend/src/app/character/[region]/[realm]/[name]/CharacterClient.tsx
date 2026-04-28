@@ -33,6 +33,11 @@ export default function CharacterClient() {
   let region = (searchParams.get('region') || (params.region as string) || 'us').toLowerCase();
   let realm = (searchParams.get('realm') || (params.realm as string) || '').toLowerCase();
   let name = (searchParams.get('name') || (params.name as string) || '').toLowerCase();
+  const tabParam = (searchParams.get('tab') || '').toLowerCase();
+  const initialTab =
+    tabParam === 'vault' || tabParam === 'mythic' || tabParam === 'profile' || tabParam === 'raiding'
+      ? (tabParam as 'vault' | 'mythic' | 'profile' | 'raiding')
+      : undefined;
 
   const usingPlaceholderSegments = realm === 'realm' && name === 'name';
 
@@ -62,6 +67,9 @@ export default function CharacterClient() {
   const [error, setError] = useState('');
   const [savedProfiles, setSavedProfiles] = useState<SavedCharacterProfile[]>([]);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [mainCharacterKey, setMainCharacterKey] = useState<string>('');
+  const [mainCharacterSaving, setMainCharacterSaving] = useState(false);
+  const [mainCharacterError, setMainCharacterError] = useState<string | null>(null);
 
   // Fetch saved profiles for this character
   useEffect(() => {
@@ -70,6 +78,16 @@ export default function CharacterClient() {
       .then(setSavedProfiles)
       .catch(() => setSavedProfiles([]));
   }, [name, realm, region]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/user/config`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        const key = String(cfg?.main_character || '');
+        setMainCharacterKey(key);
+      })
+      .catch(() => setMainCharacterKey(''));
+  }, []);
 
   const handleDeleteProfiles = useCallback(async () => {
     for (const p of savedProfiles) {
@@ -163,6 +181,11 @@ export default function CharacterClient() {
   }
 
   const { profile } = data;
+  const canonicalRegion = region.toLowerCase();
+  const canonicalRealm = String(profile.realm?.slug || realm).toLowerCase();
+  const canonicalName = String(profile.name || name).toLowerCase();
+  const currentKey = `${canonicalRegion}|${canonicalRealm}|${canonicalName}`;
+  const isMainCharacter = mainCharacterKey === currentKey;
   const characterMediaUrl = `${API_URL}/api/blizzard/character/${realm}/${name}/media/main?region=${region}`;
 
   return (
@@ -220,7 +243,42 @@ export default function CharacterClient() {
                 </button>
               </>
             )}
+            <button
+              onClick={async () => {
+                setMainCharacterSaving(true);
+                setMainCharacterError(null);
+                try {
+                  const next = isMainCharacter ? '' : currentKey;
+                  const res = await fetch(`${API_URL}/api/user/config`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'main_character', value: next }),
+                  });
+                  if (!res.ok) {
+                    const msg = await res.text().catch(() => '');
+                    throw new Error(msg || `Request failed (${res.status})`);
+                  }
+                  setMainCharacterKey(next);
+                } catch (err) {
+                  setMainCharacterError(err instanceof Error ? err.message : 'Failed to save main character');
+                } finally {
+                  setMainCharacterSaving(false);
+                }
+              }}
+              disabled={mainCharacterSaving}
+              className={`ml-2 rounded border px-3 py-1 text-xs font-bold backdrop-blur-sm active:scale-95 ${
+                isMainCharacter
+                  ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300'
+                  : 'border-white/10 bg-black/20 text-zinc-200 hover:bg-white/10'
+              }`}
+            >
+              {mainCharacterSaving ? 'Saving...' : isMainCharacter ? 'Main Character' : 'Set as Main'}
+            </button>
           </div>
+          {mainCharacterError && (
+            <p className="mt-1 text-xs text-red-400">Set as Main failed: {mainCharacterError}</p>
+          )}
           <p className="mt-1 font-medium text-zinc-500">
             {profile.realm.name} - {region.toUpperCase()}
           </p>
@@ -241,6 +299,8 @@ export default function CharacterClient() {
         mythicPlus={data.mythicPlus}
         raidEncounters={data.raidEncounters}
         characterMediaUrl={characterMediaUrl}
+        latestSimcInput={savedProfiles[0]?.simc_input || null}
+        initialTab={initialTab}
       />
       <ConfirmModal
         isOpen={deleteModalOpen}

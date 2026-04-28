@@ -46,12 +46,18 @@ interface GearItemRowProps {
   optimized?: boolean;
   /** Optional content rendered after the details (e.g. upgrade button) */
   children?: React.ReactNode;
+  /** Optional inline indicators shown next to the item name */
+  headerExtras?: React.ReactNode;
+  /** Optional indicators shown near the item icon */
+  iconExtras?: React.ReactNode;
   /** Optional context menu handler (e.g. right-click item actions) */
   onContextMenu?: (event: React.MouseEvent) => void;
   /** Optional inline warning shown below item details */
   specWarning?: string;
   /** Dims the row content for lower-priority items (e.g. off-spec) */
   dimmed?: boolean;
+  /** Flips layout so icon is on the right side */
+  reverse?: boolean;
 }
 
 function getIconUrl(iconName: string): string {
@@ -80,13 +86,17 @@ export default function GearItemRow({
   wowheadData,
   optimized: _optimized,
   children,
+  headerExtras,
+  iconExtras,
   onContextMenu,
   specWarning,
   dimmed = false,
+  reverse = false,
 }: GearItemRowProps) {
   const hasLeadingControl = showCheckbox && (selectable || equipped);
   const detailsIndentClass = hasLeadingControl ? 'pl-[1.875rem]' : 'pl-0';
   const mainIconUrl = getIconUrl(icon);
+  const textAlignClass = reverse ? 'text-right' : '';
 
   const content = (
     <>
@@ -184,17 +194,25 @@ export default function GearItemRow({
           )}
         </div>
       )}
+      {iconExtras && (
+        <div className={`mt-0.5 flex shrink-0 flex-col gap-0.5 ${reverse ? 'items-end' : 'items-start'}`}>
+          {iconExtras}
+        </div>
+      )}
 
       {/* Name + details */}
-      <div className="min-w-0 flex-1">
-        <span
-          className={`block min-w-0 whitespace-normal break-words text-[16px] leading-tight ${
-            dimmed ? 'opacity-70' : ''
-          }`}
-          style={{ color: nameColor }}
-        >
-          {name}
-        </span>
+      <div className={`min-w-0 flex-1 ${textAlignClass}`}>
+        <div className={`flex min-w-0 items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
+          <span
+            className={`block min-w-0 whitespace-normal break-words text-[16px] leading-tight ${
+              dimmed ? 'opacity-70' : ''
+            }`}
+            style={{ color: nameColor }}
+          >
+            {name}
+          </span>
+          {headerExtras}
+        </div>
       </div>
 
       {/* Right side: children + ilvl */}
@@ -210,8 +228,12 @@ export default function GearItemRow({
       )}
 
       {details && details.length > 0 && (
-        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass} ${dimmed ? 'opacity-75' : ''}`}>
-          <div className="flex flex-wrap items-center gap-1.5">
+        <div
+          className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass} ${dimmed ? 'opacity-75' : ''} ${
+            reverse ? 'text-right' : ''
+          }`}
+        >
+          <div className={`flex flex-wrap items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
             {details.map((p, i) =>
               p.kind === 'gemIcon' && p.icon ? (
                 (() => {
@@ -297,7 +319,7 @@ export default function GearItemRow({
       )}
 
       {specWarning && (
-        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass}`}>
+        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass} ${reverse ? 'text-right' : ''}`}>
           <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-amber-400/40 bg-amber-500/12 px-2 py-1 text-[12px] font-semibold text-amber-200">
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-amber-500/20 text-amber-300">
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
@@ -312,8 +334,9 @@ export default function GearItemRow({
   );
 
   // Row styling
-  const baseClass =
-    'flex flex-wrap items-start gap-x-2.5 gap-y-1 rounded-md px-2.5 py-2 transition-colors';
+  const baseClass = `flex flex-wrap items-start gap-x-2.5 gap-y-1 rounded-md px-2.5 py-2 transition-colors ${
+    reverse ? 'flex-row-reverse' : ''
+  }`;
 
   if (selectable) {
     return (

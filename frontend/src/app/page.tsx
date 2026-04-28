@@ -9,6 +9,7 @@ import { useSimContext } from './components/SimContext';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
 import { simResultHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
+const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 
 type SimStatus = SimSummary['status'];
 
@@ -384,10 +385,20 @@ export default function Home() {
   useEffect(() => {
     const loadMainCharacter = async () => {
       try {
-        const cfgRes = await fetch('/api/user/config', { credentials: 'include' });
-        if (!cfgRes.ok) return;
-        const cfg = await cfgRes.json();
-        const key = String(cfg?.main_character || '');
+        const localKey =
+          typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
+        const cfgRes = await fetch('/api/user/config', { credentials: 'include' }).catch(() => null);
+        let key = localKey;
+        if (cfgRes?.ok) {
+          const cfg = await cfgRes.json();
+          const remoteKey = String(cfg?.main_character || '');
+          if (remoteKey) {
+            key = remoteKey;
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, remoteKey);
+            }
+          }
+        }
         if (!key) return;
         const [region, realm, name] = key.split('|');
         if (!region || !realm || !name) return;

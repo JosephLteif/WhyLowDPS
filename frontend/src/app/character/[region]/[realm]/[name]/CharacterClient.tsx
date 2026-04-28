@@ -11,6 +11,9 @@ import {
 } from '@/app/lib/api';
 import CharacterPanel from '../../../../components/CharacterPanel';
 import ConfirmModal from '../../../../components/ConfirmModal';
+import ToggleOptionCard from '../../../../components/shared/ToggleOptionCard';
+
+const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 
 function CopyIcon() {
   return (
@@ -80,13 +83,24 @@ export default function CharacterClient() {
   }, [name, realm, region]);
 
   useEffect(() => {
+    const localKey =
+      typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
+    if (localKey) {
+      setMainCharacterKey(localKey);
+    }
     fetch(`${API_URL}/api/user/config`, { credentials: 'include' })
       .then((r) => (r.ok ? r.json() : null))
       .then((cfg) => {
         const key = String(cfg?.main_character || '');
+        if (!key) return;
         setMainCharacterKey(key);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, key);
+        }
       })
-      .catch(() => setMainCharacterKey(''));
+      .catch(() => {
+        if (!localKey) setMainCharacterKey('');
+      });
   }, []);
 
   const handleDeleteProfiles = useCallback(async () => {
@@ -243,38 +257,46 @@ export default function CharacterClient() {
                 </button>
               </>
             )}
-            <button
-              onClick={async () => {
-                setMainCharacterSaving(true);
-                setMainCharacterError(null);
-                try {
-                  const next = isMainCharacter ? '' : currentKey;
-                  const res = await fetch(`${API_URL}/api/user/config`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ key: 'main_character', value: next }),
-                  });
-                  if (!res.ok) {
-                    const msg = await res.text().catch(() => '');
-                    throw new Error(msg || `Request failed (${res.status})`);
-                  }
-                  setMainCharacterKey(next);
-                } catch (err) {
-                  setMainCharacterError(err instanceof Error ? err.message : 'Failed to save main character');
-                } finally {
-                  setMainCharacterSaving(false);
-                }
-              }}
-              disabled={mainCharacterSaving}
-              className={`ml-2 rounded border px-3 py-1 text-xs font-bold backdrop-blur-sm active:scale-95 ${
-                isMainCharacter
-                  ? 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300'
-                  : 'border-white/10 bg-black/20 text-zinc-200 hover:bg-white/10'
-              }`}
-            >
-              {mainCharacterSaving ? 'Saving...' : isMainCharacter ? 'Main Character' : 'Set as Main'}
-            </button>
+            <div className="ml-2">
+              <ToggleOptionCard
+                checked={isMainCharacter}
+                onToggle={() => {
+                  if (mainCharacterSaving) return;
+                  void (async () => {
+                    setMainCharacterSaving(true);
+                    setMainCharacterError(null);
+                    try {
+                      const next = isMainCharacter ? '' : currentKey;
+                      if (typeof window !== 'undefined') {
+                        if (next) localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, next);
+                        else localStorage.removeItem(LOCAL_MAIN_CHARACTER_KEY);
+                      }
+                      const res = await fetch(`${API_URL}/api/user/config`, {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: 'main_character', value: next }),
+                      });
+                      if (!res.ok && res.status !== 401) {
+                        const msg = await res.text().catch(() => '');
+                        throw new Error(msg || `Request failed (${res.status})`);
+                      }
+                      setMainCharacterKey(next);
+                    } catch (err) {
+                      setMainCharacterError(
+                        err instanceof Error ? err.message : 'Failed to save main character'
+                      );
+                    } finally {
+                      setMainCharacterSaving(false);
+                    }
+                  })();
+                }}
+                title={mainCharacterSaving ? 'Main Character (Saving...)' : 'Main Character'}
+                description="Use this character as your default main."
+                titleClassName="text-xs font-bold text-zinc-200"
+                descriptionClassName="text-[11px] text-zinc-400"
+              />
+            </div>
           </div>
           {mainCharacterError && (
             <p className="mt-1 text-xs text-red-400">Set as Main failed: {mainCharacterError}</p>

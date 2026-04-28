@@ -17,8 +17,8 @@ import {
   getMythicKeystoneDungeonIndex,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
-import { QUALITY_COLORS, getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../lib/useItemInfo';
 import { characterHref } from '../lib/routes';
+import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
 
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
 const MPLUS_VAULT_THRESHOLDS = [1, 4, 8] as const;
@@ -88,6 +88,7 @@ interface CharacterPanelProps {
   dungeons?: any;
   characterMediaUrl?: string | null;
   latestSimcInput?: string | null;
+  initialTab?: 'profile' | 'raiding' | 'mythic' | 'vault';
 }
 
 export default function CharacterPanel({
@@ -101,6 +102,7 @@ export default function CharacterPanel({
   raidEncounters,
   characterMediaUrl,
   latestSimcInput,
+  initialTab,
 }: CharacterPanelProps) {
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const armoryUrl = `https://worldofwarcraft.blizzard.com/en-us/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`;
@@ -207,7 +209,7 @@ export default function CharacterPanel({
     }
     return normalized;
   }, [equipment]);
-  const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic' | 'vault'>('raiding');
+  const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic' | 'vault'>(initialTab || 'raiding');
 
   return (
     <div className="flex flex-col gap-6">
@@ -355,7 +357,7 @@ function VaultOverviewCard({
 
   const vaultItems = useMemo(() => {
     const input = String(latestSimcInput || '');
-    if (!input.trim()) return [] as Array<{ slot: string; itemId: string; ilevel: string; bonusIds: number[] }>;
+    if (!input.trim()) return [] as VaultRewardItem[];
     const lines = input.split(/\r?\n/);
     const blocks: string[][] = [];
     let currentBlock: string[] | null = null;
@@ -375,7 +377,7 @@ function VaultOverviewCard({
     }
 
     const parseItemLines = (itemLines: string[]) => {
-      const parsed: Array<{ slot: string; itemId: string; ilevel: string; bonusIds: number[] }> = [];
+      const parsed: VaultRewardItem[] = [];
       const seen = new Set<string>();
       for (const line of itemLines) {
         const body = line.replace(/^#\s*/, '').trim();
@@ -411,16 +413,9 @@ function VaultOverviewCard({
       return [];
     }
 
-    // Fallback for old/no-marker SimC strings.
-    return parseItemLines(lines);
+    // Strict mode: if no explicit Weekly Reward Choices block exists, show no vault items.
+    return [];
   }, [latestSimcInput]);
-  const vaultItemInfo = useItemInfo(
-    vaultItems.map((item) => ({
-      item_id: Number(item.itemId),
-      bonus_ids: item.bonusIds,
-    })),
-  );
-
   const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus), [mythicPlus]);
   const mythicSlots = mythicVaultProgress.slots;
 
@@ -486,62 +481,7 @@ function VaultOverviewCard({
 
       <div className="rounded border border-white/10 bg-black/20 p-3">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Vault item choices (from latest SimC)</p>
-        {vaultItems.length === 0 ? (
-          <p className="text-[11px] italic text-zinc-600">No vault item lines found in the latest saved SimC profile.</p>
-        ) : (
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {vaultItems.map((item, idx) => (
-              <div
-                key={`${item.slot}-${item.itemId}-${idx}`}
-                className="rounded border border-white/10 bg-black/25 p-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {vaultItemInfo[Number(item.itemId)]?.icon ? (
-                      <img
-                        src={getIconUrl(vaultItemInfo[Number(item.itemId)].icon)}
-                        alt=""
-                        className="h-8 w-8 rounded border border-white/10"
-                      />
-                    ) : (
-                      <div className="h-8 w-8 rounded border border-white/10 bg-black/30" />
-                    )}
-                    <div className="min-w-0">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">{item.slot}</span>
-                      <a
-                        href={getWowheadUrl(Number(item.itemId))}
-                        target="_blank"
-                        rel="noreferrer"
-                        data-wowhead={`item=${item.itemId}${(() => {
-                          const extra = getWowheadData(
-                            item.bonusIds,
-                            Number(vaultItemInfo[Number(item.itemId)]?.ilevel || item.ilevel || 0),
-                          );
-                          return extra ? `&${extra}` : '';
-                        })()}`}
-                        className="block truncate text-[12px] font-semibold hover:underline"
-                        style={{
-                          color: QUALITY_COLORS[vaultItemInfo[Number(item.itemId)]?.quality ?? 1] || '#ffffff',
-                        }}
-                      >
-                        {vaultItemInfo[Number(item.itemId)]?.name || `Item ${item.itemId}`}
-                      </a>
-                    </div>
-                  </div>
-                  <span className="rounded border border-gold/20 bg-gold/10 px-1.5 py-0.5 text-[10px] font-bold text-gold">
-                    ilvl {vaultItemInfo[Number(item.itemId)]?.ilevel || item.ilevel}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2">
-                  <p className="font-mono text-[11px] text-zinc-400">Item ID: {item.itemId}</p>
-                  <span className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-300">
-                    Tier: {vaultItemInfo[Number(item.itemId)]?.upgrade || '-'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <VaultRewardsGrid items={vaultItems} />
       </div>
     </div>
   );

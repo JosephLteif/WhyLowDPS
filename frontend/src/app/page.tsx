@@ -1,9 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getHistoryStats, getSystemStats, type HistoryStats, isDesktop, listSims } from './lib/api';
+import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
+import { useSimContext } from './components/SimContext';
+import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
 import { simResultHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
 
@@ -145,12 +148,207 @@ function buildActivityData(sims: SimSummary[], days = 14): { date: string; count
   }));
 }
 
+function toTimestampMs(raw: unknown): number {
+  const n = Number(raw || 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n < 1_000_000_000_000 ? n * 1000 : n;
+}
+
+function computeMythicVaultRuns(mythicPlus: any): number {
+  const isRunLike = (value: any) =>
+    value &&
+    typeof value === 'object' &&
+    (typeof value.keystone_level === 'number' ||
+      typeof value.keystoneLevel === 'number' ||
+      value.keystone_dungeon ||
+      value.dungeon ||
+      value.completed_challenge_mode);
+
+  const collectRuns = (root: any): any[] => {
+    const out: any[] = [];
+    const stack: any[] = [root];
+    const seen = new Set<any>();
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || seen.has(current)) continue;
+      seen.add(current);
+      if (Array.isArray(current)) {
+        if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+        else for (const item of current) if (item && typeof item === 'object') stack.push(item);
+        continue;
+      }
+      if (typeof current === 'object') {
+        if (isRunLike(current)) out.push(current);
+        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+      }
+    }
+    return out;
+  };
+
+  const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+  const getRunTimestamp = (run: any) =>
+    toTimestampMs(
+      run?.completed_timestamp ??
+        run?.completedTimestamp ??
+        run?.end_timestamp ??
+        run?.endTimestamp ??
+        run?.start_timestamp ??
+        run?.startTimestamp ??
+        run?.timestamp ??
+        0,
+    );
+
+  const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
+  const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
+  const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recentWeekCount = recentRuns.filter((run) => {
+    const ts = getRunTimestamp(run);
+    return ts > 0 && ts >= weekAgo;
+  }).length;
+  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).length;
+  let runsForVault = Math.max(recentWeekCount, currentPeriodCount);
+  if (runsForVault > 0) return runsForVault;
+
+  // Fallbacks for variant payload shapes.
+  const directRecent = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs.length : 0;
+  const directCurrent = Array.isArray(mythicPlus?.current_period?.runs)
+    ? mythicPlus.current_period.runs.length
+    : 0;
+  runsForVault = Math.max(runsForVault, directRecent, directCurrent);
+  if (runsForVault > 0) return runsForVault;
+
+  // Last resort: recursively find a plausible weekly run counter field.
+  const stack: any[] = [mythicPlus];
+  const seen = new Set<any>();
+  let best = 0;
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || seen.has(node) || typeof node !== 'object') continue;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) stack.push(item);
+      continue;
+    }
+    const candidates = [
+      node.runs_for_vault,
+      node.vault_runs,
+      node.weekly_runs,
+      node.completed_runs,
+      node.completed_count,
+    ]
+      .map((v: any) => Number(v))
+      .filter((v) => Number.isFinite(v) && v > 0 && v < 1000);
+    for (const v of candidates) if (v > best) best = v;
+    for (const value of Object.values(node)) if (value && typeof value === 'object') stack.push(value);
+  }
+  return best;
+}
+
+function computeRaidVaultKills(raidEncounters: any): number {
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  let weeklyKills = 0;
+  let fallbackBestDefeated = 0;
+  const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
+
+  for (const expansion of expansions) {
+    for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
+      for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
+        const defeated = Number(mode?.progress?.encounters_defeated ?? mode?.progress?.completed_count ?? 0);
+        if (Number.isFinite(defeated) && defeated > fallbackBestDefeated) fallbackBestDefeated = defeated;
+
+        const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
+        for (const encounter of encounters) {
+          const ts = toTimestampMs(encounter?.last_kill_timestamp ?? encounter?.lastKillTimestamp ?? 0);
+          if (ts >= weekAgo) weeklyKills += 1;
+        }
+      }
+    }
+  }
+
+  if (weeklyKills > 0) return weeklyKills;
+  if (fallbackBestDefeated > 0) return fallbackBestDefeated;
+
+  // Last-resort fallback: some payload variants only expose progression as strings like "6/8".
+  const seen = new Set<any>();
+  const stack: any[] = [raidEncounters];
+  let bestFromStrings = 0;
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || seen.has(node)) continue;
+    seen.add(node);
+
+    if (typeof node === 'string') {
+      const m = node.match(/^(\d+)\s*\/\s*(\d+)$/);
+      if (m) {
+        const defeated = Number(m[1]);
+        const total = Number(m[2]);
+        if (Number.isFinite(defeated) && Number.isFinite(total) && total >= defeated && defeated > bestFromStrings) {
+          bestFromStrings = defeated;
+        }
+      }
+      continue;
+    }
+
+    if (Array.isArray(node)) {
+      for (const item of node) stack.push(item);
+      continue;
+    }
+
+    if (typeof node === 'object') {
+      for (const value of Object.values(node)) {
+        if (value && (typeof value === 'object' || typeof value === 'string')) {
+          stack.push(value);
+        }
+      }
+    }
+  }
+
+  if (bestFromStrings > 0) return bestFromStrings;
+
+  // Final fallback: recursively scan for plausible defeated/completed counters.
+  const stack2: any[] = [raidEncounters];
+  const seen2 = new Set<any>();
+  let bestCounter = 0;
+  while (stack2.length > 0) {
+    const node = stack2.pop();
+    if (!node || seen2.has(node) || typeof node !== 'object') continue;
+    seen2.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) stack2.push(item);
+      continue;
+    }
+    const counters = [
+      node.encounters_defeated,
+      node.completed_count,
+      node.completedCount,
+      node.bosses_defeated,
+      node.kills,
+      node.progress?.encounters_defeated,
+      node.progress?.completed_count,
+      node.progress?.completedCount,
+    ]
+      .map((v: any) => Number(v))
+      .filter((v) => Number.isFinite(v) && v > 0 && v <= 40);
+    for (const v of counters) if (v > bestCounter) bestCounter = v;
+    for (const value of Object.values(node)) if (value && typeof value === 'object') stack2.push(value);
+  }
+  return bestCounter;
+}
+
 export default function Home() {
+  const router = useRouter();
+  const { setSimcInput } = useSimContext();
   const [sims, setSims] = useState<SimSummary[]>([]);
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null);
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mainCharacter, setMainCharacter] = useState<{ region: string; realm: string; name: string } | null>(null);
+  const [mainVault, setMainVault] = useState<{ mplusRuns: number; raidKills: number } | null>(null);
+  const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
+  const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
+  const [mainSimcInput, setMainSimcInput] = useState<string>('');
 
   const loadAll = useCallback(async () => {
     try {
@@ -182,6 +380,86 @@ export default function Home() {
       // Keep stale values; avoid disrupting dashboard on transient polling failures.
     }
   }, []);
+
+  useEffect(() => {
+    const loadMainCharacter = async () => {
+      try {
+        const cfgRes = await fetch('/api/user/config', { credentials: 'include' });
+        if (!cfgRes.ok) return;
+        const cfg = await cfgRes.json();
+        const key = String(cfg?.main_character || '');
+        if (!key) return;
+        const [region, realm, name] = key.split('|');
+        if (!region || !realm || !name) return;
+        setMainCharacter({ region, realm, name });
+
+        const query = `?region=${region}`;
+        const base = `/api/blizzard/character/${realm}/${name}`;
+        const [profileRes, mythicPlus, raidEncounters] = await Promise.all([
+          fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(() => ({})),
+          fetchJson<any>(`${API_URL}${base}/mythic-keystone-profile${query}`).catch(() => ({})),
+          fetchJson<any>(`${API_URL}${base}/encounters/raids${query}`).catch(() => ({})),
+        ]);
+        setMainMeta({
+          level: Number(profileRes?.level || 0) || undefined,
+          className: profileRes?.character_class?.name || undefined,
+          ilvl: Number(profileRes?.equipped_item_level || 0) || undefined,
+        });
+
+        const profiles = await listCharacterProfiles({ name, realm, region }).catch(() => []);
+        const latestSimc = profiles[0]?.simc_input || '';
+        const lines = String(latestSimc).split(/\r?\n/);
+        const rewards: VaultRewardItem[] = [];
+        let inBlock = false;
+        for (const raw of lines) {
+          const line = raw.trim();
+          const lower = line.toLowerCase();
+          if (lower.includes('weekly reward choices') && !lower.includes('end of weekly reward choices')) {
+            inBlock = true;
+            continue;
+          }
+          if (lower.includes('end of weekly reward choices')) {
+            inBlock = false;
+            continue;
+          }
+          if (!inBlock) continue;
+          const m = line.replace(/^#\s*/, '').match(/^([a-z0-9_]+)\s*=\s*(.+)$/i);
+          if (!m) continue;
+          const id = m[2].match(/id=(\d+)/i)?.[1];
+          if (!id) continue;
+          const ilvl = m[2].match(/ilevel=(\d+)/i)?.[1] || '-';
+          const bonusMatch = m[2].match(/bonus_id=([0-9/]+)/i);
+          const bonusIds = bonusMatch
+            ? bonusMatch[1]
+                .split('/')
+                .map((v) => Number(v))
+                .filter((v) => Number.isFinite(v) && v > 0)
+            : [];
+          rewards.push({ slot: m[1], itemId: id, ilevel: ilvl, bonusIds });
+        }
+        setMainVaultRewards(rewards.slice(0, 6));
+        setMainSimcInput(latestSimc);
+
+        const mplusRuns = computeMythicVaultRuns(mythicPlus);
+        const raidKills = computeRaidVaultKills(raidEncounters);
+        setMainVault({ mplusRuns, raidKills });
+      } catch {
+        // ignore
+      }
+    };
+    void loadMainCharacter();
+  }, []);
+
+  const openMainWorkflow = useCallback(
+    (path: string) => {
+      if (mainSimcInput.trim()) {
+        setSimcInput(mainSimcInput);
+        sessionStorage.setItem('whylowdps_simc_input', mainSimcInput);
+      }
+      router.push(path);
+    },
+    [mainSimcInput, router, setSimcInput],
+  );
 
   useEffect(() => {
     let active = true;
@@ -298,6 +576,102 @@ export default function Home() {
             </StatIcon>
           </div>
         </div>
+      </section>
+
+      <section className="card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-200">Main Character</h2>
+          <Link href="/characters" className="text-xs text-gold hover:text-gold-light">Manage</Link>
+        </div>
+        {!mainCharacter ? (
+          <p className="text-sm text-zinc-500">No main character selected yet. Open a character and click Set as Main.</p>
+        ) : (
+          <div className="space-y-3">
+            <div className="text-sm text-zinc-200">
+              <span className="font-semibold">{mainCharacter.name}</span>
+              <span className="text-zinc-500"> · {mainCharacter.realm} · {mainCharacter.region.toUpperCase()}</span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                Level: <span className="font-semibold text-zinc-100">{mainMeta?.level ?? '-'}</span>
+              </div>
+              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                Class: <span className="font-semibold text-zinc-100">{mainMeta?.className ?? '-'}</span>
+              </div>
+              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                iLvl: <span className="font-semibold text-zinc-100">{mainMeta?.ilvl ?? '-'}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div className="rounded border border-white/10 bg-black/20 p-2">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mythic+ Vault</p>
+                <div className="space-y-2">
+                  {[1, 4, 8].map((threshold, idx) => {
+                    const current = mainVault?.mplusRuns ?? 0;
+                    const unlocked = current >= threshold;
+                    const progress = Math.min(1, current / threshold);
+                    return (
+                      <div key={`main-mplus-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
+                        <div className="mb-1 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
+                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
+                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
+                          </span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                            style={{ width: `${Math.max(6, progress * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} runs</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.mplusRuns ?? 0} runs completed this week.</p>
+              </div>
+              <div className="rounded border border-white/10 bg-black/20 p-2">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Raid Vault</p>
+                <div className="space-y-2">
+                  {[2, 4, 6].map((threshold, idx) => {
+                    const current = mainVault?.raidKills ?? 0;
+                    const unlocked = current >= threshold;
+                    const progress = Math.min(1, current / threshold);
+                    return (
+                      <div key={`main-raid-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
+                        <div className="mb-1 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
+                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
+                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
+                          </span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                            style={{ width: `${Math.max(6, progress * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} boss kills</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.raidKills ?? 0} boss kills completed this week.</p>
+              </div>
+            </div>
+            <div className="rounded border border-white/10 bg-black/20 p-2">
+              <div className="mb-2 text-xs font-semibold text-zinc-200">Vault Rewards (if available)</div>
+              <VaultRewardsGrid items={mainVaultRewards} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
+              <button onClick={() => openMainWorkflow('/quick-sim')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Run Sim</button>
+              <button onClick={() => openMainWorkflow('/top-gear')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Top Gear</button>
+              <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">

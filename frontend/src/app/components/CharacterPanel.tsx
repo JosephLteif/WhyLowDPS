@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
@@ -295,7 +295,9 @@ export default function CharacterPanel({
         </div>
       )}
 
-      {pageTab === 'mythic' && <MythicPlusCard mythicPlus={mythicPlus} region={region} />}
+      {pageTab === 'mythic' && (
+        <MythicPlusCard mythicPlus={mythicPlus} region={region} realm={realm} name={name} />
+      )}
 
       {pageTab === 'raiding' && (
         <RaidSectionCard raidEncounters={raidEncounters} region={region} realm={realm} name={name} />
@@ -304,7 +306,17 @@ export default function CharacterPanel({
   );
 }
 
-function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: string }) {
+function MythicPlusCard({
+  mythicPlus,
+  region,
+  realm,
+  name,
+}: {
+  mythicPlus: any;
+  region?: string;
+  realm: string;
+  name: string;
+}) {
   const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
   const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
     Record<string, MythicKeystoneDungeonDetail>
@@ -555,6 +567,21 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
   };
+
+  const mythicDungeonTimers = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const detail of Object.values(mplusDungeonDetailsByName || {})) {
+      const name = String((detail as any)?.name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_]+/g, ' ')
+        .replace(/[^a-z0-9 ]+/g, '')
+        .replace(/\s+/g, ' ');
+      const timerMs = (detail as any)?.keystone_upgrades?.find((u: any) => Number(u?.upgrade_level) === 1)?.qualifying_duration;
+      if (name && Number(timerMs) > 0) out[name] = Math.round(Number(timerMs) / 1000);
+    }
+    return out;
+  }, [mplusDungeonDetailsByName]);
 
   return (
     <div className="card p-5">
@@ -870,7 +897,6 @@ function RaidSectionCard({
 }) {
   const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
-  const [selectedRaidName, setSelectedRaidName] = useState<string>('all');
 
   const expansionOptions = useMemo(() => {
     const normalizeExpansionKey = (value: unknown) => {
@@ -911,33 +937,6 @@ function RaidSectionCard({
     ];
   }, [raidEncounters]);
 
-  const raidOptions = useMemo(() => {
-    const normalizeExpansionKey = (value: unknown) => {
-      const raw = String(value ?? '').trim();
-      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Current expansion' : raw;
-      return canonical.toLowerCase().replace(/[\s_]+/g, '-');
-    };
-    const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    const raids = new Set<string>();
-    for (const exp of expansions) {
-      const rawExp =
-        exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || 'Unknown expansion';
-      const expKey = normalizeExpansionKey(rawExp) || 'unknown-expansion';
-      if (selectedExpansion !== 'all' && expKey !== selectedExpansion) continue;
-      const instances = Array.isArray(exp?.instances) ? exp.instances : [];
-      for (const inst of instances) {
-        const raidName = String(inst?.instance?.name || inst?.name || '').trim();
-        if (raidName) raids.add(raidName);
-      }
-    }
-    return ['all', ...Array.from(raids).sort((a, b) => a.localeCompare(b))];
-  }, [raidEncounters, selectedExpansion]);
-
-  useEffect(() => {
-    if (selectedRaidName === 'all') return;
-    if (!raidOptions.includes(selectedRaidName)) setSelectedRaidName('all');
-  }, [raidOptions, selectedRaidName]);
-
   useEffect(() => {
     if (hasInitializedExpansion) return;
     const preferred =
@@ -965,31 +964,14 @@ function RaidSectionCard({
               </option>
             ))}
           </select>
-          <select
-            aria-label="Raid"
-            value={selectedRaidName}
-            onChange={(e) => setSelectedRaidName(e.target.value)}
-            className="input-field h-9 w-[180px] px-2 py-1 text-[11px] text-zinc-100"
-            style={{ colorScheme: 'dark' }}
-          >
-            {raidOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt === 'all' ? 'All raids' : opt}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">Parses</p>
-        <WarcraftLogsParsesCard
-          region={region}
-          realm={realm}
-          name={name}
+        <RaidProgressCard
           raidEncounters={raidEncounters}
-          selectedExpansion={selectedExpansion}
-          selectedRaidName={selectedRaidName}
           embedded
+          selectedExpansion={selectedExpansion}
+          selectedRaidName="all"
         />
       </div>
     </div>
@@ -1163,675 +1145,6 @@ function RaidProgressCard({
   return <div className="card p-5">{content}</div>;
 }
 
-type WarcraftLogsParse = {
-  zone_name: string;
-  encounter_name: string;
-  difficulty: string;
-  percentile?: number | null;
-  dps?: number | null;
-  median_percentile?: number | null;
-  kills?: number | null;
-  fastest_kill_seconds?: number | null;
-  all_stars_points?: number | null;
-  all_stars_rank?: number | null;
-  report_code?: string | null;
-  report_title?: string | null;
-  report_end_time?: number | null;
-  start_time?: number | null;
-  locked_in?: boolean | null;
-};
-
-type WarcraftLogsParsesResponse = {
-  configured: boolean;
-  needs_credentials: boolean;
-  parses: WarcraftLogsParse[];
-  debug_raw?: unknown;
-  message?: string;
-  error?: string;
-};
-
-function normalizeParseDifficultyLabel(value: unknown): 'LFR' | 'Normal' | 'Heroic' | 'Mythic' | 'Unknown' {
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (!raw) return 'Unknown';
-  if (raw === 'lfr' || raw.includes('finder') || raw.includes('raid_finder') || raw === '17') return 'LFR';
-  if (raw === 'normal' || raw === '14' || raw === '2') return 'Normal';
-  if (raw === 'heroic' || raw === '15' || raw === '3' || raw === '5') return 'Heroic';
-  if (raw === 'mythic' || raw === '16' || raw === '4') return 'Mythic';
-  if (raw.includes('normal')) return 'Normal';
-  if (raw.includes('heroic')) return 'Heroic';
-  if (raw.includes('mythic')) return 'Mythic';
-  return 'Unknown';
-}
-
-function WarcraftLogsParsesCard({
-  region,
-  realm,
-  name,
-  raidEncounters,
-  selectedExpansion = 'all',
-  selectedRaidName = 'all',
-  embedded = false,
-}: {
-  region: string;
-  realm: string;
-  name: string;
-  raidEncounters?: any;
-  selectedExpansion?: string;
-  selectedRaidName?: string;
-  embedded?: boolean;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<WarcraftLogsParsesResponse | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [refreshSeq, setRefreshSeq] = useState(0);
-  const [difficultyFilter, setDifficultyFilter] = useState<'LFR' | 'Normal' | 'Heroic' | 'Mythic'>('Heroic');
-  const [sortKey, setSortKey] = useState<'boss' | 'best' | 'latest' | 'high' | 'kills' | 'fastest' | 'none'>('none');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc' | 'none'>('none');
-  const [rawDebugOpen, setRawDebugOpen] = useState(false);
-  const [rawDebugLoading, setRawDebugLoading] = useState(false);
-  const [rawDebugText, setRawDebugText] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const realmSlug = normalizeRealmSlug(realm);
-    const characterName = String(name || '').trim().toLowerCase();
-    if (!realmSlug || !characterName) {
-      setLoading(false);
-      setData({
-        configured: false,
-        needs_credentials: false,
-        parses: [],
-        message: 'Character data is incomplete for Warcraft Logs lookup.',
-      });
-      return;
-    }
-    const cacheKey = `wcl_parses_${(region || 'us').toLowerCase()}_${realmSlug}_${characterName}`;
-    const forceRefresh = refreshSeq > 0;
-    const now = Date.now();
-    const cacheTtlMs = 10 * 60 * 1000;
-
-    if (!forceRefresh && typeof window !== 'undefined') {
-      const raw = window.localStorage.getItem(cacheKey);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as { fetched_at: number; data: WarcraftLogsParsesResponse };
-          if (parsed?.data && typeof parsed?.fetched_at === 'number' && now - parsed.fetched_at <= cacheTtlMs) {
-            setData(parsed.data);
-            setLastUpdated(parsed.fetched_at);
-            setLoading(false);
-            return;
-          }
-        } catch {
-          // Ignore bad cache and fetch fresh.
-        }
-      }
-    }
-
-    const fetchParses = async () => {
-      const path = `/api/warcraftlogs/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(characterName)}/parses?region=${encodeURIComponent(region || 'us')}`;
-      const host =
-        typeof window !== 'undefined' && window.location?.hostname
-          ? window.location.hostname
-          : 'localhost';
-      const baseCandidates = [
-        API_URL,
-        'http://127.0.0.1:17384',
-        'http://localhost:17384',
-        `http://${host}:8000`,
-        'http://127.0.0.1:8000',
-        'http://localhost:8000',
-      ].filter((v, i, arr) => !!v && arr.indexOf(v) === i);
-
-      let lastError: any = null;
-      for (const base of baseCandidates) {
-        try {
-          return await fetchJson<WarcraftLogsParsesResponse>(`${base}${path}`);
-        } catch (err: any) {
-          lastError = err;
-          if (err?.status !== 404) break;
-        }
-      }
-      throw lastError || new Error('Failed to load Warcraft Logs parses.');
-    };
-
-    fetchParses()
-      .then((result) => {
-        if (!cancelled) {
-          const fetchedAt = Date.now();
-          setData(result);
-          setLastUpdated(fetchedAt);
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem(
-              cacheKey,
-              JSON.stringify({ fetched_at: fetchedAt, data: result }),
-            );
-          }
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const status = (err as any)?.status;
-          const message =
-            status === 404
-              ? 'Warcraft Logs parses endpoint was not found on the active API server.'
-              : err?.message || 'Failed to load Warcraft Logs parses.';
-          setData({
-            configured: true,
-            needs_credentials: false,
-            parses: [],
-            error: message,
-          });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [region, realm, name, refreshSeq]);
-
-
-
-  const grouped = useMemo(() => {
-    const rows = data?.parses || [];
-    const map = new Map<
-      string,
-      {
-        key: string;
-        encounter: string;
-        zone: string;
-        difficulty: string;
-        bestPercentile: number | null;
-        medianPercentile: number | null;
-        latestDps: number | null;
-        highestDps: number | null;
-        kills: number;
-        fastestSeconds: number | null;
-        lockedIn: boolean | null;
-      }
-    >();
-
-    for (const row of rows) {
-      const encounter = row.encounter_name || 'Encounter';
-      const zone = row.zone_name || 'Raid';
-      const key = `${encounter.toLowerCase()}::${zone.toLowerCase()}`;
-      const percentile = row.percentile ?? null;
-      const dps = row.dps ?? null;
-      const kills = Number(row.kills ?? 0);
-      const normalizedDifficulty = normalizeParseDifficultyLabel(row.difficulty);
-      if (normalizedDifficulty === 'Unknown') continue;
-      const lockedIn = typeof row.locked_in === 'boolean' ? row.locked_in : null;
-
-      const difficultyKey = normalizedDifficulty;
-      const bucketKey = `${key}::${difficultyKey.toLowerCase()}`;
-      const bucketExisting = map.get(bucketKey);
-
-      if (!bucketExisting) {
-        map.set(bucketKey, {
-          key: bucketKey,
-          encounter,
-          zone,
-          difficulty: normalizedDifficulty,
-          bestPercentile: percentile,
-          medianPercentile: row.median_percentile ?? null,
-          latestDps: dps,
-          highestDps: dps,
-          kills,
-          fastestSeconds: row.fastest_kill_seconds ?? null,
-          lockedIn,
-        });
-        continue;
-      }
-
-      bucketExisting.bestPercentile =
-        Math.max(bucketExisting.bestPercentile ?? 0, percentile ?? 0) || bucketExisting.bestPercentile;
-      bucketExisting.medianPercentile = bucketExisting.medianPercentile ?? row.median_percentile ?? null;
-      bucketExisting.latestDps = bucketExisting.latestDps ?? dps;
-      bucketExisting.highestDps = Math.max(bucketExisting.highestDps ?? 0, dps ?? 0) || bucketExisting.highestDps;
-      bucketExisting.kills = Math.max(bucketExisting.kills, kills);
-      bucketExisting.fastestSeconds = bucketExisting.fastestSeconds ?? row.fastest_kill_seconds ?? null;
-      if (lockedIn === false) bucketExisting.lockedIn = false;
-      else if (bucketExisting.lockedIn === null && lockedIn !== null) bucketExisting.lockedIn = lockedIn;
-    }
-
-    return Array.from(map.values()).sort((a, b) => (b.bestPercentile ?? 0) - (a.bestPercentile ?? 0));
-  }, [data]);
-
-  const difficultyOptions: Array<'LFR' | 'Normal' | 'Heroic' | 'Mythic'> = [
-    'LFR',
-    'Normal',
-    'Heroic',
-    'Mythic',
-  ];
-
-  const difficultyCounts = useMemo(() => {
-    const counts: Record<'LFR' | 'Normal' | 'Heroic' | 'Mythic', number> = {
-      LFR: 0,
-      Normal: 0,
-      Heroic: 0,
-      Mythic: 0,
-    };
-    for (const row of grouped) {
-      const diff = normalizeParseDifficultyLabel(row.difficulty);
-      if (diff === 'Unknown') continue;
-      counts[diff] += 1;
-    }
-    return counts;
-  }, [grouped]);
-
-  const displayedRows = useMemo(() => {
-    const normalizeFilterKey = (value: unknown) =>
-      String(value ?? '')
-        .trim()
-        .toLowerCase()
-        .replace(/[\s_]+/g, ' ')
-        .replace(/[^a-z0-9 ]+/g, '')
-        .replace(/\s+/g, ' ');
-    const normalizeExpansionKey = (value: unknown) => {
-      const raw = String(value ?? '').trim();
-      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Current expansion' : raw;
-      return canonical.toLowerCase().replace(/[\s_]+/g, '-');
-    };
-    const allowedRaidNames = new Set<string>();
-    const allowedBossNames = new Set<string>();
-    const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    for (const exp of expansions) {
-      const rawExp =
-        exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || 'Unknown expansion';
-      const expKey = normalizeExpansionKey(rawExp) || 'unknown-expansion';
-      if (selectedExpansion !== 'all' && expKey !== selectedExpansion) continue;
-      const instances = Array.isArray(exp?.instances) ? exp.instances : [];
-      for (const inst of instances) {
-        const raidName = String(inst?.instance?.name || inst?.name || '').trim();
-        const raidNameKey = normalizeFilterKey(raidName);
-        const instanceIncluded =
-          selectedRaidName === 'all' || raidNameKey === normalizeFilterKey(selectedRaidName);
-        if (raidNameKey && instanceIncluded) allowedRaidNames.add(raidNameKey);
-        if (!instanceIncluded) continue;
-
-        const modes = Array.isArray(inst?.modes) ? inst.modes : [];
-        for (const mode of modes) {
-          const encounters = Array.isArray(mode?.progress?.encounters)
-            ? mode.progress.encounters
-            : Array.isArray(mode?.encounters)
-              ? mode.encounters
-              : [];
-          for (const encounter of encounters) {
-            const encounterName = String(
-              encounter?.encounter?.name ||
-                encounter?.name ||
-                encounter?.encounter_name ||
-                '',
-            ).trim();
-            const encounterKey = normalizeFilterKey(encounterName);
-            if (encounterKey) allowedBossNames.add(encounterKey);
-          }
-        }
-      }
-    }
-
-    let base = grouped.filter(
-      (r) => normalizeParseDifficultyLabel(r.difficulty) === difficultyFilter,
-    );
-    if (selectedRaidName !== 'all') {
-      const targetRaid = normalizeFilterKey(selectedRaidName);
-      const byZone = base.filter((r) => normalizeFilterKey(r.zone || '') === targetRaid);
-      // If WCL zone labels do not match selected raid names, do not hard-drop rows.
-      if (byZone.length > 0) {
-        base = byZone;
-      } else if (allowedBossNames.size > 0) {
-        const byBoss = base.filter((r) => allowedBossNames.has(normalizeFilterKey(r.encounter || '')));
-        // Keep table usable if Blizzard encounter names and WCL encounter names drift.
-        if (byBoss.length > 0) {
-          base = byBoss;
-        }
-      }
-    } else if (selectedExpansion !== 'all') {
-      base = base.filter((r) => {
-        const raidKey = normalizeFilterKey(r.zone || '');
-        const bossKey = normalizeFilterKey(r.encounter || '');
-        if (allowedRaidNames.has(raidKey)) return true;
-        if (allowedBossNames.has(bossKey)) return true;
-        return false;
-      });
-    }
-
-    if (sortKey === 'none' || sortDir === 'none') return base;
-
-    const dir = sortDir === 'asc' ? 1 : -1;
-    const sorted = [...base].sort((a, b) => {
-      const numCmp = (x: number | null | undefined, y: number | null | undefined) =>
-        ((x ?? Number.NEGATIVE_INFINITY) - (y ?? Number.NEGATIVE_INFINITY)) * dir;
-      switch (sortKey) {
-        case 'boss':
-          return a.encounter.localeCompare(b.encounter) * dir;
-        case 'best':
-          return numCmp(a.bestPercentile, b.bestPercentile);
-        case 'latest':
-          return numCmp(a.latestDps, b.latestDps);
-        case 'high':
-          return numCmp(a.highestDps, b.highestDps);
-        case 'kills':
-          return numCmp(a.kills, b.kills);
-        case 'fastest':
-          // Faster is lower, so invert the default direction for intuitive sorting.
-          return numCmp(b.fastestSeconds, a.fastestSeconds);
-        default:
-          return 0;
-      }
-    });
-    return sorted;
-  }, [grouped, difficultyFilter, sortKey, sortDir, raidEncounters, selectedExpansion, selectedRaidName]);
-
-  const summary = useMemo(() => {
-    if (displayedRows.length === 0) return null;
-    const avg =
-      displayedRows.reduce((acc, item) => acc + (item.bestPercentile ?? 0), 0) / displayedRows.length;
-    const kills = displayedRows.reduce((acc, item) => acc + item.kills, 0);
-    const latestTryDps =
-      displayedRows
-        .map((item) => item.latestDps ?? 0)
-        .filter((v) => v > 0)
-        .sort((a, b) => b - a)[0] || 0;
-    return { avg, kills, latestTryDps };
-  }, [displayedRows]);
-
-  const cycleSort = (key: 'boss' | 'best' | 'latest' | 'high' | 'kills' | 'fastest') => {
-    if (sortKey !== key || sortDir === 'none') {
-      setSortKey(key);
-      setSortDir('desc');
-      return;
-    }
-    if (sortDir === 'desc') {
-      setSortDir('asc');
-      return;
-    }
-    setSortKey('none');
-    setSortDir('none');
-  };
-
-  const sortIndicator = (key: 'boss' | 'best' | 'latest' | 'high' | 'kills' | 'fastest') => {
-    if (sortKey !== key || sortDir === 'none') return '';
-    return sortDir === 'desc' ? ' ▼' : ' ▲';
-  };
-
-  const fetchRawGraphqlOutput = async () => {
-    const realmSlug = normalizeRealmSlug(realm);
-    const characterName = String(name || '').trim().toLowerCase();
-    if (!realmSlug || !characterName) return;
-
-    setRawDebugLoading(true);
-    setRawDebugOpen(true);
-    try {
-      const path = `/api/warcraftlogs/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(characterName)}/parses?region=${encodeURIComponent(region || 'us')}&debug_raw=true`;
-      const host =
-        typeof window !== 'undefined' && window.location?.hostname
-          ? window.location.hostname
-          : 'localhost';
-      const baseCandidates = [
-        API_URL,
-        'http://127.0.0.1:17384',
-        'http://localhost:17384',
-        `http://${host}:8000`,
-        'http://127.0.0.1:8000',
-        'http://localhost:8000',
-      ].filter((v, i, arr) => !!v && arr.indexOf(v) === i);
-
-      let lastError: any = null;
-      let result: WarcraftLogsParsesResponse | null = null;
-      for (const base of baseCandidates) {
-        try {
-          result = await fetchJson<WarcraftLogsParsesResponse>(`${base}${path}`);
-          break;
-        } catch (err: any) {
-          lastError = err;
-          if (err?.status !== 404) break;
-        }
-      }
-      if (!result) throw lastError || new Error('Failed to fetch raw GraphQL output.');
-
-      setRawDebugText(JSON.stringify((result as any).debug_raw ?? [], null, 2));
-    } catch (err: any) {
-      setRawDebugText(`Failed to fetch raw GraphQL output.\n${err?.message || String(err)}`);
-    } finally {
-      setRawDebugLoading(false);
-    }
-  };
-
-  const percentileClass = (value: number | null | undefined) => {
-    const n = value ?? 0;
-    if (n >= 95) return 'text-orange-300';
-    if (n >= 75) return 'text-fuchsia-300';
-    if (n >= 50) return 'text-sky-300';
-    if (n >= 25) return 'text-emerald-300';
-    return 'text-zinc-400';
-  };
-
-  const fmtDuration = (seconds: number | null | undefined) => {
-    if (!seconds || seconds <= 0) return '-';
-    const total = Math.round(seconds);
-    const min = Math.floor(total / 60);
-    const sec = total % 60;
-    return `${min}:${String(sec).padStart(2, '0')}`;
-  };
-
-  const content = (
-    <>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[10px] text-zinc-500">
-          {lastUpdated ? `Cached ${new Date(lastUpdated).toLocaleTimeString()}` : 'No cache yet'}
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={fetchRawGraphqlOutput}
-            className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-          >
-            Raw GraphQL
-          </button>
-          <button
-            type="button"
-            onClick={() => setRefreshSeq((v) => v + 1)}
-            className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
-        </div>
-      </div>
-      {!embedded && (
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Raid Parses (Warcraft Logs)
-          </h3>
-        </div>
-      )}
-
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex items-center gap-2">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Difficulty</label>
-          <div className="inline-flex rounded-md border border-white/10 bg-black/30 p-0.5">
-            {difficultyOptions.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => setDifficultyFilter(opt)}
-                className={`rounded px-2 py-1 text-[11px] font-bold ${
-                  difficultyFilter === opt
-                    ? 'bg-gold/20 text-gold'
-                    : 'text-zinc-400 hover:text-zinc-100'
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-        <p className="text-[10px] text-zinc-500">
-          LFR {difficultyCounts.LFR} · Normal {difficultyCounts.Normal} · Heroic {difficultyCounts.Heroic} · Mythic {difficultyCounts.Mythic}
-        </p>
-        {(sortKey !== 'none' || sortDir !== 'none') && (
-          <button
-            type="button"
-            onClick={() => {
-              setSortKey('none');
-              setSortDir('none');
-            }}
-            className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-          >
-            Clear Sort
-          </button>
-        )}
-      </div>
-
-      {loading ? (
-        <p className="text-[11px] text-zinc-500">Loading Warcraft Logs parses...</p>
-      ) : data?.needs_credentials ? (
-        <div className="rounded-md border border-amber-300/30 bg-amber-300/10 p-3 text-[11px] text-amber-100">
-          <p className="font-semibold">Warcraft Logs credentials needed</p>
-          <p className="mt-1 text-amber-100/90">
-            {data.message ||
-              'Please add your Warcraft Logs Client ID and Client Secret in Settings > Integrations.'}
-          </p>
-          <Link
-            href="/settings"
-            className="mt-2 inline-flex rounded border border-amber-300/40 bg-black/20 px-2 py-1 text-[11px] font-bold text-amber-200 hover:bg-black/30"
-          >
-            Open Settings
-          </Link>
-        </div>
-      ) : data?.error ? (
-        <p className="text-[11px] text-red-300">{data.error}</p>
-      ) : displayedRows.length > 0 ? (
-        <div className="space-y-3">
-          {summary && (
-            <div className="grid grid-cols-2 gap-2 rounded-md border border-white/5 bg-white/[0.02] p-2.5 text-[11px] sm:grid-cols-4">
-              <div>
-                <p className="text-zinc-500">Best Perf. Avg</p>
-                <p className={`text-[14px] font-black ${percentileClass(summary.avg)}`}>{summary.avg.toFixed(1)}%</p>
-              </div>
-              <div>
-                <p className="text-zinc-500">Latest Try DPS</p>
-                <p className="text-[14px] font-black text-zinc-100">
-                  {summary.latestTryDps > 0 ? Math.round(summary.latestTryDps).toLocaleString() : '-'}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-zinc-500">Kills</p>
-                <p className="text-[14px] font-black text-zinc-100">{summary.kills}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="max-h-[62vh] overflow-auto rounded-md border border-white/5">
-            <table className="w-full min-w-[860px] text-[12px]">
-              <thead className="bg-white/[0.04] text-zinc-400">
-                <tr>
-                  <th className="px-2 py-2 text-left font-semibold">
-                    <button type="button" onClick={() => cycleSort('boss')} className="hover:text-zinc-100">
-                      Boss{sortIndicator('boss')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('best')} className="hover:text-zinc-100">
-                      Best %{sortIndicator('best')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('latest')} className="hover:text-zinc-100">
-                      Latest DPS{sortIndicator('latest')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('high')} className="hover:text-zinc-100">
-                      High DPS{sortIndicator('high')}
-                    </button>
-                  </th>
-
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('kills')} className="hover:text-zinc-100">
-                      Kills{sortIndicator('kills')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('fastest')} className="hover:text-zinc-100">
-                      Fastest{sortIndicator('fastest')}
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedRows.map((g) => (
-                  <tr className="border-t border-white/5" key={g.key}>
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-zinc-100">{g.encounter}</p>
-                        {g.lockedIn === false ? (
-                          <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">
-                            New
-                          </span>
-                        ) : g.lockedIn === true ? (
-                          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-300">
-                            Locked
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-[10px] text-zinc-500">
-                        {g.zone} - {g.difficulty}
-                      </p>
-                    </td>
-                    <td className={`px-2 py-2 text-right font-bold ${percentileClass(g.bestPercentile)}`}>
-                      {g.bestPercentile != null ? `${Math.round(g.bestPercentile)}%` : '-'}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-zinc-100">
-                      {g.latestDps != null ? Math.round(g.latestDps).toLocaleString() : '-'}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-zinc-300">
-                      {g.highestDps != null ? Math.round(g.highestDps).toLocaleString() : '-'}
-                    </td>
-                    <td className="px-2 py-2 text-right text-zinc-200">{g.kills || '-'}</td>
-                    <td className="px-2 py-2 text-right text-zinc-300">{fmtDuration(g.fastestSeconds)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <p className="text-[11px] italic text-zinc-600">
-          {data?.message || 'No Warcraft Logs raid parses found for this character.'}
-        </p>
-      )}
-      {rawDebugOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4">
-          <div className="max-h-[85vh] w-full max-w-5xl overflow-hidden rounded-lg border border-white/10 bg-[#0b0b0f] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
-              <p className="text-sm font-bold text-zinc-100">Warcraft Logs Raw GraphQL Output</p>
-              <button
-                type="button"
-                onClick={() => setRawDebugOpen(false)}
-                className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-            <div className="max-h-[75vh] overflow-auto p-3">
-              <pre className="whitespace-pre-wrap break-words text-[11px] leading-5 text-zinc-200">
-                {rawDebugLoading ? 'Loading raw GraphQL output...' : rawDebugText || 'No raw output.'}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-
-  if (embedded) return content;
-  return <div className="card p-5">{content}</div>;
-}
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-[13px]">
@@ -2013,5 +1326,4 @@ function TalentsCard({
     </div>
   );
 }
-
 

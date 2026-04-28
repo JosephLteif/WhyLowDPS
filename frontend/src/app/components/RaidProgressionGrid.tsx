@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type DifficultyKey = 'lfr' | 'normal' | 'heroic' | 'mythic';
 
@@ -32,6 +32,9 @@ type RaidProgression = {
 type DifficultyTotals = Record<DifficultyKey, number>;
 
 const DIFFICULTIES: DifficultyKey[] = ['lfr', 'normal', 'heroic', 'mythic'];
+const CURRENT_TIER_GROUP_KEY = 'midnight_s1_group';
+const CURRENT_TIER_LABEL = 'VS / TD / MOQ';
+const CURRENT_TIER_CODES = new Set(['VS', 'TD', 'MOQ']);
 
 function normalizeDifficulty(input: unknown): DifficultyKey | null {
   const raw = String(input ?? '')
@@ -63,6 +66,25 @@ function normalizeExpansionLabel(input: unknown): string {
 function parseNumber(input: unknown): number {
   const value = Number(input ?? 0);
   return Number.isFinite(value) ? value : 0;
+}
+
+function raidAcronym(name: string): string {
+  const cleaned = String(name || '').trim();
+  if (!cleaned) return '';
+  const lowered = cleaned.toLowerCase();
+  if (lowered.includes('voidspire')) return 'VS';
+  if (lowered.includes('dusk') || lowered.includes('dread')) return 'TD';
+  if (lowered.includes('march') || lowered.includes("quel'danas") || lowered.includes('quel?')) return 'MOQ';
+  const words = cleaned
+    .split(/[\s'’-]+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+  if (words.length === 0) return '';
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+  return words
+    .slice(0, 3)
+    .map((w) => w[0]?.toUpperCase() || '')
+    .join('');
 }
 
 function getProgressionBossKey(bosses: BossProgress[]): string | null {
@@ -200,25 +222,41 @@ export default function RaidProgressionGrid({
   onActiveRaidNameChange?: (raidName: string | null) => void;
 }) {
   const parsed = useMemo(() => parseRaidData(raidEncounters), [raidEncounters]);
+  const [selectedRaidGroup, setSelectedRaidGroup] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'overall' | 'weekly'>('overall');
 
   const visibleRaids = useMemo(() => {
     if (selectedExpansion === 'all') return parsed.raids;
     return parsed.raids.filter((raid) => raid.expansionKey === selectedExpansion);
   }, [parsed.raids, selectedExpansion]);
 
-  const currentRaid = useMemo(() => {
-    if (visibleRaids.length === 0) return null;
-    if (selectedRaidName && selectedRaidName !== 'all') {
-      const direct = visibleRaids.find(
-        (raid) => raid.name.toLowerCase() === selectedRaidName.toLowerCase(),
-      );
-      if (direct) return direct;
+  const groupOptions = useMemo(() => {
+    const raidCodes = Array.from(new Set(visibleRaids.map((r) => raidAcronym(r.name)).filter(Boolean)));
+    const hasCurrentTier = raidCodes.some((code) => CURRENT_TIER_CODES.has(code));
+    const standalone = raidCodes
+      .filter((code) => !CURRENT_TIER_CODES.has(code))
+      .sort((a, b) => a.localeCompare(b));
+    const options = ['all', ...(hasCurrentTier ? [CURRENT_TIER_GROUP_KEY] : []), ...standalone];
+    return options;
+  }, [visibleRaids]);
+
+  useEffect(() => {
+    if (selectedRaidGroup === 'all') return;
+    if (!groupOptions.includes(selectedRaidGroup)) {
+      setSelectedRaidGroup('all');
     }
-    return [...visibleRaids].sort((a, b) => {
-      if (b.lastKillTs !== a.lastKillTs) return b.lastKillTs - a.lastKillTs;
-      return b.bosses.length - a.bosses.length;
-    })[0];
-  }, [visibleRaids, selectedRaidName]);
+  }, [groupOptions, selectedRaidGroup]);
+
+  const groupedRaids = useMemo(() => {
+    if (selectedRaidGroup === 'all') return visibleRaids;
+    if (selectedRaidGroup === CURRENT_TIER_GROUP_KEY) {
+      return visibleRaids.filter((raid) => CURRENT_TIER_CODES.has(raidAcronym(raid.name)));
+    }
+    return visibleRaids.filter((raid) => raidAcronym(raid.name) === selectedRaidGroup);
+  }, [visibleRaids, selectedRaidGroup]);
+
+  const weeklyWindowMs = 7 * 24 * 60 * 60 * 1000;
+  const weekCutoffTs = Date.now() - weeklyWindowMs;
 
   useEffect(() => {
     if (!onActiveRaidNameChange) return;
@@ -229,28 +267,23 @@ export default function RaidProgressionGrid({
     onActiveRaidNameChange(null);
   }, [onActiveRaidNameChange, selectedRaidName]);
 
-  const difficultyTotals = useMemo(() => {
-    if (!currentRaid) return { lfr: 0, normal: 0, heroic: 0, mythic: 0 };
-    return currentRaid.bosses.reduce<DifficultyTotals>(
-      (acc, boss) => {
-        for (const diff of DIFFICULTIES) {
-          if (boss.byDifficulty[diff].kills > 0) acc[diff] += 1;
-        }
-        return acc;
-      },
-      { lfr: 0, normal: 0, heroic: 0, mythic: 0 },
-    );
-  }, [currentRaid]);
+  const groupedRaidsWithViewBosses = useMemo(() => {
+    return groupedRaids.map((raid) => ({ ...raid, bosses: raid.bosses }));
+  }, [groupedRaids]);
 
-  const maxDifficultyCount = Math.max(
-    1,
-    difficultyTotals.lfr,
-    difficultyTotals.normal,
-    difficultyTotals.heroic,
-    difficultyTotals.mythic,
-  );
+  const bossProgressSummary = useMemo(() => {
+    const allBosses = groupedRaidsWithViewBosses.flatMap((raid) => raid.bosses);
+    const totalBosses = allBosses.length;
+    const fullyCleared = allBosses.filter((boss) => {
+      if (viewMode === 'overall') {
+        return DIFFICULTIES.some((diff) => boss.byDifficulty[diff].kills > 0);
+      }
+      return DIFFICULTIES.some((diff) => boss.byDifficulty[diff].lastKillTs >= weekCutoffTs);
+    }).length;
+    return { totalBosses, fullyCleared };
+  }, [groupedRaidsWithViewBosses, viewMode, weekCutoffTs]);
 
-  if (!currentRaid || currentRaid.bosses.length === 0) {
+  if (groupedRaidsWithViewBosses.length === 0) {
     return (
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
         <p className="text-[11px] italic text-zinc-600">No per-boss raid progression available yet.</p>
@@ -260,40 +293,107 @@ export default function RaidProgressionGrid({
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 rounded-md border border-white/10 bg-black/20 p-1">
+          <button
+            type="button"
+            onClick={() => setViewMode('overall')}
+            className={`rounded px-2 py-1 text-[11px] font-semibold ${viewMode === 'overall' ? 'bg-gold/20 text-gold' : 'text-zinc-300 hover:bg-white/10'}`}
+          >
+            Overall
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('weekly')}
+            className={`rounded px-2 py-1 text-[11px] font-semibold ${viewMode === 'weekly' ? 'bg-gold/20 text-gold' : 'text-zinc-300 hover:bg-white/10'}`}
+          >
+            Weekly kills
+          </button>
+        </div>
+        <select
+          aria-label="Raid group"
+          value={selectedRaidGroup}
+          onChange={(e) => setSelectedRaidGroup(e.target.value)}
+          className="input-field h-9 w-[180px] px-2 py-1 text-[11px] text-zinc-100"
+          style={{ colorScheme: 'dark' }}
+        >
+          {groupOptions.map((group) => (
+            <option key={group} value={group}>
+              {group === 'all'
+                ? 'All raid groups'
+                : group === CURRENT_TIER_GROUP_KEY
+                  ? CURRENT_TIER_LABEL
+                  : group}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
         <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-          Difficulty Comparison (Selected Raid)
+          Bosses by raid
         </p>
-        <div className="space-y-2">
-          {DIFFICULTIES.map((difficulty) => {
-            const count = difficultyTotals[difficulty];
-            const pct = (count / maxDifficultyCount) * 100;
-            const color =
-              difficulty === 'mythic'
-                ? 'bg-violet-400/80'
-                : difficulty === 'heroic'
-                  ? 'bg-amber-400/80'
-                  : difficulty === 'normal'
-                    ? 'bg-sky-400/80'
-                    : 'bg-emerald-400/80';
-            const label =
-              difficulty === 'lfr'
-                ? 'LFR'
-                : difficulty === 'normal'
-                  ? 'Normal'
-                  : difficulty === 'heroic'
-                    ? 'Heroic'
-                    : 'Mythic';
-            return (
-              <div key={difficulty} className="grid grid-cols-[72px_1fr_38px] items-center gap-2">
-                <span className="text-[11px] text-zinc-400">{label}</span>
-                <div className="h-2 overflow-hidden rounded-full bg-white/10">
-                  <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-                </div>
-                <span className="text-right text-[11px] font-mono text-zinc-300">{count}</span>
+        <div className="mb-2 flex items-center justify-between text-[11px] text-zinc-400">
+          <span>{`${bossProgressSummary.fullyCleared}/${bossProgressSummary.totalBosses} fully cleared`}</span>
+          <span className="font-mono text-zinc-300">{`${bossProgressSummary.totalBosses} total`}</span>
+        </div>
+        <div className="mb-2 grid grid-cols-[minmax(240px,1fr)_repeat(4,36px)_60px] items-center gap-2 border-b border-white/10 pb-1 text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+          <span>Boss</span>
+          <span className="text-center">LFR</span>
+          <span className="text-center">N</span>
+          <span className="text-center">H</span>
+          <span className="text-center">M</span>
+          <span className="text-right">Kills</span>
+        </div>
+        <div className="space-y-4">
+          {groupedRaidsWithViewBosses.map((raid) => (
+            <div key={raid.key} className="space-y-2">
+              <div className="rounded-md border border-white/10 bg-black/25 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-zinc-300">
+                {raid.name}
               </div>
-            );
-          })}
+              {raid.bosses.map((boss) => {
+                const totalKills = DIFFICULTIES.reduce((sum, diff) => sum + boss.byDifficulty[diff].kills, 0);
+                const weeklyKills = DIFFICULTIES.reduce(
+                  (sum, diff) => sum + (boss.byDifficulty[diff].lastKillTs >= weekCutoffTs ? 1 : 0),
+                  0,
+                );
+                const dotClass = (active: boolean, diff: DifficultyKey) => {
+                  if (!active) return 'bg-zinc-700/60 ring-white/10';
+                  if (diff === 'mythic') return 'bg-violet-400 ring-violet-300/60';
+                  if (diff === 'heroic') return 'bg-amber-400 ring-amber-300/60';
+                  if (diff === 'normal') return 'bg-sky-400 ring-sky-300/60';
+                  return 'bg-emerald-400 ring-emerald-300/60';
+                };
+                return (
+                  <div
+                    key={boss.key}
+                    className="rounded-md border border-white/10 bg-black/20 px-3 py-2"
+                  >
+                    <div className="grid grid-cols-[minmax(240px,1fr)_repeat(4,36px)_60px] items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-zinc-100">{boss.name}</p>
+                      {DIFFICULTIES.map((diff) => {
+                        const killed =
+                          viewMode === 'overall'
+                            ? boss.byDifficulty[diff].kills > 0
+                            : boss.byDifficulty[diff].lastKillTs >= weekCutoffTs;
+                        return (
+                          <span key={`${boss.key}-${diff}`} className="flex justify-center">
+                            <span
+                              className={`h-3 w-3 rounded-full ring-1 ${dotClass(killed, diff)}`}
+                              title={killed ? `${diff} cleared` : `${diff} not cleared`}
+                            />
+                          </span>
+                        );
+                      })}
+                      <span className="justify-self-end rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-bold text-zinc-300">
+                        {viewMode === 'weekly' ? weeklyKills : totalKills}x
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
     </div>

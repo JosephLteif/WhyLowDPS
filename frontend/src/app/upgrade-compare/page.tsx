@@ -60,6 +60,23 @@ function formatCosts(
     .join(', ');
 }
 
+function parseEquippedBySlot(simcInput: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const rawLine of simcInput.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || !line.includes('=') || !line.includes('id=')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const slot = line.slice(0, eq).trim().toLowerCase();
+    if (!slot) continue;
+    const idMatch = line.match(/\bid=(\d+)\b/i);
+    if (!idMatch) continue;
+    const id = Number(idMatch[1]);
+    if (Number.isFinite(id) && id > 0) out[slot] = id;
+  }
+  return out;
+}
+
 // ---- Data Hook (single endpoint) ----
 
 function useUpgradeData(simcInput: string) {
@@ -144,6 +161,7 @@ export default function UpgradeComparePage() {
   }, []);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
+  const equippedBySlot = useMemo(() => parseEquippedBySlot(simcInput), [simcInput]);
   const currencies = useMemo(() => data?.currencies ?? {}, [data]);
   const hasCurrencies = Object.keys(currencies).length > 0;
   const effectiveCurrencies = useMemo(() => {
@@ -327,6 +345,19 @@ export default function UpgradeComparePage() {
     }
   };
 
+  const toggleAllEquipped = () => {
+    const equippedSlots = candidates
+      .filter((c) => equippedBySlot[c.slot] === c.item_id)
+      .map((c) => c.slot);
+    const allSelected = equippedSlots.length > 0 && equippedSlots.every((s) => selectedSlots.has(s));
+    const next = new Set(selectedSlots);
+    for (const s of equippedSlots) {
+      if (allSelected) next.delete(s);
+      else next.add(s);
+    }
+    setSelectedSlots(next);
+  };
+
   if (!hasCharacter) {
     return (
       <p className="py-6 text-center text-sm text-muted">
@@ -465,6 +496,14 @@ export default function UpgradeComparePage() {
                 <span className="h-3 w-px bg-zinc-700" />
                 <button
                   type="button"
+                  onClick={toggleAllEquipped}
+                  className="text-[11px] font-bold text-zinc-300 transition-colors hover:text-white"
+                >
+                  Equipped
+                </button>
+                <span className="h-3 w-px bg-zinc-700" />
+                <button
+                  type="button"
                   onClick={() => setSelectedSlots(new Set())}
                   className="text-[11px] font-bold text-zinc-500 transition-colors hover:text-zinc-300"
                 >
@@ -557,6 +596,7 @@ export default function UpgradeComparePage() {
                   {group.candidates.map((c) => {
                     const info = itemInfo[c.item_id];
                     const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
+                    const isEquipped = equippedBySlot[c.slot] === c.item_id;
 
                     return (
                       <GearItemRow
@@ -566,6 +606,10 @@ export default function UpgradeComparePage() {
                         nameColor={qc}
                         details={[
                           { text: SLOT_LABELS[c.slot] || c.slot },
+                          {
+                            text: isEquipped ? 'Equipped' : 'Not Equipped',
+                            color: isEquipped ? 'text-emerald-300' : 'text-zinc-500',
+                          },
                           { text: `${c.ilevel} -> ${c.target_ilevel}` },
                           {
                             text: formatCosts(c.costs, effectiveCurrencies),
@@ -620,4 +664,3 @@ export default function UpgradeComparePage() {
     </div>
   );
 }
-

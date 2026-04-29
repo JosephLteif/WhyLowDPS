@@ -155,7 +155,37 @@ function toTimestampMs(raw: unknown): number {
   return n < 1_000_000_000_000 ? n * 1000 : n;
 }
 
-function computeMythicVaultRuns(mythicPlus: any): number {
+function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const region = String(regionRaw || 'us').toLowerCase();
+  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2; // Sun=0, Tue=2, Wed=3, Thu=4
+  // Weekly reset schedule (from provided timer reference):
+  // - US: Tuesday 6:00 PM GMT+3 => 15:00 UTC
+  // - EU: Wednesday 7:00 AM GMT+3 => 04:00 UTC
+  // - ASIA: kept at Thursday 07:00 UTC until a specific local schedule is provided.
+  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
+
+  const current = new Date(now);
+  const todayReset = new Date(
+    Date.UTC(
+      current.getUTCFullYear(),
+      current.getUTCMonth(),
+      current.getUTCDate(),
+      resetHourUtc,
+      0,
+      0,
+      0,
+    ),
+  );
+  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
+  let reset = new Date(todayReset);
+  reset.setUTCDate(reset.getUTCDate() - dayDiff);
+  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
+    reset.setUTCDate(reset.getUTCDate() - 7);
+  }
+  return reset.getTime();
+}
+
+function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
   const isRunLike = (value: any) =>
     value &&
     typeof value === 'object' &&
@@ -202,139 +232,36 @@ function computeMythicVaultRuns(mythicPlus: any): number {
   const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
   const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
   const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekStart = getWeeklyResetStartMs(region);
   const recentWeekCount = recentRuns.filter((run) => {
     const ts = getRunTimestamp(run);
-    return ts > 0 && ts >= weekAgo;
+    return ts > 0 && ts >= weekStart;
   }).length;
-  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).length;
-  let runsForVault = Math.max(recentWeekCount, currentPeriodCount);
-  if (runsForVault > 0) return runsForVault;
-
-  // Fallbacks for variant payload shapes.
-  const directRecent = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs.length : 0;
-  const directCurrent = Array.isArray(mythicPlus?.current_period?.runs)
-    ? mythicPlus.current_period.runs.length
-    : 0;
-  runsForVault = Math.max(runsForVault, directRecent, directCurrent);
-  if (runsForVault > 0) return runsForVault;
-
-  // Last resort: recursively find a plausible weekly run counter field.
-  const stack: any[] = [mythicPlus];
-  const seen = new Set<any>();
-  let best = 0;
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || seen.has(node) || typeof node !== 'object') continue;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) stack.push(item);
-      continue;
-    }
-    const candidates = [
-      node.runs_for_vault,
-      node.vault_runs,
-      node.weekly_runs,
-      node.completed_runs,
-      node.completed_count,
-    ]
-      .map((v: any) => Number(v))
-      .filter((v) => Number.isFinite(v) && v > 0 && v < 1000);
-    for (const v of candidates) if (v > best) best = v;
-    for (const value of Object.values(node)) if (value && typeof value === 'object') stack.push(value);
-  }
-  return best;
+  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).filter((run) => {
+    const ts = getRunTimestamp(run);
+    return ts > 0 && ts >= weekStart;
+  }).length;
+  return Math.max(recentWeekCount, currentPeriodCount);
 }
 
-function computeRaidVaultKills(raidEncounters: any): number {
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+function computeRaidVaultKills(raidEncounters: any, region?: string): number {
+  const weekStart = getWeeklyResetStartMs(region);
   let weeklyKills = 0;
-  let fallbackBestDefeated = 0;
   const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
 
   for (const expansion of expansions) {
     for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
       for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
-        const defeated = Number(mode?.progress?.encounters_defeated ?? mode?.progress?.completed_count ?? 0);
-        if (Number.isFinite(defeated) && defeated > fallbackBestDefeated) fallbackBestDefeated = defeated;
-
         const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
         for (const encounter of encounters) {
           const ts = toTimestampMs(encounter?.last_kill_timestamp ?? encounter?.lastKillTimestamp ?? 0);
-          if (ts >= weekAgo) weeklyKills += 1;
+          if (ts >= weekStart) weeklyKills += 1;
         }
       }
     }
   }
 
-  if (weeklyKills > 0) return weeklyKills;
-  if (fallbackBestDefeated > 0) return fallbackBestDefeated;
-
-  // Last-resort fallback: some payload variants only expose progression as strings like "6/8".
-  const seen = new Set<any>();
-  const stack: any[] = [raidEncounters];
-  let bestFromStrings = 0;
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || seen.has(node)) continue;
-    seen.add(node);
-
-    if (typeof node === 'string') {
-      const m = node.match(/^(\d+)\s*\/\s*(\d+)$/);
-      if (m) {
-        const defeated = Number(m[1]);
-        const total = Number(m[2]);
-        if (Number.isFinite(defeated) && Number.isFinite(total) && total >= defeated && defeated > bestFromStrings) {
-          bestFromStrings = defeated;
-        }
-      }
-      continue;
-    }
-
-    if (Array.isArray(node)) {
-      for (const item of node) stack.push(item);
-      continue;
-    }
-
-    if (typeof node === 'object') {
-      for (const value of Object.values(node)) {
-        if (value && (typeof value === 'object' || typeof value === 'string')) {
-          stack.push(value);
-        }
-      }
-    }
-  }
-
-  if (bestFromStrings > 0) return bestFromStrings;
-
-  // Final fallback: recursively scan for plausible defeated/completed counters.
-  const stack2: any[] = [raidEncounters];
-  const seen2 = new Set<any>();
-  let bestCounter = 0;
-  while (stack2.length > 0) {
-    const node = stack2.pop();
-    if (!node || seen2.has(node) || typeof node !== 'object') continue;
-    seen2.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) stack2.push(item);
-      continue;
-    }
-    const counters = [
-      node.encounters_defeated,
-      node.completed_count,
-      node.completedCount,
-      node.bosses_defeated,
-      node.kills,
-      node.progress?.encounters_defeated,
-      node.progress?.completed_count,
-      node.progress?.completedCount,
-    ]
-      .map((v: any) => Number(v))
-      .filter((v) => Number.isFinite(v) && v > 0 && v <= 40);
-    for (const v of counters) if (v > bestCounter) bestCounter = v;
-    for (const value of Object.values(node)) if (value && typeof value === 'object') stack2.push(value);
-  }
-  return bestCounter;
+  return weeklyKills;
 }
 
 export default function Home() {
@@ -451,8 +378,8 @@ export default function Home() {
         setMainVaultRewards(rewards.slice(0, 6));
         setMainSimcInput(latestSimc);
 
-        const mplusRuns = computeMythicVaultRuns(mythicPlus);
-        const raidKills = computeRaidVaultKills(raidEncounters);
+        const mplusRuns = computeMythicVaultRuns(mythicPlus, region);
+        const raidKills = computeRaidVaultKills(raidEncounters, region);
         setMainVault({ mplusRuns, raidKills });
       } catch {
         // ignore

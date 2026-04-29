@@ -320,7 +320,7 @@ export default function CharacterPanel({
         <RaidSectionCard raidEncounters={raidEncounters} region={region} realm={realm} name={name} />
       )}
       {pageTab === 'vault' && (
-        <VaultOverviewCard mythicPlus={mythicPlus} raidEncounters={raidEncounters} latestSimcInput={latestSimcInput} />
+        <VaultOverviewCard mythicPlus={mythicPlus} raidEncounters={raidEncounters} latestSimcInput={latestSimcInput} region={region} />
       )}
     </div>
   );
@@ -330,16 +330,18 @@ function VaultOverviewCard({
   mythicPlus,
   raidEncounters,
   latestSimcInput,
+  region,
 }: {
   mythicPlus: any;
   raidEncounters: any;
   latestSimcInput?: string | null;
+  region?: string;
 }) {
-  const mythicRunsThisWeek = useMemo(() => computeMythicVaultProgress(mythicPlus).runsForVault, [mythicPlus]);
+  const mythicRunsThisWeek = useMemo(() => computeMythicVaultProgress(mythicPlus, region).runsForVault, [mythicPlus, region]);
 
   const raidBossesThisWeek = useMemo(() => {
     const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const weekStart = getWeeklyResetStartMs(region);
     let count = 0;
     for (const expansion of expansions) {
       for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
@@ -347,13 +349,14 @@ function VaultOverviewCard({
           const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
           for (const encounter of encounters) {
             const ts = Number(encounter?.last_kill_timestamp ?? 0);
-            if (ts >= weekAgo) count += 1;
+            const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
+            if (tsMs >= weekStart) count += 1;
           }
         }
       }
     }
     return count;
-  }, [raidEncounters]);
+  }, [raidEncounters, region]);
 
   const vaultItems = useMemo(() => {
     const input = String(latestSimcInput || '');
@@ -416,7 +419,7 @@ function VaultOverviewCard({
     // Strict mode: if no explicit Weekly Reward Choices block exists, show no vault items.
     return [];
   }, [latestSimcInput]);
-  const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus), [mythicPlus]);
+  const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus, region), [mythicPlus, region]);
   const mythicSlots = mythicVaultProgress.slots;
 
   const raidSlots = useMemo(
@@ -679,15 +682,16 @@ function MythicPlusCard({
     const depletedRuns = recentRuns.filter((run) => getRunTimed(run) === false).length;
     const timedStatusKnownCount = recentRuns.filter((run) => getRunTimed(run) !== null).length;
 
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const weekStart = getWeeklyResetStartMs(region);
     const recentWeekCount = recentRuns.filter((run) => {
       const ts = getRunTimestamp(run);
-      return ts > 0 && ts >= weekAgo;
+      const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
+      return tsMs > 0 && tsMs >= weekStart;
     }).length;
 
     const currentPeriodCandidates = collectRuns(mythicPlus?.current_period || {});
     const currentPeriodCount = currentPeriodCandidates.length;
-    const vaultProgress = computeMythicVaultProgress(mythicPlus);
+    const vaultProgress = computeMythicVaultProgress(mythicPlus, region);
     const runsForVault = vaultProgress.runsForVault;
     const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
     const rewardMap = collectRewardMap(mythicPlus?.current_period || mythicPlus);
@@ -738,7 +742,7 @@ function MythicPlusCard({
       vaultProgressCount: runsForVault,
       hasAnyVaultIlvl,
     };
-  }, [mplusDungeonDetailsByName, mythicPlus]);
+  }, [mplusDungeonDetailsByName, mythicPlus, region]);
 
   const formatRelative = (timestamp: number) => {
     if (!timestamp || timestamp <= 0) return 'Unknown time';
@@ -974,7 +978,24 @@ function normalizeRealmSlug(value: unknown): string {
     .trim();
 }
 
-function computeMythicVaultProgress(mythicPlus: any): {
+function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const region = String(regionRaw || 'us').toLowerCase();
+  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2;
+  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
+  const current = new Date(now);
+  const todayReset = new Date(
+    Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate(), resetHourUtc, 0, 0, 0),
+  );
+  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
+  const reset = new Date(todayReset);
+  reset.setUTCDate(reset.getUTCDate() - dayDiff);
+  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
+    reset.setUTCDate(reset.getUTCDate() - 7);
+  }
+  return reset.getTime();
+}
+
+function computeMythicVaultProgress(mythicPlus: any, region?: string): {
   runsForVault: number;
   slotThresholds: number[];
   slots: Array<{ slot: number; threshold: number; unlocked: boolean; remaining: number; progress: number }>;
@@ -1040,12 +1061,17 @@ function computeMythicVaultProgress(mythicPlus: any): {
   const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
   const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
   const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekStart = getWeeklyResetStartMs(region);
   const recentWeekCount = recentRuns.filter((run) => {
     const ts = getRunTimestamp(run);
-    return ts > 0 && ts >= weekAgo;
+    const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
+    return tsMs > 0 && tsMs >= weekStart;
   }).length;
-  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).length;
+  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).filter((run) => {
+    const ts = getRunTimestamp(run);
+    const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
+    return tsMs > 0 && tsMs >= weekStart;
+  }).length;
   const runsForVault = Math.max(recentWeekCount, currentPeriodCount);
 
   const slotThresholds = [...MYTHIC_VAULT_THRESHOLDS];
@@ -1238,6 +1264,7 @@ function RaidSectionCard({
         <RaidProgressCard
           raidEncounters={raidEncounters}
           embedded
+          region={region}
           selectedExpansion={selectedExpansion}
           selectedRaidName="all"
         />
@@ -1249,12 +1276,14 @@ function RaidSectionCard({
 function RaidProgressCard({
   raidEncounters,
   embedded = false,
+  region,
   selectedExpansion = 'all',
   selectedRaidName = 'all',
   onActiveRaidNameChange,
 }: {
   raidEncounters: any;
   embedded?: boolean;
+  region?: string;
   selectedExpansion?: string;
   selectedRaidName?: string;
   onActiveRaidNameChange?: (raidName: string | null) => void;
@@ -1397,6 +1426,7 @@ function RaidProgressCard({
       {visibleRaids.length > 0 ? (
         <RaidProgressionGrid
           raidEncounters={raidEncounters}
+          region={region}
           selectedExpansion={selectedExpansion}
           selectedRaidName={selectedRaidName}
           onActiveRaidNameChange={onActiveRaidNameChange}
@@ -1594,4 +1624,3 @@ function TalentsCard({
     </div>
   );
 }
-

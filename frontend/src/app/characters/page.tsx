@@ -20,6 +20,7 @@ interface Character {
 
 const FAVORITES_STORAGE_KEY = 'whylowdps.characters.favorites';
 const HIDDEN_STORAGE_KEY = 'whylowdps.characters.hidden';
+const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 
 function normalizeClassKey(value: string): string {
   return (value || '').toLowerCase().replace(/\s+/g, '_');
@@ -85,6 +86,8 @@ function CharacterCard({
   isHidden,
   onToggleFavorite,
   onToggleHidden,
+  onSetMain,
+  isMainCharacter,
 }: {
   char: Character;
   faction: 'alliance' | 'horde';
@@ -92,6 +95,8 @@ function CharacterCard({
   isHidden: boolean;
   onToggleFavorite: (char: Character) => void;
   onToggleHidden: (char: Character) => void;
+  onSetMain: (char: Character) => void;
+  isMainCharacter: boolean;
 }) {
   const classKey = normalizeClassKey(char.class);
   const color = CLASS_COLORS[classKey] || '#d4d4d8';
@@ -102,9 +107,15 @@ function CharacterCard({
     char.name
   );
   const cardLabel = `${char.name} - ${char.realm} (${normalizeRegion(char.region).toUpperCase()})`;
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <div
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenuOpen(true);
+      }}
+      onMouseLeave={() => setMenuOpen(false)}
       className={`group relative flex min-h-[18rem] overflow-hidden rounded-xl border bg-[#0c0c0f] transition-all ${
         isHidden
           ? 'border-white/10 opacity-70'
@@ -137,12 +148,62 @@ function CharacterCard({
             <p className="text-xl font-black tracking-tight" style={{ color }}>
               {char.name}
               {isFavorite ? <span className="ml-2 align-middle text-gold">&#9733;</span> : null}
+              {isMainCharacter ? (
+                <span className="ml-2 inline-flex items-center rounded border border-emerald-400/40 bg-emerald-500/15 px-1.5 py-0.5 align-middle text-[10px] font-black uppercase tracking-wider text-emerald-300">
+                  Main
+                </span>
+              ) : null}
             </p>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
               {char.race} {char.class}
             </p>
           </div>
           <div className="pointer-events-auto relative z-30 flex items-center gap-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((prev) => !prev)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-black/35 text-zinc-300 transition hover:border-white/30 hover:text-white"
+                title="Character actions"
+                aria-label="Character actions"
+              >
+                ⋯
+              </button>
+              {menuOpen ? (
+                <div className="absolute right-0 top-9 z-40 min-w-[140px] rounded-md border border-white/15 bg-[#111317] p-1 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSetMain(char);
+                      setMenuOpen(false);
+                    }}
+                    className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
+                  >
+                    {isMainCharacter ? 'Main Character' : 'Set as Main'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onToggleFavorite(char);
+                      setMenuOpen(false);
+                    }}
+                    className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
+                  >
+                    {isFavorite ? 'Remove Favorite' : 'Add to Favorite'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onToggleHidden(char);
+                      setMenuOpen(false);
+                    }}
+                    className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
+                  >
+                    {isHidden ? 'Show' : 'Hide'}
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={() => onToggleFavorite(char)}
@@ -205,6 +266,7 @@ export default function CharactersPage() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
   const [storageHydrated, setStorageHydrated] = useState(false);
+  const [mainCharacterKey, setMainCharacterKey] = useState('');
 
   const fetchCharacters = useCallback(
     (refresh = false) => {
@@ -241,12 +303,28 @@ export default function CharactersPage() {
         const parsed = JSON.parse(rawHidden);
         if (Array.isArray(parsed)) setHidden(parsed.filter((v) => typeof v === 'string'));
       }
+      const rawMain = window.localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY);
+      if (rawMain) setMainCharacterKey(rawMain);
     } catch {
       setFavorites([]);
       setHidden([]);
     } finally {
       setStorageHydrated(true);
     }
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/user/config`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        const key = String(cfg?.main_character || '');
+        if (!key) return;
+        setMainCharacterKey(key);
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, key);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -267,6 +345,21 @@ export default function CharactersPage() {
   const toggleHidden = useCallback((char: Character) => {
     const id = characterId(char);
     setHidden((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
+  }, []);
+
+  const setMainCharacter = useCallback(async (char: Character) => {
+    const key = characterId(char);
+    setMainCharacterKey(key);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, key);
+    }
+    try {
+      await fetchJson(`${API_URL}/api/user/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'main_character', value: key }),
+      });
+    } catch {}
   }, []);
 
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
@@ -461,6 +554,8 @@ export default function CharactersPage() {
                     isHidden={hiddenSet.has(characterId(char))}
                     onToggleFavorite={toggleFavorite}
                     onToggleHidden={toggleHidden}
+                    onSetMain={setMainCharacter}
+                    isMainCharacter={mainCharacterKey === characterId(char)}
                   />
                 ))}
               </div>
@@ -487,6 +582,8 @@ export default function CharactersPage() {
                     isHidden={hiddenSet.has(characterId(char))}
                     onToggleFavorite={toggleFavorite}
                     onToggleHidden={toggleHidden}
+                    onSetMain={setMainCharacter}
+                    isMainCharacter={mainCharacterKey === characterId(char)}
                   />
                 ))}
               </div>
@@ -497,4 +594,3 @@ export default function CharactersPage() {
     </div>
   );
 }
-

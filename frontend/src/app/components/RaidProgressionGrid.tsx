@@ -36,6 +36,29 @@ const CURRENT_TIER_GROUP_KEY = 'midnight_s1_group';
 const CURRENT_TIER_LABEL = 'VS / TD / MOQ';
 const CURRENT_TIER_CODES = new Set(['VS', 'TD', 'MOQ']);
 
+function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const region = String(regionRaw || 'us').toLowerCase();
+  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2;
+  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
+  const current = new Date(now);
+  const todayReset = new Date(
+    Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate(), resetHourUtc, 0, 0, 0),
+  );
+  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
+  const reset = new Date(todayReset);
+  reset.setUTCDate(reset.getUTCDate() - dayDiff);
+  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
+    reset.setUTCDate(reset.getUTCDate() - 7);
+  }
+  return reset.getTime();
+}
+
+function toTimestampMs(input: unknown): number {
+  const value = Number(input ?? 0);
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return value < 1_000_000_000_000 ? value * 1000 : value;
+}
+
 function normalizeDifficulty(input: unknown): DifficultyKey | null {
   const raw = String(input ?? '')
     .trim()
@@ -164,7 +187,9 @@ function parseRaidData(raidEncounters: any): {
           const order = parseNumber(encounter?.display_order ?? encounter?.order_index) || index;
           const key = `${raidKey}::${id ?? normalizeSlug(name)}`;
           const kills = parseNumber(encounter?.completed_count);
-          const lastKillTs = parseNumber(encounter?.last_kill_timestamp ?? encounter?.lastKillTimestamp);
+          const lastKillTs = toTimestampMs(
+            encounter?.last_kill_timestamp ?? encounter?.lastKillTimestamp,
+          );
 
           const existing = bossByKey.get(key);
           if (!existing) {
@@ -212,11 +237,13 @@ function parseRaidData(raidEncounters: any): {
 
 export default function RaidProgressionGrid({
   raidEncounters,
+  region,
   selectedExpansion,
   selectedRaidName,
   onActiveRaidNameChange,
 }: {
   raidEncounters: any;
+  region?: string;
   selectedExpansion: string;
   selectedRaidName?: string;
   onActiveRaidNameChange?: (raidName: string | null) => void;
@@ -255,8 +282,7 @@ export default function RaidProgressionGrid({
     return visibleRaids.filter((raid) => raidAcronym(raid.name) === selectedRaidGroup);
   }, [visibleRaids, selectedRaidGroup]);
 
-  const weeklyWindowMs = 7 * 24 * 60 * 60 * 1000;
-  const weekCutoffTs = Date.now() - weeklyWindowMs;
+  const weekCutoffTs = getWeeklyResetStartMs(region);
 
   useEffect(() => {
     if (!onActiveRaidNameChange) return;

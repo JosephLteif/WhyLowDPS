@@ -155,7 +155,64 @@ function toTimestampMs(raw: unknown): number {
   return n < 1_000_000_000_000 ? n * 1000 : n;
 }
 
-function computeMythicVaultRuns(mythicPlus: any): number {
+function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const region = String(regionRaw || 'us').toLowerCase();
+  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2; // Sun=0, Tue=2, Wed=3, Thu=4
+  // Weekly reset schedule (from provided timer reference):
+  // - US: Tuesday 6:00 PM GMT+3 => 15:00 UTC
+  // - EU: Wednesday 7:00 AM GMT+3 => 04:00 UTC
+  // - ASIA: kept at Thursday 07:00 UTC until a specific local schedule is provided.
+  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
+
+  const current = new Date(now);
+  const todayReset = new Date(
+    Date.UTC(
+      current.getUTCFullYear(),
+      current.getUTCMonth(),
+      current.getUTCDate(),
+      resetHourUtc,
+      0,
+      0,
+      0,
+    ),
+  );
+  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
+  let reset = new Date(todayReset);
+  reset.setUTCDate(reset.getUTCDate() - dayDiff);
+  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
+    reset.setUTCDate(reset.getUTCDate() - 7);
+  }
+  return reset.getTime();
+}
+
+function getNextWeeklyResetMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const start = getWeeklyResetStartMs(regionRaw, now);
+  return start + 7 * 24 * 60 * 60 * 1000;
+}
+
+function formatCountdown(msRemaining: number): string {
+  if (!Number.isFinite(msRemaining) || msRemaining <= 0) return 'resetting now';
+  const totalMinutes = Math.floor(msRemaining / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+function formatLocalDateTime(timestampMs: number): string {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) return '-';
+  return new Date(timestampMs).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
   const isRunLike = (value: any) =>
     value &&
     typeof value === 'object' &&
@@ -202,139 +259,36 @@ function computeMythicVaultRuns(mythicPlus: any): number {
   const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
   const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
   const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const weekStart = getWeeklyResetStartMs(region);
   const recentWeekCount = recentRuns.filter((run) => {
     const ts = getRunTimestamp(run);
-    return ts > 0 && ts >= weekAgo;
+    return ts > 0 && ts >= weekStart;
   }).length;
-  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).length;
-  let runsForVault = Math.max(recentWeekCount, currentPeriodCount);
-  if (runsForVault > 0) return runsForVault;
-
-  // Fallbacks for variant payload shapes.
-  const directRecent = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs.length : 0;
-  const directCurrent = Array.isArray(mythicPlus?.current_period?.runs)
-    ? mythicPlus.current_period.runs.length
-    : 0;
-  runsForVault = Math.max(runsForVault, directRecent, directCurrent);
-  if (runsForVault > 0) return runsForVault;
-
-  // Last resort: recursively find a plausible weekly run counter field.
-  const stack: any[] = [mythicPlus];
-  const seen = new Set<any>();
-  let best = 0;
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || seen.has(node) || typeof node !== 'object') continue;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) stack.push(item);
-      continue;
-    }
-    const candidates = [
-      node.runs_for_vault,
-      node.vault_runs,
-      node.weekly_runs,
-      node.completed_runs,
-      node.completed_count,
-    ]
-      .map((v: any) => Number(v))
-      .filter((v) => Number.isFinite(v) && v > 0 && v < 1000);
-    for (const v of candidates) if (v > best) best = v;
-    for (const value of Object.values(node)) if (value && typeof value === 'object') stack.push(value);
-  }
-  return best;
+  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).filter((run) => {
+    const ts = getRunTimestamp(run);
+    return ts > 0 && ts >= weekStart;
+  }).length;
+  return Math.max(recentWeekCount, currentPeriodCount);
 }
 
-function computeRaidVaultKills(raidEncounters: any): number {
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+function computeRaidVaultKills(raidEncounters: any, region?: string): number {
+  const weekStart = getWeeklyResetStartMs(region);
   let weeklyKills = 0;
-  let fallbackBestDefeated = 0;
   const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
 
   for (const expansion of expansions) {
     for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
       for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
-        const defeated = Number(mode?.progress?.encounters_defeated ?? mode?.progress?.completed_count ?? 0);
-        if (Number.isFinite(defeated) && defeated > fallbackBestDefeated) fallbackBestDefeated = defeated;
-
         const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
         for (const encounter of encounters) {
           const ts = toTimestampMs(encounter?.last_kill_timestamp ?? encounter?.lastKillTimestamp ?? 0);
-          if (ts >= weekAgo) weeklyKills += 1;
+          if (ts >= weekStart) weeklyKills += 1;
         }
       }
     }
   }
 
-  if (weeklyKills > 0) return weeklyKills;
-  if (fallbackBestDefeated > 0) return fallbackBestDefeated;
-
-  // Last-resort fallback: some payload variants only expose progression as strings like "6/8".
-  const seen = new Set<any>();
-  const stack: any[] = [raidEncounters];
-  let bestFromStrings = 0;
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (!node || seen.has(node)) continue;
-    seen.add(node);
-
-    if (typeof node === 'string') {
-      const m = node.match(/^(\d+)\s*\/\s*(\d+)$/);
-      if (m) {
-        const defeated = Number(m[1]);
-        const total = Number(m[2]);
-        if (Number.isFinite(defeated) && Number.isFinite(total) && total >= defeated && defeated > bestFromStrings) {
-          bestFromStrings = defeated;
-        }
-      }
-      continue;
-    }
-
-    if (Array.isArray(node)) {
-      for (const item of node) stack.push(item);
-      continue;
-    }
-
-    if (typeof node === 'object') {
-      for (const value of Object.values(node)) {
-        if (value && (typeof value === 'object' || typeof value === 'string')) {
-          stack.push(value);
-        }
-      }
-    }
-  }
-
-  if (bestFromStrings > 0) return bestFromStrings;
-
-  // Final fallback: recursively scan for plausible defeated/completed counters.
-  const stack2: any[] = [raidEncounters];
-  const seen2 = new Set<any>();
-  let bestCounter = 0;
-  while (stack2.length > 0) {
-    const node = stack2.pop();
-    if (!node || seen2.has(node) || typeof node !== 'object') continue;
-    seen2.add(node);
-    if (Array.isArray(node)) {
-      for (const item of node) stack2.push(item);
-      continue;
-    }
-    const counters = [
-      node.encounters_defeated,
-      node.completed_count,
-      node.completedCount,
-      node.bosses_defeated,
-      node.kills,
-      node.progress?.encounters_defeated,
-      node.progress?.completed_count,
-      node.progress?.completedCount,
-    ]
-      .map((v: any) => Number(v))
-      .filter((v) => Number.isFinite(v) && v > 0 && v <= 40);
-    for (const v of counters) if (v > bestCounter) bestCounter = v;
-    for (const value of Object.values(node)) if (value && typeof value === 'object') stack2.push(value);
-  }
-  return bestCounter;
+  return weeklyKills;
 }
 
 export default function Home() {
@@ -350,6 +304,9 @@ export default function Home() {
   const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
   const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
   const [mainSimcInput, setMainSimcInput] = useState<string>('');
+  const [mainCharacterOpen, setMainCharacterOpen] = useState(true);
+  const [recentResultsOpen, setRecentResultsOpen] = useState(true);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const loadAll = useCallback(async () => {
     try {
@@ -387,7 +344,7 @@ export default function Home() {
       try {
         const localKey =
           typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
-        const cfgRes = await fetch('/api/user/config', { credentials: 'include' }).catch(() => null);
+        const cfgRes = await fetch(`${API_URL}/api/user/config`, { credentials: 'include' }).catch(() => null);
         let key = localKey;
         if (cfgRes?.ok) {
           const cfg = await cfgRes.json();
@@ -451,8 +408,8 @@ export default function Home() {
         setMainVaultRewards(rewards.slice(0, 6));
         setMainSimcInput(latestSimc);
 
-        const mplusRuns = computeMythicVaultRuns(mythicPlus);
-        const raidKills = computeRaidVaultKills(raidEncounters);
+        const mplusRuns = computeMythicVaultRuns(mythicPlus, region);
+        const raidKills = computeRaidVaultKills(raidEncounters, region);
         setMainVault({ mplusRuns, raidKills });
       } catch {
         // ignore
@@ -497,6 +454,24 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [loadAll]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const usResetCountdown = useMemo(
+    () => formatCountdown(getNextWeeklyResetMs('us', new Date(nowMs)) - nowMs),
+    [nowMs],
+  );
+  const euResetCountdown = useMemo(
+    () => formatCountdown(getNextWeeklyResetMs('eu', new Date(nowMs)) - nowMs),
+    [nowMs],
+  );
+  const usNextResetMs = useMemo(() => getNextWeeklyResetMs('us', new Date(nowMs)), [nowMs]);
+  const euNextResetMs = useMemo(() => getNextWeeklyResetMs('eu', new Date(nowMs)), [nowMs]);
+
   const activeSims = useMemo(() => sims.filter((sim) => sim.status === 'running').length, [sims]);
   const sortedRecent = useMemo(
     () =>
@@ -524,12 +499,26 @@ export default function Home() {
             Live simulation activity, system health, and recent results.
           </p>
         </div>
-        <Link
-          href="/history"
-          className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-        >
-          Open Full History
-        </Link>
+        <div className="flex items-center gap-2">
+          <div
+            className="hidden rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 md:block"
+            title={`US reset at ${formatLocalDateTime(usNextResetMs)} (your local time)`}
+          >
+            <span className="font-semibold text-zinc-200">US reset:</span> {usResetCountdown}
+          </div>
+          <div
+            className="hidden rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 md:block"
+            title={`EU reset at ${formatLocalDateTime(euNextResetMs)} (your local time)`}
+          >
+            <span className="font-semibold text-zinc-200">EU reset:</span> {euResetCountdown}
+          </div>
+          <Link
+            href="/history"
+            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
+          >
+            Open Full History
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -592,11 +581,17 @@ export default function Home() {
       <section className="card p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-200">Main Character</h2>
-          <Link href="/characters" className="text-xs text-gold hover:text-gold-light">Manage</Link>
+          <button
+            type="button"
+            onClick={() => setMainCharacterOpen((prev) => !prev)}
+            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            {mainCharacterOpen ? 'Collapse' : 'Expand'}
+          </button>
         </div>
-        {!mainCharacter ? (
+        {mainCharacterOpen && !mainCharacter ? (
           <p className="text-sm text-zinc-500">No main character selected yet. Open a character and click Set as Main.</p>
-        ) : (
+        ) : mainCharacterOpen ? (
           <div className="space-y-3">
             <div className="text-sm text-zinc-200">
               <span className="font-semibold">{mainCharacter.name}</span>
@@ -682,7 +677,7 @@ export default function Home() {
               <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
             </div>
           </div>
-        )}
+        ) : null}
       </section>
 
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
@@ -755,12 +750,19 @@ export default function Home() {
       </section>
 
       <section className="card overflow-hidden">
-        <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-zinc-200">Recent Results</h2>
+          <button
+            type="button"
+            onClick={() => setRecentResultsOpen((prev) => !prev)}
+            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            {recentResultsOpen ? 'Collapse' : 'Expand'}
+          </button>
         </div>
-        {sortedRecent.length === 0 ? (
+        {recentResultsOpen && sortedRecent.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-zinc-500">No simulations yet.</div>
-        ) : (
+        ) : recentResultsOpen ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-surface-2/60 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -813,7 +815,7 @@ export default function Home() {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </section>
     </div>
   );

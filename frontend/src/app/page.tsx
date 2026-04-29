@@ -387,7 +387,7 @@ export default function Home() {
       try {
         const localKey =
           typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
-        const cfgRes = await fetch('/api/user/config', { credentials: 'include' }).catch(() => null);
+        const cfgRes = await fetch(`${API_URL}/api/user/config`, { credentials: 'include' }).catch(() => null);
         let key = localKey;
         if (cfgRes?.ok) {
           const cfg = await cfgRes.json();

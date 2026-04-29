@@ -304,6 +304,8 @@ export default function Home() {
   const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
   const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
   const [mainSimcInput, setMainSimcInput] = useState<string>('');
+  const [mainCharacterOpen, setMainCharacterOpen] = useState(true);
+  const [recentResultsOpen, setRecentResultsOpen] = useState(true);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const loadAll = useCallback(async () => {
@@ -579,11 +581,17 @@ export default function Home() {
       <section className="card p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-200">Main Character</h2>
-          <Link href="/characters" className="text-xs text-gold hover:text-gold-light">Manage</Link>
+          <button
+            type="button"
+            onClick={() => setMainCharacterOpen((prev) => !prev)}
+            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            {mainCharacterOpen ? 'Collapse' : 'Expand'}
+          </button>
         </div>
-        {!mainCharacter ? (
+        {mainCharacterOpen && !mainCharacter ? (
           <p className="text-sm text-zinc-500">No main character selected yet. Open a character and click Set as Main.</p>
-        ) : (
+        ) : mainCharacterOpen ? (
           <div className="space-y-3">
             <div className="text-sm text-zinc-200">
               <span className="font-semibold">{mainCharacter.name}</span>
@@ -669,7 +677,7 @@ export default function Home() {
               <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
             </div>
           </div>
-        )}
+        ) : null}
       </section>
 
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
@@ -742,12 +750,19 @@ export default function Home() {
       </section>
 
       <section className="card overflow-hidden">
-        <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-zinc-200">Recent Results</h2>
+          <button
+            type="button"
+            onClick={() => setRecentResultsOpen((prev) => !prev)}
+            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            {recentResultsOpen ? 'Collapse' : 'Expand'}
+          </button>
         </div>
-        {sortedRecent.length === 0 ? (
+        {recentResultsOpen && sortedRecent.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-zinc-500">No simulations yet.</div>
-        ) : (
+        ) : recentResultsOpen ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-surface-2/60 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -800,7 +815,7 @@ export default function Home() {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </section>
     </div>
   );

@@ -185,6 +185,33 @@ function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new D
   return reset.getTime();
 }
 
+function getNextWeeklyResetMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const start = getWeeklyResetStartMs(regionRaw, now);
+  return start + 7 * 24 * 60 * 60 * 1000;
+}
+
+function formatCountdown(msRemaining: number): string {
+  if (!Number.isFinite(msRemaining) || msRemaining <= 0) return 'resetting now';
+  const totalMinutes = Math.floor(msRemaining / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+function formatLocalDateTime(timestampMs: number): string {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) return '-';
+  return new Date(timestampMs).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
 function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
   const isRunLike = (value: any) =>
     value &&
@@ -277,6 +304,7 @@ export default function Home() {
   const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
   const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
   const [mainSimcInput, setMainSimcInput] = useState<string>('');
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const loadAll = useCallback(async () => {
     try {
@@ -424,6 +452,24 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [loadAll]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const usResetCountdown = useMemo(
+    () => formatCountdown(getNextWeeklyResetMs('us', new Date(nowMs)) - nowMs),
+    [nowMs],
+  );
+  const euResetCountdown = useMemo(
+    () => formatCountdown(getNextWeeklyResetMs('eu', new Date(nowMs)) - nowMs),
+    [nowMs],
+  );
+  const usNextResetMs = useMemo(() => getNextWeeklyResetMs('us', new Date(nowMs)), [nowMs]);
+  const euNextResetMs = useMemo(() => getNextWeeklyResetMs('eu', new Date(nowMs)), [nowMs]);
+
   const activeSims = useMemo(() => sims.filter((sim) => sim.status === 'running').length, [sims]);
   const sortedRecent = useMemo(
     () =>
@@ -451,12 +497,26 @@ export default function Home() {
             Live simulation activity, system health, and recent results.
           </p>
         </div>
-        <Link
-          href="/history"
-          className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-        >
-          Open Full History
-        </Link>
+        <div className="flex items-center gap-2">
+          <div
+            className="hidden rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 md:block"
+            title={`US reset at ${formatLocalDateTime(usNextResetMs)} (your local time)`}
+          >
+            <span className="font-semibold text-zinc-200">US reset:</span> {usResetCountdown}
+          </div>
+          <div
+            className="hidden rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 md:block"
+            title={`EU reset at ${formatLocalDateTime(euNextResetMs)} (your local time)`}
+          >
+            <span className="font-semibold text-zinc-200">EU reset:</span> {euResetCountdown}
+          </div>
+          <Link
+            href="/history"
+            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
+          >
+            Open Full History
+          </Link>
+        </div>
       </div>
 
       {error && (

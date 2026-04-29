@@ -591,7 +591,7 @@ export default function Home() {
         </div>
         {mainCharacterOpen && !mainCharacter ? (
           <p className="text-sm text-zinc-500">No main character selected yet. Open a character and click Set as Main.</p>
-        ) : mainCharacterOpen ? (
+        ) : mainCharacterOpen && mainCharacter ? (
           <div className="space-y-3">
             <div className="text-sm text-zinc-200">
               <span className="font-semibold">{mainCharacter.name}</span>

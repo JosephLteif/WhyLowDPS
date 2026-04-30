@@ -5,7 +5,8 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2",
     "@tauri-apps/plugin-updater": "^2",
-    "cross-env": "^7"
+    "cross-env": "^10",
+    "npm-check-updates": "^22.0.1"
   },
   "scripts": {
     "tauri": "tauri",

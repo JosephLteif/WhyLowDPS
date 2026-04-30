@@ -13,7 +13,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::WindowEvent;
 use tokio::io::AsyncWriteExt;
 use tauri_plugin_notification::NotificationExt;
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_opener::OpenerExt;
 use whylowdps_core::game_data;
 use whylowdps_core::server;
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
@@ -76,8 +76,8 @@ async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), S
 
 #[tauri::command]
 fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    app.shell()
-        .open(url, None)
+    app.opener()
+        .open_url(url, None::<&str>)
         .map_err(|e| format!("Failed to open external URL: {e}"))
 }
 
@@ -355,6 +355,7 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())

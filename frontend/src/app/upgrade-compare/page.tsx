@@ -202,14 +202,14 @@ export default function UpgradeComparePage() {
   const itemInfo = useItemInfo(infoQueries);
 
   // Debounced combo count
-  const comboTimer = useRef<ReturnType<typeof setTimeout>>();
+  const comboTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (selectedSlots.size === 0 || !simcInput.trim()) {
       setComboCount(0);
       return;
     }
 
-    clearTimeout(comboTimer.current);
+    if (comboTimer.current) clearTimeout(comboTimer.current);
     comboTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(`${API_URL}/api/upgrade-compare/combo-count`, {

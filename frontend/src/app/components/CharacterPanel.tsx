@@ -15,6 +15,8 @@ import {
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
+import SectionCard from './shared/SectionCard';
+import ProgressSlotCard from './shared/ProgressSlotCard';
 import { buildCharacterTalentString } from '../lib/character-panel-talent';
 import type {
   CharacterPanelEquipment,
@@ -239,55 +241,49 @@ function VaultOverviewCard({
       <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Overall Vault Progress</h3>
 
       <div className="grid grid-cols-1 gap-3">
-        <div className="rounded border border-white/10 bg-black/20 p-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mythic+ Track</p>
+        <SectionCard title="Mythic+ Track">
           <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
             {mythicSlots.map((slot) => (
-              <div key={`mplus-${slot.slot}`} className={`rounded border p-2 ${slot.unlocked ? 'border-emerald-400/40 bg-emerald-500/10' : 'border-white/10 bg-black/25'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-zinc-200">Slot {slot.slot}</span>
-                  <span className={`text-[10px] font-bold ${slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}`}>
-                    {slot.unlocked ? 'Unlocked' : 'Locked'}
-                  </span>
-                </div>
-                <p className="mt-1 text-[11px] text-zinc-400">
-                  {slot.unlocked ? `Based on ${mythicVaultProgress.runsForVault} runs` : `${slot.remaining} more runs`}
-                </p>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={`h-full rounded-full ${slot.unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                    style={{ width: `${Math.max(6, slot.progress * 100)}%` }}
-                  />
-                </div>
-              </div>
+              <ProgressSlotCard
+                key={`mplus-${slot.slot}`}
+                slotLabel={`Slot ${slot.slot}`}
+                statusLabel={slot.unlocked ? 'Unlocked' : 'Locked'}
+                tone={slot.unlocked ? 'success' : 'neutral'}
+                description={
+                  slot.unlocked
+                    ? `Based on ${mythicVaultProgress.runsForVault} runs`
+                    : `${slot.remaining} more runs`
+                }
+                progress={slot.progress}
+              />
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-zinc-500">{mythicVaultProgress.runsForVault} runs completed this week.</p>
-        </div>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            {mythicVaultProgress.runsForVault} runs completed this week.
+          </p>
+        </SectionCard>
 
-        <div className="rounded border border-white/10 bg-black/20 p-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Raid Track</p>
+        <SectionCard title="Raid Track">
           <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
             {raidSlots.map((slot) => (
-              <div key={`raid-${slot.slot}`} className={`rounded border p-2 ${slot.unlocked ? 'border-emerald-400/40 bg-emerald-500/10' : 'border-white/10 bg-black/25'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-zinc-200">Slot {slot.slot}</span>
-                  <span className={`text-[10px] font-bold ${slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}`}>
-                    {slot.unlocked ? 'Unlocked' : 'Locked'}
-                  </span>
-                </div>
-                <p className="mt-1 text-[11px] text-zinc-400">Requires {slot.threshold} boss kills</p>
-              </div>
+              <ProgressSlotCard
+                key={`raid-${slot.slot}`}
+                slotLabel={`Slot ${slot.slot}`}
+                statusLabel={slot.unlocked ? 'Unlocked' : 'Locked'}
+                tone={slot.unlocked ? 'success' : 'neutral'}
+                description={`Requires ${slot.threshold} boss kills`}
+              />
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-zinc-500">{raidBossesThisWeek} boss kills completed this week.</p>
-        </div>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            {raidBossesThisWeek} boss kills completed this week.
+          </p>
+        </SectionCard>
       </div>
 
-      <div className="rounded border border-white/10 bg-black/20 p-3">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Vault item choices (from latest SimC)</p>
+      <SectionCard title="Vault item choices (from latest SimC)">
         <VaultRewardsGrid items={vaultItems} />
-      </div>
+      </SectionCard>
     </div>
   );
 }
@@ -588,26 +584,15 @@ function MythicPlusCard({
               </p>
               <div className="space-y-2">
                 {summary.vaultSlots.map((slot) => (
-                  <div key={slot.slot} className="rounded border border-white/5 bg-black/20 p-2">
-                    <div className="mb-1 flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-zinc-300">Slot {slot.slot}</span>
-                      <span className={slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}>
-                        {slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
-                      </span>
-                    </div>
-                    <div className="mb-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className={`h-full rounded-full ${slot.unlocked ? 'bg-emerald-400/90' : 'bg-gold/80'}`}
-                        style={{ width: `${Math.round(slot.progress * 100)}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                      <span>{slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}</span>
-                      {summary.hasAnyVaultIlvl && slot.rewardIlvl ? (
-                        <span>{`iLvl ${slot.rewardIlvl}`}</span>
-                      ) : null}
-                    </div>
-                  </div>
+                  <ProgressSlotCard
+                    key={slot.slot}
+                    slotLabel={`Slot ${slot.slot}`}
+                    statusLabel={slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
+                    tone={slot.unlocked ? 'success' : 'neutral'}
+                    description={slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}
+                    progress={slot.progress}
+                    footerRight={summary.hasAnyVaultIlvl && slot.rewardIlvl ? `iLvl ${slot.rewardIlvl}` : undefined}
+                  />
                 ))}
               </div>
             </div>

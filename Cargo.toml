@@ -7,7 +7,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.5.1"
+version = "1.5.1-nightly.20260430"
 authors = ["WhyLowDps Team"]
 edition = "2021"
 

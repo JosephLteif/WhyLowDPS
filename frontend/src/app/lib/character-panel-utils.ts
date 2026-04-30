@@ -1,38 +1,24 @@
 import { characterHref } from './routes';
+import type { CharacterRunMember, MythicPlusPayload, MythicRun } from './character-domain-types';
 
 const MYTHIC_VAULT_THRESHOLDS = [1, 4, 8] as const;
 
-type RunLike = {
-  keystone_level?: number;
-  keystoneLevel?: number;
-  keystone_dungeon?: unknown;
-  dungeon?: unknown;
-  completed_challenge_mode?: unknown;
-  completed_timestamp?: number;
-  completedTimestamp?: number;
-  end_timestamp?: number;
-  endTimestamp?: number;
-  start_timestamp?: number;
-  startTimestamp?: number;
-  timestamp?: number;
-};
-
-function isRunLike(value: any): value is RunLike {
+function isRunLike(value: unknown): value is MythicRun {
   return (
-    !!value &&
+    value != null &&
     typeof value === 'object' &&
-    (typeof value.keystone_level === 'number' ||
-      typeof value.keystoneLevel === 'number' ||
-      value.keystone_dungeon ||
-      value.dungeon ||
-      value.completed_challenge_mode)
+    (typeof (value as MythicRun).keystone_level === 'number' ||
+      typeof (value as MythicRun).keystoneLevel === 'number' ||
+      !!(value as MythicRun).keystone_dungeon ||
+      !!(value as MythicRun).dungeon ||
+      !!(value as MythicRun).completed_challenge_mode)
   );
 }
 
-function collectRuns(root: any): RunLike[] {
-  const out: RunLike[] = [];
-  const stack: any[] = [root];
-  const seen = new Set<any>();
+function collectRuns(root: unknown): MythicRun[] {
+  const out: MythicRun[] = [];
+  const stack: unknown[] = [root];
+  const seen = new Set<unknown>();
   while (stack.length > 0) {
     const current = stack.pop();
     if (!current || seen.has(current)) continue;
@@ -44,17 +30,19 @@ function collectRuns(root: any): RunLike[] {
     }
     if (typeof current === 'object') {
       if (isRunLike(current)) out.push(current);
-      for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+      for (const value of Object.values(current as Record<string, unknown>)) {
+        if (value && typeof value === 'object') stack.push(value);
+      }
     }
   }
   return out;
 }
 
-function getRunLevel(run: RunLike): number {
+function getRunLevel(run: MythicRun): number {
   return Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
 }
 
-function getRunTimestamp(run: RunLike): number {
+function getRunTimestamp(run: MythicRun): number {
   return Number(
     run?.completed_timestamp ??
       run?.completedTimestamp ??
@@ -93,7 +81,7 @@ export function getWeeklyResetStartMs(regionRaw: string | null | undefined, now 
 }
 
 export function computeMythicVaultProgress(
-  mythicPlus: any,
+  mythicPlus: MythicPlusPayload,
   region?: string
 ): {
   runsForVault: number;
@@ -176,9 +164,10 @@ function tryDecodeSegment(value: string): string {
 }
 
 export function getMemberProfileHref(
-  member: any,
+  member: CharacterRunMember | null | undefined,
   fallbackRegion?: string
 ): { href: string; external: boolean } | null {
+  if (!member) return null;
   const memberName =
     member?.linked_name ||
     member?.profile?.name ||

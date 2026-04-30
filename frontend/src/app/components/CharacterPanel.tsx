@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
-import { useTalentTree } from '../lib/useTalentTree';
+import { useTalentTree, type TalentTreeData } from '../lib/useTalentTree';
 import CharacterQuickLinks from './character/CharacterQuickLinks';
 import CharacterPageTabs, { type CharacterPageTab } from './character/CharacterPageTabs';
 import RaidProgressionGrid from './RaidProgressionGrid';
@@ -18,6 +18,19 @@ import {
 } from '../lib/api';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
 import { buildCharacterTalentString } from '../lib/character-panel-talent';
+import type {
+  CharacterPanelEquipment,
+  CharacterSpecialization,
+  CharacterSpecializationsPayload,
+  CharacterStatisticsPayload,
+  CharacterTalentLoadout,
+  CharacterTalentSelection,
+  CharacterRunMember,
+  MythicPlusPayload,
+  MythicRun,
+  RaidEncountersPayload,
+  RaidMode,
+} from '../lib/character-domain-types';
 import {
   computeMythicVaultProgress,
   getMemberProfileHref,
@@ -36,13 +49,13 @@ interface CharacterPanelProps {
   characterClass: string;
   race: string;
   level: number;
-  equipment: { equipped_items: BlizzardItem[] };
-  statistics: any;
-  specializations: any;
-  professions: any;
-  mythicPlus: any;
-  raidEncounters: any;
-  dungeons?: any;
+  equipment: CharacterPanelEquipment;
+  statistics: CharacterStatisticsPayload;
+  specializations: CharacterSpecializationsPayload | null;
+  professions: Record<string, unknown> | null;
+  mythicPlus: MythicPlusPayload;
+  raidEncounters: RaidEncountersPayload;
+  dungeons?: unknown;
   characterMediaUrl?: string | null;
   latestSimcInput?: string | null;
   initialTab?: 'profile' | 'raiding' | 'mythic' | 'vault';
@@ -67,18 +80,21 @@ export default function CharacterPanel({
   // --- Talent & Spec Logic (Lifted for SimC Generation) ---
   const activeSpec = useMemo(() => {
     if (!specializations?.specializations) return null;
+    const list = specializations.specializations;
     const activeId = specializations.active_specialization?.id;
     if (activeId) {
-      return specializations.specializations.find((s: any) => s.specialization.id === activeId);
+      return list.find((spec: CharacterSpecialization) => spec.specialization?.id === activeId) || null;
     }
-    return specializations.specializations.find((s: any) =>
-      s.loadouts?.some((l: any) => l.is_active)
+    return (
+      list.find((spec: CharacterSpecialization) =>
+        (spec.loadouts || []).some((loadout: CharacterTalentLoadout) => loadout.is_active)
+      ) || null
     );
   }, [specializations]);
 
   const activeLoadout = useMemo(() => {
     if (!activeSpec?.loadouts) return null;
-    return activeSpec.loadouts.find((l: any) => l.is_active);
+    return activeSpec.loadouts.find((loadout: CharacterTalentLoadout) => loadout.is_active) || null;
   }, [activeSpec]);
 
   const specId = activeSpec?.specialization?.id ?? null;
@@ -176,8 +192,8 @@ function VaultOverviewCard({
   latestSimcInput,
   region,
 }: {
-  mythicPlus: any;
-  raidEncounters: any;
+  mythicPlus: MythicPlusPayload;
+  raidEncounters: RaidEncountersPayload;
   latestSimcInput?: string | null;
   region?: string;
 }) {
@@ -283,7 +299,7 @@ function MythicPlusCard({
   realm,
   name,
 }: {
-  mythicPlus: any;
+  mythicPlus: MythicPlusPayload;
   region?: string;
   realm: string;
   name: string;
@@ -324,26 +340,29 @@ function MythicPlusCard({
 
   const summary = useMemo(() => {
     if (!mythicPlus || typeof mythicPlus !== 'object') return null;
+    const mythicPlusObj = mythicPlus as Record<string, unknown>;
+    const asRecord = (value: unknown): Record<string, unknown> | null =>
+      value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
 
     const normalizeName = (value: unknown) =>
       String(value ?? '')
         .trim()
         .toLowerCase();
 
-    const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-    const getRunDurationMs = (run: any) => Number(run?.duration ?? run?.run_duration ?? 0);
-    const getRunName = (run: any) =>
+    const getRunLevel = (run: MythicRun) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+    const getRunDurationMs = (run: MythicRun) => Number(run?.duration ?? run?.run_duration ?? 0);
+    const getRunName = (run: MythicRun) =>
       run?.keystone_dungeon?.name ||
       run?.dungeon?.name ||
       run?.completed_challenge_mode?.name ||
       run?.name ||
       'Dungeon';
-    const getMplusDungeonDetail = (run: any): MythicKeystoneDungeonDetail | null => {
+    const getMplusDungeonDetail = (run: MythicRun): MythicKeystoneDungeonDetail | null => {
       const key = normalizeName(getRunName(run));
       if (!key) return null;
       return mplusDungeonDetailsByName[key] || null;
     };
-    const getTimedByDurationFallback = (run: any): boolean | null => {
+    const getTimedByDurationFallback = (run: MythicRun): boolean | null => {
       const detail = getMplusDungeonDetail(run);
       if (!detail) return null;
       const oneChestDuration = detail.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
@@ -352,13 +371,13 @@ function MythicPlusCard({
       if (!oneChestDuration || !durationMs) return null;
       return durationMs <= oneChestDuration;
     };
-    const getRunTimed = (run: any): boolean | null => {
+    const getRunTimed = (run: MythicRun): boolean | null => {
       if (typeof run?.is_completed_within_timeout === 'boolean') return run.is_completed_within_timeout;
       if (typeof run?.completed_in_time === 'boolean') return run.completed_in_time;
       if (typeof run?.completedWithinTime === 'boolean') return run.completedWithinTime;
       return getTimedByDurationFallback(run);
     };
-    const getRunTimestamp = (run: any) =>
+    const getRunTimestamp = (run: MythicRun) =>
       Number(
         run?.completed_timestamp ??
           run?.completedTimestamp ??
@@ -378,7 +397,7 @@ function MythicPlusCard({
       return `${min}:${String(sec).padStart(2, '0')}`;
     };
 
-    const formatClockDelta = (run: any) => {
+    const formatClockDelta = (run: MythicRun) => {
       const detail = getMplusDungeonDetail(run);
       const timerMs = detail?.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
         ?.qualifying_duration;
@@ -392,19 +411,19 @@ function MythicPlusCard({
       return `${sign}${min}:${String(sec).padStart(2, '0')}`;
     };
 
-    const isRunLike = (value: any) =>
-      value &&
+    const isRunLike = (value: unknown): value is MythicRun =>
+      value != null &&
       typeof value === 'object' &&
-      (typeof value.keystone_level === 'number' ||
-        typeof value.keystoneLevel === 'number' ||
-        value.keystone_dungeon ||
-        value.dungeon ||
-        value.completed_challenge_mode);
+      (typeof (value as MythicRun).keystone_level === 'number' ||
+        typeof (value as MythicRun).keystoneLevel === 'number' ||
+        !!(value as MythicRun).keystone_dungeon ||
+        !!(value as MythicRun).dungeon ||
+        !!(value as MythicRun).completed_challenge_mode);
 
-    const collectRuns = (root: any): any[] => {
-      const out: any[] = [];
-      const stack: any[] = [root];
-      const seen = new Set<any>();
+    const collectRuns = (root: unknown): MythicRun[] => {
+      const out: MythicRun[] = [];
+      const stack: unknown[] = [root];
+      const seen = new Set<unknown>();
       while (stack.length > 0) {
         const current = stack.pop();
         if (!current || seen.has(current)) continue;
@@ -416,16 +435,18 @@ function MythicPlusCard({
         }
         if (typeof current === 'object') {
           if (isRunLike(current)) out.push(current);
-          for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+          for (const value of Object.values(current as Record<string, unknown>)) {
+            if (value && typeof value === 'object') stack.push(value);
+          }
         }
       }
       return out;
     };
 
-    const collectRewardMap = (root: any): Map<number, number> => {
+    const collectRewardMap = (root: unknown): Map<number, number> => {
       const map = new Map<number, number>();
-      const stack: any[] = [root];
-      const seen = new Set<any>();
+      const stack: unknown[] = [root];
+      const seen = new Set<unknown>();
       while (stack.length > 0) {
         const current = stack.pop();
         if (!current || seen.has(current) || typeof current !== 'object') continue;
@@ -434,34 +455,37 @@ function MythicPlusCard({
           for (const item of current) stack.push(item);
           continue;
         }
-        const level = Number(current.keystone_level ?? current.keystoneLevel ?? current.level ?? 0);
+        const currentObj = current as Record<string, unknown>;
+        const level = Number(currentObj.keystone_level ?? currentObj.keystoneLevel ?? currentObj.level ?? 0);
         const ilvl = Number(
-          current.item_level ??
-            current.itemLevel ??
-            current.reward_item_level ??
-            current.rewardItemLevel ??
+          currentObj.item_level ??
+            currentObj.itemLevel ??
+            currentObj.reward_item_level ??
+            currentObj.rewardItemLevel ??
             0,
         );
         if (level > 0 && ilvl > 0) map.set(level, Math.max(ilvl, map.get(level) || 0));
-        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+        for (const value of Object.values(currentObj)) if (value && typeof value === 'object') stack.push(value);
       }
       return map;
     };
 
     const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
-    const byDungeon = new Map<string, any>();
+    const byDungeon = new Map<string, MythicRun>();
     for (const run of allRuns) {
       const dungeonName = getRunName(run);
       const key = normalizeName(dungeonName);
       const level = getRunLevel(run);
       const existing = byDungeon.get(key);
-      const existingLevel = getRunLevel(existing);
+      const existingLevel = existing ? getRunLevel(existing) : 0;
       if (!existing || level > existingLevel) byDungeon.set(key, run);
     }
     const bestRuns = Array.from(byDungeon.values());
     const bestLevel = bestRuns.reduce((acc, run) => Math.max(acc, getRunLevel(run)), 0);
     const bestDungeon = bestRuns.find((run) => getRunLevel(run) === bestLevel);
-    const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
+    const recentSource = Array.isArray(mythicPlusObj.recent_runs)
+      ? (mythicPlusObj.recent_runs as MythicRun[])
+      : allRuns;
     const recentRuns = [...recentSource]
       .sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a))
       .slice(0, 20);
@@ -476,12 +500,12 @@ function MythicPlusCard({
       return tsMs > 0 && tsMs >= weekStart;
     }).length;
 
-    const currentPeriodCandidates = collectRuns(mythicPlus?.current_period || {});
+    const currentPeriodCandidates = collectRuns(mythicPlusObj.current_period || {});
     const currentPeriodCount = currentPeriodCandidates.length;
     const vaultProgress = computeMythicVaultProgress(mythicPlus, region);
     const runsForVault = vaultProgress.runsForVault;
     const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
-    const rewardMap = collectRewardMap(mythicPlus?.current_period || mythicPlus);
+    const rewardMap = collectRewardMap(mythicPlusObj.current_period || mythicPlus);
     const slotThresholds = vaultProgress.slotThresholds;
     const vaultSlots = slotThresholds.map((threshold, i) => {
       const unlocked = runsForVault >= threshold;
@@ -498,19 +522,16 @@ function MythicPlusCard({
     });
     const hasAnyVaultIlvl = vaultSlots.some((slot) => slot.rewardIlvl != null);
 
-    const score = Number(
-      mythicPlus.current_mythic_rating?.rating ??
-        mythicPlus.currentMythicRating?.rating ??
-        mythicPlus.current_mythic_rating?.value ??
-        0,
-    );
+    const currentRating = asRecord(mythicPlusObj.current_mythic_rating);
+    const currentRatingAlt = asRecord(mythicPlusObj.currentMythicRating);
+    const score = Number(currentRating?.rating ?? currentRatingAlt?.rating ?? currentRating?.value ?? 0);
 
     return {
       score: score > 0 ? Math.round(score) : null,
       runs: bestRuns.length,
       bestLevel: bestLevel > 0 ? bestLevel : null,
       bestDungeonName: bestDungeon ? getRunName(bestDungeon) : null,
-      recentRuns: recentRuns.map((run: any, i: number) => ({
+      recentRuns: recentRuns.map((run: MythicRun, i: number) => ({
         id: `${getRunName(run)}-${getRunLevel(run)}-${getRunTimestamp(run)}-${i}`,
         dungeon: getRunName(run),
         level: getRunLevel(run),
@@ -518,7 +539,7 @@ function MythicPlusCard({
         timed: getRunTimed(run),
         clockDelta: formatClockDelta(run),
         timestamp: getRunTimestamp(run),
-        members: Array.isArray(run?.members) ? run.members : [],
+        members: Array.isArray(run?.members) ? (run.members as CharacterRunMember[]) : [],
         dungeonId: getMplusDungeonDetail(run)?.id ?? null,
         keystoneUpgrades: getMplusDungeonDetail(run)?.keystone_upgrades ?? [],
       })),
@@ -544,13 +565,14 @@ function MythicPlusCard({
   const mythicDungeonTimers = useMemo(() => {
     const out: Record<string, number> = {};
     for (const detail of Object.values(mplusDungeonDetailsByName || {})) {
-      const name = String((detail as any)?.name || '')
+      const name = String(detail?.name || '')
         .trim()
         .toLowerCase()
         .replace(/[\s_]+/g, ' ')
         .replace(/[^a-z0-9 ]+/g, '')
         .replace(/\s+/g, ' ');
-      const timerMs = (detail as any)?.keystone_upgrades?.find((u: any) => Number(u?.upgrade_level) === 1)?.qualifying_duration;
+      const timerMs = detail?.keystone_upgrades?.find((upgrade) => Number(upgrade?.upgrade_level) === 1)
+        ?.qualifying_duration;
       if (name && Number(timerMs) > 0) out[name] = Math.round(Number(timerMs) / 1000);
     }
     return out;
@@ -678,7 +700,7 @@ function MythicPlusCard({
                     </div>
                     {run.members.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
-                        {run.members.slice(0, 5).map((member: any, idx: number) => {
+                        {run.members.slice(0, 5).map((member: CharacterRunMember, idx: number) => {
                           const memberName =
                             member?.profile?.name ||
                             member?.character?.name ||
@@ -696,8 +718,7 @@ function MythicPlusCard({
                             member?.profile?.character_class?.name ||
                             member?.specialization?.name ||
                             member?.character_class?.name ||
-                            member?.class?.name ||
-                            member?.class ||
+                            (typeof member?.class === 'object' ? member.class?.name : member?.class) ||
                             '';
                           const memberProfile = getMemberProfileHref(member, region);
                           const memberLabel = `${memberName}${memberClass ? ` (${memberClass})` : ''}`;
@@ -763,7 +784,7 @@ function RaidSectionCard({
   realm,
   name,
 }: {
-  raidEncounters: any;
+  raidEncounters: RaidEncountersPayload;
   region: string;
   realm: string;
   name: string;
@@ -860,7 +881,7 @@ function RaidProgressCard({
   selectedRaidName = 'all',
   onActiveRaidNameChange,
 }: {
-  raidEncounters: any;
+  raidEncounters: RaidEncountersPayload;
   embedded?: boolean;
   region?: string;
   selectedExpansion?: string;
@@ -911,7 +932,7 @@ function RaidProgressCard({
       lfr: string;
     }> = [];
 
-    const normalize = (value: any) =>
+    const normalize = (value: unknown) =>
       String(value ?? '')
         .trim()
         .toLowerCase()
@@ -944,8 +965,8 @@ function RaidProgressCard({
       for (const inst of instances) {
         const modes = Array.isArray(inst?.modes) ? inst.modes : [];
         const getMode = (modeName: string) =>
-          modes.find((m: any) => (m?.difficulty?.type || '').toLowerCase() === modeName);
-        const fmtProgress = (mode: any) => {
+          modes.find((mode: RaidMode) => (mode?.difficulty?.type || '').toLowerCase() === modeName);
+        const fmtProgress = (mode: RaidMode | undefined) => {
           const p = mode?.progress;
           const k = Number(p?.encounters_defeated ?? p?.completed_count ?? 0);
           const t = Number(p?.total_encounters ?? p?.total_count ?? 0);
@@ -967,11 +988,11 @@ function RaidProgressCard({
     }
     const byRaidNameHasConcrete = new Set(
       flattened
-        .filter((r: any) => !r.placeholderExpansion && r.expansionKey !== 'unknown-expansion')
-        .map((r: any) => r.name.trim().toLowerCase().replace(/\s+/g, ' '))
+        .filter((row) => !row.placeholderExpansion && row.expansionKey !== 'unknown-expansion')
+        .map((row) => row.name.trim().toLowerCase().replace(/\s+/g, ' '))
     );
 
-    for (const raid of flattened as Array<any>) {
+    for (const raid of flattened) {
       const normalizedRaidName = raid.name.trim().toLowerCase().replace(/\s+/g, ' ');
       if (raid.placeholderExpansion && byRaidNameHasConcrete.has(normalizedRaidName)) {
         // Prefer concrete expansion labels over generic current-season placeholders.
@@ -1031,55 +1052,85 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatsCard({ statistics }: { statistics: any }) {
+function StatsCard({ statistics }: { statistics: CharacterStatisticsPayload }) {
   const stats = useMemo(() => {
     if (!statistics) return [];
+    const statsObj = statistics as Record<string, unknown>;
+    type StatValue =
+      | number
+      | {
+          effective?: number;
+          value?: number;
+          percent?: number;
+          rating_bonus?: number;
+          rating_normalized?: number;
+          rating?: number;
+        };
 
-    const getEffectiveValue = (stat?: any) => {
+    const getEffectiveValue = (stat?: StatValue) => {
       if (typeof stat === 'number') return stat.toLocaleString();
-      if (stat?.effective !== undefined) return Math.round(stat.effective).toLocaleString();
-      if (stat?.value !== undefined) return Math.round(stat.value).toLocaleString();
+      if (typeof stat?.effective === 'number') return Math.round(stat.effective).toLocaleString();
+      if (typeof stat?.value === 'number') return Math.round(stat.value).toLocaleString();
       return '0';
     };
 
-    const getPercentValue = (stat?: any, rating?: any) => {
+    const getPercentValue = (stat?: StatValue, rating?: StatValue) => {
+      const statObj =
+        stat && typeof stat === 'object'
+          ? (stat as Exclude<StatValue, number>)
+          : null;
+      const ratingObj =
+        rating && typeof rating === 'object'
+          ? (rating as Exclude<StatValue, number>)
+          : null;
       const p =
-        stat?.value ??
-        stat?.percent ??
-        stat?.rating_bonus ??
+        (typeof stat === 'number' ? stat : null) ??
+        (typeof statObj?.value === 'number' ? statObj.value : null) ??
+        (typeof statObj?.percent === 'number' ? statObj.percent : null) ??
+        (typeof statObj?.rating_bonus === 'number' ? statObj.rating_bonus : null) ??
         (typeof stat === 'number' ? stat : null);
       if (p === null) return null;
 
       const r =
-        rating?.rating_normalized ?? rating?.rating ?? (typeof rating === 'number' ? rating : null);
+        (typeof ratingObj?.rating_normalized === 'number' ? ratingObj.rating_normalized : null) ??
+        (typeof ratingObj?.rating === 'number' ? ratingObj.rating : null) ??
+        (typeof rating === 'number' ? rating : null);
       const percStr = p.toFixed(2) + '%';
       return r !== null ? `${Math.round(r)} (${percStr})` : percStr;
     };
 
     // Find the relevant primary stat (Int/Agi/Str)
-    const mainStat = statistics.intellect || statistics.agility || statistics.strength;
+    const mainStat =
+      (statsObj.intellect as StatValue | undefined) ||
+      (statsObj.agility as StatValue | undefined) ||
+      (statsObj.strength as StatValue | undefined);
 
     // Find the relevant crit/haste/mastery (they are usually mirrored in modern WoW, but we pick the best one)
     const crit =
-      statistics.melee_crit || statistics.spell_crit || statistics.ranged_crit || statistics.crit;
+      (statsObj.melee_crit as StatValue | undefined) ||
+      (statsObj.spell_crit as StatValue | undefined) ||
+      (statsObj.ranged_crit as StatValue | undefined) ||
+      (statsObj.crit as StatValue | undefined);
     const haste =
-      statistics.melee_haste ||
-      statistics.spell_haste ||
-      statistics.ranged_haste ||
-      statistics.haste;
-    const mastery = statistics.mastery;
-    const versatility = statistics.versatility_offensive_modifier ?? statistics.versatility;
+      (statsObj.melee_haste as StatValue | undefined) ||
+      (statsObj.spell_haste as StatValue | undefined) ||
+      (statsObj.ranged_haste as StatValue | undefined) ||
+      (statsObj.haste as StatValue | undefined);
+    const mastery = statsObj.mastery as StatValue | undefined;
+    const versatility =
+      (statsObj.versatility_offensive_modifier as StatValue | undefined) ||
+      (statsObj.versatility as StatValue | undefined);
 
     return [
       { label: 'Main Stat', value: getEffectiveValue(mainStat) },
-      { label: 'Stamina', value: getEffectiveValue(statistics.stamina) },
+      { label: 'Stamina', value: getEffectiveValue(statsObj.stamina as StatValue | undefined) },
       null,
       { label: 'Crit', value: getPercentValue(crit, crit) ?? '0.0%' },
       { label: 'Haste', value: getPercentValue(haste, haste) ?? '0.0%' },
       { label: 'Mastery', value: getPercentValue(mastery, mastery) ?? '0.0%' },
       {
         label: 'Versatility',
-        value: getPercentValue(versatility, statistics.versatility) ?? '0.0%',
+        value: getPercentValue(versatility, statsObj.versatility as StatValue | undefined) ?? '0.0%',
       },
     ];
   }, [statistics]);
@@ -1121,11 +1172,11 @@ function TalentsCard({
   specId,
   tree,
 }: {
-  activeSpec: any;
-  activeLoadout: any;
+  activeSpec: CharacterSpecialization | null;
+  activeLoadout: CharacterTalentLoadout | null;
   talentString: string | null;
   specId: number | null;
-  tree: any;
+  tree: TalentTreeData | null;
 }) {
   const loading = specId !== null && !tree;
   const [collapsed, setCollapsed] = useState(false);
@@ -1147,15 +1198,15 @@ function TalentsCard({
     ...(activeLoadout?.selected_hero_talents || []),
     ...(activeSpec?.talents || []),
   ]
-    .map((t: any) => t.tooltip_spell?.name || t.talent?.name)
-    .filter(Boolean);
+    .map((talent: CharacterTalentSelection) => talent.tooltip_spell?.name || talent.talent?.name)
+    .filter((name): name is string => Boolean(name));
 
   return (
     <div className="card overflow-hidden">
       <div className="border-b border-white/5 bg-white/[0.01] p-5">
         <div className="flex items-center justify-between">
           <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Specialization: <span className="text-gold">{activeSpec.specialization.name}</span>
+            Specialization: <span className="text-gold">{activeSpec.specialization?.name || 'Unknown'}</span>
           </h1>
           <div className="flex items-center gap-2">
             {loading && (

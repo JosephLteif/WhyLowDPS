@@ -1,6 +1,7 @@
 import { decodeHeader, type NodeSelection } from './talentDecode';
 import { encodeTalentString, normalizeTalentString } from './talentEncode';
 import type { TalentTreeData } from './useTalentTree';
+import type { CharacterSpecialization, CharacterTalentLoadout } from './character-domain-types';
 
 const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
 
@@ -59,8 +60,8 @@ export function buildCharacterTalentString({
 }: {
   tree: TalentTreeData | null;
   specId: number | null;
-  activeLoadout: any;
-  activeSpec: any;
+  activeLoadout: CharacterTalentLoadout | null;
+  activeSpec: CharacterSpecialization | null;
 }): string | null {
   if (!tree || !specId) return null;
 

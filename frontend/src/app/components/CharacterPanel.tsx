@@ -5,9 +5,8 @@ import Link from 'next/link';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
 import { useTalentTree } from '../lib/useTalentTree';
-import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
-import type { NodeSelection } from '../lib/talentDecode';
-import { decodeHeader } from '../lib/talentDecode';
+import CharacterQuickLinks from './character/CharacterQuickLinks';
+import CharacterPageTabs, { type CharacterPageTab } from './character/CharacterPageTabs';
 import RaidProgressionGrid from './RaidProgressionGrid';
 import GearOverview, { type GearItem as OverviewGearItem } from './GearOverview';
 import {
@@ -17,60 +16,18 @@ import {
   getMythicKeystoneDungeonIndex,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
-import { characterHref } from '../lib/routes';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
-
-const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
-const MPLUS_VAULT_THRESHOLDS = [1, 4, 8] as const;
+import { buildCharacterTalentString } from '../lib/character-panel-talent';
+import {
+  computeMythicVaultProgress,
+  getMemberProfileHref,
+  getWeeklyResetStartMs,
+  isCurrentExpansionPlaceholder,
+  isLikelyCurrentExpansionLabel,
+  normalizeRealmSlug,
+  parseVaultRewardsFromSimcInput,
+} from '../lib/character-panel-utils';
 const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
-const MYTHIC_VAULT_THRESHOLDS = [1, 4, 8] as const;
-
-function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length < 16 || !TALENT_EXPORT_RE.test(trimmed)) return false;
-  try {
-    const header = decodeHeader(trimmed);
-    if (header.bits.length <= header.offset) return false;
-    if (header.specId <= 0) return false;
-    return !(expectedSpecId && header.specId !== expectedSpecId);
-  } catch {
-    return false;
-  }
-}
-
-function findTalentExportString(input: unknown, expectedSpecId?: number | null): string | null {
-  if (!input || typeof input !== 'object') return null;
-  const seen = new Set<unknown>();
-  const stack: unknown[] = [input];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || seen.has(current)) continue;
-    seen.add(current);
-
-    if (typeof current === 'string') {
-      if (isTalentExportString(current, expectedSpecId)) return current.trim();
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      for (const item of current) stack.push(item);
-      continue;
-    }
-
-    if (typeof current === 'object') {
-      for (const value of Object.values(current as Record<string, unknown>)) {
-        if (typeof value === 'string') {
-          if (isTalentExportString(value, expectedSpecId)) return value.trim();
-        } else if (value && typeof value === 'object') {
-          stack.push(value);
-        }
-      }
-    }
-  }
-
-  return null;
-}
 
 interface CharacterPanelProps {
   name: string;
@@ -128,66 +85,12 @@ export default function CharacterPanel({
   const tree = useTalentTree(specId);
 
   const talentString = useMemo(() => {
-    if (!tree || !specId) return null;
-    try {
-      const directCandidates = [
-        activeLoadout?.talent_loadout_code,
-        activeLoadout?.talentLoadoutCode,
-        activeLoadout?.loadout_code,
-        activeLoadout?.code,
-        activeSpec?.talent_loadout_code,
-        activeSpec?.talentLoadoutCode,
-      ].filter((v): v is string => typeof v === 'string');
-      const direct = directCandidates.find((v) => isTalentExportString(v, specId));
-      if (direct) return normalizeTalentString(direct, tree);
-
-      const discovered =
-        findTalentExportString(activeLoadout, specId) ?? findTalentExportString(activeSpec, specId);
-      if (discovered) return normalizeTalentString(discovered, tree);
-
-      const selections = new Map<number, NodeSelection>();
-      const selectedTalents = [
-        ...(activeLoadout?.selected_class_talents || []),
-        ...(activeLoadout?.selected_spec_talents || []),
-        ...(activeLoadout?.selected_hero_talents || []),
-      ];
-      const talents = [...selectedTalents, ...(activeSpec.talents || [])];
-      const allNodes = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes];
-
-      for (const t of talents) {
-        const candidateIds = [
-          t.id,
-          t.talent?.id,
-          t.tooltip_spell?.id,
-          t.spell_tooltip?.spell?.id,
-          t.selected_tooltip?.spell?.id,
-        ].filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
-        if (candidateIds.length === 0) continue;
-
-        const node = allNodes.find((n) =>
-          candidateIds.some(
-            (id) => n.id === id || n.entries.some((e) => e.id === id || e.spellId === id)
-          )
-        );
-        if (node) {
-          const choiceIndex = node.entries.findIndex((e) =>
-            candidateIds.some((id) => e.id === id || e.spellId === id)
-          );
-          const existing = selections.get(node.id);
-          const nextRanks = Math.max(existing?.ranks ?? 0, t.rank ?? node.maxRanks ?? 1);
-          const nextChoice = choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
-          selections.set(node.id, {
-            ranks: nextRanks,
-            choiceIndex: nextChoice,
-          });
-        }
-      }
-      if (selections.size === 0) return null;
-      return normalizeTalentString(encodeTalentString(selections, tree, specId), tree);
-    } catch (err) {
-      console.warn('Failed to encode talent string:', err);
-      return null;
-    }
+    return buildCharacterTalentString({
+      tree,
+      specId,
+      activeLoadout,
+      activeSpec,
+    });
   }, [activeLoadout, tree, specId, activeSpec]);
   // --- End Talent & SimC Logic ---
 
@@ -209,84 +112,25 @@ export default function CharacterPanel({
     }
     return normalized;
   }, [equipment]);
-  const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic' | 'vault'>(initialTab || 'raiding');
+  const [pageTab, setPageTab] = useState<CharacterPageTab>(initialTab || 'raiding');
+  const characterSlug = name.toLowerCase();
+  const regionSlug = region.toLowerCase();
+  const quickLinks = useMemo(
+    () => ({
+      warcraftLogsUrl: `https://www.warcraftlogs.com/character/${regionSlug}/${realmSlug}/${characterSlug}`,
+      raiderIoUrl: `https://raider.io/characters/${regionSlug}/${realmSlug}/${characterSlug}`,
+    }),
+    [characterSlug, regionSlug, realmSlug]
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Quick Links Bar (Top Left) */}
-      <div className="flex flex-wrap items-center gap-3">
-        <a
-          href={armoryUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-zinc-300 ring-1 ring-white/5 transition-all hover:bg-white/10 hover:text-white active:scale-95"
-        >
-          <img
-            src="/icons/blizzard.png"
-            alt=""
-            className="h-3.5 w-3.5 opacity-70"
-            onError={(e) => (e.currentTarget.style.display = 'none')}
-          />
-          Official Armory
-        </a>
-        <a
-          href={`https://www.warcraftlogs.com/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#ca3333]/20 bg-[#ca3333]/10 px-3 py-1.5 text-xs font-bold text-[#ff4d4d] ring-1 ring-white/5 transition-all hover:bg-[#ca3333]/20 hover:text-[#ff6666] active:scale-95"
-        >
-          Warcraft Logs
-        </a>
-        <a
-          href={`https://raider.io/characters/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#fb8c00]/20 bg-[#fb8c00]/10 px-3 py-1.5 text-xs font-bold text-[#ffb74d] ring-1 ring-white/5 transition-all hover:bg-[#fb8c00]/20 hover:text-[#ffcc80] active:scale-95"
-        >
-          Raider.io
-        </a>
-      </div>
-
-      <div className="card p-2">
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            type="button"
-            onClick={() => setPageTab('profile')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'profile' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Profile
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('raiding')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'raiding' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Raiding
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('mythic')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'mythic' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Mythic+
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('vault')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'vault' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Vault
-          </button>
-        </div>
-      </div>
+      <CharacterQuickLinks
+        armoryUrl={armoryUrl}
+        warcraftLogsUrl={quickLinks.warcraftLogsUrl}
+        raiderIoUrl={quickLinks.raiderIoUrl}
+      />
+      <CharacterPageTabs value={pageTab} onChange={setPageTab} />
 
       {pageTab === 'profile' && (
         <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -358,67 +202,10 @@ function VaultOverviewCard({
     return count;
   }, [raidEncounters, region]);
 
-  const vaultItems = useMemo(() => {
-    const input = String(latestSimcInput || '');
-    if (!input.trim()) return [] as VaultRewardItem[];
-    const lines = input.split(/\r?\n/);
-    const blocks: string[][] = [];
-    let currentBlock: string[] | null = null;
-    for (const raw of lines) {
-      const line = raw.trim();
-      const lower = line.toLowerCase();
-      if (lower.includes('weekly reward choices') && !lower.includes('end of weekly reward choices')) {
-        currentBlock = [];
-        blocks.push(currentBlock);
-        continue;
-      }
-      if (lower.includes('end of weekly reward choices')) {
-        currentBlock = null;
-        continue;
-      }
-      if (currentBlock) currentBlock.push(line);
-    }
-
-    const parseItemLines = (itemLines: string[]) => {
-      const parsed: VaultRewardItem[] = [];
-      const seen = new Set<string>();
-      for (const line of itemLines) {
-        const body = line.replace(/^#\s*/, '').trim();
-        const match = body.match(/^([a-z0-9_]+)\s*=\s*(.+)$/i);
-        if (!match) continue;
-        const slot = match[1].trim();
-        const simc = match[2].trim();
-        const idMatch = simc.match(/id=(\d+)/i);
-        if (!idMatch) continue;
-        const ilevelMatch = simc.match(/ilevel=(\d+)/i);
-        const bonusMatch = simc.match(/bonus_id=([0-9/]+)/i);
-        const bonusIds = bonusMatch
-          ? bonusMatch[1]
-              .split('/')
-              .map((v) => Number(v))
-              .filter((v) => Number.isFinite(v) && v > 0)
-          : [];
-        const item = { slot, itemId: idMatch[1], ilevel: ilevelMatch?.[1] || '-', bonusIds };
-        const key = `${item.slot}|${item.itemId}|${item.ilevel}|${item.bonusIds.join('/')}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        parsed.push(item);
-      }
-      return parsed;
-    };
-
-    // Use only the latest explicit vault block.
-    if (blocks.length > 0) {
-      for (let i = blocks.length - 1; i >= 0; i -= 1) {
-        const parsed = parseItemLines(blocks[i]);
-        if (parsed.length > 0) return parsed;
-      }
-      return [];
-    }
-
-    // Strict mode: if no explicit Weekly Reward Choices block exists, show no vault items.
-    return [];
-  }, [latestSimcInput]);
+  const vaultItems = useMemo(
+    () => parseVaultRewardsFromSimcInput(latestSimcInput) as VaultRewardItem[],
+    [latestSimcInput]
+  );
   const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus, region), [mythicPlus, region]);
   const mythicSlots = mythicVaultProgress.slots;
 
@@ -968,214 +755,6 @@ function MythicPlusCard({
       )}
     </div>
   );
-}
-
-function normalizeRealmSlug(value: unknown): string {
-  return String(value ?? '')
-    .toLowerCase()
-    .replace(/'/g, '')
-    .replace(/\s+/g, '-')
-    .trim();
-}
-
-function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
-  const region = String(regionRaw || 'us').toLowerCase();
-  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2;
-  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
-  const current = new Date(now);
-  const todayReset = new Date(
-    Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate(), resetHourUtc, 0, 0, 0),
-  );
-  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
-  const reset = new Date(todayReset);
-  reset.setUTCDate(reset.getUTCDate() - dayDiff);
-  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
-    reset.setUTCDate(reset.getUTCDate() - 7);
-  }
-  return reset.getTime();
-}
-
-function computeMythicVaultProgress(mythicPlus: any, region?: string): {
-  runsForVault: number;
-  slotThresholds: number[];
-  slots: Array<{ slot: number; threshold: number; unlocked: boolean; remaining: number; progress: number }>;
-} {
-  if (!mythicPlus || typeof mythicPlus !== 'object') {
-    const thresholds = [...MYTHIC_VAULT_THRESHOLDS];
-    return {
-      runsForVault: 0,
-      slotThresholds: thresholds,
-      slots: thresholds.map((threshold, idx) => ({
-        slot: idx + 1,
-        threshold,
-        unlocked: false,
-        remaining: threshold,
-        progress: 0,
-      })),
-    };
-  }
-
-  const isRunLike = (value: any) =>
-    value &&
-    typeof value === 'object' &&
-    (typeof value.keystone_level === 'number' ||
-      typeof value.keystoneLevel === 'number' ||
-      value.keystone_dungeon ||
-      value.dungeon ||
-      value.completed_challenge_mode);
-
-  const collectRuns = (root: any): any[] => {
-    const out: any[] = [];
-    const stack: any[] = [root];
-    const seen = new Set<any>();
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current || seen.has(current)) continue;
-      seen.add(current);
-      if (Array.isArray(current)) {
-        if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
-        else for (const item of current) if (item && typeof item === 'object') stack.push(item);
-        continue;
-      }
-      if (typeof current === 'object') {
-        if (isRunLike(current)) out.push(current);
-        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
-      }
-    }
-    return out;
-  };
-
-  const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-  const getRunTimestamp = (run: any) =>
-    Number(
-      run?.completed_timestamp ??
-        run?.completedTimestamp ??
-        run?.end_timestamp ??
-        run?.endTimestamp ??
-        run?.start_timestamp ??
-        run?.startTimestamp ??
-        run?.timestamp ??
-        0,
-    );
-
-  const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
-  const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
-  const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
-  const weekStart = getWeeklyResetStartMs(region);
-  const recentWeekCount = recentRuns.filter((run) => {
-    const ts = getRunTimestamp(run);
-    const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
-    return tsMs > 0 && tsMs >= weekStart;
-  }).length;
-  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).filter((run) => {
-    const ts = getRunTimestamp(run);
-    const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
-    return tsMs > 0 && tsMs >= weekStart;
-  }).length;
-  const runsForVault = Math.max(recentWeekCount, currentPeriodCount);
-
-  const slotThresholds = [...MYTHIC_VAULT_THRESHOLDS];
-  const slots = slotThresholds.map((threshold, idx) => ({
-    slot: idx + 1,
-    threshold,
-    unlocked: runsForVault >= threshold,
-    remaining: Math.max(0, threshold - runsForVault),
-    progress: Math.min(1, runsForVault / threshold),
-  }));
-
-  return { runsForVault, slotThresholds, slots };
-}
-
-function isCurrentExpansionPlaceholder(value: unknown): boolean {
-  const lower = String(value ?? '').trim().toLowerCase();
-  return lower === 'current season' || lower === 'current expansion';
-}
-
-function isLikelyCurrentExpansionLabel(value: unknown): boolean {
-  const lower = String(value ?? '').trim().toLowerCase();
-  if (!lower) return false;
-  return (
-    lower === 'midnight' ||
-    lower.startsWith('the war within') ||
-    lower.startsWith('11.') ||
-    lower.startsWith('12.')
-  );
-}
-
-function normalizeCharacterName(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function normalizeRegionCode(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function tryDecodeSegment(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function getMemberProfileHref(
-  member: any,
-  fallbackRegion?: string
-): { href: string; external: boolean } | null {
-  const memberName =
-    member?.linked_name ||
-    member?.profile?.name ||
-    member?.character?.name ||
-    member?.character_name ||
-    member?.name ||
-    '';
-  const memberRegion =
-    member?.linked_region ||
-    member?.profile?.region ||
-    member?.character?.region ||
-    member?.region ||
-    member?.profile?.realm?.region ||
-    fallbackRegion;
-  const rawRealm =
-    member?.linked_realm ||
-    member?.profile?.realm?.slug ||
-    member?.profile?.realm?.name ||
-    member?.character?.realm?.slug ||
-    member?.character?.realm?.name ||
-    member?.realm;
-  const memberRegionCode = normalizeRegionCode(memberRegion);
-  const memberNameSlug = normalizeCharacterName(memberName);
-  const realmSlug = normalizeRealmSlug(rawRealm);
-
-  if (memberNameSlug && memberRegionCode && realmSlug) {
-    return {
-      href: characterHref(memberRegionCode, realmSlug, memberNameSlug),
-      external: false,
-    };
-  }
-
-  const externalUrl =
-    member?.linked_profile_url || member?.profile?.url || member?.character?.url || member?.url;
-  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
-    // Blizzard URLs often contain region/realm/name even when member objects are sparse.
-    const match = externalUrl.match(/\/character\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
-    if (match) {
-      const parsedRegion = normalizeRegionCode(tryDecodeSegment(String(match[1] || '')));
-      const parsedRealm = normalizeRealmSlug(tryDecodeSegment(String(match[2] || '')));
-      const parsedName = normalizeCharacterName(tryDecodeSegment(String(match[3] || '')));
-      if (parsedRegion && parsedRealm && parsedName) {
-        return {
-          href: characterHref(parsedRegion, parsedRealm, parsedName),
-          external: false,
-        };
-      }
-    }
-  }
-
-  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
-    return { href: externalUrl, external: true };
-  }
-  return null;
 }
 
 function RaidSectionCard({

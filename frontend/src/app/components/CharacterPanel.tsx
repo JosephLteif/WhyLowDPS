@@ -12,8 +12,6 @@ import GearOverview, { type GearItem as OverviewGearItem } from './GearOverview'
 import {
   API_URL,
   fetchJson,
-  getMythicKeystoneDungeonDetail,
-  getMythicKeystoneDungeonIndex,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
@@ -40,6 +38,7 @@ import {
   normalizeRealmSlug,
   parseVaultRewardsFromSimcInput,
 } from '../lib/character-panel-utils';
+import { useMythicDungeonDetails } from '../lib/useMythicDungeonDetails';
 const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
 
 interface CharacterPanelProps {
@@ -305,38 +304,7 @@ function MythicPlusCard({
   name: string;
 }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
-  const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
-    Record<string, MythicKeystoneDungeonDetail>
-  >({});
-
-  useEffect(() => {
-    let cancelled = false;
-    getMythicKeystoneDungeonIndex('us')
-      .then(async (indexData) => {
-        const indexEntries = Array.isArray(indexData?.dungeons) ? indexData.dungeons : [];
-        const detailResults = await Promise.all(
-          indexEntries.map((entry) =>
-            getMythicKeystoneDungeonDetail(Number(entry?.id), 'us').catch(() => null),
-          ),
-        );
-        if (cancelled) return;
-        const map: Record<string, MythicKeystoneDungeonDetail> = {};
-        for (const detail of detailResults) {
-          if (!detail || typeof detail !== 'object') continue;
-          const name = String(detail?.name || '')
-            .trim()
-            .toLowerCase();
-          if (name) map[name] = detail;
-        }
-        setMplusDungeonDetailsByName(map);
-      })
-      .catch(() => {
-        if (!cancelled) setMplusDungeonDetailsByName({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const mplusDungeonDetailsByName = useMythicDungeonDetails('us');
 
   const summary = useMemo(() => {
     if (!mythicPlus || typeof mythicPlus !== 'object') return null;

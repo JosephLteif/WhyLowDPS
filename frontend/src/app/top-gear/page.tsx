@@ -367,7 +367,9 @@ export default function TopGearPage() {
 
   const isEmbellishmentComboError =
     /embellished|limited-effect crafted modifiers/i.test(comboError);
-  const pageLevelError = isEmbellishmentComboError ? '' : comboError;
+  const isExcludedOverflowComboError =
+    excludedSelectedUids.size > 0 && /no valid combinations/i.test(comboError);
+  const pageLevelError = isEmbellishmentComboError || isExcludedOverflowComboError ? '' : comboError;
 
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';

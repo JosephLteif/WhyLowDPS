@@ -33,6 +33,7 @@ import type {
 } from '../lib/character-domain-types';
 import {
   computeMythicVaultProgress,
+  computeWeeklyRaidBossKills,
   getMemberProfileHref,
   getWeeklyResetStartMs,
   isCurrentExpansionPlaceholder,
@@ -201,22 +202,7 @@ function VaultOverviewCard({
   const mythicRunsThisWeek = useMemo(() => computeMythicVaultProgress(mythicPlus, region).runsForVault, [mythicPlus, region]);
 
   const raidBossesThisWeek = useMemo(() => {
-    const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    const weekStart = getWeeklyResetStartMs(region);
-    let count = 0;
-    for (const expansion of expansions) {
-      for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
-        for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
-          const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
-          for (const encounter of encounters) {
-            const ts = Number(encounter?.last_kill_timestamp ?? 0);
-            const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
-            if (tsMs >= weekStart) count += 1;
-          }
-        }
-      }
-    }
-    return count;
+    return computeWeeklyRaidBossKills(raidEncounters, region);
   }, [raidEncounters, region]);
 
   const vaultItems = useMemo(
@@ -232,6 +218,8 @@ function VaultOverviewCard({
         slot: idx + 1,
         threshold,
         unlocked: raidBossesThisWeek >= threshold,
+        remaining: Math.max(0, threshold - raidBossesThisWeek),
+        progress: Math.min(1, raidBossesThisWeek / threshold),
       })),
     [raidBossesThisWeek],
   );
@@ -269,9 +257,14 @@ function VaultOverviewCard({
               <ProgressSlotCard
                 key={`raid-${slot.slot}`}
                 slotLabel={`Slot ${slot.slot}`}
-                statusLabel={slot.unlocked ? 'Unlocked' : 'Locked'}
+                statusLabel={slot.unlocked ? 'Unlocked' : `${slot.remaining} more`}
                 tone={slot.unlocked ? 'success' : 'neutral'}
-                description={`Requires ${slot.threshold} boss kills`}
+                description={
+                  slot.unlocked
+                    ? `Based on ${raidBossesThisWeek} boss kills`
+                    : `Requires ${slot.threshold} boss kills`
+                }
+                progress={slot.progress}
               />
             ))}
           </div>

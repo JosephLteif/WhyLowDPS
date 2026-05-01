@@ -9,6 +9,7 @@ import { useSimContext } from './components/SimContext';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
 import { simResultHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
+import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 
 type SimStatus = SimSummary['status'];
@@ -271,26 +272,6 @@ function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
   return Math.max(recentWeekCount, currentPeriodCount);
 }
 
-function computeRaidVaultKills(raidEncounters: any, region?: string): number {
-  const weekStart = getWeeklyResetStartMs(region);
-  let weeklyKills = 0;
-  const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-
-  for (const expansion of expansions) {
-    for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
-      for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
-        const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
-        for (const encounter of encounters) {
-          const ts = toTimestampMs(encounter?.last_kill_timestamp ?? encounter?.lastKillTimestamp ?? 0);
-          if (ts >= weekStart) weeklyKills += 1;
-        }
-      }
-    }
-  }
-
-  return weeklyKills;
-}
-
 export default function Home() {
   const router = useRouter();
   const { setSimcInput } = useSimContext();
@@ -409,7 +390,7 @@ export default function Home() {
         setMainSimcInput(latestSimc);
 
         const mplusRuns = computeMythicVaultRuns(mythicPlus, region);
-        const raidKills = computeRaidVaultKills(raidEncounters, region);
+        const raidKills = computeWeeklyRaidBossKills(raidEncounters, region);
         setMainVault({ mplusRuns, raidKills });
       } catch {
         // ignore

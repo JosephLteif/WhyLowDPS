@@ -1,5 +1,5 @@
 import { characterHref } from './routes';
-import type { CharacterRunMember, MythicPlusPayload, MythicRun } from './character-domain-types';
+import type { CharacterRunMember, MythicPlusPayload, MythicRun, RaidEncountersPayload } from './character-domain-types';
 
 const MYTHIC_VAULT_THRESHOLDS = [1, 4, 8] as const;
 
@@ -145,6 +145,45 @@ export function isLikelyCurrentExpansionLabel(value: unknown): boolean {
     lower.startsWith('11.') ||
     lower.startsWith('12.')
   );
+}
+
+function normalizeRaidKey(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+export function computeWeeklyRaidBossKills(
+  raidEncounters: RaidEncountersPayload,
+  region?: string
+): number {
+  const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
+  const weekStart = getWeeklyResetStartMs(region);
+  const killedBosses = new Set<string>();
+
+  for (const expansion of expansions) {
+    for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
+      const raidName = instance?.instance?.name || instance?.name || 'raid';
+      const raidKey = normalizeRaidKey(raidName);
+      for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
+        const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
+        for (let index = 0; index < encounters.length; index += 1) {
+          const encounter = encounters[index] as any;
+          const ts = Number(encounter?.last_kill_timestamp ?? 0);
+          const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
+          if (!(tsMs >= weekStart)) continue;
+          const bossId = Number(encounter?.encounter?.id ?? encounter?.id ?? 0);
+          const bossName = encounter?.encounter?.name || encounter?.name || encounter?.encounter_name || '';
+          const stableBossKey =
+            bossId > 0 ? `id:${bossId}` : `name:${normalizeRaidKey(bossName || `boss-${index + 1}`)}`;
+          killedBosses.add(`${raidKey}::${stableBossKey}`);
+        }
+      }
+    }
+  }
+
+  return killedBosses.size;
 }
 
 function normalizeCharacterName(value: unknown): string {

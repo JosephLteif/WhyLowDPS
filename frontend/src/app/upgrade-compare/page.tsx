@@ -238,7 +238,9 @@ export default function UpgradeComparePage() {
       }
     }, 300);
 
-    return () => clearTimeout(comboTimer.current);
+    return () => {
+      if (comboTimer.current) clearTimeout(comboTimer.current);
+    };
   }, [simcInput, selectedSlots, maxCombinations, upgradeMode, budgetOverridePayload]);
 
   // Sim submission

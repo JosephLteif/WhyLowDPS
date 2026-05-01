@@ -55,14 +55,10 @@ fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path
 
 #[tauri::command]
 async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), String> {
-    // We use the Blizzard logout endpoint with a 'ref' parameter to force a session clear
-    // before redirecting to the actual authorize URL.
-    let logout_url = format!("https://battle.net/login/en/logout?ref={}", url);
-
     tauri::WebviewWindowBuilder::new(
         &handle,
         "auth",
-        tauri::WebviewUrl::External(logout_url.parse::<url::Url>().map_err(|e| e.to_string())?),
+        tauri::WebviewUrl::External(url.parse::<url::Url>().map_err(|e| e.to_string())?),
     )
     .title("Blizzard Login")
     .inner_size(600.0, 750.0)

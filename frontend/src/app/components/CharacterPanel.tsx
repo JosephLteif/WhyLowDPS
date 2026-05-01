@@ -4,73 +4,45 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
-import { useTalentTree } from '../lib/useTalentTree';
-import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
-import type { NodeSelection } from '../lib/talentDecode';
-import { decodeHeader } from '../lib/talentDecode';
+import { useTalentTree, type TalentTreeData } from '../lib/useTalentTree';
+import CharacterQuickLinks from './character/CharacterQuickLinks';
+import CharacterPageTabs, { type CharacterPageTab } from './character/CharacterPageTabs';
 import RaidProgressionGrid from './RaidProgressionGrid';
 import GearOverview, { type GearItem as OverviewGearItem } from './GearOverview';
 import {
   API_URL,
   fetchJson,
-  getMythicKeystoneDungeonDetail,
-  getMythicKeystoneDungeonIndex,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
-import { characterHref } from '../lib/routes';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
-
-const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
-const MPLUS_VAULT_THRESHOLDS = [1, 4, 8] as const;
+import SectionCard from './shared/SectionCard';
+import ProgressSlotCard from './shared/ProgressSlotCard';
+import { buildCharacterTalentString } from '../lib/character-panel-talent';
+import type {
+  CharacterPanelEquipment,
+  CharacterSpecialization,
+  CharacterSpecializationsPayload,
+  CharacterStatisticsPayload,
+  CharacterTalentLoadout,
+  CharacterTalentSelection,
+  CharacterRunMember,
+  MythicPlusPayload,
+  MythicRun,
+  RaidEncountersPayload,
+  RaidMode,
+} from '../lib/character-domain-types';
+import {
+  computeMythicVaultProgress,
+  computeWeeklyRaidBossKills,
+  getMemberProfileHref,
+  getWeeklyResetStartMs,
+  isCurrentExpansionPlaceholder,
+  isLikelyCurrentExpansionLabel,
+  normalizeRealmSlug,
+  parseVaultRewardsFromSimcInput,
+} from '../lib/character-panel-utils';
+import { useMythicDungeonDetails } from '../lib/useMythicDungeonDetails';
 const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
-const MYTHIC_VAULT_THRESHOLDS = [1, 4, 8] as const;
-
-function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length < 16 || !TALENT_EXPORT_RE.test(trimmed)) return false;
-  try {
-    const header = decodeHeader(trimmed);
-    if (header.bits.length <= header.offset) return false;
-    if (header.specId <= 0) return false;
-    return !(expectedSpecId && header.specId !== expectedSpecId);
-  } catch {
-    return false;
-  }
-}
-
-function findTalentExportString(input: unknown, expectedSpecId?: number | null): string | null {
-  if (!input || typeof input !== 'object') return null;
-  const seen = new Set<unknown>();
-  const stack: unknown[] = [input];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || seen.has(current)) continue;
-    seen.add(current);
-
-    if (typeof current === 'string') {
-      if (isTalentExportString(current, expectedSpecId)) return current.trim();
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      for (const item of current) stack.push(item);
-      continue;
-    }
-
-    if (typeof current === 'object') {
-      for (const value of Object.values(current as Record<string, unknown>)) {
-        if (typeof value === 'string') {
-          if (isTalentExportString(value, expectedSpecId)) return value.trim();
-        } else if (value && typeof value === 'object') {
-          stack.push(value);
-        }
-      }
-    }
-  }
-
-  return null;
-}
 
 interface CharacterPanelProps {
   name: string;
@@ -79,13 +51,13 @@ interface CharacterPanelProps {
   characterClass: string;
   race: string;
   level: number;
-  equipment: { equipped_items: BlizzardItem[] };
-  statistics: any;
-  specializations: any;
-  professions: any;
-  mythicPlus: any;
-  raidEncounters: any;
-  dungeons?: any;
+  equipment: CharacterPanelEquipment;
+  statistics: CharacterStatisticsPayload;
+  specializations: CharacterSpecializationsPayload | null;
+  professions: Record<string, unknown> | null;
+  mythicPlus: MythicPlusPayload;
+  raidEncounters: RaidEncountersPayload;
+  dungeons?: unknown;
   characterMediaUrl?: string | null;
   latestSimcInput?: string | null;
   initialTab?: 'profile' | 'raiding' | 'mythic' | 'vault';
@@ -110,84 +82,33 @@ export default function CharacterPanel({
   // --- Talent & Spec Logic (Lifted for SimC Generation) ---
   const activeSpec = useMemo(() => {
     if (!specializations?.specializations) return null;
+    const list = specializations.specializations;
     const activeId = specializations.active_specialization?.id;
     if (activeId) {
-      return specializations.specializations.find((s: any) => s.specialization.id === activeId);
+      return list.find((spec: CharacterSpecialization) => spec.specialization?.id === activeId) || null;
     }
-    return specializations.specializations.find((s: any) =>
-      s.loadouts?.some((l: any) => l.is_active)
+    return (
+      list.find((spec: CharacterSpecialization) =>
+        (spec.loadouts || []).some((loadout: CharacterTalentLoadout) => loadout.is_active)
+      ) || null
     );
   }, [specializations]);
 
   const activeLoadout = useMemo(() => {
     if (!activeSpec?.loadouts) return null;
-    return activeSpec.loadouts.find((l: any) => l.is_active);
+    return activeSpec.loadouts.find((loadout: CharacterTalentLoadout) => loadout.is_active) || null;
   }, [activeSpec]);
 
   const specId = activeSpec?.specialization?.id ?? null;
   const tree = useTalentTree(specId);
 
   const talentString = useMemo(() => {
-    if (!tree || !specId) return null;
-    try {
-      const directCandidates = [
-        activeLoadout?.talent_loadout_code,
-        activeLoadout?.talentLoadoutCode,
-        activeLoadout?.loadout_code,
-        activeLoadout?.code,
-        activeSpec?.talent_loadout_code,
-        activeSpec?.talentLoadoutCode,
-      ].filter((v): v is string => typeof v === 'string');
-      const direct = directCandidates.find((v) => isTalentExportString(v, specId));
-      if (direct) return normalizeTalentString(direct, tree);
-
-      const discovered =
-        findTalentExportString(activeLoadout, specId) ?? findTalentExportString(activeSpec, specId);
-      if (discovered) return normalizeTalentString(discovered, tree);
-
-      const selections = new Map<number, NodeSelection>();
-      const selectedTalents = [
-        ...(activeLoadout?.selected_class_talents || []),
-        ...(activeLoadout?.selected_spec_talents || []),
-        ...(activeLoadout?.selected_hero_talents || []),
-      ];
-      const talents = [...selectedTalents, ...(activeSpec.talents || [])];
-      const allNodes = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes];
-
-      for (const t of talents) {
-        const candidateIds = [
-          t.id,
-          t.talent?.id,
-          t.tooltip_spell?.id,
-          t.spell_tooltip?.spell?.id,
-          t.selected_tooltip?.spell?.id,
-        ].filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
-        if (candidateIds.length === 0) continue;
-
-        const node = allNodes.find((n) =>
-          candidateIds.some(
-            (id) => n.id === id || n.entries.some((e) => e.id === id || e.spellId === id)
-          )
-        );
-        if (node) {
-          const choiceIndex = node.entries.findIndex((e) =>
-            candidateIds.some((id) => e.id === id || e.spellId === id)
-          );
-          const existing = selections.get(node.id);
-          const nextRanks = Math.max(existing?.ranks ?? 0, t.rank ?? node.maxRanks ?? 1);
-          const nextChoice = choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
-          selections.set(node.id, {
-            ranks: nextRanks,
-            choiceIndex: nextChoice,
-          });
-        }
-      }
-      if (selections.size === 0) return null;
-      return normalizeTalentString(encodeTalentString(selections, tree, specId), tree);
-    } catch (err) {
-      console.warn('Failed to encode talent string:', err);
-      return null;
-    }
+    return buildCharacterTalentString({
+      tree,
+      specId,
+      activeLoadout,
+      activeSpec,
+    });
   }, [activeLoadout, tree, specId, activeSpec]);
   // --- End Talent & SimC Logic ---
 
@@ -209,84 +130,25 @@ export default function CharacterPanel({
     }
     return normalized;
   }, [equipment]);
-  const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic' | 'vault'>(initialTab || 'raiding');
+  const [pageTab, setPageTab] = useState<CharacterPageTab>(initialTab || 'raiding');
+  const characterSlug = name.toLowerCase();
+  const regionSlug = region.toLowerCase();
+  const quickLinks = useMemo(
+    () => ({
+      warcraftLogsUrl: `https://www.warcraftlogs.com/character/${regionSlug}/${realmSlug}/${characterSlug}`,
+      raiderIoUrl: `https://raider.io/characters/${regionSlug}/${realmSlug}/${characterSlug}`,
+    }),
+    [characterSlug, regionSlug, realmSlug]
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Quick Links Bar (Top Left) */}
-      <div className="flex flex-wrap items-center gap-3">
-        <a
-          href={armoryUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-zinc-300 ring-1 ring-white/5 transition-all hover:bg-white/10 hover:text-white active:scale-95"
-        >
-          <img
-            src="/icons/blizzard.png"
-            alt=""
-            className="h-3.5 w-3.5 opacity-70"
-            onError={(e) => (e.currentTarget.style.display = 'none')}
-          />
-          Official Armory
-        </a>
-        <a
-          href={`https://www.warcraftlogs.com/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#ca3333]/20 bg-[#ca3333]/10 px-3 py-1.5 text-xs font-bold text-[#ff4d4d] ring-1 ring-white/5 transition-all hover:bg-[#ca3333]/20 hover:text-[#ff6666] active:scale-95"
-        >
-          Warcraft Logs
-        </a>
-        <a
-          href={`https://raider.io/characters/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#fb8c00]/20 bg-[#fb8c00]/10 px-3 py-1.5 text-xs font-bold text-[#ffb74d] ring-1 ring-white/5 transition-all hover:bg-[#fb8c00]/20 hover:text-[#ffcc80] active:scale-95"
-        >
-          Raider.io
-        </a>
-      </div>
-
-      <div className="card p-2">
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            type="button"
-            onClick={() => setPageTab('profile')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'profile' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Profile
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('raiding')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'raiding' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Raiding
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('mythic')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'mythic' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Mythic+
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('vault')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'vault' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Vault
-          </button>
-        </div>
-      </div>
+      <CharacterQuickLinks
+        armoryUrl={armoryUrl}
+        warcraftLogsUrl={quickLinks.warcraftLogsUrl}
+        raiderIoUrl={quickLinks.raiderIoUrl}
+      />
+      <CharacterPageTabs value={pageTab} onChange={setPageTab} />
 
       {pageTab === 'profile' && (
         <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -332,93 +194,21 @@ function VaultOverviewCard({
   latestSimcInput,
   region,
 }: {
-  mythicPlus: any;
-  raidEncounters: any;
+  mythicPlus: MythicPlusPayload;
+  raidEncounters: RaidEncountersPayload;
   latestSimcInput?: string | null;
   region?: string;
 }) {
   const mythicRunsThisWeek = useMemo(() => computeMythicVaultProgress(mythicPlus, region).runsForVault, [mythicPlus, region]);
 
   const raidBossesThisWeek = useMemo(() => {
-    const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    const weekStart = getWeeklyResetStartMs(region);
-    let count = 0;
-    for (const expansion of expansions) {
-      for (const instance of Array.isArray(expansion?.instances) ? expansion.instances : []) {
-        for (const mode of Array.isArray(instance?.modes) ? instance.modes : []) {
-          const encounters = Array.isArray(mode?.progress?.encounters) ? mode.progress.encounters : [];
-          for (const encounter of encounters) {
-            const ts = Number(encounter?.last_kill_timestamp ?? 0);
-            const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
-            if (tsMs >= weekStart) count += 1;
-          }
-        }
-      }
-    }
-    return count;
+    return computeWeeklyRaidBossKills(raidEncounters, region);
   }, [raidEncounters, region]);
 
-  const vaultItems = useMemo(() => {
-    const input = String(latestSimcInput || '');
-    if (!input.trim()) return [] as VaultRewardItem[];
-    const lines = input.split(/\r?\n/);
-    const blocks: string[][] = [];
-    let currentBlock: string[] | null = null;
-    for (const raw of lines) {
-      const line = raw.trim();
-      const lower = line.toLowerCase();
-      if (lower.includes('weekly reward choices') && !lower.includes('end of weekly reward choices')) {
-        currentBlock = [];
-        blocks.push(currentBlock);
-        continue;
-      }
-      if (lower.includes('end of weekly reward choices')) {
-        currentBlock = null;
-        continue;
-      }
-      if (currentBlock) currentBlock.push(line);
-    }
-
-    const parseItemLines = (itemLines: string[]) => {
-      const parsed: VaultRewardItem[] = [];
-      const seen = new Set<string>();
-      for (const line of itemLines) {
-        const body = line.replace(/^#\s*/, '').trim();
-        const match = body.match(/^([a-z0-9_]+)\s*=\s*(.+)$/i);
-        if (!match) continue;
-        const slot = match[1].trim();
-        const simc = match[2].trim();
-        const idMatch = simc.match(/id=(\d+)/i);
-        if (!idMatch) continue;
-        const ilevelMatch = simc.match(/ilevel=(\d+)/i);
-        const bonusMatch = simc.match(/bonus_id=([0-9/]+)/i);
-        const bonusIds = bonusMatch
-          ? bonusMatch[1]
-              .split('/')
-              .map((v) => Number(v))
-              .filter((v) => Number.isFinite(v) && v > 0)
-          : [];
-        const item = { slot, itemId: idMatch[1], ilevel: ilevelMatch?.[1] || '-', bonusIds };
-        const key = `${item.slot}|${item.itemId}|${item.ilevel}|${item.bonusIds.join('/')}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        parsed.push(item);
-      }
-      return parsed;
-    };
-
-    // Use only the latest explicit vault block.
-    if (blocks.length > 0) {
-      for (let i = blocks.length - 1; i >= 0; i -= 1) {
-        const parsed = parseItemLines(blocks[i]);
-        if (parsed.length > 0) return parsed;
-      }
-      return [];
-    }
-
-    // Strict mode: if no explicit Weekly Reward Choices block exists, show no vault items.
-    return [];
-  }, [latestSimcInput]);
+  const vaultItems = useMemo(
+    () => parseVaultRewardsFromSimcInput(latestSimcInput) as VaultRewardItem[],
+    [latestSimcInput]
+  );
   const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus, region), [mythicPlus, region]);
   const mythicSlots = mythicVaultProgress.slots;
 
@@ -428,6 +218,8 @@ function VaultOverviewCard({
         slot: idx + 1,
         threshold,
         unlocked: raidBossesThisWeek >= threshold,
+        remaining: Math.max(0, threshold - raidBossesThisWeek),
+        progress: Math.min(1, raidBossesThisWeek / threshold),
       })),
     [raidBossesThisWeek],
   );
@@ -437,55 +229,56 @@ function VaultOverviewCard({
       <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Overall Vault Progress</h3>
 
       <div className="grid grid-cols-1 gap-3">
-        <div className="rounded border border-white/10 bg-black/20 p-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mythic+ Track</p>
+        <SectionCard title="Mythic+ Track">
           <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
             {mythicSlots.map((slot) => (
-              <div key={`mplus-${slot.slot}`} className={`rounded border p-2 ${slot.unlocked ? 'border-emerald-400/40 bg-emerald-500/10' : 'border-white/10 bg-black/25'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-zinc-200">Slot {slot.slot}</span>
-                  <span className={`text-[10px] font-bold ${slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}`}>
-                    {slot.unlocked ? 'Unlocked' : 'Locked'}
-                  </span>
-                </div>
-                <p className="mt-1 text-[11px] text-zinc-400">
-                  {slot.unlocked ? `Based on ${mythicVaultProgress.runsForVault} runs` : `${slot.remaining} more runs`}
-                </p>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={`h-full rounded-full ${slot.unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                    style={{ width: `${Math.max(6, slot.progress * 100)}%` }}
-                  />
-                </div>
-              </div>
+              <ProgressSlotCard
+                key={`mplus-${slot.slot}`}
+                slotLabel={`Slot ${slot.slot}`}
+                statusLabel={slot.unlocked ? 'Unlocked' : 'Locked'}
+                tone={slot.unlocked ? 'success' : 'neutral'}
+                description={
+                  slot.unlocked
+                    ? `Based on ${mythicVaultProgress.runsForVault} runs`
+                    : `${slot.remaining} more runs`
+                }
+                progress={slot.progress}
+              />
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-zinc-500">{mythicVaultProgress.runsForVault} runs completed this week.</p>
-        </div>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            {mythicVaultProgress.runsForVault} runs completed this week.
+          </p>
+        </SectionCard>
 
-        <div className="rounded border border-white/10 bg-black/20 p-3">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Raid Track</p>
+        <SectionCard title="Raid Track">
           <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
             {raidSlots.map((slot) => (
-              <div key={`raid-${slot.slot}`} className={`rounded border p-2 ${slot.unlocked ? 'border-emerald-400/40 bg-emerald-500/10' : 'border-white/10 bg-black/25'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-zinc-200">Slot {slot.slot}</span>
-                  <span className={`text-[10px] font-bold ${slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}`}>
-                    {slot.unlocked ? 'Unlocked' : 'Locked'}
-                  </span>
-                </div>
-                <p className="mt-1 text-[11px] text-zinc-400">Requires {slot.threshold} boss kills</p>
-              </div>
+              <ProgressSlotCard
+                key={`raid-${slot.slot}`}
+                slotLabel={`Slot ${slot.slot}`}
+                statusLabel={slot.unlocked ? 'Unlocked' : `${slot.remaining} more`}
+                tone={slot.unlocked ? 'success' : 'neutral'}
+                description={
+                  slot.unlocked
+                    ? `Based on ${raidBossesThisWeek} boss kills`
+                    : `Requires ${slot.threshold} boss kills`
+                }
+                progress={slot.progress}
+              />
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-zinc-500">{raidBossesThisWeek} boss kills completed this week.</p>
-        </div>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            {raidBossesThisWeek} boss kills completed this week.
+          </p>
+        </SectionCard>
       </div>
 
-      <div className="rounded border border-white/10 bg-black/20 p-3">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Vault item choices (from latest SimC)</p>
-        <VaultRewardsGrid items={vaultItems} />
-      </div>
+      {vaultItems.length > 0 && (
+        <SectionCard title="Vault item choices">
+          <VaultRewardsGrid items={vaultItems} />
+        </SectionCard>
+      )}
     </div>
   );
 }
@@ -496,67 +289,39 @@ function MythicPlusCard({
   realm,
   name,
 }: {
-  mythicPlus: any;
+  mythicPlus: MythicPlusPayload;
   region?: string;
   realm: string;
   name: string;
 }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
-  const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
-    Record<string, MythicKeystoneDungeonDetail>
-  >({});
-
-  useEffect(() => {
-    let cancelled = false;
-    getMythicKeystoneDungeonIndex('us')
-      .then(async (indexData) => {
-        const indexEntries = Array.isArray(indexData?.dungeons) ? indexData.dungeons : [];
-        const detailResults = await Promise.all(
-          indexEntries.map((entry) =>
-            getMythicKeystoneDungeonDetail(Number(entry?.id), 'us').catch(() => null),
-          ),
-        );
-        if (cancelled) return;
-        const map: Record<string, MythicKeystoneDungeonDetail> = {};
-        for (const detail of detailResults) {
-          if (!detail || typeof detail !== 'object') continue;
-          const name = String(detail?.name || '')
-            .trim()
-            .toLowerCase();
-          if (name) map[name] = detail;
-        }
-        setMplusDungeonDetailsByName(map);
-      })
-      .catch(() => {
-        if (!cancelled) setMplusDungeonDetailsByName({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const mplusDungeonDetailsByName = useMythicDungeonDetails('us');
 
   const summary = useMemo(() => {
     if (!mythicPlus || typeof mythicPlus !== 'object') return null;
+    const mythicPlusObj = mythicPlus as Record<string, unknown>;
+    const asRecord = (value: unknown): Record<string, unknown> | null =>
+      value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
 
     const normalizeName = (value: unknown) =>
       String(value ?? '')
         .trim()
         .toLowerCase();
 
-    const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-    const getRunDurationMs = (run: any) => Number(run?.duration ?? run?.run_duration ?? 0);
-    const getRunName = (run: any) =>
+    const getRunLevel = (run: MythicRun) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+    const getRunDurationMs = (run: MythicRun) => Number(run?.duration ?? run?.run_duration ?? 0);
+    const getRunName = (run: MythicRun) =>
       run?.keystone_dungeon?.name ||
       run?.dungeon?.name ||
       run?.completed_challenge_mode?.name ||
       run?.name ||
       'Dungeon';
-    const getMplusDungeonDetail = (run: any): MythicKeystoneDungeonDetail | null => {
+    const getMplusDungeonDetail = (run: MythicRun): MythicKeystoneDungeonDetail | null => {
       const key = normalizeName(getRunName(run));
       if (!key) return null;
       return mplusDungeonDetailsByName[key] || null;
     };
-    const getTimedByDurationFallback = (run: any): boolean | null => {
+    const getTimedByDurationFallback = (run: MythicRun): boolean | null => {
       const detail = getMplusDungeonDetail(run);
       if (!detail) return null;
       const oneChestDuration = detail.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
@@ -565,13 +330,13 @@ function MythicPlusCard({
       if (!oneChestDuration || !durationMs) return null;
       return durationMs <= oneChestDuration;
     };
-    const getRunTimed = (run: any): boolean | null => {
+    const getRunTimed = (run: MythicRun): boolean | null => {
       if (typeof run?.is_completed_within_timeout === 'boolean') return run.is_completed_within_timeout;
       if (typeof run?.completed_in_time === 'boolean') return run.completed_in_time;
       if (typeof run?.completedWithinTime === 'boolean') return run.completedWithinTime;
       return getTimedByDurationFallback(run);
     };
-    const getRunTimestamp = (run: any) =>
+    const getRunTimestamp = (run: MythicRun) =>
       Number(
         run?.completed_timestamp ??
           run?.completedTimestamp ??
@@ -591,7 +356,7 @@ function MythicPlusCard({
       return `${min}:${String(sec).padStart(2, '0')}`;
     };
 
-    const formatClockDelta = (run: any) => {
+    const formatClockDelta = (run: MythicRun) => {
       const detail = getMplusDungeonDetail(run);
       const timerMs = detail?.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
         ?.qualifying_duration;
@@ -605,19 +370,19 @@ function MythicPlusCard({
       return `${sign}${min}:${String(sec).padStart(2, '0')}`;
     };
 
-    const isRunLike = (value: any) =>
-      value &&
+    const isRunLike = (value: unknown): value is MythicRun =>
+      value != null &&
       typeof value === 'object' &&
-      (typeof value.keystone_level === 'number' ||
-        typeof value.keystoneLevel === 'number' ||
-        value.keystone_dungeon ||
-        value.dungeon ||
-        value.completed_challenge_mode);
+      (typeof (value as MythicRun).keystone_level === 'number' ||
+        typeof (value as MythicRun).keystoneLevel === 'number' ||
+        !!(value as MythicRun).keystone_dungeon ||
+        !!(value as MythicRun).dungeon ||
+        !!(value as MythicRun).completed_challenge_mode);
 
-    const collectRuns = (root: any): any[] => {
-      const out: any[] = [];
-      const stack: any[] = [root];
-      const seen = new Set<any>();
+    const collectRuns = (root: unknown): MythicRun[] => {
+      const out: MythicRun[] = [];
+      const stack: unknown[] = [root];
+      const seen = new Set<unknown>();
       while (stack.length > 0) {
         const current = stack.pop();
         if (!current || seen.has(current)) continue;
@@ -629,16 +394,18 @@ function MythicPlusCard({
         }
         if (typeof current === 'object') {
           if (isRunLike(current)) out.push(current);
-          for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+          for (const value of Object.values(current as Record<string, unknown>)) {
+            if (value && typeof value === 'object') stack.push(value);
+          }
         }
       }
       return out;
     };
 
-    const collectRewardMap = (root: any): Map<number, number> => {
+    const collectRewardMap = (root: unknown): Map<number, number> => {
       const map = new Map<number, number>();
-      const stack: any[] = [root];
-      const seen = new Set<any>();
+      const stack: unknown[] = [root];
+      const seen = new Set<unknown>();
       while (stack.length > 0) {
         const current = stack.pop();
         if (!current || seen.has(current) || typeof current !== 'object') continue;
@@ -647,34 +414,37 @@ function MythicPlusCard({
           for (const item of current) stack.push(item);
           continue;
         }
-        const level = Number(current.keystone_level ?? current.keystoneLevel ?? current.level ?? 0);
+        const currentObj = current as Record<string, unknown>;
+        const level = Number(currentObj.keystone_level ?? currentObj.keystoneLevel ?? currentObj.level ?? 0);
         const ilvl = Number(
-          current.item_level ??
-            current.itemLevel ??
-            current.reward_item_level ??
-            current.rewardItemLevel ??
+          currentObj.item_level ??
+            currentObj.itemLevel ??
+            currentObj.reward_item_level ??
+            currentObj.rewardItemLevel ??
             0,
         );
         if (level > 0 && ilvl > 0) map.set(level, Math.max(ilvl, map.get(level) || 0));
-        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+        for (const value of Object.values(currentObj)) if (value && typeof value === 'object') stack.push(value);
       }
       return map;
     };
 
     const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
-    const byDungeon = new Map<string, any>();
+    const byDungeon = new Map<string, MythicRun>();
     for (const run of allRuns) {
       const dungeonName = getRunName(run);
       const key = normalizeName(dungeonName);
       const level = getRunLevel(run);
       const existing = byDungeon.get(key);
-      const existingLevel = getRunLevel(existing);
+      const existingLevel = existing ? getRunLevel(existing) : 0;
       if (!existing || level > existingLevel) byDungeon.set(key, run);
     }
     const bestRuns = Array.from(byDungeon.values());
     const bestLevel = bestRuns.reduce((acc, run) => Math.max(acc, getRunLevel(run)), 0);
     const bestDungeon = bestRuns.find((run) => getRunLevel(run) === bestLevel);
-    const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
+    const recentSource = Array.isArray(mythicPlusObj.recent_runs)
+      ? (mythicPlusObj.recent_runs as MythicRun[])
+      : allRuns;
     const recentRuns = [...recentSource]
       .sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a))
       .slice(0, 20);
@@ -689,12 +459,12 @@ function MythicPlusCard({
       return tsMs > 0 && tsMs >= weekStart;
     }).length;
 
-    const currentPeriodCandidates = collectRuns(mythicPlus?.current_period || {});
+    const currentPeriodCandidates = collectRuns(mythicPlusObj.current_period || {});
     const currentPeriodCount = currentPeriodCandidates.length;
     const vaultProgress = computeMythicVaultProgress(mythicPlus, region);
     const runsForVault = vaultProgress.runsForVault;
     const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
-    const rewardMap = collectRewardMap(mythicPlus?.current_period || mythicPlus);
+    const rewardMap = collectRewardMap(mythicPlusObj.current_period || mythicPlus);
     const slotThresholds = vaultProgress.slotThresholds;
     const vaultSlots = slotThresholds.map((threshold, i) => {
       const unlocked = runsForVault >= threshold;
@@ -711,19 +481,16 @@ function MythicPlusCard({
     });
     const hasAnyVaultIlvl = vaultSlots.some((slot) => slot.rewardIlvl != null);
 
-    const score = Number(
-      mythicPlus.current_mythic_rating?.rating ??
-        mythicPlus.currentMythicRating?.rating ??
-        mythicPlus.current_mythic_rating?.value ??
-        0,
-    );
+    const currentRating = asRecord(mythicPlusObj.current_mythic_rating);
+    const currentRatingAlt = asRecord(mythicPlusObj.currentMythicRating);
+    const score = Number(currentRating?.rating ?? currentRatingAlt?.rating ?? currentRating?.value ?? 0);
 
     return {
       score: score > 0 ? Math.round(score) : null,
       runs: bestRuns.length,
       bestLevel: bestLevel > 0 ? bestLevel : null,
       bestDungeonName: bestDungeon ? getRunName(bestDungeon) : null,
-      recentRuns: recentRuns.map((run: any, i: number) => ({
+      recentRuns: recentRuns.map((run: MythicRun, i: number) => ({
         id: `${getRunName(run)}-${getRunLevel(run)}-${getRunTimestamp(run)}-${i}`,
         dungeon: getRunName(run),
         level: getRunLevel(run),
@@ -731,7 +498,7 @@ function MythicPlusCard({
         timed: getRunTimed(run),
         clockDelta: formatClockDelta(run),
         timestamp: getRunTimestamp(run),
-        members: Array.isArray(run?.members) ? run.members : [],
+        members: Array.isArray(run?.members) ? (run.members as CharacterRunMember[]) : [],
         dungeonId: getMplusDungeonDetail(run)?.id ?? null,
         keystoneUpgrades: getMplusDungeonDetail(run)?.keystone_upgrades ?? [],
       })),
@@ -757,13 +524,14 @@ function MythicPlusCard({
   const mythicDungeonTimers = useMemo(() => {
     const out: Record<string, number> = {};
     for (const detail of Object.values(mplusDungeonDetailsByName || {})) {
-      const name = String((detail as any)?.name || '')
+      const name = String(detail?.name || '')
         .trim()
         .toLowerCase()
         .replace(/[\s_]+/g, ' ')
         .replace(/[^a-z0-9 ]+/g, '')
         .replace(/\s+/g, ' ');
-      const timerMs = (detail as any)?.keystone_upgrades?.find((u: any) => Number(u?.upgrade_level) === 1)?.qualifying_duration;
+      const timerMs = detail?.keystone_upgrades?.find((upgrade) => Number(upgrade?.upgrade_level) === 1)
+        ?.qualifying_duration;
       if (name && Number(timerMs) > 0) out[name] = Math.round(Number(timerMs) / 1000);
     }
     return out;
@@ -811,26 +579,15 @@ function MythicPlusCard({
               </p>
               <div className="space-y-2">
                 {summary.vaultSlots.map((slot) => (
-                  <div key={slot.slot} className="rounded border border-white/5 bg-black/20 p-2">
-                    <div className="mb-1 flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-zinc-300">Slot {slot.slot}</span>
-                      <span className={slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}>
-                        {slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
-                      </span>
-                    </div>
-                    <div className="mb-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className={`h-full rounded-full ${slot.unlocked ? 'bg-emerald-400/90' : 'bg-gold/80'}`}
-                        style={{ width: `${Math.round(slot.progress * 100)}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                      <span>{slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}</span>
-                      {summary.hasAnyVaultIlvl && slot.rewardIlvl ? (
-                        <span>{`iLvl ${slot.rewardIlvl}`}</span>
-                      ) : null}
-                    </div>
-                  </div>
+                  <ProgressSlotCard
+                    key={slot.slot}
+                    slotLabel={`Slot ${slot.slot}`}
+                    statusLabel={slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
+                    tone={slot.unlocked ? 'success' : 'neutral'}
+                    description={slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}
+                    progress={slot.progress}
+                    footerRight={summary.hasAnyVaultIlvl && slot.rewardIlvl ? `iLvl ${slot.rewardIlvl}` : undefined}
+                  />
                 ))}
               </div>
             </div>
@@ -891,7 +648,7 @@ function MythicPlusCard({
                     </div>
                     {run.members.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
-                        {run.members.slice(0, 5).map((member: any, idx: number) => {
+                        {run.members.slice(0, 5).map((member: CharacterRunMember, idx: number) => {
                           const memberName =
                             member?.profile?.name ||
                             member?.character?.name ||
@@ -909,8 +666,7 @@ function MythicPlusCard({
                             member?.profile?.character_class?.name ||
                             member?.specialization?.name ||
                             member?.character_class?.name ||
-                            member?.class?.name ||
-                            member?.class ||
+                            (typeof member?.class === 'object' ? member.class?.name : member?.class) ||
                             '';
                           const memberProfile = getMemberProfileHref(member, region);
                           const memberLabel = `${memberName}${memberClass ? ` (${memberClass})` : ''}`;
@@ -970,221 +726,13 @@ function MythicPlusCard({
   );
 }
 
-function normalizeRealmSlug(value: unknown): string {
-  return String(value ?? '')
-    .toLowerCase()
-    .replace(/'/g, '')
-    .replace(/\s+/g, '-')
-    .trim();
-}
-
-function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
-  const region = String(regionRaw || 'us').toLowerCase();
-  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2;
-  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
-  const current = new Date(now);
-  const todayReset = new Date(
-    Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate(), resetHourUtc, 0, 0, 0),
-  );
-  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
-  const reset = new Date(todayReset);
-  reset.setUTCDate(reset.getUTCDate() - dayDiff);
-  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
-    reset.setUTCDate(reset.getUTCDate() - 7);
-  }
-  return reset.getTime();
-}
-
-function computeMythicVaultProgress(mythicPlus: any, region?: string): {
-  runsForVault: number;
-  slotThresholds: number[];
-  slots: Array<{ slot: number; threshold: number; unlocked: boolean; remaining: number; progress: number }>;
-} {
-  if (!mythicPlus || typeof mythicPlus !== 'object') {
-    const thresholds = [...MYTHIC_VAULT_THRESHOLDS];
-    return {
-      runsForVault: 0,
-      slotThresholds: thresholds,
-      slots: thresholds.map((threshold, idx) => ({
-        slot: idx + 1,
-        threshold,
-        unlocked: false,
-        remaining: threshold,
-        progress: 0,
-      })),
-    };
-  }
-
-  const isRunLike = (value: any) =>
-    value &&
-    typeof value === 'object' &&
-    (typeof value.keystone_level === 'number' ||
-      typeof value.keystoneLevel === 'number' ||
-      value.keystone_dungeon ||
-      value.dungeon ||
-      value.completed_challenge_mode);
-
-  const collectRuns = (root: any): any[] => {
-    const out: any[] = [];
-    const stack: any[] = [root];
-    const seen = new Set<any>();
-    while (stack.length > 0) {
-      const current = stack.pop();
-      if (!current || seen.has(current)) continue;
-      seen.add(current);
-      if (Array.isArray(current)) {
-        if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
-        else for (const item of current) if (item && typeof item === 'object') stack.push(item);
-        continue;
-      }
-      if (typeof current === 'object') {
-        if (isRunLike(current)) out.push(current);
-        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
-      }
-    }
-    return out;
-  };
-
-  const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-  const getRunTimestamp = (run: any) =>
-    Number(
-      run?.completed_timestamp ??
-        run?.completedTimestamp ??
-        run?.end_timestamp ??
-        run?.endTimestamp ??
-        run?.start_timestamp ??
-        run?.startTimestamp ??
-        run?.timestamp ??
-        0,
-    );
-
-  const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
-  const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
-  const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
-  const weekStart = getWeeklyResetStartMs(region);
-  const recentWeekCount = recentRuns.filter((run) => {
-    const ts = getRunTimestamp(run);
-    const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
-    return tsMs > 0 && tsMs >= weekStart;
-  }).length;
-  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).filter((run) => {
-    const ts = getRunTimestamp(run);
-    const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
-    return tsMs > 0 && tsMs >= weekStart;
-  }).length;
-  const runsForVault = Math.max(recentWeekCount, currentPeriodCount);
-
-  const slotThresholds = [...MYTHIC_VAULT_THRESHOLDS];
-  const slots = slotThresholds.map((threshold, idx) => ({
-    slot: idx + 1,
-    threshold,
-    unlocked: runsForVault >= threshold,
-    remaining: Math.max(0, threshold - runsForVault),
-    progress: Math.min(1, runsForVault / threshold),
-  }));
-
-  return { runsForVault, slotThresholds, slots };
-}
-
-function isCurrentExpansionPlaceholder(value: unknown): boolean {
-  const lower = String(value ?? '').trim().toLowerCase();
-  return lower === 'current season' || lower === 'current expansion';
-}
-
-function isLikelyCurrentExpansionLabel(value: unknown): boolean {
-  const lower = String(value ?? '').trim().toLowerCase();
-  if (!lower) return false;
-  return (
-    lower === 'midnight' ||
-    lower.startsWith('the war within') ||
-    lower.startsWith('11.') ||
-    lower.startsWith('12.')
-  );
-}
-
-function normalizeCharacterName(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function normalizeRegionCode(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function tryDecodeSegment(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function getMemberProfileHref(
-  member: any,
-  fallbackRegion?: string
-): { href: string; external: boolean } | null {
-  const memberName =
-    member?.linked_name ||
-    member?.profile?.name ||
-    member?.character?.name ||
-    member?.character_name ||
-    member?.name ||
-    '';
-  const memberRegion =
-    member?.linked_region ||
-    member?.profile?.region ||
-    member?.character?.region ||
-    member?.region ||
-    member?.profile?.realm?.region ||
-    fallbackRegion;
-  const rawRealm =
-    member?.linked_realm ||
-    member?.profile?.realm?.slug ||
-    member?.profile?.realm?.name ||
-    member?.character?.realm?.slug ||
-    member?.character?.realm?.name ||
-    member?.realm;
-  const memberRegionCode = normalizeRegionCode(memberRegion);
-  const memberNameSlug = normalizeCharacterName(memberName);
-  const realmSlug = normalizeRealmSlug(rawRealm);
-
-  if (memberNameSlug && memberRegionCode && realmSlug) {
-    return {
-      href: characterHref(memberRegionCode, realmSlug, memberNameSlug),
-      external: false,
-    };
-  }
-
-  const externalUrl =
-    member?.linked_profile_url || member?.profile?.url || member?.character?.url || member?.url;
-  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
-    // Blizzard URLs often contain region/realm/name even when member objects are sparse.
-    const match = externalUrl.match(/\/character\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
-    if (match) {
-      const parsedRegion = normalizeRegionCode(tryDecodeSegment(String(match[1] || '')));
-      const parsedRealm = normalizeRealmSlug(tryDecodeSegment(String(match[2] || '')));
-      const parsedName = normalizeCharacterName(tryDecodeSegment(String(match[3] || '')));
-      if (parsedRegion && parsedRealm && parsedName) {
-        return {
-          href: characterHref(parsedRegion, parsedRealm, parsedName),
-          external: false,
-        };
-      }
-    }
-  }
-
-  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
-    return { href: externalUrl, external: true };
-  }
-  return null;
-}
-
 function RaidSectionCard({
   raidEncounters,
   region,
   realm,
   name,
 }: {
-  raidEncounters: any;
+  raidEncounters: RaidEncountersPayload;
   region: string;
   realm: string;
   name: string;
@@ -1281,7 +829,7 @@ function RaidProgressCard({
   selectedRaidName = 'all',
   onActiveRaidNameChange,
 }: {
-  raidEncounters: any;
+  raidEncounters: RaidEncountersPayload;
   embedded?: boolean;
   region?: string;
   selectedExpansion?: string;
@@ -1332,7 +880,7 @@ function RaidProgressCard({
       lfr: string;
     }> = [];
 
-    const normalize = (value: any) =>
+    const normalize = (value: unknown) =>
       String(value ?? '')
         .trim()
         .toLowerCase()
@@ -1365,8 +913,8 @@ function RaidProgressCard({
       for (const inst of instances) {
         const modes = Array.isArray(inst?.modes) ? inst.modes : [];
         const getMode = (modeName: string) =>
-          modes.find((m: any) => (m?.difficulty?.type || '').toLowerCase() === modeName);
-        const fmtProgress = (mode: any) => {
+          modes.find((mode: RaidMode) => (mode?.difficulty?.type || '').toLowerCase() === modeName);
+        const fmtProgress = (mode: RaidMode | undefined) => {
           const p = mode?.progress;
           const k = Number(p?.encounters_defeated ?? p?.completed_count ?? 0);
           const t = Number(p?.total_encounters ?? p?.total_count ?? 0);
@@ -1388,11 +936,11 @@ function RaidProgressCard({
     }
     const byRaidNameHasConcrete = new Set(
       flattened
-        .filter((r: any) => !r.placeholderExpansion && r.expansionKey !== 'unknown-expansion')
-        .map((r: any) => r.name.trim().toLowerCase().replace(/\s+/g, ' '))
+        .filter((row) => !row.placeholderExpansion && row.expansionKey !== 'unknown-expansion')
+        .map((row) => row.name.trim().toLowerCase().replace(/\s+/g, ' '))
     );
 
-    for (const raid of flattened as Array<any>) {
+    for (const raid of flattened) {
       const normalizedRaidName = raid.name.trim().toLowerCase().replace(/\s+/g, ' ');
       if (raid.placeholderExpansion && byRaidNameHasConcrete.has(normalizedRaidName)) {
         // Prefer concrete expansion labels over generic current-season placeholders.
@@ -1452,55 +1000,85 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function StatsCard({ statistics }: { statistics: any }) {
+function StatsCard({ statistics }: { statistics: CharacterStatisticsPayload }) {
   const stats = useMemo(() => {
     if (!statistics) return [];
+    const statsObj = statistics as Record<string, unknown>;
+    type StatValue =
+      | number
+      | {
+          effective?: number;
+          value?: number;
+          percent?: number;
+          rating_bonus?: number;
+          rating_normalized?: number;
+          rating?: number;
+        };
 
-    const getEffectiveValue = (stat?: any) => {
+    const getEffectiveValue = (stat?: StatValue) => {
       if (typeof stat === 'number') return stat.toLocaleString();
-      if (stat?.effective !== undefined) return Math.round(stat.effective).toLocaleString();
-      if (stat?.value !== undefined) return Math.round(stat.value).toLocaleString();
+      if (typeof stat?.effective === 'number') return Math.round(stat.effective).toLocaleString();
+      if (typeof stat?.value === 'number') return Math.round(stat.value).toLocaleString();
       return '0';
     };
 
-    const getPercentValue = (stat?: any, rating?: any) => {
+    const getPercentValue = (stat?: StatValue, rating?: StatValue) => {
+      const statObj =
+        stat && typeof stat === 'object'
+          ? (stat as Exclude<StatValue, number>)
+          : null;
+      const ratingObj =
+        rating && typeof rating === 'object'
+          ? (rating as Exclude<StatValue, number>)
+          : null;
       const p =
-        stat?.value ??
-        stat?.percent ??
-        stat?.rating_bonus ??
+        (typeof stat === 'number' ? stat : null) ??
+        (typeof statObj?.value === 'number' ? statObj.value : null) ??
+        (typeof statObj?.percent === 'number' ? statObj.percent : null) ??
+        (typeof statObj?.rating_bonus === 'number' ? statObj.rating_bonus : null) ??
         (typeof stat === 'number' ? stat : null);
       if (p === null) return null;
 
       const r =
-        rating?.rating_normalized ?? rating?.rating ?? (typeof rating === 'number' ? rating : null);
+        (typeof ratingObj?.rating_normalized === 'number' ? ratingObj.rating_normalized : null) ??
+        (typeof ratingObj?.rating === 'number' ? ratingObj.rating : null) ??
+        (typeof rating === 'number' ? rating : null);
       const percStr = p.toFixed(2) + '%';
       return r !== null ? `${Math.round(r)} (${percStr})` : percStr;
     };
 
     // Find the relevant primary stat (Int/Agi/Str)
-    const mainStat = statistics.intellect || statistics.agility || statistics.strength;
+    const mainStat =
+      (statsObj.intellect as StatValue | undefined) ||
+      (statsObj.agility as StatValue | undefined) ||
+      (statsObj.strength as StatValue | undefined);
 
     // Find the relevant crit/haste/mastery (they are usually mirrored in modern WoW, but we pick the best one)
     const crit =
-      statistics.melee_crit || statistics.spell_crit || statistics.ranged_crit || statistics.crit;
+      (statsObj.melee_crit as StatValue | undefined) ||
+      (statsObj.spell_crit as StatValue | undefined) ||
+      (statsObj.ranged_crit as StatValue | undefined) ||
+      (statsObj.crit as StatValue | undefined);
     const haste =
-      statistics.melee_haste ||
-      statistics.spell_haste ||
-      statistics.ranged_haste ||
-      statistics.haste;
-    const mastery = statistics.mastery;
-    const versatility = statistics.versatility_offensive_modifier ?? statistics.versatility;
+      (statsObj.melee_haste as StatValue | undefined) ||
+      (statsObj.spell_haste as StatValue | undefined) ||
+      (statsObj.ranged_haste as StatValue | undefined) ||
+      (statsObj.haste as StatValue | undefined);
+    const mastery = statsObj.mastery as StatValue | undefined;
+    const versatility =
+      (statsObj.versatility_offensive_modifier as StatValue | undefined) ||
+      (statsObj.versatility as StatValue | undefined);
 
     return [
       { label: 'Main Stat', value: getEffectiveValue(mainStat) },
-      { label: 'Stamina', value: getEffectiveValue(statistics.stamina) },
+      { label: 'Stamina', value: getEffectiveValue(statsObj.stamina as StatValue | undefined) },
       null,
       { label: 'Crit', value: getPercentValue(crit, crit) ?? '0.0%' },
       { label: 'Haste', value: getPercentValue(haste, haste) ?? '0.0%' },
       { label: 'Mastery', value: getPercentValue(mastery, mastery) ?? '0.0%' },
       {
         label: 'Versatility',
-        value: getPercentValue(versatility, statistics.versatility) ?? '0.0%',
+        value: getPercentValue(versatility, statsObj.versatility as StatValue | undefined) ?? '0.0%',
       },
     ];
   }, [statistics]);
@@ -1542,11 +1120,11 @@ function TalentsCard({
   specId,
   tree,
 }: {
-  activeSpec: any;
-  activeLoadout: any;
+  activeSpec: CharacterSpecialization | null;
+  activeLoadout: CharacterTalentLoadout | null;
   talentString: string | null;
   specId: number | null;
-  tree: any;
+  tree: TalentTreeData | null;
 }) {
   const loading = specId !== null && !tree;
   const [collapsed, setCollapsed] = useState(false);
@@ -1568,15 +1146,15 @@ function TalentsCard({
     ...(activeLoadout?.selected_hero_talents || []),
     ...(activeSpec?.talents || []),
   ]
-    .map((t: any) => t.tooltip_spell?.name || t.talent?.name)
-    .filter(Boolean);
+    .map((talent: CharacterTalentSelection) => talent.tooltip_spell?.name || talent.talent?.name)
+    .filter((name): name is string => Boolean(name));
 
   return (
     <div className="card overflow-hidden">
       <div className="border-b border-white/5 bg-white/[0.01] p-5">
         <div className="flex items-center justify-between">
           <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Specialization: <span className="text-gold">{activeSpec.specialization.name}</span>
+            Specialization: <span className="text-gold">{activeSpec.specialization?.name || 'Unknown'}</span>
           </h1>
           <div className="flex items-center gap-2">
             {loading && (

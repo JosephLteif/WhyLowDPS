@@ -30,6 +30,27 @@ if (typeof window !== 'undefined') {
 export const API_URL = isDesktop ? 'http://localhost:17384' : '';
 
 export const TOKEN_KEY = 'whylowdps_auth_token';
+const DEFAULT_FETCH_TIMEOUT_MS = 8000;
+const GET_RETRY_ATTEMPTS = 2;
+const GET_RETRY_DELAY_MS = 300;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function withTimeout(init: RequestInit | undefined, timeoutMs: number): RequestInit {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const nextInit = { ...(init || {}), signal: controller.signal };
+  const clear = () => clearTimeout(timer);
+  // Clear timeout once caller awaits fetch resolution.
+  (nextInit as any).__clearTimeout = clear;
+  return nextInit;
+}
+
+export function isNetworkUnavailableError(err: any): boolean {
+  return err?.status === 0 || err?.name === 'AbortError' || err?.code === 'NETWORK_UNAVAILABLE';
+}
 
 /** Fetch JSON with consistent error handling. Throws on non-ok responses. */
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -54,8 +75,37 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     headers,
     credentials: 'include' as RequestCredentials,
   };
+  const method = (finalInit.method || 'GET').toUpperCase();
+  const retries = method === 'GET' ? GET_RETRY_ATTEMPTS : 0;
+  let lastErr: any;
+  let res: Response | null = null;
 
-  const res = await fetch(url, finalInit);
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const timedInit = withTimeout(finalInit, DEFAULT_FETCH_TIMEOUT_MS);
+    const clearTimer = (timedInit as any).__clearTimeout as (() => void) | undefined;
+    delete (timedInit as any).__clearTimeout;
+    try {
+      res = await fetch(url, timedInit);
+      clearTimer?.();
+      break;
+    } catch (err: any) {
+      clearTimer?.();
+      lastErr = err;
+      if (attempt < retries) {
+        await sleep(GET_RETRY_DELAY_MS * (attempt + 1));
+        continue;
+      }
+    }
+  }
+
+  if (!res) {
+    const error = new Error('Backend not reachable') as any;
+    error.status = 0;
+    error.code = 'NETWORK_UNAVAILABLE';
+    error.cause = lastErr;
+    throw error;
+  }
+
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     const error = new Error(data.detail || `Server error ${res.status}`) as any;

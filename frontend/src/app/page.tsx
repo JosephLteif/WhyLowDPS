@@ -647,10 +647,12 @@ export default function Home() {
                 <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.raidKills ?? 0} boss kills completed this week.</p>
               </div>
             </div>
-            <div className="rounded border border-white/10 bg-black/20 p-2">
-              <div className="mb-2 text-xs font-semibold text-zinc-200">Vault Rewards (if available)</div>
-              <VaultRewardsGrid items={mainVaultRewards} />
-            </div>
+            {mainVaultRewards.length > 0 && (
+              <div className="rounded border border-white/10 bg-black/20 p-2">
+                <div className="mb-2 text-xs font-semibold text-zinc-200">Vault Rewards</div>
+                <VaultRewardsGrid items={mainVaultRewards} />
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
               <button onClick={() => openMainWorkflow('/quick-sim')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Run Sim</button>

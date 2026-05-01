@@ -274,9 +274,11 @@ function VaultOverviewCard({
         </SectionCard>
       </div>
 
-      <SectionCard title="Vault item choices (from latest SimC)">
-        <VaultRewardsGrid items={vaultItems} />
-      </SectionCard>
+      {vaultItems.length > 0 && (
+        <SectionCard title="Vault item choices">
+          <VaultRewardsGrid items={vaultItems} />
+        </SectionCard>
+      )}
     </div>
   );
 }

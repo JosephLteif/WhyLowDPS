@@ -243,6 +243,7 @@ export default function TopGearItemSelector({
   const [embellishmentOptionsByItem, setEmbellishmentOptionsByItem] = useState<
     Record<number, EmbellishmentOption[]>
   >({});
+  const [lastLimitWarningUid, setLastLimitWarningUid] = useState<string | null>(null);
   const [otherTierOptions, setOtherTierOptions] = useState<UpgradeOption[]>([]);
   const [loadingOtherTierOptions, setLoadingOtherTierOptions] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -315,6 +316,7 @@ export default function TopGearItemSelector({
         if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
         nextSelected[item.slot].add(catalystItem.uid);
         onSelectionChange(nextSelected);
+        setLastLimitWarningUid(catalystItem.uid);
         onItemAdded(item.slot, catalystItem.simc_string, catalystItem.origin);
       } catch {}
     },
@@ -542,6 +544,7 @@ export default function TopGearItemSelector({
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
+        setLastLimitWarningUid(uid);
       }
       onSelectionChange(nextSelected);
       setUpgradeMenuFor(null);
@@ -629,6 +632,7 @@ export default function TopGearItemSelector({
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
+        setLastLimitWarningUid(uid);
       }
       onSelectionChange(nextSelected);
       setContextMenu(null);
@@ -762,6 +766,7 @@ export default function TopGearItemSelector({
       if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
       nextSelected[item.slot].add(uid);
       onSelectionChange(nextSelected);
+      setLastLimitWarningUid(uid);
       setOptimizeOpen(false);
     },
     [
@@ -934,6 +939,7 @@ export default function TopGearItemSelector({
 
       onResolvedChange(nextResolved);
       const nextSelected = { ...selectedUids };
+      let lastAddedUid: string | null = null;
       slots.forEach((s) => {
         const slotUid = makeUid({
           item_id: item.item_id,
@@ -947,8 +953,10 @@ export default function TopGearItemSelector({
         });
         if (!nextSelected[s]) nextSelected[s] = new Set();
         nextSelected[s].add(slotUid);
+        lastAddedUid = slotUid;
       });
       onSelectionChange(nextSelected);
+      setLastLimitWarningUid(lastAddedUid);
       onItemAdded(slot, newItem.simc_string, 'bags');
       setAddItemOpen(false);
     },
@@ -1234,10 +1242,21 @@ export default function TopGearItemSelector({
   const hasEmbellishmentLimitWarning = useCallback(
     (item: ResolvedItem): boolean =>
       Boolean(embellishmentLimitWarning) &&
+      Boolean(lastLimitWarningUid) &&
+      item.uid === lastLimitWarningUid &&
       item.origin !== 'equipped' &&
-      Object.values(selectedUids).some((uids) => uids.has(item.uid)) &&
+      Object.values(selectedUids).some((uids) => uids.has(lastLimitWarningUid || '')) &&
       itemHasEmbellishment(item, embellishmentOptionsByItem),
-    [embellishmentLimitWarning, selectedUids, embellishmentOptionsByItem]
+    [embellishmentLimitWarning, lastLimitWarningUid, selectedUids, embellishmentOptionsByItem]
+  );
+
+  const handleToggleItem = useCallback(
+    (item: ResolvedItem, slots: string[]) => {
+      const isSelected = slots.some((slot) => selectedUids[slot]?.has(item.uid));
+      toggleItem(item, slots);
+      setLastLimitWarningUid(isSelected ? null : item.uid);
+    },
+    [selectedUids, toggleItem]
   );
 
   const itemDetails = (item: ResolvedItem) => {
@@ -1480,7 +1499,7 @@ export default function TopGearItemSelector({
             upgradeMenuFor={upgradeMenuFor}
             upgradeOptions={upgradeOptions}
             loadingUpgrades={loadingUpgrades}
-            onToggle={(item) => toggleItem(item, group.slots)}
+            onToggle={(item) => handleToggleItem(item, group.slots)}
             onAddClick={openAddItem}
             onUpgradeClick={openUpgradeMenu}
             onUpgradeSelect={addUpgradedCopy}

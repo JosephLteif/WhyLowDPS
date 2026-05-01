@@ -247,8 +247,34 @@ function deduplicateGems(raw: RawGem[]): GemDisplay[] {
 }
 
 function missivesForItem(item: ExternalItem, missives: MissiveOption[]): MissiveOption[] {
-  const expectedCount = Number(item.missive_count || 0);
+  const itemSecondaryStatCount =
+    item.stats?.filter((stat) => [32, 36, 40, 49].includes(Number(stat.id))).length || 0;
+  const expectedCount = itemSecondaryStatCount || Number(item.missive_count || 0);
   if (expectedCount <= 0) return [];
+
+  if (expectedCount === 1) {
+    const labels: Record<string, string> = {
+      crit: 'Critical Strike',
+      haste: 'Haste',
+      mastery: 'Mastery',
+      versatility: 'Versatility',
+    };
+    const byToken = new Map<string, MissiveOption>();
+    for (const missive of missives) {
+      const tokens = missive.token.split('/').filter(Boolean);
+      for (const token of tokens) {
+        if (!labels[token] || byToken.has(token)) continue;
+        byToken.set(token, {
+          token,
+          label: labels[token],
+          stat_count: 1,
+        });
+      }
+    }
+    const singles = Array.from(byToken.values()).sort((a, b) => a.label.localeCompare(b.label));
+    if (singles.length > 0) return singles;
+  }
+
   const matching = missives.filter((missive) => {
     const statCount = Number(missive.stat_count || missive.token.split('/').filter(Boolean).length);
     return statCount === expectedCount;
@@ -769,7 +795,7 @@ export default function AddItemModal({
     const missiveTokens =
       (itemMissives[item.item_id] || []).length > 0
         ? itemMissives[item.item_id]
-        : item.missive_count && item.missive_count > 0 && availableMissives.length > 0
+        : availableMissives.length > 0
           ? availableMissives[0].token.split('/')
           : [];
     const selectedMissiveToken = [...missiveTokens].sort().join('/');
@@ -1106,7 +1132,7 @@ export default function AddItemModal({
                         const displayQuality = getDisplayQuality(item, tier?.quality, category as LootCategory);
                         const availableMissives = missivesForItem(item, missives);
                         const defaultMissive =
-                          item.missive_count && item.missive_count > 0 && availableMissives.length > 0
+                          availableMissives.length > 0
                             ? availableMissives[0]
                             : null;
                         const effectiveMissiveTokens =
@@ -1272,7 +1298,7 @@ export default function AddItemModal({
                                 />
                               </div>
                             )}
-                            {item.missive_count && item.missive_count > 0 && (
+                            {availableMissives.length > 0 && (
                               <div
                                 className="mt-2 space-y-2 border-t border-white/5 pt-2"
                                 data-stop-add="true"

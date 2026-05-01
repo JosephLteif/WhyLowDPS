@@ -258,6 +258,9 @@ export default function TopGearItemSelector({
   >({});
   const [limitWarningOrder, setLimitWarningOrder] = useState<string[]>([]);
   const [knownEmbellishedUids, setKnownEmbellishedUids] = useState<Set<string>>(() => new Set());
+  const [immediateLimitWarningUids, setImmediateLimitWarningUids] = useState<Set<string>>(
+    () => new Set()
+  );
   const [confirmedLimitWarningUids, setConfirmedLimitWarningUids] = useState<Set<string>>(
     () => new Set()
   );
@@ -1285,13 +1288,18 @@ export default function TopGearItemSelector({
     [selectedUidSet]
   );
 
-  const selectedEmbellishmentCandidates = useMemo(() => {
-    const orderIndex = new Map(limitWarningOrder.map((uid, index) => [uid, index]));
+  const getEmbellishmentLimitWarnings = useCallback(
+    (
+      selection: Record<string, Set<string>>,
+      knownUids: Set<string>,
+      order: string[]
+    ): Set<string> => {
+    const orderIndex = new Map(order.map((uid, index) => [uid, index]));
     const candidates: { item: ResolvedItem; selected: boolean; sort: number; stable: number }[] = [];
     let stable = 0;
 
     for (const [slot, slotRes] of Object.entries(resolved.slots)) {
-      const selected = selectedUids[slot] || new Set<string>();
+      const selected = selection[slot] || new Set<string>();
       const selectedItems = [
         ...(slotRes.equipped && selected.has(slotRes.equipped.uid) ? [slotRes.equipped] : []),
         ...slotRes.alternatives.filter((alt) => selected.has(alt.uid)),
@@ -1305,7 +1313,7 @@ export default function TopGearItemSelector({
 
       for (const item of visibleItems) {
         if (
-          !knownEmbellishedUids.has(item.uid) &&
+          !knownUids.has(item.uid) &&
           !itemHasEmbellishment(item, embellishmentOptionsByItem)
         ) {
           continue;
@@ -1322,22 +1330,21 @@ export default function TopGearItemSelector({
       }
     }
 
-    return candidates.sort((a, b) => a.sort - b.sort || a.stable - b.stable);
-  }, [
-    resolved.slots,
-    selectedUids,
-    embellishmentOptionsByItem,
-    limitWarningOrder,
-    knownEmbellishedUids,
-  ]);
+      const overflow = new Set<string>();
+      candidates
+        .sort((a, b) => a.sort - b.sort || a.stable - b.stable)
+        .slice(2)
+        .forEach(({ item, selected }) => {
+          if (selected) overflow.add(item.uid);
+        });
+      return overflow;
+    },
+    [resolved.slots, embellishmentOptionsByItem]
+  );
 
   const localLimitWarningUids = useMemo(() => {
-    const overflow = new Set<string>();
-    selectedEmbellishmentCandidates.slice(2).forEach(({ item, selected }) => {
-      if (selected) overflow.add(item.uid);
-    });
-    return overflow;
-  }, [selectedEmbellishmentCandidates]);
+    return getEmbellishmentLimitWarnings(selectedUids, knownEmbellishedUids, limitWarningOrder);
+  }, [getEmbellishmentLimitWarnings, selectedUids, knownEmbellishedUids, limitWarningOrder]);
 
   const backendFallbackLimitWarningUid = useMemo(() => {
     if (!hasBackendEmbellishmentLimitWarning) return null;
@@ -1346,6 +1353,13 @@ export default function TopGearItemSelector({
 
   useEffect(() => {
     setLimitWarningOrder((prev) => prev.filter((uid) => selectedUidSet.has(uid)));
+    setImmediateLimitWarningUids((prev) => {
+      const next = new Set<string>();
+      for (const uid of prev) {
+        if (selectedUidSet.has(uid)) next.add(uid);
+      }
+      return sameStringSet(prev, next) ? prev : next;
+    });
     setKnownEmbellishedUids((prev) => {
       const next = new Set<string>();
       for (const uid of prev) {
@@ -1384,12 +1398,15 @@ export default function TopGearItemSelector({
 
   const activeLimitWarningUids = useMemo(() => {
     const next = new Set<string>();
+    for (const uid of immediateLimitWarningUids) {
+      if (selectedUidSet.has(uid)) next.add(uid);
+    }
     for (const uid of localLimitWarningUids) next.add(uid);
     for (const uid of confirmedLimitWarningUids) {
       if (selectedUidSet.has(uid)) next.add(uid);
     }
     return next;
-  }, [localLimitWarningUids, confirmedLimitWarningUids, selectedUidSet]);
+  }, [immediateLimitWarningUids, localLimitWarningUids, confirmedLimitWarningUids, selectedUidSet]);
 
   useEffect(() => {
     onExcludedUidsChange?.(activeLimitWarningUids);
@@ -1410,6 +1427,49 @@ export default function TopGearItemSelector({
   const handleToggleItem = useCallback(
     (item: ResolvedItem, slots: string[]) => {
       const isSelected = slots.some((slot) => selectedUids[slot]?.has(item.uid));
+      const nextSelected = {
+        ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+      };
+      const nextKnown = new Set(knownEmbellishedUids);
+      const nextOrder = limitWarningOrder.filter((uid) => uid !== item.uid);
+      const identity = makeIdentity(item);
+
+      if (slots.length === 1) {
+        const slot = item.slot;
+        if (!nextSelected[slot]) nextSelected[slot] = new Set();
+        if (isSelected) {
+          nextSelected[slot].delete(item.uid);
+          nextKnown.delete(item.uid);
+        } else {
+          nextSelected[slot].add(item.uid);
+          nextOrder.push(item.uid);
+          if (itemHasEmbellishment(item, embellishmentOptionsByItem)) {
+            nextKnown.add(item.uid);
+          }
+        }
+      } else {
+        for (const slot of slots) {
+          const slotRes = resolved.slots[slot];
+          if (!slotRes) continue;
+          const matching = slotRes.alternatives.find((alt) => makeIdentity(alt) === identity);
+          if (!matching) continue;
+          if (!nextSelected[slot]) nextSelected[slot] = new Set();
+          if (isSelected) {
+            nextSelected[slot].delete(matching.uid);
+            nextKnown.delete(matching.uid);
+          } else {
+            nextSelected[slot].add(matching.uid);
+            nextOrder.push(matching.uid);
+            if (itemHasEmbellishment(matching, embellishmentOptionsByItem)) {
+              nextKnown.add(matching.uid);
+            }
+          }
+        }
+      }
+
+      setImmediateLimitWarningUids(
+        getEmbellishmentLimitWarnings(nextSelected, nextKnown, nextOrder)
+      );
       toggleItem(item, slots);
       if (isSelected) {
         forgetLimitWarningCandidate(item.uid);
@@ -1422,10 +1482,14 @@ export default function TopGearItemSelector({
     },
     [
       selectedUids,
+      resolved.slots,
       toggleItem,
       forgetLimitWarningCandidate,
       rememberLimitWarningCandidate,
       embellishmentOptionsByItem,
+      knownEmbellishedUids,
+      limitWarningOrder,
+      getEmbellishmentLimitWarnings,
     ]
   );
 

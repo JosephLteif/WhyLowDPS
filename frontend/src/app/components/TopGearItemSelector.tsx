@@ -233,6 +233,7 @@ export default function TopGearItemSelector({
   onResolvedChange,
   onItemAdded,
   comboCount,
+  comboError,
   onExcludedUidsChange,
 }: TopGearItemSelectorProps) {
   const { maxCombinations } = useSimContext();
@@ -248,6 +249,7 @@ export default function TopGearItemSelector({
     Record<number, EmbellishmentOption[]>
   >({});
   const [lastLimitWarningUid, setLastLimitWarningUid] = useState<string | null>(null);
+  const [confirmedLimitWarningUid, setConfirmedLimitWarningUid] = useState<string | null>(null);
   const [otherTierOptions, setOtherTierOptions] = useState<UpgradeOption[]>([]);
   const [loadingOtherTierOptions, setLoadingOtherTierOptions] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -1227,18 +1229,40 @@ export default function TopGearItemSelector({
     if (visibleEmbellishedItems <= 2) return '';
     return 'Too many embellished items are selected. World of Warcraft only allows 2 embellished items, so Top Gear cannot generate valid combinations until one is removed or swapped.';
   }, [resolved.slots, selectedUids, embellishmentOptionsByItem]);
+  const hasBackendEmbellishmentLimitWarning =
+    /embellished|limited-effect crafted modifiers/i.test(comboError || '');
+  const activeLimitWarningUid =
+    confirmedLimitWarningUid || (embellishmentLimitWarning ? lastLimitWarningUid : null);
+
+  useEffect(() => {
+    if (!lastLimitWarningUid) return;
+    const lastUidStillSelected = Object.values(selectedUids).some((uids) =>
+      uids.has(lastLimitWarningUid)
+    );
+    if (!lastUidStillSelected) {
+      setConfirmedLimitWarningUid(null);
+      return;
+    }
+    if (embellishmentLimitWarning || hasBackendEmbellishmentLimitWarning) {
+      setConfirmedLimitWarningUid(lastLimitWarningUid);
+    }
+  }, [
+    embellishmentLimitWarning,
+    hasBackendEmbellishmentLimitWarning,
+    lastLimitWarningUid,
+    selectedUids,
+  ]);
 
   useEffect(() => {
     const excluded = new Set<string>();
     if (
-      embellishmentLimitWarning &&
-      lastLimitWarningUid &&
-      Object.values(selectedUids).some((uids) => uids.has(lastLimitWarningUid))
+      activeLimitWarningUid &&
+      Object.values(selectedUids).some((uids) => uids.has(activeLimitWarningUid))
     ) {
-      excluded.add(lastLimitWarningUid);
+      excluded.add(activeLimitWarningUid);
     }
     onExcludedUidsChange?.(excluded);
-  }, [embellishmentLimitWarning, lastLimitWarningUid, selectedUids, onExcludedUidsChange]);
+  }, [activeLimitWarningUid, selectedUids, onExcludedUidsChange]);
 
   useEffect(
     () => () => {
@@ -1249,13 +1273,10 @@ export default function TopGearItemSelector({
 
   const hasEmbellishmentLimitWarning = useCallback(
     (item: ResolvedItem): boolean =>
-      Boolean(embellishmentLimitWarning) &&
-      Boolean(lastLimitWarningUid) &&
-      item.uid === lastLimitWarningUid &&
-      item.origin !== 'equipped' &&
-      Object.values(selectedUids).some((uids) => uids.has(lastLimitWarningUid || '')) &&
-      itemHasEmbellishment(item, embellishmentOptionsByItem),
-    [embellishmentLimitWarning, lastLimitWarningUid, selectedUids, embellishmentOptionsByItem]
+      Boolean(activeLimitWarningUid) &&
+      item.uid === activeLimitWarningUid &&
+      Object.values(selectedUids).some((uids) => uids.has(activeLimitWarningUid || '')),
+    [activeLimitWarningUid, selectedUids]
   );
 
   const handleToggleItem = useCallback(

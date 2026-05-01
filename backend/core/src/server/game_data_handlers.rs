@@ -132,6 +132,18 @@ pub(super) async fn list_gem_options() -> HttpResponse {
     HttpResponse::Ok().json(options)
 }
 
+pub(super) async fn list_embellishment_options(
+    query: web::Query<EmbellishmentOptionsQuery>,
+) -> HttpResponse {
+    let options = crate::item_db::list_embellishments_for_item(query.item_id);
+    HttpResponse::Ok().json(options)
+}
+
+pub(super) async fn list_missive_options() -> HttpResponse {
+    let options = crate::item_db::list_missives();
+    HttpResponse::Ok().json(options)
+}
+
 pub(super) async fn get_max_upgrade_ilevels(body: web::Json<Vec<Value>>) -> HttpResponse {
     let mut results: HashMap<String, u64> = HashMap::new();
     for item in body.iter().take(200) {

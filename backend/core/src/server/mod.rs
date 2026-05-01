@@ -351,6 +351,10 @@ pub async fn start_with_storage_bind(
                     web::get().to(data_sync::get_sync_status),
                 )
                 .route(
+                    "/api/data/missives",
+                    web::get().to(game_data_handlers::list_missive_options),
+                )
+                .route(
                     "/api/data/files",
                     web::get().to(data_sync::get_data_file_states),
                 )
@@ -537,8 +541,16 @@ pub async fn start_with_storage_bind(
                     web::get().to(game_data_handlers::list_gem_options),
                 )
                 .route(
+                    "/api/gear/embellishment-options",
+                    web::get().to(game_data_handlers::list_embellishment_options),
+                )
+                .route(
                     "/api/gear/consumable-options",
                     web::get().to(game_data_handlers::list_consumable_options),
+                )
+                .route(
+                    "/api/data/missives",
+                    web::get().to(game_data_handlers::list_missive_options),
                 )
                 .route(
                     "/api/upgrade-tracks",

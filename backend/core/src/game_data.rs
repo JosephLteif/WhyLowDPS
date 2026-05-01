@@ -10,10 +10,12 @@ use crate::types::class_data;
 
 pub use crate::item_db::{
     apply_copy_enchants, apply_copy_enchants_to_map, catalyst_currency_id, catalyst_tier_item,
-    get_currency_info, get_enchant_info, get_gem_info, get_inventory_type, get_item_armor_subclass,
-    get_item_info, get_item_limit_categories, get_upgrade_cost_between, get_upgrade_options,
-    get_upgrade_tracks, is_catalyst_tier_item, load, talent_tree, upgrade_bonus_ids_to_max,
-    upgrade_items_by_slot, upgrade_simc_input, CatalystTierItem, UpgradeOption,
+    get_currency_info, get_enchant_info, get_gem_info, get_inventory_type,
+    get_item_armor_subclass, get_item_info, get_item_limit_categories,
+    get_upgrade_cost_between, get_upgrade_options, get_upgrade_tracks,
+    is_catalyst_tier_item, list_embellishments_for_item, load, talent_tree,
+    upgrade_bonus_ids_to_max, upgrade_items_by_slot, upgrade_simc_input, CatalystTierItem,
+    UpgradeOption,
 };
 
 pub use crate::types::class_data::{quality_name, QUALITY_NAMES};
@@ -599,9 +601,51 @@ pub fn get_instance_drops(
                     }
                 }
 
-                // Compute per-difficulty info for dungeons/M+
+                // Compute per-difficulty info for dungeons/M+ / Professions
                 let mut dungeon_info = serde_json::Map::new();
-                if upgrade_lvl.is_none() {
+                let source_type_lower = source_type_name.to_lowercase();
+                let source_inst_lower = source_instance_name.to_lowercase();
+                let encounter_name = encounter_ids.get(eid).cloned().unwrap_or_default();
+                let encounter_lower = encounter_name.to_lowercase();
+
+                let is_profession_source = source_type_lower.contains("profession")
+                    || source_inst_lower.contains("leatherworking")
+                    || source_inst_lower.contains("blacksmithing")
+                    || source_inst_lower.contains("tailoring")
+                    || source_inst_lower.contains("engineering")
+                    || source_inst_lower.contains("inscription")
+                    || source_inst_lower.contains("jewelcrafting")
+                    || source_inst_lower.contains("alchemy")
+                    || source_inst_lower.contains("enchanting")
+                    || encounter_lower.contains("leatherworking")
+                    || encounter_lower.contains("blacksmithing")
+                    || encounter_lower.contains("tailoring")
+                    || encounter_lower.contains("engineering")
+                    || encounter_lower.contains("inscription")
+                    || encounter_lower.contains("jewelcrafting")
+                    || encounter_lower.contains("alchemy")
+                    || encounter_lower.contains("enchanting");
+
+                let is_pvp_crafted = is_profession_source && (item.name.contains("Competitor") || source_type_lower.contains("pvp"));
+
+                if is_profession_source && !is_pvp_crafted {
+                    diff_info.clear();
+                    // Crafted items follow raid tracks (Champion, Hero, Myth)
+                    for diff in &["normal", "heroic", "mythic"] {
+                        if let Some(track) = item_db::difficulty_track_name(diff) {
+                            let effective_level = upgrade_lvl.unwrap_or(1);
+                            if let Some(&(ilvl, bonus_id, _)) = tracks.get(&(track.clone(), effective_level, tm)) {
+                                diff_info.insert(
+                                    diff.to_string(),
+                                    serde_json::json!({
+                                        "ilvl": ilvl, "bonus_id": bonus_id, "quality": 5,
+                                        "track": track, "level": effective_level, "max_level": tm,
+                                    }),
+                                );
+                            }
+                        }
+                    }
+                } else if upgrade_lvl.is_none() {
                     dungeon_info.insert("normal".to_string(), serde_json::json!({
                         "ilvl": item_db::dungeon_normal_ilvl(), "bonus_id": 0, "quality": item_db::dungeon_normal_quality(),
                     }));
@@ -648,12 +692,57 @@ pub fn get_instance_drops(
                     "quality": item.quality,
                     "ilevel": item.base_ilevel.unwrap_or(0),
                     "inventory_type": inv_type,
-                    "encounter": encounter_ids.get(eid).cloned().unwrap_or_default(),
+                    "encounter": encounter_name,
                     "instance_name": source_instance_name,
                     "source_type": source_type_name,
                     "is_catalyst": is_catalyst,
                     "can_catalyst": can_catalyst,
                 });
+                let socket_count = item
+                    .socket_info
+                    .as_ref()
+                    .map(|si| si.sockets.len() as u64)
+                    .unwrap_or_else(|| if item.has_sockets { 1 } else { 0 });
+                if socket_count > 0 {
+                    item_json["socket_count"] = serde_json::json!(socket_count);
+                }
+                if !item.bonus_lists.is_empty() {
+                    item_json["bonus_lists"] = serde_json::json!(item.bonus_lists);
+                    let crafted_base_bonus_ids: Vec<u64> = item
+                        .bonus_lists
+                        .iter()
+                        .copied()
+                        .filter(|bid| !item_db::is_upgrade_bonus(*bid))
+                        .collect();
+                    item_json["crafted_base_bonus_ids"] = serde_json::json!(crafted_base_bonus_ids);
+                }
+
+                if let Some(stats) = &item.stats {
+                    item_json["stats"] = serde_json::json!(stats);
+                }
+
+                let mut missive_count = 0;
+                if is_profession_source {
+                    let has_secondary = item.stats.as_ref().is_some_and(|stats| {
+                        stats.iter().any(|s| [32, 36, 49, 40].contains(&s.id))
+                    });
+                    if !has_secondary {
+                        // In Retail, Epic+ (Quality 4+) or Jewelry always have 2 stats.
+                        // Competitor's gear and high-ilevel profession gear also often have 2.
+                        missive_count = if inv_type == 2 || inv_type == 11 || item.quality >= 4 || item.name.contains("Competitor") || item.base_ilevel.unwrap_or(0) >= 200 {
+                            2
+                        } else {
+                            1
+                        };
+                    }
+                }
+                if missive_count > 0 {
+                    item_json["missive_count"] = serde_json::json!(missive_count);
+                }
+                let embellishments = item_db::list_embellishments_for_item(item_id);
+                if !embellishments.is_empty() {
+                    item_json["embellishment_options"] = serde_json::json!(embellishments);
+                }
 
                 if has_mplus_source {
                     item_json["mplus_rotation"] = serde_json::json!(true);
@@ -738,17 +827,71 @@ pub fn get_instance_drops(
     }
 }
 
+fn get_catalyst_drops(
+    class_name: Option<&str>,
+    spec_name: Option<&str>,
+) -> Option<serde_json::Map<String, Value>> {
+    let mut raid_drops = get_drops_by_type("raid", class_name, spec_name)?;
+    let class_id = class_name.and_then(class_data::class_wow_id)?;
+
+    for (_, items) in raid_drops.iter_mut() {
+        if let Some(arr) = items.as_array_mut() {
+            let mut new_arr = Vec::new();
+            for item in arr.drain(..) {
+                let mut obj = item.as_object().unwrap().clone();
+                if obj.get("can_catalyst").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    let inv_type = obj.get("inventory_type").and_then(|v| v.as_u64()).unwrap_or(0);
+                    if let Some(tier_info) = item_db::catalyst_tier_item(class_id, inv_type) {
+                        obj.insert("item_id".to_string(), serde_json::json!(tier_info.item_id));
+                        
+                        if let Some(info) = item_db::get_item_info(tier_info.item_id, None) {
+                            obj.insert("name".to_string(), serde_json::json!(info.name));
+                            obj.insert("icon".to_string(), serde_json::json!(info.icon));
+                            obj.insert("quality".to_string(), serde_json::json!(info.quality));
+                        } else {
+                            obj.insert("name".to_string(), serde_json::json!(tier_info.name));
+                            obj.insert("icon".to_string(), serde_json::json!(tier_info.icon));
+                        }
+                        
+                        obj.insert("is_catalyst".to_string(), serde_json::json!(true));
+                        obj.insert("can_catalyst".to_string(), serde_json::json!(false));
+                        
+                        new_arr.push(serde_json::Value::Object(obj));
+                    }
+                }
+            }
+            *arr = new_arr;
+        }
+    }
+    
+    raid_drops.retain(|_, v| v.as_array().map_or(false, |arr| !arr.is_empty()));
+    
+    if raid_drops.is_empty() {
+        None
+    } else {
+        Some(raid_drops)
+    }
+}
+
 pub fn get_drops_by_type(
     instance_type: &str,
     class_name: Option<&str>,
     spec_name: Option<&str>,
 ) -> Option<serde_json::Map<String, Value>> {
+    if instance_type == "catalyst" {
+        return get_catalyst_drops(class_name, spec_name);
+    }
+
     let instances = item_db::instances();
     let mut merged: HashMap<String, HashMap<String, (i64, Value)>> = HashMap::new();
-
     for inst in instances {
         let itype = inst.get("type").and_then(|t| t.as_str()).unwrap_or("");
-        if itype != instance_type {
+        let matches = if instance_type == "profession" {
+            itype.to_lowercase().contains("profession")
+        } else {
+            itype == instance_type
+        };
+        if !matches {
             continue;
         }
         let inst_id = inst.get("id").and_then(|id| id.as_i64()).unwrap_or(0);

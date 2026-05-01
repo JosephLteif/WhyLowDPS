@@ -765,36 +765,40 @@ pub fn load_season_config(data_dir: &Path) {
 }
 
 pub fn load_item_limit_categories(data_dir: &Path) {
+    // Start with crafting-derived limit categories (embellishments, tinker-like effects).
+    let mut lookup: HashMap<u64, (u64, u64)> = super::crafting::get_crafting_limit_categories();
+
     let path = data_dir.join("item-limit-categories.json");
-    if !path.exists() {
-        return;
-    }
+    if path.exists() {
+        let file = match fs::File::open(&path) {
+            Ok(f) => f,
+            Err(_) => {
+                *ITEM_LIMIT_CATS.write().unwrap() = Arc::new(lookup);
+                return;
+            }
+        };
+        let raw: HashMap<String, Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
 
-    let file = match fs::File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return,
-    };
-    let raw: HashMap<String, Value> =
-        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
+        let cats: HashMap<u64, u64> = raw
+            .into_iter()
+            .filter_map(|(k, v): (String, Value)| {
+                let id = k.parse::<u64>().ok()?;
+                let qty = v.get("quantity")?.as_u64()?;
+                Some((id, qty))
+            })
+            .collect();
 
-    let cats: HashMap<u64, u64> = raw
-        .into_iter()
-        .filter_map(|(k, v): (String, Value)| {
-            let id = k.parse::<u64>().ok()?;
-            let qty = v.get("quantity")?.as_u64()?;
-            Some((id, qty))
-        })
-        .collect();
-
-    let mut lookup: HashMap<u64, (u64, u64)> = HashMap::new();
-    let bonuses = BONUSES.read().unwrap();
-    for (bid, bonus) in bonuses.iter() {
-        if let Some(cat_id) = bonus.item_limit_category {
-            if let Some(&qty) = cats.get(&cat_id) {
-                lookup.insert(*bid, (cat_id, qty));
+        let bonuses = BONUSES.read().unwrap();
+        for (bid, bonus) in bonuses.iter() {
+            if let Some(cat_id) = bonus.item_limit_category {
+                if let Some(&qty) = cats.get(&cat_id) {
+                    lookup.insert(*bid, (cat_id, qty));
+                }
             }
         }
     }
+
     *ITEM_LIMIT_CATS.write().unwrap() = Arc::new(lookup);
 }
 

@@ -270,6 +270,10 @@ pub struct GameItem {
     pub inventory_type: Option<i64>,
     #[serde(rename = "itemSetId")]
     pub set_id: Option<i64>,
+    #[serde(default, rename = "hasSockets")]
+    pub has_sockets: bool,
+    #[serde(default, rename = "socketInfo")]
+    pub socket_info: Option<GameItemSocketInfo>,
 
     #[serde(rename = "allowableClasses")]
     pub classes: Option<Vec<u64>>,
@@ -277,7 +281,24 @@ pub struct GameItem {
     pub specs: Option<Vec<u64>>,
     #[serde(default)]
     pub stats: Option<Vec<GameItemStat>>,
+    #[serde(default, rename = "bonusLists")]
+    pub bonus_lists: Vec<u64>,
     pub sources: Option<Vec<ItemSource>>,
+    #[serde(default)]
+    pub profession: Option<GameItemProfession>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemSocketInfo {
+    pub sockets: Vec<GameItemSocketEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemSocketEntry {
+    #[serde(rename = "type")]
+    pub socket_type: Option<String>,
 }
 
 impl GameItem {
@@ -314,6 +335,25 @@ impl Default for GameItemStat {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemProfession {
+    pub id: Option<u64>,
+    #[serde(rename = "recipeSpellId")]
+    pub recipe_spell_id: Option<u64>,
+    #[serde(rename = "optionalCraftingSlots")]
+    pub optional_crafting_slots: Vec<GameItemOptionalCraftingSlot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemOptionalCraftingSlot {
+    pub id: u64,
+    pub count: Option<u64>,
+    #[serde(rename = "recraftCount")]
+    pub recraft_count: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemSource {
     #[serde(rename = "encounterId")]
@@ -340,6 +380,9 @@ pub struct EnchantData {
     pub spell_icon: Option<String>,
     pub slot: Option<String>,
     pub quality: Option<u64>,
+    pub expansion: Option<u64>,
+    #[serde(rename = "socketType")]
+    pub socket_type: Option<String>,
     #[serde(rename = "craftingQuality")]
     pub crafting_quality: Option<u64>,
     #[serde(rename = "categoryName")]
@@ -369,6 +412,8 @@ pub struct BonusData {
     pub socket: Option<i64>,
     pub upgrade: Option<BonusUpgrade>,
     pub item_limit_category: Option<u64>,
+    #[serde(rename = "craftedStats")]
+    pub crafted_stats: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

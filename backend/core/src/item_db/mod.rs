@@ -7,9 +7,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 pub mod bonuses;
+pub mod crafting;
 pub mod enchants;
 pub mod loader;
 pub mod state;
+pub mod missives;
 pub mod upgrades;
 
 pub use state::CatalystTierItem;
@@ -17,6 +19,8 @@ pub use state::CatalystTierItem;
 // Re-exports for convenience
 
 pub use enchants::*;
+pub use crafting::*;
+pub use missives::*;
 pub use upgrades::*;
 
 // ---- Load ----
@@ -27,6 +31,7 @@ pub fn load(data_dir: &Path) {
     loader::derive_class_profiles_from_items();
 
     loader::load_enchants(data_dir);
+    crafting::load_crafting(data_dir);
     loader::load_bonuses(data_dir);
     loader::load_bus_and_seasons(data_dir);
     loader::load_instances(data_dir);
@@ -181,6 +186,15 @@ pub fn filter_ilevel_bonus_ids(bonus_ids: &[u64]) -> Vec<u64> {
 
 pub fn current_season_id() -> u64 {
     *state::CURRENT_SEASON_ID.read().unwrap()
+}
+
+pub fn is_upgrade_bonus(bonus_id: u64) -> bool {
+    state::BONUSES
+        .read()
+        .unwrap()
+        .get(&bonus_id)
+        .and_then(|b| b.upgrade.as_ref())
+        .is_some()
 }
 
 pub fn catalyst_currency_id() -> u64 {

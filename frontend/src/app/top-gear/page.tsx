@@ -76,6 +76,17 @@ function uidMatchesItem(uid: string, item: ResolvedItem): boolean {
   return uidCoreKey(uid) === itemCoreKey(item);
 }
 
+function consumesLimitedEmbellishment(item: ResolvedItem): boolean {
+  if (Object.values(item.item_limit_categories || {}).some((limit) => Number(limit) === 2)) {
+    return true;
+  }
+  return (
+    (item.embellishment_item_id || 0) > 0 ||
+    Boolean(item.embellishment_name) ||
+    (item.embellishment_bonus_ids?.length || 0) > 0
+  );
+}
+
 export default function TopGearPage() {
   const { simcInput, setSimcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
   const characterDefaultsKey = getCharacterDefaultsKeyFromSimcInput(simcInput);
@@ -95,7 +106,6 @@ export default function TopGearPage() {
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
   const [comboError, setComboError] = useState('');
-  const [, setExcludedSelectedUids] = useState<Set<string>>(new Set());
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
@@ -260,9 +270,43 @@ export default function TopGearPage() {
     return appendLocalItemsToSimcInput(simcInput, localItems);
   }, [simcInput, localItems]);
 
+  const buildOverflowEmbellishmentUids = useCallback((): Set<string> => {
+    const overflow = new Set<string>();
+    if (!resolved) return overflow;
+
+    let embellishedCount = 0;
+    for (const slotRes of Object.values(resolved.slots)) {
+      if (slotRes.equipped && consumesLimitedEmbellishment(slotRes.equipped)) {
+        embellishedCount += 1;
+      }
+    }
+
+    for (const [slot, uids] of Object.entries(selectedUids)) {
+      const slotRes = resolved.slots[slot];
+      if (!slotRes) continue;
+      const slotItems: ResolvedItem[] = [slotRes.equipped, ...slotRes.alternatives].filter(
+        (item): item is ResolvedItem => Boolean(item)
+      );
+      for (const uid of uids) {
+        const matches = slotItems.filter((item) => uidMatchesItem(uid, item));
+        for (const item of matches) {
+          if (item.origin === 'equipped' || !consumesLimitedEmbellishment(item)) continue;
+          if (embellishedCount >= 2) {
+            overflow.add(item.uid);
+          } else {
+            embellishedCount += 1;
+          }
+        }
+      }
+    }
+
+    return overflow;
+  }, [resolved, selectedUids]);
+
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
     if (!resolved) return {};
     const result: Record<string, string[]> = {};
+    const overflowEmbellishmentUids = buildOverflowEmbellishmentUids();
     for (const [slot, uids] of Object.entries(selectedUids)) {
       const slotRes = resolved.slots[slot];
       const slotItems: ResolvedItem[] = slotRes
@@ -278,6 +322,7 @@ export default function TopGearPage() {
           continue;
         }
         for (const item of matches) {
+          if (overflowEmbellishmentUids.has(item.uid)) continue;
           included.add(item.uid);
         }
       }
@@ -286,21 +331,26 @@ export default function TopGearPage() {
       }
     }
     return result;
-  }, [resolved, selectedUids]);
+  }, [resolved, selectedUids, buildOverflowEmbellishmentUids]);
 
   const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
     if (!resolved) return null;
+    const overflowEmbellishmentUids = buildOverflowEmbellishmentUids();
     const result: Record<string, any[]> = {};
     for (const [slot, slotRes] of Object.entries(resolved.slots)) {
       const items = [];
       if (slotRes.equipped) items.push({ ...slotRes.equipped, is_equipped: true });
       if (slotRes.alternatives) {
-        items.push(...slotRes.alternatives.map((alt) => ({ ...alt, is_equipped: false })));
+        items.push(
+          ...slotRes.alternatives
+            .filter((alt) => !overflowEmbellishmentUids.has(alt.uid))
+            .map((alt) => ({ ...alt, is_equipped: false }))
+        );
       }
       if (items.length > 0) result[slot] = items;
     }
     return result;
-  }, [resolved]);
+  }, [resolved, buildOverflowEmbellishmentUids]);
 
   // Fetch combo count whenever selection changes
   useEffect(() => {
@@ -531,7 +581,6 @@ export default function TopGearPage() {
         maxUpgrade={maxUpgrade}
         comboCount={comboCount}
         comboError={comboError}
-        onExcludedUidsChange={setExcludedSelectedUids}
       />
 
       <ErrorAlert message={pageLevelError || error} />

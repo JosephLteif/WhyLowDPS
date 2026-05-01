@@ -31,7 +31,7 @@ export default function AddItemSearchOverlay({
             Syncing Global Loot...
           </div>
         ) : results.length === 0 ? (
-          <div className="p-4 text-center text-[10px] text-slate-500">
+          <div className="p-4 text-center text-lg font-bold text-white">
             No matches found for &quot;{globalSearch}&quot;
           </div>
         ) : (

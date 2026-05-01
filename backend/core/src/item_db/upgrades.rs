@@ -271,7 +271,7 @@ use crate::types::ResolvedItem;
 pub fn upgrade_items_by_slot(
     mut items: HashMap<String, Vec<ResolvedItem>>,
 ) -> HashMap<String, Vec<ResolvedItem>> {
-    for (slot, list) in items.iter_mut() {
+    for (_slot, list) in items.iter_mut() {
         for item in list {
             let upgraded_bids = upgrade_bonus_ids_to_max(&item.bonus_ids);
             if upgraded_bids != item.bonus_ids {
@@ -295,24 +295,6 @@ pub fn upgrade_items_by_slot(
                     parts.push(format!("gem_id={}", item.gem_id));
                 }
                 item.simc_string = parts.join(",");
-
-                // Update UID to reflect new bonus IDs
-                let uid_bonus = if item.bonus_ids.is_empty() {
-                    "0".to_string()
-                } else {
-                    bids_sorted
-                        .iter()
-                        .map(|b| b.to_string())
-                        .collect::<Vec<_>>()
-                        .join("-")
-                };
-                item.uid = format!(
-                    "{}:{}:{}:{}",
-                    item.item_id,
-                    uid_bonus,
-                    item.origin.as_str(),
-                    slot.to_lowercase()
-                );
 
                 // Re-resolve display info (ilevel, etc)
                 if let Some(info) = super::get_item_info(item.item_id, Some(&item.bonus_ids)) {

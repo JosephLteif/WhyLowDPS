@@ -1355,10 +1355,37 @@ export default function TopGearItemSelector({
     return getEmbellishmentLimitWarnings(selectedUids, knownEmbellishedUids, limitWarningOrder);
   }, [getEmbellishmentLimitWarnings, selectedUids, knownEmbellishedUids, limitWarningOrder]);
 
+  const itemByUid = useMemo(() => {
+    const next = new Map<string, ResolvedItem>();
+    for (const slotRes of Object.values(resolved.slots)) {
+      if (slotRes.equipped) next.set(slotRes.equipped.uid, slotRes.equipped);
+      for (const alt of slotRes.alternatives) next.set(alt.uid, alt);
+    }
+    return next;
+  }, [resolved.slots]);
+
   const backendFallbackLimitWarningUid = useMemo(() => {
     if (!hasBackendEmbellishmentLimitWarning) return null;
-    return [...limitWarningOrder].reverse().find((uid) => selectedUidSet.has(uid)) || null;
-  }, [hasBackendEmbellishmentLimitWarning, limitWarningOrder, selectedUidSet]);
+    return (
+      [...limitWarningOrder]
+        .reverse()
+        .find((uid) => {
+          if (!selectedUidSet.has(uid)) return false;
+          const item = itemByUid.get(uid);
+          return (
+            knownEmbellishedUids.has(uid) ||
+            (item ? itemHasEmbellishment(item, embellishmentOptionsByItem) : false)
+          );
+        }) || null
+    );
+  }, [
+    hasBackendEmbellishmentLimitWarning,
+    limitWarningOrder,
+    selectedUidSet,
+    itemByUid,
+    knownEmbellishedUids,
+    embellishmentOptionsByItem,
+  ]);
 
   useEffect(() => {
     setLimitWarningOrder((prev) => prev.filter((uid) => selectedUidSet.has(uid)));
@@ -1408,7 +1435,7 @@ export default function TopGearItemSelector({
   const activeLimitWarningUids = useMemo(() => {
     const next = new Set<string>();
     for (const uid of immediateLimitWarningUids) {
-      next.add(uid);
+      if (selectedUidSet.has(uid)) next.add(uid);
     }
     for (const uid of localLimitWarningUids) next.add(uid);
     for (const uid of confirmedLimitWarningUids) {

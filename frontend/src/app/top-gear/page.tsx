@@ -254,12 +254,16 @@ export default function TopGearPage() {
       const items = [];
       if (slotRes.equipped) items.push({ ...slotRes.equipped, is_equipped: true });
       if (slotRes.alternatives) {
-        items.push(...slotRes.alternatives.map((alt) => ({ ...alt, is_equipped: false })));
+        items.push(
+          ...slotRes.alternatives
+            .filter((alt) => !excludedSelectedUids.has(alt.uid))
+            .map((alt) => ({ ...alt, is_equipped: false }))
+        );
       }
       if (items.length > 0) result[slot] = items;
     }
     return result;
-  }, [resolved]);
+  }, [resolved, excludedSelectedUids]);
 
   // Fetch combo count whenever selection changes
   useEffect(() => {

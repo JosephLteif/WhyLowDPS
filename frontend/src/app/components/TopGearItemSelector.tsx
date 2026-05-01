@@ -260,6 +260,7 @@ export default function TopGearItemSelector({
   const [confirmedLimitWarningUids, setConfirmedLimitWarningUids] = useState<Set<string>>(
     () => new Set()
   );
+  const selectedUidSignatureRef = useRef('');
   const [otherTierOptions, setOtherTierOptions] = useState<UpgradeOption[]>([]);
   const [loadingOtherTierOptions, setLoadingOtherTierOptions] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -1258,6 +1259,10 @@ export default function TopGearItemSelector({
     }
     return next;
   }, [selectedUids]);
+  const selectedUidSignature = useMemo(
+    () => [...selectedUidSet].sort().join('|'),
+    [selectedUidSet]
+  );
 
   const selectedEmbellishmentCandidates = useMemo(() => {
     const orderIndex = new Map(limitWarningOrder.map((uid, index) => [uid, index]));
@@ -1312,19 +1317,29 @@ export default function TopGearItemSelector({
   }, [selectedUidSet]);
 
   useEffect(() => {
+    const selectionChanged = selectedUidSignatureRef.current !== selectedUidSignature;
+    selectedUidSignatureRef.current = selectedUidSignature;
+
     setConfirmedLimitWarningUids((prev) => {
       const next = new Set<string>();
       for (const uid of prev) {
         if (selectedUidSet.has(uid)) next.add(uid);
       }
       if (backendFallbackLimitWarningUid) next.add(backendFallbackLimitWarningUid);
-      if (!hasBackendEmbellishmentLimitWarning && localLimitWarningUids.size === 0) next.clear();
+      if (
+        selectionChanged &&
+        !hasBackendEmbellishmentLimitWarning &&
+        localLimitWarningUids.size === 0
+      ) {
+        next.clear();
+      }
       return sameStringSet(prev, next) ? prev : next;
     });
   }, [
     backendFallbackLimitWarningUid,
     hasBackendEmbellishmentLimitWarning,
     localLimitWarningUids,
+    selectedUidSignature,
     selectedUidSet,
   ]);
 

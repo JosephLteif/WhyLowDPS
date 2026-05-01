@@ -21,6 +21,7 @@ interface TopGearItemSelectorProps {
   comboCount: number;
   maxUpgrade?: boolean;
   comboError?: string;
+  onLimitWarningChange?: (warning: string) => void;
 }
 
 interface DisplayGroup {
@@ -205,6 +206,22 @@ function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): numbe
   return Number.parseInt(rawValue, 10) || 0;
 }
 
+function itemHasEmbellishment(
+  item: ResolvedItem,
+  optionsByItem: Record<number, EmbellishmentOption[]>
+): boolean {
+  if ((item.embellishment_item_id || 0) > 0 || Boolean(item.embellishment_name)) {
+    return true;
+  }
+  const options = optionsByItem[item.item_id] || [];
+  return options.some(
+    (opt) =>
+      Array.isArray(opt.bonus_ids) &&
+      opt.bonus_ids.length > 0 &&
+      opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
+  );
+}
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -212,6 +229,7 @@ export default function TopGearItemSelector({
   onResolvedChange,
   onItemAdded,
   comboCount,
+  onLimitWarningChange,
 }: TopGearItemSelectorProps) {
   const { maxCombinations } = useSimContext();
   const effectiveMaxCombinations = maxCombinations ?? 500;
@@ -1170,6 +1188,48 @@ export default function TopGearItemSelector({
       cancelled = true;
     };
   }, [resolved]);
+
+  const embellishmentLimitWarning = useMemo(() => {
+    const hasSelection = Object.values(selectedUids).some((uids) => uids.size > 0);
+    if (!hasSelection) return '';
+
+    let minimumEmbellishedItems = 0;
+    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
+      const selected = selectedUids[slot] || new Set<string>();
+      const candidates: ResolvedItem[] = [];
+
+      if (slotRes.equipped && selected.has(slotRes.equipped.uid)) {
+        candidates.push(slotRes.equipped);
+      }
+      for (const alt of slotRes.alternatives) {
+        if (selected.has(alt.uid)) candidates.push(alt);
+      }
+
+      // The backend always keeps equipped gear as a candidate alongside selected options.
+      if (slotRes.equipped && !candidates.some((item) => item.uid === slotRes.equipped?.uid)) {
+        candidates.unshift(slotRes.equipped);
+      }
+
+      if (candidates.length === 0) continue;
+      if (candidates.every((item) => itemHasEmbellishment(item, embellishmentOptionsByItem))) {
+        minimumEmbellishedItems += 1;
+      }
+    }
+
+    if (minimumEmbellishedItems <= 2) return '';
+    return 'Too many embellished items are selected. World of Warcraft only allows 2 embellished items, so Top Gear cannot generate valid combinations until one is removed or swapped.';
+  }, [resolved.slots, selectedUids, embellishmentOptionsByItem]);
+
+  useEffect(() => {
+    onLimitWarningChange?.(embellishmentLimitWarning);
+  }, [embellishmentLimitWarning, onLimitWarningChange]);
+
+  useEffect(
+    () => () => {
+      onLimitWarningChange?.('');
+    },
+    [onLimitWarningChange]
+  );
 
   const itemDetails = (item: ResolvedItem) => {
     const gemIconFallback = 'inv_misc_questionmark';

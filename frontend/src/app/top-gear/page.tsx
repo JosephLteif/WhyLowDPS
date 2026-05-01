@@ -72,6 +72,7 @@ export default function TopGearPage() {
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
   const [comboError, setComboError] = useState('');
+  const [selectionLimitError, setSelectionLimitError] = useState('');
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
@@ -362,11 +363,13 @@ export default function TopGearPage() {
     ]
   );
 
+  const effectiveComboError = selectionLimitError || comboError;
+
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';
-    if (comboError) return comboError;
+    if (effectiveComboError) return effectiveComboError;
     return null;
-  }, [resolved, comboError]);
+  }, [resolved, effectiveComboError]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/top-gear/sim',
@@ -479,14 +482,15 @@ export default function TopGearPage() {
         maxUpgrade={maxUpgrade}
         comboCount={comboCount}
         comboError={comboError}
+        onLimitWarningChange={setSelectionLimitError}
       />
 
-      <ErrorAlert message={comboError || error} />
+      <ErrorAlert message={effectiveComboError || error} />
 
       <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
         <button
           onClick={handleSubmit}
-          disabled={submitting || !!comboError}
+          disabled={submitting || !!effectiveComboError}
           className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
         >
           {submitting ? (

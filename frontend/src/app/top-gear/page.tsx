@@ -364,8 +364,9 @@ export default function TopGearPage() {
 
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';
+    if (comboError) return comboError;
     return null;
-  }, [resolved]);
+  }, [resolved, comboError]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/top-gear/sim',
@@ -480,12 +481,12 @@ export default function TopGearPage() {
         comboError={comboError}
       />
 
-      <ErrorAlert message={error} />
+      <ErrorAlert message={comboError || error} />
 
       <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
         <button
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || !!comboError}
           className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
         >
           {submitting ? (

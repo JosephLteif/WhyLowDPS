@@ -9,6 +9,40 @@ pub mod combinator;
 pub mod parser;
 pub mod writer;
 
+fn has_item_limit_only_blockers(
+    all_combos: &[Vec<usize>],
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+) -> bool {
+    for indices in all_combos {
+        let gear_set = combinator::build_gear_set_from_combo(
+            indices,
+            varying_slots,
+            option_lists,
+            slot_item_lists,
+            spec,
+        );
+
+        let passes_non_limit_checks = crate::profileset::validation::validate_unique_equipped(&gear_set)
+            && crate::profileset::validation::validate_vault_constraint(&gear_set)
+            && crate::profileset::validation::validate_weapon_constraint(&gear_set, spec)
+            && catalyst_charges.is_none_or(|c| {
+                crate::profileset::validation::validate_catalyst_constraint(&gear_set, c)
+            });
+        if !passes_non_limit_checks {
+            continue;
+        }
+
+        if !crate::profileset::validation::validate_item_limits(&gear_set) {
+            return true;
+        }
+    }
+    false
+}
+
 type ProfilesetResult = Result<(String, usize, HashMap<String, Vec<Value>>)>;
 
 pub static MAX_COMBINATIONS: Lazy<usize> = Lazy::new(|| {
@@ -69,6 +103,23 @@ pub fn generate_top_gear_input_with_talents(
     );
 
     let gear_combo_count = valid_combos.len();
+
+    if gear_combo_count == 0
+        && !varying_slots.is_empty()
+        && has_item_limit_only_blockers(
+            &all_combos,
+            &varying_slots,
+            &option_lists,
+            &slot_item_lists,
+            &spec,
+            catalyst_charges,
+        )
+    {
+        return Err(crate::error::AppError::SimcError(
+            "No valid combinations: too many limited-effect crafted modifiers are selected (only 2 embellished items can be equipped).".to_string(),
+        ));
+    }
+
     let effective_talents = get_effective_talents(talent_builds, &talents_string);
     let total_combo_count = calculate_total_combo_count(gear_combo_count, effective_talents.len());
 

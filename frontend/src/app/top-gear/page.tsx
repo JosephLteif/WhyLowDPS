@@ -53,29 +53,6 @@ interface TopGearSimAgainState {
   resolved?: ResolveGearResponse | null;
 }
 
-function uidIdentity(uid: string): string {
-  const idx = uid.lastIndexOf(':');
-  return idx >= 0 ? uid.slice(0, idx) : uid;
-}
-
-function uidCoreKey(uid: string): string | null {
-  const parts = uid.split(':');
-  const itemId = Number(parts[0]);
-  if (!Number.isFinite(itemId) || itemId <= 0) return null;
-  const origin = parts.find((part) => part === 'equipped' || part === 'bags' || part === 'vault');
-  return origin ? `${itemId}:${origin}` : null;
-}
-
-function itemCoreKey(item: Pick<ResolvedItem, 'item_id' | 'origin'>): string {
-  return `${item.item_id}:${item.origin}`;
-}
-
-function uidMatchesItem(uid: string, item: ResolvedItem): boolean {
-  if (uid === item.uid) return true;
-  if (uidIdentity(uid) === uidIdentity(item.uid)) return true;
-  return uidCoreKey(uid) === itemCoreKey(item);
-}
-
 function consumesLimitedEmbellishment(item: ResolvedItem): boolean {
   if (Object.values(item.item_limit_categories || {}).some((limit) => Number(limit) === 2)) {
     return true;
@@ -288,14 +265,14 @@ export default function TopGearPage() {
         (item): item is ResolvedItem => Boolean(item)
       );
       for (const uid of uids) {
-        const matches = slotItems.filter((item) => uidMatchesItem(uid, item));
-        for (const item of matches) {
-          if (item.origin === 'equipped' || !consumesLimitedEmbellishment(item)) continue;
-          if (embellishedCount >= 2) {
-            overflow.add(item.uid);
-          } else {
-            embellishedCount += 1;
-          }
+        const item = slotItems.find((candidate) => candidate.uid === uid);
+        if (!item || item.origin === 'equipped' || !consumesLimitedEmbellishment(item)) {
+          continue;
+        }
+        if (embellishedCount >= 2) {
+          overflow.add(item.uid);
+        } else {
+          embellishedCount += 1;
         }
       }
     }
@@ -316,15 +293,9 @@ export default function TopGearPage() {
         : [];
       const included = new Set<string>();
       for (const uid of uids) {
-        const matches = slotItems.filter((item) => uidMatchesItem(uid, item));
-        if (matches.length === 0) {
-          included.add(uid);
-          continue;
-        }
-        for (const item of matches) {
-          if (overflowEmbellishmentUids.has(item.uid)) continue;
-          included.add(item.uid);
-        }
+        const item = slotItems.find((candidate) => candidate.uid === uid);
+        if (!item || overflowEmbellishmentUids.has(item.uid)) continue;
+        included.add(item.uid);
       }
       if (included.size > 0) {
         result[slot] = [...included];

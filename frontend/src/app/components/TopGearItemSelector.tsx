@@ -1399,7 +1399,7 @@ export default function TopGearItemSelector({
   const activeLimitWarningUids = useMemo(() => {
     const next = new Set<string>();
     for (const uid of immediateLimitWarningUids) {
-      if (selectedUidSet.has(uid)) next.add(uid);
+      next.add(uid);
     }
     for (const uid of localLimitWarningUids) next.add(uid);
     for (const uid of confirmedLimitWarningUids) {

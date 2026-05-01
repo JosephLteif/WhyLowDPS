@@ -247,8 +247,9 @@ function deduplicateGems(raw: RawGem[]): GemDisplay[] {
 }
 
 function missivesForItem(item: ExternalItem, missives: MissiveOption[]): MissiveOption[] {
+  const secondaryStatIds = new Set([24, 25, 32, 36, 40, 49]);
   const itemSecondaryStatCount =
-    item.stats?.filter((stat) => [32, 36, 40, 49].includes(Number(stat.id))).length || 0;
+    item.stats?.filter((stat) => secondaryStatIds.has(Number(stat.id))).length || 0;
   const expectedCount = itemSecondaryStatCount || Number(item.missive_count || 0);
   if (expectedCount <= 0) return [];
 

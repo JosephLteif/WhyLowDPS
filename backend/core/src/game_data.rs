@@ -723,10 +723,19 @@ pub fn get_instance_drops(
 
                 let mut missive_count = 0;
                 if is_profession_source {
-                    let has_secondary = item.stats.as_ref().is_some_and(|stats| {
-                        stats.iter().any(|s| [32, 36, 49, 40].contains(&s.id))
-                    });
-                    if !has_secondary {
+                    let secondary_count = item
+                        .stats
+                        .as_ref()
+                        .map(|stats| {
+                            stats
+                                .iter()
+                                .filter(|s| [24, 25, 32, 36, 40, 49].contains(&s.id))
+                                .count()
+                        })
+                        .unwrap_or(0);
+                    if secondary_count > 0 {
+                        missive_count = secondary_count as u64;
+                    } else {
                         // In Retail, Epic+ (Quality 4+) or Jewelry always have 2 stats.
                         // Competitor's gear and high-ilevel profession gear also often have 2.
                         missive_count = if inv_type == 2 || inv_type == 11 || item.quality >= 4 || item.name.contains("Competitor") || item.base_ilevel.unwrap_or(0) >= 200 {

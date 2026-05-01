@@ -31,6 +31,11 @@ export interface ResolvedItem {
   off_spec?: boolean;
   inventory_type?: number;
   season_id?: number;
+  crafted_stats?: string[];
+  embellishment_item_id?: number;
+  embellishment_name?: string;
+  embellishment_icon?: string;
+  embellishment_bonus_ids?: number[];
 }
 
 export interface ResultItem extends ResolvedItem {

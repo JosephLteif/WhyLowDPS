@@ -49,11 +49,21 @@ interface EnchantDisplay {
 
 /** Deduplicated gem for display — highest crafting quality per base gem. */
 interface GemDisplay {
-  gemItemId: number; // itemId — what SimC uses as gem_id
-  enchantId: number; // the enchant "id" (useful for lookup)
+  gemItemId: number;
+  enchantId: number;
   name: string;
   icon: string;
   quality: number;
+  expansion: number;
+}
+
+interface EmbellishmentOption {
+  id: number;
+  item_id: number;
+  name: string;
+  icon: string;
+  quality: number;
+  bonus_ids: number[];
 }
 
 interface OptimizeItemModalProps {
@@ -61,7 +71,11 @@ interface OptimizeItemModalProps {
   onClose: () => void;
   item: ResolvedItem | null;
   className?: string | null;
-  onApply: (enchantId: number, gemIds: number[]) => void;
+  onApply: (
+    enchantId: number,
+    gemIds: number[],
+    embellishment: EmbellishmentOption | null
+  ) => void;
 }
 
 /**
@@ -115,6 +129,7 @@ function deduplicateGems(raw: RawGem[]): GemDisplay[] {
       name: g.itemName || g.displayName || g.name || 'Unknown',
       icon: g.itemIcon || g.icon || 'inv_misc_questionmark',
       quality: g.quality ?? 3,
+      expansion: g.expansion ?? 0,
     }))
     .filter((g) => g.gemItemId > 0);
 }
@@ -128,22 +143,26 @@ export default function OptimizeItemModal({
 }: OptimizeItemModalProps) {
   const [rawEnchants, setRawEnchants] = useState<RawEnchant[]>([]);
   const [rawGems, setRawGems] = useState<RawGem[]>([]);
+  const [rawEmbellishments, setRawEmbellishments] = useState<EmbellishmentOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedEnchant, setSelectedEnchant] = useState<number>(0);
   const [selectedGem, setSelectedGem] = useState<number>(0);
+  const [selectedEmbellishment, setSelectedEmbellishment] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState('');
   const modalRef = useRef<HTMLDivElement | null>(null);
 
   // Derive display lists from raw data
   const enchants = useMemo(() => deduplicateEnchants(rawEnchants), [rawEnchants]);
   const gems = useMemo(() => deduplicateGems(rawGems), [rawGems]);
-  useWowheadTooltips([isOpen, enchants.length, gems.length, searchTerm]);
+  const embellishments = useMemo(() => rawEmbellishments, [rawEmbellishments]);
+  useWowheadTooltips([isOpen, enchants.length, gems.length, embellishments.length, searchTerm]);
 
   useEffect(() => {
     if (isOpen && item) {
       fetchOptions();
       setSelectedEnchant(item.enchant_id || 0);
       setSelectedGem(item.gem_id || 0);
+      setSelectedEmbellishment(item.embellishment_item_id || 0);
       setSearchTerm('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,12 +173,16 @@ export default function OptimizeItemModal({
     if (!item) return;
     setLoading(true);
     try {
-      const [enchantsRes, gemsRes] = await Promise.all([
+      const [enchantsRes, gemsRes, embellishmentsRes] = await Promise.all([
         fetch(
           `${API_URL}/api/gear/enchant-options?slot=${item.slot}${className ? `&class_name=${encodeURIComponent(className)}` : ''}`,
           { credentials: 'include' }
         ),
         fetch(`${API_URL}/api/gear/gem-options`, { credentials: 'include' }),
+        fetch(
+          `${API_URL}/api/gear/embellishment-options?item_id=${encodeURIComponent(String(item.item_id))}`,
+          { credentials: 'include' }
+        ),
       ]);
       if (enchantsRes.ok) {
         setRawEnchants(await enchantsRes.json());
@@ -167,18 +190,40 @@ export default function OptimizeItemModal({
       if (gemsRes.ok) {
         setRawGems(await gemsRes.json());
       }
+      if (embellishmentsRes.ok) {
+        const options = (await embellishmentsRes.json()) as EmbellishmentOption[];
+        setRawEmbellishments(options);
+      } else {
+        setRawEmbellishments([]);
+      }
     } catch (e) {
       console.error('Failed to fetch optimization options', e);
+      setRawEmbellishments([]);
     }
     setLoading(false);
   }
 
+  const currentGemExpansion = useMemo(
+    () => gems.reduce((max, g) => (g.expansion > max ? g.expansion : max), 0),
+    [gems]
+  );
+  const seasonalGems = useMemo(
+    () =>
+      currentGemExpansion > 0
+        ? gems.filter((g) => g.expansion === currentGemExpansion)
+        : gems,
+    [gems, currentGemExpansion]
+  );
+  const filteredGems = seasonalGems.filter((g) =>
+    g.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   if (!isOpen || !item) return null;
 
-  const filteredGems = gems.filter((g) => g.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
   function handleApply() {
-    onApply(selectedEnchant, selectedGem ? [selectedGem] : []);
+    const selected =
+      embellishments.find((opt) => opt.item_id === selectedEmbellishment) || null;
+    onApply(selectedEnchant, selectedGem ? [selectedGem] : [], selected);
   }
 
   return (
@@ -287,6 +332,68 @@ export default function OptimizeItemModal({
                       </a>
                       <div className="line-clamp-1 text-[13px] font-bold leading-tight">
                         {e.name}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Embellishment Selection (crafted-capable items only) */}
+            {embellishments.length > 0 && (
+              <section>
+                <div className="mb-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
+                    Embellishment
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    onClick={() => setSelectedEmbellishment(0)}
+                    className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                      selectedEmbellishment === 0
+                        ? 'border-gold bg-gold/5 text-gold'
+                        : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <div className="flex h-8 w-8 items-center justify-center rounded border border-white/5 bg-black/20">
+                      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                          fillRule="evenodd"
+                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                    <div className="text-[13px] font-bold">No Embellishment</div>
+                  </button>
+                  {embellishments.map((emb, idx) => (
+                    <button
+                      key={`emb-${emb.item_id}-${idx}`}
+                      onClick={() => setSelectedEmbellishment(emb.item_id)}
+                      className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                        selectedEmbellishment === emb.item_id
+                          ? 'border-gold bg-gold/5 text-gold'
+                          : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      <a
+                        href={`https://www.wowhead.com/item=${emb.item_id}`}
+                        data-wowhead={`item=${emb.item_id}`}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center"
+                        onClick={(evt) => {
+                          evt.preventDefault();
+                          evt.stopPropagation();
+                        }}
+                      >
+                        <img
+                          src={`https://render.worldofwarcraft.com/icons/56/${emb.icon}.jpg`}
+                          alt=""
+                          className="h-8 w-8 rounded border border-white/10"
+                        />
+                      </a>
+                      <div className="line-clamp-1 text-[13px] font-bold leading-tight">
+                        {emb.name}
                       </div>
                     </button>
                   ))}

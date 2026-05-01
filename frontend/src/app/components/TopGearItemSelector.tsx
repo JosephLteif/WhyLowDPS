@@ -43,6 +43,15 @@ interface EnchantInfo {
   quality: number;
 }
 
+interface EmbellishmentOption {
+  id: number;
+  item_id: number;
+  name: string;
+  icon: string;
+  quality: number;
+  bonus_ids: number[];
+}
+
 interface ItemActionAvailability {
   canAddEnchant: boolean;
   canAddGem: boolean;
@@ -131,6 +140,25 @@ function getWowheadData(item: ResolvedItem): string {
   return parts.join('&');
 }
 
+function isCraftedSource(item: { source_type?: string; encounter?: string; instance_name?: string }): boolean {
+  const sourceType = String(item.source_type || '').toLowerCase();
+  const encounter = String(item.encounter || '').toLowerCase();
+  const instance = String(item.instance_name || '').toLowerCase();
+  return (
+    sourceType.includes('profession') ||
+    sourceType.includes('craft') ||
+    encounter.includes('crafted') ||
+    instance.includes('crafted') ||
+    encounter.includes('jewelcrafting') ||
+    encounter.includes('blacksmithing') ||
+    encounter.includes('tailoring') ||
+    encounter.includes('inscription') ||
+    encounter.includes('engineering') ||
+    encounter.includes('alchemy') ||
+    encounter.includes('enchanting')
+  );
+}
+
 function makeUid(item: {
   item_id: number;
   bonus_ids: number[];
@@ -139,9 +167,16 @@ function makeUid(item: {
   ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
+  crafted_stats?: string[];
+  embellishment_item_id?: number;
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}:${item.slot}`;
+  const crafted =
+    item.crafted_stats && item.crafted_stats.length > 0
+      ? `:${[...item.crafted_stats].sort().join('/')}`
+      : '';
+  const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}:${item.slot}`;
 }
 
 function makeIdentity(item: {
@@ -151,9 +186,16 @@ function makeIdentity(item: {
   ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
+  crafted_stats?: string[];
+  embellishment_item_id?: number;
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+  const crafted =
+    item.crafted_stats && item.crafted_stats.length > 0
+      ? `:${[...item.crafted_stats].sort().join('/')}`
+      : '';
+  const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}`;
 }
 
 function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {
@@ -180,6 +222,9 @@ export default function TopGearItemSelector({
   const [enchantAvailabilityBySlot, setEnchantAvailabilityBySlot] = useState<Record<string, boolean>>(
     {}
   );
+  const [embellishmentOptionsByItem, setEmbellishmentOptionsByItem] = useState<
+    Record<number, EmbellishmentOption[]>
+  >({});
   const [otherTierOptions, setOtherTierOptions] = useState<UpgradeOption[]>([]);
   const [loadingOtherTierOptions, setLoadingOtherTierOptions] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -221,7 +266,7 @@ export default function TopGearItemSelector({
     return () => obs.disconnect();
   }, []);
 
-  useWowheadTooltips([resolved, gemInfoById, enchantInfoById]);
+  useWowheadTooltips([resolved, gemInfoById, enchantInfoById, embellishmentOptionsByItem]);
 
   const convertToCatalyst = useCallback(
     async (item: ResolvedItem) => {
@@ -287,6 +332,8 @@ export default function TopGearItemSelector({
             ilevel: nextItem.ilevel,
             enchant_id: nextItem.enchant_id,
             gem_id: nextItem.gem_id,
+            crafted_stats: nextItem.crafted_stats,
+            embellishment_item_id: nextItem.embellishment_item_id,
           });
           if (nextUid !== alt.uid) {
             uidMap.set(alt.uid, nextUid);
@@ -441,6 +488,8 @@ export default function TopGearItemSelector({
           ilevel: option.itemLevel,
           enchant_id: item.enchant_id,
           gem_id: item.gem_id,
+          crafted_stats: item.crafted_stats,
+          embellishment_item_id: item.embellishment_item_id,
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
@@ -470,6 +519,8 @@ export default function TopGearItemSelector({
           ilevel: option.itemLevel,
           enchant_id: item.enchant_id,
           gem_id: item.gem_id,
+          crafted_stats: item.crafted_stats,
+          embellishment_item_id: item.embellishment_item_id,
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
@@ -524,6 +575,8 @@ export default function TopGearItemSelector({
           ilevel: option.itemLevel,
           enchant_id: item.enchant_id,
           gem_id: item.gem_id,
+          crafted_stats: item.crafted_stats,
+          embellishment_item_id: item.embellishment_item_id,
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
@@ -553,6 +606,8 @@ export default function TopGearItemSelector({
           ilevel: option.itemLevel,
           enchant_id: item.enchant_id,
           gem_id: item.gem_id,
+          crafted_stats: item.crafted_stats,
+          embellishment_item_id: item.embellishment_item_id,
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
@@ -601,10 +656,32 @@ export default function TopGearItemSelector({
   }, [otherTierOptions.length, loadingOtherTierOptions]);
 
   const handleOptimize = useCallback(
-    (enchantId: number, gemIds: number[]) => {
+    (
+      enchantId: number,
+      gemIds: number[],
+      embellishment: EmbellishmentOption | null
+    ) => {
       if (!optimizeItem) return;
       const item = optimizeItem;
       const firstGemId = gemIds[0] || 0;
+      const inferredCurrentEmbellishment =
+        (embellishmentOptionsByItem[item.item_id] || []).find(
+          (opt) =>
+            Array.isArray(opt.bonus_ids) &&
+            opt.bonus_ids.length > 0 &&
+            opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
+        ) || null;
+      const currentEmbellishmentBonusIds =
+        item.embellishment_bonus_ids && item.embellishment_bonus_ids.length > 0
+          ? item.embellishment_bonus_ids
+          : inferredCurrentEmbellishment?.bonus_ids || [];
+      let nextBonusIds = item.bonus_ids.filter(
+        (bid) => !currentEmbellishmentBonusIds.includes(bid)
+      );
+      if (embellishment && embellishment.bonus_ids.length > 0) {
+        nextBonusIds = Array.from(new Set([...nextBonusIds, ...embellishment.bonus_ids]));
+      }
+      nextBonusIds = [...nextBonusIds].sort((a, b) => a - b);
       let nextSimc = item.simc_string;
       if (enchantId > 0) {
         if (nextSimc.includes('enchant_id='))
@@ -618,24 +695,41 @@ export default function TopGearItemSelector({
         else nextSimc += `,gem_id=${firstGemId}`;
       } else nextSimc = nextSimc.replace(/,gem_id=[0-9/:]+/, '');
 
+      if (nextBonusIds.length > 0) {
+        if (nextSimc.includes('bonus_id=')) {
+          nextSimc = nextSimc.replace(/bonus_id=[0-9/:]+/, `bonus_id=${nextBonusIds.join('/')}`);
+        } else {
+          nextSimc += `,bonus_id=${nextBonusIds.join('/')}`;
+        }
+      } else {
+        nextSimc = nextSimc.replace(/,bonus_id=[0-9/:]+/, '');
+      }
+
       const uid = makeUid({
         item_id: item.item_id,
-        bonus_ids: item.bonus_ids,
+        bonus_ids: nextBonusIds,
         origin: 'bags',
         slot: item.slot,
         ilevel: item.ilevel,
         enchant_id: enchantId,
         gem_id: firstGemId,
+        crafted_stats: item.crafted_stats,
+        embellishment_item_id: embellishment?.item_id,
       });
       const copy: ResolvedItem = {
         ...item,
         origin: 'bags',
         uid,
+        bonus_ids: nextBonusIds,
         enchant_id: enchantId,
         gem_id: firstGemId,
         enchant_name: enchantId > 0 ? enchantInfoById[enchantId]?.name || '' : '',
         gem_name: firstGemId > 0 ? gemInfoById[firstGemId]?.name || '' : '',
         gem_icon: firstGemId > 0 ? gemInfoById[firstGemId]?.icon || '' : '',
+        embellishment_item_id: embellishment?.item_id,
+        embellishment_name: embellishment?.name,
+        embellishment_icon: embellishment?.icon,
+        embellishment_bonus_ids: embellishment?.bonus_ids,
         simc_string: nextSimc,
       };
 
@@ -662,6 +756,7 @@ export default function TopGearItemSelector({
       setOptimizeOpen,
       enchantInfoById,
       gemInfoById,
+      embellishmentOptionsByItem,
     ]
   );
 
@@ -693,12 +788,49 @@ export default function TopGearItemSelector({
         : difficultyInfo?.bonus_id
           ? [difficultyInfo.bonus_id]
           : [];
+      const craftedSource = isCraftedSource(item);
+      if (craftedSource && overrides) {
+        const matching: ResolvedItem[] = [];
+        for (const slotRes of Object.values(resolved.slots)) {
+          if (slotRes.equipped && slotRes.equipped.item_id === item.item_id) {
+            matching.push(slotRes.equipped);
+          }
+          for (const alt of slotRes.alternatives) {
+            if (alt.item_id === item.item_id) matching.push(alt);
+          }
+        }
+        const template = matching.sort((a, b) => b.bonus_ids.length - a.bonus_ids.length)[0];
+        const pool: number[] = Array.isArray(overrides.crafted_variable_bonus_pool)
+          ? overrides.crafted_variable_bonus_pool
+          : [];
+        const selected: number[] = Array.isArray(overrides.crafted_selected_bonus_ids)
+          ? overrides.crafted_selected_bonus_ids
+          : [];
+        if (template && template.bonus_ids.length > 0) {
+          const stable = template.bonus_ids.filter((bid) => !pool.includes(bid));
+          bonusIds = Array.from(new Set([...stable, ...selected]));
+        }
+      }
       let ilvl = overrides ? overrides.ilvl : difficultyInfo?.ilvl || item.ilevel;
       let upgradeStr = overrides
         ? `${overrides.track_name} ${overrides.level}`
         : difficultyInfo?.track
           ? `${difficultyInfo.track} ${difficultyInfo.level}/${UPGRADE_TRACK_MAX_LEVEL}`
           : '';
+      if (isCraftedSource(item)) {
+        upgradeStr = item.instance_name || item.encounter || 'Radiance Crafted';
+      }
+      if (overrides?.track_name && /crafted/i.test(overrides.track_name)) {
+        upgradeStr = overrides.track_name;
+      }
+      const embellishment = overrides?.embellishment;
+      const selectedGem = overrides?.gem;
+      const selectedGemId = selectedGem?.gem_id || 0;
+
+      let effectiveQuality = overrides?.quality ?? difficultyInfo?.quality ?? item.quality;
+      if (isCraftedSource(item) && effectiveQuality >= 5) {
+        effectiveQuality = 4;
+      }
 
       const uid = makeUid({
         item_id: item.item_id,
@@ -706,34 +838,51 @@ export default function TopGearItemSelector({
         origin: 'bags',
         slot,
         ilevel: ilvl,
+        gem_id: selectedGemId,
+        crafted_stats: overrides?.crafted_stats,
+        embellishment_item_id: embellishment?.item_id,
       });
+      
+      let simcStats = '';
+      if (overrides?.crafted_stats && overrides.crafted_stats.length > 0) {
+        simcStats = `,crafted_stats=${overrides.crafted_stats.join('/')}`;
+      }
+      const simcGem = selectedGemId > 0 ? `,gem_id=${selectedGemId}` : '';
+
       const newItem: ResolvedItem = {
         uid,
         slot,
         item_id: item.item_id,
         ilevel: ilvl,
-        simc_string: `,id=${item.item_id}${ilvl > 0 ? `,ilevel=${ilvl}` : ''}${bonusIds.length > 0 ? `,bonus_id=${bonusIds.join('/')}` : ''},name=${item.name.replace(/ /g, '_')}`,
+        simc_string: `,id=${item.item_id}${ilvl > 0 ? `,ilevel=${ilvl}` : ''}${bonusIds.length > 0 ? `,bonus_id=${bonusIds.join('/')}` : ''}${simcGem}${simcStats},name=${item.name.replace(/ /g, '_')}`,
         origin: 'bags',
         bonus_ids: bonusIds,
         enchant_id: 0,
-        gem_id: 0,
+        gem_id: selectedGemId,
+        crafted_stats: overrides?.crafted_stats,
+        embellishment_item_id: embellishment?.item_id,
+        embellishment_name: embellishment?.name,
+        embellishment_icon: embellishment?.icon,
+        embellishment_bonus_ids: embellishment?.bonus_ids,
         name: item.name,
         icon: item.icon,
-        quality: item.quality,
+        quality: effectiveQuality,
         quality_color:
-          item.quality === 5
+          effectiveQuality === 5
             ? '#ff8000'
-            : item.quality === 4
+            : effectiveQuality === 4
               ? '#a335ee'
-              : item.quality === 3
+              : effectiveQuality === 3
                 ? '#0070dd'
                 : '#1eff00',
-        tag: 'Bags',
+        tag: isCraftedSource(item)
+          ? (item.instance_name || item.encounter || 'Crafted')
+          : (item.tag || 'Bags'),
         upgrade: upgradeStr,
-        sockets: 0,
+        sockets: Number(item.sockets || item.socket_count || (item.hasSockets ? 1 : 0)),
         enchant_name: '',
-        gem_name: '',
-        gem_icon: '',
+        gem_name: selectedGem?.name || '',
+        gem_icon: selectedGem?.icon || '',
         encounter: item.encounter || '',
         instance_name: item.instance_name || '',
         source_type: item.source_type || '',
@@ -754,6 +903,9 @@ export default function TopGearItemSelector({
             origin: 'bags',
             slot: s,
             ilevel: ilvl,
+            gem_id: selectedGemId,
+            crafted_stats: overrides?.crafted_stats,
+            embellishment_item_id: embellishment?.item_id,
           });
           targetSlot.alternatives = [
             ...targetSlot.alternatives,
@@ -771,6 +923,9 @@ export default function TopGearItemSelector({
           origin: 'bags',
           slot: s,
           ilevel: ilvl,
+          gem_id: selectedGemId,
+          crafted_stats: overrides?.crafted_stats,
+          embellishment_item_id: embellishment?.item_id,
         });
         if (!nextSelected[s]) nextSelected[s] = new Set();
         nextSelected[s].add(slotUid);
@@ -971,6 +1126,51 @@ export default function TopGearItemSelector({
     };
   }, [resolved, enchantAvailabilityBySlot]);
 
+  useEffect(() => {
+    const itemIds = new Set<number>();
+    for (const slotRes of Object.values(resolved.slots)) {
+      if (slotRes.equipped?.item_id) itemIds.add(slotRes.equipped.item_id);
+      for (const alt of slotRes.alternatives) {
+        if (alt.item_id > 0) itemIds.add(alt.item_id);
+      }
+    }
+
+    const idsToFetch = Array.from(itemIds);
+    if (idsToFetch.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const fetched = await Promise.all(
+        idsToFetch.map(async (itemId) => {
+          try {
+            const res = await fetch(
+              `${API_URL}/api/gear/embellishment-options?item_id=${encodeURIComponent(String(itemId))}`,
+              { credentials: 'include' }
+            );
+            if (!res.ok) return [itemId, [] as EmbellishmentOption[]] as const;
+            const data = await res.json();
+            return [itemId, Array.isArray(data) ? (data as EmbellishmentOption[]) : []] as const;
+          } catch {
+            return [itemId, [] as EmbellishmentOption[]] as const;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setEmbellishmentOptionsByItem((prev) => {
+        const next = { ...prev };
+        for (const [itemId, options] of fetched) {
+          next[itemId] = options;
+        }
+        return next;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolved]);
+
   const itemDetails = (item: ResolvedItem) => {
     const gemIconFallback = 'inv_misc_questionmark';
     const effectiveGemId =
@@ -980,6 +1180,18 @@ export default function TopGearItemSelector({
 
     const gemInfo = effectiveGemId > 0 ? gemInfoById[effectiveGemId] : undefined;
     const enchantInfo = effectiveEnchantId > 0 ? enchantInfoById[effectiveEnchantId] : undefined;
+    const embellishmentOptions = embellishmentOptionsByItem[item.item_id] || [];
+    const inferredEmbellishment =
+      embellishmentOptions.find((opt) => opt.item_id === item.embellishment_item_id) ||
+      embellishmentOptions.find(
+        (opt) =>
+          Array.isArray(opt.bonus_ids) &&
+          opt.bonus_ids.length > 0 &&
+          opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
+      );
+    const embellishmentName = item.embellishment_name || inferredEmbellishment?.name || '';
+    const embellishmentIcon = item.embellishment_icon || inferredEmbellishment?.icon || '';
+    const embellishmentItemId = item.embellishment_item_id || inferredEmbellishment?.item_id || 0;
     const hasGem = effectiveGemId > 0 || Boolean(item.gem_name);
     const parts: {
       text: string;
@@ -1047,6 +1259,20 @@ export default function TopGearItemSelector({
         color: 'text-emerald-400/80',
       });
     }
+    if (embellishmentName) {
+      parts.push({
+        text: embellishmentName,
+        kind: embellishmentIcon ? 'iconText' : 'plain',
+        icon: embellishmentIcon || undefined,
+        href:
+          embellishmentItemId > 0
+            ? `https://www.wowhead.com/item=${embellishmentItemId}`
+            : undefined,
+        wowheadData: embellishmentItemId > 0 ? `item=${embellishmentItemId}` : undefined,
+        tooltip: embellishmentName,
+        color: 'text-violet-300 border-violet-400/35 bg-violet-500/10',
+      });
+    }
     return parts;
   };
 
@@ -1057,11 +1283,31 @@ export default function TopGearItemSelector({
       const hasEnchantOptions = enchantAvailabilityBySlot[cacheKey] === true;
       const hasGemOptions =
         item.sockets > 0 || item.gem_id > 0 || /(?:^|,)gem_id=/.test(item.simc_string);
+      const hasEmbellishmentOptions =
+        (embellishmentOptionsByItem[item.item_id]?.length || 0) > 0;
+      const craftedSource = isCraftedSource(item);
+      const hasEmbellishmentByBonus =
+        (embellishmentOptionsByItem[item.item_id] || []).some(
+          (opt) =>
+            Array.isArray(opt.bonus_ids) &&
+            opt.bonus_ids.length > 0 &&
+            opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
+        );
       const hasExistingEnhancements =
-        item.enchant_id > 0 || item.gem_id > 0 || /(?:^|,)enchant_id=/.test(item.simc_string);
-      return hasEnchantOptions || hasGemOptions || hasExistingEnhancements;
+        item.enchant_id > 0 ||
+        item.gem_id > 0 ||
+        (item.embellishment_item_id || 0) > 0 ||
+        hasEmbellishmentByBonus ||
+        /(?:^|,)enchant_id=/.test(item.simc_string);
+      return (
+        hasEnchantOptions ||
+        hasGemOptions ||
+        hasEmbellishmentOptions ||
+        craftedSource ||
+        hasExistingEnhancements
+      );
     },
-    [resolved.character.class_name, enchantAvailabilityBySlot]
+    [resolved.character.class_name, enchantAvailabilityBySlot, embellishmentOptionsByItem]
   );
 
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);

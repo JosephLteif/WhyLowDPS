@@ -132,7 +132,11 @@ export default function TopGearSlotGroup({
             showCheckbox={false}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
-            optimized={item.enchant_id > 0 || item.gem_id > 0}
+            optimized={
+              item.enchant_id > 0 ||
+              item.gem_id > 0 ||
+              (item.embellishment_item_id || 0) > 0
+            }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
             <TopGearUpgradeButton
@@ -170,7 +174,11 @@ export default function TopGearSlotGroup({
             catalyst={item.is_catalyst}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
-            optimized={item.enchant_id > 0 || item.gem_id > 0}
+            optimized={
+              item.enchant_id > 0 ||
+              item.gem_id > 0 ||
+              (item.embellishment_item_id || 0) > 0
+            }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
             <TopGearUpgradeButton

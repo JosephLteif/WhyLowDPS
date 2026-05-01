@@ -1254,12 +1254,15 @@ fn build_heatmap_profileset_input(
                 .and_then(|v| v.as_str())
                 .unwrap_or("inv_misc_questionmark")
                 .to_string();
-            let item_quality = trinket.get("quality").and_then(|v| v.as_i64()).unwrap_or(4);
             let source_type = trinket
                 .get("source_type")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_lowercase();
+            let mut item_quality = trinket.get("quality").and_then(|v| v.as_i64()).unwrap_or(4);
+            if source_type.contains("profession") {
+                item_quality = 5;
+            }
             let is_mplus_rotation = trinket
                 .get("mplus_rotation")
                 .and_then(|v| v.as_bool())
@@ -1287,13 +1290,14 @@ fn build_heatmap_profileset_input(
                 if ilvl <= 0 {
                     return;
                 }
+                let entry_quality = entry.get("quality").and_then(|v| v.as_i64()).unwrap_or(item_quality);
                 let item = make_resolved_item(
                     "trinket",
                     item_id,
                     ResolvedItemSeed {
                         name: item_name.clone(),
                         icon: item_icon.clone(),
-                        quality: item_quality,
+                        quality: entry_quality,
                         ilevel: ilvl,
                         bonus_ids: if bonus_id > 0 { vec![bonus_id] } else { vec![] },
                     },

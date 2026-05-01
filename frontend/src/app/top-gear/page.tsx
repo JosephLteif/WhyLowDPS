@@ -9,7 +9,7 @@ import { API_URL } from '../lib/api';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState } from '../lib/sim-return';
-import type { ResolveGearResponse } from '../lib/types';
+import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 
 const TOP_GEAR_SIM_AGAIN_KEY = 'top-gear';
 
@@ -51,6 +51,29 @@ interface TopGearSimAgainState {
   catalyst?: boolean;
   catalystCharges?: number | null;
   resolved?: ResolveGearResponse | null;
+}
+
+function uidIdentity(uid: string): string {
+  const idx = uid.lastIndexOf(':');
+  return idx >= 0 ? uid.slice(0, idx) : uid;
+}
+
+function uidCoreKey(uid: string): string | null {
+  const parts = uid.split(':');
+  const itemId = Number(parts[0]);
+  if (!Number.isFinite(itemId) || itemId <= 0) return null;
+  const origin = parts.find((part) => part === 'equipped' || part === 'bags' || part === 'vault');
+  return origin ? `${itemId}:${origin}` : null;
+}
+
+function itemCoreKey(item: Pick<ResolvedItem, 'item_id' | 'origin'>): string {
+  return `${item.item_id}:${item.origin}`;
+}
+
+function uidMatchesItem(uid: string, item: ResolvedItem): boolean {
+  if (uid === item.uid) return true;
+  if (uidIdentity(uid) === uidIdentity(item.uid)) return true;
+  return uidCoreKey(uid) === itemCoreKey(item);
 }
 
 export default function TopGearPage() {
@@ -238,19 +261,40 @@ export default function TopGearPage() {
   }, [simcInput, localItems]);
 
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
+    if (!resolved) return {};
     const result: Record<string, string[]> = {};
     const selectedUidSet = new Set(Object.values(selectedUids).flatMap((uids) => [...uids]));
     const liveExcludedUids = new Set(
       [...excludedSelectedUids].filter((uid) => selectedUidSet.has(uid))
     );
     for (const [slot, uids] of Object.entries(selectedUids)) {
-      const included = [...uids].filter((uid) => !liveExcludedUids.has(uid));
-      if (included.length > 0) {
-        result[slot] = included;
+      const slotRes = resolved.slots[slot];
+      const slotItems: ResolvedItem[] = slotRes
+        ? [slotRes.equipped, ...slotRes.alternatives].filter(
+            (item): item is ResolvedItem => Boolean(item)
+          )
+        : [];
+      const included = new Set<string>();
+      for (const uid of uids) {
+        if (liveExcludedUids.has(uid)) continue;
+        const matches = slotItems.filter((item) => uidMatchesItem(uid, item));
+        if (matches.length === 0) {
+          included.add(uid);
+          continue;
+        }
+        for (const item of matches) {
+          const isExcluded = [...liveExcludedUids].some((excludedUid) =>
+            uidMatchesItem(excludedUid, item)
+          );
+          if (!isExcluded) included.add(item.uid);
+        }
+      }
+      if (included.size > 0) {
+        result[slot] = [...included];
       }
     }
     return result;
-  }, [selectedUids, excludedSelectedUids]);
+  }, [resolved, selectedUids, excludedSelectedUids]);
 
   const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
     if (!resolved) return null;
@@ -265,7 +309,11 @@ export default function TopGearPage() {
       if (slotRes.alternatives) {
         items.push(
           ...slotRes.alternatives
-            .filter((alt) => !liveExcludedUids.has(alt.uid))
+            .filter(
+              (alt) =>
+                !liveExcludedUids.has(alt.uid) &&
+                ![...liveExcludedUids].some((uid) => uidMatchesItem(uid, alt))
+            )
             .map((alt) => ({ ...alt, is_equipped: false }))
         );
       }

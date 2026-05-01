@@ -210,7 +210,11 @@ function itemHasEmbellishment(
   item: ResolvedItem,
   optionsByItem: Record<number, EmbellishmentOption[]>
 ): boolean {
-  if ((item.embellishment_item_id || 0) > 0 || Boolean(item.embellishment_name)) {
+  if (
+    (item.embellishment_item_id || 0) > 0 ||
+    Boolean(item.embellishment_name) ||
+    (item.embellishment_bonus_ids?.length || 0) > 0
+  ) {
     return true;
   }
   const options = optionsByItem[item.item_id] || [];
@@ -1201,30 +1205,26 @@ export default function TopGearItemSelector({
     const hasSelection = Object.values(selectedUids).some((uids) => uids.size > 0);
     if (!hasSelection) return '';
 
-    let minimumEmbellishedItems = 0;
+    let visibleEmbellishedItems = 0;
     for (const [slot, slotRes] of Object.entries(resolved.slots)) {
       const selected = selectedUids[slot] || new Set<string>();
-      const candidates: ResolvedItem[] = [];
+      const selectedItems = [
+        ...(slotRes.equipped && selected.has(slotRes.equipped.uid) ? [slotRes.equipped] : []),
+        ...slotRes.alternatives.filter((alt) => selected.has(alt.uid)),
+      ];
+      const visibleItems =
+        selectedItems.length > 0
+          ? selectedItems
+          : slotRes.equipped
+            ? [slotRes.equipped]
+            : [];
 
-      if (slotRes.equipped && selected.has(slotRes.equipped.uid)) {
-        candidates.push(slotRes.equipped);
-      }
-      for (const alt of slotRes.alternatives) {
-        if (selected.has(alt.uid)) candidates.push(alt);
-      }
-
-      // The backend always keeps equipped gear as a candidate alongside selected options.
-      if (slotRes.equipped && !candidates.some((item) => item.uid === slotRes.equipped?.uid)) {
-        candidates.unshift(slotRes.equipped);
-      }
-
-      if (candidates.length === 0) continue;
-      if (candidates.every((item) => itemHasEmbellishment(item, embellishmentOptionsByItem))) {
-        minimumEmbellishedItems += 1;
+      if (visibleItems.some((item) => itemHasEmbellishment(item, embellishmentOptionsByItem))) {
+        visibleEmbellishedItems += 1;
       }
     }
 
-    if (minimumEmbellishedItems <= 2) return '';
+    if (visibleEmbellishedItems <= 2) return '';
     return 'Too many embellished items are selected. World of Warcraft only allows 2 embellished items, so Top Gear cannot generate valid combinations until one is removed or swapped.';
   }, [resolved.slots, selectedUids, embellishmentOptionsByItem]);
 

@@ -21,7 +21,7 @@ interface TopGearItemSelectorProps {
   comboCount: number;
   maxUpgrade?: boolean;
   comboError?: string;
-  onLimitWarningChange?: (warning: string) => void;
+  onExcludedUidsChange?: (uids: Set<string>) => void;
 }
 
 interface DisplayGroup {
@@ -229,7 +229,7 @@ export default function TopGearItemSelector({
   onResolvedChange,
   onItemAdded,
   comboCount,
-  onLimitWarningChange,
+  onExcludedUidsChange,
 }: TopGearItemSelectorProps) {
   const { maxCombinations } = useSimContext();
   const effectiveMaxCombinations = maxCombinations ?? 500;
@@ -1229,14 +1229,22 @@ export default function TopGearItemSelector({
   }, [resolved.slots, selectedUids, embellishmentOptionsByItem]);
 
   useEffect(() => {
-    onLimitWarningChange?.(embellishmentLimitWarning);
-  }, [embellishmentLimitWarning, onLimitWarningChange]);
+    const excluded = new Set<string>();
+    if (
+      embellishmentLimitWarning &&
+      lastLimitWarningUid &&
+      Object.values(selectedUids).some((uids) => uids.has(lastLimitWarningUid))
+    ) {
+      excluded.add(lastLimitWarningUid);
+    }
+    onExcludedUidsChange?.(excluded);
+  }, [embellishmentLimitWarning, lastLimitWarningUid, selectedUids, onExcludedUidsChange]);
 
   useEffect(
     () => () => {
-      onLimitWarningChange?.('');
+      onExcludedUidsChange?.(new Set());
     },
-    [onLimitWarningChange]
+    [onExcludedUidsChange]
   );
 
   const hasEmbellishmentLimitWarning = useCallback(

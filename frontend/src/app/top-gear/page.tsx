@@ -72,7 +72,7 @@ export default function TopGearPage() {
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
   const [comboError, setComboError] = useState('');
-  const [selectionLimitError, setSelectionLimitError] = useState('');
+  const [excludedSelectedUids, setExcludedSelectedUids] = useState<Set<string>>(new Set());
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
@@ -239,12 +239,13 @@ export default function TopGearPage() {
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
     const result: Record<string, string[]> = {};
     for (const [slot, uids] of Object.entries(selectedUids)) {
-      if (uids.size > 0) {
-        result[slot] = [...uids];
+      const included = [...uids].filter((uid) => !excludedSelectedUids.has(uid));
+      if (included.length > 0) {
+        result[slot] = included;
       }
     }
     return result;
-  }, [selectedUids]);
+  }, [selectedUids, excludedSelectedUids]);
 
   const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
     if (!resolved) return null;
@@ -262,7 +263,8 @@ export default function TopGearPage() {
 
   // Fetch combo count whenever selection changes
   useEffect(() => {
-    const hasGearSelection = Object.values(selectedUids).some((s) => s.size > 0);
+    const selectedItemsForSubmit = buildSelectedUidsJson();
+    const hasGearSelection = Object.values(selectedItemsForSubmit).some((uids) => uids.length > 0);
     const hasTalentCompare = talentBuilds.length > 1;
     if (!resolved || (!hasGearSelection && !hasTalentCompare)) {
       setComboCount(0);
@@ -279,7 +281,7 @@ export default function TopGearPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             simc_input: buildSubmitInput(),
-            selected_items: buildSelectedUidsJson(),
+            selected_items: selectedItemsForSubmit,
             items_by_slot: buildItemsBySlotJson(),
             max_upgrade: maxUpgrade,
             copy_enchants: copyEnchants,
@@ -363,18 +365,15 @@ export default function TopGearPage() {
     ]
   );
 
-  const effectiveComboError = selectionLimitError || comboError;
   const isEmbellishmentComboError =
     /embellished|limited-effect crafted modifiers/i.test(comboError);
   const pageLevelError = isEmbellishmentComboError ? '' : comboError;
-  const stickyLimitError =
-    selectionLimitError || (isEmbellishmentComboError ? comboError : '');
 
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';
-    if (effectiveComboError) return effectiveComboError;
+    if (pageLevelError) return pageLevelError;
     return null;
-  }, [resolved, effectiveComboError]);
+  }, [resolved, pageLevelError]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/top-gear/sim',
@@ -487,20 +486,15 @@ export default function TopGearPage() {
         maxUpgrade={maxUpgrade}
         comboCount={comboCount}
         comboError={comboError}
-        onLimitWarningChange={setSelectionLimitError}
+        onExcludedUidsChange={setExcludedSelectedUids}
       />
 
       <ErrorAlert message={pageLevelError || error} />
 
       <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
-        {stickyLimitError && (
-          <div className="mb-3 rounded-lg border border-red-400/45 bg-red-500/12 px-4 py-3 text-sm font-semibold text-red-200 shadow-lg shadow-black/20">
-            {stickyLimitError}
-          </div>
-        )}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !!effectiveComboError}
+          disabled={submitting || !!pageLevelError}
           className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
         >
           {submitting ? (

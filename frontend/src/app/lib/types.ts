@@ -36,6 +36,7 @@ export interface ResolvedItem {
   embellishment_name?: string;
   embellishment_icon?: string;
   embellishment_bonus_ids?: number[];
+  item_limit_categories?: Record<string, number>;
 }
 
 export interface ResultItem extends ResolvedItem {

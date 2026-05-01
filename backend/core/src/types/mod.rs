@@ -202,6 +202,9 @@ pub struct ResolvedItem {
     /// Upgrade costs from the baseline equipped item (if this is an upgrade option).
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub upgrade_costs: std::collections::HashMap<u64, u64>,
+    /// Item-limit categories consumed by this item, keyed by category id with the max quantity.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub item_limit_categories: std::collections::HashMap<u64, u64>,
 }
 
 fn is_zero_i64(v: &i64) -> bool {

@@ -210,6 +210,9 @@ function itemHasEmbellishment(
   item: ResolvedItem,
   optionsByItem: Record<number, EmbellishmentOption[]>
 ): boolean {
+  if (itemConsumesLimitedCraftedModifier(item)) {
+    return true;
+  }
   if (
     (item.embellishment_item_id || 0) > 0 ||
     Boolean(item.embellishment_name) ||
@@ -224,6 +227,10 @@ function itemHasEmbellishment(
       opt.bonus_ids.length > 0 &&
       opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
   );
+}
+
+function itemConsumesLimitedCraftedModifier(item: ResolvedItem): boolean {
+  return Object.values(item.item_limit_categories || {}).some((limit) => Number(limit) === 2);
 }
 
 function sameStringSet(a: Set<string>, b: Set<string>): boolean {
@@ -819,6 +826,7 @@ export default function TopGearItemSelector({
         embellishment_name: embellishment?.name,
         embellishment_icon: embellishment?.icon,
         embellishment_bonus_ids: embellishment?.bonus_ids,
+        item_limit_categories: embellishment ? { embellished: 2 } : {},
         simc_string: nextSimc,
       };
 
@@ -955,6 +963,7 @@ export default function TopGearItemSelector({
         embellishment_name: embellishment?.name,
         embellishment_icon: embellishment?.icon,
         embellishment_bonus_ids: embellishment?.bonus_ids,
+        item_limit_categories: embellishment ? { embellished: 2 } : {},
         name: item.name,
         icon: item.icon,
         quality: effectiveQuality,

@@ -226,6 +226,14 @@ function itemHasEmbellishment(
   );
 }
 
+function sameStringSet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) {
+    if (!b.has(value)) return false;
+  }
+  return true;
+}
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -248,8 +256,10 @@ export default function TopGearItemSelector({
   const [embellishmentOptionsByItem, setEmbellishmentOptionsByItem] = useState<
     Record<number, EmbellishmentOption[]>
   >({});
-  const [lastLimitWarningUid, setLastLimitWarningUid] = useState<string | null>(null);
-  const [confirmedLimitWarningUid, setConfirmedLimitWarningUid] = useState<string | null>(null);
+  const [limitWarningOrder, setLimitWarningOrder] = useState<string[]>([]);
+  const [confirmedLimitWarningUids, setConfirmedLimitWarningUids] = useState<Set<string>>(
+    () => new Set()
+  );
   const [otherTierOptions, setOtherTierOptions] = useState<UpgradeOption[]>([]);
   const [loadingOtherTierOptions, setLoadingOtherTierOptions] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -280,6 +290,22 @@ export default function TopGearItemSelector({
     toggleGroup,
     toggleItem,
   } = useTopGearState({ resolved, selectedUids, onSelectionChange, onResolvedChange, onItemAdded });
+
+  const rememberLimitWarningCandidate = useCallback((uid: string | null) => {
+    if (!uid) return;
+    setLimitWarningOrder((prev) => [...prev.filter((existing) => existing !== uid), uid]);
+  }, []);
+
+  const forgetLimitWarningCandidate = useCallback((uid: string | null) => {
+    if (!uid) return;
+    setLimitWarningOrder((prev) => prev.filter((existing) => existing !== uid));
+    setConfirmedLimitWarningUids((prev) => {
+      if (!prev.has(uid)) return prev;
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const el = headerRef.current;
@@ -322,7 +348,7 @@ export default function TopGearItemSelector({
         if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
         nextSelected[item.slot].add(catalystItem.uid);
         onSelectionChange(nextSelected);
-        setLastLimitWarningUid(catalystItem.uid);
+        rememberLimitWarningCandidate(catalystItem.uid);
         onItemAdded(item.slot, catalystItem.simc_string, catalystItem.origin);
       } catch {}
     },
@@ -333,6 +359,7 @@ export default function TopGearItemSelector({
       onSelectionChange,
       setUpgradeMenuFor,
       onItemAdded,
+      rememberLimitWarningCandidate,
     ]
   );
 
@@ -550,7 +577,7 @@ export default function TopGearItemSelector({
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
-        setLastLimitWarningUid(uid);
+        rememberLimitWarningCandidate(uid);
       }
       onSelectionChange(nextSelected);
       setUpgradeMenuFor(null);
@@ -563,6 +590,7 @@ export default function TopGearItemSelector({
       selectedUids,
       onSelectionChange,
       setUpgradeMenuFor,
+      rememberLimitWarningCandidate,
     ]
   );
 
@@ -638,12 +666,20 @@ export default function TopGearItemSelector({
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
-        setLastLimitWarningUid(uid);
+        rememberLimitWarningCandidate(uid);
       }
       onSelectionChange(nextSelected);
       setContextMenu(null);
     },
-    [resolved, upgradeOptions, onResolvedChange, onItemAdded, selectedUids, onSelectionChange]
+    [
+      resolved,
+      upgradeOptions,
+      onResolvedChange,
+      onItemAdded,
+      selectedUids,
+      onSelectionChange,
+      rememberLimitWarningCandidate,
+    ]
   );
 
   const loadOtherTierOptions = useCallback(async () => {
@@ -772,7 +808,7 @@ export default function TopGearItemSelector({
       if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
       nextSelected[item.slot].add(uid);
       onSelectionChange(nextSelected);
-      setLastLimitWarningUid(uid);
+      rememberLimitWarningCandidate(uid);
       setOptimizeOpen(false);
     },
     [
@@ -786,6 +822,7 @@ export default function TopGearItemSelector({
       enchantInfoById,
       gemInfoById,
       embellishmentOptionsByItem,
+      rememberLimitWarningCandidate,
     ]
   );
 
@@ -962,11 +999,19 @@ export default function TopGearItemSelector({
         lastAddedUid = slotUid;
       });
       onSelectionChange(nextSelected);
-      setLastLimitWarningUid(lastAddedUid);
+      rememberLimitWarningCandidate(lastAddedUid);
       onItemAdded(slot, newItem.simc_string, 'bags');
       setAddItemOpen(false);
     },
-    [resolved, selectedUids, onResolvedChange, onSelectionChange, onItemAdded, setAddItemOpen]
+    [
+      resolved,
+      selectedUids,
+      onResolvedChange,
+      onSelectionChange,
+      onItemAdded,
+      setAddItemOpen,
+      rememberLimitWarningCandidate,
+    ]
   );
 
   const visibleGroups = useMemo(() => {
@@ -1203,11 +1248,22 @@ export default function TopGearItemSelector({
     };
   }, [resolved]);
 
-  const embellishmentLimitWarning = useMemo(() => {
-    const hasSelection = Object.values(selectedUids).some((uids) => uids.size > 0);
-    if (!hasSelection) return '';
+  const hasBackendEmbellishmentLimitWarning =
+    /embellished|limited-effect crafted modifiers/i.test(comboError || '');
 
-    let visibleEmbellishedItems = 0;
+  const selectedUidSet = useMemo(() => {
+    const next = new Set<string>();
+    for (const uids of Object.values(selectedUids)) {
+      for (const uid of uids) next.add(uid);
+    }
+    return next;
+  }, [selectedUids]);
+
+  const selectedEmbellishmentCandidates = useMemo(() => {
+    const orderIndex = new Map(limitWarningOrder.map((uid, index) => [uid, index]));
+    const candidates: { item: ResolvedItem; selected: boolean; sort: number; stable: number }[] = [];
+    let stable = 0;
+
     for (const [slot, slotRes] of Object.entries(resolved.slots)) {
       const selected = selectedUids[slot] || new Set<string>();
       const selectedItems = [
@@ -1221,48 +1277,69 @@ export default function TopGearItemSelector({
             ? [slotRes.equipped]
             : [];
 
-      if (visibleItems.some((item) => itemHasEmbellishment(item, embellishmentOptionsByItem))) {
-        visibleEmbellishedItems += 1;
+      for (const item of visibleItems) {
+        if (!itemHasEmbellishment(item, embellishmentOptionsByItem)) continue;
+        const isSelected = selected.has(item.uid);
+        const trackedIndex = orderIndex.get(item.uid);
+        candidates.push({
+          item,
+          selected: isSelected,
+          sort: isSelected ? trackedIndex ?? 100000 + stable : -100000 + stable,
+          stable,
+        });
+        stable += 1;
       }
     }
 
-    if (visibleEmbellishedItems <= 2) return '';
-    return 'Too many embellished items are selected. World of Warcraft only allows 2 embellished items, so Top Gear cannot generate valid combinations until one is removed or swapped.';
-  }, [resolved.slots, selectedUids, embellishmentOptionsByItem]);
-  const hasBackendEmbellishmentLimitWarning =
-    /embellished|limited-effect crafted modifiers/i.test(comboError || '');
-  const activeLimitWarningUid =
-    confirmedLimitWarningUid || (embellishmentLimitWarning ? lastLimitWarningUid : null);
+    return candidates.sort((a, b) => a.sort - b.sort || a.stable - b.stable);
+  }, [resolved.slots, selectedUids, embellishmentOptionsByItem, limitWarningOrder]);
+
+  const localLimitWarningUids = useMemo(() => {
+    const overflow = new Set<string>();
+    selectedEmbellishmentCandidates.slice(2).forEach(({ item, selected }) => {
+      if (selected) overflow.add(item.uid);
+    });
+    return overflow;
+  }, [selectedEmbellishmentCandidates]);
+
+  const backendFallbackLimitWarningUid = useMemo(() => {
+    if (!hasBackendEmbellishmentLimitWarning) return null;
+    return [...limitWarningOrder].reverse().find((uid) => selectedUidSet.has(uid)) || null;
+  }, [hasBackendEmbellishmentLimitWarning, limitWarningOrder, selectedUidSet]);
 
   useEffect(() => {
-    if (!lastLimitWarningUid) return;
-    const lastUidStillSelected = Object.values(selectedUids).some((uids) =>
-      uids.has(lastLimitWarningUid)
-    );
-    if (!lastUidStillSelected) {
-      setConfirmedLimitWarningUid(null);
-      return;
-    }
-    if (embellishmentLimitWarning || hasBackendEmbellishmentLimitWarning) {
-      setConfirmedLimitWarningUid(lastLimitWarningUid);
-    }
+    setLimitWarningOrder((prev) => prev.filter((uid) => selectedUidSet.has(uid)));
+  }, [selectedUidSet]);
+
+  useEffect(() => {
+    setConfirmedLimitWarningUids((prev) => {
+      const next = new Set<string>();
+      for (const uid of prev) {
+        if (selectedUidSet.has(uid)) next.add(uid);
+      }
+      if (backendFallbackLimitWarningUid) next.add(backendFallbackLimitWarningUid);
+      if (!hasBackendEmbellishmentLimitWarning && localLimitWarningUids.size === 0) next.clear();
+      return sameStringSet(prev, next) ? prev : next;
+    });
   }, [
-    embellishmentLimitWarning,
+    backendFallbackLimitWarningUid,
     hasBackendEmbellishmentLimitWarning,
-    lastLimitWarningUid,
-    selectedUids,
+    localLimitWarningUids,
+    selectedUidSet,
   ]);
 
-  useEffect(() => {
-    const excluded = new Set<string>();
-    if (
-      activeLimitWarningUid &&
-      Object.values(selectedUids).some((uids) => uids.has(activeLimitWarningUid))
-    ) {
-      excluded.add(activeLimitWarningUid);
+  const activeLimitWarningUids = useMemo(() => {
+    const next = new Set<string>();
+    for (const uid of localLimitWarningUids) next.add(uid);
+    for (const uid of confirmedLimitWarningUids) {
+      if (selectedUidSet.has(uid)) next.add(uid);
     }
-    onExcludedUidsChange?.(excluded);
-  }, [activeLimitWarningUid, selectedUids, onExcludedUidsChange]);
+    return next;
+  }, [localLimitWarningUids, confirmedLimitWarningUids, selectedUidSet]);
+
+  useEffect(() => {
+    onExcludedUidsChange?.(activeLimitWarningUids);
+  }, [activeLimitWarningUids, onExcludedUidsChange]);
 
   useEffect(
     () => () => {
@@ -1272,20 +1349,21 @@ export default function TopGearItemSelector({
   );
 
   const hasEmbellishmentLimitWarning = useCallback(
-    (item: ResolvedItem): boolean =>
-      Boolean(activeLimitWarningUid) &&
-      item.uid === activeLimitWarningUid &&
-      Object.values(selectedUids).some((uids) => uids.has(activeLimitWarningUid || '')),
-    [activeLimitWarningUid, selectedUids]
+    (item: ResolvedItem): boolean => activeLimitWarningUids.has(item.uid),
+    [activeLimitWarningUids]
   );
 
   const handleToggleItem = useCallback(
     (item: ResolvedItem, slots: string[]) => {
       const isSelected = slots.some((slot) => selectedUids[slot]?.has(item.uid));
       toggleItem(item, slots);
-      setLastLimitWarningUid(isSelected ? null : item.uid);
+      if (isSelected) {
+        forgetLimitWarningCandidate(item.uid);
+      } else {
+        rememberLimitWarningCandidate(item.uid);
+      }
     },
-    [selectedUids, toggleItem]
+    [selectedUids, toggleItem, forgetLimitWarningCandidate, rememberLimitWarningCandidate]
   );
 
   const itemDetails = (item: ResolvedItem) => {

@@ -4,6 +4,8 @@ import GearItemRow from '../GearItemRow';
 import TopGearUpgradeButton from './TopGearUpgradeButton';
 
 const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
+const EMBELLISHMENT_LIMIT_WARNING =
+  'Too many embellished items are selected. Only 2 embellished items can be equipped.';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -41,6 +43,7 @@ interface TopGearSlotGroupProps {
     tooltip?: string;
   }[];
   isItemSelected: (item: ResolvedItem) => boolean;
+  hasLimitWarning?: (item: ResolvedItem) => boolean;
   onToggleAll?: () => void;
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
@@ -65,6 +68,7 @@ export default function TopGearSlotGroup({
   onItemContextMenu,
   itemDetails,
   isItemSelected,
+  hasLimitWarning,
   onToggleAll,
   getWowheadUrl,
   getWowheadData,
@@ -125,6 +129,7 @@ export default function TopGearSlotGroup({
             name={item.name}
             nameColor={item.quality_color}
             specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={item.off_spec === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}
@@ -163,6 +168,7 @@ export default function TopGearSlotGroup({
             name={item.name}
             nameColor={item.quality_color}
             specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={item.off_spec === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}

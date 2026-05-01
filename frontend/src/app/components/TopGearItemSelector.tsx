@@ -1231,6 +1231,15 @@ export default function TopGearItemSelector({
     [onLimitWarningChange]
   );
 
+  const hasEmbellishmentLimitWarning = useCallback(
+    (item: ResolvedItem): boolean =>
+      Boolean(embellishmentLimitWarning) &&
+      item.origin !== 'equipped' &&
+      Object.values(selectedUids).some((uids) => uids.has(item.uid)) &&
+      itemHasEmbellishment(item, embellishmentOptionsByItem),
+    [embellishmentLimitWarning, selectedUids, embellishmentOptionsByItem]
+  );
+
   const itemDetails = (item: ResolvedItem) => {
     const gemIconFallback = 'inv_misc_questionmark';
     const effectiveGemId =
@@ -1481,6 +1490,7 @@ export default function TopGearItemSelector({
             onItemContextMenu={openItemContextMenu}
             onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}
+            hasLimitWarning={hasEmbellishmentLimitWarning}
             isItemSelected={(item) => {
               const identity = makeIdentity(item);
               return group.slots.some((s) => {

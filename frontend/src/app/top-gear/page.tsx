@@ -485,7 +485,7 @@ export default function TopGearPage() {
         onLimitWarningChange={setSelectionLimitError}
       />
 
-      <ErrorAlert message={effectiveComboError || error} />
+      <ErrorAlert message={comboError || error} />
 
       <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
         <button

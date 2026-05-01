@@ -364,6 +364,11 @@ export default function TopGearPage() {
   );
 
   const effectiveComboError = selectionLimitError || comboError;
+  const isEmbellishmentComboError =
+    /embellished|limited-effect crafted modifiers/i.test(comboError);
+  const pageLevelError = isEmbellishmentComboError ? '' : comboError;
+  const stickyLimitError =
+    selectionLimitError || (isEmbellishmentComboError ? comboError : '');
 
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';
@@ -485,9 +490,14 @@ export default function TopGearPage() {
         onLimitWarningChange={setSelectionLimitError}
       />
 
-      <ErrorAlert message={comboError || error} />
+      <ErrorAlert message={pageLevelError || error} />
 
       <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
+        {stickyLimitError && (
+          <div className="mb-3 rounded-lg border border-red-400/45 bg-red-500/12 px-4 py-3 text-sm font-semibold text-red-200 shadow-lg shadow-black/20">
+            {stickyLimitError}
+          </div>
+        )}
         <button
           onClick={handleSubmit}
           disabled={submitting || !!effectiveComboError}

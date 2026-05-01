@@ -21,7 +21,7 @@ chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 sysinfo = "0.33"
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 urlencoding = "2.1"
 thiserror = "2.0.18"
 zip = "2"

@@ -257,6 +257,7 @@ export default function TopGearItemSelector({
     Record<number, EmbellishmentOption[]>
   >({});
   const [limitWarningOrder, setLimitWarningOrder] = useState<string[]>([]);
+  const [knownEmbellishedUids, setKnownEmbellishedUids] = useState<Set<string>>(() => new Set());
   const [confirmedLimitWarningUids, setConfirmedLimitWarningUids] = useState<Set<string>>(
     () => new Set()
   );
@@ -292,14 +293,28 @@ export default function TopGearItemSelector({
     toggleItem,
   } = useTopGearState({ resolved, selectedUids, onSelectionChange, onResolvedChange, onItemAdded });
 
-  const rememberLimitWarningCandidate = useCallback((uid: string | null) => {
+  const rememberLimitWarningCandidate = useCallback((uid: string | null, embellished = false) => {
     if (!uid) return;
     setLimitWarningOrder((prev) => [...prev.filter((existing) => existing !== uid), uid]);
+    if (embellished) {
+      setKnownEmbellishedUids((prev) => {
+        if (prev.has(uid)) return prev;
+        const next = new Set(prev);
+        next.add(uid);
+        return next;
+      });
+    }
   }, []);
 
   const forgetLimitWarningCandidate = useCallback((uid: string | null) => {
     if (!uid) return;
     setLimitWarningOrder((prev) => prev.filter((existing) => existing !== uid));
+    setKnownEmbellishedUids((prev) => {
+      if (!prev.has(uid)) return prev;
+      const next = new Set(prev);
+      next.delete(uid);
+      return next;
+    });
     setConfirmedLimitWarningUids((prev) => {
       if (!prev.has(uid)) return prev;
       const next = new Set(prev);
@@ -349,7 +364,10 @@ export default function TopGearItemSelector({
         if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
         nextSelected[item.slot].add(catalystItem.uid);
         onSelectionChange(nextSelected);
-        rememberLimitWarningCandidate(catalystItem.uid);
+        rememberLimitWarningCandidate(
+          catalystItem.uid,
+          itemHasEmbellishment(catalystItem, embellishmentOptionsByItem)
+        );
         onItemAdded(item.slot, catalystItem.simc_string, catalystItem.origin);
       } catch {}
     },
@@ -361,6 +379,7 @@ export default function TopGearItemSelector({
       setUpgradeMenuFor,
       onItemAdded,
       rememberLimitWarningCandidate,
+      embellishmentOptionsByItem,
     ]
   );
 
@@ -578,7 +597,7 @@ export default function TopGearItemSelector({
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
-        rememberLimitWarningCandidate(uid);
+        rememberLimitWarningCandidate(uid, itemHasEmbellishment(item, embellishmentOptionsByItem));
       }
       onSelectionChange(nextSelected);
       setUpgradeMenuFor(null);
@@ -592,6 +611,7 @@ export default function TopGearItemSelector({
       onSelectionChange,
       setUpgradeMenuFor,
       rememberLimitWarningCandidate,
+      embellishmentOptionsByItem,
     ]
   );
 
@@ -667,7 +687,7 @@ export default function TopGearItemSelector({
         });
         if (!nextSelected[slot]) nextSelected[slot] = new Set();
         nextSelected[slot].add(uid);
-        rememberLimitWarningCandidate(uid);
+        rememberLimitWarningCandidate(uid, itemHasEmbellishment(item, embellishmentOptionsByItem));
       }
       onSelectionChange(nextSelected);
       setContextMenu(null);
@@ -680,6 +700,7 @@ export default function TopGearItemSelector({
       selectedUids,
       onSelectionChange,
       rememberLimitWarningCandidate,
+      embellishmentOptionsByItem,
     ]
   );
 
@@ -809,7 +830,7 @@ export default function TopGearItemSelector({
       if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
       nextSelected[item.slot].add(uid);
       onSelectionChange(nextSelected);
-      rememberLimitWarningCandidate(uid);
+      rememberLimitWarningCandidate(uid, Boolean(embellishment));
       setOptimizeOpen(false);
     },
     [
@@ -1000,7 +1021,7 @@ export default function TopGearItemSelector({
         lastAddedUid = slotUid;
       });
       onSelectionChange(nextSelected);
-      rememberLimitWarningCandidate(lastAddedUid);
+      rememberLimitWarningCandidate(lastAddedUid, Boolean(embellishment));
       onItemAdded(slot, newItem.simc_string, 'bags');
       setAddItemOpen(false);
     },
@@ -1283,7 +1304,12 @@ export default function TopGearItemSelector({
             : [];
 
       for (const item of visibleItems) {
-        if (!itemHasEmbellishment(item, embellishmentOptionsByItem)) continue;
+        if (
+          !knownEmbellishedUids.has(item.uid) &&
+          !itemHasEmbellishment(item, embellishmentOptionsByItem)
+        ) {
+          continue;
+        }
         const isSelected = selected.has(item.uid);
         const trackedIndex = orderIndex.get(item.uid);
         candidates.push({
@@ -1297,7 +1323,13 @@ export default function TopGearItemSelector({
     }
 
     return candidates.sort((a, b) => a.sort - b.sort || a.stable - b.stable);
-  }, [resolved.slots, selectedUids, embellishmentOptionsByItem, limitWarningOrder]);
+  }, [
+    resolved.slots,
+    selectedUids,
+    embellishmentOptionsByItem,
+    limitWarningOrder,
+    knownEmbellishedUids,
+  ]);
 
   const localLimitWarningUids = useMemo(() => {
     const overflow = new Set<string>();
@@ -1314,6 +1346,13 @@ export default function TopGearItemSelector({
 
   useEffect(() => {
     setLimitWarningOrder((prev) => prev.filter((uid) => selectedUidSet.has(uid)));
+    setKnownEmbellishedUids((prev) => {
+      const next = new Set<string>();
+      for (const uid of prev) {
+        if (selectedUidSet.has(uid)) next.add(uid);
+      }
+      return sameStringSet(prev, next) ? prev : next;
+    });
   }, [selectedUidSet]);
 
   useEffect(() => {
@@ -1375,10 +1414,19 @@ export default function TopGearItemSelector({
       if (isSelected) {
         forgetLimitWarningCandidate(item.uid);
       } else {
-        rememberLimitWarningCandidate(item.uid);
+        rememberLimitWarningCandidate(
+          item.uid,
+          itemHasEmbellishment(item, embellishmentOptionsByItem)
+        );
       }
     },
-    [selectedUids, toggleItem, forgetLimitWarningCandidate, rememberLimitWarningCandidate]
+    [
+      selectedUids,
+      toggleItem,
+      forgetLimitWarningCandidate,
+      rememberLimitWarningCandidate,
+      embellishmentOptionsByItem,
+    ]
   );
 
   const itemDetails = (item: ResolvedItem) => {

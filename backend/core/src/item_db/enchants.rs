@@ -8,9 +8,22 @@ pub fn list_gems() -> Vec<Value> {
     // item index can omit gem items.
     let enchants_map = ENCHANTS.read().unwrap();
     let mut by_item_id: HashMap<u64, Value> = HashMap::new();
+    let current_gem_expansion = enchants_map
+        .values()
+        .filter(|e| e.slot.as_deref() == Some("socket"))
+        .filter(|e| e.socket_type.as_deref().unwrap_or("PRISMATIC") == "PRISMATIC")
+        .filter_map(|e| e.expansion)
+        .max()
+        .unwrap_or(0);
 
     for e in enchants_map.values() {
         if e.slot.as_deref() != Some("socket") {
+            continue;
+        }
+        if e.socket_type.as_deref().unwrap_or("PRISMATIC") != "PRISMATIC" {
+            continue;
+        }
+        if current_gem_expansion > 0 && e.expansion.unwrap_or(0) != current_gem_expansion {
             continue;
         }
         let item_id = e.item_id.unwrap_or(e.id);
@@ -25,6 +38,8 @@ pub fn list_gems() -> Vec<Value> {
             "icon": e.item_icon.clone().or(e.spell_icon.clone()).unwrap_or_else(|| "inv_misc_questionmark".to_string()),
             "quality": quality,
             "craftingQuality": e.crafting_quality,
+            "expansion": e.expansion,
+            "socketType": e.socket_type,
         });
 
         match by_item_id.get(&item_id) {

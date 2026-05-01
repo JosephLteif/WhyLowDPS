@@ -95,7 +95,7 @@ export default function TopGearPage() {
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
   const [comboError, setComboError] = useState('');
-  const [excludedSelectedUids, setExcludedSelectedUids] = useState<Set<string>>(new Set());
+  const [, setExcludedSelectedUids] = useState<Set<string>>(new Set());
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
@@ -263,10 +263,6 @@ export default function TopGearPage() {
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
     if (!resolved) return {};
     const result: Record<string, string[]> = {};
-    const selectedUidSet = new Set(Object.values(selectedUids).flatMap((uids) => [...uids]));
-    const liveExcludedUids = new Set(
-      [...excludedSelectedUids].filter((uid) => selectedUidSet.has(uid))
-    );
     for (const [slot, uids] of Object.entries(selectedUids)) {
       const slotRes = resolved.slots[slot];
       const slotItems: ResolvedItem[] = slotRes
@@ -276,17 +272,13 @@ export default function TopGearPage() {
         : [];
       const included = new Set<string>();
       for (const uid of uids) {
-        if (liveExcludedUids.has(uid)) continue;
         const matches = slotItems.filter((item) => uidMatchesItem(uid, item));
         if (matches.length === 0) {
           included.add(uid);
           continue;
         }
         for (const item of matches) {
-          const isExcluded = [...liveExcludedUids].some((excludedUid) =>
-            uidMatchesItem(excludedUid, item)
-          );
-          if (!isExcluded) included.add(item.uid);
+          included.add(item.uid);
         }
       }
       if (included.size > 0) {
@@ -294,33 +286,21 @@ export default function TopGearPage() {
       }
     }
     return result;
-  }, [resolved, selectedUids, excludedSelectedUids]);
+  }, [resolved, selectedUids]);
 
   const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
     if (!resolved) return null;
-    const selectedUidSet = new Set(Object.values(selectedUids).flatMap((uids) => [...uids]));
-    const liveExcludedUids = new Set(
-      [...excludedSelectedUids].filter((uid) => selectedUidSet.has(uid))
-    );
     const result: Record<string, any[]> = {};
     for (const [slot, slotRes] of Object.entries(resolved.slots)) {
       const items = [];
       if (slotRes.equipped) items.push({ ...slotRes.equipped, is_equipped: true });
       if (slotRes.alternatives) {
-        items.push(
-          ...slotRes.alternatives
-            .filter(
-              (alt) =>
-                !liveExcludedUids.has(alt.uid) &&
-                ![...liveExcludedUids].some((uid) => uidMatchesItem(uid, alt))
-            )
-            .map((alt) => ({ ...alt, is_equipped: false }))
-        );
+        items.push(...slotRes.alternatives.map((alt) => ({ ...alt, is_equipped: false })));
       }
       if (items.length > 0) result[slot] = items;
     }
     return result;
-  }, [resolved, selectedUids, excludedSelectedUids]);
+  }, [resolved]);
 
   // Fetch combo count whenever selection changes
   useEffect(() => {
@@ -432,9 +412,7 @@ export default function TopGearPage() {
 
   const isEmbellishmentComboError =
     /embellished|limited-effect crafted modifiers/i.test(comboError);
-  const isExcludedOverflowComboError =
-    excludedSelectedUids.size > 0 && /no valid combinations/i.test(comboError);
-  const pageLevelError = isEmbellishmentComboError || isExcludedOverflowComboError ? '' : comboError;
+  const pageLevelError = isEmbellishmentComboError ? '' : comboError;
 
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';

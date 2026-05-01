@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { API_URL, isDesktop, fetchJson, TOKEN_KEY } from '../lib/api';
+import { API_URL, isDesktop, fetchJson, isNetworkUnavailableError, TOKEN_KEY } from '../lib/api';
 
 interface AuthContextType {
   user: { battletag: string } | null;
@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser({ battletag: data.battletag });
         }
       } catch (err: any) {
-        if (err.status !== 401) {
+        if (err.status !== 401 && !isNetworkUnavailableError(err)) {
           console.error('Auth check failed:', err);
         }
         // If 401/error, consider user logged out
@@ -55,7 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         `${API_URL}/api/auth/bnet/credentials-status`
       );
     } catch (err) {
-      console.error('Failed to check credentials status:', err);
+      if (!isNetworkUnavailableError(err)) {
+        console.error('Failed to check credentials status:', err);
+      }
     }
     return { globally_configured: false }; // Fallback to avoid dead-end if request fails
   }, []);

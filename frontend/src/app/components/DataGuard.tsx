@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { API_URL, TOKEN_KEY, fetchJson } from '../lib/api';
+import { API_URL, fetchJson, isNetworkUnavailableError } from '../lib/api';
 import SplashScreen from './SplashScreen';
 import { useAuth } from './AuthContext';
 import { usePathname } from 'next/navigation';
@@ -25,7 +25,9 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
       })
       .catch((err) => {
         if (cancelled) return;
-        console.error('[DataGuard] Credentials status check failed:', err);
+        if (!isNetworkUnavailableError(err)) {
+          console.error('[DataGuard] Credentials status check failed:', err);
+        }
         setIsGloballyConfigured(false);
       })
       .finally(() => {
@@ -53,8 +55,10 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
         setDataStatus(data);
       }
     } catch (err) {
-      console.error('Failed to fetch data status:', err);
-      setDataStatus({ status: 'Error', progress: 'Connection failed. Is the backend running?' });
+      if (!isNetworkUnavailableError(err)) {
+        console.error('Failed to fetch data status:', err);
+      }
+      setDataStatus({ status: 'syncing', progress: 'Waiting for backend to start...' });
     }
   }, []);
 

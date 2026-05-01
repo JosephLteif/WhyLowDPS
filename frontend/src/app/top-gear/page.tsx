@@ -80,6 +80,7 @@ export default function TopGearPage() {
   const skipNextResolveRef = useRef(false);
   const previousSimcInputRef = useRef(simcInput);
   const localItemsRef = useRef<LocalGearItem[]>(localItems);
+  const comboRequestSeqRef = useRef(0);
 
   useEffect(() => {
     localItemsRef.current = localItems;
@@ -238,8 +239,12 @@ export default function TopGearPage() {
 
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
     const result: Record<string, string[]> = {};
+    const selectedUidSet = new Set(Object.values(selectedUids).flatMap((uids) => [...uids]));
+    const liveExcludedUids = new Set(
+      [...excludedSelectedUids].filter((uid) => selectedUidSet.has(uid))
+    );
     for (const [slot, uids] of Object.entries(selectedUids)) {
-      const included = [...uids].filter((uid) => !excludedSelectedUids.has(uid));
+      const included = [...uids].filter((uid) => !liveExcludedUids.has(uid));
       if (included.length > 0) {
         result[slot] = included;
       }
@@ -249,6 +254,10 @@ export default function TopGearPage() {
 
   const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
     if (!resolved) return null;
+    const selectedUidSet = new Set(Object.values(selectedUids).flatMap((uids) => [...uids]));
+    const liveExcludedUids = new Set(
+      [...excludedSelectedUids].filter((uid) => selectedUidSet.has(uid))
+    );
     const result: Record<string, any[]> = {};
     for (const [slot, slotRes] of Object.entries(resolved.slots)) {
       const items = [];
@@ -256,17 +265,18 @@ export default function TopGearPage() {
       if (slotRes.alternatives) {
         items.push(
           ...slotRes.alternatives
-            .filter((alt) => !excludedSelectedUids.has(alt.uid))
+            .filter((alt) => !liveExcludedUids.has(alt.uid))
             .map((alt) => ({ ...alt, is_equipped: false }))
         );
       }
       if (items.length > 0) result[slot] = items;
     }
     return result;
-  }, [resolved, excludedSelectedUids]);
+  }, [resolved, selectedUids, excludedSelectedUids]);
 
   // Fetch combo count whenever selection changes
   useEffect(() => {
+    const requestSeq = ++comboRequestSeqRef.current;
     const selectedItemsForSubmit = buildSelectedUidsJson();
     const hasGearSelection = Object.values(selectedItemsForSubmit).some((uids) => uids.length > 0);
     const hasTalentCompare = talentBuilds.length > 1;
@@ -304,15 +314,18 @@ export default function TopGearPage() {
           signal: controller.signal,
         });
         if (!res.ok) {
+          if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
           return;
         }
         const data = await res.json();
+        if (requestSeq !== comboRequestSeqRef.current) return;
         setComboCount(data.combo_count ?? 0);
         setComboError(data.error ?? '');
       } catch (e: unknown) {
         if (e instanceof Error && e.name !== 'AbortError') {
+          if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
         }

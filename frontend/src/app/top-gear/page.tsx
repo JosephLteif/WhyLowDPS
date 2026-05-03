@@ -9,7 +9,7 @@ import { API_URL } from '../lib/api';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState } from '../lib/sim-return';
-import type { ResolveGearResponse } from '../lib/types';
+import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 
 const TOP_GEAR_SIM_AGAIN_KEY = 'top-gear';
 
@@ -79,6 +79,7 @@ export default function TopGearPage() {
   const skipNextResolveRef = useRef(false);
   const previousSimcInputRef = useRef(simcInput);
   const localItemsRef = useRef<LocalGearItem[]>(localItems);
+  const comboRequestSeqRef = useRef(0);
 
   useEffect(() => {
     localItemsRef.current = localItems;
@@ -236,14 +237,27 @@ export default function TopGearPage() {
   }, [simcInput, localItems]);
 
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
+    if (!resolved) return {};
     const result: Record<string, string[]> = {};
     for (const [slot, uids] of Object.entries(selectedUids)) {
-      if (uids.size > 0) {
-        result[slot] = [...uids];
+      const slotRes = resolved.slots[slot];
+      const slotItems: ResolvedItem[] = slotRes
+        ? [slotRes.equipped, ...slotRes.alternatives].filter(
+            (item): item is ResolvedItem => Boolean(item)
+          )
+        : [];
+      const included = new Set<string>();
+      for (const uid of uids) {
+        const item = slotItems.find((candidate) => candidate.uid === uid);
+        if (!item) continue;
+        included.add(item.uid);
+      }
+      if (included.size > 0) {
+        result[slot] = [...included];
       }
     }
     return result;
-  }, [selectedUids]);
+  }, [resolved, selectedUids]);
 
   const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
     if (!resolved) return null;
@@ -261,7 +275,9 @@ export default function TopGearPage() {
 
   // Fetch combo count whenever selection changes
   useEffect(() => {
-    const hasGearSelection = Object.values(selectedUids).some((s) => s.size > 0);
+    const requestSeq = ++comboRequestSeqRef.current;
+    const selectedItemsForSubmit = buildSelectedUidsJson();
+    const hasGearSelection = Object.values(selectedItemsForSubmit).some((uids) => uids.length > 0);
     const hasTalentCompare = talentBuilds.length > 1;
     if (!resolved || (!hasGearSelection && !hasTalentCompare)) {
       setComboCount(0);
@@ -278,7 +294,7 @@ export default function TopGearPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             simc_input: buildSubmitInput(),
-            selected_items: buildSelectedUidsJson(),
+            selected_items: selectedItemsForSubmit,
             items_by_slot: buildItemsBySlotJson(),
             max_upgrade: maxUpgrade,
             copy_enchants: copyEnchants,
@@ -297,15 +313,18 @@ export default function TopGearPage() {
           signal: controller.signal,
         });
         if (!res.ok) {
+          if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
           return;
         }
         const data = await res.json();
+        if (requestSeq !== comboRequestSeqRef.current) return;
         setComboCount(data.combo_count ?? 0);
         setComboError(data.error ?? '');
       } catch (e: unknown) {
         if (e instanceof Error && e.name !== 'AbortError') {
+          if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
         }
@@ -362,10 +381,15 @@ export default function TopGearPage() {
     ]
   );
 
+  const isEmbellishmentComboError =
+    /embellished|limited-effect crafted modifiers/i.test(comboError);
+  const pageLevelError = isEmbellishmentComboError ? '' : comboError;
+
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';
+    if (pageLevelError) return pageLevelError;
     return null;
-  }, [resolved]);
+  }, [resolved, pageLevelError]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/top-gear/sim',
@@ -480,12 +504,12 @@ export default function TopGearPage() {
         comboError={comboError}
       />
 
-      <ErrorAlert message={error} />
+      <ErrorAlert message={pageLevelError || error} />
 
       <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
         <button
           onClick={handleSubmit}
-          disabled={submitting}
+          disabled={submitting || !!pageLevelError}
           className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
         >
           {submitting ? (

@@ -137,6 +137,7 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         inventory_type,
         is_catalyst: false,
         can_catalyst: false,
+        item_limit_categories: item_db::get_item_limit_categories(&item.bonus_ids),
         ..Default::default()
     }
 }

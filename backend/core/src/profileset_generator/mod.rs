@@ -9,6 +9,81 @@ pub mod combinator;
 pub mod parser;
 pub mod writer;
 
+fn has_item_limit_only_blockers(
+    all_combos: &[Vec<usize>],
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+) -> bool {
+    for indices in all_combos {
+        let gear_set = combinator::build_gear_set_from_combo(
+            indices,
+            varying_slots,
+            option_lists,
+            slot_item_lists,
+            spec,
+        );
+
+        let passes_non_limit_checks = crate::profileset::validation::validate_unique_equipped(&gear_set)
+            && crate::profileset::validation::validate_vault_constraint(&gear_set)
+            && crate::profileset::validation::validate_weapon_constraint(&gear_set, spec)
+            && catalyst_charges.is_none_or(|c| {
+                crate::profileset::validation::validate_catalyst_constraint(&gear_set, c)
+            });
+        if !passes_non_limit_checks {
+            continue;
+        }
+
+        if !crate::profileset::validation::validate_item_limits(&gear_set) {
+            return true;
+        }
+    }
+    false
+}
+
+fn prune_equipped_limit_overflow_candidates(
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+) -> HashMap<String, Vec<ResolvedItem>> {
+    let mut equipped_counts: HashMap<u64, u64> = HashMap::new();
+    let mut category_limits: HashMap<u64, u64> = HashMap::new();
+
+    for item in slot_item_lists
+        .values()
+        .flat_map(|items| items.iter())
+        .filter(|item| item.origin == crate::types::ItemOrigin::Equipped)
+    {
+        for (cat_id, limit) in crate::game_data::get_item_limit_categories(&item.bonus_ids) {
+            *equipped_counts.entry(cat_id).or_insert(0) += 1;
+            category_limits.insert(cat_id, limit);
+        }
+    }
+
+    let mut pruned = HashMap::new();
+    for (slot, items) in slot_item_lists {
+        let filtered = items
+            .iter()
+            .filter(|item| {
+                if item.origin == crate::types::ItemOrigin::Equipped {
+                    return true;
+                }
+                let categories = crate::game_data::get_item_limit_categories(&item.bonus_ids);
+                !categories.into_iter().any(|(cat_id, limit)| {
+                    let effective_limit = category_limits.get(&cat_id).copied().unwrap_or(limit);
+                    equipped_counts.get(&cat_id).copied().unwrap_or(0) >= effective_limit
+                })
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if !filtered.is_empty() {
+            pruned.insert(slot.clone(), filtered);
+        }
+    }
+
+    pruned
+}
+
 type ProfilesetResult = Result<(String, usize, HashMap<String, Vec<Value>>)>;
 
 pub static MAX_COMBINATIONS: Lazy<usize> = Lazy::new(|| {
@@ -46,7 +121,7 @@ pub fn generate_top_gear_input_with_talents(
 ) -> ProfilesetResult {
     let (base_lines, equipped_gear, talents_string, spec) =
         parser::parse_base_profile(base_profile);
-    let slot_item_lists =
+    let mut slot_item_lists =
         combinator::build_slot_candidates(base_profile, items_by_slot, selected_items);
     let varying_slots = get_varying_slots(&slot_item_lists);
 
@@ -59,7 +134,7 @@ pub fn generate_top_gear_input_with_talents(
         .map(|slot| slot_item_lists.get(slot).unwrap())
         .collect();
     let all_combos = combinator::generate_cartesian_product(&option_lists);
-    let valid_combos = combinator::filter_valid_combos(
+    let mut valid_combos = combinator::filter_valid_combos(
         &all_combos,
         &varying_slots,
         &option_lists,
@@ -68,7 +143,51 @@ pub fn generate_top_gear_input_with_talents(
         catalyst_charges,
     );
 
-    let gear_combo_count = valid_combos.len();
+    let mut gear_combo_count = valid_combos.len();
+
+    if gear_combo_count == 0
+        && !varying_slots.is_empty()
+        && has_item_limit_only_blockers(
+            &all_combos,
+            &varying_slots,
+            &option_lists,
+            &slot_item_lists,
+            &spec,
+            catalyst_charges,
+        )
+    {
+        let pruned_slot_item_lists = prune_equipped_limit_overflow_candidates(&slot_item_lists);
+        let pruned_varying_slots = get_varying_slots(&pruned_slot_item_lists);
+        if !pruned_varying_slots.is_empty() {
+            let pruned_option_lists: Vec<&Vec<ResolvedItem>> = pruned_varying_slots
+                .iter()
+                .map(|slot| pruned_slot_item_lists.get(slot).unwrap())
+                .collect();
+            let pruned_all_combos =
+                combinator::generate_cartesian_product(&pruned_option_lists);
+            let pruned_valid_combos = combinator::filter_valid_combos(
+                &pruned_all_combos,
+                &pruned_varying_slots,
+                &pruned_option_lists,
+                &pruned_slot_item_lists,
+                &spec,
+                catalyst_charges,
+            );
+
+            if !pruned_valid_combos.is_empty() {
+                slot_item_lists = pruned_slot_item_lists;
+                valid_combos = pruned_valid_combos;
+                gear_combo_count = valid_combos.len();
+            }
+        }
+
+        if gear_combo_count == 0 {
+            return Err(crate::error::AppError::SimcError(
+                "No valid combinations: too many limited-effect crafted modifiers are selected (only 2 embellished items can be equipped).".to_string(),
+            ));
+        }
+    }
+
     let effective_talents = get_effective_talents(talent_builds, &talents_string);
     let total_combo_count = calculate_total_combo_count(gear_combo_count, effective_talents.len());
 

@@ -32,7 +32,12 @@ interface TopGearStateProps {
 
 function makeIdentity(item: ResolvedItem): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}`;
+  const crafted =
+    item.crafted_stats && item.crafted_stats.length > 0
+      ? `:${[...item.crafted_stats].sort().join('/')}`
+      : '';
+  const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}`;
 }
 
 export function useTopGearState({

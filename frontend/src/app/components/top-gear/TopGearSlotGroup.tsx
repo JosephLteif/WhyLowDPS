@@ -4,6 +4,8 @@ import GearItemRow from '../GearItemRow';
 import TopGearUpgradeButton from './TopGearUpgradeButton';
 
 const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
+const EMBELLISHMENT_LIMIT_WARNING =
+  'Too many embellished items are selected. Only 2 embellished items can be equipped.';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -41,6 +43,7 @@ interface TopGearSlotGroupProps {
     tooltip?: string;
   }[];
   isItemSelected: (item: ResolvedItem) => boolean;
+  hasLimitWarning?: (item: ResolvedItem) => boolean;
   onToggleAll?: () => void;
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
@@ -65,6 +68,7 @@ export default function TopGearSlotGroup({
   onItemContextMenu,
   itemDetails,
   isItemSelected,
+  hasLimitWarning,
   onToggleAll,
   getWowheadUrl,
   getWowheadData,
@@ -92,11 +96,7 @@ export default function TopGearSlotGroup({
           {onToggleAll && (
             <button
               onClick={onToggleAll}
-              className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                allSelected
-                  ? 'bg-gold/20 text-gold ring-1 ring-gold/30'
-                  : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'
-              }`}
+              className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
             >
               All
             </button>
@@ -104,7 +104,7 @@ export default function TopGearSlotGroup({
         </div>
         <button
           onClick={() => onAddClick(slots[0])}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-zinc-400 transition-all hover:bg-gold/10 hover:text-gold"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-gold/[0.12] text-gold transition-colors hover:bg-gold/[0.2]"
           title={`Add ${label.toLowerCase()}`}
         >
           <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
@@ -125,6 +125,7 @@ export default function TopGearSlotGroup({
             name={item.name}
             nameColor={item.quality_color}
             specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={item.off_spec === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}
@@ -132,7 +133,11 @@ export default function TopGearSlotGroup({
             showCheckbox={false}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
-            optimized={item.enchant_id > 0 || item.gem_id > 0}
+            optimized={
+              item.enchant_id > 0 ||
+              item.gem_id > 0 ||
+              (item.embellishment_item_id || 0) > 0
+            }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
             <TopGearUpgradeButton
@@ -159,6 +164,7 @@ export default function TopGearSlotGroup({
             name={item.name}
             nameColor={item.quality_color}
             specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={item.off_spec === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}
@@ -170,7 +176,11 @@ export default function TopGearSlotGroup({
             catalyst={item.is_catalyst}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
             wowheadData={item.item_id > 0 ? getWowheadData(item) : undefined}
-            optimized={item.enchant_id > 0 || item.gem_id > 0}
+            optimized={
+              item.enchant_id > 0 ||
+              item.gem_id > 0 ||
+              (item.embellishment_item_id || 0) > 0
+            }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
             <TopGearUpgradeButton

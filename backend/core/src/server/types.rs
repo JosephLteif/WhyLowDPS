@@ -350,6 +350,11 @@ pub(super) struct EnchantOptionsQuery {
     pub class_name: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub(super) struct EmbellishmentOptionsQuery {
+    pub item_id: u64,
+}
+
 fn default_iterations() -> u32 {
     1000
 }

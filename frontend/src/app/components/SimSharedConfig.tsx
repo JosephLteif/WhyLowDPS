@@ -152,7 +152,7 @@ function CharacterInfoBar({
           {profileUrl && (
             <Link
               href={profileUrl}
-              className="hidden rounded-lg bg-gold/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-gold transition-all hover:bg-gold/20 sm:block"
+              className="hidden rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2] sm:block"
             >
               Profile
             </Link>

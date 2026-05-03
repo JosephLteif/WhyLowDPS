@@ -31,6 +31,12 @@ export interface ResolvedItem {
   off_spec?: boolean;
   inventory_type?: number;
   season_id?: number;
+  crafted_stats?: string[];
+  embellishment_item_id?: number;
+  embellishment_name?: string;
+  embellishment_icon?: string;
+  embellishment_bonus_ids?: number[];
+  item_limit_categories?: Record<string, number>;
 }
 
 export interface ResultItem extends ResolvedItem {
@@ -63,6 +69,7 @@ export interface CharacterResolveInfo {
   class_name: string | null;
   spec: string | null;
   can_dual_wield: boolean;
+  can_use_offhand: boolean;
 }
 
 export interface TalentLoadout {

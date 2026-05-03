@@ -29,18 +29,23 @@ export default function TopGearQuickSelect({
   onClear,
   comboBreakdown = null,
 }: TopGearQuickSelectProps) {
+  const baseButtonClass =
+    'rounded-md border px-2.5 py-1 text-[12px] font-semibold transition-colors';
+  const goldButtonClass =
+    'border-gold/45 bg-gold/[0.12] text-gold hover:bg-gold/[0.2]';
+  const mutedButtonClass =
+    'border-zinc-600 bg-zinc-900/70 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800';
+
+  const breakdownPlaceholder = '0 normal combo(s) | +1 Currently Equipped';
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1">
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="flex items-center gap-2">
         {vaultCount > 0 && (
           <button
             type="button"
             onClick={onToggleVault}
-            className={`rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wider transition-all ${
-              allVaultSelected
-                ? 'bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/30'
-                : 'text-amber-400/60 hover:bg-amber-400/10 hover:text-amber-300'
-            }`}
+            className={`${baseButtonClass} ${goldButtonClass}`}
           >
             Vault
           </button>
@@ -61,25 +66,29 @@ export default function TopGearQuickSelect({
         <button
           type="button"
           onClick={onSelectAll}
-          className="rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-gold/60 transition-all hover:bg-gold/10 hover:text-gold"
+          className={`${baseButtonClass} ${goldButtonClass}`}
         >
           All
         </button>
-        {hasSelection && (
-          <button
-            type="button"
-            onClick={onClear}
-            className="rounded-md px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-500 transition-all hover:bg-white/[0.05] hover:text-gray-300"
-          >
-            Clear
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onClear}
+          className={`${baseButtonClass} ${mutedButtonClass}`}
+        >
+          Clear
+        </button>
+        <ComboSummary
+          comboCount={comboCount}
+          maxCombinations={maxCombinations}
+        />
       </div>
-      <ComboSummary
-        comboCount={comboCount}
-        maxCombinations={maxCombinations}
-        breakdown={comboBreakdown}
-      />
+      <p
+        className={`min-h-[18px] text-right text-[12px] font-medium ${
+          comboBreakdown ? 'text-emerald-300/90' : 'invisible'
+        }`}
+      >
+        {comboBreakdown || breakdownPlaceholder}
+      </p>
     </div>
   );
 }

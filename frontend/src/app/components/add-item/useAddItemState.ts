@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { API_URL } from '../../lib/api';
+import { API_URL, fetchJson } from '../../lib/api';
 import type { SeasonConfigResponse } from '../../lib/types';
 
 export interface ExternalItem {
@@ -19,7 +19,45 @@ export interface ExternalItem {
   season_id?: number;
   difficulty_info?: Record<string, any>;
   dungeon_info?: Record<string, any>;
+  bonus_lists?: number[];
+  crafted_base_bonus_ids?: number[];
+  crafted_levels?: number[];
+  socket_count?: number;
+  hasSockets?: boolean;
+  stats?: Array<{ id: number; alloc?: number }>;
+  missive_count?: number;
+  embellishment_options?: EmbellishmentOption[];
 }
+
+export interface EmbellishmentOption {
+  id: number;
+  item_id: number;
+  name: string;
+  icon: string;
+  quality: number;
+  bonus_ids: number[];
+  item_limit_category?: number;
+  item_limit_quantity?: number;
+}
+
+export interface MissiveOption {
+  token: string;
+  label: string;
+  bonus_ids?: number[];
+  item_id?: number;
+  icon?: string;
+  quality?: number;
+  stat_count?: number;
+}
+
+export type AddItemCategory =
+  | 'raid'
+  | 'dungeon'
+  | 'tier'
+  | 'crafted'
+  | 'delves'
+  | 'pvp'
+  | 'world_bosses';
 
 function normalizeUpgradeTracks(input: any): Record<string, any[]> {
   if (!input) return {};
@@ -68,13 +106,18 @@ export function useAddItemState(
   const [seasonConfig, setSeasonConfig] = useState<SeasonConfigResponse | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('heroic');
   const [filterSlot, setFilterSlot] = useState<string | null>(null);
-  const [category, setCategory] = useState<'raid' | 'dungeon' | 'world_bosses'>('raid');
+  const [category, setCategory] = useState<AddItemCategory>('raid');
   const [upgradeTracks, setUpgradeTracks] = useState<Record<string, any>>({});
   const [itemTiers, setItemTiers] = useState<Record<number, number>>({});
   const [allPossibleDrops, setAllPossibleDrops] = useState<Record<string, ExternalItem[]>>({});
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [isGlobalLoading, setIsGlobalLoading] = useState(false);
   const [groupBy, setGroupBy] = useState<'slot' | 'boss'>('slot');
+  const [missives, setMissives] = useState<MissiveOption[]>([]);
+  const [itemMissives, setItemMissives] = useState<Record<number, string[]>>({});
+  const [itemEmbellishments, setItemEmbellishments] = useState<
+    Record<number, EmbellishmentOption | null>
+  >({});
 
   useEffect(() => {
     if (isOpen) {
@@ -84,6 +127,8 @@ export function useAddItemState(
       setCategory('raid');
       setGroupBy('slot');
       setItemTiers({});
+      setItemMissives({});
+      setItemEmbellishments({});
     }
   }, [isOpen, preferredSlot]);
 
@@ -91,17 +136,16 @@ export function useAddItemState(
     if (!isOpen) return;
     const fetchInitial = async () => {
       try {
-        const [instRes, seasonRes, tracksRes] = await Promise.all([
-          fetch(`${API_URL}/api/instances`, { credentials: 'include' }),
-          fetch(`${API_URL}/api/season-config`, { credentials: 'include' }),
-          fetch(`${API_URL}/api/upgrade-tracks`, { credentials: 'include' }),
+        const [instData, seasonData, tracksData, missiveData] = await Promise.all([
+          fetchJson<any[]>(`${API_URL}/api/instances`),
+          fetchJson<any>(`${API_URL}/api/season-config`),
+          fetchJson<any>(`${API_URL}/api/upgrade-tracks`),
+          fetchJson<any[]>(`${API_URL}/api/data/missives`),
         ]);
-        const instData = await instRes.json();
-        const seasonData = await seasonRes.json();
-        const tracksData = await tracksRes.json();
         setInstances(instData);
         setSeasonConfig(seasonData);
         setUpgradeTracks(normalizeUpgradeTracks(tracksData));
+        setMissives(missiveData);
 
         if (instData.length > 0 && !selectedInstance) {
           const firstRaid = instData.find((i: any) => i.type.toLowerCase() === 'raid');
@@ -116,15 +160,37 @@ export function useAddItemState(
   }, [isOpen, selectedInstance]);
 
   useEffect(() => {
-    if (!isOpen || selectedInstance === null || selectedInstance === -2) return;
+    if (!isOpen || selectedInstance === null) return;
+    let cancelled = false;
     const fetchDrops = async () => {
       setLoading(true);
+      setDrops({});
       try {
         const query = new URLSearchParams();
         if (className) query.set('class_name', className);
         if (spec) query.set('spec', spec);
         let data: Record<string, ExternalItem[]> = {};
-        if (selectedInstance === 0) {
+        if (category === 'crafted') {
+          const res = await fetch(`${API_URL}/api/instances/type/profession/drops?${query.toString()}`, {
+            credentials: 'include',
+          });
+          data = await res.json();
+        } else if (category === 'delves') {
+          const [delveRes, preyRes] = await Promise.all([
+            fetch(`${API_URL}/api/instances/type/delve-mid1/drops?${query.toString()}`, { credentials: 'include' }),
+            fetch(`${API_URL}/api/instances/type/prey-mid1/drops?${query.toString()}`, { credentials: 'include' }),
+          ]);
+          const delveData = await delveRes.json();
+          const preyData = await preyRes.json();
+          for (const slot of Object.keys({ ...delveData, ...preyData })) {
+            data[slot] = [...(delveData[slot] || []), ...(preyData[slot] || [])];
+          }
+        } else if (category === 'tier') {
+          const res = await fetch(`${API_URL}/api/instances/type/catalyst/drops?${query.toString()}`, {
+            credentials: 'include',
+          });
+          data = await res.json();
+        } else if (selectedInstance === 0) {
           const [raidRes, dungRes] = await Promise.all([
             fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, {
               credentials: 'include',
@@ -145,15 +211,19 @@ export function useAddItemState(
           );
           data = await res.json();
         }
-        setDrops(data);
+        if (!cancelled) setDrops(data);
       } catch (e) {
-        setDrops({});
+        if (!cancelled) setDrops({});
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     fetchDrops();
-  }, [isOpen, selectedInstance, className, spec]);
+    return () => {
+      // The next category/source request owns the UI now; ignore late responses.
+      cancelled = true;
+    };
+  }, [isOpen, selectedInstance, className, spec, category]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -163,19 +233,24 @@ export function useAddItemState(
         const query = new URLSearchParams();
         if (className) query.set('class_name', className);
         if (spec) query.set('spec', spec);
-        const [raidRes, dungRes] = await Promise.all([
+        const [raidRes, dungRes, catRes] = await Promise.all([
           fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, {
             credentials: 'include',
           }),
           fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, {
             credentials: 'include',
           }),
+          fetch(`${API_URL}/api/instances/type/catalyst/drops?${query.toString()}`, {
+            credentials: 'include',
+          }),
         ]);
         const raidData = await raidRes.json();
         const dungData = await dungRes.json();
+        const catData = await catRes.json();
         const data: Record<string, ExternalItem[]> = {};
-        for (const slot of Object.keys({ ...raidData, ...dungData })) {
-          data[slot] = [...(raidData[slot] || []), ...(dungData[slot] || [])];
+        const allSlots = Array.from(new Set([...Object.keys(raidData), ...Object.keys(dungData), ...Object.keys(catData)]));
+        for (const slot of allSlots) {
+          data[slot] = [...(raidData[slot] || []), ...(dungData[slot] || []), ...(catData[slot] || [])];
         }
         setAllPossibleDrops(data);
       } catch (e) {
@@ -219,5 +294,10 @@ export function useAddItemState(
     setIsGlobalLoading,
     groupBy,
     setGroupBy,
+    missives,
+    itemMissives,
+    setItemMissives,
+    itemEmbellishments,
+    setItemEmbellishments,
   };
 }

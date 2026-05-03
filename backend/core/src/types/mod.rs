@@ -53,6 +53,14 @@ impl CharacterInfo {
         self.spec.as_deref().is_some_and(class_data::can_dual_wield)
     }
 
+    pub fn can_use_offhand(&self) -> bool {
+        match (self.class_name.as_deref(), self.spec.as_deref()) {
+            (Some(class_name), Some(spec_name)) => class_data::spec_weapon_profile(class_name, spec_name)
+                .is_some_and(|profile| profile.can_use_offhand || profile.can_use_shield),
+            _ => false,
+        }
+    }
+
     pub fn max_armor(&self) -> Option<u64> {
         self.class_name
             .as_deref()
@@ -202,6 +210,9 @@ pub struct ResolvedItem {
     /// Upgrade costs from the baseline equipped item (if this is an upgrade option).
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub upgrade_costs: std::collections::HashMap<u64, u64>,
+    /// Item-limit categories consumed by this item, keyed by category id with the max quantity.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub item_limit_categories: std::collections::HashMap<u64, u64>,
 }
 
 fn is_zero_i64(v: &i64) -> bool {
@@ -235,6 +246,7 @@ pub struct CharacterResolveInfo {
     pub class_name: Option<String>,
     pub spec: Option<String>,
     pub can_dual_wield: bool,
+    pub can_use_offhand: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +282,10 @@ pub struct GameItem {
     pub inventory_type: Option<i64>,
     #[serde(rename = "itemSetId")]
     pub set_id: Option<i64>,
+    #[serde(default, rename = "hasSockets")]
+    pub has_sockets: bool,
+    #[serde(default, rename = "socketInfo")]
+    pub socket_info: Option<GameItemSocketInfo>,
 
     #[serde(rename = "allowableClasses")]
     pub classes: Option<Vec<u64>>,
@@ -277,7 +293,24 @@ pub struct GameItem {
     pub specs: Option<Vec<u64>>,
     #[serde(default)]
     pub stats: Option<Vec<GameItemStat>>,
+    #[serde(default, rename = "bonusLists")]
+    pub bonus_lists: Vec<u64>,
     pub sources: Option<Vec<ItemSource>>,
+    #[serde(default)]
+    pub profession: Option<GameItemProfession>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemSocketInfo {
+    pub sockets: Vec<GameItemSocketEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemSocketEntry {
+    #[serde(rename = "type")]
+    pub socket_type: Option<String>,
 }
 
 impl GameItem {
@@ -314,6 +347,25 @@ impl Default for GameItemStat {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemProfession {
+    pub id: Option<u64>,
+    #[serde(rename = "recipeSpellId")]
+    pub recipe_spell_id: Option<u64>,
+    #[serde(rename = "optionalCraftingSlots")]
+    pub optional_crafting_slots: Vec<GameItemOptionalCraftingSlot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct GameItemOptionalCraftingSlot {
+    pub id: u64,
+    pub count: Option<u64>,
+    #[serde(rename = "recraftCount")]
+    pub recraft_count: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemSource {
     #[serde(rename = "encounterId")]
@@ -340,6 +392,9 @@ pub struct EnchantData {
     pub spell_icon: Option<String>,
     pub slot: Option<String>,
     pub quality: Option<u64>,
+    pub expansion: Option<u64>,
+    #[serde(rename = "socketType")]
+    pub socket_type: Option<String>,
     #[serde(rename = "craftingQuality")]
     pub crafting_quality: Option<u64>,
     #[serde(rename = "categoryName")]
@@ -369,6 +424,8 @@ pub struct BonusData {
     pub socket: Option<i64>,
     pub upgrade: Option<BonusUpgrade>,
     pub item_limit_category: Option<u64>,
+    #[serde(rename = "craftedStats")]
+    pub crafted_stats: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

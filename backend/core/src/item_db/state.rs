@@ -66,6 +66,49 @@ pub type ItemLimitMap = HashMap<u64, (u64, u64)>;
 /// Item limit categories: bonus_id → (category_id, max_quantity)
 pub static ITEM_LIMIT_CATS: Lazy<RwLock<Arc<ItemLimitMap>>> =
     Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
+pub struct CraftingSlotData {
+    #[serde(rename = "reagentSlotId")]
+    pub reagent_slot_id: u64,
+    pub name: String,
+    #[serde(rename = "reagentIds")]
+    pub reagent_ids: Vec<u64>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
+pub struct CraftingItemLimit {
+    pub category: u64,
+    pub quantity: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
+pub struct CraftingReagentData {
+    pub id: u64,
+    pub name: String,
+    pub icon: String,
+    pub quality: u64,
+    #[serde(rename = "itemId")]
+    pub item_id: Option<u64>,
+    #[serde(rename = "craftingBonusIds")]
+    pub crafting_bonus_ids: Vec<u64>,
+    #[serde(rename = "itemLimit")]
+    pub item_limit: Option<CraftingItemLimit>,
+    #[serde(rename = "reagentType")]
+    pub reagent_type: String,
+    #[serde(default)]
+    pub expansion: Option<u64>,
+}
+
+pub static CRAFTING_SLOTS: Lazy<RwLock<Arc<HashMap<u64, CraftingSlotData>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static CRAFTING_REAGENTS: Lazy<RwLock<Arc<HashMap<u64, CraftingReagentData>>>> =
+    Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+pub static CRAFTING_LIMIT_CATS: Lazy<RwLock<Arc<ItemLimitMap>>> =
+    Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+
 pub static SEASON_CONFIG: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_json::json!({})));
 pub static TALENT_TREES: Lazy<RwLock<Arc<HashMap<u64, Value>>>> =
     Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));

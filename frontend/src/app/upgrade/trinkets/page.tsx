@@ -295,6 +295,9 @@ export default function UpgradeTrinketsPage() {
   const [selectedTier, setSelectedTier] = useState<string>('all');
   const [includeRaid, setIncludeRaid] = useState(true);
   const [includeDungeon, setIncludeDungeon] = useState(true);
+  const [includeDelves, setIncludeDelves] = useState(false);
+  const [includePvp, setIncludePvp] = useState(false);
+  const [includeCrafted, setIncludeCrafted] = useState(false);
   const [simMode, setSimMode] = useState<TrinketSimMode>('matrix');
   const [rolePool, setRolePool] = useState<TrinketRolePool>('auto');
   const [ignoreSpecRestrictions, setIgnoreSpecRestrictions] = useState(false);
@@ -350,13 +353,35 @@ export default function UpgradeTrinketsPage() {
     equippedTrinket2.ilevel,
   ]);
 
+  /** Map abstract toggle → list of concrete instance types that match. */
+  const sourceTypesByToggle = useMemo(() => {
+    const map: Record<string, SourceKey[]> = {
+      raid: [],
+      dungeon: [],
+      delves: [],
+      pvp: [],
+      crafted: [],
+    };
+    for (const src of sourceTypes) {
+      const s = src.toLowerCase();
+      if (s === 'raid') map.raid.push(src);
+      else if (s === 'dungeon' || s === 'expansion-dungeon' || s.includes('mplus')) map.dungeon.push(src);
+      else if (s.includes('delve') || s.includes('prey')) map.delves.push(src);
+      else if (s.includes('pvp')) map.pvp.push(src);
+      else if (s.includes('profession')) map.crafted.push(src);
+    }
+    return map;
+  }, [sourceTypes]);
+
   const selectedSources = useMemo(() => {
-    // If the user disables both visible source toggles, treat pool as empty.
-    if (!includeRaid && !includeDungeon) return [];
-    return sourceTypes.filter((s) =>
-      s === 'raid' ? includeRaid : s === 'dungeon' ? includeDungeon : false,
-    );
-  }, [sourceTypes, includeRaid, includeDungeon]);
+    const out: SourceKey[] = [];
+    if (includeRaid) out.push(...sourceTypesByToggle.raid);
+    if (includeDungeon) out.push(...sourceTypesByToggle.dungeon);
+    if (includeDelves) out.push(...sourceTypesByToggle.delves);
+    if (includePvp) out.push(...sourceTypesByToggle.pvp);
+    if (includeCrafted) out.push(...sourceTypesByToggle.crafted);
+    return out;
+  }, [sourceTypesByToggle, includeRaid, includeDungeon, includeDelves, includePvp, includeCrafted]);
 
   useEffect(() => {
     let cancelled = false;
@@ -434,7 +459,20 @@ export default function UpgradeTrinketsPage() {
     };
   }, [className, specName, sourceTypes, ignoreSpecRestrictions]);
 
-  const sourceScope = selectedSources.join(',');
+  /** Normalize concrete instance types to abstract tokens the backend heatmap handler understands. */
+  const sourceScope = useMemo(() => {
+    const tokens = new Set<string>();
+    for (const src of selectedSources) {
+      const s = src.toLowerCase();
+      if (s === 'raid') tokens.add('raid');
+      else if (s === 'dungeon' || s === 'expansion-dungeon' || s.includes('mplus')) tokens.add('dungeon');
+      else if (s.includes('delve') || s.includes('prey')) tokens.add('delve');
+      else if (s.includes('pvp')) tokens.add('pvp');
+      else if (s.includes('profession')) tokens.add('profession');
+      else tokens.add(s);
+    }
+    return tokens.size > 0 ? [...tokens].join(',') : 'all';
+  }, [selectedSources]);
   const selectedRoles = useMemo(
     () => selectedRoleSet(rolePool, activeSpecId),
     [rolePool, activeSpecId],
@@ -858,6 +896,9 @@ export default function UpgradeTrinketsPage() {
             {[
               ['Raid', includeRaid, setIncludeRaid],
               ['Dungeon', includeDungeon, setIncludeDungeon],
+              ['Crafted', includeCrafted, setIncludeCrafted],
+              ['Delves', includeDelves, setIncludeDelves],
+              ['PvP', includePvp, setIncludePvp],
             ].map(([label, value, setter]) => (
               <label
                 key={label as string}

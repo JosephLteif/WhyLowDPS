@@ -1,94 +1,48 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { EnchantInfo, GemInfo, ItemInfo } from '../lib/useItemInfo';
-import {
-  getIconUrl,
-  getWowheadData,
-  getWowheadUrl,
-  QUALITY_COLORS,
-  useEnchantInfo,
-  useGemInfo,
-  useItemInfo,
-} from '../lib/useItemInfo';
-import { SLOT_LABELS } from '../lib/types';
-import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
-import { useTalentTree } from '../lib/useTalentTree';
-import { encodeTalentString, normalizeTalentString } from '../lib/talentEncode';
-import type { NodeSelection } from '../lib/talentDecode';
-import { decodeHeader } from '../lib/talentDecode';
+import { useTalentTree, type TalentTreeData } from '../lib/useTalentTree';
+import CharacterQuickLinks from './character/CharacterQuickLinks';
+import CharacterPageTabs, { type CharacterPageTab } from './character/CharacterPageTabs';
 import RaidProgressionGrid from './RaidProgressionGrid';
+import GearOverview, { type GearItem as OverviewGearItem } from './GearOverview';
 import {
   API_URL,
   fetchJson,
-  getMythicKeystoneDungeonDetail,
-  getMythicKeystoneDungeonIndex,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
-import { characterHref } from '../lib/routes';
-
-const GEAR_ORDER_LEFT = ['HEAD', 'NECK', 'SHOULDER', 'BACK', 'CHEST', 'WRIST'];
-const GEAR_ORDER_RIGHT = [
-  'HANDS',
-  'WAIST',
-  'LEGS',
-  'FEET',
-  'FINGER_1',
-  'FINGER_2',
-  'TRINKET_1',
-  'TRINKET_2',
-];
-const TALENT_EXPORT_RE = /^[A-Za-z0-9+/]+$/;
-
-function isTalentExportString(value: string, expectedSpecId?: number | null): boolean {
-  const trimmed = value.trim();
-  if (trimmed.length < 16 || !TALENT_EXPORT_RE.test(trimmed)) return false;
-  try {
-    const header = decodeHeader(trimmed);
-    if (header.bits.length <= header.offset) return false;
-    if (header.specId <= 0) return false;
-    return !(expectedSpecId && header.specId !== expectedSpecId);
-  } catch {
-    return false;
-  }
-}
-
-function findTalentExportString(input: unknown, expectedSpecId?: number | null): string | null {
-  if (!input || typeof input !== 'object') return null;
-  const seen = new Set<unknown>();
-  const stack: unknown[] = [input];
-
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || seen.has(current)) continue;
-    seen.add(current);
-
-    if (typeof current === 'string') {
-      if (isTalentExportString(current, expectedSpecId)) return current.trim();
-      continue;
-    }
-
-    if (Array.isArray(current)) {
-      for (const item of current) stack.push(item);
-      continue;
-    }
-
-    if (typeof current === 'object') {
-      for (const value of Object.values(current as Record<string, unknown>)) {
-        if (typeof value === 'string') {
-          if (isTalentExportString(value, expectedSpecId)) return value.trim();
-        } else if (value && typeof value === 'object') {
-          stack.push(value);
-        }
-      }
-    }
-  }
-
-  return null;
-}
+import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
+import SectionCard from './shared/SectionCard';
+import ProgressSlotCard from './shared/ProgressSlotCard';
+import { buildCharacterTalentString } from '../lib/character-panel-talent';
+import type {
+  CharacterPanelEquipment,
+  CharacterSpecialization,
+  CharacterSpecializationsPayload,
+  CharacterStatisticsPayload,
+  CharacterTalentLoadout,
+  CharacterTalentSelection,
+  CharacterRunMember,
+  MythicPlusPayload,
+  MythicRun,
+  RaidEncountersPayload,
+  RaidMode,
+} from '../lib/character-domain-types';
+import {
+  computeMythicVaultProgress,
+  computeWeeklyRaidBossKills,
+  getMemberProfileHref,
+  getWeeklyResetStartMs,
+  isCurrentExpansionPlaceholder,
+  isLikelyCurrentExpansionLabel,
+  normalizeRealmSlug,
+  parseVaultRewardsFromSimcInput,
+} from '../lib/character-panel-utils';
+import { useMythicDungeonDetails } from '../lib/useMythicDungeonDetails';
+const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
 
 interface CharacterPanelProps {
   name: string;
@@ -97,14 +51,16 @@ interface CharacterPanelProps {
   characterClass: string;
   race: string;
   level: number;
-  equipment: { equipped_items: BlizzardItem[] };
-  statistics: any;
-  specializations: any;
-  professions: any;
-  mythicPlus: any;
-  raidEncounters: any;
-  dungeons?: any;
+  equipment: CharacterPanelEquipment;
+  statistics: CharacterStatisticsPayload;
+  specializations: CharacterSpecializationsPayload | null;
+  professions: Record<string, unknown> | null;
+  mythicPlus: MythicPlusPayload;
+  raidEncounters: RaidEncountersPayload;
+  dungeons?: unknown;
   characterMediaUrl?: string | null;
+  latestSimcInput?: string | null;
+  initialTab?: 'profile' | 'raiding' | 'mythic' | 'vault';
 }
 
 export default function CharacterPanel({
@@ -117,273 +73,91 @@ export default function CharacterPanel({
   mythicPlus,
   raidEncounters,
   characterMediaUrl,
+  latestSimcInput,
+  initialTab,
 }: CharacterPanelProps) {
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const armoryUrl = `https://worldofwarcraft.blizzard.com/en-us/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`;
 
-  const itemsBySlot = useMemo(() => {
-    const map: Record<string, BlizzardItem> = {};
-    for (const item of equipment.equipped_items || []) {
-      map[item.slot.type] = item;
-    }
-    return map;
-  }, [equipment]);
-
   // --- Talent & Spec Logic (Lifted for SimC Generation) ---
   const activeSpec = useMemo(() => {
     if (!specializations?.specializations) return null;
+    const list = specializations.specializations;
     const activeId = specializations.active_specialization?.id;
     if (activeId) {
-      return specializations.specializations.find((s: any) => s.specialization.id === activeId);
+      return list.find((spec: CharacterSpecialization) => spec.specialization?.id === activeId) || null;
     }
-    return specializations.specializations.find((s: any) =>
-      s.loadouts?.some((l: any) => l.is_active)
+    return (
+      list.find((spec: CharacterSpecialization) =>
+        (spec.loadouts || []).some((loadout: CharacterTalentLoadout) => loadout.is_active)
+      ) || null
     );
   }, [specializations]);
 
   const activeLoadout = useMemo(() => {
     if (!activeSpec?.loadouts) return null;
-    return activeSpec.loadouts.find((l: any) => l.is_active);
+    return activeSpec.loadouts.find((loadout: CharacterTalentLoadout) => loadout.is_active) || null;
   }, [activeSpec]);
 
   const specId = activeSpec?.specialization?.id ?? null;
   const tree = useTalentTree(specId);
 
   const talentString = useMemo(() => {
-    if (!tree || !specId) return null;
-    try {
-      const directCandidates = [
-        activeLoadout?.talent_loadout_code,
-        activeLoadout?.talentLoadoutCode,
-        activeLoadout?.loadout_code,
-        activeLoadout?.code,
-        activeSpec?.talent_loadout_code,
-        activeSpec?.talentLoadoutCode,
-      ].filter((v): v is string => typeof v === 'string');
-      const direct = directCandidates.find((v) => isTalentExportString(v, specId));
-      if (direct) return normalizeTalentString(direct, tree);
-
-      const discovered =
-        findTalentExportString(activeLoadout, specId) ?? findTalentExportString(activeSpec, specId);
-      if (discovered) return normalizeTalentString(discovered, tree);
-
-      const selections = new Map<number, NodeSelection>();
-      const selectedTalents = [
-        ...(activeLoadout?.selected_class_talents || []),
-        ...(activeLoadout?.selected_spec_talents || []),
-        ...(activeLoadout?.selected_hero_talents || []),
-      ];
-      const talents = [...selectedTalents, ...(activeSpec.talents || [])];
-      const allNodes = [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes];
-
-      for (const t of talents) {
-        const candidateIds = [
-          t.id,
-          t.talent?.id,
-          t.tooltip_spell?.id,
-          t.spell_tooltip?.spell?.id,
-          t.selected_tooltip?.spell?.id,
-        ].filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
-        if (candidateIds.length === 0) continue;
-
-        const node = allNodes.find((n) =>
-          candidateIds.some(
-            (id) => n.id === id || n.entries.some((e) => e.id === id || e.spellId === id)
-          )
-        );
-        if (node) {
-          const choiceIndex = node.entries.findIndex((e) =>
-            candidateIds.some((id) => e.id === id || e.spellId === id)
-          );
-          const existing = selections.get(node.id);
-          const nextRanks = Math.max(existing?.ranks ?? 0, t.rank ?? node.maxRanks ?? 1);
-          const nextChoice = choiceIndex >= 0 ? choiceIndex : (existing?.choiceIndex ?? -1);
-          selections.set(node.id, {
-            ranks: nextRanks,
-            choiceIndex: nextChoice,
-          });
-        }
-      }
-      if (selections.size === 0) return null;
-      return normalizeTalentString(encodeTalentString(selections, tree, specId), tree);
-    } catch (err) {
-      console.warn('Failed to encode talent string:', err);
-      return null;
-    }
+    return buildCharacterTalentString({
+      tree,
+      specId,
+      activeLoadout,
+      activeSpec,
+    });
   }, [activeLoadout, tree, specId, activeSpec]);
   // --- End Talent & SimC Logic ---
 
-  const allItemQueries = useMemo(() => {
-    return (equipment.equipped_items || []).map((it) => ({
-      item_id: it.item.id,
-      bonus_ids: it.bonus_list,
-    }));
-  }, [equipment]);
-
-  const itemInfoMap = useItemInfo(allItemQueries);
-
-  const allEnchantIds = useMemo(() => {
-    const ids = new Set<number>();
+  const profileGear = useMemo(() => {
+    const normalized: Record<string, OverviewGearItem> = {};
     for (const it of equipment.equipped_items || []) {
-      for (const e of it.enchantments || []) {
-        if (e.enchantment_id) ids.add(e.enchantment_id);
-      }
+      const rawSlot = String(it.slot?.type || '').toUpperCase();
+      if (!rawSlot) continue;
+      const slot = rawSlot.toLowerCase().replace(/_(1|2)$/i, '$1');
+      normalized[slot] = {
+        slot,
+        item_id: Number(it.item?.id || 0),
+        ilevel: Number(it.level?.value || 0),
+        name: it.name || '',
+        bonus_ids: Array.isArray(it.bonus_list) ? it.bonus_list : [],
+        enchant_id: Number(it.enchantments?.[0]?.enchantment_id || 0) || undefined,
+        gem_id: Number(it.sockets?.[0]?.item?.id || 0) || undefined,
+      };
     }
-    return [...ids];
+    return normalized;
   }, [equipment]);
-
-  const enchantInfoMap = useEnchantInfo(allEnchantIds);
-
-  const allGemIds = useMemo(() => {
-    const ids = new Set<number>();
-    for (const it of equipment.equipped_items || []) {
-      for (const s of it.sockets || []) {
-        if (s.item?.id) ids.add(s.item.id);
-      }
-    }
-    return [...ids];
-  }, [equipment]);
-
-  const gemInfoMap = useGemInfo(allGemIds);
-  useWowheadTooltips([equipment, itemInfoMap]);
-  const [pageTab, setPageTab] = useState<'profile' | 'raiding' | 'mythic'>('raiding');
+  const [pageTab, setPageTab] = useState<CharacterPageTab>(initialTab || 'raiding');
+  const characterSlug = name.toLowerCase();
+  const regionSlug = region.toLowerCase();
+  const quickLinks = useMemo(
+    () => ({
+      warcraftLogsUrl: `https://www.warcraftlogs.com/character/${regionSlug}/${realmSlug}/${characterSlug}`,
+      raiderIoUrl: `https://raider.io/characters/${regionSlug}/${realmSlug}/${characterSlug}`,
+    }),
+    [characterSlug, regionSlug, realmSlug]
+  );
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Quick Links Bar (Top Left) */}
-      <div className="flex flex-wrap items-center gap-3">
-        <a
-          href={armoryUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-bold text-zinc-300 ring-1 ring-white/5 transition-all hover:bg-white/10 hover:text-white active:scale-95"
-        >
-          <img
-            src="/icons/blizzard.png"
-            alt=""
-            className="h-3.5 w-3.5 opacity-70"
-            onError={(e) => (e.currentTarget.style.display = 'none')}
-          />
-          Official Armory
-        </a>
-        <a
-          href={`https://www.warcraftlogs.com/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#ca3333]/20 bg-[#ca3333]/10 px-3 py-1.5 text-xs font-bold text-[#ff4d4d] ring-1 ring-white/5 transition-all hover:bg-[#ca3333]/20 hover:text-[#ff6666] active:scale-95"
-        >
-          Warcraft Logs
-        </a>
-        <a
-          href={`https://raider.io/characters/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 rounded-lg border border-[#fb8c00]/20 bg-[#fb8c00]/10 px-3 py-1.5 text-xs font-bold text-[#ffb74d] ring-1 ring-white/5 transition-all hover:bg-[#fb8c00]/20 hover:text-[#ffcc80] active:scale-95"
-        >
-          Raider.io
-        </a>
-      </div>
-
-      <div className="card p-2">
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => setPageTab('profile')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'profile' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Profile
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('raiding')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'raiding' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Raiding
-          </button>
-          <button
-            type="button"
-            onClick={() => setPageTab('mythic')}
-            className={`rounded-md px-2 py-2 text-xs font-bold ${
-              pageTab === 'mythic' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-100'
-            }`}
-          >
-            Mythic+
-          </button>
-        </div>
-      </div>
+      <CharacterQuickLinks
+        armoryUrl={armoryUrl}
+        warcraftLogsUrl={quickLinks.warcraftLogsUrl}
+        raiderIoUrl={quickLinks.raiderIoUrl}
+      />
+      <CharacterPageTabs value={pageTab} onChange={setPageTab} />
 
       {pageTab === 'profile' && (
         <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="flex min-w-0 flex-col gap-6">
-            <div className="card relative flex flex-col overflow-hidden p-4 sm:p-6">
-              {characterMediaUrl && (
-                <div className="relative z-10 mb-4 flex justify-center lg:absolute lg:inset-0 lg:mb-0 lg:items-center">
-                  <img
-                    src={characterMediaUrl}
-                    alt={name}
-                    className="pointer-events-none mx-auto h-72 w-auto object-contain opacity-90 sm:h-[26rem] lg:h-[186%] lg:-translate-y-[8%] lg:opacity-65 lg:mix-blend-lighten"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
-
-              <div className="relative z-20 flex flex-1 flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_230px_minmax(0,1fr)] lg:gap-x-6 xl:grid-cols-[minmax(0,1fr)_300px_minmax(0,1fr)]">
-                <div className="min-w-0 space-y-3">
-                  {GEAR_ORDER_LEFT.map((slot) => (
-                    <BlizzardGearSlot
-                      key={slot}
-                      slot={slot}
-                      item={itemsBySlot[slot]}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                    />
-                  ))}
-                </div>
-
-                <div className="hidden lg:block" />
-
-                <div className="min-w-0 space-y-3">
-                  {GEAR_ORDER_RIGHT.map((slot) => (
-                    <BlizzardGearSlot
-                      key={slot}
-                      slot={slot}
-                      item={itemsBySlot[slot]}
-                      itemInfoMap={itemInfoMap}
-                      enchantInfoMap={enchantInfoMap}
-                      gemInfoMap={gemInfoMap}
-                      align="right"
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="relative z-20 mt-6 grid grid-cols-1 gap-3 pt-4 sm:grid-cols-2 sm:gap-8 lg:grid-cols-[minmax(300px,1fr)_minmax(300px,1fr)] lg:justify-center lg:gap-12">
-                <BlizzardGearSlot
-                  slot="MAIN_HAND"
-                  item={itemsBySlot.MAIN_HAND}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                  align="right"
-                  compactNearIcon
-                />
-                <BlizzardGearSlot
-                  slot="OFF_HAND"
-                  item={itemsBySlot.OFF_HAND}
-                  itemInfoMap={itemInfoMap}
-                  enchantInfoMap={enchantInfoMap}
-                  gemInfoMap={gemInfoMap}
-                  align="left"
-                />
-              </div>
-            </div>
+            <GearOverview
+              gear={profileGear}
+              title="Equipped Gear"
+              characterRenderUrl={characterMediaUrl}
+            />
 
             <TalentsCard
               activeSpec={activeSpec}
@@ -400,72 +174,154 @@ export default function CharacterPanel({
         </div>
       )}
 
-      {pageTab === 'mythic' && <MythicPlusCard mythicPlus={mythicPlus} region={region} />}
+      {pageTab === 'mythic' && (
+        <MythicPlusCard mythicPlus={mythicPlus} region={region} realm={realm} name={name} />
+      )}
 
       {pageTab === 'raiding' && (
         <RaidSectionCard raidEncounters={raidEncounters} region={region} realm={realm} name={name} />
+      )}
+      {pageTab === 'vault' && (
+        <VaultOverviewCard mythicPlus={mythicPlus} raidEncounters={raidEncounters} latestSimcInput={latestSimcInput} region={region} />
       )}
     </div>
   );
 }
 
-function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: string }) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
-  const [mplusDungeonDetailsByName, setMplusDungeonDetailsByName] = useState<
-    Record<string, MythicKeystoneDungeonDetail>
-  >({});
+function VaultOverviewCard({
+  mythicPlus,
+  raidEncounters,
+  latestSimcInput,
+  region,
+}: {
+  mythicPlus: MythicPlusPayload;
+  raidEncounters: RaidEncountersPayload;
+  latestSimcInput?: string | null;
+  region?: string;
+}) {
+  const mythicRunsThisWeek = useMemo(() => computeMythicVaultProgress(mythicPlus, region).runsForVault, [mythicPlus, region]);
 
-  useEffect(() => {
-    let cancelled = false;
-    getMythicKeystoneDungeonIndex('us')
-      .then(async (indexData) => {
-        const indexEntries = Array.isArray(indexData?.dungeons) ? indexData.dungeons : [];
-        const detailResults = await Promise.all(
-          indexEntries.map((entry) =>
-            getMythicKeystoneDungeonDetail(Number(entry?.id), 'us').catch(() => null),
-          ),
-        );
-        if (cancelled) return;
-        const map: Record<string, MythicKeystoneDungeonDetail> = {};
-        for (const detail of detailResults) {
-          if (!detail || typeof detail !== 'object') continue;
-          const name = String(detail?.name || '')
-            .trim()
-            .toLowerCase();
-          if (name) map[name] = detail;
-        }
-        setMplusDungeonDetailsByName(map);
-      })
-      .catch(() => {
-        if (!cancelled) setMplusDungeonDetailsByName({});
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const raidBossesThisWeek = useMemo(() => {
+    return computeWeeklyRaidBossKills(raidEncounters, region);
+  }, [raidEncounters, region]);
+
+  const vaultItems = useMemo(
+    () => parseVaultRewardsFromSimcInput(latestSimcInput) as VaultRewardItem[],
+    [latestSimcInput]
+  );
+  const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus, region), [mythicPlus, region]);
+  const mythicSlots = mythicVaultProgress.slots;
+
+  const raidSlots = useMemo(
+    () =>
+      RAID_VAULT_THRESHOLDS.map((threshold, idx) => ({
+        slot: idx + 1,
+        threshold,
+        unlocked: raidBossesThisWeek >= threshold,
+        remaining: Math.max(0, threshold - raidBossesThisWeek),
+        progress: Math.min(1, raidBossesThisWeek / threshold),
+      })),
+    [raidBossesThisWeek],
+  );
+
+  return (
+    <div className="card p-5 space-y-4">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Overall Vault Progress</h3>
+
+      <div className="grid grid-cols-1 gap-3">
+        <SectionCard title="Mythic+ Track">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            {mythicSlots.map((slot) => (
+              <ProgressSlotCard
+                key={`mplus-${slot.slot}`}
+                slotLabel={`Slot ${slot.slot}`}
+                statusLabel={slot.unlocked ? 'Unlocked' : 'Locked'}
+                tone={slot.unlocked ? 'success' : 'neutral'}
+                description={
+                  slot.unlocked
+                    ? `Based on ${mythicVaultProgress.runsForVault} runs`
+                    : `${slot.remaining} more runs`
+                }
+                progress={slot.progress}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            {mythicVaultProgress.runsForVault} runs completed this week.
+          </p>
+        </SectionCard>
+
+        <SectionCard title="Raid Track">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            {raidSlots.map((slot) => (
+              <ProgressSlotCard
+                key={`raid-${slot.slot}`}
+                slotLabel={`Slot ${slot.slot}`}
+                statusLabel={slot.unlocked ? 'Unlocked' : `${slot.remaining} more`}
+                tone={slot.unlocked ? 'success' : 'neutral'}
+                description={
+                  slot.unlocked
+                    ? `Based on ${raidBossesThisWeek} boss kills`
+                    : `Requires ${slot.threshold} boss kills`
+                }
+                progress={slot.progress}
+              />
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-zinc-500">
+            {raidBossesThisWeek} boss kills completed this week.
+          </p>
+        </SectionCard>
+      </div>
+
+      {vaultItems.length > 0 && (
+        <SectionCard title="Vault item choices">
+          <VaultRewardsGrid items={vaultItems} />
+        </SectionCard>
+      )}
+    </div>
+  );
+}
+
+function MythicPlusCard({
+  mythicPlus,
+  region,
+  realm,
+  name,
+}: {
+  mythicPlus: MythicPlusPayload;
+  region?: string;
+  realm: string;
+  name: string;
+}) {
+  const [activeTab, setActiveTab] = useState<'overview' | 'runs'>('overview');
+  const mplusDungeonDetailsByName = useMythicDungeonDetails('us');
 
   const summary = useMemo(() => {
     if (!mythicPlus || typeof mythicPlus !== 'object') return null;
+    const mythicPlusObj = mythicPlus as Record<string, unknown>;
+    const asRecord = (value: unknown): Record<string, unknown> | null =>
+      value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
 
     const normalizeName = (value: unknown) =>
       String(value ?? '')
         .trim()
         .toLowerCase();
 
-    const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
-    const getRunDurationMs = (run: any) => Number(run?.duration ?? run?.run_duration ?? 0);
-    const getRunName = (run: any) =>
+    const getRunLevel = (run: MythicRun) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+    const getRunDurationMs = (run: MythicRun) => Number(run?.duration ?? run?.run_duration ?? 0);
+    const getRunName = (run: MythicRun) =>
       run?.keystone_dungeon?.name ||
       run?.dungeon?.name ||
       run?.completed_challenge_mode?.name ||
       run?.name ||
       'Dungeon';
-    const getMplusDungeonDetail = (run: any): MythicKeystoneDungeonDetail | null => {
+    const getMplusDungeonDetail = (run: MythicRun): MythicKeystoneDungeonDetail | null => {
       const key = normalizeName(getRunName(run));
       if (!key) return null;
       return mplusDungeonDetailsByName[key] || null;
     };
-    const getTimedByDurationFallback = (run: any): boolean | null => {
+    const getTimedByDurationFallback = (run: MythicRun): boolean | null => {
       const detail = getMplusDungeonDetail(run);
       if (!detail) return null;
       const oneChestDuration = detail.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
@@ -474,13 +330,13 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
       if (!oneChestDuration || !durationMs) return null;
       return durationMs <= oneChestDuration;
     };
-    const getRunTimed = (run: any): boolean | null => {
+    const getRunTimed = (run: MythicRun): boolean | null => {
       if (typeof run?.is_completed_within_timeout === 'boolean') return run.is_completed_within_timeout;
       if (typeof run?.completed_in_time === 'boolean') return run.completed_in_time;
       if (typeof run?.completedWithinTime === 'boolean') return run.completedWithinTime;
       return getTimedByDurationFallback(run);
     };
-    const getRunTimestamp = (run: any) =>
+    const getRunTimestamp = (run: MythicRun) =>
       Number(
         run?.completed_timestamp ??
           run?.completedTimestamp ??
@@ -500,7 +356,7 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
       return `${min}:${String(sec).padStart(2, '0')}`;
     };
 
-    const formatClockDelta = (run: any) => {
+    const formatClockDelta = (run: MythicRun) => {
       const detail = getMplusDungeonDetail(run);
       const timerMs = detail?.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
         ?.qualifying_duration;
@@ -514,19 +370,19 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
       return `${sign}${min}:${String(sec).padStart(2, '0')}`;
     };
 
-    const isRunLike = (value: any) =>
-      value &&
+    const isRunLike = (value: unknown): value is MythicRun =>
+      value != null &&
       typeof value === 'object' &&
-      (typeof value.keystone_level === 'number' ||
-        typeof value.keystoneLevel === 'number' ||
-        value.keystone_dungeon ||
-        value.dungeon ||
-        value.completed_challenge_mode);
+      (typeof (value as MythicRun).keystone_level === 'number' ||
+        typeof (value as MythicRun).keystoneLevel === 'number' ||
+        !!(value as MythicRun).keystone_dungeon ||
+        !!(value as MythicRun).dungeon ||
+        !!(value as MythicRun).completed_challenge_mode);
 
-    const collectRuns = (root: any): any[] => {
-      const out: any[] = [];
-      const stack: any[] = [root];
-      const seen = new Set<any>();
+    const collectRuns = (root: unknown): MythicRun[] => {
+      const out: MythicRun[] = [];
+      const stack: unknown[] = [root];
+      const seen = new Set<unknown>();
       while (stack.length > 0) {
         const current = stack.pop();
         if (!current || seen.has(current)) continue;
@@ -538,16 +394,18 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
         }
         if (typeof current === 'object') {
           if (isRunLike(current)) out.push(current);
-          for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+          for (const value of Object.values(current as Record<string, unknown>)) {
+            if (value && typeof value === 'object') stack.push(value);
+          }
         }
       }
       return out;
     };
 
-    const collectRewardMap = (root: any): Map<number, number> => {
+    const collectRewardMap = (root: unknown): Map<number, number> => {
       const map = new Map<number, number>();
-      const stack: any[] = [root];
-      const seen = new Set<any>();
+      const stack: unknown[] = [root];
+      const seen = new Set<unknown>();
       while (stack.length > 0) {
         const current = stack.pop();
         if (!current || seen.has(current) || typeof current !== 'object') continue;
@@ -556,34 +414,37 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
           for (const item of current) stack.push(item);
           continue;
         }
-        const level = Number(current.keystone_level ?? current.keystoneLevel ?? current.level ?? 0);
+        const currentObj = current as Record<string, unknown>;
+        const level = Number(currentObj.keystone_level ?? currentObj.keystoneLevel ?? currentObj.level ?? 0);
         const ilvl = Number(
-          current.item_level ??
-            current.itemLevel ??
-            current.reward_item_level ??
-            current.rewardItemLevel ??
+          currentObj.item_level ??
+            currentObj.itemLevel ??
+            currentObj.reward_item_level ??
+            currentObj.rewardItemLevel ??
             0,
         );
         if (level > 0 && ilvl > 0) map.set(level, Math.max(ilvl, map.get(level) || 0));
-        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+        for (const value of Object.values(currentObj)) if (value && typeof value === 'object') stack.push(value);
       }
       return map;
     };
 
     const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
-    const byDungeon = new Map<string, any>();
+    const byDungeon = new Map<string, MythicRun>();
     for (const run of allRuns) {
       const dungeonName = getRunName(run);
       const key = normalizeName(dungeonName);
       const level = getRunLevel(run);
       const existing = byDungeon.get(key);
-      const existingLevel = getRunLevel(existing);
+      const existingLevel = existing ? getRunLevel(existing) : 0;
       if (!existing || level > existingLevel) byDungeon.set(key, run);
     }
     const bestRuns = Array.from(byDungeon.values());
     const bestLevel = bestRuns.reduce((acc, run) => Math.max(acc, getRunLevel(run)), 0);
     const bestDungeon = bestRuns.find((run) => getRunLevel(run) === bestLevel);
-    const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
+    const recentSource = Array.isArray(mythicPlusObj.recent_runs)
+      ? (mythicPlusObj.recent_runs as MythicRun[])
+      : allRuns;
     const recentRuns = [...recentSource]
       .sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a))
       .slice(0, 20);
@@ -591,18 +452,20 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
     const depletedRuns = recentRuns.filter((run) => getRunTimed(run) === false).length;
     const timedStatusKnownCount = recentRuns.filter((run) => getRunTimed(run) !== null).length;
 
-    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const weekStart = getWeeklyResetStartMs(region);
     const recentWeekCount = recentRuns.filter((run) => {
       const ts = getRunTimestamp(run);
-      return ts > 0 && ts >= weekAgo;
+      const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
+      return tsMs > 0 && tsMs >= weekStart;
     }).length;
 
-    const currentPeriodCandidates = collectRuns(mythicPlus?.current_period || {});
+    const currentPeriodCandidates = collectRuns(mythicPlusObj.current_period || {});
     const currentPeriodCount = currentPeriodCandidates.length;
-    const runsForVault = Math.max(recentWeekCount, currentPeriodCount);
+    const vaultProgress = computeMythicVaultProgress(mythicPlus, region);
+    const runsForVault = vaultProgress.runsForVault;
     const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
-    const rewardMap = collectRewardMap(mythicPlus?.current_period || mythicPlus);
-    const slotThresholds = [1, 4, 8];
+    const rewardMap = collectRewardMap(mythicPlusObj.current_period || mythicPlus);
+    const slotThresholds = vaultProgress.slotThresholds;
     const vaultSlots = slotThresholds.map((threshold, i) => {
       const unlocked = runsForVault >= threshold;
       const keyLevel = topLevels[threshold - 1] || null;
@@ -618,19 +481,16 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
     });
     const hasAnyVaultIlvl = vaultSlots.some((slot) => slot.rewardIlvl != null);
 
-    const score = Number(
-      mythicPlus.current_mythic_rating?.rating ??
-        mythicPlus.currentMythicRating?.rating ??
-        mythicPlus.current_mythic_rating?.value ??
-        0,
-    );
+    const currentRating = asRecord(mythicPlusObj.current_mythic_rating);
+    const currentRatingAlt = asRecord(mythicPlusObj.currentMythicRating);
+    const score = Number(currentRating?.rating ?? currentRatingAlt?.rating ?? currentRating?.value ?? 0);
 
     return {
       score: score > 0 ? Math.round(score) : null,
       runs: bestRuns.length,
       bestLevel: bestLevel > 0 ? bestLevel : null,
       bestDungeonName: bestDungeon ? getRunName(bestDungeon) : null,
-      recentRuns: recentRuns.map((run: any, i: number) => ({
+      recentRuns: recentRuns.map((run: MythicRun, i: number) => ({
         id: `${getRunName(run)}-${getRunLevel(run)}-${getRunTimestamp(run)}-${i}`,
         dungeon: getRunName(run),
         level: getRunLevel(run),
@@ -638,7 +498,7 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
         timed: getRunTimed(run),
         clockDelta: formatClockDelta(run),
         timestamp: getRunTimestamp(run),
-        members: Array.isArray(run?.members) ? run.members : [],
+        members: Array.isArray(run?.members) ? (run.members as CharacterRunMember[]) : [],
         dungeonId: getMplusDungeonDetail(run)?.id ?? null,
         keystoneUpgrades: getMplusDungeonDetail(run)?.keystone_upgrades ?? [],
       })),
@@ -649,7 +509,7 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
       vaultProgressCount: runsForVault,
       hasAnyVaultIlvl,
     };
-  }, [mplusDungeonDetailsByName, mythicPlus]);
+  }, [mplusDungeonDetailsByName, mythicPlus, region]);
 
   const formatRelative = (timestamp: number) => {
     if (!timestamp || timestamp <= 0) return 'Unknown time';
@@ -660,6 +520,22 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
   };
+
+  const mythicDungeonTimers = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const detail of Object.values(mplusDungeonDetailsByName || {})) {
+      const name = String(detail?.name || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[\s_]+/g, ' ')
+        .replace(/[^a-z0-9 ]+/g, '')
+        .replace(/\s+/g, ' ');
+      const timerMs = detail?.keystone_upgrades?.find((upgrade) => Number(upgrade?.upgrade_level) === 1)
+        ?.qualifying_duration;
+      if (name && Number(timerMs) > 0) out[name] = Math.round(Number(timerMs) / 1000);
+    }
+    return out;
+  }, [mplusDungeonDetailsByName]);
 
   return (
     <div className="card p-5">
@@ -703,26 +579,15 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
               </p>
               <div className="space-y-2">
                 {summary.vaultSlots.map((slot) => (
-                  <div key={slot.slot} className="rounded border border-white/5 bg-black/20 p-2">
-                    <div className="mb-1 flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-zinc-300">Slot {slot.slot}</span>
-                      <span className={slot.unlocked ? 'text-emerald-300' : 'text-zinc-500'}>
-                        {slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
-                      </span>
-                    </div>
-                    <div className="mb-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className={`h-full rounded-full ${slot.unlocked ? 'bg-emerald-400/90' : 'bg-gold/80'}`}
-                        style={{ width: `${Math.round(slot.progress * 100)}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
-                      <span>{slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}</span>
-                      {summary.hasAnyVaultIlvl && slot.rewardIlvl ? (
-                        <span>{`iLvl ${slot.rewardIlvl}`}</span>
-                      ) : null}
-                    </div>
-                  </div>
+                  <ProgressSlotCard
+                    key={slot.slot}
+                    slotLabel={`Slot ${slot.slot}`}
+                    statusLabel={slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
+                    tone={slot.unlocked ? 'success' : 'neutral'}
+                    description={slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}
+                    progress={slot.progress}
+                    footerRight={summary.hasAnyVaultIlvl && slot.rewardIlvl ? `iLvl ${slot.rewardIlvl}` : undefined}
+                  />
                 ))}
               </div>
             </div>
@@ -783,7 +648,7 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
                     </div>
                     {run.members.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
-                        {run.members.slice(0, 5).map((member: any, idx: number) => {
+                        {run.members.slice(0, 5).map((member: CharacterRunMember, idx: number) => {
                           const memberName =
                             member?.profile?.name ||
                             member?.character?.name ||
@@ -801,8 +666,7 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
                             member?.profile?.character_class?.name ||
                             member?.specialization?.name ||
                             member?.character_class?.name ||
-                            member?.class?.name ||
-                            member?.class ||
+                            (typeof member?.class === 'object' ? member.class?.name : member?.class) ||
                             '';
                           const memberProfile = getMemberProfileHref(member, region);
                           const memberLabel = `${memberName}${memberClass ? ` (${memberClass})` : ''}`;
@@ -862,120 +726,19 @@ function MythicPlusCard({ mythicPlus, region }: { mythicPlus: any; region?: stri
   );
 }
 
-function normalizeRealmSlug(value: unknown): string {
-  return String(value ?? '')
-    .toLowerCase()
-    .replace(/'/g, '')
-    .replace(/\s+/g, '-')
-    .trim();
-}
-
-function isCurrentExpansionPlaceholder(value: unknown): boolean {
-  const lower = String(value ?? '').trim().toLowerCase();
-  return lower === 'current season' || lower === 'current expansion';
-}
-
-function isLikelyCurrentExpansionLabel(value: unknown): boolean {
-  const lower = String(value ?? '').trim().toLowerCase();
-  if (!lower) return false;
-  return (
-    lower === 'midnight' ||
-    lower.startsWith('the war within') ||
-    lower.startsWith('11.') ||
-    lower.startsWith('12.')
-  );
-}
-
-function normalizeCharacterName(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function normalizeRegionCode(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
-}
-
-function tryDecodeSegment(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function getMemberProfileHref(
-  member: any,
-  fallbackRegion?: string
-): { href: string; external: boolean } | null {
-  const memberName =
-    member?.linked_name ||
-    member?.profile?.name ||
-    member?.character?.name ||
-    member?.character_name ||
-    member?.name ||
-    '';
-  const memberRegion =
-    member?.linked_region ||
-    member?.profile?.region ||
-    member?.character?.region ||
-    member?.region ||
-    member?.profile?.realm?.region ||
-    fallbackRegion;
-  const rawRealm =
-    member?.linked_realm ||
-    member?.profile?.realm?.slug ||
-    member?.profile?.realm?.name ||
-    member?.character?.realm?.slug ||
-    member?.character?.realm?.name ||
-    member?.realm;
-  const memberRegionCode = normalizeRegionCode(memberRegion);
-  const memberNameSlug = normalizeCharacterName(memberName);
-  const realmSlug = normalizeRealmSlug(rawRealm);
-
-  if (memberNameSlug && memberRegionCode && realmSlug) {
-    return {
-      href: characterHref(memberRegionCode, realmSlug, memberNameSlug),
-      external: false,
-    };
-  }
-
-  const externalUrl =
-    member?.linked_profile_url || member?.profile?.url || member?.character?.url || member?.url;
-  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
-    // Blizzard URLs often contain region/realm/name even when member objects are sparse.
-    const match = externalUrl.match(/\/character\/([^/]+)\/([^/]+)\/([^/?#]+)/i);
-    if (match) {
-      const parsedRegion = normalizeRegionCode(tryDecodeSegment(String(match[1] || '')));
-      const parsedRealm = normalizeRealmSlug(tryDecodeSegment(String(match[2] || '')));
-      const parsedName = normalizeCharacterName(tryDecodeSegment(String(match[3] || '')));
-      if (parsedRegion && parsedRealm && parsedName) {
-        return {
-          href: characterHref(parsedRegion, parsedRealm, parsedName),
-          external: false,
-        };
-      }
-    }
-  }
-
-  if (typeof externalUrl === 'string' && externalUrl.startsWith('http')) {
-    return { href: externalUrl, external: true };
-  }
-  return null;
-}
-
 function RaidSectionCard({
   raidEncounters,
   region,
   realm,
   name,
 }: {
-  raidEncounters: any;
+  raidEncounters: RaidEncountersPayload;
   region: string;
   realm: string;
   name: string;
 }) {
   const [selectedExpansion, setSelectedExpansion] = useState<string>('all');
   const [hasInitializedExpansion, setHasInitializedExpansion] = useState(false);
-  const [selectedRaidName, setSelectedRaidName] = useState<string>('all');
 
   const expansionOptions = useMemo(() => {
     const normalizeExpansionKey = (value: unknown) => {
@@ -1016,33 +779,6 @@ function RaidSectionCard({
     ];
   }, [raidEncounters]);
 
-  const raidOptions = useMemo(() => {
-    const normalizeExpansionKey = (value: unknown) => {
-      const raw = String(value ?? '').trim();
-      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Current expansion' : raw;
-      return canonical.toLowerCase().replace(/[\s_]+/g, '-');
-    };
-    const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    const raids = new Set<string>();
-    for (const exp of expansions) {
-      const rawExp =
-        exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || 'Unknown expansion';
-      const expKey = normalizeExpansionKey(rawExp) || 'unknown-expansion';
-      if (selectedExpansion !== 'all' && expKey !== selectedExpansion) continue;
-      const instances = Array.isArray(exp?.instances) ? exp.instances : [];
-      for (const inst of instances) {
-        const raidName = String(inst?.instance?.name || inst?.name || '').trim();
-        if (raidName) raids.add(raidName);
-      }
-    }
-    return ['all', ...Array.from(raids).sort((a, b) => a.localeCompare(b))];
-  }, [raidEncounters, selectedExpansion]);
-
-  useEffect(() => {
-    if (selectedRaidName === 'all') return;
-    if (!raidOptions.includes(selectedRaidName)) setSelectedRaidName('all');
-  }, [raidOptions, selectedRaidName]);
-
   useEffect(() => {
     if (hasInitializedExpansion) return;
     const preferred =
@@ -1070,31 +806,15 @@ function RaidSectionCard({
               </option>
             ))}
           </select>
-          <select
-            aria-label="Raid"
-            value={selectedRaidName}
-            onChange={(e) => setSelectedRaidName(e.target.value)}
-            className="input-field h-9 w-[180px] px-2 py-1 text-[11px] text-zinc-100"
-            style={{ colorScheme: 'dark' }}
-          >
-            {raidOptions.map((opt) => (
-              <option key={opt} value={opt}>
-                {opt === 'all' ? 'All raids' : opt}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
       <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-zinc-500">Parses</p>
-        <WarcraftLogsParsesCard
-          region={region}
-          realm={realm}
-          name={name}
+        <RaidProgressCard
           raidEncounters={raidEncounters}
-          selectedExpansion={selectedExpansion}
-          selectedRaidName={selectedRaidName}
           embedded
+          region={region}
+          selectedExpansion={selectedExpansion}
+          selectedRaidName="all"
         />
       </div>
     </div>
@@ -1104,12 +824,14 @@ function RaidSectionCard({
 function RaidProgressCard({
   raidEncounters,
   embedded = false,
+  region,
   selectedExpansion = 'all',
   selectedRaidName = 'all',
   onActiveRaidNameChange,
 }: {
-  raidEncounters: any;
+  raidEncounters: RaidEncountersPayload;
   embedded?: boolean;
+  region?: string;
   selectedExpansion?: string;
   selectedRaidName?: string;
   onActiveRaidNameChange?: (raidName: string | null) => void;
@@ -1158,7 +880,7 @@ function RaidProgressCard({
       lfr: string;
     }> = [];
 
-    const normalize = (value: any) =>
+    const normalize = (value: unknown) =>
       String(value ?? '')
         .trim()
         .toLowerCase()
@@ -1191,8 +913,8 @@ function RaidProgressCard({
       for (const inst of instances) {
         const modes = Array.isArray(inst?.modes) ? inst.modes : [];
         const getMode = (modeName: string) =>
-          modes.find((m: any) => (m?.difficulty?.type || '').toLowerCase() === modeName);
-        const fmtProgress = (mode: any) => {
+          modes.find((mode: RaidMode) => (mode?.difficulty?.type || '').toLowerCase() === modeName);
+        const fmtProgress = (mode: RaidMode | undefined) => {
           const p = mode?.progress;
           const k = Number(p?.encounters_defeated ?? p?.completed_count ?? 0);
           const t = Number(p?.total_encounters ?? p?.total_count ?? 0);
@@ -1214,11 +936,11 @@ function RaidProgressCard({
     }
     const byRaidNameHasConcrete = new Set(
       flattened
-        .filter((r: any) => !r.placeholderExpansion && r.expansionKey !== 'unknown-expansion')
-        .map((r: any) => r.name.trim().toLowerCase().replace(/\s+/g, ' '))
+        .filter((row) => !row.placeholderExpansion && row.expansionKey !== 'unknown-expansion')
+        .map((row) => row.name.trim().toLowerCase().replace(/\s+/g, ' '))
     );
 
-    for (const raid of flattened as Array<any>) {
+    for (const raid of flattened) {
       const normalizedRaidName = raid.name.trim().toLowerCase().replace(/\s+/g, ' ');
       if (raid.placeholderExpansion && byRaidNameHasConcrete.has(normalizedRaidName)) {
         // Prefer concrete expansion labels over generic current-season placeholders.
@@ -1252,6 +974,7 @@ function RaidProgressCard({
       {visibleRaids.length > 0 ? (
         <RaidProgressionGrid
           raidEncounters={raidEncounters}
+          region={region}
           selectedExpansion={selectedExpansion}
           selectedRaidName={selectedRaidName}
           onActiveRaidNameChange={onActiveRaidNameChange}
@@ -1268,785 +991,6 @@ function RaidProgressCard({
   return <div className="card p-5">{content}</div>;
 }
 
-type WarcraftLogsParse = {
-  zone_name: string;
-  encounter_name: string;
-  difficulty: string;
-  percentile?: number | null;
-  dps?: number | null;
-  median_percentile?: number | null;
-  attempts?: number | null;
-  kills?: number | null;
-  fastest_kill_seconds?: number | null;
-  all_stars_points?: number | null;
-  all_stars_rank?: number | null;
-  report_code?: string | null;
-  report_title?: string | null;
-  report_end_time?: number | null;
-  start_time?: number | null;
-  locked_in?: boolean | null;
-};
-
-type WarcraftLogsParsesResponse = {
-  configured: boolean;
-  needs_credentials: boolean;
-  parses: WarcraftLogsParse[];
-  debug_raw?: unknown;
-  message?: string;
-  error?: string;
-};
-
-function normalizeParseDifficultyLabel(value: unknown): 'LFR' | 'Normal' | 'Heroic' | 'Mythic' | 'Unknown' {
-  const raw = String(value ?? '').trim().toLowerCase();
-  if (!raw) return 'Unknown';
-  if (raw === 'lfr' || raw.includes('finder') || raw.includes('raid_finder') || raw === '17') return 'LFR';
-  if (raw === 'normal' || raw === '14' || raw === '2') return 'Normal';
-  if (raw === 'heroic' || raw === '15' || raw === '3' || raw === '5') return 'Heroic';
-  if (raw === 'mythic' || raw === '16' || raw === '4') return 'Mythic';
-  if (raw.includes('normal')) return 'Normal';
-  if (raw.includes('heroic')) return 'Heroic';
-  if (raw.includes('mythic')) return 'Mythic';
-  return 'Unknown';
-}
-
-function WarcraftLogsParsesCard({
-  region,
-  realm,
-  name,
-  raidEncounters,
-  selectedExpansion = 'all',
-  selectedRaidName = 'all',
-  embedded = false,
-}: {
-  region: string;
-  realm: string;
-  name: string;
-  raidEncounters?: any;
-  selectedExpansion?: string;
-  selectedRaidName?: string;
-  embedded?: boolean;
-}) {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<WarcraftLogsParsesResponse | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [refreshSeq, setRefreshSeq] = useState(0);
-  const [difficultyFilter, setDifficultyFilter] = useState<'LFR' | 'Normal' | 'Heroic' | 'Mythic'>('Heroic');
-  const [sortKey, setSortKey] = useState<
-    'boss' | 'best' | 'latest' | 'high' | 'attempts' | 'kills' | 'fastest' | 'none'
-  >('none');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc' | 'none'>('none');
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const [rawDebugOpen, setRawDebugOpen] = useState(false);
-  const [rawDebugLoading, setRawDebugLoading] = useState(false);
-  const [rawDebugText, setRawDebugText] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const realmSlug = normalizeRealmSlug(realm);
-    const characterName = String(name || '').trim().toLowerCase();
-    if (!realmSlug || !characterName) {
-      setLoading(false);
-      setData({
-        configured: false,
-        needs_credentials: false,
-        parses: [],
-        message: 'Character data is incomplete for Warcraft Logs lookup.',
-      });
-      return;
-    }
-    const cacheKey = `wcl_parses_${(region || 'us').toLowerCase()}_${realmSlug}_${characterName}`;
-    const forceRefresh = refreshSeq > 0;
-    const now = Date.now();
-    const cacheTtlMs = 10 * 60 * 1000;
-
-    if (!forceRefresh && typeof window !== 'undefined') {
-      const raw = window.localStorage.getItem(cacheKey);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as { fetched_at: number; data: WarcraftLogsParsesResponse };
-          if (parsed?.data && typeof parsed?.fetched_at === 'number' && now - parsed.fetched_at <= cacheTtlMs) {
-            setData(parsed.data);
-            setLastUpdated(parsed.fetched_at);
-            setLoading(false);
-            return;
-          }
-        } catch {
-          // Ignore bad cache and fetch fresh.
-        }
-      }
-    }
-
-    const fetchParses = async () => {
-      const path = `/api/warcraftlogs/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(characterName)}/parses?region=${encodeURIComponent(region || 'us')}`;
-      const host =
-        typeof window !== 'undefined' && window.location?.hostname
-          ? window.location.hostname
-          : 'localhost';
-      const baseCandidates = [
-        API_URL,
-        'http://127.0.0.1:17384',
-        'http://localhost:17384',
-        `http://${host}:8000`,
-        'http://127.0.0.1:8000',
-        'http://localhost:8000',
-      ].filter((v, i, arr) => !!v && arr.indexOf(v) === i);
-
-      let lastError: any = null;
-      for (const base of baseCandidates) {
-        try {
-          return await fetchJson<WarcraftLogsParsesResponse>(`${base}${path}`);
-        } catch (err: any) {
-          lastError = err;
-          if (err?.status !== 404) break;
-        }
-      }
-      throw lastError || new Error('Failed to load Warcraft Logs parses.');
-    };
-
-    fetchParses()
-      .then((result) => {
-        if (!cancelled) {
-          const fetchedAt = Date.now();
-          setData(result);
-          setLastUpdated(fetchedAt);
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem(
-              cacheKey,
-              JSON.stringify({ fetched_at: fetchedAt, data: result }),
-            );
-          }
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          const status = (err as any)?.status;
-          const message =
-            status === 404
-              ? 'Warcraft Logs parses endpoint was not found on the active API server.'
-              : err?.message || 'Failed to load Warcraft Logs parses.';
-          setData({
-            configured: true,
-            needs_credentials: false,
-            parses: [],
-            error: message,
-          });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [region, realm, name, refreshSeq]);
-
-
-
-  const grouped = useMemo(() => {
-    const rows = data?.parses || [];
-    const map = new Map<
-      string,
-      {
-        key: string;
-        encounter: string;
-        zone: string;
-        difficulty: string;
-        bestPercentile: number | null;
-        medianPercentile: number | null;
-        latestDps: number | null;
-        highestDps: number | null;
-        attempts: number;
-        kills: number;
-        fastestSeconds: number | null;
-        attemptsHistory: Array<{
-          percentile: number | null;
-          dps: number | null;
-          fastestSeconds: number | null;
-          reportCode: string | null;
-          reportTitle: string | null;
-          timestamp: number | null;
-          lockedIn: boolean | null;
-        }>;
-        lockedIn: boolean | null;
-      }
-    >();
-
-    for (const row of rows) {
-      const encounter = row.encounter_name || 'Encounter';
-      const zone = row.zone_name || 'Raid';
-      const key = `${encounter.toLowerCase()}::${zone.toLowerCase()}`;
-      const percentile = row.percentile ?? null;
-      const dps = row.dps ?? null;
-      const attemptsRaw = Number(row.attempts ?? 0);
-      const kills = Number(row.kills ?? 0);
-      const attempts = Math.max(Number.isFinite(attemptsRaw) ? attemptsRaw : 0, kills);
-      const normalizedDifficulty = normalizeParseDifficultyLabel(row.difficulty);
-      if (normalizedDifficulty === 'Unknown') continue;
-      const lockedIn = typeof row.locked_in === 'boolean' ? row.locked_in : null;
-
-      const difficultyKey = normalizedDifficulty;
-      const bucketKey = `${key}::${difficultyKey.toLowerCase()}`;
-      const bucketExisting = map.get(bucketKey);
-
-      if (!bucketExisting) {
-        map.set(bucketKey, {
-          key: bucketKey,
-          encounter,
-          zone,
-          difficulty: normalizedDifficulty,
-          bestPercentile: percentile,
-          medianPercentile: row.median_percentile ?? null,
-          latestDps: dps,
-          highestDps: dps,
-          attempts,
-          kills,
-          fastestSeconds: row.fastest_kill_seconds ?? null,
-          lockedIn,
-          attemptsHistory: [
-            {
-              percentile,
-              dps,
-              fastestSeconds: row.fastest_kill_seconds ?? null,
-              reportCode: row.report_code ?? null,
-              reportTitle: row.report_title ?? null,
-              timestamp: row.report_end_time ?? row.start_time ?? null,
-              lockedIn,
-            },
-          ],
-        });
-        continue;
-      }
-
-      bucketExisting.bestPercentile =
-        Math.max(bucketExisting.bestPercentile ?? 0, percentile ?? 0) || bucketExisting.bestPercentile;
-      bucketExisting.medianPercentile = bucketExisting.medianPercentile ?? row.median_percentile ?? null;
-      bucketExisting.latestDps = bucketExisting.latestDps ?? dps;
-      bucketExisting.highestDps = Math.max(bucketExisting.highestDps ?? 0, dps ?? 0) || bucketExisting.highestDps;
-      bucketExisting.attempts = Math.max(bucketExisting.attempts, attempts);
-      bucketExisting.kills = Math.max(bucketExisting.kills, kills);
-      bucketExisting.fastestSeconds = bucketExisting.fastestSeconds ?? row.fastest_kill_seconds ?? null;
-      if (lockedIn === false) bucketExisting.lockedIn = false;
-      else if (bucketExisting.lockedIn === null && lockedIn !== null) bucketExisting.lockedIn = lockedIn;
-      bucketExisting.attemptsHistory.push({
-        percentile,
-        dps,
-        fastestSeconds: row.fastest_kill_seconds ?? null,
-        reportCode: row.report_code ?? null,
-        reportTitle: row.report_title ?? null,
-        timestamp: row.report_end_time ?? row.start_time ?? null,
-        lockedIn,
-      });
-    }
-
-    return Array.from(map.values())
-      .map((entry) => ({
-        ...entry,
-        attemptsHistory: [...entry.attemptsHistory].sort(
-          (a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0),
-        ),
-      }))
-      .sort((a, b) => (b.bestPercentile ?? 0) - (a.bestPercentile ?? 0));
-  }, [data]);
-
-  const difficultyOptions: Array<'LFR' | 'Normal' | 'Heroic' | 'Mythic'> = [
-    'LFR',
-    'Normal',
-    'Heroic',
-    'Mythic',
-  ];
-
-  const difficultyCounts = useMemo(() => {
-    const counts: Record<'LFR' | 'Normal' | 'Heroic' | 'Mythic', number> = {
-      LFR: 0,
-      Normal: 0,
-      Heroic: 0,
-      Mythic: 0,
-    };
-    for (const row of grouped) {
-      const diff = normalizeParseDifficultyLabel(row.difficulty);
-      if (diff === 'Unknown') continue;
-      counts[diff] += 1;
-    }
-    return counts;
-  }, [grouped]);
-
-  const displayedRows = useMemo(() => {
-    const normalizeFilterKey = (value: unknown) =>
-      String(value ?? '')
-        .trim()
-        .toLowerCase()
-        .replace(/[\s_]+/g, ' ')
-        .replace(/[^a-z0-9 ]+/g, '')
-        .replace(/\s+/g, ' ');
-    const normalizeExpansionKey = (value: unknown) => {
-      const raw = String(value ?? '').trim();
-      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Current expansion' : raw;
-      return canonical.toLowerCase().replace(/[\s_]+/g, '-');
-    };
-    const allowedRaidNames = new Set<string>();
-    const allowedBossNames = new Set<string>();
-    const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    for (const exp of expansions) {
-      const rawExp =
-        exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || 'Unknown expansion';
-      const expKey = normalizeExpansionKey(rawExp) || 'unknown-expansion';
-      if (selectedExpansion !== 'all' && expKey !== selectedExpansion) continue;
-      const instances = Array.isArray(exp?.instances) ? exp.instances : [];
-      for (const inst of instances) {
-        const raidName = String(inst?.instance?.name || inst?.name || '').trim();
-        const raidNameKey = normalizeFilterKey(raidName);
-        const instanceIncluded =
-          selectedRaidName === 'all' || raidNameKey === normalizeFilterKey(selectedRaidName);
-        if (raidNameKey && instanceIncluded) allowedRaidNames.add(raidNameKey);
-        if (!instanceIncluded) continue;
-
-        const modes = Array.isArray(inst?.modes) ? inst.modes : [];
-        for (const mode of modes) {
-          const encounters = Array.isArray(mode?.progress?.encounters)
-            ? mode.progress.encounters
-            : Array.isArray(mode?.encounters)
-              ? mode.encounters
-              : [];
-          for (const encounter of encounters) {
-            const encounterName = String(
-              encounter?.encounter?.name ||
-                encounter?.name ||
-                encounter?.encounter_name ||
-                '',
-            ).trim();
-            const encounterKey = normalizeFilterKey(encounterName);
-            if (encounterKey) allowedBossNames.add(encounterKey);
-          }
-        }
-      }
-    }
-
-    let base = grouped.filter(
-      (r) => normalizeParseDifficultyLabel(r.difficulty) === difficultyFilter,
-    );
-    if (selectedRaidName !== 'all') {
-      const targetRaid = normalizeFilterKey(selectedRaidName);
-      const byZone = base.filter((r) => normalizeFilterKey(r.zone || '') === targetRaid);
-      // If WCL zone labels do not match selected raid names, do not hard-drop rows.
-      if (byZone.length > 0) {
-        base = byZone;
-      } else if (allowedBossNames.size > 0) {
-        const byBoss = base.filter((r) => allowedBossNames.has(normalizeFilterKey(r.encounter || '')));
-        // Keep table usable if Blizzard encounter names and WCL encounter names drift.
-        if (byBoss.length > 0) {
-          base = byBoss;
-        }
-      }
-    } else if (selectedExpansion !== 'all') {
-      base = base.filter((r) => {
-        const raidKey = normalizeFilterKey(r.zone || '');
-        const bossKey = normalizeFilterKey(r.encounter || '');
-        if (allowedRaidNames.has(raidKey)) return true;
-        if (allowedBossNames.has(bossKey)) return true;
-        return false;
-      });
-    }
-
-    if (sortKey === 'none' || sortDir === 'none') return base;
-
-    const dir = sortDir === 'asc' ? 1 : -1;
-    const sorted = [...base].sort((a, b) => {
-      const numCmp = (x: number | null | undefined, y: number | null | undefined) =>
-        ((x ?? Number.NEGATIVE_INFINITY) - (y ?? Number.NEGATIVE_INFINITY)) * dir;
-      switch (sortKey) {
-        case 'boss':
-          return a.encounter.localeCompare(b.encounter) * dir;
-        case 'best':
-          return numCmp(a.bestPercentile, b.bestPercentile);
-        case 'latest':
-          return numCmp(a.latestDps, b.latestDps);
-        case 'high':
-          return numCmp(a.highestDps, b.highestDps);
-        case 'attempts':
-          return numCmp(a.attempts, b.attempts);
-        case 'kills':
-          return numCmp(a.kills, b.kills);
-        case 'fastest':
-          // Faster is lower, so invert the default direction for intuitive sorting.
-          return numCmp(b.fastestSeconds, a.fastestSeconds);
-        default:
-          return 0;
-      }
-    });
-    return sorted;
-  }, [grouped, difficultyFilter, sortKey, sortDir, raidEncounters, selectedExpansion, selectedRaidName]);
-
-  const summary = useMemo(() => {
-    if (displayedRows.length === 0) return null;
-    const avg =
-      displayedRows.reduce((acc, item) => acc + (item.bestPercentile ?? 0), 0) / displayedRows.length;
-    const attempts = displayedRows.reduce((acc, item) => acc + item.attempts, 0);
-    const kills = displayedRows.reduce((acc, item) => acc + item.kills, 0);
-    const latestTryDps =
-      displayedRows
-        .map((item) => item.latestDps ?? 0)
-        .filter((v) => v > 0)
-        .sort((a, b) => b - a)[0] || 0;
-    return { avg, attempts, kills, latestTryDps };
-  }, [displayedRows]);
-
-  const cycleSort = (
-    key: 'boss' | 'best' | 'latest' | 'high' | 'attempts' | 'kills' | 'fastest',
-  ) => {
-    if (sortKey !== key || sortDir === 'none') {
-      setSortKey(key);
-      setSortDir('desc');
-      return;
-    }
-    if (sortDir === 'desc') {
-      setSortDir('asc');
-      return;
-    }
-    setSortKey('none');
-    setSortDir('none');
-  };
-
-  const sortIndicator = (
-    key: 'boss' | 'best' | 'latest' | 'high' | 'attempts' | 'kills' | 'fastest',
-  ) => {
-    if (sortKey !== key || sortDir === 'none') return '';
-    return sortDir === 'desc' ? ' ▼' : ' ▲';
-  };
-
-  const toggleExpanded = (key: string) => {
-    setExpandedRows((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const fetchRawGraphqlOutput = async () => {
-    const realmSlug = normalizeRealmSlug(realm);
-    const characterName = String(name || '').trim().toLowerCase();
-    if (!realmSlug || !characterName) return;
-
-    setRawDebugLoading(true);
-    setRawDebugOpen(true);
-    try {
-      const path = `/api/warcraftlogs/character/${encodeURIComponent(realmSlug)}/${encodeURIComponent(characterName)}/parses?region=${encodeURIComponent(region || 'us')}&debug_raw=true`;
-      const host =
-        typeof window !== 'undefined' && window.location?.hostname
-          ? window.location.hostname
-          : 'localhost';
-      const baseCandidates = [
-        API_URL,
-        'http://127.0.0.1:17384',
-        'http://localhost:17384',
-        `http://${host}:8000`,
-        'http://127.0.0.1:8000',
-        'http://localhost:8000',
-      ].filter((v, i, arr) => !!v && arr.indexOf(v) === i);
-
-      let lastError: any = null;
-      let result: WarcraftLogsParsesResponse | null = null;
-      for (const base of baseCandidates) {
-        try {
-          result = await fetchJson<WarcraftLogsParsesResponse>(`${base}${path}`);
-          break;
-        } catch (err: any) {
-          lastError = err;
-          if (err?.status !== 404) break;
-        }
-      }
-      if (!result) throw lastError || new Error('Failed to fetch raw GraphQL output.');
-
-      setRawDebugText(JSON.stringify((result as any).debug_raw ?? [], null, 2));
-    } catch (err: any) {
-      setRawDebugText(`Failed to fetch raw GraphQL output.\n${err?.message || String(err)}`);
-    } finally {
-      setRawDebugLoading(false);
-    }
-  };
-
-  const percentileClass = (value: number | null | undefined) => {
-    const n = value ?? 0;
-    if (n >= 95) return 'text-orange-300';
-    if (n >= 75) return 'text-fuchsia-300';
-    if (n >= 50) return 'text-sky-300';
-    if (n >= 25) return 'text-emerald-300';
-    return 'text-zinc-400';
-  };
-
-  const fmtDuration = (seconds: number | null | undefined) => {
-    if (!seconds || seconds <= 0) return '-';
-    const total = Math.round(seconds);
-    const min = Math.floor(total / 60);
-    const sec = total % 60;
-    return `${min}:${String(sec).padStart(2, '0')}`;
-  };
-
-  const content = (
-    <>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[10px] text-zinc-500">
-          {lastUpdated ? `Cached ${new Date(lastUpdated).toLocaleTimeString()}` : 'No cache yet'}
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={fetchRawGraphqlOutput}
-            className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-          >
-            Raw GraphQL
-          </button>
-          <button
-            type="button"
-            onClick={() => setRefreshSeq((v) => v + 1)}
-            className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
-        </div>
-      </div>
-      {!embedded && (
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Raid Parses (Warcraft Logs)
-          </h3>
-        </div>
-      )}
-
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div className="inline-flex items-center gap-2">
-          <label className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Difficulty</label>
-          <div className="inline-flex rounded-md border border-white/10 bg-black/30 p-0.5">
-            {difficultyOptions.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => setDifficultyFilter(opt)}
-                className={`rounded px-2 py-1 text-[11px] font-bold ${
-                  difficultyFilter === opt
-                    ? 'bg-gold/20 text-gold'
-                    : 'text-zinc-400 hover:text-zinc-100'
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-        <p className="text-[10px] text-zinc-500">
-          LFR {difficultyCounts.LFR} · Normal {difficultyCounts.Normal} · Heroic {difficultyCounts.Heroic} · Mythic {difficultyCounts.Mythic}
-        </p>
-        {(sortKey !== 'none' || sortDir !== 'none') && (
-          <button
-            type="button"
-            onClick={() => {
-              setSortKey('none');
-              setSortDir('none');
-            }}
-            className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-          >
-            Clear Sort
-          </button>
-        )}
-      </div>
-
-      {loading ? (
-        <p className="text-[11px] text-zinc-500">Loading Warcraft Logs parses...</p>
-      ) : data?.needs_credentials ? (
-        <div className="rounded-md border border-amber-300/30 bg-amber-300/10 p-3 text-[11px] text-amber-100">
-          <p className="font-semibold">Warcraft Logs credentials needed</p>
-          <p className="mt-1 text-amber-100/90">
-            {data.message ||
-              'Please add your Warcraft Logs Client ID and Client Secret in Settings > Integrations.'}
-          </p>
-          <Link
-            href="/settings"
-            className="mt-2 inline-flex rounded border border-amber-300/40 bg-black/20 px-2 py-1 text-[11px] font-bold text-amber-200 hover:bg-black/30"
-          >
-            Open Settings
-          </Link>
-        </div>
-      ) : data?.error ? (
-        <p className="text-[11px] text-red-300">{data.error}</p>
-      ) : displayedRows.length > 0 ? (
-        <div className="space-y-3">
-          {summary && (
-            <div className="grid grid-cols-2 gap-2 rounded-md border border-white/5 bg-white/[0.02] p-2.5 text-[11px] sm:grid-cols-4">
-              <div>
-                <p className="text-zinc-500">Best Perf. Avg</p>
-                <p className={`text-[14px] font-black ${percentileClass(summary.avg)}`}>{summary.avg.toFixed(1)}%</p>
-              </div>
-              <div>
-                <p className="text-zinc-500">Latest Try DPS</p>
-                <p className="text-[14px] font-black text-zinc-100">
-                  {summary.latestTryDps > 0 ? Math.round(summary.latestTryDps).toLocaleString() : '-'}
-                </p>
-              </div>
-              <div>
-                <p className="text-zinc-500">Attempts</p>
-                <p className="text-[14px] font-black text-zinc-100">{summary.attempts}</p>
-              </div>
-              <div>
-                <p className="text-zinc-500">Kills</p>
-                <p className="text-[14px] font-black text-zinc-100">{summary.kills}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="max-h-[62vh] overflow-auto rounded-md border border-white/5">
-            <table className="w-full min-w-[980px] text-[12px]">
-              <thead className="bg-white/[0.04] text-zinc-400">
-                <tr>
-                  <th className="px-2 py-2 text-left font-semibold">
-                    <button type="button" onClick={() => cycleSort('boss')} className="hover:text-zinc-100">
-                      Boss{sortIndicator('boss')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('best')} className="hover:text-zinc-100">
-                      Best %{sortIndicator('best')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('latest')} className="hover:text-zinc-100">
-                      Latest DPS{sortIndicator('latest')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('high')} className="hover:text-zinc-100">
-                      High DPS{sortIndicator('high')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('attempts')} className="hover:text-zinc-100">
-                      Attempts{sortIndicator('attempts')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('kills')} className="hover:text-zinc-100">
-                      Kills{sortIndicator('kills')}
-                    </button>
-                  </th>
-                  <th className="px-2 py-2 text-right font-semibold">
-                    <button type="button" onClick={() => cycleSort('fastest')} className="hover:text-zinc-100">
-                      Fastest{sortIndicator('fastest')}
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedRows.map((g) => (
-                  <Fragment key={g.key}>
-                  <tr className="border-t border-white/5">
-                    <td className="px-2 py-2">
-                      <div className="flex items-center gap-2">
-                        {g.attemptsHistory.length > 1 ? (
-                          <button
-                            type="button"
-                            onClick={() => toggleExpanded(g.key)}
-                            className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 hover:bg-white/10"
-                            aria-label={`Toggle attempts for ${g.encounter}`}
-                          >
-                            {expandedRows[g.key] ? '-' : '+'}
-                          </button>
-                        ) : null}
-                        <p className="font-semibold text-zinc-100">{g.encounter}</p>
-                        {g.lockedIn === false ? (
-                          <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">
-                            New
-                          </span>
-                        ) : g.lockedIn === true ? (
-                          <span className="rounded bg-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-300">
-                            Locked
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-[10px] text-zinc-500">
-                        {g.zone} - {g.difficulty}
-                      </p>
-                    </td>
-                    <td className={`px-2 py-2 text-right font-bold ${percentileClass(g.bestPercentile)}`}>
-                      {g.bestPercentile != null ? `${Math.round(g.bestPercentile)}%` : '-'}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-zinc-100">
-                      {g.latestDps != null ? Math.round(g.latestDps).toLocaleString() : '-'}
-                    </td>
-                    <td className="px-2 py-2 text-right font-mono text-zinc-300">
-                      {g.highestDps != null ? Math.round(g.highestDps).toLocaleString() : '-'}
-                    </td>
-                    <td className="px-2 py-2 text-right text-zinc-200">{g.attempts || '-'}</td>
-                    <td className="px-2 py-2 text-right text-zinc-200">{g.kills || '-'}</td>
-                    <td className="px-2 py-2 text-right text-zinc-300">{fmtDuration(g.fastestSeconds)}</td>
-                  </tr>
-                  {expandedRows[g.key] && g.attemptsHistory.length > 1 ? (
-                    <tr className="border-t border-white/5 bg-white/[0.02]">
-                      <td colSpan={7} className="px-3 py-2">
-                        <div className="space-y-1">
-                          {g.attemptsHistory.map((a, idx) => (
-                            <div
-                              key={`${g.key}-attempt-${idx}`}
-                              className="grid grid-cols-[1fr_90px_120px_90px] items-center gap-2 text-[10px] text-zinc-300"
-                            >
-                              <span className="truncate text-zinc-400">
-                                {a.reportTitle || 'Attempt'}{a.timestamp ? ` · ${new Date(a.timestamp).toLocaleString()}` : ''}
-                              </span>
-                              <span className={percentileClass(a.percentile)}>
-                                {a.percentile != null ? `${Math.round(a.percentile)}%` : '-'}
-                              </span>
-                              <span>{a.dps != null ? `${Math.round(a.dps).toLocaleString()} DPS` : '-'}</span>
-                              {a.reportCode ? (
-                                <a
-                                  href={`https://www.warcraftlogs.com/reports/${a.reportCode}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[#ff6666] hover:text-[#ff7d7d]"
-                                >
-                                  Report
-                                </a>
-                              ) : (
-                                <span className="text-zinc-500">-</span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : null}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        <p className="text-[11px] italic text-zinc-600">
-          {data?.message || 'No Warcraft Logs raid parses found for this character.'}
-        </p>
-      )}
-      {rawDebugOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4">
-          <div className="max-h-[85vh] w-full max-w-5xl overflow-hidden rounded-lg border border-white/10 bg-[#0b0b0f] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-2">
-              <p className="text-sm font-bold text-zinc-100">Warcraft Logs Raw GraphQL Output</p>
-              <button
-                type="button"
-                onClick={() => setRawDebugOpen(false)}
-                className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-            <div className="max-h-[75vh] overflow-auto p-3">
-              <pre className="whitespace-pre-wrap break-words text-[11px] leading-5 text-zinc-200">
-                {rawDebugLoading ? 'Loading raw GraphQL output...' : rawDebugText || 'No raw output.'}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-
-  if (embedded) return content;
-  return <div className="card p-5">{content}</div>;
-}
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-[13px]">
@@ -2056,152 +1000,85 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BlizzardGearSlot({
-  slot,
-  item,
-  itemInfoMap,
-  enchantInfoMap,
-  gemInfoMap,
-  align = 'left',
-  compactNearIcon = false,
-}: {
-  slot: string;
-  item?: BlizzardItem;
-  itemInfoMap: Record<number, ItemInfo>;
-  enchantInfoMap: Record<number, EnchantInfo>;
-  gemInfoMap: Record<number, GemInfo>;
-  align?: 'left' | 'right';
-  compactNearIcon?: boolean;
-}) {
-  const rtl = align === 'right';
-  const normalizedSlotKey = slot
-    .toLowerCase()
-    .replace(/_([12])$/, '$1')
-    .replace(/__/g, '_');
-  const label =
-    SLOT_LABELS[normalizedSlotKey] ||
-    slot
-      .toLowerCase()
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-
-  if (!item) {
-    return (
-      <div className={`flex items-center gap-3 ${rtl ? 'flex-row-reverse' : ''}`}>
-        <div className="h-12 w-12 shrink-0 rounded-lg border border-white/5 bg-white/[0.02]" />
-        <div className={rtl ? 'text-right' : ''}>
-          <p className="text-[13px] font-medium text-zinc-500">{label}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const info = itemInfoMap[item.item.id];
-  const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
-  const icon = info?.icon || 'inv_misc_questionmark';
-
-  // Extract first enchant and gem for display
-  const enchantId = item.enchantments?.[0]?.enchantment_id;
-  const gemId = item.sockets?.[0]?.item?.id;
-
-  const enchant = enchantId ? enchantInfoMap[enchantId] : undefined;
-  const gem = gemId ? gemInfoMap[gemId] : undefined;
-
-  const whData = getWowheadData(item.bonus_list, item.level?.value, enchantId, gemId);
-
-  return (
-    <a
-      href={getWowheadUrl(item.item.id)}
-      data-wowhead={whData}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`flex w-full min-w-0 items-start gap-3 rounded-md px-1 py-1 transition-colors hover:bg-white/[0.03] ${rtl ? 'flex-row-reverse' : ''}`}
-    >
-      <div
-        className="group relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border transition-transform hover:scale-105 sm:h-12 sm:w-12"
-        style={{ borderColor: `${qc}44` }}
-      >
-        <img src={getIconUrl(icon)} alt="" className="h-full w-full object-cover" />
-        <div
-          className="absolute inset-0 ring-1 ring-inset ring-white/10"
-          style={{ boxShadow: `inset 0 0 10px ${qc}33` }}
-        />
-      </div>
-      <div
-        className={`min-w-0 ${compactNearIcon ? 'w-auto max-w-[420px]' : 'flex-1'} ${rtl ? 'text-right' : ''}`}
-      >
-        <span
-          title={item.name}
-          className="block truncate text-[13px] font-bold leading-tight hover:underline sm:text-[14px]"
-          style={{ color: qc }}
-        >
-          {item.name}
-        </span>
-        <div
-          className={`mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-medium text-zinc-500 ${
-            compactNearIcon && rtl ? 'justify-end' : ''
-          }`}
-        >
-          <span className="text-zinc-400">
-            {item.level?.value} {label}
-          </span>
-          {enchant && <span className="text-emerald-400/80">&bull; {enchant.name}</span>}
-          {gem && <span className="text-sky-400/80">&bull; {gem.name}</span>}
-        </div>
-      </div>
-    </a>
-  );
-}
-
-function StatsCard({ statistics }: { statistics: any }) {
+function StatsCard({ statistics }: { statistics: CharacterStatisticsPayload }) {
   const stats = useMemo(() => {
     if (!statistics) return [];
+    const statsObj = statistics as Record<string, unknown>;
+    type StatValue =
+      | number
+      | {
+          effective?: number;
+          value?: number;
+          percent?: number;
+          rating_bonus?: number;
+          rating_normalized?: number;
+          rating?: number;
+        };
 
-    const getEffectiveValue = (stat?: any) => {
+    const getEffectiveValue = (stat?: StatValue) => {
       if (typeof stat === 'number') return stat.toLocaleString();
-      if (stat?.effective !== undefined) return Math.round(stat.effective).toLocaleString();
-      if (stat?.value !== undefined) return Math.round(stat.value).toLocaleString();
+      if (typeof stat?.effective === 'number') return Math.round(stat.effective).toLocaleString();
+      if (typeof stat?.value === 'number') return Math.round(stat.value).toLocaleString();
       return '0';
     };
 
-    const getPercentValue = (stat?: any, rating?: any) => {
+    const getPercentValue = (stat?: StatValue, rating?: StatValue) => {
+      const statObj =
+        stat && typeof stat === 'object'
+          ? (stat as Exclude<StatValue, number>)
+          : null;
+      const ratingObj =
+        rating && typeof rating === 'object'
+          ? (rating as Exclude<StatValue, number>)
+          : null;
       const p =
-        stat?.value ??
-        stat?.percent ??
-        stat?.rating_bonus ??
+        (typeof stat === 'number' ? stat : null) ??
+        (typeof statObj?.value === 'number' ? statObj.value : null) ??
+        (typeof statObj?.percent === 'number' ? statObj.percent : null) ??
+        (typeof statObj?.rating_bonus === 'number' ? statObj.rating_bonus : null) ??
         (typeof stat === 'number' ? stat : null);
       if (p === null) return null;
 
       const r =
-        rating?.rating_normalized ?? rating?.rating ?? (typeof rating === 'number' ? rating : null);
+        (typeof ratingObj?.rating_normalized === 'number' ? ratingObj.rating_normalized : null) ??
+        (typeof ratingObj?.rating === 'number' ? ratingObj.rating : null) ??
+        (typeof rating === 'number' ? rating : null);
       const percStr = p.toFixed(2) + '%';
       return r !== null ? `${Math.round(r)} (${percStr})` : percStr;
     };
 
     // Find the relevant primary stat (Int/Agi/Str)
-    const mainStat = statistics.intellect || statistics.agility || statistics.strength;
+    const mainStat =
+      (statsObj.intellect as StatValue | undefined) ||
+      (statsObj.agility as StatValue | undefined) ||
+      (statsObj.strength as StatValue | undefined);
 
     // Find the relevant crit/haste/mastery (they are usually mirrored in modern WoW, but we pick the best one)
     const crit =
-      statistics.melee_crit || statistics.spell_crit || statistics.ranged_crit || statistics.crit;
+      (statsObj.melee_crit as StatValue | undefined) ||
+      (statsObj.spell_crit as StatValue | undefined) ||
+      (statsObj.ranged_crit as StatValue | undefined) ||
+      (statsObj.crit as StatValue | undefined);
     const haste =
-      statistics.melee_haste ||
-      statistics.spell_haste ||
-      statistics.ranged_haste ||
-      statistics.haste;
-    const mastery = statistics.mastery;
-    const versatility = statistics.versatility_offensive_modifier ?? statistics.versatility;
+      (statsObj.melee_haste as StatValue | undefined) ||
+      (statsObj.spell_haste as StatValue | undefined) ||
+      (statsObj.ranged_haste as StatValue | undefined) ||
+      (statsObj.haste as StatValue | undefined);
+    const mastery = statsObj.mastery as StatValue | undefined;
+    const versatility =
+      (statsObj.versatility_offensive_modifier as StatValue | undefined) ||
+      (statsObj.versatility as StatValue | undefined);
 
     return [
       { label: 'Main Stat', value: getEffectiveValue(mainStat) },
-      { label: 'Stamina', value: getEffectiveValue(statistics.stamina) },
+      { label: 'Stamina', value: getEffectiveValue(statsObj.stamina as StatValue | undefined) },
       null,
       { label: 'Crit', value: getPercentValue(crit, crit) ?? '0.0%' },
       { label: 'Haste', value: getPercentValue(haste, haste) ?? '0.0%' },
       { label: 'Mastery', value: getPercentValue(mastery, mastery) ?? '0.0%' },
       {
         label: 'Versatility',
-        value: getPercentValue(versatility, statistics.versatility) ?? '0.0%',
+        value: getPercentValue(versatility, statsObj.versatility as StatValue | undefined) ?? '0.0%',
       },
     ];
   }, [statistics]);
@@ -2243,11 +1120,11 @@ function TalentsCard({
   specId,
   tree,
 }: {
-  activeSpec: any;
-  activeLoadout: any;
+  activeSpec: CharacterSpecialization | null;
+  activeLoadout: CharacterTalentLoadout | null;
   talentString: string | null;
   specId: number | null;
-  tree: any;
+  tree: TalentTreeData | null;
 }) {
   const loading = specId !== null && !tree;
   const [collapsed, setCollapsed] = useState(false);
@@ -2269,15 +1146,15 @@ function TalentsCard({
     ...(activeLoadout?.selected_hero_talents || []),
     ...(activeSpec?.talents || []),
   ]
-    .map((t: any) => t.tooltip_spell?.name || t.talent?.name)
-    .filter(Boolean);
+    .map((talent: CharacterTalentSelection) => talent.tooltip_spell?.name || talent.talent?.name)
+    .filter((name): name is string => Boolean(name));
 
   return (
     <div className="card overflow-hidden">
       <div className="border-b border-white/5 bg-white/[0.01] p-5">
         <div className="flex items-center justify-between">
           <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Specialization: <span className="text-gold">{activeSpec.specialization.name}</span>
+            Specialization: <span className="text-gold">{activeSpec.specialization?.name || 'Unknown'}</span>
           </h1>
           <div className="flex items-center gap-2">
             {loading && (

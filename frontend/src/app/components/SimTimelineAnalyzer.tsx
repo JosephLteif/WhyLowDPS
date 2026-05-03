@@ -468,8 +468,8 @@ export default function SimTimelineAnalyzer({
                     color: '#f4f4f5',
                     fontSize: 12,
                   }}
-                  formatter={(value: number) => [
-                    `${Math.round(value).toLocaleString()} DPS`,
+                  formatter={(value) => [
+                    `${Math.round(Number(value ?? 0)).toLocaleString()} DPS`,
                     'DPS',
                   ]}
                   labelFormatter={(label) => `Time ${formatTime(Number(label))}s`}
@@ -552,10 +552,10 @@ export default function SimTimelineAnalyzer({
                             color: '#f4f4f5',
                             fontSize: 12,
                           }}
-                          formatter={(value: number) => [
+                          formatter={(value) => [
                             cfg.discrete
-                              ? String(Math.round(Number(value)))
-                              : Number(value).toFixed(1),
+                              ? String(Math.round(Number(value ?? 0)))
+                              : Number(value ?? 0).toFixed(1),
                             formatResource(resourceKey),
                           ]}
                           labelFormatter={(label) => `Time ${formatTime(Number(label))}s`}

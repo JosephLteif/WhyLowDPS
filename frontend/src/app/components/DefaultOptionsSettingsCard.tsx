@@ -206,7 +206,7 @@ export default function DefaultOptionsSettingsCard() {
           <div>
             <h2 className="text-xl font-semibold text-white">Default Options</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Startup defaults for Top Gear, Fight Setup, Consumables, and Raid Buffs.
+              Startup defaults for Top Gear, Drop Finder, Fight Setup, Consumables, and Raid Buffs.
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
@@ -324,6 +324,83 @@ export default function DefaultOptionsSettingsCard() {
               }
             />
           ))}
+        </div>
+
+        <div className="card space-y-4 p-5">
+          <div>
+            <p className="text-[15px] font-medium text-zinc-100">Drop Finder</p>
+            <p className="text-[14px] text-zinc-300">Configure default behavior for Drop Finder options.</p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="label-text">
+                  {optionTitle('dropfinder.upgradeMode', 'Upgrade Simulation Mode')}
+                </label>
+                {scope === 'character' && !isInherited('dropfinder.upgradeMode') && (
+                  <button
+                    type="button"
+                    onClick={() => clearCharacterOverride('dropfinder.upgradeMode')}
+                    className="text-[11px] font-semibold text-gold hover:text-gold/80"
+                  >
+                    Use Global
+                  </button>
+                )}
+              </div>
+              <select
+                value={defaults['dropfinder.upgradeMode']}
+                onChange={(e) => updateDefault('dropfinder.upgradeMode', e.target.value)}
+                className="input-field w-full"
+              >
+                <option value="current">Current only</option>
+                <option value="highest">Highest only</option>
+                <option value="both">Current + Highest</option>
+              </select>
+            </div>
+
+            {(
+              [
+                [
+                  'dropfinder.autoCatalyst',
+                  'Auto Catalyst',
+                  'Add catalyst-converted alternatives for eligible items.',
+                ],
+                [
+                  'dropfinder.copyEnchants',
+                  'Copy Enchants/Gems',
+                  "Apply equipped enchants and gems to items that don't have one.",
+                ],
+              ] as const
+            ).map(([key, title, desc]) => (
+              <ToggleOptionCard
+                key={key}
+                checked={defaults[key]}
+                onToggle={() => updateDefault(key, !defaults[key])}
+                title={optionTitle(key, title)}
+                description={desc}
+                note={
+                  scope === 'character' ? (
+                    isInherited(key) ? (
+                      <span className="text-zinc-500">Inheriting from global defaults</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          clearCharacterOverride(key);
+                        }}
+                        className="text-[12px] font-semibold text-gold hover:text-gold/80"
+                      >
+                        Use Global
+                      </button>
+                    )
+                  ) : null
+                }
+              />
+            ))}
+          </div>
         </div>
 
         <div className="card space-y-4 p-5">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import type { DropItem, UpgradeTracks } from './types';
 import { getTrackInfo, itemMatchesActiveLootSpec, resolveUpgrade, QUALITY_COLORS } from './types';
 
@@ -34,6 +34,7 @@ interface DropSlotListProps {
   upgradeLevel: number;
   upgradeTracks: UpgradeTracks;
   headerLabel: string;
+  headerActions?: ReactNode;
   isWishlisted: (itemId: number) => boolean;
   onToggleWishlist: (
     item: DropItem,
@@ -55,6 +56,7 @@ export default function DropSlotList({
   upgradeLevel,
   upgradeTracks,
   headerLabel,
+  headerActions,
   isWishlisted,
   onToggleWishlist,
 }: DropSlotListProps) {
@@ -122,14 +124,15 @@ export default function DropSlotList({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="sticky top-14 z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-3 py-2 shadow-md backdrop-blur-sm">
+        <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted">
           {headerLabel} &mdash; {totalItems} items
           {selected.size > 0 && (
             <span className="ml-1.5 text-gold">({selected.size} selected)</span>
           )}
         </p>
-        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
             {(
               [
@@ -162,6 +165,8 @@ export default function DropSlotList({
           >
             Clear
           </button>
+            {headerActions}
+          </div>
         </div>
       </div>
 

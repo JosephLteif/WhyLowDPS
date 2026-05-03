@@ -89,18 +89,11 @@ export default function SettingsPage() {
   const [clientSecret, setClientSecret] = useState('');
   const [secretTouched, setSecretTouched] = useState(false);
   const [hasSecret, setHasSecret] = useState(false);
-  const [warcraftLogsClientId, setWarcraftLogsClientId] = useState('');
-  const [warcraftLogsClientSecret, setWarcraftLogsClientSecret] = useState('');
-  const [warcraftLogsSecretTouched, setWarcraftLogsSecretTouched] = useState(false);
-  const [hasWarcraftLogsSecret, setHasWarcraftLogsSecret] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
   const [loading, setLoading] = useState(true);
   const [blizzardSaving, setBlizzardSaving] = useState(false);
   const [blizzardTesting, setBlizzardTesting] = useState(false);
   const [blizzardMessage, setBlizzardMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [warcraftLogsSaving, setWarcraftLogsSaving] = useState(false);
-  const [warcraftLogsTesting, setWarcraftLogsTesting] = useState(false);
-  const [warcraftLogsMessage, setWarcraftLogsMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [performanceSaved, setPerformanceSaved] = useState(false);
   const [cacheSyncing, setCacheSyncing] = useState(false);
   const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
@@ -154,8 +147,6 @@ export default function SettingsPage() {
       .then((data) => {
         setClientId(data.blizzard_client_id || '');
         setHasSecret(data.has_blizzard_client_secret || false);
-        setWarcraftLogsClientId(data.warcraftlogs_client_id || '');
-        setHasWarcraftLogsSecret(data.has_warcraftlogs_client_secret || false);
         const serverUpdateChannel =
           typeof data.app_update_channel === 'string'
             ? data.app_update_channel.toLowerCase()
@@ -354,79 +345,6 @@ export default function SettingsPage() {
       setBlizzardMessage({ type: 'error', text: err?.message || 'Failed to save Blizzard settings.' });
     } finally {
       setBlizzardSaving(false);
-    }
-  };
-
-  const testWarcraftLogsCredentials = async () => {
-    if (!warcraftLogsClientId.trim() || !warcraftLogsClientSecret.trim()) {
-      setWarcraftLogsMessage({
-        type: 'error',
-        text: 'Enter Warcraft Logs Client ID and Client Secret first.',
-      });
-      return;
-    }
-    setWarcraftLogsTesting(true);
-    setWarcraftLogsMessage(null);
-    try {
-      const basic = btoa(`${warcraftLogsClientId.trim()}:${warcraftLogsClientSecret.trim()}`);
-      const response = await fetch('https://www.warcraftlogs.com/oauth/token', {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${basic}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: 'grant_type=client_credentials',
-      });
-      if (!response.ok) {
-        const raw = await response.text();
-        throw new Error(raw || `Warcraft Logs returned ${response.status}`);
-      }
-      setWarcraftLogsMessage({
-        type: 'success',
-        text: 'Warcraft Logs credentials verified successfully.',
-      });
-    } catch (err: any) {
-      setWarcraftLogsMessage({
-        type: 'error',
-        text: err?.message || 'Failed to verify Warcraft Logs credentials.',
-      });
-    } finally {
-      setWarcraftLogsTesting(false);
-    }
-  };
-
-  const saveWarcraftLogsSettings = async () => {
-    if (!warcraftLogsClientId.trim() && !warcraftLogsClientSecret.trim()) return;
-    setWarcraftLogsSaving(true);
-    setWarcraftLogsMessage(null);
-    try {
-      await fetchJson(`${API_URL}/api/user/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'warcraftlogs_client_id', value: warcraftLogsClientId.trim() }),
-      });
-
-      if (warcraftLogsClientSecret.trim()) {
-        await fetchJson(`${API_URL}/api/user/config`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            key: 'warcraftlogs_client_secret',
-            value: warcraftLogsClientSecret.trim(),
-          }),
-        });
-        setHasWarcraftLogsSecret(true);
-        setWarcraftLogsClientSecret('');
-        setWarcraftLogsSecretTouched(false);
-      }
-      setWarcraftLogsMessage({ type: 'success', text: 'Warcraft Logs settings saved successfully.' });
-    } catch (err: any) {
-      setWarcraftLogsMessage({
-        type: 'error',
-        text: err?.message || 'Failed to save Warcraft Logs settings.',
-      });
-    } finally {
-      setWarcraftLogsSaving(false);
     }
   };
 
@@ -836,111 +754,6 @@ export default function SettingsPage() {
             </div>
           )}
 
-          <div className="rounded-lg border border-border/70 bg-surface px-4 py-3">
-            <p className="text-sm font-semibold text-zinc-200">Warcraft Logs API (for later use)</p>
-            <p className="mt-1 text-[13px] text-zinc-400">
-              Store Warcraft Logs API credentials now; they will be used in a future feature.
-            </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-zinc-500">
-              <span className="font-semibold text-zinc-300">Setup Instructions:</span>
-              <br />
-              1. Open{' '}
-              <a
-                href="https://www.warcraftlogs.com/api/clients/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gold hover:underline"
-              >
-                Warcraft Logs API Clients
-              </a>{' '}
-              and create a new client.
-              <br />
-              2. Fill the form with:
-              <br />
-              &nbsp;&nbsp;• <span className="text-zinc-300">Application Name:</span> WhyLowDps
-              <br />
-              &nbsp;&nbsp;• <span className="text-zinc-300">Redirect URIs:</span>{' '}
-              <code className="text-zinc-300">
-                http://localhost:17384/api/auth/warcraftlogs/callback
-              </code>
-              <br />
-              &nbsp;&nbsp;• <span className="text-zinc-300">Public Client:</span> leave unchecked
-              <br />
-              3. Copy your Client ID and Client Secret here.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Warcraft Logs Client ID</label>
-            <input
-              type="text"
-              value={warcraftLogsClientId}
-              onChange={(e) => setWarcraftLogsClientId(e.target.value)}
-              placeholder="Enter Warcraft Logs Client ID"
-              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Warcraft Logs Client Secret</label>
-            <input
-              type="password"
-              value={
-                warcraftLogsSecretTouched
-                  ? warcraftLogsClientSecret
-                  : hasWarcraftLogsSecret
-                    ? '••••••••••••••••'
-                    : warcraftLogsClientSecret
-              }
-              onFocus={() => {
-                if (!warcraftLogsSecretTouched && hasWarcraftLogsSecret) {
-                  setWarcraftLogsSecretTouched(true);
-                  setWarcraftLogsClientSecret('');
-                }
-              }}
-              onChange={(e) => {
-                setWarcraftLogsSecretTouched(true);
-                setWarcraftLogsClientSecret(e.target.value);
-              }}
-              placeholder="Enter Warcraft Logs Client Secret"
-              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
-            />
-            <p className="text-[12px] text-zinc-500">
-              {hasWarcraftLogsSecret && !warcraftLogsClientSecret
-                ? 'A Warcraft Logs secret is already saved and hidden. Type to replace it.'
-                : 'Your Warcraft Logs secret is hidden in this field.'}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={testWarcraftLogsCredentials}
-              disabled={warcraftLogsTesting || !warcraftLogsClientId.trim() || !warcraftLogsClientSecret.trim()}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {warcraftLogsTesting ? 'Testing Warcraft Logs...' : 'Test Warcraft Logs Connection'}
-            </button>
-
-            <button
-              onClick={saveWarcraftLogsSettings}
-              disabled={warcraftLogsSaving || (!warcraftLogsClientId.trim() && !warcraftLogsClientSecret.trim())}
-              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-            >
-              {warcraftLogsSaving ? 'Saving Warcraft Logs...' : 'Save Warcraft Logs Settings'}
-            </button>
-          </div>
-
-          {warcraftLogsMessage && (
-            <div
-              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                warcraftLogsMessage.type === 'success'
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
-              }`}
-            >
-              {warcraftLogsMessage.text}
-            </div>
-          )}
         </div>
       </section>}
 

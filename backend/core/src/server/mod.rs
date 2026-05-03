@@ -23,8 +23,6 @@ mod sim_handlers;
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
-#[cfg(feature = "web")]
-mod warcraftlogs;
 
 #[cfg(feature = "web")]
 use actix_cors::Cors;
@@ -498,10 +496,6 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/blizzard/character/{realm}/{name}/encounters/raids",
                     web::get().to(blizzard::proxy_character_raid_encounters),
-                )
-                .route(
-                    "/api/warcraftlogs/character/{realm}/{name}/parses",
-                    web::get().to(warcraftlogs::proxy_character_raid_parses),
                 )
                 .route(
                     "/api/blizzard/mythic-keystone/dungeon/index",

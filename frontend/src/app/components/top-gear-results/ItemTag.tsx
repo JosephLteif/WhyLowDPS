@@ -8,9 +8,26 @@ interface ItemTagProps {
   info?: ItemInfo;
   enchant?: EnchantInfo;
   gem?: GemInfo;
+  upgradeState?: 'upgrade' | 'downgrade' | null;
+  ilevelText?: string;
+  ilevelTooltip?: string;
+  ilevelHighlightClass?: string;
+  gemChanged?: boolean;
+  enchantChanged?: boolean;
 }
 
-export default function ItemTag({ item, info, enchant, gem }: ItemTagProps) {
+export default function ItemTag({
+  item,
+  info,
+  enchant,
+  gem,
+  upgradeState = null,
+  ilevelText,
+  ilevelTooltip,
+  ilevelHighlightClass = '',
+  gemChanged = false,
+  enchantChanged = false,
+}: ItemTagProps) {
   const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
   const name = info?.name || item.name || `Item ${item.item_id}`;
   const icon = info?.icon || 'inv_misc_questionmark';
@@ -66,11 +83,33 @@ export default function ItemTag({ item, info, enchant, gem }: ItemTagProps) {
         {name}
       </span>
       <span className="shrink-0 text-[14px] text-zinc-100/90">({slotName})</span>
+      {upgradeState === 'upgrade' && (
+        <span className="shrink-0 rounded bg-emerald-500/12 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+          Upgrade
+        </span>
+      )}
+      {upgradeState === 'downgrade' && (
+        <span className="shrink-0 rounded bg-red-500/12 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-red-300">
+          Downgrade
+        </span>
+      )}
+      {ilevelText && (
+        <span
+          title={ilevelTooltip}
+          className={`shrink-0 rounded px-1.5 py-px text-[11px] font-mono tabular-nums ${ilevelHighlightClass || 'text-zinc-300'}`}
+        >
+          {ilevelText}
+        </span>
+      )}
       {enchant?.icon && (
         <a
           href={enchantHref}
           data-wowhead={enchantTooltipData}
-          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-sm border border-emerald-400/45 bg-emerald-500/10"
+          className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-sm ${
+            enchantChanged
+              ? 'border-emerald-300/80 bg-emerald-500/22 ring-1 ring-emerald-300/60'
+              : 'border-emerald-400/45 bg-emerald-500/10'
+          }`}
           title={enchant.name || 'Enchant'}
           target="_blank"
           rel="noopener noreferrer"
@@ -93,7 +132,11 @@ export default function ItemTag({ item, info, enchant, gem }: ItemTagProps) {
         <a
           href={gemHref}
           data-wowhead={gemTooltipData}
-          className="inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-sm border border-sky-400/45 bg-sky-500/10"
+          className={`inline-flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-sm ${
+            gemChanged
+              ? 'border-sky-300/80 bg-sky-500/22 ring-1 ring-sky-300/60'
+              : 'border-sky-400/45 bg-sky-500/10'
+          }`}
           title={gem.name || 'Gem'}
           target="_blank"
           rel="noopener noreferrer"

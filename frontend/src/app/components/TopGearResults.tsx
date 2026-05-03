@@ -38,6 +38,15 @@ interface TopGearResultsProps {
   enableWishlistActions?: boolean;
 }
 
+function dropBaselineKey(item: ResultItem): string {
+  const slot = String(item.slot || '').toLowerCase();
+  const itemId = Number(item.item_id || 0);
+  const sourceType = String(item.source_type || '').toLowerCase().trim();
+  const instance = String(item.instance_name || '').toLowerCase().trim();
+  const encounter = String(item.encounter || '').toLowerCase().trim();
+  return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
+}
+
 function CollapsibleSection({
   title,
   defaultOpen = true,
@@ -164,6 +173,19 @@ export default function TopGearResults({
 
   const gemInfoMap = useGemInfo(allGemIds);
   useWowheadTooltips([itemInfoMap]);
+  const dropBaselineIlevelByKey = useMemo(() => {
+    const baseline: Record<string, number> = {};
+    for (const r of results) {
+      for (const it of r.items) {
+        if (it.is_kept || it.item_id <= 0) continue;
+        const key = dropBaselineKey(it);
+        const ilvl = Number(it.ilevel || 0);
+        if (ilvl <= 0) continue;
+        if (!baseline[key] || ilvl < baseline[key]) baseline[key] = ilvl;
+      }
+    }
+    return baseline;
+  }, [results]);
 
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
   const [wishlistFeedback, setWishlistFeedback] = useState('');
@@ -299,6 +321,8 @@ export default function TopGearResults({
                 : 'Best Gear'
             }
             characterRenderUrl={characterRenderUrl}
+            equippedGear={equippedGear}
+            dropBaselineIlevelByKey={dropBaselineIlevelByKey}
             upgradeSlots={upgradeSlots}
             downgradeSlots={downgradeSlots}
             currencies={currencies}
@@ -313,11 +337,11 @@ export default function TopGearResults({
       )}
 
       <CollapsibleSection title="Rankings">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-zinc-300">
             Rankings
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {enableWishlistActions && (
               <div className="flex items-center gap-2">
                 <button
@@ -358,7 +382,7 @@ export default function TopGearResults({
                 ))}
               </div>
             </div>
-            <span className="font-mono text-[14px] text-zinc-300">{results.length} results</span>
+            <span className="font-mono text-[13px] text-zinc-300 sm:text-[14px]">{results.length} results</span>
           </div>
         </div>
         {enableWishlistActions && wishlistFeedback && (
@@ -395,6 +419,7 @@ export default function TopGearResults({
                         enchantInfoMap={enchantInfoMap}
                         gemInfoMap={gemInfoMap}
                         currencies={currencies}
+                        dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                       />
                     ))}
                   </div>
@@ -415,6 +440,7 @@ export default function TopGearResults({
             selectedResultName={selectedResultName}
             onSelectResult={setSelectedResultName}
             currencies={currencies}
+            dropBaselineIlevelByKey={dropBaselineIlevelByKey}
           />
         )}
       </CollapsibleSection>

@@ -6,6 +6,15 @@ import { getIconUrl } from '../../lib/useItemInfo';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import ItemTag from './ItemTag';
 
+function dropBaselineKey(item: ResultItem): string {
+  const slot = String(item.slot || '').toLowerCase();
+  const itemId = Number(item.item_id || 0);
+  const sourceType = String(item.source_type || '').toLowerCase().trim();
+  const instance = String(item.instance_name || '').toLowerCase().trim();
+  const encounter = String(item.encounter || '').toLowerCase().trim();
+  return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
+}
+
 interface ResultRowProps {
   result: TopGearResult;
   rank?: number;
@@ -20,6 +29,7 @@ interface ResultRowProps {
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
   currencies?: Record<string, { id: number; name: string; icon: string }>;
+  dropBaselineIlevelByKey?: Record<string, number>;
 }
 
 export default function ResultRow({
@@ -36,6 +46,7 @@ export default function ResultRow({
   enchantInfoMap,
   gemInfoMap,
   currencies,
+  dropBaselineIlevelByKey = {},
 }: ResultRowProps) {
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
   const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
@@ -62,6 +73,67 @@ export default function ResultRow({
     if (showBothTrinkets && (it.slot === 'trinket1' || it.slot === 'trinket2')) return true;
     return false;
   });
+
+  const itemReasonState = useMemo(() => {
+    const bySlot: Record<
+      string,
+      {
+        upgradeState: 'upgrade' | 'downgrade' | null;
+        ilevelText?: string;
+        ilevelTooltip?: string;
+        ilevelHighlightClass?: string;
+        gemChanged: boolean;
+        enchantChanged: boolean;
+      }
+    > = {};
+    for (const it of changedItems) {
+      const equipped = equippedGear?.[it.slot];
+      const currentIlevel = Number(equipped?.ilevel || 0);
+      const nextIlevel = Number(it.ilevel || 0);
+      const currentGem = Number(equipped?.gem_id || 0);
+      const nextGem = Number(it.gem_id || 0);
+      const currentEnchant = Number(equipped?.enchant_id || 0);
+      const nextEnchant = Number(it.enchant_id || 0);
+      const upgradeCosts = (it as any).upgrade_costs || (it as any).costs;
+      const hasUpgradeCosts =
+        !!upgradeCosts &&
+        Object.values(upgradeCosts as Record<string, number>).some((v) => Number(v || 0) > 0);
+      const itemKey = dropBaselineKey(it);
+      const baselineDropIlevel = Number(dropBaselineIlevelByKey[itemKey] || 0);
+      const inferredNeedsUpgrade = baselineDropIlevel > 0 && nextIlevel > baselineDropIlevel;
+      const needsUpgradeAction =
+        Number(it.upgrade_levels || 0) > 0 || hasUpgradeCosts || inferredNeedsUpgrade;
+
+      const ilvlChanged = currentIlevel > 0 && nextIlevel !== currentIlevel;
+      const upgradeState: 'upgrade' | 'downgrade' | null = needsUpgradeAction
+        ? 'upgrade'
+        : ilvlChanged
+          ? nextIlevel > currentIlevel
+            ? 'upgrade'
+            : 'downgrade'
+          : null;
+
+      bySlot[it.slot] = {
+        upgradeState,
+        ilevelText: nextIlevel > 0 ? `iLvl ${nextIlevel}` : undefined,
+        ilevelTooltip:
+          ilvlChanged || needsUpgradeAction
+            ? inferredNeedsUpgrade && baselineDropIlevel > 0
+              ? `${it.slot}: drop iLvl ${baselineDropIlevel} -> ${nextIlevel}`
+              : `${it.slot}: ${currentIlevel || 0} -> ${nextIlevel}`
+            : undefined,
+        ilevelHighlightClass:
+          upgradeState === 'upgrade'
+            ? 'bg-emerald-500/12 text-emerald-300'
+            : upgradeState === 'downgrade'
+              ? 'bg-red-500/12 text-red-300'
+              : 'text-zinc-300',
+        gemChanged: nextGem !== currentGem && nextGem > 0,
+        enchantChanged: nextEnchant !== currentEnchant && nextEnchant > 0,
+      };
+    }
+    return bySlot;
+  }, [changedItems, equippedGear, dropBaselineIlevelByKey]);
 
   const ilvlGain = useMemo(() => {
     if (!equippedGear || !baseAvgIlevel) return 0;
@@ -143,8 +215,8 @@ export default function ResultRow({
         className="absolute inset-y-0 left-0 bg-white/[0.03]"
         style={{ width: `${barWidth}%` }}
       />
-      <div className="relative flex items-center justify-between gap-4 px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+      <div className="relative flex flex-col gap-2 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5 lg:items-center">
           {rank != null && (
             <span className="w-6 shrink-0 text-right font-mono text-[14px] tabular-nums text-zinc-300">
               {rank}
@@ -170,13 +242,24 @@ export default function ResultRow({
             return (
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 {displayItems.map((it, i) => (
-                  <ItemTag
-                    key={i}
-                    item={it}
-                    info={it.item_id > 0 ? itemInfoMap[it.item_id] : undefined}
-                    enchant={it.enchant_id ? enchantInfoMap[it.enchant_id] : undefined}
-                    gem={it.gem_id ? gemInfoMap[it.gem_id] : undefined}
-                  />
+                  (() => {
+                    const state = itemReasonState[it.slot];
+                    return (
+                      <ItemTag
+                        key={i}
+                        item={it}
+                        info={it.item_id > 0 ? itemInfoMap[it.item_id] : undefined}
+                        enchant={it.enchant_id ? enchantInfoMap[it.enchant_id] : undefined}
+                        gem={it.gem_id ? gemInfoMap[it.gem_id] : undefined}
+                        upgradeState={state?.upgradeState}
+                        ilevelText={state?.ilevelText}
+                        ilevelTooltip={state?.ilevelTooltip}
+                        ilevelHighlightClass={state?.ilevelHighlightClass}
+                        gemChanged={state?.gemChanged}
+                        enchantChanged={state?.enchantChanged}
+                      />
+                    );
+                  })()
                 ))}
                 {costsDisplay}
                 {talentBadge}
@@ -190,9 +273,9 @@ export default function ResultRow({
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="grid shrink-0 grid-cols-3 gap-3 lg:flex lg:items-center">
           <span
-            className={`flex w-32 items-center justify-end gap-1.5 font-mono text-[15px] tabular-nums ${
+            className={`flex min-w-0 items-center justify-start gap-1.5 font-mono text-[14px] tabular-nums lg:w-32 lg:justify-end lg:text-[15px] ${
               !isEquipped && result.delta > 0
                 ? 'text-emerald-400'
                 : !isEquipped && result.delta < 0
@@ -212,11 +295,11 @@ export default function ResultRow({
               </span>
             )}
           </span>
-          <span className="w-20 text-right font-mono text-[15px] tabular-nums text-zinc-200">
+          <span className="text-left font-mono text-[14px] tabular-nums text-zinc-200 lg:w-20 lg:text-right lg:text-[15px]">
             {Math.round(result.dps).toLocaleString()}
           </span>
-          <div className="flex w-28 flex-col items-end gap-0.5">
-            <span className="text-[14px] tabular-nums text-zinc-200">
+          <div className="flex min-w-0 flex-col items-start gap-0.5 lg:w-28 lg:items-end">
+            <span className="text-[13px] tabular-nums text-zinc-200 lg:text-[14px]">
               {(baseAvgIlevel + ilvlGain).toFixed(2)}
               {ilvlGain !== 0 && (
                 <span

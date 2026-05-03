@@ -30,83 +30,18 @@ import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 import { getAllAppDefaultOptions, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import ConsumableSelect, { buildQualityMaxByFamily } from './shared/ConsumableSelect';
 import RaidBuffGrid from './shared/RaidBuffGrid';
+import ClipboardBanner from './shared/ClipboardBanner';
+import SimcInputEditor from './shared/SimcInputEditor';
 import RouteDetailsModal from './RouteDetailsModal';
+import RouteSelectorModal from './RouteSelectorModal';
 import ConfirmModal from './ConfirmModal';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
-
-/** Adler-32 checksum matching the SimC addon's implementation.
- *  The Lua addon processes raw UTF-8 bytes, so we must do the same. */
-function adler32(s: string): number {
-  const prime = 65521;
-  let s1 = 1;
-  let s2 = 0;
-  const bytes = new TextEncoder().encode(s);
-  for (let i = 0; i < bytes.length; i++) {
-    s1 = (s1 + bytes[i]) % prime;
-    s2 = (s2 + s1) % prime;
-  }
-  return ((s2 << 16) | s1) >>> 0;
-}
-
-/** Validate the SimC addon checksum. Returns null if valid or no checksum present. */
-function validateChecksum(input: string): 'valid' | 'invalid' | null {
-  const match = input.match(/^#\s*Checksum:\s*([0-9a-fA-F]+)\s*$/m);
-  if (!match) return null;
-  const expected = parseInt(match[1], 16);
-  // The checksum covers everything before the checksum line.
-  // The SimC addon may compute with \r\n or \n line endings depending on OS.
-  // Browsers normalize textarea input to \n, so try both.
-  const idx = input.indexOf(match[0]);
-  const body = input.substring(0, idx);
-  if (adler32(body) === expected) return 'valid';
-  if (adler32(body.replace(/\n/g, '\r\n')) === expected) return 'valid';
-  return 'invalid';
-}
-
-function looksLikeSimcInput(input: string) {
-  const text = input.trim();
-  if (text.length < 10) return false;
-
-  const lines = text.split(/\r?\n/).map((line) => line.trim());
-  const hasChecksum = lines.some((line) => /^#\s*Checksum:/i.test(line));
-  const hasSimcKeyValue = lines.some((line) =>
-    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name|server|region|spec|talents)\s*=/i.test(
-      line
-    )
-  );
-  const hasArmoryLine = lines.some((line) => /^armory\s*=/i.test(line));
-  const hasCharacterHeader = lines.some((line) => /^\w+="[^"]+"/.test(line));
-  const hasDungeonRoute = lines.some((line) =>
-    /^(?:dungeon_route|route|mythic_plus_route|mplus_route|dungeon|instance|keystone_level|mythic_plus_level)\s*=/i.test(
-      line
-    )
-  );
-
-  return hasChecksum || hasArmoryLine || hasSimcKeyValue || hasCharacterHeader || hasDungeonRoute;
-}
-
-function splitSimcProfiles(input: string): string[] {
-  const profiles: string[] = [];
-  const lines = input.split(/\r?\n/);
-
-  let currentProfile: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    currentProfile.push(line);
-
-    if (/^#\s*Checksum:\s*[0-9a-fA-F]+/i.test(line.trim())) {
-      profiles.push(currentProfile.join('\n'));
-      currentProfile = [];
-    }
-  }
-
-  if (currentProfile.some((l) => l.trim().length > 0)) {
-    profiles.push(currentProfile.join('\n'));
-  }
-
-  return profiles.map((p) => p.trim()).filter((p) => p.length > 0 && looksLikeSimcInput(p));
-}
+import { formatRealmName, resolveClassColor } from '../lib/profile-format';
+import {
+  normalizeClipboardTextPayload,
+  splitSimcProfiles,
+  validateChecksum,
+} from '../lib/simc-input-utils';
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return await Promise.race([
@@ -117,173 +52,6 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   ]);
 }
 
-function normalizeClipboardTextPayload(payload: unknown): string {
-  if (typeof payload === 'string') return payload;
-  if (payload && typeof payload === 'object' && 'text' in payload) {
-    const text = (payload as { text?: unknown }).text;
-    return typeof text === 'string' ? text : '';
-  }
-  return '';
-}
-
-function ClipboardBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
-  return (
-    <div className="pointer-events-auto w-[min(22rem,calc(100vw-1.5rem))] rounded-xl border border-emerald-500/25 bg-zinc-950/95 p-4 text-sm text-emerald-100 shadow-2xl shadow-black/40 backdrop-blur-sm">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M6.5 8.5l1.5 1.5L11 7" />
-            <circle cx="8" cy="8" r="6" />
-          </svg>
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-emerald-100">Clipboard pasted</p>
-          <p className="mt-1 text-[13px] leading-5 text-zinc-300">{message}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-200"
-          aria-label="Dismiss notification"
-        >
-          <svg
-            className="h-4 w-4"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          >
-            <path d="M4 4l8 8M12 4l-8 8" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function renderSimcLine(line: string) {
-  if (!line) return null;
-
-  if (/^\s*#\s*Checksum:/i.test(line)) {
-    return <span className="text-amber-300">{line}</span>;
-  }
-  if (/^\s*#/.test(line)) {
-    return <span className="text-zinc-500">{line}</span>;
-  }
-
-  const kv = line.match(/^(\s*)([A-Za-z0-9_.-]+)(\s*=\s*)(.*)$/);
-  if (!kv) return <span className="text-zinc-300">{line}</span>;
-
-  const [, indent, key, sep, rawValue] = kv;
-  const value =
-    /^".*"$/.test(rawValue) || /^[A-Za-z_/-]+$/.test(rawValue)
-      ? 'text-emerald-300'
-      : /^\d+(?:\.\d+)?$/.test(rawValue)
-        ? 'text-sky-300'
-        : 'text-zinc-300';
-
-  return (
-    <>
-      <span className="text-zinc-300">{indent}</span>
-      <span className="text-gold">{key}</span>
-      <span className="text-zinc-500">{sep}</span>
-      <span className={value}>{rawValue}</span>
-    </>
-  );
-}
-
-function normalizeClassKey(value: string): string {
-  return value.toLowerCase().replace(/[\s-]+/g, '_');
-}
-
-function resolveClassColor(className?: string | null): string | undefined {
-  if (!className) return undefined;
-  const normalized = normalizeClassKey(className);
-  return CLASS_COLORS[normalized] || CLASS_COLORS[normalized.replace(/_/g, '')];
-}
-
-function formatRealmName(realm?: string | null): string {
-  if (!realm) return '';
-  return realm.charAt(0).toUpperCase() + realm.slice(1);
-}
-
-function SimcInputEditor({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const preRef = useRef<HTMLPreElement | null>(null);
-  const editorHeight = expanded ? 'h-[28rem]' : 'h-40';
-
-  const syncScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
-    if (!preRef.current) return;
-    preRef.current.scrollTop = e.currentTarget.scrollTop;
-    preRef.current.scrollLeft = e.currentTarget.scrollLeft;
-  };
-
-  const lines = value.split('\n');
-
-  // Shared typography classes to ensure pixel-perfect alignment.
-  // We use whitespace-pre to match how most editors handle SimC strings,
-  // and explicit line-height to prevent vertical drift.
-  const typographyClasses = 'font-mono text-[13px] leading-[1.6] whitespace-pre px-4 py-3';
-
-  return (
-    <div className="space-y-2">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="rounded-md border border-border px-2.5 py-1 text-[12px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
-        >
-          {expanded ? 'Collapse' : 'Expand'}
-        </button>
-      </div>
-      <div className="relative w-full rounded-lg border border-border bg-surface-2 shadow-sm transition-all duration-150 focus-within:border-gold/50 focus-within:ring-2 focus-within:ring-gold/20">
-        {/* The highlight layer (Pre) */}
-        <pre
-          ref={preRef}
-          aria-hidden
-          className={`pointer-events-none absolute inset-0 ${editorHeight} scrollbar-none w-full overflow-hidden ${typographyClasses}`}
-        >
-          {value ? (
-            lines.map((line, idx) => (
-              <span key={idx}>
-                {renderSimcLine(line)}
-                {idx < lines.length - 1 ? '\n' : null}
-              </span>
-            ))
-          ) : (
-            <span className="text-zinc-500 opacity-0">{placeholder}</span>
-          )}
-        </pre>
-        {/* The interactive layer (Textarea) */}
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onScroll={syncScroll}
-          placeholder={placeholder}
-          spellCheck={false}
-          className={`relative block ${editorHeight} w-full resize-none overflow-auto bg-transparent text-transparent placeholder-zinc-500 caret-zinc-100 focus:outline-none ${typographyClasses}`}
-        />
-      </div>
-    </div>
-  );
-}
 
 const EXPERT_TABS = [
   {
@@ -1216,107 +984,6 @@ function ExpertToggle({
   );
 }
 
-function RouteSelectorModal({
-  isOpen,
-  onClose,
-  routes,
-  onSelect,
-  onDelete,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  routes: SavedRoute[];
-  onSelect: (route: SavedRoute) => void;
-  onDelete: (id: string) => void;
-}) {
-  const modalRef = useRef<HTMLDivElement | null>(null);
-  useDismissOnOutside(modalRef, isOpen, onClose);
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div ref={modalRef} className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/5 p-4">
-          <div className="flex items-center gap-2">
-            <svg
-              className="h-5 w-5 text-sky-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-              />
-            </svg>
-            <h2 className="text-lg font-bold text-white">Select Saved Route</h2>
-          </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-4">
-          {routes.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-              <p>No saved routes yet.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {routes.map((route) => (
-                <div
-                  key={route.id}
-                  className="group relative flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.03] p-3 transition-all hover:border-white/10 hover:bg-white/[0.05]"
-                >
-                  <button
-                    onClick={() => {
-                      onSelect(route);
-                      onClose();
-                    }}
-                    className="min-w-0 flex-1 text-left"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-[14px] font-bold text-zinc-200 transition-colors group-hover:text-sky-400">
-                        {route.name}
-                      </span>
-                    </div>
-                    <div className="text-[12px] font-medium text-zinc-500">{route.dungeon}</div>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(route.id);
-                    }}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/10 hover:text-red-400"
-                    title="Delete saved route"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function SimSharedConfig() {
   const pathname = usePathname();
@@ -1539,6 +1206,7 @@ export default function SimSharedConfig() {
     normalizedPath === '/top-gear' ||
     normalizedPath === '/drop-finder' ||
     normalizedPath === '/stat-weights' ||
+    normalizedPath.startsWith('/analysis') ||
     normalizedPath.startsWith('/upgrade');
 
   const selectedProfileMeta = useMemo(() => {

@@ -1,11 +1,16 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { getHistoryStats, getSystemStats, type HistoryStats, isDesktop, listSims } from './lib/api';
+import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
+import { useSimContext } from './components/SimContext';
+import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
 import { simResultHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
+import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
+const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 
 type SimStatus = SimSummary['status'];
 
@@ -145,12 +150,144 @@ function buildActivityData(sims: SimSummary[], days = 14): { date: string; count
   }));
 }
 
+function toTimestampMs(raw: unknown): number {
+  const n = Number(raw || 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return n < 1_000_000_000_000 ? n * 1000 : n;
+}
+
+function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const region = String(regionRaw || 'us').toLowerCase();
+  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2; // Sun=0, Tue=2, Wed=3, Thu=4
+  // Weekly reset schedule (from provided timer reference):
+  // - US: Tuesday 6:00 PM GMT+3 => 15:00 UTC
+  // - EU: Wednesday 7:00 AM GMT+3 => 04:00 UTC
+  // - ASIA: kept at Thursday 07:00 UTC until a specific local schedule is provided.
+  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
+
+  const current = new Date(now);
+  const todayReset = new Date(
+    Date.UTC(
+      current.getUTCFullYear(),
+      current.getUTCMonth(),
+      current.getUTCDate(),
+      resetHourUtc,
+      0,
+      0,
+      0,
+    ),
+  );
+  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
+  let reset = new Date(todayReset);
+  reset.setUTCDate(reset.getUTCDate() - dayDiff);
+  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
+    reset.setUTCDate(reset.getUTCDate() - 7);
+  }
+  return reset.getTime();
+}
+
+function getNextWeeklyResetMs(regionRaw: string | null | undefined, now = new Date()): number {
+  const start = getWeeklyResetStartMs(regionRaw, now);
+  return start + 7 * 24 * 60 * 60 * 1000;
+}
+
+function formatCountdown(msRemaining: number): string {
+  if (!Number.isFinite(msRemaining) || msRemaining <= 0) return 'resetting now';
+  const totalMinutes = Math.floor(msRemaining / 60000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+function formatLocalDateTime(timestampMs: number): string {
+  if (!Number.isFinite(timestampMs) || timestampMs <= 0) return '-';
+  return new Date(timestampMs).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
+  const isRunLike = (value: any) =>
+    value &&
+    typeof value === 'object' &&
+    (typeof value.keystone_level === 'number' ||
+      typeof value.keystoneLevel === 'number' ||
+      value.keystone_dungeon ||
+      value.dungeon ||
+      value.completed_challenge_mode);
+
+  const collectRuns = (root: any): any[] => {
+    const out: any[] = [];
+    const stack: any[] = [root];
+    const seen = new Set<any>();
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || seen.has(current)) continue;
+      seen.add(current);
+      if (Array.isArray(current)) {
+        if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+        else for (const item of current) if (item && typeof item === 'object') stack.push(item);
+        continue;
+      }
+      if (typeof current === 'object') {
+        if (isRunLike(current)) out.push(current);
+        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+      }
+    }
+    return out;
+  };
+
+  const getRunLevel = (run: any) => Number(run?.keystone_level ?? run?.keystoneLevel ?? 0);
+  const getRunTimestamp = (run: any) =>
+    toTimestampMs(
+      run?.completed_timestamp ??
+        run?.completedTimestamp ??
+        run?.end_timestamp ??
+        run?.endTimestamp ??
+        run?.start_timestamp ??
+        run?.startTimestamp ??
+        run?.timestamp ??
+        0,
+    );
+
+  const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
+  const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
+  const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
+  const weekStart = getWeeklyResetStartMs(region);
+  const recentWeekCount = recentRuns.filter((run) => {
+    const ts = getRunTimestamp(run);
+    return ts > 0 && ts >= weekStart;
+  }).length;
+  const currentPeriodCount = collectRuns(mythicPlus?.current_period || {}).filter((run) => {
+    const ts = getRunTimestamp(run);
+    return ts > 0 && ts >= weekStart;
+  }).length;
+  return Math.max(recentWeekCount, currentPeriodCount);
+}
+
 export default function Home() {
+  const router = useRouter();
+  const { setSimcInput } = useSimContext();
   const [sims, setSims] = useState<SimSummary[]>([]);
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null);
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mainCharacter, setMainCharacter] = useState<{ region: string; realm: string; name: string } | null>(null);
+  const [mainVault, setMainVault] = useState<{ mplusRuns: number; raidKills: number } | null>(null);
+  const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
+  const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
+  const [mainSimcInput, setMainSimcInput] = useState<string>('');
+  const [mainCharacterOpen, setMainCharacterOpen] = useState(true);
+  const [recentResultsOpen, setRecentResultsOpen] = useState(true);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const loadAll = useCallback(async () => {
     try {
@@ -184,6 +321,96 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const loadMainCharacter = async () => {
+      try {
+        const localKey =
+          typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
+        const cfgRes = await fetch(`${API_URL}/api/user/config`, { credentials: 'include' }).catch(() => null);
+        let key = localKey;
+        if (cfgRes?.ok) {
+          const cfg = await cfgRes.json();
+          const remoteKey = String(cfg?.main_character || '');
+          if (remoteKey) {
+            key = remoteKey;
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, remoteKey);
+            }
+          }
+        }
+        if (!key) return;
+        const [region, realm, name] = key.split('|');
+        if (!region || !realm || !name) return;
+        setMainCharacter({ region, realm, name });
+
+        const query = `?region=${region}`;
+        const base = `/api/blizzard/character/${realm}/${name}`;
+        const [profileRes, mythicPlus, raidEncounters] = await Promise.all([
+          fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(() => ({})),
+          fetchJson<any>(`${API_URL}${base}/mythic-keystone-profile${query}`).catch(() => ({})),
+          fetchJson<any>(`${API_URL}${base}/encounters/raids${query}`).catch(() => ({})),
+        ]);
+        setMainMeta({
+          level: Number(profileRes?.level || 0) || undefined,
+          className: profileRes?.character_class?.name || undefined,
+          ilvl: Number(profileRes?.equipped_item_level || 0) || undefined,
+        });
+
+        const profiles = await listCharacterProfiles({ name, realm, region }).catch(() => []);
+        const latestSimc = profiles[0]?.simc_input || '';
+        const lines = String(latestSimc).split(/\r?\n/);
+        const rewards: VaultRewardItem[] = [];
+        let inBlock = false;
+        for (const raw of lines) {
+          const line = raw.trim();
+          const lower = line.toLowerCase();
+          if (lower.includes('weekly reward choices') && !lower.includes('end of weekly reward choices')) {
+            inBlock = true;
+            continue;
+          }
+          if (lower.includes('end of weekly reward choices')) {
+            inBlock = false;
+            continue;
+          }
+          if (!inBlock) continue;
+          const m = line.replace(/^#\s*/, '').match(/^([a-z0-9_]+)\s*=\s*(.+)$/i);
+          if (!m) continue;
+          const id = m[2].match(/id=(\d+)/i)?.[1];
+          if (!id) continue;
+          const ilvl = m[2].match(/ilevel=(\d+)/i)?.[1] || '-';
+          const bonusMatch = m[2].match(/bonus_id=([0-9/]+)/i);
+          const bonusIds = bonusMatch
+            ? bonusMatch[1]
+                .split('/')
+                .map((v) => Number(v))
+                .filter((v) => Number.isFinite(v) && v > 0)
+            : [];
+          rewards.push({ slot: m[1], itemId: id, ilevel: ilvl, bonusIds });
+        }
+        setMainVaultRewards(rewards.slice(0, 6));
+        setMainSimcInput(latestSimc);
+
+        const mplusRuns = computeMythicVaultRuns(mythicPlus, region);
+        const raidKills = computeWeeklyRaidBossKills(raidEncounters, region);
+        setMainVault({ mplusRuns, raidKills });
+      } catch {
+        // ignore
+      }
+    };
+    void loadMainCharacter();
+  }, []);
+
+  const openMainWorkflow = useCallback(
+    (path: string) => {
+      if (mainSimcInput.trim()) {
+        setSimcInput(mainSimcInput);
+        sessionStorage.setItem('whylowdps_simc_input', mainSimcInput);
+      }
+      router.push(path);
+    },
+    [mainSimcInput, router, setSimcInput],
+  );
+
+  useEffect(() => {
     let active = true;
     (async () => {
       await loadAll();
@@ -207,6 +434,24 @@ export default function Home() {
     }, 60000);
     return () => window.clearInterval(timer);
   }, [loadAll]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const usResetCountdown = useMemo(
+    () => formatCountdown(getNextWeeklyResetMs('us', new Date(nowMs)) - nowMs),
+    [nowMs],
+  );
+  const euResetCountdown = useMemo(
+    () => formatCountdown(getNextWeeklyResetMs('eu', new Date(nowMs)) - nowMs),
+    [nowMs],
+  );
+  const usNextResetMs = useMemo(() => getNextWeeklyResetMs('us', new Date(nowMs)), [nowMs]);
+  const euNextResetMs = useMemo(() => getNextWeeklyResetMs('eu', new Date(nowMs)), [nowMs]);
 
   const activeSims = useMemo(() => sims.filter((sim) => sim.status === 'running').length, [sims]);
   const sortedRecent = useMemo(
@@ -235,12 +480,26 @@ export default function Home() {
             Live simulation activity, system health, and recent results.
           </p>
         </div>
-        <Link
-          href="/history"
-          className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-        >
-          Open Full History
-        </Link>
+        <div className="flex items-center gap-2">
+          <div
+            className="hidden rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 md:block"
+            title={`US reset at ${formatLocalDateTime(usNextResetMs)} (your local time)`}
+          >
+            <span className="font-semibold text-zinc-200">US reset:</span> {usResetCountdown}
+          </div>
+          <div
+            className="hidden rounded-md border border-white/10 bg-black/20 px-2.5 py-1.5 text-[11px] text-zinc-300 md:block"
+            title={`EU reset at ${formatLocalDateTime(euNextResetMs)} (your local time)`}
+          >
+            <span className="font-semibold text-zinc-200">EU reset:</span> {euResetCountdown}
+          </div>
+          <Link
+            href="/history"
+            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
+          >
+            Open Full History
+          </Link>
+        </div>
       </div>
 
       {error && (
@@ -298,6 +557,110 @@ export default function Home() {
             </StatIcon>
           </div>
         </div>
+      </section>
+
+      <section className="card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-200">Main Character</h2>
+          <button
+            type="button"
+            onClick={() => setMainCharacterOpen((prev) => !prev)}
+            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            {mainCharacterOpen ? 'Collapse' : 'Expand'}
+          </button>
+        </div>
+        {mainCharacterOpen && !mainCharacter ? (
+          <p className="text-sm text-zinc-500">No main character selected yet. Open a character and click Set as Main.</p>
+        ) : mainCharacterOpen && mainCharacter ? (
+          <div className="space-y-3">
+            <div className="text-sm text-zinc-200">
+              <span className="font-semibold">{mainCharacter.name}</span>
+              <span className="text-zinc-500"> · {mainCharacter.realm} · {mainCharacter.region.toUpperCase()}</span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                Level: <span className="font-semibold text-zinc-100">{mainMeta?.level ?? '-'}</span>
+              </div>
+              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                Class: <span className="font-semibold text-zinc-100">{mainMeta?.className ?? '-'}</span>
+              </div>
+              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                iLvl: <span className="font-semibold text-zinc-100">{mainMeta?.ilvl ?? '-'}</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <div className="rounded border border-white/10 bg-black/20 p-2">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mythic+ Vault</p>
+                <div className="space-y-2">
+                  {[1, 4, 8].map((threshold, idx) => {
+                    const current = mainVault?.mplusRuns ?? 0;
+                    const unlocked = current >= threshold;
+                    const progress = Math.min(1, current / threshold);
+                    return (
+                      <div key={`main-mplus-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
+                        <div className="mb-1 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
+                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
+                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
+                          </span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                            style={{ width: `${Math.max(6, progress * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} runs</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.mplusRuns ?? 0} runs completed this week.</p>
+              </div>
+              <div className="rounded border border-white/10 bg-black/20 p-2">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Raid Vault</p>
+                <div className="space-y-2">
+                  {[2, 4, 6].map((threshold, idx) => {
+                    const current = mainVault?.raidKills ?? 0;
+                    const unlocked = current >= threshold;
+                    const progress = Math.min(1, current / threshold);
+                    return (
+                      <div key={`main-raid-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
+                        <div className="mb-1 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
+                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
+                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
+                          </span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                            style={{ width: `${Math.max(6, progress * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} boss kills</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.raidKills ?? 0} boss kills completed this week.</p>
+              </div>
+            </div>
+            {mainVaultRewards.length > 0 && (
+              <div className="rounded border border-white/10 bg-black/20 p-2">
+                <div className="mb-2 text-xs font-semibold text-zinc-200">Vault Rewards</div>
+                <VaultRewardsGrid items={mainVaultRewards} />
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
+              <button onClick={() => openMainWorkflow('/quick-sim')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Run Sim</button>
+              <button onClick={() => openMainWorkflow('/top-gear')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Top Gear</button>
+              <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
@@ -370,12 +733,19 @@ export default function Home() {
       </section>
 
       <section className="card overflow-hidden">
-        <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-zinc-200">Recent Results</h2>
+          <button
+            type="button"
+            onClick={() => setRecentResultsOpen((prev) => !prev)}
+            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+          >
+            {recentResultsOpen ? 'Collapse' : 'Expand'}
+          </button>
         </div>
-        {sortedRecent.length === 0 ? (
+        {recentResultsOpen && sortedRecent.length === 0 ? (
           <div className="px-4 py-10 text-center text-sm text-zinc-500">No simulations yet.</div>
-        ) : (
+        ) : recentResultsOpen ? (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-surface-2/60 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -428,7 +798,7 @@ export default function Home() {
               </tbody>
             </table>
           </div>
-        )}
+        ) : null}
       </section>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { API_URL, isDesktop, fetchJson, TOKEN_KEY } from '../lib/api';
+import { API_URL, isDesktop, fetchJson, isNetworkUnavailableError, TOKEN_KEY } from '../lib/api';
 
 interface AuthContextType {
   user: { battletag: string } | null;
@@ -33,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser({ battletag: data.battletag });
         }
       } catch (err: any) {
-        if (err.status !== 401) {
+        if (err.status !== 401 && !isNetworkUnavailableError(err)) {
           console.error('Auth check failed:', err);
         }
         // If 401/error, consider user logged out
@@ -55,7 +55,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         `${API_URL}/api/auth/bnet/credentials-status`
       );
     } catch (err) {
-      console.error('Failed to check credentials status:', err);
+      if (!isNetworkUnavailableError(err)) {
+        console.error('Failed to check credentials status:', err);
+      }
     }
     return { globally_configured: false }; // Fallback to avoid dead-end if request fails
   }, []);
@@ -89,8 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { invoke } = await import('@tauri-apps/api/core');
         console.log('Opening isolated auth window:', url);
 
-        // Use double-encoding for the ref URL to ensure Blizzard's logout redirect works correctly
-        await invoke('open_auth_window', { url: encodeURIComponent(url) });
+        // Pass raw URL; desktop command encodes once for Blizzard logout ref.
+        await invoke('open_auth_window', { url });
 
         // Start polling for token
         startPolling(flowId);
@@ -116,8 +118,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/api/auth/poll?flow_id=${flowId}`);
+        const payload = await res.json().catch(() => ({}));
         if (res.ok) {
-          const { token } = await res.json();
+          const { token } = payload as { token?: string };
           if (token) {
             localStorage.setItem(TOKEN_KEY, token);
             clearInterval(interval);
@@ -125,6 +128,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const data = await fetchJson<{ battletag: string }>(`${API_URL}/api/auth/me`);
             setUser({ battletag: data.battletag });
           }
+        } else {
+          const message =
+            (payload as { error?: string; details?: string })?.details ||
+            (payload as { error?: string })?.error ||
+            'Login flow failed.';
+          void message;
+          clearInterval(interval);
         }
       } catch (err) {
         console.error('Polling failed:', err);

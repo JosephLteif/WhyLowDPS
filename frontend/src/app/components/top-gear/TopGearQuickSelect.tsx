@@ -1,4 +1,4 @@
-import ComboPill from '../ComboPill';
+import ComboSummary from '../ComboSummary';
 
 interface TopGearQuickSelectProps {
   comboCount: number;
@@ -12,6 +12,7 @@ interface TopGearQuickSelectProps {
   onToggleCatalyst: () => void;
   onSelectAll: () => void;
   onClear: () => void;
+  comboBreakdown?: string | null;
 }
 
 export default function TopGearQuickSelect({
@@ -26,6 +27,7 @@ export default function TopGearQuickSelect({
   onToggleCatalyst,
   onSelectAll,
   onClear,
+  comboBreakdown = null,
 }: TopGearQuickSelectProps) {
   return (
     <div className="flex items-center gap-2">
@@ -73,7 +75,11 @@ export default function TopGearQuickSelect({
           </button>
         )}
       </div>
-      <ComboPill comboCount={comboCount} maxCombinations={maxCombinations} />
+      <ComboSummary
+        comboCount={comboCount}
+        maxCombinations={maxCombinations}
+        breakdown={comboBreakdown}
+      />
     </div>
   );
 }

@@ -39,8 +39,10 @@ pub struct Claims {
 
 #[derive(Deserialize)]
 pub struct AuthCallbackQuery {
-    pub code: String,
-    pub state: String, // This is our flow_id
+    pub code: Option<String>,
+    pub state: Option<String>, // This is our flow_id
+    pub error: Option<String>,
+    pub error_description: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -104,6 +106,7 @@ pub async fn get_credentials_status(
 }
 
 pub async fn bnet_login(
+    req: HttpRequest,
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     query: web::Query<LoginQuery>,
@@ -144,18 +147,46 @@ pub async fn bnet_login(
         );
     }
 
+    let conn = req.connection_info();
+    let request_host = conn.host().to_string();
+    let request_scheme = conn.scheme().to_string();
+    let request_redirect_uri = format!(
+        "{}://{}/api/auth/bnet/callback",
+        request_scheme, request_host
+    );
+    let redirect_uri_for_flow = std::env::var("BLIZZARD_REDIRECT_URI")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or(request_redirect_uri);
+
     println!("Starting Blizzard Login for client_id: {}", client_id);
-    println!("Target Redirect URI: {}", state.redirect_uri);
+    println!("Target Redirect URI (flow): {}", redirect_uri_for_flow);
 
     let flow_id = query
         .flow_id
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    builder.cookie(
+        Cookie::build("bnet_flow_id", flow_id.clone())
+            .path("/")
+            .http_only(true)
+            .secure(false) // Local dev
+            .same_site(SameSite::Lax)
+            .finish(),
+    );
+    let flow_status_cache_key = format!("login_flow_status_{}", flow_id);
+    store.set_cache(&flow_status_cache_key, "started".to_string());
+    let redirect_cache_key = format!("login_flow_redirect_uri_{}", flow_id);
+    store.set_cache(&redirect_cache_key, redirect_uri_for_flow.clone());
+    let client_id_cache_key = format!("login_flow_client_id_{}", flow_id);
+    let client_secret_cache_key = format!("login_flow_client_secret_{}", flow_id);
+    store.set_cache(&client_id_cache_key, client_id.clone());
+    store.set_cache(&client_secret_cache_key, _client_secret.clone());
 
     let auth_url = format!(
         "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}&prompt=login%20consent&max_age=0",
         client_id,
-        urlencoding::encode(&state.redirect_uri),
+        urlencoding::encode(&redirect_uri_for_flow),
         flow_id
     );
 
@@ -174,13 +205,25 @@ pub async fn poll_login(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     let cache_key = format!("login_flow_{}", query.flow_id);
+    let error_key = format!("login_flow_error_{}", query.flow_id);
+    let status_key = format!("login_flow_status_{}", query.flow_id);
     match store.get_cache(&cache_key) {
         Some(token) => {
             // Remove from cache after successful poll to clean up
             store.remove_cache(&cache_key);
+            store.remove_cache(&error_key);
+            store.remove_cache(&status_key);
             HttpResponse::Ok().json(json!({ "token": token }))
         }
-        None => HttpResponse::NotFound().json(json!({ "status": "pending" })),
+        None => {
+            if let Some(err) = store.get_cache(&error_key) {
+                store.remove_cache(&error_key);
+                store.remove_cache(&status_key);
+                return HttpResponse::BadRequest()
+                    .json(json!({ "status": "failed", "error": err }));
+            }
+            HttpResponse::Ok().json(json!({ "status": "pending" }))
+        }
     }
 }
 
@@ -270,10 +313,67 @@ pub async fn bnet_callback(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     let client = reqwest::Client::new();
+    let flow_id_opt = query
+        .state
+        .clone()
+        .or_else(|| req.cookie("bnet_flow_id").map(|c| c.value().to_string()));
+    let flow_id = flow_id_opt.clone().unwrap_or_else(|| "unknown".to_string());
+    let redirect_cache_key = format!("login_flow_redirect_uri_{}", flow_id);
+    let client_id_cache_key = format!("login_flow_client_id_{}", flow_id);
+    let client_secret_cache_key = format!("login_flow_client_secret_{}", flow_id);
+    let error_cache_key = format!("login_flow_error_{}", flow_id);
+    let status_cache_key = format!("login_flow_status_{}", flow_id);
+    let redirect_uri_for_exchange = store
+        .get_cache(&redirect_cache_key)
+        .unwrap_or_else(|| state.redirect_uri.clone());
 
-    let creds = match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
-        (Some(id_c), Some(sec_c)) => Some((id_c.value().to_string(), sec_c.value().to_string())),
-        _ => get_effective_creds(&state, &***store, None, None),
+    if let Some(provider_error) = &query.error {
+        let message = format!(
+            "{}{}",
+            provider_error,
+            query
+                .error_description
+                .as_ref()
+                .map(|d| format!(": {}", d))
+                .unwrap_or_default()
+        );
+        if flow_id_opt.is_some() {
+            store.set_cache(&error_cache_key, message.clone());
+            store.remove_cache(&status_cache_key);
+        }
+        return HttpResponse::BadRequest().json(json!({
+            "error": "OAuth provider returned an error",
+            "details": message
+        }));
+    }
+
+    let code = match &query.code {
+        Some(code) if !code.trim().is_empty() => code.clone(),
+        _ => {
+            let message = "Missing authorization code in callback query".to_string();
+            if flow_id_opt.is_some() {
+                store.set_cache(&error_cache_key, message.clone());
+                store.remove_cache(&status_cache_key);
+            }
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Failed to exchange code",
+                "details": message
+            }));
+        }
+    };
+
+    // Always prefer credentials captured at login start for this exact flow.
+    let creds = match (
+        store.get_cache(&client_id_cache_key),
+        store.get_cache(&client_secret_cache_key),
+    ) {
+        (Some(id), Some(sec)) => Some((id, sec)),
+        _ => match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
+            (Some(id_c), Some(sec_c)) => {
+                Some((id_c.value().to_string(), sec_c.value().to_string()))
+            }
+            _ => get_effective_creds(&state, &***store, None, None),
+        },
     };
 
     let (client_id, client_secret) = match creds {
@@ -289,8 +389,8 @@ pub async fn bnet_callback(
         .basic_auth(&client_id, Some(&client_secret))
         .form(&[
             ("grant_type", "authorization_code"),
-            ("code", &query.code),
-            ("redirect_uri", &state.redirect_uri),
+            ("code", &code),
+            ("redirect_uri", &redirect_uri_for_exchange),
         ])
         .send()
         .await;
@@ -314,11 +414,19 @@ pub async fn bnet_callback(
                 "Token exchange failed with status: {}, body: {}",
                 status, text
             );
+            if flow_id_opt.is_some() {
+                store.set_cache(&error_cache_key, text.clone());
+                store.remove_cache(&status_cache_key);
+            }
             return HttpResponse::BadRequest()
                 .json(json!({"error": "Failed to exchange code", "details": text}));
         }
         Err(e) => {
             println!("Network error during token exchange: {}", e);
+            if flow_id_opt.is_some() {
+                store.set_cache(&error_cache_key, "Network error during token exchange".to_string());
+                store.remove_cache(&status_cache_key);
+            }
             return HttpResponse::BadRequest()
                 .json(json!({"error": "Network error during token exchange"}));
         }
@@ -407,9 +515,14 @@ pub async fn bnet_callback(
     resp_builder.cookie(cookie);
 
     // Store token in cache for polling (handoff to desktop app)
-    let flow_id = query.state.clone();
-    let cache_key = format!("login_flow_{}", flow_id);
-    store.set_cache(&cache_key, token);
+    if flow_id_opt.is_some() {
+        let cache_key = format!("login_flow_{}", flow_id);
+        store.set_cache(&cache_key, token);
+    }
+    store.remove_cache(&redirect_cache_key);
+    store.remove_cache(&client_id_cache_key);
+    store.remove_cache(&client_secret_cache_key);
+    store.remove_cache(&status_cache_key);
 
     // If we used temporary credentials, save them to the user's permanent config
     if state.client_id.is_none() {
@@ -713,6 +826,9 @@ pub async fn get_user_configs(
     let app_update_channel = store
         .get_user_config(&claims.sub, "app_update_channel")
         .unwrap_or_default();
+    let main_character = store
+        .get_user_config(&claims.sub, "main_character")
+        .unwrap_or_default();
 
     HttpResponse::Ok().json(json!({
         "blizzard_client_id": client_id,
@@ -724,6 +840,7 @@ pub async fn get_user_configs(
         "simc_download_channel": simc_download_channel,
         "simc_sim_channel": simc_sim_channel,
         "app_update_channel": app_update_channel,
+        "main_character": main_character,
     }))
 }
 
@@ -747,6 +864,7 @@ pub async fn set_user_config(
         && body.key != "simc_download_channel"
         && body.key != "simc_sim_channel"
         && body.key != "app_update_channel"
+        && body.key != "main_character"
     {
         return HttpResponse::BadRequest().json(json!({"error": "Invalid config key"}));
     }

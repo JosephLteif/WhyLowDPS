@@ -389,11 +389,30 @@ function instanceMatchesCategory(inst: { name?: string; type?: string }, cat: st
 
 const getMappedTrackName = (
   selectedDifficulty: string,
-  info: { track?: string } | null | undefined
+  info: { track?: string } | null | undefined,
+  category: string,
+  difficultyDef?: DifficultyDef | null
 ): string => {
+  if (info?.track) return info.track;
+  if (difficultyDef?.track) return difficultyDef.track;
+  if (category === 'dungeon') return '';
   const raidTrack = RAID_TRACK_BY_DIFFICULTY[selectedDifficulty?.toLowerCase()];
-  return info?.track || raidTrack || '';
+  return raidTrack || '';
 };
+
+function getRelevantDifficultyInfo(
+  item: ExternalItem,
+  selectedDifficulty: string,
+  category: string
+) {
+  if (category === 'dungeon') {
+    return item.dungeon_info?.[selectedDifficulty] || item.difficulty_info?.[selectedDifficulty];
+  }
+  if (category === 'raid') {
+    return item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
+  }
+  return item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
+}
 
 function collectCraftedIlevels(item: ExternalItem, upgradeTracks: Record<string, any>): Array<{ ilvl: number; bonus_id: number; key: string }> {
   if (Array.isArray(item.crafted_levels) && item.crafted_levels.length > 0) {
@@ -433,7 +452,8 @@ const getEffectiveTier = (
   selectedDifficulty: string,
   itemTiers: Record<number, number>,
   upgradeTracks: Record<string, any>,
-  category: string
+  category: string,
+  difficultyDef?: DifficultyDef | null
 ) => {
   // ── Fixed-track categories (delves, prey, pvp) ──────────────────
   const fixedTracks = getFixedTracksForCategory(category, item);
@@ -469,8 +489,7 @@ const getEffectiveTier = (
     };
   }
 
-  const info =
-    item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
+  const info = getRelevantDifficultyInfo(item, selectedDifficulty, category);
 
   if (category === 'crafted') {
     const levels = collectCraftedIlevels(item, upgradeTracks);
@@ -493,10 +512,23 @@ const getEffectiveTier = (
     };
   }
 
-  const trackName = getMappedTrackName(selectedDifficulty, info);
+  if (category === 'dungeon' && difficultyDef?.fixedIlvl && info) {
+    return {
+      track: difficultyDef.track || '',
+      level: difficultyDef.level || 0,
+      maxLevel: difficultyDef.level || 0,
+      ilvl: difficultyDef.fixedIlvl,
+      baseLevel: difficultyDef.level || 0,
+      baseIlvl: difficultyDef.fixedIlvl,
+      bonus_id: info.bonus_id || 0,
+      quality: difficultyDef.fixedQuality ?? info.quality ?? item.quality,
+    };
+  }
+
+  const trackName = getMappedTrackName(selectedDifficulty, info, category, difficultyDef);
   if (!info || !trackName) return null;
 
-  const baseLevel = info.level || 1;
+  const baseLevel = info.level || difficultyDef?.level || 1;
   const currentLevel = Math.max(baseLevel, itemTiers[item.item_id] || baseLevel);
   const track = upgradeTracks[trackName];
   if (!track || !Array.isArray(track)) return null;
@@ -510,7 +542,7 @@ const getEffectiveTier = (
     baseLevel,
     baseIlvl: info.ilvl,
     bonus_id: info.bonus_id,
-    quality: info.quality || item.quality,
+    quality: info.quality || difficultyDef?.fixedQuality || item.quality,
   };
 };
 
@@ -825,6 +857,31 @@ export default function AddItemModal({
     return seasonConfig.raid_difficulties;
   }, [seasonConfig, selectedInstance, instances, category]);
 
+  const selectedDungeonDifficultyDef = useMemo(() => {
+    if (!seasonConfig || category !== 'dungeon') return null;
+
+    const instance = instances.find((i) => i.id === selectedInstance);
+    if (!instance) {
+      return (
+        seasonConfig.dungeon_categories[0]?.difficulties.find(
+          (difficulty) => difficulty.key === effectiveDifficulty
+        ) || null
+      );
+    }
+
+    let group = seasonConfig.dungeon_categories.find(
+      (c) =>
+        c.poolInstanceId === instance.id ||
+        instance.type === 'mplus-chest' ||
+        instance.type === 'expansion-dungeon'
+    );
+    if (!group && (instance.type === 'dungeon' || instance.type === 'expansion-dungeon')) {
+      group = seasonConfig.dungeon_categories[0];
+    }
+
+    return group?.difficulties.find((difficulty) => difficulty.key === effectiveDifficulty) || null;
+  }, [seasonConfig, category, instances, selectedInstance, effectiveDifficulty]);
+
   // Ensure selected difficulty is valid for the current instance/category
   useEffect(() => {
     if (category === 'world_bosses') {
@@ -931,7 +988,8 @@ export default function AddItemModal({
       effectiveDifficulty,
       itemTiers,
       upgradeTracks,
-      category
+      category,
+      selectedDungeonDifficultyDef
     );
     const selectedLevel = resolvedTier?.level || itemTiers[item.item_id] || 1;
     const selectedEmbellishment = itemEmbellishments[item.item_id] || null;
@@ -993,7 +1051,14 @@ export default function AddItemModal({
     // Fixed-track categories: resolve from getEffectiveTier directly
     const fixedTracks = getFixedTracksForCategory(category, item);
     if (fixedTracks) {
-      const tier = getEffectiveTier(item, effectiveDifficulty, itemTiers, upgradeTracks, category);
+      const tier = getEffectiveTier(
+        item,
+        effectiveDifficulty,
+        itemTiers,
+        upgradeTracks,
+        category,
+        selectedDungeonDifficultyDef
+      );
       if (tier) {
         onAdd(item, 'normal', {
           bonus_ids: withEmbellishment(withCraftingBonuses(tier.bonus_id ? [tier.bonus_id] : [])),
@@ -1024,9 +1089,13 @@ export default function AddItemModal({
       return;
     }
 
-    const info =
-      item.difficulty_info?.[effectiveDifficulty] || item.dungeon_info?.[effectiveDifficulty];
-    const trackName = getMappedTrackName(effectiveDifficulty, info);
+    const info = getRelevantDifficultyInfo(item, effectiveDifficulty, category);
+    const trackName = getMappedTrackName(
+      effectiveDifficulty,
+      info,
+      category,
+      selectedDungeonDifficultyDef
+    );
     const baseBonusIds = info?.bonus_id ? [info.bonus_id] : [];
 
     if (category === 'crafted') {
@@ -1298,7 +1367,8 @@ export default function AddItemModal({
                           effectiveDifficulty,
                           itemTiers,
                           upgradeTracks,
-                          category
+                          category,
+                          selectedDungeonDifficultyDef
                         );
                         const currentIlvl = tier?.ilvl || item.ilevel;
                         const trackName = tier?.track || '';

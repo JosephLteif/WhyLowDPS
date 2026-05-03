@@ -716,6 +716,10 @@ pub fn get_instance_drops(
                         .collect();
                     item_json["crafted_base_bonus_ids"] = serde_json::json!(crafted_base_bonus_ids);
                 }
+                let crafted_levels = item_db::derive_crafted_item_levels(item.id);
+                if !crafted_levels.is_empty() {
+                    item_json["crafted_levels"] = serde_json::json!(crafted_levels);
+                }
 
                 if let Some(stats) = &item.stats {
                     item_json["stats"] = serde_json::json!(stats);

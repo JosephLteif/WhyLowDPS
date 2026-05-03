@@ -21,7 +21,6 @@ interface TopGearItemSelectorProps {
   comboCount: number;
   maxUpgrade?: boolean;
   comboError?: string;
-  onExcludedUidsChange?: (uids: Set<string>) => void;
 }
 
 interface DisplayGroup {
@@ -88,6 +87,7 @@ const UPGRADE_TRACK_MAX_LEVEL = 6;
 const SOURCE_TAG_STYLES: Record<string, string> = {
   wishlist: 'text-rose-300 bg-rose-500/15 border-rose-400/40',
   vault: 'text-violet-200 bg-violet-500/18 border-violet-400/45',
+  search: 'text-sky-200 bg-sky-500/15 border-sky-400/40',
   crafter: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
   crafted: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
   catalyst: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
@@ -108,8 +108,9 @@ function resolveSourceTags(item: ResolvedItem): Array<{ text: string; color: str
   const pushTag = (rawText: string) => {
     const text = toTitleCase(rawText || '');
     if (!text) return;
-    if (tags.some((t) => t.text.toLowerCase() === text.toLowerCase())) return;
     const key = text.toLowerCase();
+    if (key === 'bags' || key === 'equipped') return;
+    if (tags.some((t) => t.text.toLowerCase() === key)) return;
     tags.push({
       text,
       color: SOURCE_TAG_STYLES[key] || 'text-zinc-200 bg-white/[0.06] border-white/15',
@@ -124,7 +125,9 @@ function resolveSourceTags(item: ResolvedItem): Array<{ text: string; color: str
   if (sourceType.includes('vault')) pushTag('Vault');
   if (sourceType.includes('craft')) pushTag('Crafter');
 
-  if (tags.length === 0 && item.origin) pushTag(item.origin);
+  if (tags.length === 0 && item.origin && item.origin !== 'bags' && item.origin !== 'equipped') {
+    pushTag(item.origin);
+  }
   return tags;
 }
 
@@ -249,7 +252,6 @@ export default function TopGearItemSelector({
   onItemAdded,
   comboCount,
   comboError,
-  onExcludedUidsChange,
 }: TopGearItemSelectorProps) {
   const { maxCombinations } = useSimContext();
   const effectiveMaxCombinations = maxCombinations ?? 500;
@@ -826,7 +828,6 @@ export default function TopGearItemSelector({
         embellishment_name: embellishment?.name,
         embellishment_icon: embellishment?.icon,
         embellishment_bonus_ids: embellishment?.bonus_ids,
-        item_limit_categories: embellishment ? { embellished: 2 } : {},
         simc_string: nextSimc,
       };
 
@@ -912,7 +913,9 @@ export default function TopGearItemSelector({
       }
       let ilvl = overrides ? overrides.ilvl : difficultyInfo?.ilvl || item.ilevel;
       let upgradeStr = overrides
-        ? `${overrides.track_name} ${overrides.level}`
+        ? overrides.track_name
+          ? `${overrides.track_name} ${overrides.level}${overrides.max_level ? `/${overrides.max_level}` : ''}`
+          : ''
         : difficultyInfo?.track
           ? `${difficultyInfo.track} ${difficultyInfo.level}/${UPGRADE_TRACK_MAX_LEVEL}`
           : '';
@@ -963,7 +966,6 @@ export default function TopGearItemSelector({
         embellishment_name: embellishment?.name,
         embellishment_icon: embellishment?.icon,
         embellishment_bonus_ids: embellishment?.bonus_ids,
-        item_limit_categories: embellishment ? { embellished: 2 } : {},
         name: item.name,
         icon: item.icon,
         quality: effectiveQuality,
@@ -977,7 +979,7 @@ export default function TopGearItemSelector({
                 : '#1eff00',
         tag: isCraftedSource(item)
           ? (item.instance_name || item.encounter || 'Crafted')
-          : (item.tag || 'Bags'),
+          : 'Search',
         upgrade: upgradeStr,
         sockets: Number(item.sockets || item.socket_count || (item.hasSockets ? 1 : 0)),
         enchant_name: '',
@@ -1444,17 +1446,6 @@ export default function TopGearItemSelector({
     return next;
   }, [immediateLimitWarningUids, localLimitWarningUids, confirmedLimitWarningUids, selectedUidSet]);
 
-  useEffect(() => {
-    onExcludedUidsChange?.(activeLimitWarningUids);
-  }, [activeLimitWarningUids, onExcludedUidsChange]);
-
-  useEffect(
-    () => () => {
-      onExcludedUidsChange?.(new Set());
-    },
-    [onExcludedUidsChange]
-  );
-
   const hasEmbellishmentLimitWarning = useCallback(
     (item: ResolvedItem): boolean => activeLimitWarningUids.has(item.uid),
     [activeLimitWarningUids]
@@ -1691,14 +1682,15 @@ export default function TopGearItemSelector({
 
   return (
     <div className="space-y-4">
-      <AddItemModal
-        isOpen={isAddItemOpen}
-        onClose={() => setAddItemOpen(false)}
-        onAdd={handleAddItem}
-        className={resolved.character.class_name}
-        spec={resolved.character.spec}
-        preferredSlot={addItemSlot}
-      />
+        <AddItemModal
+          isOpen={isAddItemOpen}
+          onClose={() => setAddItemOpen(false)}
+          onAdd={handleAddItem}
+          className={resolved.character.class_name}
+          spec={resolved.character.spec}
+          canUseOffhand={resolved.character.can_use_offhand}
+          preferredSlot={addItemSlot}
+        />
       <OptimizeItemModal
         isOpen={isOptimizeOpen}
         onClose={() => setOptimizeOpen(false)}

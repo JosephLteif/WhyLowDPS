@@ -69,6 +69,7 @@ export interface CharacterResolveInfo {
   class_name: string | null;
   spec: string | null;
   can_dual_wield: boolean;
+  can_use_offhand: boolean;
 }
 
 export interface TalentLoadout {

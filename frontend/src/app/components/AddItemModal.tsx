@@ -26,6 +26,7 @@ interface AddItemModalProps {
       ilvl: number;
       track_name: string;
       level: number;
+      max_level?: number;
       quality?: number;
       crafted_stats?: string[];
       crafted_selected_bonus_ids?: number[];
@@ -46,6 +47,7 @@ interface AddItemModalProps {
   ) => void;
   className?: string | null;
   spec?: string | null;
+  canUseOffhand?: boolean;
   preferredSlot?: string | null;
 }
 
@@ -179,48 +181,113 @@ interface GemDisplay {
 }
 
 const CRAFTED_ALL_ITEMS_ID = -100;
+const CRAFTED_PVP_ITEMS_ID = -115;
+const CRAFTED_PVP_FILTER = '__pvp__';
 const CRAFTED_SIDEBAR_FILTERS = [
   { id: CRAFTED_ALL_ITEMS_ID, name: 'All Items', filter: null as string | null },
-  { id: -101, name: 'Head', filter: 'head' },
-  { id: -102, name: 'Neck', filter: 'neck' },
-  { id: -103, name: 'Shoulders', filter: 'shoulder' },
-  { id: -104, name: 'Back', filter: 'back' },
-  { id: -105, name: 'Chest', filter: 'chest' },
-  { id: -106, name: 'Wrists', filter: 'wrist' },
-  { id: -107, name: 'Hands', filter: 'hands' },
-  { id: -108, name: 'Waist', filter: 'waist' },
-  { id: -109, name: 'Legs', filter: 'legs' },
-  { id: -110, name: 'Feet', filter: 'feet' },
-  { id: -111, name: 'Rings', filter: 'finger1' },
-  { id: -112, name: 'Trinkets', filter: 'trinket1' },
+  { id: CRAFTED_PVP_ITEMS_ID, name: 'PvP Items', filter: CRAFTED_PVP_FILTER },
   { id: -113, name: 'Main Hand', filter: 'main_hand' },
   { id: -114, name: 'Off Hand', filter: 'off_hand' },
+  { id: -112, name: 'Trinkets', filter: 'trinket1' },
+  { id: -102, name: 'Neck', filter: 'neck' },
+  { id: -111, name: 'Rings', filter: 'finger1' },
+  { id: -101, name: 'Head', filter: 'head' },
+  { id: -105, name: 'Chest', filter: 'chest' },
+  { id: -103, name: 'Shoulders', filter: 'shoulder' },
+  { id: -107, name: 'Hands', filter: 'hands' },
+  { id: -109, name: 'Legs', filter: 'legs' },
+  { id: -108, name: 'Waist', filter: 'waist' },
+  { id: -104, name: 'Back', filter: 'back' },
+  { id: -106, name: 'Wrists', filter: 'wrist' },
+  { id: -110, name: 'Feet', filter: 'feet' },
 ] as const;
 
 const SLOT_FILTER_OPTIONS = [
   { value: '', label: 'All Item Types' },
-  { value: 'head', label: 'Head' },
-  { value: 'neck', label: 'Neck' },
-  { value: 'shoulder', label: 'Shoulders' },
-  { value: 'back', label: 'Back' },
-  { value: 'chest', label: 'Chest' },
-  { value: 'wrist', label: 'Wrists' },
-  { value: 'hands', label: 'Hands' },
-  { value: 'waist', label: 'Waist' },
-  { value: 'legs', label: 'Legs' },
-  { value: 'feet', label: 'Feet' },
-  { value: 'finger1', label: 'Rings' },
-  { value: 'trinket1', label: 'Trinkets' },
   { value: 'main_hand', label: 'Main Hand' },
   { value: 'off_hand', label: 'Off Hand' },
+  { value: 'trinket1', label: 'Trinkets' },
+  { value: 'neck', label: 'Neck' },
+  { value: 'finger1', label: 'Rings' },
+  { value: 'head', label: 'Head' },
+  { value: 'chest', label: 'Chest' },
+  { value: 'shoulder', label: 'Shoulders' },
+  { value: 'hands', label: 'Hands' },
+  { value: 'legs', label: 'Legs' },
+  { value: 'waist', label: 'Waist' },
+  { value: 'back', label: 'Back' },
+  { value: 'wrist', label: 'Wrists' },
+  { value: 'feet', label: 'Feet' },
 ] as const;
+
+const SLOT_FILTER_LABELS: Map<string, string> = new Map(
+  SLOT_FILTER_OPTIONS.filter((option) => option.value).map((option) => [option.value, option.label])
+);
+
+const LOOT_BROWSER_SLOT_ORDER = [
+  'main_hand',
+  'off_hand',
+  'trinket1',
+  'neck',
+  'finger1',
+  'head',
+  'chest',
+  'shoulder',
+  'hands',
+  'legs',
+  'waist',
+  'back',
+  'wrist',
+  'feet',
+] as const;
+
+const LOOT_BROWSER_SLOT_ORDER_INDEX: Map<string, number> = new Map(
+  LOOT_BROWSER_SLOT_ORDER.map((slot, index) => [slot, index])
+);
 
 function normalizeSlotFilter(slot: string | null | undefined): string | null {
   if (!slot) return null;
   const lower = slot.toLowerCase();
+  if (lower === CRAFTED_PVP_FILTER) return CRAFTED_PVP_FILTER;
   if (lower.startsWith('finger') || lower.startsWith('ring')) return 'finger1';
   if (lower.startsWith('trinket')) return 'trinket1';
   return lower;
+}
+
+function isPvpCraftedItem(item: ExternalItem): boolean {
+  const sourceType = String(item.source_type || '').toLowerCase();
+  const name = String(item.name || '').toLowerCase();
+  return sourceType.includes('pvp') || name.includes('competitor');
+}
+
+function compareLootBrowserItems(a: ExternalItem, b: ExternalItem): number {
+  const nameCompare = a.name.localeCompare(b.name);
+  if (nameCompare !== 0) return nameCompare;
+
+  const encounterCompare = (a.encounter || '').localeCompare(b.encounter || '');
+  if (encounterCompare !== 0) return encounterCompare;
+
+  if (a.ilevel !== b.ilevel) return b.ilevel - a.ilevel;
+  return a.item_id - b.item_id;
+}
+
+function slotLabelToOrderKey(slotLabel: string): string {
+  const normalized = slotLabel.trim().toLowerCase();
+  switch (normalized) {
+    case 'rings':
+    case 'ring':
+    case 'finger':
+      return 'finger1';
+    case 'trinkets':
+    case 'trinket':
+      return 'trinket1';
+    case 'shoulders':
+      return 'shoulder';
+    case 'wrists':
+      return 'wrist';
+    default:
+      return normalized.replace(/\s+/g, '_');
+  }
 }
 
 function deduplicateGems(raw: RawGem[]): GemDisplay[] {
@@ -246,11 +313,24 @@ function deduplicateGems(raw: RawGem[]): GemDisplay[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function isActualCraftedItem(item: ExternalItem): boolean {
+  const sourceType = String(item.source_type || '').toLowerCase();
+  return (
+    sourceType.includes('profession') ||
+    (Array.isArray(item.crafted_base_bonus_ids) && item.crafted_base_bonus_ids.length > 0) ||
+    Number(item.missive_count || 0) > 0 ||
+    Array.isArray(item.embellishment_options)
+  );
+}
+
 function missivesForItem(item: ExternalItem, missives: MissiveOption[]): MissiveOption[] {
+  if (!isActualCraftedItem(item)) return [];
+
   const secondaryStatIds = new Set([24, 25, 32, 36, 40, 49]);
   const itemSecondaryStatCount =
     item.stats?.filter((stat) => secondaryStatIds.has(Number(stat.id))).length || 0;
-  const expectedCount = itemSecondaryStatCount || Number(item.missive_count || 0);
+  const explicitMissiveCount = Number(item.missive_count || 0);
+  const expectedCount = explicitMissiveCount > 0 ? explicitMissiveCount : itemSecondaryStatCount;
   if (expectedCount <= 0) return [];
 
   if (expectedCount === 1) {
@@ -316,12 +396,24 @@ const getMappedTrackName = (
 };
 
 function collectCraftedIlevels(item: ExternalItem, upgradeTracks: Record<string, any>): Array<{ ilvl: number; bonus_id: number; key: string }> {
+  if (Array.isArray(item.crafted_levels) && item.crafted_levels.length > 0) {
+    return Array.from(new Set(item.crafted_levels))
+      .filter((ilvl) => Number.isFinite(ilvl) && ilvl > 0)
+      .sort((a, b) => a - b)
+      .map((ilvl, index) => ({
+        ilvl,
+        bonus_id: 0,
+        key: `crafted_${index + 1}`,
+      }));
+  }
+
   const out = [];
+  const canAddGildedStep = !isPvpCraftedItem(item) && !item.difficulty_info?.lfr;
   if (item.difficulty_info) {
     for (const [key, entry] of Object.entries(item.difficulty_info)) {
       if (entry?.ilvl && entry.ilvl > 0) {
         out.push({ ilvl: entry.ilvl, bonus_id: entry.bonus_id || 0, key });
-        if (key === 'mythic' && entry.track && upgradeTracks[entry.track]) {
+        if (canAddGildedStep && key === 'mythic' && entry.track && upgradeTracks[entry.track]) {
           const track = upgradeTracks[entry.track];
           // Crests typically allow crafting up to maxLevel - 1 of their respective track
           const maxTrackLevel = Math.max(...track.map((t: any) => t.max || 0));
@@ -359,7 +451,7 @@ const getEffectiveTier = (
     if (!infoBlock) return null;
 
     const baseLevel = infoBlock.level || 1;
-    const currentLevel = itemTiers[item.item_id] || baseLevel;
+    const currentLevel = Math.max(baseLevel, itemTiers[item.item_id] || baseLevel);
     const trackName = infoBlock.track || chosen.label;
     const track = upgradeTracks[trackName];
 
@@ -405,7 +497,7 @@ const getEffectiveTier = (
   if (!info || !trackName) return null;
 
   const baseLevel = info.level || 1;
-  const currentLevel = itemTiers[item.item_id] || baseLevel;
+  const currentLevel = Math.max(baseLevel, itemTiers[item.item_id] || baseLevel);
   const track = upgradeTracks[trackName];
   if (!track || !Array.isArray(track)) return null;
 
@@ -428,6 +520,7 @@ export default function AddItemModal({
   onAdd,
   className,
   spec,
+  canUseOffhand = true,
   preferredSlot,
 }: AddItemModalProps) {
   const state = useAddItemState(isOpen, className, spec, preferredSlot);
@@ -491,30 +584,63 @@ export default function AddItemModal({
     setItemEmbellishments,
   } = state;
 
+  const craftedSidebarFilters = useMemo(
+    () =>
+      CRAFTED_SIDEBAR_FILTERS.filter(
+        (entry) => canUseOffhand || entry.filter !== 'off_hand'
+      ),
+    [canUseOffhand]
+  );
+
+  const slotFilterOptions = useMemo(
+    () =>
+      SLOT_FILTER_OPTIONS.filter(
+        (entry) => canUseOffhand || entry.value !== 'off_hand'
+      ),
+    [canUseOffhand]
+  );
+
+  useEffect(() => {
+    if (!canUseOffhand && filterSlot === 'off_hand') {
+      setFilterSlot(null);
+    }
+    if (!canUseOffhand && craftedFilterSlot === 'off_hand') {
+      setCraftedFilterSlot(null);
+    }
+  }, [canUseOffhand, craftedFilterSlot, filterSlot, setFilterSlot]);
+
   const filteredInstances = useMemo(() => {
     if (category === 'crafted') {
-      return CRAFTED_SIDEBAR_FILTERS.map((entry) => ({
+      return craftedSidebarFilters.map((entry) => ({
         id: entry.id,
         name: entry.name,
         type: 'crafted-slot',
       }));
     }
     return instances.filter((inst) => instanceMatchesCategory(inst, category));
-  }, [instances, category]);
+  }, [instances, category, craftedSidebarFilters]);
 
   const activeFilterSlot = category === 'crafted' ? craftedFilterSlot : filterSlot;
+  const normalizedActiveFilterSlot = normalizeSlotFilter(activeFilterSlot);
+  const activeFilterSlotLabel = useMemo(() => {
+    if (normalizedActiveFilterSlot === CRAFTED_PVP_FILTER) return 'PvP';
+    return normalizedActiveFilterSlot ? SLOT_FILTER_LABELS.get(normalizedActiveFilterSlot) || null : null;
+  }, [normalizedActiveFilterSlot]);
+
+  const craftedPvpOnly = category === 'crafted' && normalizeSlotFilter(craftedFilterSlot) === CRAFTED_PVP_FILTER;
+  const effectiveSlotFilter = normalizedActiveFilterSlot === CRAFTED_PVP_FILTER ? null : normalizedActiveFilterSlot;
 
   const craftedSidebarSelectedId = useMemo(() => {
     if (category !== 'crafted') return selectedInstance;
     const normalized = normalizeSlotFilter(craftedFilterSlot);
     if (!normalized) return CRAFTED_ALL_ITEMS_ID;
-    const selectedEntry = CRAFTED_SIDEBAR_FILTERS.find((entry) => entry.filter === normalized);
+    const selectedEntry = craftedSidebarFilters.find((entry) => entry.filter === normalized);
     return selectedEntry?.id ?? CRAFTED_ALL_ITEMS_ID;
-  }, [category, selectedInstance, craftedFilterSlot]);
+  }, [category, selectedInstance, craftedFilterSlot, craftedSidebarFilters]);
 
   const handleSidebarSelect = (id: number) => {
     if (category === 'crafted') {
-      const entry = CRAFTED_SIDEBAR_FILTERS.find((opt) => opt.id === id);
+      const entry = craftedSidebarFilters.find((opt) => opt.id === id);
       if (entry) {
         setCraftedFilterSlot(entry.filter);
         return;
@@ -549,11 +675,18 @@ export default function AddItemModal({
   const filteredDrops = useMemo(() => {
     const result: Record<string, ExternalItem[]> = {};
     const sourceData = drops;
+    const includeCraftedItem = (item: ExternalItem) => {
+      if (category !== 'crafted') return true;
+      const isPvpItem = isPvpCraftedItem(item);
+      if (craftedPvpOnly) return isPvpItem;
+      return !isPvpItem;
+    };
 
     if (groupBy === 'boss' && category !== 'dungeon') {
       // Flatten items then regroup by boss
       const flattened = Object.values(sourceData).flat();
       for (const item of flattened) {
+        if (!includeCraftedItem(item)) continue;
         const boss = item.encounter || 'Unknown';
 
         // 1. Search filter logic
@@ -571,7 +704,7 @@ export default function AddItemModal({
         // 2. Slot filter logic
         const slotKey = inventoryTypeToSlot[item.inventory_type] || 'unknown';
         const lowerSlot = slotKey.toLowerCase();
-        const lowerFilter = activeFilterSlot?.toLowerCase() || null;
+        const lowerFilter = effectiveSlotFilter?.toLowerCase() || null;
 
         if (lowerFilter && lowerSlot !== lowerFilter) {
           const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');
@@ -591,7 +724,7 @@ export default function AddItemModal({
           Object.keys(SLOT_LABELS)
             .find((key) => SLOT_LABELS[key] === slot)
             ?.toLowerCase() || slot.toLowerCase();
-        const lowerFilter = activeFilterSlot?.toLowerCase() || null;
+        const lowerFilter = effectiveSlotFilter?.toLowerCase() || null;
         if (lowerFilter && lowerSlot !== lowerFilter) {
           const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');
           const isRing =
@@ -601,6 +734,7 @@ export default function AddItemModal({
         }
         const matching = items.filter(
           (i) =>
+            includeCraftedItem(i) &&
             (i.name.toLowerCase().includes(globalSearch.toLowerCase()) ||
               i.encounter.toLowerCase().includes(globalSearch.toLowerCase())) &&
             (i.name.toLowerCase().includes(localSearch.toLowerCase()) ||
@@ -609,16 +743,38 @@ export default function AddItemModal({
         if (matching.length > 0) result[slot] = matching;
       }
     }
+
+    for (const key of Object.keys(result)) {
+      result[key] = [...result[key]].sort(compareLootBrowserItems);
+    }
+
     return result;
   }, [
     drops,
     globalSearch,
     localSearch,
-    activeFilterSlot,
+    effectiveSlotFilter,
+    craftedPvpOnly,
     groupBy,
     category,
     inventoryTypeToSlot,
   ]);
+
+  const orderedFilteredDropEntries = useMemo(() => {
+    const entries = Object.entries(filteredDrops);
+    if (groupBy === 'boss' && category !== 'dungeon') {
+      return entries.sort(([a], [b]) => a.localeCompare(b));
+    }
+
+    return entries.sort(([a], [b]) => {
+      const aKey = slotLabelToOrderKey(a);
+      const bKey = slotLabelToOrderKey(b);
+      const aIndex = LOOT_BROWSER_SLOT_ORDER_INDEX.get(aKey) ?? Number.MAX_SAFE_INTEGER;
+      const bIndex = LOOT_BROWSER_SLOT_ORDER_INDEX.get(bKey) ?? Number.MAX_SAFE_INTEGER;
+      if (aIndex !== bIndex) return aIndex - bIndex;
+      return a.localeCompare(b);
+    });
+  }, [filteredDrops, groupBy, category]);
 
   const difficulties = useMemo(() => {
     if (!seasonConfig) return [];
@@ -770,7 +926,14 @@ export default function AddItemModal({
   }, [drops, isOpen, category, embellishmentOptionsByItem]);
 
   const handleAdd = (item: ExternalItem) => {
-    const selectedLevel = itemTiers[item.item_id] || 1;
+    const resolvedTier = getEffectiveTier(
+      item,
+      effectiveDifficulty,
+      itemTiers,
+      upgradeTracks,
+      category
+    );
+    const selectedLevel = resolvedTier?.level || itemTiers[item.item_id] || 1;
     const selectedEmbellishment = itemEmbellishments[item.item_id] || null;
     const selectedGem = itemGems[item.item_id] || null;
     const availableMissives = missivesForItem(item, missives);
@@ -837,6 +1000,7 @@ export default function AddItemModal({
           ilvl: tier.ilvl,
           track_name: tier.track,
           level: tier.level,
+          max_level: tier.maxLevel,
           quality: tier.quality,
           crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
           crafted_selected_bonus_ids: craftedSelectedBonusIds,
@@ -878,6 +1042,7 @@ export default function AddItemModal({
         ilvl: levelInfo.ilvl,
         track_name: 'Radiance Crafted',
         level: boundedLevel,
+        max_level: levels.length,
         quality: getDisplayQuality(item, undefined, category as LootCategory),
         crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
         crafted_selected_bonus_ids: craftedSelectedBonusIds,
@@ -899,6 +1064,7 @@ export default function AddItemModal({
           ilvl: levelInfo.ilvl,
           track_name: trackName,
           level: selectedLevel,
+          max_level: resolvedTier?.maxLevel,
           quality: levelInfo.quality ?? info?.quality,
           crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
           crafted_selected_bonus_ids: craftedSelectedBonusIds,
@@ -918,6 +1084,7 @@ export default function AddItemModal({
             ilvl: info.ilvl,
             track_name: info.track || '',
             level: info.level || 0,
+            max_level: info.max_level || resolvedTier?.maxLevel,
             quality: info.quality,
             crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
             crafted_selected_bonus_ids: craftedSelectedBonusIds,
@@ -1024,7 +1191,7 @@ export default function AddItemModal({
                   variant="header"
                   value={normalizeSlotFilter(filterSlot) || ''}
                   placeholder="All Item Types"
-                  options={SLOT_FILTER_OPTIONS.map((slot) => ({
+                  options={slotFilterOptions.map((slot) => ({
                     value: slot.value,
                     label: slot.label,
                   }))}
@@ -1097,19 +1264,26 @@ export default function AddItemModal({
                 <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-border border-t-gold" />
               </div>
             ) : Object.keys(filteredDrops).length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center text-sm italic text-zinc-600">
-                No loot items match your filters
+              <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                <div className="text-xl font-bold tracking-tight text-white">
+                  {activeFilterSlotLabel
+                    ? `No ${activeFilterSlotLabel} items match your filters`
+                    : 'No loot items match your filters'}
+                </div>
+                <div className="mt-2 max-w-xl text-sm font-medium text-zinc-300">
+                  Try changing the item type, category, difficulty, or search terms.
+                </div>
               </div>
             ) : (
               <div>
-                {Object.entries(filteredDrops).map(([slot, items]) => (
+                {orderedFilteredDropEntries.map(([slot, items]) => (
                   <section
                     key={slot}
                     className="grid grid-cols-1 gap-4 border-t border-white/35 py-7 first:border-t-0 lg:grid-cols-[5.75rem_minmax(0,1fr)] xl:grid-cols-[6.5rem_minmax(0,1fr)]"
                   >
                     <div className="flex items-center lg:justify-center">
                       <div className="min-w-20 lg:text-center">
-                        <div className="text-sm font-black uppercase tracking-[0.18em] text-gold/85 xl:text-base">
+                        <div className="whitespace-normal break-words text-xs font-black uppercase leading-tight tracking-[0.16em] text-gold/85 sm:text-sm xl:text-[0.95rem]">
                           {slot}
                         </div>
                         <div className="mt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
@@ -1181,7 +1355,7 @@ export default function AddItemModal({
                         return (
                           <div
                             key={`${item.item_id}-${item.encounter}-${item.instance_name}-${item.inventory_type}-${index}`}
-                            className="group card p-2.5 transition-all hover:border-border-light hover:shadow-card-hover cursor-pointer"
+                            className="group card cursor-pointer p-2.5 transition-all hover:border-gold hover:shadow-card-hover"
                             onClick={(event) => handleCardClick(item, event)}
                           >
                             <div className="flex items-center gap-3">
@@ -1221,7 +1395,7 @@ export default function AddItemModal({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                                     Embellishment
                                   </span>
                                 </div>
@@ -1269,7 +1443,7 @@ export default function AddItemModal({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                                     Gem
                                   </span>
                                 </div>
@@ -1306,8 +1480,8 @@ export default function AddItemModal({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                                    Crafted Item Stats
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                                    Stats
                                   </span>
                                 </div>
                                 <div className="flex flex-col gap-1.5">
@@ -1337,15 +1511,19 @@ export default function AddItemModal({
                                 </div>
                                 <input
                                   type="range"
-                                  min={1}
+                                  min={tier.baseLevel || 1}
                                   max={tier.maxLevel}
                                   step={1}
                                   value={tier.level}
                                   onChange={(e) => {
                                     const nextLevel = Number(e.target.value);
+                                    const boundedLevel = Math.max(
+                                      tier.baseLevel || 1,
+                                      Math.min(tier.maxLevel, nextLevel)
+                                    );
                                     setItemTiers((prev) => ({
                                       ...prev,
-                                      [item.item_id]: nextLevel,
+                                      [item.item_id]: boundedLevel,
                                     }));
                                   }}
                                   onMouseDown={(e) => e.stopPropagation()}

@@ -21,6 +21,7 @@ export interface ExternalItem {
   dungeon_info?: Record<string, any>;
   bonus_lists?: number[];
   crafted_base_bonus_ids?: number[];
+  crafted_levels?: number[];
   socket_count?: number;
   hasSockets?: boolean;
   stats?: Array<{ id: number; alloc?: number }>;

@@ -167,6 +167,7 @@ fn resolve_gear_impl(
     let max_armor = character.max_armor();
     let allowed_weapons = crate::types::class_data::class_allowed_weapons(class_name);
     let can_dw = character.can_dual_wield();
+    let can_use_offhand = character.can_use_offhand();
 
     let mut slots: HashMap<String, SlotResolution> = HashMap::new();
     let mut excluded: Vec<ExcludedItem> = Vec::new();
@@ -304,6 +305,7 @@ fn resolve_gear_impl(
             class_name: character.class_name.clone(),
             spec: character.spec.clone(),
             can_dual_wield: can_dw,
+            can_use_offhand,
         },
         base_profile: parse_result.base_profile.clone(),
         slots,

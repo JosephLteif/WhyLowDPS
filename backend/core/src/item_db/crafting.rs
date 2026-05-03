@@ -49,6 +49,129 @@ fn reagent_matches_current_season(reagent: &CraftingReagentData) -> bool {
         .any(|bid| is_current_season_bonus(*bid))
 }
 
+fn reagent_item_level(
+    reagent: &CraftingReagentData,
+    bonuses: &HashMap<u64, crate::types::BonusData>,
+) -> Option<u64> {
+    reagent
+        .crafting_bonus_ids
+        .iter()
+        .filter_map(|bid| bonuses.get(bid))
+        .filter_map(|bonus| bonus.ilevel.as_ref().and_then(|ilevel| ilevel.amount))
+        .max()
+}
+
+fn current_track_ilevel(track_name: Option<String>, level: Option<u64>) -> Option<u64> {
+    let track_name = track_name?;
+    let level = level?;
+    let tracks = crate::item_db::upgrade_tracks();
+    tracks
+        .iter()
+        .find_map(|((name, current_level, _max_level), (ilvl, _bonus_id, _quality))| {
+            (name == &track_name && *current_level == level).then_some(*ilvl)
+        })
+}
+
+pub fn derive_crafted_item_levels(item_id: u64) -> Vec<u64> {
+    let item = {
+        let items = ITEMS.read().unwrap();
+        items.get(&item_id).cloned()
+    };
+    let Some(item) = item else {
+        return Vec::new();
+    };
+    let Some(profession) = item.profession.as_ref() else {
+        return Vec::new();
+    };
+
+    let bonuses = super::state::BONUSES.read().unwrap();
+    let slots = CRAFTING_SLOTS.read().unwrap();
+    let reagents = CRAFTING_REAGENTS.read().unwrap();
+
+    let mut levels: Vec<u64> = item
+        .bonus_lists
+        .iter()
+        .copied()
+        .filter(|bonus_id| !crate::item_db::is_upgrade_bonus(*bonus_id))
+        .filter_map(|bonus_id| bonuses.get(&bonus_id))
+        .filter_map(|bonus| bonus.ilevel.as_ref().and_then(|ilevel| ilevel.amount))
+        .collect();
+    let mut has_current_season_upgrade_reagent = false;
+
+    for slot_ref in &profession.optional_crafting_slots {
+        let Some(slot) = slots.get(&slot_ref.id) else {
+            continue;
+        };
+        let latest_slot_expansion = slot
+            .reagent_ids
+            .iter()
+            .filter_map(|reagent_id| reagents.get(reagent_id))
+            .filter_map(|reagent| reagent.expansion)
+            .max()
+            .unwrap_or(0);
+
+        for reagent_id in &slot.reagent_ids {
+            let Some(reagent) = reagents.get(reagent_id) else {
+                continue;
+            };
+            if !reagent_matches_current_season(reagent) {
+                continue;
+            }
+            if latest_slot_expansion > 0
+                && reagent.expansion.unwrap_or(latest_slot_expansion) != latest_slot_expansion
+            {
+                continue;
+            }
+            if let Some(ilvl) = reagent_item_level(reagent, &bonuses) {
+                has_current_season_upgrade_reagent = true;
+                levels.push(ilvl);
+            }
+        }
+    }
+
+    levels.sort_unstable();
+    levels.dedup();
+
+    let champion_start = current_track_ilevel(crate::item_db::difficulty_track_name("normal"), Some(1));
+    let myth_start = current_track_ilevel(crate::item_db::difficulty_track_name("mythic"), Some(1));
+    let myth_apex = crate::item_db::difficulty_track_name("mythic").and_then(|track_name| {
+        let tracks = crate::item_db::upgrade_tracks();
+        let max_level = tracks
+            .keys()
+            .filter_map(|(name, _level, max)| (name == &track_name).then_some(*max))
+            .max()?;
+        (max_level > 1)
+            .then_some(max_level - 1)
+            .and_then(|apex_level| current_track_ilevel(Some(track_name), Some(apex_level)))
+    });
+
+    let has_full_current_season_crafted_ladder = champion_start
+        .zip(myth_start)
+        .is_some_and(|(champion, myth)| levels.contains(&champion) && levels.contains(&myth));
+
+    if has_full_current_season_crafted_ladder {
+        if let Some(apex) = myth_apex {
+            if apex > levels.last().copied().unwrap_or(0) {
+                levels.push(apex);
+            }
+        }
+    }
+
+    if has_current_season_upgrade_reagent {
+        if let Some(champion_floor) =
+            current_track_ilevel(crate::item_db::difficulty_track_name("normal"), Some(1))
+        {
+            if champion_floor > levels.last().copied().unwrap_or(0) {
+                levels.push(champion_floor);
+            }
+        }
+    }
+
+    levels.sort_unstable();
+    levels.dedup();
+    levels
+}
+
 pub fn load_crafting(data_dir: &Path) {
     let path = data_dir.join("crafting.json");
     if !path.exists() {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
@@ -22,6 +22,34 @@ interface CustomSelectProps {
   variant?: 'default' | 'header';
 }
 
+function SelectIconImage({ icon }: { icon: string }) {
+  const urls = useMemo(
+    () => [
+      `https://wow.zamimg.com/images/wow/icons/large/${icon}.jpg`,
+      `https://render.worldofwarcraft.com/icons/56/${icon}.jpg`,
+      'https://wow.zamimg.com/images/wow/icons/large/inv_misc_questionmark.jpg',
+    ],
+    [icon]
+  );
+  const [srcIndex, setSrcIndex] = useState(0);
+
+  useEffect(() => {
+    setSrcIndex(0);
+  }, [icon]);
+
+  return (
+    <img
+      src={urls[srcIndex]}
+      alt=""
+      className="h-full w-full"
+      loading="lazy"
+      onError={() => {
+        setSrcIndex((current) => (current < urls.length - 1 ? current + 1 : current));
+      }}
+    />
+  );
+}
+
 export default function CustomSelect({
   value,
   options,
@@ -34,17 +62,13 @@ export default function CustomSelect({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const selected = options.find((o) => o.value === value);
   useWowheadTooltips([open, options.length, value]);
-  const iconUrl = (icon?: string) =>
-    icon ? `https://render.worldofwarcraft.com/icons/56/${icon}.jpg` : '';
   const isHeader = variant === 'header';
 
   useDismissOnOutside(rootRef, open, () => setOpen(false));
 
   const renderIcon = (opt: Option, sizeClass = 'h-5 w-5') => {
     if (!opt.icon) return null;
-    const content = (
-      <img src={iconUrl(opt.icon)} alt="" className="h-full w-full" />
-    );
+    const content = <SelectIconImage icon={opt.icon} />;
 
     if (opt.href || opt.wowheadData) {
       return (

@@ -53,6 +53,14 @@ impl CharacterInfo {
         self.spec.as_deref().is_some_and(class_data::can_dual_wield)
     }
 
+    pub fn can_use_offhand(&self) -> bool {
+        match (self.class_name.as_deref(), self.spec.as_deref()) {
+            (Some(class_name), Some(spec_name)) => class_data::spec_weapon_profile(class_name, spec_name)
+                .is_some_and(|profile| profile.can_use_offhand || profile.can_use_shield),
+            _ => false,
+        }
+    }
+
     pub fn max_armor(&self) -> Option<u64> {
         self.class_name
             .as_deref()
@@ -238,6 +246,7 @@ pub struct CharacterResolveInfo {
     pub class_name: Option<String>,
     pub spec: Option<String>,
     pub can_dual_wield: bool,
+    pub can_use_offhand: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

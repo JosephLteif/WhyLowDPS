@@ -61,7 +61,7 @@ export default function SimcInputEditor({ value, onChange, placeholder }: SimcIn
         <button
           type="button"
           onClick={() => setExpanded((current) => !current)}
-          className="rounded-md border border-border px-2.5 py-1 text-[12px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+          className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
         >
           {expanded ? 'Collapse' : 'Expand'}
         </button>

@@ -1651,7 +1651,9 @@ export default function TopGearItemSelector({
 
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);
   const comboBreakdown =
-    comboCount > 0 ? `${comboCount.toLocaleString()} normal combos | +1 Currently Equipped` : null;
+    comboCount > 0
+      ? `${comboCount.toLocaleString()} normal combo(s) | +1 Currently Equipped`
+      : null;
   const quickSelect = (
     <TopGearQuickSelect
       comboCount={comboCount}
@@ -1713,6 +1715,7 @@ export default function TopGearItemSelector({
       />
 
       <StickyPageHeader
+        className="mb-4"
         left={
           <div className="flex items-center gap-4">
             <h2 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-zinc-300">
@@ -1720,7 +1723,7 @@ export default function TopGearItemSelector({
             </h2>
             <button
               onClick={() => openAddItem()}
-              className="flex items-center gap-1.5 rounded-md bg-gold/10 px-3 py-1.5 text-[11px] font-bold tracking-[0.08em] text-gold hover:bg-gold/20"
+              className="flex items-center gap-1.5 rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
             >
               Add Item
             </button>

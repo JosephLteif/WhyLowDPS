@@ -21,7 +21,7 @@ export default function ComboPill({
     Number.isFinite(maxCombinations) &&
     (maxCombinations as number) > 0 &&
     comboCount > (maxCombinations as number);
-  const comboLabel = `${comboCount.toLocaleString()} combo${comboCount !== 1 ? 's' : ''}`;
+  const comboLabel = `${comboCount.toLocaleString()} combo(s)`;
 
   const comboColorClass = isOverLimit
     ? 'bg-red-500/10 text-red-400 border border-red-500/20'

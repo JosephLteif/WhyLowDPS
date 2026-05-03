@@ -96,11 +96,7 @@ export default function TopGearSlotGroup({
           {onToggleAll && (
             <button
               onClick={onToggleAll}
-              className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                allSelected
-                  ? 'bg-gold/20 text-gold ring-1 ring-gold/30'
-                  : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'
-              }`}
+              className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
             >
               All
             </button>
@@ -108,7 +104,7 @@ export default function TopGearSlotGroup({
         </div>
         <button
           onClick={() => onAddClick(slots[0])}
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-white/5 text-zinc-400 transition-all hover:bg-gold/10 hover:text-gold"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-gold/[0.12] text-gold transition-colors hover:bg-gold/[0.2]"
           title={`Add ${label.toLowerCase()}`}
         >
           <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">

@@ -324,7 +324,7 @@ export default function TalentPicker() {
               setViewMode((v) => (v === 'collapsed' ? 'view' : 'collapsed'));
               setShowImport(false);
             }}
-            className="rounded-md px-2.5 py-1 text-[13px] text-zinc-500 transition-all hover:bg-surface-2 hover:text-zinc-300"
+            className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
           >
             {viewMode !== 'collapsed' ? 'Hide' : 'Show'}
           </button>

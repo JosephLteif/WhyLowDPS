@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import { API_URL, fetchJson, isDesktop } from '../lib/api';
-import { formatBytesDecimal } from '../lib/format';
 import { useSimContext } from '../components/SimContext';
-import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 import { isValidUpdateChannel } from '../lib/update-channel';
 import { chooseBestRefreshUnit, type RefreshUnit } from './refreshInterval';
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
+import DataFilePreviewModal from './components/DataFilePreviewModal';
+import DataFileStateModal from './components/DataFileStateModal';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
 import { useDataCacheRefresh } from './useDataCacheRefresh';
@@ -100,12 +100,6 @@ export default function SettingsPage() {
     checkForUpdatesNow,
     downloadAndInstallLatest,
   } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
-  const dataStateModalRef = useRef<HTMLDivElement | null>(null);
-  const dataFilePreviewModalRef = useRef<HTMLDivElement | null>(null);
-  useDismissOnOutside(dataStateModalRef, dataStateOpen && !dataFilePreviewOpen, () =>
-    setDataStateOpen(false)
-  );
-  useDismissOnOutside(dataFilePreviewModalRef, dataFilePreviewOpen, () => setDataFilePreviewOpen(false));
 
   useEffect(() => {
     if (!user) {
@@ -286,9 +280,6 @@ export default function SettingsPage() {
       setCloseBehaviorLoading(false);
     }
   };
-
-  const formatBytes = (n: number) =>
-    formatBytesDecimal(n, { empty: '0 B', includeBytes: true, kbDigits: 1, mbDigits: 1 });
 
   const activePresetIdx = PRESETS.findIndex(
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
@@ -529,201 +520,34 @@ export default function SettingsPage() {
         </p>
       </section>}
 
-      {dataStateOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4">
-          <div ref={dataStateModalRef} className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-[#121212] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Game Data File States</h3>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  {dataFileStates?.base_path || 'Runtime data directory'}
-                </p>
-              </div>
-              <button
-                onClick={() => setDataStateOpen(false)}
-                className="rounded-md px-2 py-1 text-zinc-400 hover:bg-white/5 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="max-h-[calc(80vh-72px)] overflow-y-auto p-5">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <button
-                  onClick={refreshDataStates}
-                  disabled={dataStateLoading || dataActionBusyKey !== null}
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-                >
-                  Refresh List
-                </button>
-                <button
-                  onClick={downloadAllMissingFiles}
-                  disabled={dataStateLoading || dataActionBusyKey !== null}
-                  className="rounded-md border border-gold/30 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:opacity-50"
-                >
-                  {dataActionBusyKey === 'download-missing'
-                    ? 'Downloading Missing...'
-                    : 'Download All Missing'}
-                </button>
-                <button
-                  onClick={openDataRootDirectory}
-                  disabled={!isDesktop || !dataFileStates?.base_path}
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-                >
-                  Open Data Dir
-                </button>
-              </div>
-
-              {dataStateLoading && <p className="text-sm text-zinc-400">Loading data state...</p>}
-
-              {!dataStateLoading && dataStateMessage && (
-                <div
-                  className={`mb-3 rounded-lg border p-3 text-sm ${
-                    dataStateMessage.type === 'success'
-                      ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
-                      : 'border-red-500/20 bg-red-500/10 text-red-300'
-                  }`}
-                >
-                  {dataStateMessage.text}
-                </div>
-              )}
-
-              {!dataStateLoading && dataStateError && (
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-                  {dataStateError}
-                </div>
-              )}
-
-              {!dataStateLoading && !dataStateError && dataFileStates && (
-                <div className="space-y-4">
-                  {Object.entries(groupedDataFiles || {}).map(([section, files]) => (
-                    <div key={section} className="space-y-2">
-                      <div className="flex items-center gap-3">
-                        <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">
-                          {section}
-                        </h4>
-                        <div className="h-px flex-1 bg-border/70" />
-                        <span className="text-[11px] text-zinc-500">
-                          {sectionSummaries[section]?.downloaded ?? 0}/{files.length} files ·{' '}
-                          {formatBytes(sectionSummaries[section]?.totalBytes ?? 0)}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {files.map((file) => (
-                          <div
-                            key={file.key}
-                            className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-lg border border-border/70 bg-surface/40 px-3 py-2.5"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-zinc-200">
-                                {file.label}
-                              </p>
-                              <p className="truncate font-mono text-[11px] text-zinc-500">
-                                {file.relative_path}
-                              </p>
-                            </div>
-                            <span
-                              className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                                file.exists
-                                  ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                                  : file.required
-                                    ? 'border border-red-500/30 bg-red-500/10 text-red-300'
-                                    : 'border border-zinc-600/40 bg-zinc-700/20 text-zinc-400'
-                              }`}
-                            >
-                              {file.exists
-                                ? 'Available'
-                                : file.required
-                                  ? 'Missing'
-                                  : 'Not downloaded'}
-                            </span>
-                            <span className="font-mono text-xs text-zinc-400">
-                              {file.exists ? formatBytes(file.size_bytes) : '--'}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => downloadFile(file.key)}
-                                disabled={
-                                  !file.downloadable ||
-                                  dataStateLoading ||
-                                  dataActionBusyKey !== null
-                                }
-                                className="rounded-md border border-gold/30 bg-gold/10 px-2 py-1 text-[11px] font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {dataActionBusyKey === file.key
-                                  ? 'Working...'
-                                  : file.exists
-                                    ? 'Refresh'
-                                    : 'Download'}
-                              </button>
-                              <button
-                                onClick={() => showFileContent(file.key)}
-                                disabled={!file.exists || dataFilePreviewLoading}
-                                className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                Show Content
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {dataFilePreviewOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 p-4">
-          <div ref={dataFilePreviewModalRef} className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-[#101010] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">
-                  {dataFilePreview?.label || 'File Content'}
-                </h3>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  {dataFilePreview?.relative_path || 'Loading...'}
-                </p>
-              </div>
-              <button
-                onClick={() => setDataFilePreviewOpen(false)}
-                className="rounded-md px-2 py-1 text-zinc-400 hover:bg-white/5 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              {dataFilePreviewLoading && (
-                <p className="text-sm text-zinc-400">Loading file content...</p>
-              )}
-              {!dataFilePreviewLoading && dataFilePreviewError && (
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-                  {dataFilePreviewError}
-                </div>
-              )}
-              {!dataFilePreviewLoading && dataFilePreview && (
-                <div className="space-y-3">
-                  {dataFilePreview.truncated && (
-                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">
-                      Preview truncated for large file.
-                    </div>
-                  )}
-                  <textarea
-                    readOnly
-                    value={dataFilePreview.content}
-                    className="h-[60vh] w-full rounded-lg border border-border bg-black/50 p-4 font-mono text-[12px] leading-5 text-zinc-200 outline-none"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <DataFileStateModal
+        isOpen={dataStateOpen}
+        onClose={() => setDataStateOpen(false)}
+        disableOutsideDismiss={dataFilePreviewOpen}
+        isDesktop={isDesktop}
+        dataFileStates={dataFileStates}
+        dataStateLoading={dataStateLoading}
+        dataStateError={dataStateError}
+        dataStateMessage={dataStateMessage}
+        dataActionBusyKey={dataActionBusyKey}
+        groupedDataFiles={groupedDataFiles}
+        sectionSummaries={sectionSummaries}
+        refreshDataStates={refreshDataStates}
+        downloadAllMissingFiles={downloadAllMissingFiles}
+        openDataRootDirectory={openDataRootDirectory}
+        downloadFile={downloadFile}
+        showFileContent={showFileContent}
+        dataFilePreviewLoading={dataFilePreviewLoading}
+      />
+      <DataFilePreviewModal
+        isOpen={dataFilePreviewOpen}
+        onClose={() => setDataFilePreviewOpen(false)}
+        dataFilePreview={dataFilePreview}
+        dataFilePreviewLoading={dataFilePreviewLoading}
+        dataFilePreviewError={dataFilePreviewError}
+      />
     </div>
   );
 }
+
 

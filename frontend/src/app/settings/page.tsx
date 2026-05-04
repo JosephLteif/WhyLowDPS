@@ -8,16 +8,11 @@ import { formatBytesDecimal } from '../lib/format';
 import { useSimContext } from '../components/SimContext';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
-import {
-  isValidUpdateChannel,
-  UPDATE_CHANNEL_OPTIONS,
-  type UpdateChannel,
-} from '../lib/update-channel';
-import {
-  chooseBestRefreshUnit,
-  UNIT_TO_MINUTES,
-  type RefreshUnit,
-} from './refreshInterval';
+import { isValidUpdateChannel } from '../lib/update-channel';
+import { chooseBestRefreshUnit, type RefreshUnit } from './refreshInterval';
+import DataCacheSettingsSection from './components/DataCacheSettingsSection';
+import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
+import UpdatesSettingsSection from './components/UpdatesSettingsSection';
 import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
@@ -338,103 +333,22 @@ export default function SettingsPage() {
 
       {activeTab === 'simulation' && <DefaultOptionsSettingsCard />}
 
-      {activeTab === 'integrations' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-6 text-xl font-semibold text-white">API Integrations</h2>
-
-        <div className="max-w-2xl space-y-6">
-          <div className="rounded-lg border border-border/70 bg-surface px-4 py-3">
-            <p className="text-sm font-semibold text-zinc-200">Blizzard API (BYOK)</p>
-            <p className="mt-1 text-[13px] text-zinc-400">
-              Provide your own Blizzard API credentials to fetch your characters and gear.
-            </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-zinc-500">
-              <span className="font-semibold text-zinc-300">Setup Instructions:</span>
-              <br />
-              1. Create a client on the{' '}
-              <a
-                href="https://develop.battle.net/access/clients"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gold hover:underline"
-              >
-                Blizzard Developer Portal
-              </a>
-              .
-              <br />
-              2. Add{' '}
-              <code className="text-zinc-300">http://localhost:17384/api/auth/bnet/callback</code>{' '}
-              to your Redirect URIs.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Client ID</label>
-            <input
-              type="text"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Enter Client ID"
-              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Client Secret</label>
-            <input
-              type="password"
-              value={secretTouched ? clientSecret : hasSecret ? '••••••••••••••••' : clientSecret}
-              onFocus={() => {
-                if (!secretTouched && hasSecret) {
-                  setSecretTouched(true);
-                  setClientSecret('');
-                }
-              }}
-              onChange={(e) => {
-                setSecretTouched(true);
-                setClientSecret(e.target.value);
-              }}
-              placeholder="Enter Client Secret"
-              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
-            />
-            <p className="text-[12px] text-zinc-500">
-              {hasSecret && !clientSecret
-                ? 'A secret is already saved and hidden. Type to replace it.'
-                : 'Your secret is hidden in this field.'}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={testBlizzardCredentials}
-              disabled={blizzardTesting || !clientId.trim() || (!clientSecret.trim() && !hasSecret)}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {blizzardTesting ? 'Testing Blizzard...' : 'Test Blizzard Connection'}
-            </button>
-
-            <button
-              onClick={saveBlizzardSettings}
-              disabled={blizzardSaving || (!clientId.trim() && !clientSecret.trim())}
-              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-            >
-              {blizzardSaving ? 'Saving Blizzard...' : 'Save Blizzard Settings'}
-            </button>
-          </div>
-
-          {blizzardMessage && (
-            <div
-              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                blizzardMessage.type === 'success'
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
-              }`}
-            >
-              {blizzardMessage.text}
-            </div>
-          )}
-
-        </div>
-      </section>}
+      {activeTab === 'integrations' && (
+        <IntegrationsSettingsSection
+          clientId={clientId}
+          setClientId={setClientId}
+          clientSecret={clientSecret}
+          setClientSecret={setClientSecret}
+          secretTouched={secretTouched}
+          setSecretTouched={setSecretTouched}
+          hasSecret={hasSecret}
+          blizzardTesting={blizzardTesting}
+          blizzardSaving={blizzardSaving}
+          testBlizzardCredentials={testBlizzardCredentials}
+          saveBlizzardSettings={saveBlizzardSettings}
+          blizzardMessage={blizzardMessage}
+        />
+      )}
 
       {activeTab === 'simulation' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-6 text-xl font-semibold text-white">Simulation Performance</h2>
@@ -579,161 +493,33 @@ export default function SettingsPage() {
         </div>
       </section>}
 
-      {activeTab === 'data' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-3 text-xl font-semibold text-white">Game Data Cache</h2>
-        <p className="mb-5 text-sm text-zinc-400">
-          Refetch game data and reload the backend cache used for gems, enchants, items, raids, and
-          dungeon loot.
-        </p>
+      {activeTab === 'data' && (
+        <DataCacheSettingsSection
+          refreshEveryValue={refreshEveryValue}
+          setRefreshEveryValue={setRefreshEveryValue}
+          refreshEveryUnit={refreshEveryUnit}
+          setRefreshEveryUnit={setRefreshEveryUnit}
+          setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
+          cacheSyncing={cacheSyncing}
+          refreshDataCache={refreshDataCache}
+          viewDataStates={viewDataStates}
+          syncProgress={syncProgress}
+          syncProgressPct={syncProgressPct}
+          cacheSyncProgress={cacheSyncProgress}
+          cacheMessage={cacheMessage}
+        />
+      )}
 
-        <div className="max-w-2xl space-y-4">
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-200">Auto refresh interval</p>
-              <p className="text-[13px] text-zinc-500">
-                Refresh the game data cache automatically while the app is open. Set value to 0 to
-                disable.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={999}
-                step={1}
-                value={refreshEveryValue}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  const nextValue = Number.isFinite(val) && val > 0 ? val : 0;
-                  setRefreshEveryValue(nextValue);
-                  setDataCacheRefreshMinutes(nextValue * UNIT_TO_MINUTES[refreshEveryUnit]);
-                }}
-                className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-              <select
-                value={refreshEveryUnit}
-                onChange={(e) => {
-                  const nextUnit = e.target.value as RefreshUnit;
-                  setRefreshEveryUnit(nextUnit);
-                  setDataCacheRefreshMinutes(refreshEveryValue * UNIT_TO_MINUTES[nextUnit]);
-                }}
-                className="rounded border border-border bg-surface-2 px-2 py-1 text-xs text-zinc-200 focus:border-gold/50 focus:outline-none"
-              >
-                <option value="minutes">Minutes</option>
-                <option value="hours">Hours</option>
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={refreshDataCache}
-              disabled={cacheSyncing}
-              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-            >
-              {cacheSyncing ? 'Refreshing Cache...' : 'Refresh Game Data Cache'}
-            </button>
-            <button
-              onClick={viewDataStates}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-            >
-              View Data State
-            </button>
-            {cacheSyncing && (
-              <span className="text-xs uppercase tracking-wide text-zinc-500">
-                Sync in progress
-              </span>
-            )}
-          </div>
-
-          {cacheSyncing && (
-            <div className="rounded-lg border border-border bg-surface-2 p-4">
-              <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
-                <span>{syncProgress.details || 'Refreshing cache...'}</span>
-                <span>
-                  {syncProgress.total > 0
-                    ? `${syncProgress.current}/${syncProgress.total}`
-                    : 'Working...'}
-                </span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-black/40">
-                <div
-                  className="h-full rounded-full bg-gold transition-all duration-300"
-                  style={{ width: `${syncProgressPct}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {!!cacheSyncProgress && (
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-sm text-zinc-200">{syncProgress.details || cacheSyncProgress}</p>
-            </div>
-          )}
-
-          {cacheMessage && (
-            <div
-              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                cacheMessage.type === 'success'
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
-              }`}
-            >
-              {cacheMessage.text}
-            </div>
-          )}
-        </div>
-      </section>}
-
-      {activeTab === 'updates' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
-        <div className="max-w-2xl space-y-3">
-          <div className="rounded-lg border border-border bg-surface-2 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-zinc-300">Channel</span>
-              <select
-                value={selectedUpdateChannel}
-                onChange={(e) => setSelectedUpdateChannel(e.target.value as UpdateChannel)}
-                className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
-              >
-                {UPDATE_CHANNEL_OPTIONS.map((channel) => (
-                  <option key={channel.id} value={channel.id}>
-                    {channel.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={checkForUpdatesNow}
-                disabled={updateCheckState !== 'idle'}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-              >
-                {updateCheckState === 'checking' ? 'Checking...' : 'Check'}
-              </button>
-              <button
-                onClick={downloadAndInstallLatest}
-                disabled={updateCheckState !== 'idle'}
-                className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-              >
-                {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
-              </button>
-            </div>
-          </div>
-
-          {updateMessage && (
-            <div
-              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                updateMessage.type === 'success'
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
-              }`}
-            >
-              {updateMessage.text}
-            </div>
-          )}
-        </div>
-      </section>}
+      {activeTab === 'updates' && (
+        <UpdatesSettingsSection
+          selectedUpdateChannel={selectedUpdateChannel}
+          setSelectedUpdateChannel={setSelectedUpdateChannel}
+          updateCheckState={updateCheckState}
+          checkForUpdatesNow={checkForUpdatesNow}
+          downloadAndInstallLatest={downloadAndInstallLatest}
+          updateMessage={updateMessage}
+        />
+      )}
 
       {activeTab === 'about' && <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
         <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
@@ -940,3 +726,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

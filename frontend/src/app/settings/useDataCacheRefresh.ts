@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { API_URL, fetchJson } from '../lib/api';
 import type { SettingsStatusMessage } from './types';
 
-type ParsedProgress = {
+export type DataCacheSyncProgress = {
   task: string;
   current: number;
   total: number;
@@ -17,7 +17,7 @@ function parseSyncStatus(status: any): string {
   return 'unknown';
 }
 
-function parseProgress(progress: string): ParsedProgress {
+function parseProgress(progress: string): DataCacheSyncProgress {
   const parts = progress.split(':');
   if (parts.length < 4) return { task: '', current: 0, total: 0, details: progress };
   return {

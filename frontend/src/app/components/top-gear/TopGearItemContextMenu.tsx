@@ -30,6 +30,7 @@ interface TopGearItemContextMenuProps {
   onOptimize: (item: ResolvedItem) => void;
   onSetOrigin: (item: ResolvedItem, origin: 'bags' | 'vault') => void;
   onSetWishlist: (item: ResolvedItem, enabled: boolean) => void;
+  onSetAscendant: (item: ResolvedItem, enabled: boolean) => void;
 }
 
 type SubmenuKey = 'upgrade' | 'tier' | 'enchant' | 'gem' | 'tags' | null;
@@ -39,6 +40,12 @@ function isWishlist(item: ResolvedItem): boolean {
   const sourceType = String(item.source_type || '').toLowerCase();
   const tag = String(item.tag || '').toLowerCase();
   return sourceType.includes('wishlist') || tag.includes('wishlist');
+}
+
+function hasModifierItemId(sourceType: string | undefined, itemId: number): boolean {
+  const src = String(sourceType || '');
+  const re = new RegExp(`(?:^|\\s)mod:${itemId}(?=\\s|$)`, 'i');
+  return re.test(src);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -97,6 +104,7 @@ export default function TopGearItemContextMenu({
   onOptimize,
   onSetOrigin,
   onSetWishlist,
+  onSetAscendant,
 }: TopGearItemContextMenuProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [activeSubmenu, setActiveSubmenu] = useState<SubmenuKey>(null);
@@ -155,6 +163,10 @@ export default function TopGearItemContextMenu({
   const canMarkOrigin = item.origin !== 'equipped';
   const canUpgrade = !!item.upgrade;
   const canCatalyst = !!item.can_catalyst;
+  const isAscendantApplied =
+    hasModifierItemId(item.source_type, 268552) ||
+    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
+    String(item.tag || '').toLowerCase().includes('ascendant');
 
   const openUpgradeSubmenu = async () => {
     setActiveSubmenu('upgrade');
@@ -335,6 +347,13 @@ export default function TopGearItemContextMenu({
             }}
           />
         )}
+        <Action
+          label={isAscendantApplied ? 'Remove Ascendant Voidcore' : 'Apply Ascendant Voidcore'}
+          onClick={() => {
+            onSetAscendant(item, !isAscendantApplied);
+            onClose();
+          }}
+        />
         <Action label="Close" onClick={onClose} />
       </div>
 

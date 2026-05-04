@@ -164,6 +164,42 @@ function isCraftedSource(item: { source_type?: string; encounter?: string; insta
   );
 }
 
+function parseModifierItemIds(sourceType?: string): number[] {
+  const src = String(sourceType || '');
+  const out = new Set<number>();
+  const re = /(?:^|\s)mod:(\d+)(?=\s|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    const id = Number(m[1]);
+    if (Number.isFinite(id) && id > 0) out.add(id);
+  }
+  return Array.from(out).sort((a, b) => a - b);
+}
+
+function hasModifierItemId(sourceType: string | undefined, itemId: number): boolean {
+  return parseModifierItemIds(sourceType).includes(itemId);
+}
+
+function isWeaponOrTrinket(item: { slot?: string }): boolean {
+  const slot = String(item.slot || '');
+  return slot === 'main_hand' || slot === 'off_hand' || slot === 'trinket1' || slot === 'trinket2';
+}
+
+function isAscendantEligible(item: ResolvedItem): boolean {
+  if (!isWeaponOrTrinket(item) || !item.upgrade) return false;
+  const low = item.upgrade.toLowerCase();
+  const crafted = isCraftedSource(item);
+  if (crafted) return true;
+  const m = low.match(/(\d+)\s*\/\s*(\d+)/);
+  const full = !!m && Number(m[1]) >= Number(m[2]);
+  return full && (low.includes('hero') || low.includes('myth'));
+}
+
+function applyAscendantToSimc(simc: string, ilvl: number): string {
+  if (/(?:^|,)ilevel=\d+/.test(simc)) return simc.replace(/((?:^|,)ilevel=)\d+/, `$1${ilvl}`);
+  return `${simc},ilevel=${ilvl}`;
+}
+
 function makeUid(item: {
   item_id: number;
   bonus_ids: number[];
@@ -174,6 +210,7 @@ function makeUid(item: {
   gem_id?: number;
   crafted_stats?: string[];
   embellishment_item_id?: number;
+  modifier_item_ids?: number[];
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
   const crafted =
@@ -181,7 +218,11 @@ function makeUid(item: {
       ? `:${[...item.crafted_stats].sort().join('/')}`
       : '';
   const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}:${item.slot}`;
+  const mods =
+    item.modifier_item_ids && item.modifier_item_ids.length > 0
+      ? `:m${[...item.modifier_item_ids].sort((a, b) => a - b).join('/')}`
+      : '';
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}${mods}:${item.slot}`;
 }
 
 function makeIdentity(item: {
@@ -193,6 +234,7 @@ function makeIdentity(item: {
   gem_id?: number;
   crafted_stats?: string[];
   embellishment_item_id?: number;
+  modifier_item_ids?: number[];
 }): string {
   const sorted = [...item.bonus_ids].sort((a, b) => a - b);
   const crafted =
@@ -200,7 +242,11 @@ function makeIdentity(item: {
       ? `:${[...item.crafted_stats].sort().join('/')}`
       : '';
   const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}`;
+  const mods =
+    item.modifier_item_ids && item.modifier_item_ids.length > 0
+      ? `:m${[...item.modifier_item_ids].sort((a, b) => a - b).join('/')}`
+      : '';
+  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}${mods}`;
 }
 
 function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {
@@ -1612,6 +1658,17 @@ export default function TopGearItemSelector({
         color: 'text-violet-300 border-violet-400/35 bg-violet-500/10',
       });
     }
+    if (hasModifierItemId(item.source_type, 268552) || String(item.source_type || '').toLowerCase().includes('ascendant_voidcore')) {
+      parts.push({
+        text: 'Ascendant Voidcore',
+        kind: 'iconText',
+        icon: 'https://wow.zamimg.com/images/wow/icons/large/inv_1205_voidforge_sovereignvoidcores_cosmicvoid.jpg',
+        href: 'https://www.wowhead.com/item=268552/ascendant-voidcore',
+        wowheadData: 'item=268552',
+        tooltip: 'Ascendant Voidcore',
+        color: 'text-amber-200 bg-amber-500/15 border-amber-400/40',
+      });
+    }
     return parts;
   };
 
@@ -1712,6 +1769,74 @@ export default function TopGearItemSelector({
         onOptimize={openOptimize}
         onSetOrigin={setItemOrigin}
         onSetWishlist={setItemWishlist}
+        onSetAscendant={(item, enabled) => {
+          if (!isAscendantEligible(item)) return;
+          const crafted = isCraftedSource(item);
+          const delta = crafted ? 10 : 9;
+          const cap = crafted ? 295 : 298;
+          const currentApplied =
+            hasModifierItemId(item.source_type, 268552) ||
+            String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
+          if (!enabled && !currentApplied) return;
+          const nextIlevel = enabled
+            ? Math.min(cap, item.ilevel + (currentApplied ? 0 : delta))
+            : Math.max(1, item.ilevel - (currentApplied ? delta : 0));
+          const nextSourceType = enabled
+            ? `${String(item.source_type || '').replace(/\bascendant_voidcore\b/gi, '').replace(/\s+/g, ' ').trim()} mod:268552`.trim()
+            : String(item.source_type || '')
+                .replace(/\bmod:268552\b/gi, '')
+                .replace(/\bascendant_voidcore\b/gi, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+          const nextTag = enabled ? 'Ascendant' : item.tag === 'Ascendant' ? 'Search' : item.tag;
+          const nextUpgrade = enabled
+            ? `${item.upgrade} + Ascendant`
+            : item.upgrade.replace(/\s*\+\s*Ascendant/i, '');
+          const nextItem: ResolvedItem = {
+            ...item,
+            origin: 'bags',
+            ilevel: nextIlevel,
+            simc_string: applyAscendantToSimc(item.simc_string, nextIlevel),
+            source_type: nextSourceType,
+            tag: nextTag,
+            upgrade: nextUpgrade,
+          };
+          const nextUid = makeUid({
+            item_id: nextItem.item_id,
+            bonus_ids: nextItem.bonus_ids,
+            origin: nextItem.origin,
+            slot: nextItem.slot,
+            ilevel: nextItem.ilevel,
+            enchant_id: nextItem.enchant_id,
+            gem_id: nextItem.gem_id,
+            crafted_stats: nextItem.crafted_stats,
+            embellishment_item_id: nextItem.embellishment_item_id,
+            modifier_item_ids: parseModifierItemIds(nextItem.source_type),
+          });
+          const nextVariant: ResolvedItem = { ...nextItem, uid: nextUid };
+          const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+          for (const [slotKey, slotRes] of Object.entries(nextResolved.slots)) {
+            const nextSlot = { ...slotRes };
+            if (nextSlot.equipped?.uid === item.uid) {
+              // Keep equipped intact; append ascended copy as alternative.
+              if (!nextSlot.alternatives.find((alt) => alt.uid === nextUid)) {
+                nextSlot.alternatives = [...nextSlot.alternatives, { ...nextVariant, slot: nextSlot.equipped.slot }];
+              }
+            } else if (nextSlot.alternatives.some((alt) => alt.uid === item.uid)) {
+              if (!nextSlot.alternatives.find((alt) => alt.uid === nextUid)) {
+                nextSlot.alternatives = [...nextSlot.alternatives, { ...nextVariant, slot: item.slot }];
+              }
+            }
+            nextResolved.slots[slotKey] = nextSlot;
+          }
+          onResolvedChange(nextResolved);
+          const nextSelected: Record<string, Set<string>> = {
+            ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+          };
+          if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
+          nextSelected[item.slot].add(nextUid);
+          onSelectionChange(nextSelected);
+        }}
       />
 
       <StickyPageHeader

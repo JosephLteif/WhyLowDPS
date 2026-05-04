@@ -43,6 +43,7 @@ interface AddItemModalProps {
         icon: string;
         quality: number;
       };
+      ascendant_voidcore?: boolean;
     }
   ) => void;
   className?: string | null;
@@ -178,6 +179,19 @@ interface GemDisplay {
   icon: string;
   quality: number;
   expansion: number;
+}
+
+function isWeaponOrTrinketInventoryType(inventoryType: number): boolean {
+  return [12, 13, 14, 17, 21, 22, 23].includes(Number(inventoryType));
+}
+
+function isAscendantEligible(item: ExternalItem, tier: any, category: string): boolean {
+  if (!tier || !isWeaponOrTrinketInventoryType(item.inventory_type)) return false;
+  const track = String(tier.track || '').toLowerCase();
+  const fullyUpgraded = Number(tier.level || 0) >= Number(tier.maxLevel || 0) && Number(tier.maxLevel || 0) > 0;
+  if (!fullyUpgraded) return false;
+  if (category === 'crafted') return track.includes('crafted') || track.includes('radiance');
+  return track.includes('hero') || track.includes('myth');
 }
 
 const CRAFTED_ALL_ITEMS_ID = -100;
@@ -577,6 +591,7 @@ export default function AddItemModal({
   >({});
   const [rawGems, setRawGems] = useState<RawGem[]>([]);
   const [itemGems, setItemGems] = useState<Record<number, GemDisplay | null>>({});
+  const [itemAscendant, setItemAscendant] = useState<Record<number, boolean>>({});
   const [craftedFilterSlot, setCraftedFilterSlot] = useState<string | null>(null);
 
   const inventoryTypeToSlot = useMemo<Record<number, string>>(
@@ -705,6 +720,7 @@ export default function AddItemModal({
     setItemMissives({});
     setItemEmbellishments({});
     setItemGems({});
+    setItemAscendant({});
   }, [
     category,
     selectedDifficulty,
@@ -712,6 +728,7 @@ export default function AddItemModal({
     setItemTiers,
     setItemMissives,
     setItemEmbellishments,
+    setItemAscendant,
   ]);
 
   useEffect(() => {
@@ -983,6 +1000,8 @@ export default function AddItemModal({
       upgradeTracks,
       category
     );
+    const ascendantApplied = Boolean(itemAscendant[item.item_id]) && isAscendantEligible(item, resolvedTier, category);
+    const ascendantBonusIlvl = ascendantApplied ? (category === 'crafted' ? 10 : 9) : 0;
     const selectedLevel = resolvedTier?.level || itemTiers[item.item_id] || 1;
     const selectedEmbellishment = itemEmbellishments[item.item_id] || null;
     const selectedGem = itemGems[item.item_id] || null;
@@ -1047,7 +1066,7 @@ export default function AddItemModal({
       if (tier) {
         onAdd(item, 'normal', {
           bonus_ids: withEmbellishment(withCraftingBonuses(tier.bonus_id ? [tier.bonus_id] : [])),
-          ilvl: tier.ilvl,
+          ilvl: tier.ilvl + ascendantBonusIlvl,
           track_name: tier.track,
           level: tier.level,
           max_level: tier.maxLevel,
@@ -1057,11 +1076,12 @@ export default function AddItemModal({
           crafted_variable_bonus_pool: craftedVariableBonusPool,
           embellishment: embellishmentOverride,
           gem: gemOverride,
+          ascendant_voidcore: ascendantApplied,
         });
       } else {
         onAdd(item, 'normal', {
           bonus_ids: withEmbellishment(withCraftingBonuses([])),
-          ilvl: item.ilevel,
+          ilvl: item.ilevel + ascendantBonusIlvl,
           track_name: '',
           level: 0,
           crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
@@ -1069,6 +1089,7 @@ export default function AddItemModal({
           crafted_variable_bonus_pool: craftedVariableBonusPool,
           embellishment: embellishmentOverride,
           gem: gemOverride,
+          ascendant_voidcore: ascendantApplied,
         });
       }
       return;
@@ -1088,7 +1109,7 @@ export default function AddItemModal({
       
       onAdd(item, levelInfo.key, {
         bonus_ids: withEmbellishment(withCraftingBonuses(craftedBaseBonusIds)),
-        ilvl: levelInfo.ilvl,
+        ilvl: levelInfo.ilvl + ascendantBonusIlvl,
         track_name: 'Radiance Crafted',
         level: boundedLevel,
         max_level: levels.length,
@@ -1098,6 +1119,7 @@ export default function AddItemModal({
         crafted_variable_bonus_pool: craftedVariableBonusPool,
         embellishment: embellishmentOverride,
         gem: gemOverride,
+        ascendant_voidcore: ascendantApplied,
       });
       return;
     }
@@ -1110,7 +1132,7 @@ export default function AddItemModal({
           bonus_ids: withEmbellishment(
             withCraftingBonuses(Array.from(new Set([...baseBonusIds, levelInfo.bonus_id])))
           ),
-          ilvl: levelInfo.ilvl,
+          ilvl: levelInfo.ilvl + ascendantBonusIlvl,
           track_name: trackName,
           level: selectedLevel,
           max_level: resolvedTier?.maxLevel,
@@ -1120,6 +1142,7 @@ export default function AddItemModal({
           crafted_variable_bonus_pool: craftedVariableBonusPool,
           embellishment: embellishmentOverride,
           gem: gemOverride,
+          ascendant_voidcore: ascendantApplied,
         });
         return;
       }
@@ -1140,6 +1163,7 @@ export default function AddItemModal({
             crafted_variable_bonus_pool: craftedVariableBonusPool,
             embellishment: embellishmentOverride,
             gem: gemOverride,
+            ascendant_voidcore: ascendantApplied,
           }
         : {
             bonus_ids: withEmbellishment(withCraftingBonuses([])),
@@ -1151,6 +1175,7 @@ export default function AddItemModal({
             crafted_variable_bonus_pool: craftedVariableBonusPool,
             embellishment: embellishmentOverride,
             gem: gemOverride,
+            ascendant_voidcore: ascendantApplied,
           }
     );
   };
@@ -1541,6 +1566,39 @@ export default function AddItemModal({
                                 </div>
                               </div>
                             )}
+                            {(() => {
+                              const eligible = isAscendantEligible(item, tier, category);
+                              if (!eligible) return null;
+                              return (
+                                <div
+                                  className="mt-2 space-y-2 border-t border-white/5 pt-2"
+                                  data-stop-add="true"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <label className="flex items-center gap-2 text-xs text-zinc-200">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(itemAscendant[item.item_id])}
+                                      onChange={(e) =>
+                                        setItemAscendant((prev) => ({
+                                          ...prev,
+                                          [item.item_id]: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    <span>Apply Ascendant Voidcore</span>
+                                    <a
+                                      href="https://www.wowhead.com/search?q=Ascendant%20Voidcore"
+                                      data-wowhead="search=Ascendant Voidcore"
+                                      className="text-[11px] text-sky-300 underline"
+                                      onClick={(e) => e.preventDefault()}
+                                    >
+                                      (Wowhead)
+                                    </a>
+                                  </label>
+                                </div>
+                              );
+                            })()}
                             {tier && tier.maxLevel > 1 && (
                               <div className="mt-2 space-y-1">
                                 <div className="flex items-center justify-between text-[11px] font-semibold text-white">

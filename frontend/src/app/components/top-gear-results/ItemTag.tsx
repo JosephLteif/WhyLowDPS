@@ -28,6 +28,10 @@ export default function ItemTag({
   gemChanged = false,
   enchantChanged = false,
 }: ItemTagProps) {
+  const hasAscendantVoidcore =
+    /(?:^|\s)mod:268552(?:\s|$)/i.test(String(item.source_type || '')) ||
+    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
+    String(item.tag || '').toLowerCase().includes('ascendant');
   const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
   const name = info?.name || item.name || `Item ${item.item_id}`;
   const icon = info?.icon || 'inv_misc_questionmark';
@@ -164,6 +168,26 @@ export default function ItemTag({
           V
         </span>
       ) : null}
+      {hasAscendantVoidcore && (
+        <a
+          href="https://www.wowhead.com/item=268552/ascendant-voidcore"
+          data-wowhead="item=268552"
+          className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-md border border-amber-400/35 bg-amber-500/12 px-1.5 py-0.5 text-[12px] leading-snug text-amber-200"
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.preventDefault()}
+        >
+          <img
+            src={getIconUrl('inv_1205_voidforge_sovereignvoidcores_cosmicvoid')}
+            alt=""
+            width={14}
+            height={14}
+            className="h-[14px] w-[14px] shrink-0"
+            loading="lazy"
+          />
+          <span className="truncate">Ascendant Voidcore</span>
+        </a>
+      )}
       {sourceLabel && (
         <span className="min-w-0 whitespace-normal break-words text-[13px] text-cyan-300/75">
           {sourceLabel}

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { API_URL, fetchJson, listCharacterProfiles } from '../lib/api';
+import { buildGearItemUid, slotCandidatesFromWishlistSlot, slotFromInventoryType } from '../lib/gear-utils';
 import { getWowheadData, QUALITY_COLORS, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
@@ -40,66 +41,23 @@ function makeUid(
   enchantId = 0,
   gemId = 0
 ): string {
-  const sorted = [...bonusIds].sort((a, b) => a - b);
-  return `${itemId}:${sorted.join(':')}:${origin}:e${enchantId}:g${gemId}:${slot}`;
+  return buildGearItemUid({
+    item_id: itemId,
+    bonus_ids: bonusIds,
+    origin,
+    slot,
+    includeIlevel: false,
+    enchant_id: enchantId,
+    gem_id: gemId,
+  });
 }
 
 function slotCandidates(item: WishlistItem): string[] {
-  switch (item.inventory_type) {
-    case 1:
-      return ['head'];
-    case 2:
-      return ['neck'];
-    case 3:
-      return ['shoulder'];
-    case 5:
-    case 20:
-      return ['chest'];
-    case 6:
-      return ['waist'];
-    case 7:
-      return ['legs'];
-    case 8:
-      return ['feet'];
-    case 9:
-      return ['wrist'];
-    case 10:
-      return ['hands'];
-    case 11:
-      return ['finger1', 'finger2'];
-    case 12:
-      return ['trinket1', 'trinket2'];
-    case 13:
-    case 17:
-    case 21:
-      return ['main_hand'];
-    case 14:
-    case 22:
-    case 23:
-      return ['off_hand'];
-    case 16:
-      return ['back'];
-    default: {
-      const fallback = (item.wishlist_slot || '').toLowerCase();
-      if (fallback.includes('head')) return ['head'];
-      if (fallback.includes('neck')) return ['neck'];
-      if (fallback.includes('shoulder')) return ['shoulder'];
-      if (fallback.includes('back')) return ['back'];
-      if (fallback.includes('chest')) return ['chest'];
-      if (fallback.includes('wrist')) return ['wrist'];
-      // Match weapon hands before generic "hands" so "main hand"/"off hand"
-      // does not get misclassified as glove slot.
-      if (fallback.includes('main')) return ['main_hand'];
-      if (fallback.includes('off')) return ['off_hand'];
-      if (fallback.includes('hand')) return ['hands'];
-      if (fallback.includes('waist')) return ['waist'];
-      if (fallback.includes('leg')) return ['legs'];
-      if (fallback.includes('feet')) return ['feet'];
-      if (fallback.includes('finger') || fallback.includes('ring')) return ['finger1', 'finger2'];
-      if (fallback.includes('trinket')) return ['trinket1', 'trinket2'];
-      return [];
-    }
-  }
+  if (item.inventory_type === 11) return ['finger1', 'finger2'];
+  if (item.inventory_type === 12) return ['trinket1', 'trinket2'];
+  const mapped = slotFromInventoryType(item.inventory_type);
+  if (mapped) return [mapped];
+  return slotCandidatesFromWishlistSlot(item.wishlist_slot || '');
 }
 
 function groupLabel(item: WishlistItem): string {

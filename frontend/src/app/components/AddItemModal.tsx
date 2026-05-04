@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { SLOT_LABELS, type DifficultyDef } from '../lib/types';
 import { API_URL } from '../lib/api';
+import { INVENTORY_TYPE_TO_SLOT, normalizeSlotFilter as normalizeSlotFilterBase } from '../lib/gear-utils';
+import { DEFAULT_TRACK_BADGE_CLASS, RAID_TRACK_BY_DIFFICULTY, TRACK_COLORS } from '../lib/loot-track';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { getWowheadData, QUALITY_COLORS } from '../lib/useItemInfo';
 import {
@@ -52,13 +54,6 @@ interface AddItemModalProps {
   preferredSlot?: string | null;
 }
 
-const RAID_TRACK_BY_DIFFICULTY: Record<string, string> = {
-  lfr: 'Veteran',
-  normal: 'Champion',
-  heroic: 'Hero',
-  mythic: 'Myth',
-};
-
 const UPGRADE_TRACK_MAX_LEVEL = 6;
 
 /**
@@ -105,16 +100,7 @@ function getFixedTracksForCategory(
 }
 
 /** Track colors – mirrors the Drop Finder page to keep the app consistent. */
-const TRACK_COLORS: Record<string, { text: string; bg: string; border: string; badge: string }> = {
-  Adventurer: { text: 'text-green-400', bg: 'bg-green-400/10', border: 'border-green-400/30', badge: 'bg-surface-2 text-white border-border' },
-  Veteran:    { text: 'text-blue-400',  bg: 'bg-blue-400/10',  border: 'border-blue-400/30',  badge: 'bg-surface-2 text-white border-border' },
-  Champion:   { text: 'text-purple-400', bg: 'bg-purple-400/10', border: 'border-purple-400/30', badge: 'bg-surface-2 text-white border-border' },
-  Hero:       { text: 'text-orange-400', bg: 'bg-orange-400/10', border: 'border-orange-400/30', badge: 'bg-surface-2 text-white border-border' },
-  Myth:       { text: 'text-amber-300',  bg: 'bg-amber-300/10',  border: 'border-amber-300/30',  badge: 'bg-surface-2 text-white border-border' },
-  Crafted:    { text: 'text-cyan-400',   bg: 'bg-cyan-400/10',   border: 'border-cyan-400/30',   badge: 'bg-surface-2 text-white border-border' },
-};
-
-const DEFAULT_BADGE = 'bg-surface-2 text-white border-border';
+const DEFAULT_BADGE = DEFAULT_TRACK_BADGE_CLASS;
 
 function isWorldBossInstance(inst: { name?: string; type?: string }): boolean {
   const name = String(inst.name || '').toLowerCase();
@@ -263,9 +249,7 @@ function normalizeSlotFilter(slot: string | null | undefined): string | null {
   if (!slot) return null;
   const lower = slot.toLowerCase();
   if (lower === CRAFTED_PVP_FILTER) return CRAFTED_PVP_FILTER;
-  if (lower.startsWith('finger') || lower.startsWith('ring')) return 'finger1';
-  if (lower.startsWith('trinket')) return 'trinket1';
-  return lower;
+  return normalizeSlotFilterBase(lower);
 }
 
 function isPvpCraftedItem(item: ExternalItem): boolean {
@@ -594,30 +578,7 @@ export default function AddItemModal({
   const [itemAscendant, setItemAscendant] = useState<Record<number, boolean>>({});
   const [craftedFilterSlot, setCraftedFilterSlot] = useState<string | null>(null);
 
-  const inventoryTypeToSlot = useMemo<Record<number, string>>(
-    () => ({
-      1: 'head',
-      2: 'neck',
-      3: 'shoulder',
-      16: 'back',
-      5: 'chest',
-      20: 'chest',
-      9: 'wrist',
-      10: 'hands',
-      6: 'waist',
-      7: 'legs',
-      8: 'feet',
-      11: 'finger1',
-      12: 'trinket1',
-      13: 'main_hand',
-      17: 'main_hand',
-      21: 'main_hand',
-      14: 'off_hand',
-      22: 'off_hand',
-      23: 'off_hand',
-    }),
-    []
-  );
+  const inventoryTypeToSlot = INVENTORY_TYPE_TO_SLOT;
 
   const {
     instances,
@@ -1665,3 +1626,4 @@ export default function AddItemModal({
     </div>
   );
 }
+

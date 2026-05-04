@@ -7,6 +7,8 @@ import { useSimContext } from '../components/SimContext';
 import ToggleButtonGroup from '../components/ToggleButtonGroup';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import { API_URL, fetchJson } from '../lib/api';
+import { slotFromInventoryType, slotLabelToSimSlot } from '../lib/gear-utils';
+import { TRACK_COLORS } from '../lib/loot-track';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState } from '../lib/sim-return';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
@@ -158,14 +160,6 @@ const TRACK_SHORT: Record<string, string> = {
   Myth: 'Myth',
 };
 
-const TRACK_COLORS: Record<string, { text: string; bg: string; border: string }> = {
-  Adventurer: { text: 'text-green-400', bg: 'bg-green-400/10', border: 'border-green-400/30' },
-  Veteran: { text: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/30' },
-  Champion: { text: 'text-purple-400', bg: 'bg-purple-400/10', border: 'border-purple-400/30' },
-  Hero: { text: 'text-orange-400', bg: 'bg-orange-400/10', border: 'border-orange-400/30' },
-  Myth: { text: 'text-amber-300', bg: 'bg-amber-300/10', border: 'border-amber-300/30' },
-};
-
 function getRaidDifficultyDisplayLevel(key: string): number {
   return key ? 1 : 0;
 }
@@ -184,103 +178,14 @@ function getTrackLevels(trackName: string, tracks: UpgradeTracks): TrackLevel[] 
   return matchedKey ? tracks[matchedKey] : null;
 }
 
-function slotFromInventoryType(inventoryType?: number): string | null {
-  switch (inventoryType) {
-    case 1:
-      return 'head';
-    case 3:
-      return 'shoulder';
-    case 5:
-      return 'chest';
-    case 6:
-      return 'waist';
-    case 7:
-      return 'legs';
-    case 8:
-      return 'feet';
-    case 9:
-      return 'wrist';
-    case 10:
-      return 'hands';
-    case 11:
-      return 'finger1';
-    case 16:
-      return 'back';
-    case 21:
-      return 'main_hand';
-    case 22:
-      return 'off_hand';
-    default:
-      return null;
-  }
-}
-
-function slotLabelToSimSlot(slot: string): string | null {
-  const normalized = slot.trim().toLowerCase().replace(/[\s-]+/g, '_');
-  switch (normalized) {
-    case 'head':
-    case 'neck':
-    case 'shoulder':
-    case 'back':
-    case 'chest':
-    case 'wrist':
-    case 'hands':
-    case 'waist':
-    case 'legs':
-    case 'feet':
-    case 'finger1':
-    case 'finger2':
-    case 'trinket1':
-    case 'trinket2':
-    case 'main_hand':
-    case 'off_hand':
-      return normalized;
-    default:
-      return null;
-  }
-}
-
 function getDroptimizerCandidateSlots(slotLabel: string, inventoryType?: number): string[] {
   const normalizedExplicit = slotLabelToSimSlot(slotLabel);
   if (normalizedExplicit) return [normalizedExplicit];
 
-  switch (inventoryType) {
-    case 1:
-      return ['head'];
-    case 2:
-      return ['neck'];
-    case 3:
-      return ['shoulder'];
-    case 5:
-    case 20:
-      return ['chest'];
-    case 6:
-      return ['waist'];
-    case 7:
-      return ['legs'];
-    case 8:
-      return ['feet'];
-    case 9:
-      return ['wrist'];
-    case 10:
-      return ['hands'];
-    case 11:
-      return ['finger1', 'finger2'];
-    case 12:
-      return ['trinket1', 'trinket2'];
-    case 13:
-    case 17:
-    case 21:
-      return ['main_hand'];
-    case 14:
-    case 22:
-    case 23:
-      return ['off_hand'];
-    case 16:
-      return ['back'];
-    default:
-      return [];
-  }
+  if (inventoryType === 11) return ['finger1', 'finger2'];
+  if (inventoryType === 12) return ['trinket1', 'trinket2'];
+  const mapped = slotFromInventoryType(inventoryType);
+  return mapped ? [mapped] : [];
 }
 
 function coerceDropsResponse(input: unknown): Record<string, DropItem[]> | null {

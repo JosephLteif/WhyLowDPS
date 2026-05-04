@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isDesktopRuntime } from '../lib/api';
+import { formatBytesDecimal, formatEta, formatTransferSpeed } from '../lib/format';
 import { APP_VERSION } from '../lib/version';
 import {
   classifyReleaseChannel,
@@ -57,15 +59,6 @@ const PARSES_REFRESH_STATUS_EVENT = 'whylowdps-parses-refresh-status';
 const UPDATER_MANIFEST_URL =
   'https://github.com/JosephLteif/simcraft/releases/latest/download/latest.json';
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
-
-function isDesktopRuntime(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (window.electronAPI) return true;
-  const hasTauriInternals = Boolean(
-    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
-  );
-  return process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true' || hasTauriInternals;
-}
 
 function emitUpdaterStatus(status: UpdaterStatusEvent, message?: string) {
   if (typeof window === 'undefined') return;
@@ -349,30 +342,6 @@ async function listenToDirectInstallProgress(
     ) => Promise<() => void>;
   };
   return eventModule.listen(DIRECT_INSTALL_PROGRESS_EVENT, (event) => callback(event.payload || {}));
-}
-
-function formatSpeed(bytesPerSec?: number): string {
-  if (!bytesPerSec || !Number.isFinite(bytesPerSec) || bytesPerSec <= 0) return '--';
-  const kb = bytesPerSec / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB/s`;
-  return `${(kb / 1024).toFixed(2)} MB/s`;
-}
-
-function formatEta(seconds?: number | null): string {
-  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return '--';
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  return `${mins}m ${secs}s`;
-}
-
-function formatBytes(bytes?: number): string {
-  if (!bytes || !Number.isFinite(bytes) || bytes <= 0) return '--';
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  const mb = kb / 1024;
-  if (mb < 1024) return `${mb.toFixed(2)} MB`;
-  return `${(mb / 1024).toFixed(2)} GB`;
 }
 
 export default function UpdatePrompt() {
@@ -933,10 +902,10 @@ export default function UpdatePrompt() {
                 Downloading update{progressPercent != null ? `... ${progressPercent}%` : '...'}
               </p>
               <p className="text-[11px] text-zinc-500">
-                Speed: {formatSpeed(progress.speedBytesPerSec)} | ETA: {formatEta(progress.etaSeconds)}
+                Speed: {formatTransferSpeed(progress.speedBytesPerSec)} | ETA: {formatEta(progress.etaSeconds)}
               </p>
               <p className="text-[11px] text-zinc-500">
-                {formatBytes(progress.downloadedBytes)} / {formatBytes(progress.totalBytes)}
+                {formatBytesDecimal(progress.downloadedBytes)} / {formatBytesDecimal(progress.totalBytes)}
               </p>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
                 {progressPercent != null ? (
@@ -1029,10 +998,10 @@ export default function UpdatePrompt() {
             {progressPercent != null ? `${progressPercent}% complete` : 'Running in background...'}
           </p>
           <p className="mt-1 text-[11px] text-zinc-500">
-            {formatSpeed(progress.speedBytesPerSec)} | ETA {formatEta(progress.etaSeconds)}
+            {formatTransferSpeed(progress.speedBytesPerSec)} | ETA {formatEta(progress.etaSeconds)}
           </p>
           <p className="mt-1 text-[11px] text-zinc-500">
-            {formatBytes(progress.downloadedBytes)} / {formatBytes(progress.totalBytes)}
+            {formatBytesDecimal(progress.downloadedBytes)} / {formatBytesDecimal(progress.totalBytes)}
           </p>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
             {progressPercent != null ? (

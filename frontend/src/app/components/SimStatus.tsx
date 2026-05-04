@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { API_URL } from '../lib/api';
+import { formatElapsedCompact, formatMegabytes } from '../lib/format';
 
 interface StageTiming {
   name: string;
@@ -40,22 +41,6 @@ function useSmoothedProgress(serverProgress: number): number {
   }, [serverProgress]);
 
   return Math.round(display);
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes) return '0 MB';
-  const mb = bytes / 1024 / 1024;
-  return `${mb.toFixed(1)} MB`;
-}
-
-function formatElapsed(seconds: number): string {
-  const safe = Math.max(0, Math.floor(seconds));
-  const h = Math.floor(safe / 3600);
-  const m = Math.floor((safe % 3600) / 60);
-  const s = safe % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
 }
 
 function classifyLine(line: string): string {
@@ -227,7 +212,7 @@ export default function SimStatus({
               Elapsed
             </span>
             <span className="mt-1 font-mono text-[13px] text-zinc-200">
-              {formatElapsed(elapsedSeconds)}
+              {formatElapsedCompact(elapsedSeconds)}
             </span>
           </div>
           {cpuPct !== undefined && cpuPct > 0 && (
@@ -252,7 +237,7 @@ export default function SimStatus({
                 Memory
               </span>
               <span className="mt-1 font-mono text-[13px] text-zinc-200">
-                {formatBytes(memBytes)}
+                {formatMegabytes(memBytes)}
               </span>
             </div>
           )}
@@ -329,7 +314,7 @@ export default function SimStatus({
                 {stageTimings[i] && (
                   <span className="text-gray-500">
                     {' '}
-                    took {formatElapsed(stageTimings[i].elapsed)}
+                    took {formatElapsedCompact(stageTimings[i].elapsed)}
                   </span>
                 )}
               </span>
@@ -342,7 +327,7 @@ export default function SimStatus({
               </div>
               <span className="text-sm text-zinc-300">
                 {progressStage}
-                <span className="text-gray-500"> - {formatElapsed(runningStageElapsed)}</span>
+                <span className="text-gray-500"> - {formatElapsedCompact(runningStageElapsed)}</span>
                 {progressDetail && <span className="text-zinc-300"> - {progressDetail}</span>}
               </span>
             </div>

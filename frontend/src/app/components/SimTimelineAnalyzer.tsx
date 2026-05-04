@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useItemInfo, getIconUrl, getWowheadData, getWowheadUrl } from '../lib/useItemInfo';
+import { useSpellIcons } from '../lib/useWowheadIcons';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 interface TimelinePoint {
@@ -75,45 +76,6 @@ interface SimTimelineAnalyzerProps {
       gem_id?: number;
     }
   >;
-}
-
-const iconCache = new Map<number, string>();
-
-function useSpellIcons(spellIds: number[]) {
-  const [icons, setIcons] = useState<Map<number, string>>(new Map());
-  const depKey = spellIds.join(',');
-
-  useEffect(() => {
-    const missing = spellIds.filter((id) => id > 0 && !iconCache.has(id));
-    if (missing.length === 0) {
-      setIcons(new Map(iconCache));
-      return;
-    }
-
-    let cancelled = false;
-    Promise.all(
-      missing.map(async (id) => {
-        try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`
-          );
-          if (!res.ok) return;
-          const data = await res.json();
-          if (data.icon) iconCache.set(id, data.icon);
-        } catch {
-          // ignore
-        }
-      })
-    ).then(() => {
-      if (!cancelled) setIcons(new Map(iconCache));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return icons;
 }
 
 function SpellIcon({ icon }: { icon: string }) {

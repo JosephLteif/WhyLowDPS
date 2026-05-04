@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL, fetchJsonCached } from '../lib/api';
+import { buildGearItemIdentity, buildGearItemUid } from '../lib/gear-utils';
 import type { ResolvedItem, ResolveGearResponse } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import AddItemModal from './AddItemModal';
@@ -244,17 +245,7 @@ function makeUid(item: {
   embellishment_item_id?: number;
   modifier_item_ids?: number[];
 }): string {
-  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  const crafted =
-    item.crafted_stats && item.crafted_stats.length > 0
-      ? `:${[...item.crafted_stats].sort().join('/')}`
-      : '';
-  const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
-  const mods =
-    item.modifier_item_ids && item.modifier_item_ids.length > 0
-      ? `:m${[...item.modifier_item_ids].sort((a, b) => a - b).join('/')}`
-      : '';
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}${mods}:${item.slot}`;
+  return buildGearItemUid(item);
 }
 
 function makeIdentity(item: {
@@ -268,17 +259,7 @@ function makeIdentity(item: {
   embellishment_item_id?: number;
   modifier_item_ids?: number[];
 }): string {
-  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  const crafted =
-    item.crafted_stats && item.crafted_stats.length > 0
-      ? `:${[...item.crafted_stats].sort().join('/')}`
-      : '';
-  const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
-  const mods =
-    item.modifier_item_ids && item.modifier_item_ids.length > 0
-      ? `:m${[...item.modifier_item_ids].sort((a, b) => a - b).join('/')}`
-      : '';
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}${mods}`;
+  return buildGearItemIdentity(item);
 }
 
 function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id'): number {

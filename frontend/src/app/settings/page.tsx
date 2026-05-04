@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import { API_URL, fetchJson, isDesktop } from '../lib/api';
+import { formatBytesDecimal } from '../lib/format';
 import { useSimContext } from '../components/SimContext';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
@@ -483,12 +484,8 @@ export default function SettingsPage() {
     }
   };
 
-  const formatBytes = (n: number) => {
-    if (!Number.isFinite(n) || n <= 0) return '0 B';
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  const formatBytes = (n: number) =>
+    formatBytesDecimal(n, { empty: '0 B', includeBytes: true, kbDigits: 1, mbDigits: 1 });
 
   const viewDataStates = async () => {
     setDataStateOpen(true);

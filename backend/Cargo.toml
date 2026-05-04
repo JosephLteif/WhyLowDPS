@@ -3,6 +3,6 @@ members = ["core", "server"]
 resolver = "2"
 
 [workspace.package]
-version = "1.7.0"
+version = "1.7.0-weekly.202619"
 authors = ["Joseph Lteif"]
 edition = "2021"

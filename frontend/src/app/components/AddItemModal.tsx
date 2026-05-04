@@ -1,18 +1,26 @@
 'use client';
 
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { SLOT_LABELS, type DifficultyDef } from '../lib/types';
 import { API_URL } from '../lib/api';
-import { INVENTORY_TYPE_TO_SLOT, normalizeSlotFilter as normalizeSlotFilterBase } from '../lib/gear-utils';
+import { INVENTORY_TYPE_TO_SLOT } from '../lib/gear-utils';
 import { DEFAULT_TRACK_BADGE_CLASS, RAID_TRACK_BY_DIFFICULTY, TRACK_COLORS } from '../lib/loot-track';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { getWowheadData, QUALITY_COLORS } from '../lib/useItemInfo';
+import {
+  CRAFTED_PVP_FILTER,
+  SLOT_FILTER_OPTIONS,
+  type GemDisplay,
+  type RawGem,
+  isPvpCraftedItem,
+  normalizeSlotFilter,
+} from './add-item/addItemDomain';
 import {
   type EmbellishmentOption,
   type ExternalItem,
   type MissiveOption,
   useAddItemState,
 } from './add-item/useAddItemState';
+import { useAddItemDerivedState } from './add-item/useAddItemDerivedState';
 import AddItemDifficultyToggle from './add-item/AddItemDifficultyToggle';
 import AddItemInstanceSidebar from './add-item/AddItemInstanceSidebar';
 import CustomSelect from './shared/CustomSelect';
@@ -145,28 +153,6 @@ const LOOT_CATEGORIES = [
 
 type LootCategory = (typeof LOOT_CATEGORIES)[number]['key'];
 
-interface RawGem {
-  id?: number;
-  item_id?: number;
-  name?: string;
-  icon?: string;
-  displayName?: string;
-  itemId?: number;
-  itemName?: string;
-  itemIcon?: string;
-  quality?: number;
-  expansion?: number;
-  craftingQuality?: number;
-}
-
-interface GemDisplay {
-  gem_id: number;
-  name: string;
-  icon: string;
-  quality: number;
-  expansion: number;
-}
-
 function isWeaponOrTrinketInventoryType(inventoryType: number): boolean {
   return [12, 13, 14, 17, 21, 22, 23].includes(Number(inventoryType));
 }
@@ -178,137 +164,6 @@ function isAscendantEligible(item: ExternalItem, tier: any, category: string): b
   if (!fullyUpgraded) return false;
   if (category === 'crafted') return track.includes('crafted') || track.includes('radiance');
   return track.includes('hero') || track.includes('myth');
-}
-
-const CRAFTED_ALL_ITEMS_ID = -100;
-const CRAFTED_PVP_ITEMS_ID = -115;
-const CRAFTED_PVP_FILTER = '__pvp__';
-const CRAFTED_SIDEBAR_FILTERS = [
-  { id: CRAFTED_ALL_ITEMS_ID, name: 'All Items', filter: null as string | null },
-  { id: CRAFTED_PVP_ITEMS_ID, name: 'PvP Items', filter: CRAFTED_PVP_FILTER },
-  { id: -113, name: 'Main Hand', filter: 'main_hand' },
-  { id: -114, name: 'Off Hand', filter: 'off_hand' },
-  { id: -112, name: 'Trinkets', filter: 'trinket1' },
-  { id: -102, name: 'Neck', filter: 'neck' },
-  { id: -111, name: 'Rings', filter: 'finger1' },
-  { id: -101, name: 'Head', filter: 'head' },
-  { id: -105, name: 'Chest', filter: 'chest' },
-  { id: -103, name: 'Shoulders', filter: 'shoulder' },
-  { id: -107, name: 'Hands', filter: 'hands' },
-  { id: -109, name: 'Legs', filter: 'legs' },
-  { id: -108, name: 'Waist', filter: 'waist' },
-  { id: -104, name: 'Back', filter: 'back' },
-  { id: -106, name: 'Wrists', filter: 'wrist' },
-  { id: -110, name: 'Feet', filter: 'feet' },
-] as const;
-
-const SLOT_FILTER_OPTIONS = [
-  { value: '', label: 'All Item Types' },
-  { value: 'main_hand', label: 'Main Hand' },
-  { value: 'off_hand', label: 'Off Hand' },
-  { value: 'trinket1', label: 'Trinkets' },
-  { value: 'neck', label: 'Neck' },
-  { value: 'finger1', label: 'Rings' },
-  { value: 'head', label: 'Head' },
-  { value: 'chest', label: 'Chest' },
-  { value: 'shoulder', label: 'Shoulders' },
-  { value: 'hands', label: 'Hands' },
-  { value: 'legs', label: 'Legs' },
-  { value: 'waist', label: 'Waist' },
-  { value: 'back', label: 'Back' },
-  { value: 'wrist', label: 'Wrists' },
-  { value: 'feet', label: 'Feet' },
-] as const;
-
-const SLOT_FILTER_LABELS: Map<string, string> = new Map(
-  SLOT_FILTER_OPTIONS.filter((option) => option.value).map((option) => [option.value, option.label])
-);
-
-const LOOT_BROWSER_SLOT_ORDER = [
-  'main_hand',
-  'off_hand',
-  'trinket1',
-  'neck',
-  'finger1',
-  'head',
-  'chest',
-  'shoulder',
-  'hands',
-  'legs',
-  'waist',
-  'back',
-  'wrist',
-  'feet',
-] as const;
-
-const LOOT_BROWSER_SLOT_ORDER_INDEX: Map<string, number> = new Map(
-  LOOT_BROWSER_SLOT_ORDER.map((slot, index) => [slot, index])
-);
-
-function normalizeSlotFilter(slot: string | null | undefined): string | null {
-  if (!slot) return null;
-  const lower = slot.toLowerCase();
-  if (lower === CRAFTED_PVP_FILTER) return CRAFTED_PVP_FILTER;
-  return normalizeSlotFilterBase(lower);
-}
-
-function isPvpCraftedItem(item: ExternalItem): boolean {
-  const sourceType = String(item.source_type || '').toLowerCase();
-  const name = String(item.name || '').toLowerCase();
-  return sourceType.includes('pvp') || name.includes('competitor');
-}
-
-function compareLootBrowserItems(a: ExternalItem, b: ExternalItem): number {
-  const nameCompare = a.name.localeCompare(b.name);
-  if (nameCompare !== 0) return nameCompare;
-
-  const encounterCompare = (a.encounter || '').localeCompare(b.encounter || '');
-  if (encounterCompare !== 0) return encounterCompare;
-
-  if (a.ilevel !== b.ilevel) return b.ilevel - a.ilevel;
-  return a.item_id - b.item_id;
-}
-
-function slotLabelToOrderKey(slotLabel: string): string {
-  const normalized = slotLabel.trim().toLowerCase();
-  switch (normalized) {
-    case 'rings':
-    case 'ring':
-    case 'finger':
-      return 'finger1';
-    case 'trinkets':
-    case 'trinket':
-      return 'trinket1';
-    case 'shoulders':
-      return 'shoulder';
-    case 'wrists':
-      return 'wrist';
-    default:
-      return normalized.replace(/\s+/g, '_');
-  }
-}
-
-function deduplicateGems(raw: RawGem[]): GemDisplay[] {
-  const byBase = new Map<string, RawGem>();
-  for (const gem of raw) {
-    const baseName =
-      gem.itemName || gem.displayName || gem.name || `gem-${gem.item_id ?? gem.itemId ?? gem.id ?? 0}`;
-    const existing = byBase.get(baseName);
-    if (!existing || (gem.craftingQuality ?? 0) > (existing.craftingQuality ?? 0)) {
-      byBase.set(baseName, gem);
-    }
-  }
-
-  return Array.from(byBase.values())
-    .map((gem) => ({
-      gem_id: gem.item_id ?? gem.itemId ?? gem.id ?? 0,
-      name: gem.itemName || gem.displayName || gem.name || 'Unknown Gem',
-      icon: gem.itemIcon || gem.icon || 'inv_misc_questionmark',
-      quality: gem.quality ?? 3,
-      expansion: gem.expansion ?? 0,
-    }))
-    .filter((gem) => gem.gem_id > 0)
-    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function isActualCraftedItem(item: ExternalItem): boolean {
@@ -608,14 +463,6 @@ export default function AddItemModal({
     setItemEmbellishments,
   } = state;
 
-  const craftedSidebarFilters = useMemo(
-    () =>
-      CRAFTED_SIDEBAR_FILTERS.filter(
-        (entry) => canUseOffhand || entry.filter !== 'off_hand'
-      ),
-    [canUseOffhand]
-  );
-
   const slotFilterOptions = useMemo(
     () =>
       SLOT_FILTER_OPTIONS.filter(
@@ -633,34 +480,34 @@ export default function AddItemModal({
     }
   }, [canUseOffhand, craftedFilterSlot, filterSlot, setFilterSlot]);
 
-  const filteredInstances = useMemo(() => {
-    if (category === 'crafted') {
-      return craftedSidebarFilters.map((entry) => ({
-        id: entry.id,
-        name: entry.name,
-        type: 'crafted-slot',
-      }));
-    }
-    return instances.filter((inst) => instanceMatchesCategory(inst, category));
-  }, [instances, category, craftedSidebarFilters]);
-
-  const activeFilterSlot = category === 'crafted' ? craftedFilterSlot : filterSlot;
-  const normalizedActiveFilterSlot = normalizeSlotFilter(activeFilterSlot);
-  const activeFilterSlotLabel = useMemo(() => {
-    if (normalizedActiveFilterSlot === CRAFTED_PVP_FILTER) return 'PvP';
-    return normalizedActiveFilterSlot ? SLOT_FILTER_LABELS.get(normalizedActiveFilterSlot) || null : null;
-  }, [normalizedActiveFilterSlot]);
-
-  const craftedPvpOnly = category === 'crafted' && normalizeSlotFilter(craftedFilterSlot) === CRAFTED_PVP_FILTER;
-  const effectiveSlotFilter = normalizedActiveFilterSlot === CRAFTED_PVP_FILTER ? null : normalizedActiveFilterSlot;
-
-  const craftedSidebarSelectedId = useMemo(() => {
-    if (category !== 'crafted') return selectedInstance;
-    const normalized = normalizeSlotFilter(craftedFilterSlot);
-    if (!normalized) return CRAFTED_ALL_ITEMS_ID;
-    const selectedEntry = craftedSidebarFilters.find((entry) => entry.filter === normalized);
-    return selectedEntry?.id ?? CRAFTED_ALL_ITEMS_ID;
-  }, [category, selectedInstance, craftedFilterSlot, craftedSidebarFilters]);
+  const {
+    craftedSidebarFilters,
+    filteredInstances,
+    activeFilterSlotLabel,
+    craftedSidebarSelectedId,
+    filteredDrops,
+    orderedFilteredDropEntries,
+    difficulties,
+    gems,
+    seasonalGems,
+  } = useAddItemDerivedState({
+    category,
+    instances,
+    selectedInstance,
+    craftedFilterSlot,
+    filterSlot,
+    drops,
+    groupBy,
+    globalSearch,
+    localSearch,
+    selectedDifficulty,
+    canUseOffhand,
+    seasonConfig,
+    rawGems,
+    inventoryTypeToSlot,
+    instanceMatchesCategory,
+    hasAvailableDifficulty,
+  });
 
   const handleSidebarSelect = (id: number) => {
     if (category === 'crafted') {
@@ -698,161 +545,6 @@ export default function AddItemModal({
     }
   }, [isOpen, preferredSlot]);
 
-  const filteredDrops = useMemo(() => {
-    const result: Record<string, ExternalItem[]> = {};
-    const sourceData = drops;
-    const includeCraftedItem = (item: ExternalItem) => {
-      if (category !== 'crafted') return true;
-      const isPvpItem = isPvpCraftedItem(item);
-      if (craftedPvpOnly) return isPvpItem;
-      return !isPvpItem;
-    };
-
-    if (groupBy === 'boss' && category !== 'dungeon') {
-      // Flatten items then regroup by boss
-      const flattened = Object.values(sourceData).flat();
-      for (const item of flattened) {
-        if (!includeCraftedItem(item)) continue;
-        const boss = item.encounter || 'Unknown';
-
-        // 1. Search filter logic
-        const lowerQuery = globalSearch.toLowerCase();
-        const localQuery = localSearch.toLowerCase();
-        const matchesGlobal =
-          item.name.toLowerCase().includes(lowerQuery) ||
-          item.encounter.toLowerCase().includes(lowerQuery);
-        const matchesLocal =
-          item.name.toLowerCase().includes(localQuery) ||
-          item.encounter.toLowerCase().includes(localQuery);
-
-        if (!matchesGlobal || !matchesLocal) continue;
-
-        // 2. Slot filter logic
-        const slotKey = inventoryTypeToSlot[item.inventory_type] || 'unknown';
-        const lowerSlot = slotKey.toLowerCase();
-        const lowerFilter = effectiveSlotFilter?.toLowerCase() || null;
-
-        if (lowerFilter && lowerSlot !== lowerFilter) {
-          const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');
-          const isRing =
-            (lowerFilter.startsWith('finger') || lowerFilter.startsWith('ring')) &&
-            (lowerSlot.startsWith('finger') || lowerSlot.startsWith('ring'));
-          if (!isTrinket && !isRing) continue;
-        }
-
-        if (!result[boss]) result[boss] = [];
-        result[boss].push(item);
-      }
-    } else {
-      // Group by slot (existing behavior)
-      for (const [slot, items] of Object.entries(sourceData)) {
-        const lowerSlot =
-          Object.keys(SLOT_LABELS)
-            .find((key) => SLOT_LABELS[key] === slot)
-            ?.toLowerCase() || slot.toLowerCase();
-        const lowerFilter = effectiveSlotFilter?.toLowerCase() || null;
-        if (lowerFilter && lowerSlot !== lowerFilter) {
-          const isTrinket = lowerFilter.startsWith('trinket') && lowerSlot.startsWith('trinket');
-          const isRing =
-            (lowerFilter.startsWith('finger') || lowerFilter.startsWith('ring')) &&
-            (lowerSlot.startsWith('finger') || lowerSlot.startsWith('ring'));
-          if (!isTrinket && !isRing) continue;
-        }
-        const matching = items.filter(
-          (i) =>
-            includeCraftedItem(i) &&
-            (category !== 'dungeon' || hasAvailableDifficulty(i, selectedDifficulty, category)) &&
-            (i.name.toLowerCase().includes(globalSearch.toLowerCase()) ||
-              i.encounter.toLowerCase().includes(globalSearch.toLowerCase())) &&
-            (i.name.toLowerCase().includes(localSearch.toLowerCase()) ||
-              i.encounter.toLowerCase().includes(localSearch.toLowerCase()))
-        );
-        if (matching.length > 0) result[slot] = matching;
-      }
-    }
-
-    for (const key of Object.keys(result)) {
-      result[key] = [...result[key]].sort(compareLootBrowserItems);
-    }
-
-    return result;
-  }, [
-    drops,
-    globalSearch,
-    localSearch,
-    selectedDifficulty,
-    effectiveSlotFilter,
-    craftedPvpOnly,
-    groupBy,
-    category,
-    inventoryTypeToSlot,
-  ]);
-
-  const orderedFilteredDropEntries = useMemo(() => {
-    const entries = Object.entries(filteredDrops);
-    if (groupBy === 'boss' && category !== 'dungeon') {
-      return entries.sort(([a], [b]) => a.localeCompare(b));
-    }
-
-    return entries.sort(([a], [b]) => {
-      const aKey = slotLabelToOrderKey(a);
-      const bKey = slotLabelToOrderKey(b);
-      const aIndex = LOOT_BROWSER_SLOT_ORDER_INDEX.get(aKey) ?? Number.MAX_SAFE_INTEGER;
-      const bIndex = LOOT_BROWSER_SLOT_ORDER_INDEX.get(bKey) ?? Number.MAX_SAFE_INTEGER;
-      if (aIndex !== bIndex) return aIndex - bIndex;
-      return a.localeCompare(b);
-    });
-  }, [filteredDrops, groupBy, category]);
-
-  const difficulties = useMemo(() => {
-    if (!seasonConfig) return [];
-    if (category === 'world_bosses') return [];
-
-    // If we are in Raid category, prioritize raid difficulties
-    if (category === 'raid') return seasonConfig.raid_difficulties;
-
-    const instance = instances.find((i) => i.id === selectedInstance);
-    if (!instance) {
-      // Fallback for dungeon category if no specific instance selected
-      return seasonConfig.dungeon_categories[0]?.difficulties || [];
-    }
-
-    let group = seasonConfig.dungeon_categories.find(
-      (c) =>
-        c.poolInstanceId === instance.id ||
-        instance.type === 'mplus-chest' ||
-        instance.type === 'expansion-dungeon'
-    );
-    if (!group && (instance.type === 'dungeon' || instance.type === 'expansion-dungeon'))
-      group = seasonConfig.dungeon_categories[0];
-
-    if (group) return group.difficulties;
-    
-    // Default to raid diffs but filter for Delves
-    if (category === 'delves') {
-      const isPrey = instances.find((i) => i.id === selectedInstance)?.name?.toLowerCase().includes('prey');
-      const makeTrack = (key: string, label: string, sortOrder: number): DifficultyDef => ({
-        key,
-        label,
-        track: label,
-        level: 1,
-        sortOrder,
-      });
-      if (isPrey) {
-        return [
-          makeTrack('adventurer', 'Adventurer', 1),
-          makeTrack('champion', 'Champion', 2),
-        ];
-      }
-      return [
-        makeTrack('adventurer', 'Adventurer', 1),
-        makeTrack('champion', 'Champion', 2),
-        makeTrack('hero', 'Hero', 3),
-      ];
-    }
-    return seasonConfig.raid_difficulties;
-  }, [seasonConfig, selectedInstance, instances, category]);
-
   // Ensure selected difficulty is valid for the current instance/category
   useEffect(() => {
     if (category === 'world_bosses') {
@@ -873,19 +565,6 @@ export default function AddItemModal({
       }
     }
   }, [difficulties, category, selectedDifficulty, setSelectedDifficulty]);
-
-  const gems = useMemo(() => deduplicateGems(rawGems), [rawGems]);
-  const currentGemExpansion = useMemo(
-    () => gems.reduce((max, gem) => (gem.expansion > max ? gem.expansion : max), 0),
-    [gems]
-  );
-  const seasonalGems = useMemo(
-    () =>
-      currentGemExpansion > 0
-        ? gems.filter((gem) => gem.expansion === currentGemExpansion)
-        : gems,
-    [gems, currentGemExpansion]
-  );
 
   useWowheadTooltips([drops, selectedDifficulty, category, seasonalGems.length]);
 
@@ -1626,4 +1305,5 @@ export default function AddItemModal({
     </div>
   );
 }
+
 

@@ -11,12 +11,25 @@ import { slotFromInventoryType, slotLabelToSimSlot } from '../lib/gear-utils';
 import { TRACK_COLORS } from '../lib/loot-track';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState } from '../lib/sim-return';
-import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
-import type { SeasonConfigResponse, DifficultyDef, DungeonCategory } from '../lib/types';
+import type { DifficultyDef } from '../lib/types';
 import CategorySelector from './CategorySelector';
 import DropSlotList from './DropSlotList';
 import DungeonGrid from './DungeonGrid';
+import UpgradeSimulationModeSelector, {
+  UPGRADE_SIMULATION_MODE_OPTIONS,
+  type UpgradeSimulationMode,
+} from './UpgradeSimulationModeSelector';
+import { useDropFinderData } from './useDropFinderData';
+import {
+  encodeInstanceSelectionIds,
+  getDroptimizerCandidateSlots,
+  getRaidDifficultyDisplayLevel,
+  getTrackLevels,
+  getTrackMaxLevel,
+  parseInstanceSelectionIds,
+  TRACK_SHORT,
+} from './utils';
 import {
   detectClass,
   getClassId,
@@ -27,10 +40,8 @@ import {
   getSpecId,
   getTrackInfo,
   resolveUpgrade,
-  normalizeUpgradeTracks,
   type DropItem,
   type Instance,
-  type TrackLevel,
   type UpgradeTracks,
 } from './types';
 import { parseCharacterInfo } from '../../lib/simc-parser';
@@ -38,103 +49,6 @@ import { buildWishlistOwnerKey, loadWishlist, toggleWishlistEntry } from '../lib
 
 type Category = 'raids' | string;
 type SimDropItem = DropItem & { slot?: string };
-type UpgradeSimulationMode = 'current' | 'highest' | 'both';
-
-const UPGRADE_SIMULATION_MODE_OPTIONS: Array<{
-  value: UpgradeSimulationMode;
-  label: string;
-  desc: string;
-}> = [
-  {
-    value: 'current',
-    label: 'Current only',
-    desc: 'Sim drops at the selected difficulty level only.',
-  },
-  {
-    value: 'highest',
-    label: 'Highest only',
-    desc: 'Sim drops at the max level of the selected track.',
-  },
-  {
-    value: 'both',
-    label: 'Current + Highest',
-    desc: 'Sim both current and max-track versions together.',
-  },
-];
-
-function UpgradeSimulationModeSelector({
-  value,
-  onChange,
-  showDescription = true,
-}: {
-  value: UpgradeSimulationMode;
-  onChange: (value: UpgradeSimulationMode) => void;
-  showDescription?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const activeMode = UPGRADE_SIMULATION_MODE_OPTIONS.find((mode) => mode.value === value);
-  const activeLabel = activeMode?.label ?? 'Current only';
-  const activeDescription = activeMode?.desc ?? '';
-
-  useDismissOnOutside(rootRef, open, () => setOpen(false));
-
-  return (
-    <div className="space-y-1.5">
-      <div ref={rootRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="input-field flex w-full items-center justify-between text-[15px] font-medium"
-        >
-          <span>{activeLabel}</span>
-          <svg
-            className={`h-4 w-4 text-zinc-300 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 6l4 4 4-4" />
-          </svg>
-        </button>
-        {open && (
-          <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface-2 py-1 shadow-lg shadow-black/40">
-            {UPGRADE_SIMULATION_MODE_OPTIONS.map((mode) => (
-              <button
-                key={mode.value}
-                type="button"
-                onMouseDown={() => {
-                  onChange(mode.value);
-                  setOpen(false);
-                }}
-                className={`flex w-full flex-col px-3.5 py-2 text-left transition-colors ${
-                  mode.value === value
-                    ? 'bg-gold/[0.08] text-gold'
-                    : 'text-zinc-200 hover:bg-white/[0.04] hover:text-white'
-                }`}
-              >
-                <span className="text-[15px]">{mode.label}</span>
-                <span
-                  className={`mt-0.5 text-[13px] ${
-                    mode.value === value ? 'text-gold/90' : 'text-zinc-300'
-                  }`}
-                >
-                  {mode.desc}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      {showDescription && activeDescription && (
-        <p className="text-[13px] text-zinc-300">{activeDescription}</p>
-      )}
-    </div>
-  );
-}
 
 const DROP_FINDER_SIM_AGAIN_KEY = 'drop-finder';
 
@@ -150,311 +64,6 @@ interface DropFinderSimAgainState {
   selectedId?: string;
   autoCatalyze?: boolean;
   copyEnchantsGems?: boolean;
-}
-
-const TRACK_SHORT: Record<string, string> = {
-  Adventurer: 'Adv',
-  Veteran: 'Vet',
-  Champion: 'Champ',
-  Hero: 'Hero',
-  Myth: 'Myth',
-};
-
-function getRaidDifficultyDisplayLevel(key: string): number {
-  return key ? 1 : 0;
-}
-
-function getTrackMaxLevel(trackName: string, tracks: UpgradeTracks): number {
-  const levels = getTrackLevels(trackName, tracks);
-  if (!levels || levels.length === 0) return 0;
-  return levels.reduce((max, lvl) => Math.max(max, lvl.max_level || 0), 0);
-}
-
-function getTrackLevels(trackName: string, tracks: UpgradeTracks): TrackLevel[] | null {
-  if (!trackName) return null;
-  const normalize = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
-  const normalizedTrack = normalize(trackName);
-  const matchedKey = Object.keys(tracks).find((k) => normalize(k) === normalizedTrack);
-  return matchedKey ? tracks[matchedKey] : null;
-}
-
-function getDroptimizerCandidateSlots(slotLabel: string, inventoryType?: number): string[] {
-  const normalizedExplicit = slotLabelToSimSlot(slotLabel);
-  if (normalizedExplicit) return [normalizedExplicit];
-
-  if (inventoryType === 11) return ['finger1', 'finger2'];
-  if (inventoryType === 12) return ['trinket1', 'trinket2'];
-  const mapped = slotFromInventoryType(inventoryType);
-  return mapped ? [mapped] : [];
-}
-
-function coerceDropsResponse(input: unknown): Record<string, DropItem[]> | null {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
-
-  const normalized: Record<string, DropItem[]> = {};
-  for (const [slot, rawItems] of Object.entries(input as Record<string, unknown>)) {
-    if (!Array.isArray(rawItems)) continue;
-
-    const items: DropItem[] = [];
-    for (const raw of rawItems) {
-      if (!raw || typeof raw !== 'object') continue;
-      const item = raw as DropItem;
-      if (!Number.isFinite(item.item_id)) continue;
-      items.push(item);
-    }
-
-    if (items.length > 0) normalized[slot] = items;
-  }
-
-  return Object.keys(normalized).length > 0 ? normalized : null;
-}
-
-function parseInstanceSelectionIds(selection: string): string[] {
-  if (!selection) return [];
-  if (!selection.startsWith('ids:')) return [selection];
-  const seen = new Set<string>();
-  const ids: string[] = [];
-  for (const raw of selection.slice(4).split(',')) {
-    const value = raw.trim();
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
-    ids.push(value);
-  }
-  return ids;
-}
-
-function encodeInstanceSelectionIds(ids: string[]): string {
-  const seen = new Set<string>();
-  const unique = ids
-    .map((id) => id.trim())
-    .filter((id) => {
-      if (!id || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    })
-    .sort((a, b) => Number(a) - Number(b));
-
-  if (unique.length === 0) return '';
-  if (unique.length === 1) return unique[0];
-  return `ids:${unique.join(',')}`;
-}
-
-const FALLBACK_SEASON_CONFIG: SeasonConfigResponse = {
-  season: '',
-  raid_difficulties: [
-    { key: 'lfr', label: 'Raid Finder', track: 'Veteran', level: 1, sortOrder: 1 },
-    { key: 'normal', label: 'Normal', track: 'Champion', level: 2, sortOrder: 2 },
-    { key: 'heroic', label: 'Heroic', track: 'Hero', level: 3, sortOrder: 3 },
-    { key: 'mythic', label: 'Mythic', track: 'Myth', level: 4, sortOrder: 4 },
-  ],
-  dungeon_categories: [
-    {
-      key: 'mplus',
-      label: 'Mythic+',
-      poolInstanceId: -1,
-      defaultDifficulty: 'mythic+10',
-      difficulties: [
-        { key: 'heroic', label: 'Heroic', track: 'Adventurer', level: 2, sortOrder: 1 },
-        { key: 'mythic', label: 'Mythic 0', track: 'Champion', level: 1, sortOrder: 2 },
-        { key: 'mythic+2', label: '+2', track: 'Champion', level: 2, sortOrder: 3 },
-        { key: 'mythic+3', label: '+3', track: 'Champion', level: 2, sortOrder: 4 },
-        { key: 'mythic+4', label: '+4', track: 'Champion', level: 3, sortOrder: 5 },
-        { key: 'mythic+5', label: '+5', track: 'Champion', level: 4, sortOrder: 6 },
-        { key: 'mythic+6', label: '+6', track: 'Champion', level: 5, sortOrder: 7 },
-        { key: 'mythic+7', label: '+7', track: 'Hero', level: 1, sortOrder: 8 },
-        { key: 'mythic+8', label: '+8', track: 'Hero', level: 2, sortOrder: 9 },
-        { key: 'mythic+9', label: '+9', track: 'Hero', level: 2, sortOrder: 10 },
-        { key: 'mythic+10', label: '+10', track: 'Hero', level: 3, sortOrder: 11 },
-        { key: 'vault+7-9', label: 'Vault +7-9', track: 'Hero', level: 4, sortOrder: 12 },
-        { key: 'vault+10', label: 'Vault +10', track: 'Myth', level: 1, sortOrder: 13 },
-      ],
-    },
-    {
-      key: 'normal-dungeons',
-      label: 'Dungeons',
-      poolInstanceId: -32,
-      defaultDifficulty: 'heroic',
-      difficulties: [
-        {
-          key: 'normal',
-          label: 'Normal',
-          track: null,
-          level: 0,
-          sortOrder: 1,
-          fixedIlvl: 214,
-          fixedQuality: 3,
-        },
-        { key: 'heroic', label: 'Heroic', track: 'Adventurer', level: 2, sortOrder: 2 },
-        { key: 'mythic', label: 'Mythic', track: 'Champion', level: 1, sortOrder: 3 },
-      ],
-    },
-  ],
-};
-
-// --- Data loading hook ---
-
-function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
-  const [instances, setInstances] = useState<Instance[]>([]);
-  const [seasonConfig, setSeasonConfig] = useState<SeasonConfigResponse | null>(
-    FALLBACK_SEASON_CONFIG
-  );
-  const [upgradeTracks, setUpgradeTracks] = useState<UpgradeTracks>({});
-  const [selectedId, setSelectedId] = useState('');
-  const [drops, setDrops] = useState<Record<string, DropItem[]> | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const parsedCharacter = useMemo(() => parseCharacterInfo(simcInput), [simcInput]);
-  const className = useMemo(() => {
-    const detected = detectClass(simcInput);
-    if (detected) return detected;
-    if (parsedCharacter?.kind !== 'character') return null;
-    const raw = parsedCharacter.className.trim().toLowerCase();
-    if (!raw) return null;
-    if (raw === 'deathknight') return 'death_knight';
-    if (raw === 'demonhunter') return 'demon_hunter';
-    return raw.replace(/[\s-]+/g, '_');
-  }, [simcInput, parsedCharacter]);
-  const specName = useMemo(() => {
-    const detected = detectSpec(simcInput);
-    if (detected) return detected;
-    if (parsedCharacter?.kind !== 'character' || parsedCharacter.spec === 'unknown') return null;
-    return parsedCharacter.spec.trim().toLowerCase().replace(/[\s-]+/g, '_');
-  }, [simcInput, parsedCharacter]);
-  const specParam = useMemo(() => [...activeSpecs].sort().join(','), [activeSpecs]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadSeasonConfig = async () => {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const data = await fetchJson<SeasonConfigResponse>(`${API_URL}/api/season-config`);
-          if (!cancelled) setSeasonConfig(data);
-          return;
-        } catch {
-          if (attempt < 2) {
-            await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
-          }
-        }
-      }
-    };
-
-    const loadUpgradeTracks = async () => {
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          const data = await fetchJson<unknown>(`${API_URL}/api/upgrade-tracks`);
-          const normalized = normalizeUpgradeTracks(data);
-          if (!cancelled) setUpgradeTracks(normalized);
-          if (Object.keys(normalized).length > 0) return;
-        } catch {
-          // retry below
-        }
-        if (attempt < 4) {
-          await new Promise((resolve) => window.setTimeout(resolve, 350 * (attempt + 1)));
-        }
-      }
-    };
-
-    void loadSeasonConfig();
-    void loadUpgradeTracks();
-    fetchJson<Instance[]>(`${API_URL}/api/instances`)
-      .then(setInstances)
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const { raids, dungeonCats } = useMemo(() => {
-    if (!seasonConfig)
-      return {
-        raids: [] as Instance[],
-        dungeonCats: [] as { cat: DungeonCategory; instances: Instance[] }[],
-      };
-
-    const poolMap = new Map<number, Set<number>>();
-    for (const cat of seasonConfig.dungeon_categories) {
-      const meta = instances.find((i) => i.id === cat.poolInstanceId);
-      if (meta) {
-        poolMap.set(cat.poolInstanceId, new Set(meta.encounters.map((e) => e.id)));
-      }
-    }
-
-    const raidList: Instance[] = [];
-    const dcList: { cat: DungeonCategory; instances: Instance[] }[] =
-      seasonConfig.dungeon_categories.map((cat) => ({ cat, instances: [] }));
-
-    for (const inst of instances) {
-      if (inst.type === 'raid' && inst.id > 0) {
-        raidList.push(inst);
-      } else if (inst.type === 'dungeon') {
-        let placed = false;
-        for (const dc of dcList) {
-          const pool = poolMap.get(dc.cat.poolInstanceId);
-          if (pool?.has(inst.id)) {
-            dc.instances.push(inst);
-            placed = true;
-          }
-        }
-        if (!placed && dcList.length > 0) {
-          dcList[dcList.length - 1].instances.push(inst);
-        }
-      }
-    }
-    raidList.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    for (const dc of dcList) {
-      dc.instances.sort((a, b) => a.name.localeCompare(b.name));
-    }
-    return { raids: raidList, dungeonCats: dcList };
-  }, [instances, seasonConfig]);
-
-  useEffect(() => {
-    if (!selectedId) {
-      setDrops(null);
-      return;
-    }
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (className) params.set('class_name', className);
-    if (specParam) params.set('spec', specParam);
-    let url = '';
-    if (selectedId.startsWith('type:')) {
-      url = `${API_URL}/api/instances/type/${selectedId.slice(5)}/drops`;
-    } else if (selectedId.startsWith('ids:')) {
-      const ids = parseInstanceSelectionIds(selectedId)
-        .filter((id) => id !== '-1' && id !== '-32')
-        .join(',');
-      if (!ids) {
-        setDrops(null);
-        setLoading(false);
-        return;
-      }
-      params.set('ids', ids);
-      url = `${API_URL}/api/instances/drops`;
-    } else {
-      url = `${API_URL}/api/instances/${selectedId}/drops`;
-    }
-    const qs = params.toString();
-    fetchJson<any>(`${url}${qs ? `?${qs}` : ''}`)
-      .then((data) => setDrops(data?.detail ? null : coerceDropsResponse(data)))
-      .catch(() => setDrops(null))
-      .finally(() => setLoading(false));
-  }, [selectedId, className, specParam]);
-
-  return {
-    instances,
-    seasonConfig,
-    upgradeTracks,
-    selectedId,
-    setSelectedId,
-    drops,
-    loading,
-    raids,
-    dungeonCats,
-    className,
-    specName,
-  };
 }
 
 // --- Spinner ---

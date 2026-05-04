@@ -15,57 +15,18 @@ import {
   UPDATE_CHANNEL_STORAGE_KEY,
   type UpdateChannel,
 } from '../lib/update-channel';
+import {
+  chooseBestRefreshUnit,
+  UNIT_TO_MINUTES,
+  type RefreshUnit,
+} from './refreshInterval';
+import { useDataFileStateManager } from './useDataFileStateManager';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3 },
   { label: 'Performance', pct: 0.6 },
   { label: 'Maximum', pct: 0.9 },
 ] as const;
-type RefreshUnit = 'minutes' | 'hours' | 'days' | 'weeks';
-const UNIT_TO_MINUTES: Record<RefreshUnit, number> = {
-  minutes: 1,
-  hours: 60,
-  days: 60 * 24,
-  weeks: 60 * 24 * 7,
-};
-const chooseBestUnit = (minutes: number): { value: number; unit: RefreshUnit } => {
-  if (minutes <= 0) return { value: 0, unit: 'minutes' };
-  if (minutes % UNIT_TO_MINUTES.weeks === 0) {
-    return { value: Math.floor(minutes / UNIT_TO_MINUTES.weeks), unit: 'weeks' };
-  }
-  if (minutes % UNIT_TO_MINUTES.days === 0) {
-    return { value: Math.floor(minutes / UNIT_TO_MINUTES.days), unit: 'days' };
-  }
-  if (minutes % UNIT_TO_MINUTES.hours === 0) {
-    return { value: Math.floor(minutes / UNIT_TO_MINUTES.hours), unit: 'hours' };
-  }
-  return { value: minutes, unit: 'minutes' };
-};
-
-interface DataFileState {
-  key: string;
-  label: string;
-  section: string;
-  relative_path: string;
-  required: boolean;
-  downloadable: boolean;
-  exists: boolean;
-  size_bytes: number;
-}
-
-interface DataFileStatesResponse {
-  base_path: string | null;
-  available: boolean;
-  files: DataFileState[];
-}
-
-interface DataFilePreviewResponse {
-  key: string;
-  label: string;
-  relative_path: string;
-  content: string;
-  truncated: boolean;
-}
 
 type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
@@ -102,20 +63,29 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const [dataStateLoading, setDataStateLoading] = useState(false);
-  const [dataStateError, setDataStateError] = useState('');
-  const [dataStateMessage, setDataStateMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const [dataStateOpen, setDataStateOpen] = useState(false);
-  const [dataFileStates, setDataFileStates] = useState<DataFileStatesResponse | null>(null);
-  const [dataActionBusyKey, setDataActionBusyKey] = useState<string | null>(null);
-  const [dataFilePreview, setDataFilePreview] = useState<DataFilePreviewResponse | null>(null);
-  const [dataFilePreviewOpen, setDataFilePreviewOpen] = useState(false);
-  const [dataFilePreviewLoading, setDataFilePreviewLoading] = useState(false);
-  const [dataFilePreviewError, setDataFilePreviewError] = useState('');
-  const initialRefresh = chooseBestUnit(dataCacheRefreshMinutes);
+  const {
+    dataStateLoading,
+    dataStateError,
+    dataStateMessage,
+    dataStateOpen,
+    setDataStateOpen,
+    dataFileStates,
+    dataActionBusyKey,
+    dataFilePreview,
+    dataFilePreviewOpen,
+    setDataFilePreviewOpen,
+    dataFilePreviewLoading,
+    dataFilePreviewError,
+    viewDataStates,
+    refreshDataStates,
+    downloadFile,
+    downloadAllMissingFiles,
+    openDataRootDirectory,
+    showFileContent,
+    groupedDataFiles,
+    sectionSummaries,
+  } = useDataFileStateManager();
+  const initialRefresh = chooseBestRefreshUnit(dataCacheRefreshMinutes);
   const [refreshEveryValue, setRefreshEveryValue] = useState(initialRefresh.value);
   const [refreshEveryUnit, setRefreshEveryUnit] = useState<RefreshUnit>(initialRefresh.unit);
   const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking' | 'installing'>('idle');
@@ -293,7 +263,7 @@ export default function SettingsPage() {
   }, [performanceSaved, selectedUpdateChannel, user]);
 
   useEffect(() => {
-    const derived = chooseBestUnit(dataCacheRefreshMinutes);
+    const derived = chooseBestRefreshUnit(dataCacheRefreshMinutes);
     setRefreshEveryValue(derived.value);
     setRefreshEveryUnit(derived.unit);
   }, [dataCacheRefreshMinutes]);
@@ -486,127 +456,6 @@ export default function SettingsPage() {
 
   const formatBytes = (n: number) =>
     formatBytesDecimal(n, { empty: '0 B', includeBytes: true, kbDigits: 1, mbDigits: 1 });
-
-  const viewDataStates = async () => {
-    setDataStateOpen(true);
-    setDataStateLoading(true);
-    setDataStateError('');
-    setDataStateMessage(null);
-    try {
-      const data = await fetchJson<DataFileStatesResponse>(`${API_URL}/api/data/files`);
-      setDataFileStates(data);
-    } catch (err: any) {
-      setDataStateError(err?.message || 'Failed to load data file states.');
-    } finally {
-      setDataStateLoading(false);
-    }
-  };
-
-  const refreshDataStates = async () => {
-    setDataStateLoading(true);
-    setDataStateError('');
-    try {
-      const data = await fetchJson<DataFileStatesResponse>(`${API_URL}/api/data/files`);
-      setDataFileStates(data);
-    } catch (err: any) {
-      setDataStateError(err?.message || 'Failed to refresh data file states.');
-    } finally {
-      setDataStateLoading(false);
-    }
-  };
-
-  const downloadFile = async (key: string) => {
-    setDataActionBusyKey(key);
-    setDataStateMessage(null);
-    try {
-      await fetchJson(`${API_URL}/api/data/files/${encodeURIComponent(key)}/download`, {
-        method: 'POST',
-      });
-      await refreshDataStates();
-      setDataStateMessage({ type: 'success', text: 'File downloaded successfully.' });
-    } catch (err: any) {
-      setDataStateMessage({ type: 'error', text: err?.message || 'Failed to download file.' });
-    } finally {
-      setDataActionBusyKey(null);
-    }
-  };
-
-  const downloadAllMissingFiles = async () => {
-    setDataActionBusyKey('download-missing');
-    setDataStateMessage(null);
-    try {
-      const data = await fetchJson<{ downloaded_keys?: string[]; failed?: unknown[] }>(
-        `${API_URL}/api/data/files/missing/download`,
-        { method: 'POST' }
-      );
-      await refreshDataStates();
-      const count = data.downloaded_keys?.length ?? 0;
-      const failures = data.failed?.length ?? 0;
-      if (failures > 0) {
-        setDataStateMessage({
-          type: 'error',
-          text: `Downloaded ${count} files, ${failures} failed. Check backend logs for details.`,
-        });
-      } else {
-        setDataStateMessage({ type: 'success', text: `Downloaded ${count} missing files.` });
-      }
-    } catch (err: any) {
-      setDataStateMessage({
-        type: 'error',
-        text: err?.message || 'Failed to download missing files.',
-      });
-    } finally {
-      setDataActionBusyKey(null);
-    }
-  };
-
-  const openDataRootDirectory = async () => {
-    if (!dataFileStates?.base_path || !isDesktop) return;
-    setDataStateMessage(null);
-    try {
-      await fetchJson(`${API_URL}/api/data/files/open-directory`, { method: 'POST' });
-    } catch (err: any) {
-      setDataStateMessage({
-        type: 'error',
-        text: err?.message || 'Failed to open directory.',
-      });
-    }
-  };
-
-  const showFileContent = async (key: string) => {
-    setDataFilePreviewOpen(true);
-    setDataFilePreviewLoading(true);
-    setDataFilePreviewError('');
-    setDataFilePreview(null);
-    try {
-      const data = await fetchJson<DataFilePreviewResponse>(
-        `${API_URL}/api/data/files/${encodeURIComponent(key)}/content`
-      );
-      setDataFilePreview(data);
-    } catch (err: any) {
-      setDataFilePreviewError(err?.message || 'Failed to load file content.');
-    } finally {
-      setDataFilePreviewLoading(false);
-    }
-  };
-
-  const groupedDataFiles = dataFileStates?.files.reduce<Record<string, DataFileState[]>>(
-    (acc, file) => {
-      (acc[file.section] ||= []).push(file);
-      return acc;
-    },
-    {}
-  );
-  const sectionSummaries = Object.entries(groupedDataFiles || {}).reduce<
-    Record<string, { totalBytes: number; downloaded: number; total: number }>
-  >((acc, [section, files]) => {
-    acc[section] = {
-      totalBytes: files.reduce((sum, file) => sum + (file.exists ? file.size_bytes : 0), 0),
-      downloaded: files.filter((file) => file.exists).length,
-      total: files.length,
-    };
-    return acc;
-  }, {});
   const syncProgress = parseProgress(cacheSyncProgress);
   const syncProgressPct =
     cacheSyncing && syncProgress.total > 0

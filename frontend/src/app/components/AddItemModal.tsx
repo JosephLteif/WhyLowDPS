@@ -1225,11 +1225,6 @@ export default function AddItemModal({
                       </button>
                     ))}
                   </div>
-                  {category === 'crafted' && (
-                    <span className="rounded-md bg-gold px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-black shadow-sm">
-                      Quality 5
-                    </span>
-                  )}
                 </div>
               )}
             </div>
@@ -1551,7 +1546,7 @@ export default function AddItemModal({
                                 <div className="flex items-center justify-between text-[11px] font-semibold text-white">
                                   <span>
                                     {tier.track === 'Crafted'
-                                      ? `Level ${tier.level}/${tier.maxLevel}`
+                                      ? `Quality ${tier.level}/${tier.maxLevel}`
                                       : `${tier.track} ${tier.level}/${tier.maxLevel}`}
                                   </span>
                                   <span className="font-mono">

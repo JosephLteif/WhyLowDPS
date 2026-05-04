@@ -10,9 +10,7 @@ import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 import {
   isValidUpdateChannel,
-  readStoredUpdateChannel,
   UPDATE_CHANNEL_OPTIONS,
-  UPDATE_CHANNEL_STORAGE_KEY,
   type UpdateChannel,
 } from '../lib/update-channel';
 import {
@@ -21,6 +19,7 @@ import {
   type RefreshUnit,
 } from './refreshInterval';
 import { useDataFileStateManager } from './useDataFileStateManager';
+import { useSettingsUpdater } from './useSettingsUpdater';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3 },
@@ -88,12 +87,6 @@ export default function SettingsPage() {
   const initialRefresh = chooseBestRefreshUnit(dataCacheRefreshMinutes);
   const [refreshEveryValue, setRefreshEveryValue] = useState(initialRefresh.value);
   const [refreshEveryUnit, setRefreshEveryUnit] = useState<RefreshUnit>(initialRefresh.unit);
-  const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking' | 'installing'>('idle');
-  const [updateMessage, setUpdateMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const [selectedUpdateChannel, setSelectedUpdateChannel] = useState<UpdateChannel>('stable');
   const [activeTab, setActiveTab] = useState<SettingsTab>('simulation');
   const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(true);
   const [closeBehaviorLoading, setCloseBehaviorLoading] = useState(false);
@@ -101,6 +94,14 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const {
+    updateCheckState,
+    updateMessage,
+    selectedUpdateChannel,
+    setSelectedUpdateChannel,
+    checkForUpdatesNow,
+    downloadAndInstallLatest,
+  } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
   const dataStateModalRef = useRef<HTMLDivElement | null>(null);
   const dataFilePreviewModalRef = useRef<HTMLDivElement | null>(null);
   useDismissOnOutside(dataStateModalRef, dataStateOpen && !dataFilePreviewOpen, () =>
@@ -180,52 +181,6 @@ export default function SettingsPage() {
   }, [maxCombinations, performanceSaved, user]);
 
   useEffect(() => {
-    const onUpdaterStatus = (event: Event) => {
-      const detail = (event as CustomEvent<{ status?: string; message?: string }>).detail;
-      const status = detail?.status || '';
-      const message = detail?.message || '';
-
-      if (status === 'checking') {
-        setUpdateCheckState('checking');
-        setUpdateMessage(null);
-        return;
-      }
-
-      setUpdateCheckState('idle');
-      if (status === 'available') {
-        setUpdateMessage({
-          type: 'success',
-          text: message || 'Update available. Use the bottom-right updater popup to install.',
-        });
-      } else if (status === 'downloading') {
-        setUpdateMessage({
-          type: 'success',
-          text: message || 'Downloading and installing update...',
-        });
-      } else if (status === 'downloaded') {
-        setUpdateMessage({
-          type: 'success',
-          text: message || 'Update installed. Restart the app to apply.',
-        });
-      } else if (status === 'none') {
-        setUpdateMessage({ type: 'success', text: message || 'You are on the latest version.' });
-      } else if (status === 'error') {
-        setUpdateMessage({ type: 'error', text: message || 'Failed to check for updates.' });
-      }
-    };
-
-    window.addEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
-    return () => {
-      window.removeEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isDesktop) return;
-    setSelectedUpdateChannel(readStoredUpdateChannel());
-  }, []);
-
-  useEffect(() => {
     if (!isDesktop) return;
     let cancelled = false;
     setCloseBehaviorLoading(true);
@@ -245,22 +200,6 @@ export default function SettingsPage() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    if (!isDesktop) return;
-    try {
-      localStorage.setItem(UPDATE_CHANNEL_STORAGE_KEY, selectedUpdateChannel);
-    } catch {}
-    if (!performanceSaved || !user) return;
-    fetchJson(`${API_URL}/api/user/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key: 'app_update_channel',
-        value: selectedUpdateChannel,
-      }),
-    }).catch(() => {});
-  }, [performanceSaved, selectedUpdateChannel, user]);
 
   useEffect(() => {
     const derived = chooseBestRefreshUnit(dataCacheRefreshMinutes);
@@ -401,26 +340,6 @@ export default function SettingsPage() {
       setCacheSyncing(false);
       setCacheMessage({ type: 'error', text: err?.message || 'Failed to start cache refresh.' });
     }
-  };
-
-  const checkForUpdatesNow = () => {
-    setUpdateCheckState('checking');
-    setUpdateMessage(null);
-    window.dispatchEvent(
-      new CustomEvent('whylowdps-updater-check', {
-        detail: { channel: selectedUpdateChannel },
-      })
-    );
-  };
-
-  const downloadAndInstallLatest = () => {
-    setUpdateCheckState('installing');
-    setUpdateMessage(null);
-    window.dispatchEvent(
-      new CustomEvent('whylowdps-updater-install', {
-        detail: { channel: selectedUpdateChannel },
-      })
-    );
   };
 
   const updateCloseBehavior = async (nextValue: boolean) => {

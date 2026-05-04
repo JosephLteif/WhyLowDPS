@@ -50,6 +50,7 @@ interface TopGearSlotGroupProps {
     text: string;
     color?: string;
     kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+    badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
     icon?: string;
     href?: string;
     wowheadData?: string;

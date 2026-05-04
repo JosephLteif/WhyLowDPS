@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL, fetchJsonCached } from '../lib/api';
-import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
+import type { ResolvedItem, ResolveGearResponse } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import AddItemModal from './AddItemModal';
 import OptimizeItemModal from './OptimizeItemModal';
@@ -67,6 +67,19 @@ interface UpgradeOption {
   itemLevel: number;
 }
 
+type BadgeVariant = 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
+
+interface BadgeDescriptor {
+  text: string;
+  badgeVariant?: BadgeVariant;
+  kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+  icon?: string;
+  href?: string;
+  wowheadData?: string;
+  tooltip?: string;
+  color?: string;
+}
+
 const DISPLAY_GROUPS: DisplayGroup[] = [
   { label: 'Head', slots: ['head'] },
   { label: 'Neck', slots: ['neck'] },
@@ -85,15 +98,29 @@ const DISPLAY_GROUPS: DisplayGroup[] = [
 ];
 
 const UPGRADE_TRACK_MAX_LEVEL = 6;
-const SOURCE_TAG_STYLES: Record<string, string> = {
+const SOURCE_TAG_OVERRIDES: Record<string, string> = {
   wishlist: 'text-rose-300 bg-rose-500/15 border-rose-400/40',
   vault: 'text-violet-200 bg-violet-500/18 border-violet-400/45',
   search: 'text-sky-200 bg-sky-500/15 border-sky-400/40',
   crafter: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
   crafted: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
   catalyst: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
-  bags: 'text-zinc-200 bg-white/[0.06] border-white/15',
 };
+
+const KNOWN_SOURCE_TAGS = new Set([
+  'wishlist',
+  'vault',
+  'search',
+  'crafter',
+  'crafted',
+  'catalyst',
+  'ascendant',
+  'mythic+',
+  'heroic',
+  'veteran',
+  'champion',
+  'adventurer',
+]);
 
 function toTitleCase(input: string): string {
   return input
@@ -103,8 +130,8 @@ function toTitleCase(input: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function resolveSourceTags(item: ResolvedItem): Array<{ text: string; color: string }> {
-  const tags: Array<{ text: string; color: string }> = [];
+function resolveSourceTags(item: ResolvedItem): BadgeDescriptor[] {
+  const tags: BadgeDescriptor[] = [];
 
   const pushTag = (rawText: string) => {
     const text = toTitleCase(rawText || '');
@@ -112,14 +139,19 @@ function resolveSourceTags(item: ResolvedItem): Array<{ text: string; color: str
     const key = text.toLowerCase();
     if (key === 'bags' || key === 'equipped') return;
     if (tags.some((t) => t.text.toLowerCase() === key)) return;
+    if (!KNOWN_SOURCE_TAGS.has(key)) {
+      tags.push({ text, badgeVariant: 'source' });
+      return;
+    }
     tags.push({
       text,
-      color: SOURCE_TAG_STYLES[key] || 'text-zinc-200 bg-white/[0.06] border-white/15',
+      badgeVariant: 'source',
+      color: SOURCE_TAG_OVERRIDES[key] || '',
     });
   };
 
   if (item.origin === 'vault') pushTag('Vault');
-  if (item.tag) pushTag(item.tag);
+  if (item.tag && String(item.tag).toLowerCase() !== 'ascendant') pushTag(item.tag);
 
   const sourceType = String((item as any).source_type || '').toLowerCase();
   if (sourceType.includes('wishlist')) pushTag('Wishlist');
@@ -442,7 +474,7 @@ export default function TopGearItemSelector({
       const nextResolved = { ...resolved, slots: { ...resolved.slots } };
 
       for (const [slot, slotRes] of Object.entries(nextResolved.slots)) {
-        const nextAlternatives = slotRes.alternatives.map((alt) => {
+        slotRes.alternatives = slotRes.alternatives.map((alt) => {
           if (makeIdentity(alt) !== targetIdentity) return alt;
           const nextItem = mutate(alt);
           const nextUid = makeUid({
@@ -462,7 +494,6 @@ export default function TopGearItemSelector({
           updated = true;
           return { ...nextItem, uid: nextUid, slot: nextItem.slot || slot };
         });
-        slotRes.alternatives = nextAlternatives;
       }
 
       if (updated) {
@@ -533,7 +564,7 @@ export default function TopGearItemSelector({
         const className = resolved.character.class_name || '';
         const cacheKey = `${target.slot}|${className}`;
         if (Object.prototype.hasOwnProperty.call(enchantAvailabilityBySlot, cacheKey)) {
-          return !!enchantAvailabilityBySlot[cacheKey];
+          return enchantAvailabilityBySlot[cacheKey];
         }
         try {
           const res = await fetch(
@@ -1578,29 +1609,14 @@ export default function TopGearItemSelector({
     const embellishmentIcon = item.embellishment_icon || inferredEmbellishment?.icon || '';
     const embellishmentItemId = item.embellishment_item_id || inferredEmbellishment?.item_id || 0;
     const hasGem = effectiveGemId > 0 || Boolean(item.gem_name);
-    const parts: {
-      text: string;
-      color?: string;
-      kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
-      badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
-      icon?: string;
-      href?: string;
-      wowheadData?: string;
-      tooltip?: string;
-    }[] = [];
+    const parts: BadgeDescriptor[] = [];
 
-    for (const sourceTag of resolveSourceTags(item)) {
-      parts.push({
-        text: sourceTag.text,
-        badgeVariant: 'source',
-        color: sourceTag.color,
-      });
-    }
+    parts.push(...resolveSourceTags(item));
     if (item.is_catalyst)
       parts.push({
         text: 'Catalyst',
         badgeVariant: 'source',
-        color: SOURCE_TAG_STYLES.catalyst,
+        color: SOURCE_TAG_OVERRIDES.catalyst || '',
       });
     if (item.upgrade)
       parts.push({

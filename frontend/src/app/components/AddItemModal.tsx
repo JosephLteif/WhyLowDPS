@@ -495,19 +495,21 @@ const getEffectiveTier = (
         : item.difficulty_info?.[chosen.infoDiff];
     if (!infoBlock) return null;
 
-    const baseLevel = infoBlock.level || 1;
-    const currentLevel = Math.max(baseLevel, itemTiers[item.item_id] || baseLevel);
     const trackName = infoBlock.track || chosen.label;
     const track = upgradeTracks[trackName];
+    const trackMaxLevel = track ? track[track.length - 1].level : UPGRADE_TRACK_MAX_LEVEL;
+    const baseLevel = infoBlock.level || 1;
+    const defaultLevel = Math.max(1, Math.min(baseLevel, trackMaxLevel));
+    const currentLevel = Math.max(1, Math.min(itemTiers[item.item_id] || defaultLevel, trackMaxLevel));
 
     const levelInfo = track?.find((t: any) => t.level === currentLevel);
 
     return {
       track: trackName,
       level: currentLevel,
-      maxLevel: infoBlock.max_level || (track ? track[track.length - 1].level : UPGRADE_TRACK_MAX_LEVEL),
+      maxLevel: track ? track[track.length - 1].level : UPGRADE_TRACK_MAX_LEVEL,
       ilvl: levelInfo?.ilvl || infoBlock.ilvl,
-      baseLevel,
+      baseLevel: 1,
       baseIlvl: infoBlock.ilvl,
       bonus_id: infoBlock.bonus_id || 0,
       quality: infoBlock.quality ?? item.quality,
@@ -540,18 +542,20 @@ const getEffectiveTier = (
   const trackName = getMappedTrackName(selectedDifficulty, info);
   if (!info || !trackName) return null;
 
-  const baseLevel = info.level || 1;
-  const currentLevel = Math.max(baseLevel, itemTiers[item.item_id] || baseLevel);
   const track = upgradeTracks[trackName];
   if (!track || !Array.isArray(track)) return null;
+  const trackMaxLevel = track[track.length - 1].level;
+  const baseLevel = info.level || 1;
+  const defaultLevel = Math.max(1, Math.min(baseLevel, trackMaxLevel));
+  const currentLevel = Math.max(1, Math.min(itemTiers[item.item_id] || defaultLevel, trackMaxLevel));
 
   const levelInfo = track.find((t: any) => t.level === currentLevel);
   return {
     track: trackName,
     level: currentLevel,
-    maxLevel: info.max_level || track[track.length - 1].level,
+    maxLevel: track[track.length - 1].level,
     ilvl: levelInfo?.ilvl || info.ilvl,
-    baseLevel,
+    baseLevel: 1,
     baseIlvl: info.ilvl,
     bonus_id: info.bonus_id,
     quality: info.quality || item.quality,
@@ -1575,6 +1579,23 @@ export default function AddItemModal({
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-full"
                                 />
+                                <div className="flex items-center justify-between px-1 pt-0.5">
+                                  {Array.from(
+                                    { length: Math.max(0, tier.maxLevel - (tier.baseLevel || 1) + 1) },
+                                    (_, index) => {
+                                      const level = (tier.baseLevel || 1) + index;
+                                      const active = level <= tier.level;
+                                      return (
+                                        <span
+                                          key={`${item.item_id}-tier-dot-${level}`}
+                                          className={`h-1.5 w-1.5 rounded-full ${
+                                            active ? 'bg-gold/90' : 'bg-zinc-600/70'
+                                          }`}
+                                        />
+                                      );
+                                    }
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>

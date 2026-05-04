@@ -1582,6 +1582,7 @@ export default function TopGearItemSelector({
       text: string;
       color?: string;
       kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+      badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
       icon?: string;
       href?: string;
       wowheadData?: string;
@@ -1591,17 +1592,20 @@ export default function TopGearItemSelector({
     for (const sourceTag of resolveSourceTags(item)) {
       parts.push({
         text: sourceTag.text,
+        badgeVariant: 'source',
         color: sourceTag.color,
       });
     }
     if (item.is_catalyst)
       parts.push({
         text: 'Catalyst',
+        badgeVariant: 'source',
         color: SOURCE_TAG_STYLES.catalyst,
       });
     if (item.upgrade)
       parts.push({
         text: item.upgrade,
+        badgeVariant: 'source',
         color: 'text-zinc-200 bg-white/[0.06] border-white/15',
       });
     if (hasGem) {
@@ -1609,6 +1613,7 @@ export default function TopGearItemSelector({
       parts.push({
         text: gemName,
         kind: 'gemIcon',
+        badgeVariant: 'gem',
         icon: gemInfo?.icon || item.gem_icon || gemIconFallback,
         href: effectiveGemId > 0 ? `https://www.wowhead.com/item=${effectiveGemId}` : undefined,
         wowheadData: effectiveGemId > 0 ? `item=${effectiveGemId}` : undefined,
@@ -1628,6 +1633,7 @@ export default function TopGearItemSelector({
         text: enchantName,
         kind: enchantInfo?.icon ? 'iconText' : 'plain',
         icon: enchantInfo?.icon,
+        badgeVariant: 'enchant',
         href:
           enchantItemId > 0
             ? `https://www.wowhead.com/item=${enchantItemId}`
@@ -1662,11 +1668,12 @@ export default function TopGearItemSelector({
       parts.push({
         text: 'Ascendant Voidcore',
         kind: 'iconText',
-        icon: 'https://wow.zamimg.com/images/wow/icons/large/inv_1205_voidforge_sovereignvoidcores_cosmicvoid.jpg',
+        badgeVariant: 'mod',
+        icon: 'inv_1205_voidforge_sovereignvoidcores_cosmicvoid',
         href: 'https://www.wowhead.com/item=268552/ascendant-voidcore',
         wowheadData: 'item=268552',
         tooltip: 'Ascendant Voidcore',
-        color: 'text-amber-200 bg-amber-500/15 border-amber-400/40',
+        color: 'text-amber-200 bg-amber-500/18 border-amber-400/50',
       });
     }
     return parts;
@@ -1676,7 +1683,7 @@ export default function TopGearItemSelector({
     (item: ResolvedItem): boolean => {
       const className = resolved.character.class_name || '';
       const cacheKey = `${item.slot}|${className}`;
-      const hasEnchantOptions = enchantAvailabilityBySlot[cacheKey] === true;
+      const hasEnchantOptions = enchantAvailabilityBySlot[cacheKey];
       const hasGemOptions =
         item.sockets > 0 || item.gem_id > 0 || /(?:^|,)gem_id=/.test(item.simc_string);
       const hasEmbellishmentOptions =

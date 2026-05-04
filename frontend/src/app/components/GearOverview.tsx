@@ -383,6 +383,7 @@ export function GearSlotRow({
   const details: Array<{
     text: string;
     kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+    badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
     color?: string;
     tooltip?: string;
     icon?: string;
@@ -409,10 +410,11 @@ export function GearSlotRow({
     details.push({
       text: 'Ascendant Voidcore',
       kind: 'iconText' as const,
+      badgeVariant: 'mod',
       icon: 'inv_1205_voidforge_sovereignvoidcores_cosmicvoid',
       href: 'https://www.wowhead.com/item=268552/ascendant-voidcore',
       wowheadData: 'item=268552',
-      color: 'text-amber-200 border-amber-400/35 bg-amber-500/12',
+      color: 'text-amber-200 border-amber-400/50 bg-amber-500/18',
     });
   }
 

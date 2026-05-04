@@ -395,6 +395,51 @@ const getMappedTrackName = (
   return info?.track || raidTrack || '';
 };
 
+function dungeonDifficultyKeyCandidates(selectedDifficulty: string): string[] {
+  const raw = String(selectedDifficulty || '').trim();
+  if (!raw) return [];
+  const lower = raw.toLowerCase();
+  const out = new Set<string>([raw, lower]);
+  if (lower.startsWith('mythic+')) {
+    const level = lower.replace('mythic+', '');
+    out.add(`+${level}`);
+    out.add(`mythic_plus_${level}`);
+    out.add(`mythic-plus-${level}`);
+  } else if (/^\+\d+$/.test(lower)) {
+    const level = lower.slice(1);
+    out.add(`mythic+${level}`);
+    out.add(`mythic_plus_${level}`);
+    out.add(`mythic-plus-${level}`);
+  } else if (lower.startsWith('mythic_plus_')) {
+    const level = lower.replace('mythic_plus_', '');
+    out.add(`mythic+${level}`);
+    out.add(`+${level}`);
+  }
+  return Array.from(out);
+}
+
+function resolveInfoForDifficulty(
+  item: ExternalItem,
+  selectedDifficulty: string,
+  category: string
+): any {
+  if (category !== 'dungeon') {
+    return item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty] || null;
+  }
+
+  for (const key of dungeonDifficultyKeyCandidates(selectedDifficulty)) {
+    if (item.dungeon_info?.[key]) return item.dungeon_info[key];
+  }
+  for (const key of dungeonDifficultyKeyCandidates(selectedDifficulty)) {
+    if (item.difficulty_info?.[key]) return item.difficulty_info[key];
+  }
+  return null;
+}
+
+function hasAvailableDifficulty(item: ExternalItem, difficulty: string, category: string): boolean {
+  return !!resolveInfoForDifficulty(item, difficulty, category);
+}
+
 function collectCraftedIlevels(item: ExternalItem, upgradeTracks: Record<string, any>): Array<{ ilvl: number; bonus_id: number; key: string }> {
   if (Array.isArray(item.crafted_levels) && item.crafted_levels.length > 0) {
     return Array.from(new Set(item.crafted_levels))
@@ -469,8 +514,7 @@ const getEffectiveTier = (
     };
   }
 
-  const info =
-    item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
+  const info = resolveInfoForDifficulty(item, selectedDifficulty, category);
 
   if (category === 'crafted') {
     const levels = collectCraftedIlevels(item, upgradeTracks);
@@ -735,6 +779,7 @@ export default function AddItemModal({
         const matching = items.filter(
           (i) =>
             includeCraftedItem(i) &&
+            (category !== 'dungeon' || hasAvailableDifficulty(i, selectedDifficulty, category)) &&
             (i.name.toLowerCase().includes(globalSearch.toLowerCase()) ||
               i.encounter.toLowerCase().includes(globalSearch.toLowerCase())) &&
             (i.name.toLowerCase().includes(localSearch.toLowerCase()) ||
@@ -753,6 +798,7 @@ export default function AddItemModal({
     drops,
     globalSearch,
     localSearch,
+    selectedDifficulty,
     effectiveSlotFilter,
     craftedPvpOnly,
     groupBy,
@@ -1024,8 +1070,7 @@ export default function AddItemModal({
       return;
     }
 
-    const info =
-      item.difficulty_info?.[effectiveDifficulty] || item.dungeon_info?.[effectiveDifficulty];
+    const info = resolveInfoForDifficulty(item, effectiveDifficulty, category);
     const trackName = getMappedTrackName(effectiveDifficulty, info);
     const baseBonusIds = info?.bonus_id ? [info.bonus_id] : [];
 

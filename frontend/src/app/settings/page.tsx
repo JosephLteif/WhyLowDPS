@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import { API_URL, fetchJson, isDesktop } from '../lib/api';
@@ -18,6 +18,7 @@ import {
   UNIT_TO_MINUTES,
   type RefreshUnit,
 } from './refreshInterval';
+import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
 
@@ -56,12 +57,14 @@ export default function SettingsPage() {
   const [blizzardTesting, setBlizzardTesting] = useState(false);
   const [blizzardMessage, setBlizzardMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [performanceSaved, setPerformanceSaved] = useState(false);
-  const [cacheSyncing, setCacheSyncing] = useState(false);
-  const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
-  const [cacheMessage, setCacheMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
+  const {
+    cacheSyncing,
+    cacheSyncProgress,
+    cacheMessage,
+    syncProgress,
+    syncProgressPct,
+    refreshDataCache,
+  } = useDataCacheRefresh();
   const {
     dataStateLoading,
     dataStateError,
@@ -258,90 +261,6 @@ export default function SettingsPage() {
     }
   };
 
-  const parseSyncStatus = (status: any): string => {
-    if (typeof status === 'string') return status;
-    if (status && typeof status === 'object') {
-      if (status.error) return `error:${String(status.error)}`;
-    }
-    return 'unknown';
-  };
-
-  const parseProgress = (str: string) => {
-    const parts = str.split(':');
-    if (parts.length < 4) return { task: '', current: 0, total: 0, details: str };
-    return {
-      task: parts[0],
-      current: parseInt(parts[1], 10),
-      total: parseInt(parts[2], 10),
-      details: parts[3],
-    };
-  };
-
-  const pollSyncStatus = async () => {
-    try {
-      const data = await fetchJson<any>(`${API_URL}/api/data/status`);
-      const status = parseSyncStatus(data.status);
-      setCacheSyncProgress(data.progress || '');
-      window.dispatchEvent(
-        new CustomEvent('whylowdps-cache-refresh-status', {
-          detail: { status, progress: data.progress || '', message: data.message || '' },
-        })
-      );
-
-      if (status === 'ready') {
-        setCacheSyncing(false);
-        setCacheMessage({ type: 'success', text: 'Game data cache refreshed successfully.' });
-        return;
-      }
-
-      if (status === 'needs_credentials') {
-        setCacheSyncing(false);
-        setCacheMessage({
-          type: 'error',
-          text: 'Cannot refresh data cache: Blizzard credentials are required.',
-        });
-        return;
-      }
-
-      if (status.startsWith('error:')) {
-        setCacheSyncing(false);
-        setCacheMessage({
-          type: 'error',
-          text: status.replace(/^error:/, '') || 'Cache refresh failed.',
-        });
-        return;
-      }
-
-      window.setTimeout(() => {
-        void pollSyncStatus();
-      }, 1500);
-    } catch (err: any) {
-      setCacheSyncing(false);
-      setCacheMessage({ type: 'error', text: err?.message || 'Failed to read sync status.' });
-    }
-  };
-
-  const refreshDataCache = async () => {
-    setCacheMessage(null);
-    setCacheSyncing(true);
-    setCacheSyncProgress('Initializing synchronization...');
-    window.dispatchEvent(new CustomEvent('whylowdps-cache-refresh-start'));
-
-    try {
-      await fetchJson(`${API_URL}/api/data/sync?force=true`, { method: 'POST' });
-      await pollSyncStatus();
-    } catch (err: any) {
-      // 409 means a sync is already in progress; follow it instead of failing.
-      if (err?.status === 409) {
-        await pollSyncStatus();
-        return;
-      }
-
-      setCacheSyncing(false);
-      setCacheMessage({ type: 'error', text: err?.message || 'Failed to start cache refresh.' });
-    }
-  };
-
   const updateCloseBehavior = async (nextValue: boolean) => {
     if (!isDesktop) return;
     setCloseBehaviorMessage(null);
@@ -375,11 +294,6 @@ export default function SettingsPage() {
 
   const formatBytes = (n: number) =>
     formatBytesDecimal(n, { empty: '0 B', includeBytes: true, kbDigits: 1, mbDigits: 1 });
-  const syncProgress = parseProgress(cacheSyncProgress);
-  const syncProgressPct =
-    cacheSyncing && syncProgress.total > 0
-      ? Math.max(0, Math.min(100, Math.round((syncProgress.current / syncProgress.total) * 100)))
-      : 0;
 
   const activePresetIdx = PRESETS.findIndex(
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads

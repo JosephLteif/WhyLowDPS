@@ -49,16 +49,16 @@ fn reagent_matches_current_season(reagent: &CraftingReagentData) -> bool {
         .any(|bid| is_current_season_bonus(*bid))
 }
 
-fn reagent_item_level(
+fn reagent_item_levels(
     reagent: &CraftingReagentData,
     bonuses: &HashMap<u64, crate::types::BonusData>,
-) -> Option<u64> {
+) -> Vec<u64> {
     reagent
         .crafting_bonus_ids
         .iter()
         .filter_map(|bid| bonuses.get(bid))
         .filter_map(|bonus| bonus.ilevel.as_ref().and_then(|ilevel| ilevel.amount))
-        .max()
+        .collect()
 }
 
 fn current_track_ilevel(track_name: Option<String>, level: Option<u64>) -> Option<u64> {
@@ -122,9 +122,10 @@ pub fn derive_crafted_item_levels(item_id: u64) -> Vec<u64> {
             {
                 continue;
             }
-            if let Some(ilvl) = reagent_item_level(reagent, &bonuses) {
+            let reagent_levels = reagent_item_levels(reagent, &bonuses);
+            if !reagent_levels.is_empty() {
                 has_current_season_upgrade_reagent = true;
-                levels.push(ilvl);
+                levels.extend(reagent_levels);
             }
         }
     }

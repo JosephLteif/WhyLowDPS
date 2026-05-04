@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { ResolvedItem } from '../../lib/types';
 import GearItemRow from '../GearItemRow';
 import TopGearUpgradeButton from './TopGearUpgradeButton';
@@ -6,6 +6,19 @@ import TopGearUpgradeButton from './TopGearUpgradeButton';
 const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
 const EMBELLISHMENT_LIMIT_WARNING =
   'Too many embellished items are selected. Only 2 embellished items can be equipped.';
+
+function isTierOrCatalystItem(item: ResolvedItem): boolean {
+  if (item.is_catalyst || item.can_catalyst) return true;
+  const sourceType = String(item.source_type || '').toLowerCase();
+  const tag = String(item.tag || '').toLowerCase();
+  const name = String(item.name || '').toLowerCase();
+  if (sourceType.includes('catalyst') || sourceType.includes('tier') || tag.includes('catalyst') || tag.includes('tier')) {
+    return true;
+  }
+  // Heuristic for class set naming patterns (e.g. "Abyssal Immolator's Grasp")
+  return /\b\w+'s\s+(grasp|gauntlets|handguards|gloves|hood|helm|crown|mantle|spaulders|shoulders|raiment|robes|chestguard|waistwrap|girdle|leggings|legguards|greaves|treads|boots)\b/i.test(name);
+
+}
 
 interface UpgradeOption {
   bonus_id: number;
@@ -54,7 +67,6 @@ export default function TopGearSlotGroup({
   slots,
   equipped,
   alternatives,
-  selectedUids,
   upgradeMenuFor,
   upgradeOptions,
   loadingUpgrades,
@@ -73,7 +85,7 @@ export default function TopGearSlotGroup({
   getWowheadUrl,
   getWowheadData,
 }: TopGearSlotGroupProps) {
-  const allSelected = useMemo(() => {
+  useMemo(() => {
     const totalItems = equipped.length + alternatives.length;
     if (totalItems === 0) return true;
     let selectedCount = 0;
@@ -85,7 +97,6 @@ export default function TopGearSlotGroup({
     });
     return selectedCount === totalItems;
   }, [equipped, alternatives, isItemSelected]);
-
   return (
     <div className="card group/card space-y-1.5 p-4 transition-all hover:bg-white/[0.02]">
       <div className="flex items-center justify-between">
@@ -119,14 +130,17 @@ export default function TopGearSlotGroup({
 
       <div className="space-y-1.5">
         {equipped.map((item, idx) => (
+          (() => {
+            const showOffSpecWarning = item.off_spec && !isTierOrCatalystItem(item);
+            return (
           <GearItemRow
             key={`eq-${idx}`}
             icon={item.icon}
             name={item.name}
             nameColor={item.quality_color}
-            specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
-            dimmed={item.off_spec === true}
+            dimmed={showOffSpecWarning === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}
             equipped
@@ -151,6 +165,8 @@ export default function TopGearSlotGroup({
               onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
             />
           </GearItemRow>
+            );
+          })()
         ))}
 
         {equipped.length > 0 && alternatives.length > 0 && (
@@ -158,14 +174,17 @@ export default function TopGearSlotGroup({
         )}
 
         {alternatives.map((item, idx) => (
+          (() => {
+            const showOffSpecWarning = item.off_spec && !isTierOrCatalystItem(item);
+            return (
           <GearItemRow
             key={`alt-${idx}`}
             icon={item.icon}
             name={item.name}
             nameColor={item.quality_color}
-            specWarning={item.off_spec ? OFF_SPEC_WARNING : undefined}
+            specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
-            dimmed={item.off_spec === true}
+            dimmed={showOffSpecWarning === true}
             details={itemDetails(item)}
             ilevel={item.ilevel}
             selectable
@@ -194,6 +213,8 @@ export default function TopGearSlotGroup({
               onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
             />
           </GearItemRow>
+            );
+          })()
         ))}
       </div>
     </div>

@@ -43,6 +43,7 @@ interface AddItemModalProps {
         icon: string;
         quality: number;
       };
+      ascendant_voidcore?: boolean;
     }
   ) => void;
   className?: string | null;
@@ -178,6 +179,19 @@ interface GemDisplay {
   icon: string;
   quality: number;
   expansion: number;
+}
+
+function isWeaponOrTrinketInventoryType(inventoryType: number): boolean {
+  return [12, 13, 14, 17, 21, 22, 23].includes(Number(inventoryType));
+}
+
+function isAscendantEligible(item: ExternalItem, tier: any, category: string): boolean {
+  if (!tier || !isWeaponOrTrinketInventoryType(item.inventory_type)) return false;
+  const track = String(tier.track || '').toLowerCase();
+  const fullyUpgraded = Number(tier.level || 0) >= Number(tier.maxLevel || 0) && Number(tier.maxLevel || 0) > 0;
+  if (!fullyUpgraded) return false;
+  if (category === 'crafted') return track.includes('crafted') || track.includes('radiance');
+  return track.includes('hero') || track.includes('myth');
 }
 
 const CRAFTED_ALL_ITEMS_ID = -100;
@@ -395,6 +409,51 @@ const getMappedTrackName = (
   return info?.track || raidTrack || '';
 };
 
+function dungeonDifficultyKeyCandidates(selectedDifficulty: string): string[] {
+  const raw = String(selectedDifficulty || '').trim();
+  if (!raw) return [];
+  const lower = raw.toLowerCase();
+  const out = new Set<string>([raw, lower]);
+  if (lower.startsWith('mythic+')) {
+    const level = lower.replace('mythic+', '');
+    out.add(`+${level}`);
+    out.add(`mythic_plus_${level}`);
+    out.add(`mythic-plus-${level}`);
+  } else if (/^\+\d+$/.test(lower)) {
+    const level = lower.slice(1);
+    out.add(`mythic+${level}`);
+    out.add(`mythic_plus_${level}`);
+    out.add(`mythic-plus-${level}`);
+  } else if (lower.startsWith('mythic_plus_')) {
+    const level = lower.replace('mythic_plus_', '');
+    out.add(`mythic+${level}`);
+    out.add(`+${level}`);
+  }
+  return Array.from(out);
+}
+
+function resolveInfoForDifficulty(
+  item: ExternalItem,
+  selectedDifficulty: string,
+  category: string
+): any {
+  if (category !== 'dungeon') {
+    return item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty] || null;
+  }
+
+  for (const key of dungeonDifficultyKeyCandidates(selectedDifficulty)) {
+    if (item.dungeon_info?.[key]) return item.dungeon_info[key];
+  }
+  for (const key of dungeonDifficultyKeyCandidates(selectedDifficulty)) {
+    if (item.difficulty_info?.[key]) return item.difficulty_info[key];
+  }
+  return null;
+}
+
+function hasAvailableDifficulty(item: ExternalItem, difficulty: string, category: string): boolean {
+  return !!resolveInfoForDifficulty(item, difficulty, category);
+}
+
 function collectCraftedIlevels(item: ExternalItem, upgradeTracks: Record<string, any>): Array<{ ilvl: number; bonus_id: number; key: string }> {
   if (Array.isArray(item.crafted_levels) && item.crafted_levels.length > 0) {
     return Array.from(new Set(item.crafted_levels))
@@ -450,27 +509,28 @@ const getEffectiveTier = (
         : item.difficulty_info?.[chosen.infoDiff];
     if (!infoBlock) return null;
 
-    const baseLevel = infoBlock.level || 1;
-    const currentLevel = Math.max(baseLevel, itemTiers[item.item_id] || baseLevel);
     const trackName = infoBlock.track || chosen.label;
     const track = upgradeTracks[trackName];
+    const trackMaxLevel = track ? track[track.length - 1].level : UPGRADE_TRACK_MAX_LEVEL;
+    const baseLevel = infoBlock.level || 1;
+    const defaultLevel = Math.max(1, Math.min(baseLevel, trackMaxLevel));
+    const currentLevel = Math.max(1, Math.min(itemTiers[item.item_id] || defaultLevel, trackMaxLevel));
 
     const levelInfo = track?.find((t: any) => t.level === currentLevel);
 
     return {
       track: trackName,
       level: currentLevel,
-      maxLevel: infoBlock.max_level || (track ? track[track.length - 1].level : UPGRADE_TRACK_MAX_LEVEL),
+      maxLevel: track ? track[track.length - 1].level : UPGRADE_TRACK_MAX_LEVEL,
       ilvl: levelInfo?.ilvl || infoBlock.ilvl,
-      baseLevel,
+      baseLevel: 1,
       baseIlvl: infoBlock.ilvl,
       bonus_id: infoBlock.bonus_id || 0,
       quality: infoBlock.quality ?? item.quality,
     };
   }
 
-  const info =
-    item.difficulty_info?.[selectedDifficulty] || item.dungeon_info?.[selectedDifficulty];
+  const info = resolveInfoForDifficulty(item, selectedDifficulty, category);
 
   if (category === 'crafted') {
     const levels = collectCraftedIlevels(item, upgradeTracks);
@@ -496,18 +556,20 @@ const getEffectiveTier = (
   const trackName = getMappedTrackName(selectedDifficulty, info);
   if (!info || !trackName) return null;
 
-  const baseLevel = info.level || 1;
-  const currentLevel = Math.max(baseLevel, itemTiers[item.item_id] || baseLevel);
   const track = upgradeTracks[trackName];
   if (!track || !Array.isArray(track)) return null;
+  const trackMaxLevel = track[track.length - 1].level;
+  const baseLevel = info.level || 1;
+  const defaultLevel = Math.max(1, Math.min(baseLevel, trackMaxLevel));
+  const currentLevel = Math.max(1, Math.min(itemTiers[item.item_id] || defaultLevel, trackMaxLevel));
 
   const levelInfo = track.find((t: any) => t.level === currentLevel);
   return {
     track: trackName,
     level: currentLevel,
-    maxLevel: info.max_level || track[track.length - 1].level,
+    maxLevel: track[track.length - 1].level,
     ilvl: levelInfo?.ilvl || info.ilvl,
-    baseLevel,
+    baseLevel: 1,
     baseIlvl: info.ilvl,
     bonus_id: info.bonus_id,
     quality: info.quality || item.quality,
@@ -529,6 +591,7 @@ export default function AddItemModal({
   >({});
   const [rawGems, setRawGems] = useState<RawGem[]>([]);
   const [itemGems, setItemGems] = useState<Record<number, GemDisplay | null>>({});
+  const [itemAscendant, setItemAscendant] = useState<Record<number, boolean>>({});
   const [craftedFilterSlot, setCraftedFilterSlot] = useState<string | null>(null);
 
   const inventoryTypeToSlot = useMemo<Record<number, string>>(
@@ -657,6 +720,7 @@ export default function AddItemModal({
     setItemMissives({});
     setItemEmbellishments({});
     setItemGems({});
+    setItemAscendant({});
   }, [
     category,
     selectedDifficulty,
@@ -664,6 +728,7 @@ export default function AddItemModal({
     setItemTiers,
     setItemMissives,
     setItemEmbellishments,
+    setItemAscendant,
   ]);
 
   useEffect(() => {
@@ -735,6 +800,7 @@ export default function AddItemModal({
         const matching = items.filter(
           (i) =>
             includeCraftedItem(i) &&
+            (category !== 'dungeon' || hasAvailableDifficulty(i, selectedDifficulty, category)) &&
             (i.name.toLowerCase().includes(globalSearch.toLowerCase()) ||
               i.encounter.toLowerCase().includes(globalSearch.toLowerCase())) &&
             (i.name.toLowerCase().includes(localSearch.toLowerCase()) ||
@@ -753,6 +819,7 @@ export default function AddItemModal({
     drops,
     globalSearch,
     localSearch,
+    selectedDifficulty,
     effectiveSlotFilter,
     craftedPvpOnly,
     groupBy,
@@ -933,6 +1000,8 @@ export default function AddItemModal({
       upgradeTracks,
       category
     );
+    const ascendantApplied = Boolean(itemAscendant[item.item_id]) && isAscendantEligible(item, resolvedTier, category);
+    const ascendantBonusIlvl = ascendantApplied ? (category === 'crafted' ? 10 : 9) : 0;
     const selectedLevel = resolvedTier?.level || itemTiers[item.item_id] || 1;
     const selectedEmbellishment = itemEmbellishments[item.item_id] || null;
     const selectedGem = itemGems[item.item_id] || null;
@@ -997,7 +1066,7 @@ export default function AddItemModal({
       if (tier) {
         onAdd(item, 'normal', {
           bonus_ids: withEmbellishment(withCraftingBonuses(tier.bonus_id ? [tier.bonus_id] : [])),
-          ilvl: tier.ilvl,
+          ilvl: tier.ilvl + ascendantBonusIlvl,
           track_name: tier.track,
           level: tier.level,
           max_level: tier.maxLevel,
@@ -1007,11 +1076,12 @@ export default function AddItemModal({
           crafted_variable_bonus_pool: craftedVariableBonusPool,
           embellishment: embellishmentOverride,
           gem: gemOverride,
+          ascendant_voidcore: ascendantApplied,
         });
       } else {
         onAdd(item, 'normal', {
           bonus_ids: withEmbellishment(withCraftingBonuses([])),
-          ilvl: item.ilevel,
+          ilvl: item.ilevel + ascendantBonusIlvl,
           track_name: '',
           level: 0,
           crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
@@ -1019,13 +1089,13 @@ export default function AddItemModal({
           crafted_variable_bonus_pool: craftedVariableBonusPool,
           embellishment: embellishmentOverride,
           gem: gemOverride,
+          ascendant_voidcore: ascendantApplied,
         });
       }
       return;
     }
 
-    const info =
-      item.difficulty_info?.[effectiveDifficulty] || item.dungeon_info?.[effectiveDifficulty];
+    const info = resolveInfoForDifficulty(item, effectiveDifficulty, category);
     const trackName = getMappedTrackName(effectiveDifficulty, info);
     const baseBonusIds = info?.bonus_id ? [info.bonus_id] : [];
 
@@ -1039,7 +1109,7 @@ export default function AddItemModal({
       
       onAdd(item, levelInfo.key, {
         bonus_ids: withEmbellishment(withCraftingBonuses(craftedBaseBonusIds)),
-        ilvl: levelInfo.ilvl,
+        ilvl: levelInfo.ilvl + ascendantBonusIlvl,
         track_name: 'Radiance Crafted',
         level: boundedLevel,
         max_level: levels.length,
@@ -1049,6 +1119,7 @@ export default function AddItemModal({
         crafted_variable_bonus_pool: craftedVariableBonusPool,
         embellishment: embellishmentOverride,
         gem: gemOverride,
+        ascendant_voidcore: ascendantApplied,
       });
       return;
     }
@@ -1061,7 +1132,7 @@ export default function AddItemModal({
           bonus_ids: withEmbellishment(
             withCraftingBonuses(Array.from(new Set([...baseBonusIds, levelInfo.bonus_id])))
           ),
-          ilvl: levelInfo.ilvl,
+          ilvl: levelInfo.ilvl + ascendantBonusIlvl,
           track_name: trackName,
           level: selectedLevel,
           max_level: resolvedTier?.maxLevel,
@@ -1071,6 +1142,7 @@ export default function AddItemModal({
           crafted_variable_bonus_pool: craftedVariableBonusPool,
           embellishment: embellishmentOverride,
           gem: gemOverride,
+          ascendant_voidcore: ascendantApplied,
         });
         return;
       }
@@ -1091,6 +1163,7 @@ export default function AddItemModal({
             crafted_variable_bonus_pool: craftedVariableBonusPool,
             embellishment: embellishmentOverride,
             gem: gemOverride,
+            ascendant_voidcore: ascendantApplied,
           }
         : {
             bonus_ids: withEmbellishment(withCraftingBonuses([])),
@@ -1102,6 +1175,7 @@ export default function AddItemModal({
             crafted_variable_bonus_pool: craftedVariableBonusPool,
             embellishment: embellishmentOverride,
             gem: gemOverride,
+            ascendant_voidcore: ascendantApplied,
           }
     );
   };
@@ -1176,11 +1250,6 @@ export default function AddItemModal({
                       </button>
                     ))}
                   </div>
-                  {category === 'crafted' && (
-                    <span className="rounded-md bg-gold px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-black shadow-sm">
-                      Quality 5
-                    </span>
-                  )}
                 </div>
               )}
             </div>
@@ -1497,12 +1566,45 @@ export default function AddItemModal({
                                 </div>
                               </div>
                             )}
+                            {(() => {
+                              const eligible = isAscendantEligible(item, tier, category);
+                              if (!eligible) return null;
+                              return (
+                                <div
+                                  className="mt-2 space-y-2 border-t border-white/5 pt-2"
+                                  data-stop-add="true"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <label className="flex items-center gap-2 text-xs text-zinc-200">
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(itemAscendant[item.item_id])}
+                                      onChange={(e) =>
+                                        setItemAscendant((prev) => ({
+                                          ...prev,
+                                          [item.item_id]: e.target.checked,
+                                        }))
+                                      }
+                                    />
+                                    <span>Apply Ascendant Voidcore</span>
+                                    <a
+                                      href="https://www.wowhead.com/search?q=Ascendant%20Voidcore"
+                                      data-wowhead="search=Ascendant Voidcore"
+                                      className="text-[11px] text-sky-300 underline"
+                                      onClick={(e) => e.preventDefault()}
+                                    >
+                                      (Wowhead)
+                                    </a>
+                                  </label>
+                                </div>
+                              );
+                            })()}
                             {tier && tier.maxLevel > 1 && (
                               <div className="mt-2 space-y-1">
                                 <div className="flex items-center justify-between text-[11px] font-semibold text-white">
                                   <span>
                                     {tier.track === 'Crafted'
-                                      ? `Level ${tier.level}/${tier.maxLevel}`
+                                      ? `Quality ${tier.level}/${tier.maxLevel}`
                                       : `${tier.track} ${tier.level}/${tier.maxLevel}`}
                                   </span>
                                   <span className="font-mono">
@@ -1530,6 +1632,23 @@ export default function AddItemModal({
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-full"
                                 />
+                                <div className="flex items-center justify-between px-1 pt-0.5">
+                                  {Array.from(
+                                    { length: Math.max(0, tier.maxLevel - (tier.baseLevel || 1) + 1) },
+                                    (_, index) => {
+                                      const level = (tier.baseLevel || 1) + index;
+                                      const active = level <= tier.level;
+                                      return (
+                                        <span
+                                          key={`${item.item_id}-tier-dot-${level}`}
+                                          className={`h-1.5 w-1.5 rounded-full ${
+                                            active ? 'bg-gold/90' : 'bg-zinc-600/70'
+                                          }`}
+                                        />
+                                      );
+                                    }
+                                  )}
+                                </div>
                               </div>
                             )}
                           </div>

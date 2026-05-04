@@ -380,7 +380,16 @@ export function GearSlotRow({
     Number((info as any)?.sockets || 0) > 0 || Number(item.gem_id || 0) > 0;
   const enchantEligible = ENCHANTABLE_SLOTS.has(slot);
 
-  const details = [
+  const details: Array<{
+    text: string;
+    kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+    badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
+    color?: string;
+    tooltip?: string;
+    icon?: string;
+    href?: string;
+    wowheadData?: string;
+  }> = [
     {
       text: `${label} - ${item.ilevel || 0}${displayTag ? ` - ${displayTag}` : ''}`,
       kind: 'plain' as const,
@@ -393,6 +402,21 @@ export function GearSlotRow({
       tooltip: levelChanged ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}` : undefined,
     },
   ];
+  const hasAscendantVoidcore =
+    /(?:^|\s)mod:268552(?:\s|$)/i.test(String(item.source_type || '')) ||
+    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
+    String(item.name || '').toLowerCase().includes('ascendant');
+  if (hasAscendantVoidcore) {
+    details.push({
+      text: 'Ascendant Voidcore',
+      kind: 'iconText' as const,
+      badgeVariant: 'mod',
+      icon: 'inv_1205_voidforge_sovereignvoidcores_cosmicvoid',
+      href: 'https://www.wowhead.com/item=268552/ascendant-voidcore',
+      wowheadData: 'item=268552',
+      color: 'text-amber-200 border-amber-400/50 bg-amber-500/18',
+    });
+  }
 
   return (
     <div

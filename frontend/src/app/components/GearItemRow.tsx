@@ -7,6 +7,7 @@ interface DetailPart {
   text: string;
   color?: string;
   kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
+  badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
   icon?: string;
   href?: string;
   wowheadData?: string;
@@ -267,38 +268,16 @@ export default function GearItemRow({
                   );
                 })()
               ) : p.kind === 'iconText' && p.icon ? (
-                (() => {
-                  const detailIconUrl = getIconUrl(p.icon);
-                  return (
-                <a
+                <ItemBadge
                   key={i}
+                  text={p.text}
+                  icon={p.icon}
                   href={p.href}
-                  data-wowhead={p.wowheadData}
-                  title={p.wowheadData ? undefined : p.tooltip || p.text}
-                  className={`inline-flex min-w-0 max-w-full items-start gap-1 rounded-md border border-emerald-400/35 bg-emerald-500/10 px-1.5 py-0.5 text-[12px] leading-snug ${p.color || 'text-emerald-300'}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={p.href ? (e) => e.preventDefault() : undefined}
-                >
-                  {detailIconUrl ? (
-                    <img
-                      src={detailIconUrl}
-                      alt={p.text}
-                      width={16}
-                      height={16}
-                      className="h-4 w-4 rounded-[3px]"
-                    />
-                  ) : (
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-[3px] bg-white/10 text-[10px]">
-                      ?
-                    </span>
-                  )}
-                  <span className="min-w-0 whitespace-normal break-words leading-snug">
-                    {p.text}
-                  </span>
-                </a>
-                  );
-                })()
+                  wowheadData={p.wowheadData}
+                  title={p.tooltip || p.text}
+                  variant={p.badgeVariant || 'neutral'}
+                  className={p.color || ''}
+                />
               ) : p.kind === 'plain' ? (
                 <span
                   key={i}
@@ -308,13 +287,13 @@ export default function GearItemRow({
                   {p.text}
                 </span>
               ) : (
-                <span
+                <ItemBadge
                   key={i}
-                  className={`inline-flex max-w-full items-center rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[12px] leading-snug text-zinc-300 ${p.color || ''}`}
+                  text={p.text}
                   title={p.tooltip || p.text}
-                >
-                  {p.text}
-                </span>
+                  variant="neutral"
+                  className={p.color || ''}
+                />
               )
             )}
           </div>
@@ -386,3 +365,4 @@ export default function GearItemRow({
     </div>
   );
 }
+import ItemBadge from './shared/ItemBadge';

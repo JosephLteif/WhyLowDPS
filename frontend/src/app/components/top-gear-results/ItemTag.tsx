@@ -2,6 +2,7 @@ import { getIconUrl, getWowheadData, getWowheadUrl, QUALITY_COLORS } from '../..
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import type { ResultItem } from '../../lib/types';
 import { SLOT_LABELS } from '../../lib/types';
+import ItemBadge from '../shared/ItemBadge';
 
 interface ItemTagProps {
   item: ResultItem;
@@ -28,6 +29,10 @@ export default function ItemTag({
   gemChanged = false,
   enchantChanged = false,
 }: ItemTagProps) {
+  const hasAscendantVoidcore =
+    /(?:^|\s)mod:268552(?:\s|$)/i.test(String(item.source_type || '')) ||
+    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
+    String(item.tag || '').toLowerCase().includes('ascendant');
   const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
   const name = info?.name || item.name || `Item ${item.item_id}`;
   const icon = info?.icon || 'inv_misc_questionmark';
@@ -164,6 +169,17 @@ export default function ItemTag({
           V
         </span>
       ) : null}
+      {hasAscendantVoidcore && (
+        <ItemBadge
+          text="Ascendant Voidcore"
+          variant="mod"
+          icon="inv_1205_voidforge_sovereignvoidcores_cosmicvoid"
+          href="https://www.wowhead.com/item=268552/ascendant-voidcore"
+          wowheadData="item=268552"
+          className="text-amber-200 border-amber-400/50 bg-amber-500/18"
+          iconSize={14}
+        />
+      )}
       {sourceLabel && (
         <span className="min-w-0 whitespace-normal break-words text-[13px] text-cyan-300/75">
           {sourceLabel}

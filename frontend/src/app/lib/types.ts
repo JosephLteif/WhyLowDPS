@@ -51,6 +51,7 @@ export interface ResultItem extends ResolvedItem {
 
 export interface TopGearResult {
   name: string;
+  profileset_name?: string;
   dps: number;
   delta: number;
   items: ResultItem[];

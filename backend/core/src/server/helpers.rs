@@ -448,6 +448,20 @@ pub(super) fn spawn_staged_sim(
                     }
                 }
 
+                if let Some(baseline_live_stats) = job_snap
+                    .as_ref()
+                    .and_then(|j| j.options.as_ref())
+                    .and_then(|options| options.get("baseline_live_stats"))
+                    .filter(|stats| !stats.is_null())
+                {
+                    if let Some(obj) = parsed.as_object_mut() {
+                        obj.insert(
+                            "baseline_live_stats".to_string(),
+                            baseline_live_stats.clone(),
+                        );
+                    }
+                }
+
                 inject_realm(&mut parsed, &simc_input);
                 let result_str = serde_json::to_string(&parsed).unwrap_or_default();
                 let raw_str = serde_json::to_string(&output.json).ok();

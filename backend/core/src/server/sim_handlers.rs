@@ -174,6 +174,21 @@ pub(super) async fn create_sim(
         {
             Ok(output) => {
                 let mut parsed = result_parser::parse_simc_result(&output.json, true);
+                if let Some(job_snap) = store_clone.get(&job_id_clone) {
+                    if let Some(baseline_live_stats) = job_snap
+                        .options
+                        .as_ref()
+                        .and_then(|options| options.get("baseline_live_stats"))
+                        .filter(|stats| !stats.is_null())
+                    {
+                        if let Some(obj) = parsed.as_object_mut() {
+                            obj.insert(
+                                "baseline_live_stats".to_string(),
+                                baseline_live_stats.clone(),
+                            );
+                        }
+                    }
+                }
                 inject_realm(&mut parsed, &simc_input);
                 let result_str = serde_json::to_string(&parsed).unwrap_or_default();
                 let raw_str = serde_json::to_string(&output.json).ok();

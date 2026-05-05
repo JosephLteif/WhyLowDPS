@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
+import SimReturnNotice from '../components/shared/SimReturnNotice';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useItemIcons, useSpellIcons } from '../lib/useWowheadIcons';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
-import { consumeSimAgainState } from '../lib/sim-return';
+import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
 
 const PLOT_STATS = [
   { value: 'haste_rating', label: 'Haste' },
@@ -92,6 +93,7 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
   const [matrixRaidBuffs, setMatrixRaidBuffs] = useState<string[]>(
     RAID_BUFF_MATRIX_OPTIONS.map((o) => o.key)
   );
+  const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
 
   useEffect(() => {
     if (forcedMode) {
@@ -99,6 +101,8 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
       return;
     }
     const restored = consumeSimAgainState<StatWeightsSimAgainState>(STAT_WEIGHTS_SIM_AGAIN_KEY);
+    const notice = consumeSimReturnNotice(STAT_WEIGHTS_SIM_AGAIN_KEY);
+    if (notice) setReturnNotice(notice);
     if (!restored) return;
     if (
       restored.mode === 'stat_weights' ||
@@ -293,6 +297,13 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
 
   return (
     <div className="flex flex-col gap-6">
+      {returnNotice ? (
+        <SimReturnNotice
+          title={returnNotice.title}
+          message={returnNotice.message}
+          onDismiss={() => setReturnNotice(null)}
+        />
+      ) : null}
       <div className="space-y-1">
         <h2 className="text-xl font-bold tracking-tight text-zinc-100">Stat Weights</h2>
         <p className="text-sm text-zinc-400">

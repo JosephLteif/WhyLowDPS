@@ -1,13 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { API_URL } from '../lib/api';
+import { API_URL, fetchJson } from '../lib/api';
 import DpsHeroCard from './DpsHeroCard';
 import GearOverview from './GearOverview';
+import SimStatsComparisonCard from './SimStatsComparisonCard';
+import type { StatSnapshot } from '../lib/stat-snapshot';
+import { buildExactTopGearSimInput, getTopGearProfilesetName } from '../lib/top-gear-exact-stats';
 import { useItemInfo, useEnchantInfo, useGemInfo } from '../lib/useItemInfo';
 import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { TopGearResult, ResultItem } from '../lib/types';
 import { useTopGearResults } from './top-gear-results/useTopGearResults';
 import RankingsHeader from './top-gear-results/RankingsHeader';
@@ -36,6 +39,17 @@ interface TopGearResultsProps {
   talentString?: string;
   currencies?: Record<string, { id: number; name: string; icon: string }>;
   enableWishlistActions?: boolean;
+  baselineLiveStats?: StatSnapshot | null;
+  simulatedStats?: StatSnapshot | null;
+  generatedInput?: string;
+  simOptions?: Record<string, unknown> | null;
+}
+
+interface ExactStatsCacheEntry {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  simulatedStats?: StatSnapshot | null;
+  jobId?: string;
+  error?: string;
 }
 
 function dropBaselineKey(item: ResultItem): string {
@@ -82,6 +96,35 @@ function CollapsibleSection({
   );
 }
 
+function buildExactStatsRequest(
+  simcInput: string,
+  simOptions: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  return {
+    simc_input: simcInput,
+    sim_type: 'quick',
+    ...(simOptions || {}),
+    include_timeline: false,
+    batch_id: undefined,
+  };
+}
+
+async function waitForExactStats(jobId: string): Promise<StatSnapshot | null> {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const job = await fetchJson<{ status: string; result: Record<string, unknown> | null; error?: string | null }>(
+      `${API_URL}/api/sim/${jobId}`
+    );
+    if (job.status === 'done') {
+      return (job.result?.simulated_stats as StatSnapshot | undefined) || null;
+    }
+    if (job.status === 'failed' || job.status === 'cancelled') {
+      throw new Error(job.error || 'Exact stats simulation failed');
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+  throw new Error('Exact stats simulation timed out');
+}
+
 export default function TopGearResults({
   playerName,
   playerClass,
@@ -101,6 +144,10 @@ export default function TopGearResults({
   talentString,
   currencies,
   enableWishlistActions = false,
+  baselineLiveStats,
+  simulatedStats,
+  generatedInput,
+  simOptions,
 }: TopGearResultsProps) {
   const {
     groupMode,
@@ -204,6 +251,82 @@ export default function TopGearResults({
     () => selectedResult?.items.filter((it) => !it.is_kept && it.item_id > 0) ?? [],
     [selectedResult]
   );
+  const [exactStatsCache, setExactStatsCache] = useState<Record<string, ExactStatsCacheEntry>>({});
+  const warmStartedRef = useRef(false);
+
+  const loadExactStats = useCallback(
+    async (result: TopGearResult) => {
+      const profilesetName = getTopGearProfilesetName(result);
+      if (!profilesetName || !generatedInput) return;
+
+      setExactStatsCache((prev) => {
+        const existing = prev[profilesetName];
+        if (existing?.status === 'loading' || existing?.status === 'ready') {
+          return prev;
+        }
+        return {
+          ...prev,
+          [profilesetName]: {
+            status: 'loading',
+            simulatedStats: existing?.simulatedStats,
+            jobId: existing?.jobId,
+          },
+        };
+      });
+
+      try {
+        const exactInput = buildExactTopGearSimInput(generatedInput, profilesetName);
+        if (!exactInput) {
+          throw new Error('Could not build the selected Top Gear profile for an exact stat sim.');
+        }
+
+        const created = await fetchJson<{ id: string }>(`${API_URL}/api/sim`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions)),
+        });
+        const exactStats = await waitForExactStats(created.id);
+        if (!exactStats) {
+          throw new Error('Exact stat simulation finished without a stat snapshot.');
+        }
+
+        setExactStatsCache((prev) => ({
+          ...prev,
+          [profilesetName]: {
+            status: 'ready',
+            simulatedStats: exactStats,
+            jobId: created.id,
+          },
+        }));
+      } catch (error) {
+        setExactStatsCache((prev) => ({
+          ...prev,
+          [profilesetName]: {
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Failed to load exact stats.',
+          },
+        }));
+      }
+    },
+    [generatedInput, simOptions]
+  );
+
+  useEffect(() => {
+    if (!generatedInput || results.length === 0 || warmStartedRef.current) return;
+    warmStartedRef.current = true;
+
+    for (const result of results.slice(0, 3)) {
+      void loadExactStats(result);
+    }
+  }, [generatedInput, results, loadExactStats]);
+
+  const selectedProfilesetName = selectedResult ? getTopGearProfilesetName(selectedResult) : null;
+  const selectedExactStatsEntry = selectedProfilesetName
+    ? exactStatsCache[selectedProfilesetName]
+    : undefined;
+  const selectedExactSimulatedStats =
+    selectedExactStatsEntry?.status === 'ready' ? selectedExactStatsEntry.simulatedStats || null : null;
+  const canLoadSelectedExactStats = Boolean(selectedResult && selectedProfilesetName && generatedInput);
 
   const handleAddSelectedToWishlist = () => {
     if (changedSelectedItems.length === 0) {
@@ -313,20 +436,85 @@ export default function TopGearResults({
 
       {hasGearOverview && (
         <CollapsibleSection title="Character Panel">
-          <GearOverview
-            gear={bestGearSet}
-            title={
-              selectedResultName && selectedResultName !== results[0]?.name
-                ? 'Selected Gear'
-                : 'Best Gear'
-            }
-            characterRenderUrl={characterRenderUrl}
-            equippedGear={equippedGear}
-            dropBaselineIlevelByKey={dropBaselineIlevelByKey}
-            upgradeSlots={upgradeSlots}
-            downgradeSlots={downgradeSlots}
-            currencies={currencies}
-          />
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.95fr)] xl:items-start">
+            <GearOverview
+              gear={bestGearSet}
+              title={
+                selectedResultName && selectedResultName !== results[0]?.name
+                  ? 'Selected Gear'
+                  : 'Best Gear'
+              }
+              characterRenderUrl={characterRenderUrl}
+              equippedGear={equippedGear}
+              dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+              upgradeSlots={upgradeSlots}
+              downgradeSlots={downgradeSlots}
+              currencies={currencies}
+              framed={false}
+              comparisonMode="result"
+            />
+
+            {(simulatedStats || generatedInput) ? (
+              <div className="xl:sticky xl:top-24">
+                {selectedExactSimulatedStats ? (
+                  <SimStatsComparisonCard
+                    current={simulatedStats}
+                    simulated={selectedExactSimulatedStats}
+                    title="Base vs Exact Selected Stats"
+                    description="Base is the currently equipped simulated profile from the main Top Gear run. Selected is the exact follow-up simulation for the row you chose."
+                    currentLabel="Base"
+                    simulatedLabel="Selected"
+                  />
+                ) : (
+                  <div className="card overflow-hidden border-border/70 bg-surface/95">
+                    <div className="flex items-start justify-between gap-4 border-b border-border/60 px-4 py-4 sm:px-5">
+                      <div className="space-y-1">
+                        <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-400">
+                          Exact Simulated Stats
+                        </h3>
+                        <p className="max-w-xl text-[12px] leading-5 text-zinc-400">
+                          Load an exact follow-up sim for the selected Top Gear row to compare it against
+                          the base simulated profile from the main Top Gear run.
+                        </p>
+                      </div>
+                      {canLoadSelectedExactStats ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedResult) void loadExactStats(selectedResult);
+                          }}
+                          disabled={selectedExactStatsEntry?.status === 'loading'}
+                          className="shrink-0 rounded border border-gold/35 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold transition-colors hover:bg-gold/20 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {selectedExactStatsEntry?.status === 'loading'
+                            ? 'Loading Exact Stats...'
+                            : 'Load Exact Stats'}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="space-y-3 px-4 py-5 sm:px-5">
+                      <p className="text-[13px] text-zinc-300">
+                        {!canLoadSelectedExactStats
+                          ? 'Exact stats are unavailable for this older result. Run Top Gear again to enable row-specific stat snapshots.'
+                          : selectedResultName && selectedResultName !== results[0]?.name
+                          ? `Exact stats for "${selectedResultName}" have not been loaded yet.`
+                          : 'The top result exact stats are being prepared or can be loaded on demand.'}
+                      </p>
+                      {selectedExactStatsEntry?.status === 'error' ? (
+                        <p className="text-[12px] text-red-300">
+                          {selectedExactStatsEntry.error || 'Failed to load exact stats.'}
+                        </p>
+                      ) : null}
+                      <p className="text-[12px] text-zinc-500">
+                        Rows 1, 2, and 3 begin warming as soon as the page loads, and any other selected
+                        row can be loaded from here.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
         </CollapsibleSection>
       )}
 

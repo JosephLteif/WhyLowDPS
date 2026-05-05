@@ -25,14 +25,14 @@ const baseNavItems: NavItem[] = [
     matchPaths: ['/'],
   },
   {
-    href: '/quick-sim',
+    href: '/top-gear',
     label: 'Sim',
     description: 'Run sims and optimize setups.',
     icon: 'M13 8l-5 5-5-5M3 3h10',
     matchPaths: ['/quick-sim', '/top-gear'],
     children: [
-      { href: '/quick-sim', label: 'Quick Sim', description: 'DPS and ability breakdown' },
       { href: '/top-gear', label: 'Top Gear', description: 'Best gear from your bags' },
+      { href: '/quick-sim', label: 'Quick Sim', description: 'DPS and ability breakdown' },
     ],
   },
   {

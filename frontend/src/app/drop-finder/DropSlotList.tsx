@@ -35,6 +35,7 @@ interface DropSlotListProps {
   upgradeTracks: UpgradeTracks;
   headerLabel: string;
   headerActions?: ReactNode;
+  headerBreakdown?: ReactNode;
   isWishlisted: (itemId: number) => boolean;
   onToggleWishlist: (
     item: DropItem,
@@ -57,10 +58,17 @@ export default function DropSlotList({
   upgradeTracks,
   headerLabel,
   headerActions,
+  headerBreakdown,
   isWishlisted,
   onToggleWishlist,
 }: DropSlotListProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
+  const baseButtonClass =
+    'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors';
+  const goldButtonClass =
+    'border-gold/45 bg-gold/[0.12] text-gold hover:bg-gold/[0.2]';
+  const mutedButtonClass =
+    'border-zinc-600 bg-zinc-900/70 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800';
 
   const visibleDrops = useMemo(() => {
     const next: Record<string, DropItem[]> = {};
@@ -125,47 +133,52 @@ export default function DropSlotList({
   return (
     <div className="space-y-4">
       <div className="sticky top-14 z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-3 py-2 shadow-md backdrop-blur-sm">
-        <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted">
-          {headerLabel} &mdash; {totalItems} items
+        <div className="flex items-start justify-between gap-3">
+        <p className="pt-2 text-sm text-white">
+            {headerLabel} &mdash; {totalItems} items
           {selected.size > 0 && (
             <span className="ml-1.5 text-gold">({selected.size} selected)</span>
           )}
         </p>
-          <div className="flex items-center gap-3">
-          <div className="flex gap-1.5">
-            {(
-              [
-                ['instance', 'By Instance'],
-                ['slot', 'By Slot'],
-              ] as const
-            ).map(([mode, label]) => (
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-3">
+              <div className="flex gap-1.5">
+                {(
+                  [
+                    ['instance', 'By Instance'],
+                    ['slot', 'By Slot'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    onClick={() => setGroupMode(mode)}
+                    className={`${baseButtonClass} ${
+                      groupMode === mode
+                        ? 'border-white bg-white text-black'
+                        : mutedButtonClass
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               <button
-                key={mode}
-                onClick={() => setGroupMode(mode)}
-                className={`rounded border px-3 py-1.5 text-sm font-medium transition-all ${
-                  groupMode === mode
-                    ? 'border-white bg-white text-black'
-                    : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
-                }`}
+                onClick={() => onSelectAll(visibleItemIds)}
+                className={`${baseButtonClass} ${goldButtonClass}`}
               >
-                {label}
+                Select all
               </button>
-            ))}
-          </div>
-          <button
-            onClick={() => onSelectAll(visibleItemIds)}
-            className="text-sm text-zinc-300 transition-colors hover:text-zinc-100"
-          >
-            Select all
-          </button>
-          <button
-            onClick={onClear}
-            className="text-sm text-zinc-300 transition-colors hover:text-zinc-100"
-          >
-            Clear
-          </button>
-            {headerActions}
+              <button
+                onClick={onClear}
+                className={`${baseButtonClass} ${mutedButtonClass}`}
+              >
+                Clear
+              </button>
+              {headerActions}
+            </div>
+            {headerBreakdown ? (
+              <p className="text-right text-xs text-emerald-300/90">{headerBreakdown}</p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -277,11 +290,23 @@ function DropItemCard({
         </svg>
       </button>
       <div className="relative shrink-0">
-        <img
-          src={`https://render.worldofwarcraft.com/icons/56/${item.icon}.jpg`}
-          alt=""
-          className={`h-8 w-8 rounded ${isOffSpec ? 'opacity-70' : ''}`}
-        />
+        <a
+          href={`https://www.wowhead.com/item=${item.item_id}`}
+          data-wowhead={`item=${item.item_id}${effectiveBonusId ? `&bonus=${effectiveBonusId}` : ''}`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          className="block"
+        >
+          <img
+            src={`https://render.worldofwarcraft.com/icons/56/${item.icon}.jpg`}
+            alt=""
+            className={`h-8 w-8 rounded ${isOffSpec ? 'opacity-70' : ''}`}
+          />
+        </a>
         {isOffSpec && (
           <div
             className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[11px] font-bold text-black"

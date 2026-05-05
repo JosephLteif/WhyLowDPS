@@ -7,7 +7,7 @@ import { useAuth } from './AuthContext';
 const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
 
 const LABEL_TO_HREF: Record<string, string> = {
-  Sim: '/quick-sim',
+  Sim: '/top-gear',
   Analysis: '/analysis/quick-weights',
   Dashboard: '/',
   Upgrades: '/drop-finder',

@@ -16,6 +16,7 @@ interface TopGearUpgradeButtonProps {
   upgradeMenuFor: string | null;
   upgradeOptions: UpgradeOption[];
   loadingUpgrades: boolean;
+  hasUpgradePath?: boolean;
   onUpgradeClick: () => void;
   onUpgradeSelect: (opt: UpgradeOption) => void;
   onCatalystConvert?: () => void;
@@ -27,6 +28,7 @@ export default function TopGearUpgradeButton({
   upgradeMenuFor,
   upgradeOptions,
   loadingUpgrades,
+  hasUpgradePath = true,
   onUpgradeClick,
   onUpgradeSelect,
   onCatalystConvert,
@@ -40,7 +42,7 @@ export default function TopGearUpgradeButton({
     currentLevel != null && maxLevel != null && Number.isFinite(currentLevel) && Number.isFinite(maxLevel)
       ? currentLevel >= maxLevel
       : false;
-  const showUpgradeButton = !!item.upgrade && !isTrackMaxed;
+  const showUpgradeButton = !!item.upgrade && !isTrackMaxed && hasUpgradePath;
   const canRender = showUpgradeButton || !!onCatalystConvert || !!onOptimize;
   const isMenuOpen = upgradeMenuFor === item.uid;
   useDismissOnOutside(rootRef, isMenuOpen, () => {

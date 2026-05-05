@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useSpellIcons } from '../lib/useWowheadIcons';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 interface MatrixResult {
@@ -18,43 +19,6 @@ const BUFF_META: Record<string, { spellId: number }> = {
   'Blessing of Bronze': { spellId: 381748 },
   'Augmentation Evoker Buffs': { spellId: 395152 },
 };
-
-const iconCache = new Map<number, string>();
-
-function useSpellIcons(spellIds: number[]) {
-  const [icons, setIcons] = useState<Map<number, string>>(new Map());
-  const depKey = spellIds.join(',');
-
-  useEffect(() => {
-    const missing = spellIds.filter((id) => id > 0 && !iconCache.has(id));
-    if (missing.length === 0) {
-      setIcons(new Map(iconCache));
-      return;
-    }
-    let cancelled = false;
-    Promise.all(
-      missing.map(async (id) => {
-        try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`
-          );
-          if (!res.ok) return;
-          const data = await res.json();
-          if (data?.icon) iconCache.set(id, data.icon);
-        } catch {
-          // ignore icon fetch errors
-        }
-      })
-    ).then(() => {
-      if (!cancelled) setIcons(new Map(iconCache));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return icons;
-}
 
 export default function ExternalBuffMatrixChart({
   baseDps,

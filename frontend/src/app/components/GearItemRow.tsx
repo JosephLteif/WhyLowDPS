@@ -1,3 +1,5 @@
+import ItemBadge from './shared/ItemBadge';
+
 /**
  * Shared gear item row used across Top Gear, Upgrade Compare, and other pages.
  * Renders an item with icon, quality-colored name, detail parts, and optional checkbox.
@@ -365,4 +367,3 @@ export default function GearItemRow({
     </div>
   );
 }
-import ItemBadge from './shared/ItemBadge';

@@ -1,70 +1,27 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import { API_URL, fetchJson, isDesktop } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
-import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
-import {
-  isValidUpdateChannel,
-  readStoredUpdateChannel,
-  UPDATE_CHANNEL_OPTIONS,
-  UPDATE_CHANNEL_STORAGE_KEY,
-  type UpdateChannel,
-} from '../lib/update-channel';
+import { isValidUpdateChannel } from '../lib/update-channel';
+import { chooseBestRefreshUnit, type RefreshUnit } from './refreshInterval';
+import DataCacheSettingsSection from './components/DataCacheSettingsSection';
+import DataFilePreviewModal from './components/DataFilePreviewModal';
+import DataFileStateModal from './components/DataFileStateModal';
+import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
+import UpdatesSettingsSection from './components/UpdatesSettingsSection';
+import { useDataCacheRefresh } from './useDataCacheRefresh';
+import { useDataFileStateManager } from './useDataFileStateManager';
+import { useSettingsUpdater } from './useSettingsUpdater';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3 },
   { label: 'Performance', pct: 0.6 },
   { label: 'Maximum', pct: 0.9 },
 ] as const;
-type RefreshUnit = 'minutes' | 'hours' | 'days' | 'weeks';
-const UNIT_TO_MINUTES: Record<RefreshUnit, number> = {
-  minutes: 1,
-  hours: 60,
-  days: 60 * 24,
-  weeks: 60 * 24 * 7,
-};
-const chooseBestUnit = (minutes: number): { value: number; unit: RefreshUnit } => {
-  if (minutes <= 0) return { value: 0, unit: 'minutes' };
-  if (minutes % UNIT_TO_MINUTES.weeks === 0) {
-    return { value: Math.floor(minutes / UNIT_TO_MINUTES.weeks), unit: 'weeks' };
-  }
-  if (minutes % UNIT_TO_MINUTES.days === 0) {
-    return { value: Math.floor(minutes / UNIT_TO_MINUTES.days), unit: 'days' };
-  }
-  if (minutes % UNIT_TO_MINUTES.hours === 0) {
-    return { value: Math.floor(minutes / UNIT_TO_MINUTES.hours), unit: 'hours' };
-  }
-  return { value: minutes, unit: 'minutes' };
-};
-
-interface DataFileState {
-  key: string;
-  label: string;
-  section: string;
-  relative_path: string;
-  required: boolean;
-  downloadable: boolean;
-  exists: boolean;
-  size_bytes: number;
-}
-
-interface DataFileStatesResponse {
-  base_path: string | null;
-  available: boolean;
-  files: DataFileState[];
-}
-
-interface DataFilePreviewResponse {
-  key: string;
-  label: string;
-  relative_path: string;
-  content: string;
-  truncated: boolean;
-}
 
 type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
@@ -95,34 +52,39 @@ export default function SettingsPage() {
   const [blizzardTesting, setBlizzardTesting] = useState(false);
   const [blizzardMessage, setBlizzardMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [performanceSaved, setPerformanceSaved] = useState(false);
-  const [cacheSyncing, setCacheSyncing] = useState(false);
-  const [cacheSyncProgress, setCacheSyncProgress] = useState<string>('');
-  const [cacheMessage, setCacheMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const [dataStateLoading, setDataStateLoading] = useState(false);
-  const [dataStateError, setDataStateError] = useState('');
-  const [dataStateMessage, setDataStateMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const [dataStateOpen, setDataStateOpen] = useState(false);
-  const [dataFileStates, setDataFileStates] = useState<DataFileStatesResponse | null>(null);
-  const [dataActionBusyKey, setDataActionBusyKey] = useState<string | null>(null);
-  const [dataFilePreview, setDataFilePreview] = useState<DataFilePreviewResponse | null>(null);
-  const [dataFilePreviewOpen, setDataFilePreviewOpen] = useState(false);
-  const [dataFilePreviewLoading, setDataFilePreviewLoading] = useState(false);
-  const [dataFilePreviewError, setDataFilePreviewError] = useState('');
-  const initialRefresh = chooseBestUnit(dataCacheRefreshMinutes);
+  const {
+    cacheSyncing,
+    cacheSyncProgress,
+    cacheMessage,
+    syncProgress,
+    syncProgressPct,
+    refreshDataCache,
+  } = useDataCacheRefresh();
+  const {
+    dataStateLoading,
+    dataStateError,
+    dataStateMessage,
+    dataStateOpen,
+    setDataStateOpen,
+    dataFileStates,
+    dataActionBusyKey,
+    dataFilePreview,
+    dataFilePreviewOpen,
+    setDataFilePreviewOpen,
+    dataFilePreviewLoading,
+    dataFilePreviewError,
+    viewDataStates,
+    refreshDataStates,
+    downloadFile,
+    downloadAllMissingFiles,
+    openDataRootDirectory,
+    showFileContent,
+    groupedDataFiles,
+    sectionSummaries,
+  } = useDataFileStateManager();
+  const initialRefresh = chooseBestRefreshUnit(dataCacheRefreshMinutes);
   const [refreshEveryValue, setRefreshEveryValue] = useState(initialRefresh.value);
   const [refreshEveryUnit, setRefreshEveryUnit] = useState<RefreshUnit>(initialRefresh.unit);
-  const [updateCheckState, setUpdateCheckState] = useState<'idle' | 'checking' | 'installing'>('idle');
-  const [updateMessage, setUpdateMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const [selectedUpdateChannel, setSelectedUpdateChannel] = useState<UpdateChannel>('stable');
   const [activeTab, setActiveTab] = useState<SettingsTab>('simulation');
   const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(true);
   const [closeBehaviorLoading, setCloseBehaviorLoading] = useState(false);
@@ -130,12 +92,14 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const dataStateModalRef = useRef<HTMLDivElement | null>(null);
-  const dataFilePreviewModalRef = useRef<HTMLDivElement | null>(null);
-  useDismissOnOutside(dataStateModalRef, dataStateOpen && !dataFilePreviewOpen, () =>
-    setDataStateOpen(false)
-  );
-  useDismissOnOutside(dataFilePreviewModalRef, dataFilePreviewOpen, () => setDataFilePreviewOpen(false));
+  const {
+    updateCheckState,
+    updateMessage,
+    selectedUpdateChannel,
+    setSelectedUpdateChannel,
+    checkForUpdatesNow,
+    downloadAndInstallLatest,
+  } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
 
   useEffect(() => {
     if (!user) {
@@ -209,52 +173,6 @@ export default function SettingsPage() {
   }, [maxCombinations, performanceSaved, user]);
 
   useEffect(() => {
-    const onUpdaterStatus = (event: Event) => {
-      const detail = (event as CustomEvent<{ status?: string; message?: string }>).detail;
-      const status = detail?.status || '';
-      const message = detail?.message || '';
-
-      if (status === 'checking') {
-        setUpdateCheckState('checking');
-        setUpdateMessage(null);
-        return;
-      }
-
-      setUpdateCheckState('idle');
-      if (status === 'available') {
-        setUpdateMessage({
-          type: 'success',
-          text: message || 'Update available. Use the bottom-right updater popup to install.',
-        });
-      } else if (status === 'downloading') {
-        setUpdateMessage({
-          type: 'success',
-          text: message || 'Downloading and installing update...',
-        });
-      } else if (status === 'downloaded') {
-        setUpdateMessage({
-          type: 'success',
-          text: message || 'Update installed. Restart the app to apply.',
-        });
-      } else if (status === 'none') {
-        setUpdateMessage({ type: 'success', text: message || 'You are on the latest version.' });
-      } else if (status === 'error') {
-        setUpdateMessage({ type: 'error', text: message || 'Failed to check for updates.' });
-      }
-    };
-
-    window.addEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
-    return () => {
-      window.removeEventListener('whylowdps-updater-status', onUpdaterStatus as EventListener);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!isDesktop) return;
-    setSelectedUpdateChannel(readStoredUpdateChannel());
-  }, []);
-
-  useEffect(() => {
     if (!isDesktop) return;
     let cancelled = false;
     setCloseBehaviorLoading(true);
@@ -276,23 +194,7 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!isDesktop) return;
-    try {
-      localStorage.setItem(UPDATE_CHANNEL_STORAGE_KEY, selectedUpdateChannel);
-    } catch {}
-    if (!performanceSaved || !user) return;
-    fetchJson(`${API_URL}/api/user/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key: 'app_update_channel',
-        value: selectedUpdateChannel,
-      }),
-    }).catch(() => {});
-  }, [performanceSaved, selectedUpdateChannel, user]);
-
-  useEffect(() => {
-    const derived = chooseBestUnit(dataCacheRefreshMinutes);
+    const derived = chooseBestRefreshUnit(dataCacheRefreshMinutes);
     setRefreshEveryValue(derived.value);
     setRefreshEveryUnit(derived.unit);
   }, [dataCacheRefreshMinutes]);
@@ -348,110 +250,6 @@ export default function SettingsPage() {
     }
   };
 
-  const parseSyncStatus = (status: any): string => {
-    if (typeof status === 'string') return status;
-    if (status && typeof status === 'object') {
-      if (status.error) return `error:${String(status.error)}`;
-    }
-    return 'unknown';
-  };
-
-  const parseProgress = (str: string) => {
-    const parts = str.split(':');
-    if (parts.length < 4) return { task: '', current: 0, total: 0, details: str };
-    return {
-      task: parts[0],
-      current: parseInt(parts[1], 10),
-      total: parseInt(parts[2], 10),
-      details: parts[3],
-    };
-  };
-
-  const pollSyncStatus = async () => {
-    try {
-      const data = await fetchJson<any>(`${API_URL}/api/data/status`);
-      const status = parseSyncStatus(data.status);
-      setCacheSyncProgress(data.progress || '');
-      window.dispatchEvent(
-        new CustomEvent('whylowdps-cache-refresh-status', {
-          detail: { status, progress: data.progress || '', message: data.message || '' },
-        })
-      );
-
-      if (status === 'ready') {
-        setCacheSyncing(false);
-        setCacheMessage({ type: 'success', text: 'Game data cache refreshed successfully.' });
-        return;
-      }
-
-      if (status === 'needs_credentials') {
-        setCacheSyncing(false);
-        setCacheMessage({
-          type: 'error',
-          text: 'Cannot refresh data cache: Blizzard credentials are required.',
-        });
-        return;
-      }
-
-      if (status.startsWith('error:')) {
-        setCacheSyncing(false);
-        setCacheMessage({
-          type: 'error',
-          text: status.replace(/^error:/, '') || 'Cache refresh failed.',
-        });
-        return;
-      }
-
-      window.setTimeout(() => {
-        void pollSyncStatus();
-      }, 1500);
-    } catch (err: any) {
-      setCacheSyncing(false);
-      setCacheMessage({ type: 'error', text: err?.message || 'Failed to read sync status.' });
-    }
-  };
-
-  const refreshDataCache = async () => {
-    setCacheMessage(null);
-    setCacheSyncing(true);
-    setCacheSyncProgress('Initializing synchronization...');
-    window.dispatchEvent(new CustomEvent('whylowdps-cache-refresh-start'));
-
-    try {
-      await fetchJson(`${API_URL}/api/data/sync?force=true`, { method: 'POST' });
-      await pollSyncStatus();
-    } catch (err: any) {
-      // 409 means a sync is already in progress; follow it instead of failing.
-      if (err?.status === 409) {
-        await pollSyncStatus();
-        return;
-      }
-
-      setCacheSyncing(false);
-      setCacheMessage({ type: 'error', text: err?.message || 'Failed to start cache refresh.' });
-    }
-  };
-
-  const checkForUpdatesNow = () => {
-    setUpdateCheckState('checking');
-    setUpdateMessage(null);
-    window.dispatchEvent(
-      new CustomEvent('whylowdps-updater-check', {
-        detail: { channel: selectedUpdateChannel },
-      })
-    );
-  };
-
-  const downloadAndInstallLatest = () => {
-    setUpdateCheckState('installing');
-    setUpdateMessage(null);
-    window.dispatchEvent(
-      new CustomEvent('whylowdps-updater-install', {
-        detail: { channel: selectedUpdateChannel },
-      })
-    );
-  };
-
   const updateCloseBehavior = async (nextValue: boolean) => {
     if (!isDesktop) return;
     setCloseBehaviorMessage(null);
@@ -482,139 +280,6 @@ export default function SettingsPage() {
       setCloseBehaviorLoading(false);
     }
   };
-
-  const formatBytes = (n: number) => {
-    if (!Number.isFinite(n) || n <= 0) return '0 B';
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const viewDataStates = async () => {
-    setDataStateOpen(true);
-    setDataStateLoading(true);
-    setDataStateError('');
-    setDataStateMessage(null);
-    try {
-      const data = await fetchJson<DataFileStatesResponse>(`${API_URL}/api/data/files`);
-      setDataFileStates(data);
-    } catch (err: any) {
-      setDataStateError(err?.message || 'Failed to load data file states.');
-    } finally {
-      setDataStateLoading(false);
-    }
-  };
-
-  const refreshDataStates = async () => {
-    setDataStateLoading(true);
-    setDataStateError('');
-    try {
-      const data = await fetchJson<DataFileStatesResponse>(`${API_URL}/api/data/files`);
-      setDataFileStates(data);
-    } catch (err: any) {
-      setDataStateError(err?.message || 'Failed to refresh data file states.');
-    } finally {
-      setDataStateLoading(false);
-    }
-  };
-
-  const downloadFile = async (key: string) => {
-    setDataActionBusyKey(key);
-    setDataStateMessage(null);
-    try {
-      await fetchJson(`${API_URL}/api/data/files/${encodeURIComponent(key)}/download`, {
-        method: 'POST',
-      });
-      await refreshDataStates();
-      setDataStateMessage({ type: 'success', text: 'File downloaded successfully.' });
-    } catch (err: any) {
-      setDataStateMessage({ type: 'error', text: err?.message || 'Failed to download file.' });
-    } finally {
-      setDataActionBusyKey(null);
-    }
-  };
-
-  const downloadAllMissingFiles = async () => {
-    setDataActionBusyKey('download-missing');
-    setDataStateMessage(null);
-    try {
-      const data = await fetchJson<{ downloaded_keys?: string[]; failed?: unknown[] }>(
-        `${API_URL}/api/data/files/missing/download`,
-        { method: 'POST' }
-      );
-      await refreshDataStates();
-      const count = data.downloaded_keys?.length ?? 0;
-      const failures = data.failed?.length ?? 0;
-      if (failures > 0) {
-        setDataStateMessage({
-          type: 'error',
-          text: `Downloaded ${count} files, ${failures} failed. Check backend logs for details.`,
-        });
-      } else {
-        setDataStateMessage({ type: 'success', text: `Downloaded ${count} missing files.` });
-      }
-    } catch (err: any) {
-      setDataStateMessage({
-        type: 'error',
-        text: err?.message || 'Failed to download missing files.',
-      });
-    } finally {
-      setDataActionBusyKey(null);
-    }
-  };
-
-  const openDataRootDirectory = async () => {
-    if (!dataFileStates?.base_path || !isDesktop) return;
-    setDataStateMessage(null);
-    try {
-      await fetchJson(`${API_URL}/api/data/files/open-directory`, { method: 'POST' });
-    } catch (err: any) {
-      setDataStateMessage({
-        type: 'error',
-        text: err?.message || 'Failed to open directory.',
-      });
-    }
-  };
-
-  const showFileContent = async (key: string) => {
-    setDataFilePreviewOpen(true);
-    setDataFilePreviewLoading(true);
-    setDataFilePreviewError('');
-    setDataFilePreview(null);
-    try {
-      const data = await fetchJson<DataFilePreviewResponse>(
-        `${API_URL}/api/data/files/${encodeURIComponent(key)}/content`
-      );
-      setDataFilePreview(data);
-    } catch (err: any) {
-      setDataFilePreviewError(err?.message || 'Failed to load file content.');
-    } finally {
-      setDataFilePreviewLoading(false);
-    }
-  };
-
-  const groupedDataFiles = dataFileStates?.files.reduce<Record<string, DataFileState[]>>(
-    (acc, file) => {
-      (acc[file.section] ||= []).push(file);
-      return acc;
-    },
-    {}
-  );
-  const sectionSummaries = Object.entries(groupedDataFiles || {}).reduce<
-    Record<string, { totalBytes: number; downloaded: number; total: number }>
-  >((acc, [section, files]) => {
-    acc[section] = {
-      totalBytes: files.reduce((sum, file) => sum + (file.exists ? file.size_bytes : 0), 0),
-      downloaded: files.filter((file) => file.exists).length,
-      total: files.length,
-    };
-    return acc;
-  }, {});
-  const syncProgress = parseProgress(cacheSyncProgress);
-  const syncProgressPct =
-    cacheSyncing && syncProgress.total > 0
-      ? Math.max(0, Math.min(100, Math.round((syncProgress.current / syncProgress.total) * 100)))
-      : 0;
 
   const activePresetIdx = PRESETS.findIndex(
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
@@ -659,103 +324,22 @@ export default function SettingsPage() {
 
       {activeTab === 'simulation' && <DefaultOptionsSettingsCard />}
 
-      {activeTab === 'integrations' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-6 text-xl font-semibold text-white">API Integrations</h2>
-
-        <div className="max-w-2xl space-y-6">
-          <div className="rounded-lg border border-border/70 bg-surface px-4 py-3">
-            <p className="text-sm font-semibold text-zinc-200">Blizzard API (BYOK)</p>
-            <p className="mt-1 text-[13px] text-zinc-400">
-              Provide your own Blizzard API credentials to fetch your characters and gear.
-            </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-zinc-500">
-              <span className="font-semibold text-zinc-300">Setup Instructions:</span>
-              <br />
-              1. Create a client on the{' '}
-              <a
-                href="https://develop.battle.net/access/clients"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-gold hover:underline"
-              >
-                Blizzard Developer Portal
-              </a>
-              .
-              <br />
-              2. Add{' '}
-              <code className="text-zinc-300">http://localhost:17384/api/auth/bnet/callback</code>{' '}
-              to your Redirect URIs.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Client ID</label>
-            <input
-              type="text"
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Enter Client ID"
-              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-zinc-300">Client Secret</label>
-            <input
-              type="password"
-              value={secretTouched ? clientSecret : hasSecret ? '••••••••••••••••' : clientSecret}
-              onFocus={() => {
-                if (!secretTouched && hasSecret) {
-                  setSecretTouched(true);
-                  setClientSecret('');
-                }
-              }}
-              onChange={(e) => {
-                setSecretTouched(true);
-                setClientSecret(e.target.value);
-              }}
-              placeholder="Enter Client Secret"
-              className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 text-white transition-colors focus:border-gold/50 focus:outline-none"
-            />
-            <p className="text-[12px] text-zinc-500">
-              {hasSecret && !clientSecret
-                ? 'A secret is already saved and hidden. Type to replace it.'
-                : 'Your secret is hidden in this field.'}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={testBlizzardCredentials}
-              disabled={blizzardTesting || !clientId.trim() || (!clientSecret.trim() && !hasSecret)}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              {blizzardTesting ? 'Testing Blizzard...' : 'Test Blizzard Connection'}
-            </button>
-
-            <button
-              onClick={saveBlizzardSettings}
-              disabled={blizzardSaving || (!clientId.trim() && !clientSecret.trim())}
-              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-            >
-              {blizzardSaving ? 'Saving Blizzard...' : 'Save Blizzard Settings'}
-            </button>
-          </div>
-
-          {blizzardMessage && (
-            <div
-              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                blizzardMessage.type === 'success'
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
-              }`}
-            >
-              {blizzardMessage.text}
-            </div>
-          )}
-
-        </div>
-      </section>}
+      {activeTab === 'integrations' && (
+        <IntegrationsSettingsSection
+          clientId={clientId}
+          setClientId={setClientId}
+          clientSecret={clientSecret}
+          setClientSecret={setClientSecret}
+          secretTouched={secretTouched}
+          setSecretTouched={setSecretTouched}
+          hasSecret={hasSecret}
+          blizzardTesting={blizzardTesting}
+          blizzardSaving={blizzardSaving}
+          testBlizzardCredentials={testBlizzardCredentials}
+          saveBlizzardSettings={saveBlizzardSettings}
+          blizzardMessage={blizzardMessage}
+        />
+      )}
 
       {activeTab === 'simulation' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
         <h2 className="mb-6 text-xl font-semibold text-white">Simulation Performance</h2>
@@ -900,161 +484,33 @@ export default function SettingsPage() {
         </div>
       </section>}
 
-      {activeTab === 'data' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-3 text-xl font-semibold text-white">Game Data Cache</h2>
-        <p className="mb-5 text-sm text-zinc-400">
-          Refetch game data and reload the backend cache used for gems, enchants, items, raids, and
-          dungeon loot.
-        </p>
+      {activeTab === 'data' && (
+        <DataCacheSettingsSection
+          refreshEveryValue={refreshEveryValue}
+          setRefreshEveryValue={setRefreshEveryValue}
+          refreshEveryUnit={refreshEveryUnit}
+          setRefreshEveryUnit={setRefreshEveryUnit}
+          setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
+          cacheSyncing={cacheSyncing}
+          refreshDataCache={refreshDataCache}
+          viewDataStates={viewDataStates}
+          syncProgress={syncProgress}
+          syncProgressPct={syncProgressPct}
+          cacheSyncProgress={cacheSyncProgress}
+          cacheMessage={cacheMessage}
+        />
+      )}
 
-        <div className="max-w-2xl space-y-4">
-          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-200">Auto refresh interval</p>
-              <p className="text-[13px] text-zinc-500">
-                Refresh the game data cache automatically while the app is open. Set value to 0 to
-                disable.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={999}
-                step={1}
-                value={refreshEveryValue}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  const nextValue = Number.isFinite(val) && val > 0 ? val : 0;
-                  setRefreshEveryValue(nextValue);
-                  setDataCacheRefreshMinutes(nextValue * UNIT_TO_MINUTES[refreshEveryUnit]);
-                }}
-                className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-              <select
-                value={refreshEveryUnit}
-                onChange={(e) => {
-                  const nextUnit = e.target.value as RefreshUnit;
-                  setRefreshEveryUnit(nextUnit);
-                  setDataCacheRefreshMinutes(refreshEveryValue * UNIT_TO_MINUTES[nextUnit]);
-                }}
-                className="rounded border border-border bg-surface-2 px-2 py-1 text-xs text-zinc-200 focus:border-gold/50 focus:outline-none"
-              >
-                <option value="minutes">Minutes</option>
-                <option value="hours">Hours</option>
-                <option value="days">Days</option>
-                <option value="weeks">Weeks</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={refreshDataCache}
-              disabled={cacheSyncing}
-              className="rounded-lg bg-gold/10 px-6 py-2.5 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-            >
-              {cacheSyncing ? 'Refreshing Cache...' : 'Refresh Game Data Cache'}
-            </button>
-            <button
-              onClick={viewDataStates}
-              className="rounded-lg border border-white/10 bg-white/5 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-            >
-              View Data State
-            </button>
-            {cacheSyncing && (
-              <span className="text-xs uppercase tracking-wide text-zinc-500">
-                Sync in progress
-              </span>
-            )}
-          </div>
-
-          {cacheSyncing && (
-            <div className="rounded-lg border border-border bg-surface-2 p-4">
-              <div className="mb-2 flex items-center justify-between text-xs text-zinc-400">
-                <span>{syncProgress.details || 'Refreshing cache...'}</span>
-                <span>
-                  {syncProgress.total > 0
-                    ? `${syncProgress.current}/${syncProgress.total}`
-                    : 'Working...'}
-                </span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-black/40">
-                <div
-                  className="h-full rounded-full bg-gold transition-all duration-300"
-                  style={{ width: `${syncProgressPct}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          {!!cacheSyncProgress && (
-            <div className="rounded-lg border border-border bg-surface-2 p-3">
-              <p className="text-sm text-zinc-200">{syncProgress.details || cacheSyncProgress}</p>
-            </div>
-          )}
-
-          {cacheMessage && (
-            <div
-              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                cacheMessage.type === 'success'
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
-              }`}
-            >
-              {cacheMessage.text}
-            </div>
-          )}
-        </div>
-      </section>}
-
-      {activeTab === 'updates' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
-        <div className="max-w-2xl space-y-3">
-          <div className="rounded-lg border border-border bg-surface-2 p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-zinc-300">Channel</span>
-              <select
-                value={selectedUpdateChannel}
-                onChange={(e) => setSelectedUpdateChannel(e.target.value as UpdateChannel)}
-                className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
-              >
-                {UPDATE_CHANNEL_OPTIONS.map((channel) => (
-                  <option key={channel.id} value={channel.id}>
-                    {channel.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={checkForUpdatesNow}
-                disabled={updateCheckState !== 'idle'}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-              >
-                {updateCheckState === 'checking' ? 'Checking...' : 'Check'}
-              </button>
-              <button
-                onClick={downloadAndInstallLatest}
-                disabled={updateCheckState !== 'idle'}
-                className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-              >
-                {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
-              </button>
-            </div>
-          </div>
-
-          {updateMessage && (
-            <div
-              className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-                updateMessage.type === 'success'
-                  ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                  : 'border border-red-500/20 bg-red-500/10 text-red-400'
-              }`}
-            >
-              {updateMessage.text}
-            </div>
-          )}
-        </div>
-      </section>}
+      {activeTab === 'updates' && (
+        <UpdatesSettingsSection
+          selectedUpdateChannel={selectedUpdateChannel}
+          setSelectedUpdateChannel={setSelectedUpdateChannel}
+          updateCheckState={updateCheckState}
+          checkForUpdatesNow={checkForUpdatesNow}
+          downloadAndInstallLatest={downloadAndInstallLatest}
+          updateMessage={updateMessage}
+        />
+      )}
 
       {activeTab === 'about' && <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
         <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
@@ -1064,200 +520,34 @@ export default function SettingsPage() {
         </p>
       </section>}
 
-      {dataStateOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4">
-          <div ref={dataStateModalRef} className="max-h-[80vh] w-full max-w-3xl overflow-hidden rounded-xl border border-border bg-[#121212] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Game Data File States</h3>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  {dataFileStates?.base_path || 'Runtime data directory'}
-                </p>
-              </div>
-              <button
-                onClick={() => setDataStateOpen(false)}
-                className="rounded-md px-2 py-1 text-zinc-400 hover:bg-white/5 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="max-h-[calc(80vh-72px)] overflow-y-auto p-5">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <button
-                  onClick={refreshDataStates}
-                  disabled={dataStateLoading || dataActionBusyKey !== null}
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-                >
-                  Refresh List
-                </button>
-                <button
-                  onClick={downloadAllMissingFiles}
-                  disabled={dataStateLoading || dataActionBusyKey !== null}
-                  className="rounded-md border border-gold/30 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:opacity-50"
-                >
-                  {dataActionBusyKey === 'download-missing'
-                    ? 'Downloading Missing...'
-                    : 'Download All Missing'}
-                </button>
-                <button
-                  onClick={openDataRootDirectory}
-                  disabled={!isDesktop || !dataFileStates?.base_path}
-                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-                >
-                  Open Data Dir
-                </button>
-              </div>
-
-              {dataStateLoading && <p className="text-sm text-zinc-400">Loading data state...</p>}
-
-              {!dataStateLoading && dataStateMessage && (
-                <div
-                  className={`mb-3 rounded-lg border p-3 text-sm ${
-                    dataStateMessage.type === 'success'
-                      ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
-                      : 'border-red-500/20 bg-red-500/10 text-red-300'
-                  }`}
-                >
-                  {dataStateMessage.text}
-                </div>
-              )}
-
-              {!dataStateLoading && dataStateError && (
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-                  {dataStateError}
-                </div>
-              )}
-
-              {!dataStateLoading && !dataStateError && dataFileStates && (
-                <div className="space-y-4">
-                  {Object.entries(groupedDataFiles || {}).map(([section, files]) => (
-                    <div key={section} className="space-y-2">
-                      <div className="flex items-center gap-3">
-                        <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">
-                          {section}
-                        </h4>
-                        <div className="h-px flex-1 bg-border/70" />
-                        <span className="text-[11px] text-zinc-500">
-                          {sectionSummaries[section]?.downloaded ?? 0}/{files.length} files ·{' '}
-                          {formatBytes(sectionSummaries[section]?.totalBytes ?? 0)}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {files.map((file) => (
-                          <div
-                            key={file.key}
-                            className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-lg border border-border/70 bg-surface/40 px-3 py-2.5"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-zinc-200">
-                                {file.label}
-                              </p>
-                              <p className="truncate font-mono text-[11px] text-zinc-500">
-                                {file.relative_path}
-                              </p>
-                            </div>
-                            <span
-                              className={`rounded-md px-2 py-1 text-[11px] font-semibold ${
-                                file.exists
-                                  ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                                  : file.required
-                                    ? 'border border-red-500/30 bg-red-500/10 text-red-300'
-                                    : 'border border-zinc-600/40 bg-zinc-700/20 text-zinc-400'
-                              }`}
-                            >
-                              {file.exists
-                                ? 'Available'
-                                : file.required
-                                  ? 'Missing'
-                                  : 'Not downloaded'}
-                            </span>
-                            <span className="font-mono text-xs text-zinc-400">
-                              {file.exists ? formatBytes(file.size_bytes) : '--'}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => downloadFile(file.key)}
-                                disabled={
-                                  !file.downloadable ||
-                                  dataStateLoading ||
-                                  dataActionBusyKey !== null
-                                }
-                                className="rounded-md border border-gold/30 bg-gold/10 px-2 py-1 text-[11px] font-semibold text-gold hover:bg-gold/20 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {dataActionBusyKey === file.key
-                                  ? 'Working...'
-                                  : file.exists
-                                    ? 'Refresh'
-                                    : 'Download'}
-                              </button>
-                              <button
-                                onClick={() => showFileContent(file.key)}
-                                disabled={!file.exists || dataFilePreviewLoading}
-                                className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-zinc-200 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                Show Content
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {dataFilePreviewOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 p-4">
-          <div ref={dataFilePreviewModalRef} className="flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-border bg-[#101010] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">
-                  {dataFilePreview?.label || 'File Content'}
-                </h3>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  {dataFilePreview?.relative_path || 'Loading...'}
-                </p>
-              </div>
-              <button
-                onClick={() => setDataFilePreviewOpen(false)}
-                className="rounded-md px-2 py-1 text-zinc-400 hover:bg-white/5 hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              {dataFilePreviewLoading && (
-                <p className="text-sm text-zinc-400">Loading file content...</p>
-              )}
-              {!dataFilePreviewLoading && dataFilePreviewError && (
-                <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-                  {dataFilePreviewError}
-                </div>
-              )}
-              {!dataFilePreviewLoading && dataFilePreview && (
-                <div className="space-y-3">
-                  {dataFilePreview.truncated && (
-                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-200">
-                      Preview truncated for large file.
-                    </div>
-                  )}
-                  <textarea
-                    readOnly
-                    value={dataFilePreview.content}
-                    className="h-[60vh] w-full rounded-lg border border-border bg-black/50 p-4 font-mono text-[12px] leading-5 text-zinc-200 outline-none"
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <DataFileStateModal
+        isOpen={dataStateOpen}
+        onClose={() => setDataStateOpen(false)}
+        disableOutsideDismiss={dataFilePreviewOpen}
+        isDesktop={isDesktop}
+        dataFileStates={dataFileStates}
+        dataStateLoading={dataStateLoading}
+        dataStateError={dataStateError}
+        dataStateMessage={dataStateMessage}
+        dataActionBusyKey={dataActionBusyKey}
+        groupedDataFiles={groupedDataFiles}
+        sectionSummaries={sectionSummaries}
+        refreshDataStates={refreshDataStates}
+        downloadAllMissingFiles={downloadAllMissingFiles}
+        openDataRootDirectory={openDataRootDirectory}
+        downloadFile={downloadFile}
+        showFileContent={showFileContent}
+        dataFilePreviewLoading={dataFilePreviewLoading}
+      />
+      <DataFilePreviewModal
+        isOpen={dataFilePreviewOpen}
+        onClose={() => setDataFilePreviewOpen(false)}
+        dataFilePreview={dataFilePreview}
+        dataFilePreviewLoading={dataFilePreviewLoading}
+        dataFilePreviewError={dataFilePreviewError}
+      />
     </div>
   );
 }
+
+

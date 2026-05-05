@@ -1,5 +1,6 @@
 import { useCallback, useState, useMemo } from 'react';
 import { API_URL } from '../../lib/api';
+import { buildResolvedItemIdentity } from '../../lib/gear-utils';
 import type { ResolveGearResponse, ResolvedItem } from '../../lib/types';
 
 interface UpgradeOption {
@@ -28,16 +29,6 @@ interface TopGearStateProps {
   onSelectionChange: (selected: Record<string, Set<string>>) => void;
   onResolvedChange: (resolved: ResolveGearResponse) => void;
   onItemAdded: (slot: string, simcString: string, origin: string) => void;
-}
-
-function makeIdentity(item: ResolvedItem): string {
-  const sorted = [...item.bonus_ids].sort((a, b) => a - b);
-  const crafted =
-    item.crafted_stats && item.crafted_stats.length > 0
-      ? `:${[...item.crafted_stats].sort().join('/')}`
-      : '';
-  const embellishment = item.embellishment_item_id ? `:b${item.embellishment_item_id}` : '';
-  return `${item.item_id}:${sorted.join(':')}:${item.origin}:i${item.ilevel || 0}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}`;
 }
 
 export function useTopGearState({
@@ -192,7 +183,7 @@ export function useTopGearState({
         ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
       };
 
-      const identity = makeIdentity(item);
+      const identity = buildResolvedItemIdentity(item);
 
       if (slots.length === 1) {
         const slot = item.slot;
@@ -209,14 +200,14 @@ export function useTopGearState({
           if (!slotRes) return false;
           return Array.from(selectedUids[s] || []).some((uid) => {
             const match = slotRes.alternatives.find((a) => a.uid === uid);
-            return match && makeIdentity(match) === identity;
+            return match && buildResolvedItemIdentity(match) === identity;
           });
         });
 
         for (const slot of slots) {
           const slotRes = resolved.slots[slot];
           if (!slotRes) continue;
-          const matching = slotRes.alternatives.find((a) => makeIdentity(a) === identity);
+          const matching = slotRes.alternatives.find((a) => buildResolvedItemIdentity(a) === identity);
           if (!matching) continue;
           if (!updated[slot]) updated[slot] = new Set();
           if (isSelected) {

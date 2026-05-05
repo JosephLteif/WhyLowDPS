@@ -5,6 +5,7 @@ import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import { useItemIcons, useSpellIcons } from '../lib/useWowheadIcons';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 import { consumeSimAgainState } from '../lib/sim-return';
@@ -34,73 +35,6 @@ interface StatWeightsSimAgainState {
   matrixAugments?: string[];
   matrixTempEnchants?: string[];
   matrixRaidBuffs?: string[];
-}
-
-const spellIconCache = new Map<number, string>();
-const itemIconCache = new Map<number, string>();
-
-function useSpellIcons(spellIds: number[]) {
-  const [icons, setIcons] = useState<Map<number, string>>(new Map());
-  const depKey = spellIds.join(',');
-
-  useEffect(() => {
-    const missing = spellIds.filter((id) => id > 0 && !spellIconCache.has(id));
-    if (missing.length === 0) {
-      setIcons(new Map(spellIconCache));
-      return;
-    }
-    let cancelled = false;
-    Promise.all(
-      missing.map(async (id) => {
-        try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/spell/${id}?dataEnv=1&locale=0`,
-          );
-          if (!res.ok) return;
-          const data = await res.json();
-          if (data?.icon) spellIconCache.set(id, data.icon);
-        } catch {}
-      })
-    ).then(() => {
-      if (!cancelled) setIcons(new Map(spellIconCache));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  return icons;
-}
-
-function useItemIcons(itemIds: number[]) {
-  const [icons, setIcons] = useState<Map<number, string>>(new Map());
-  const depKey = itemIds.join(',');
-
-  useEffect(() => {
-    const missing = itemIds.filter((id) => id > 0 && !itemIconCache.has(id));
-    if (missing.length === 0) {
-      setIcons(new Map(itemIconCache));
-      return;
-    }
-    let cancelled = false;
-    Promise.all(
-      missing.map(async (id) => {
-        try {
-          const res = await fetch(
-            `https://nether.wowhead.com/tooltip/item/${id}?dataEnv=1&locale=0`,
-          );
-          if (!res.ok) return;
-          const data = await res.json();
-          if (data?.icon) itemIconCache.set(id, data.icon);
-        } catch {}
-      })
-    ).then(() => {
-      if (!cancelled) setIcons(new Map(itemIconCache));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  return icons;
 }
 
 function toggleListValue(list: string[], value: string): string[] {
@@ -792,4 +726,3 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
     </div>
   );
 }
-

@@ -1,15 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
+import { API_URL, fetchJsonCached } from '../lib/api';
+import { characterHref } from '../lib/routes';
+
+type SearchCharacter = {
+  realm: string;
+  region: string;
+};
+type RealmOption = {
+  slug: string;
+  name: string;
+};
 
 export default function TopHeader() {
   const router = useRouter();
   const { user, loading, login, logout, checkCredentialsStatus } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [characterName, setCharacterName] = useState('');
+  const [characterRegion, setCharacterRegion] = useState('us');
+  const [characterRealm, setCharacterRealm] = useState('');
+  const [realmOptions, setRealmOptions] = useState<RealmOption[]>([]);
 
   const handleLoginClick = async () => {
     const status = await checkCredentialsStatus();
@@ -35,6 +50,62 @@ export default function TopHeader() {
 
   const handleSidebarToggle = () => {
     window.dispatchEvent(new Event('whylowdps:toggle-sidebar'));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDefaultRegion = async () => {
+      try {
+        const res = await fetchJsonCached<{ characters?: SearchCharacter[] }>(`${API_URL}/api/bnet/user/characters`, {
+          ttl: 600000,
+        });
+        if (cancelled) return;
+        const chars = Array.isArray(res?.characters) ? res.characters : [];
+        const preferred = chars.find((c) => c?.region)?.region?.toLowerCase();
+        if (preferred) setCharacterRegion(preferred);
+      } catch {
+        // Keep defaults when not authenticated or unavailable.
+      }
+    };
+    void loadDefaultRegion();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadRealmOptions = async () => {
+      try {
+        const res = await fetchJsonCached<{ realms?: RealmOption[] }>(
+          `${API_URL}/api/blizzard/realms?region=${encodeURIComponent(characterRegion)}`,
+          { ttl: 86400000 }
+        );
+        if (cancelled) return;
+        setRealmOptions(Array.isArray(res?.realms) ? res.realms : []);
+      } catch {
+        if (!cancelled) setRealmOptions([]);
+      }
+    };
+    void loadRealmOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [characterRegion]);
+
+  useEffect(() => {
+    if (!characterRealm && realmOptions.length > 0) {
+      setCharacterRealm(realmOptions[0].slug);
+    }
+  }, [realmOptions, characterRealm]);
+
+  const handleCharacterSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const trimmedName = characterName.trim();
+    const trimmedRealm = characterRealm.trim();
+    if (!trimmedName || !trimmedRealm) return;
+    const href = characterHref(characterRegion, trimmedRealm, trimmedName);
+    router.push(href);
   };
 
   return (
@@ -86,6 +157,49 @@ export default function TopHeader() {
                 WhyLowDps
               </span>
             </Link>
+            <form onSubmit={handleCharacterSearch} className="hidden items-center gap-1.5 xl:flex">
+              <input
+                type="text"
+                value={characterName}
+                onChange={(e) => setCharacterName(e.target.value)}
+                placeholder="Character"
+                className="h-9 w-36 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+                aria-label="Character name"
+              />
+              <select
+                value={characterRegion}
+                onChange={(e) => setCharacterRegion(e.target.value)}
+                className="h-9 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
+                aria-label="Character region"
+              >
+                <option value="us">US</option>
+                <option value="eu">EU</option>
+                <option value="kr">KR</option>
+                <option value="tw">TW</option>
+              </select>
+              <select
+                value={characterRealm}
+                onChange={(e) => setCharacterRealm(e.target.value)}
+                className="h-9 max-w-[9rem] rounded-md border border-border bg-surface-2 px-2 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
+                aria-label="Character realm"
+              >
+                {realmOptions.length === 0 ? (
+                  <option value="">Realm</option>
+                ) : (
+                  realmOptions.map((realm) => (
+                    <option key={realm.slug} value={realm.slug}>
+                      {realm.name}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button
+                type="submit"
+                className="h-9 rounded-md border border-border bg-surface-2 px-3 text-[13px] font-medium text-zinc-200 transition-colors hover:bg-surface"
+              >
+                Go
+              </button>
+            </form>
           </div>
 
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">

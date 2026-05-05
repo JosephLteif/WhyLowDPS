@@ -13,7 +13,8 @@ import CharacterPanel from '../../../../components/CharacterPanel';
 import ConfirmModal from '../../../../components/ConfirmModal';
 import ToggleOptionCard from '../../../../components/shared/ToggleOptionCard';
 
-const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
+const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
+const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
 
 function CopyIcon() {
   return (
@@ -37,6 +38,7 @@ export default function CharacterClient() {
   let realm = (searchParams.get('realm') || (params.realm as string) || '').toLowerCase();
   let name = (searchParams.get('name') || (params.name as string) || '').toLowerCase();
   const tabParam = (searchParams.get('tab') || '').toLowerCase();
+  const forceRefresh = (searchParams.get('refresh') || '').toLowerCase() === 'true';
   const initialTab =
     tabParam === 'vault' || tabParam === 'mythic' || tabParam === 'profile' || tabParam === 'raiding'
       ? (tabParam as 'vault' | 'mythic' | 'profile' | 'raiding')
@@ -70,9 +72,10 @@ export default function CharacterClient() {
   const [error, setError] = useState('');
   const [savedProfiles, setSavedProfiles] = useState<SavedCharacterProfile[]>([]);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [mainCharacterKey, setMainCharacterKey] = useState<string>('');
-  const [mainCharacterSaving, setMainCharacterSaving] = useState(false);
-  const [mainCharacterError, setMainCharacterError] = useState<string | null>(null);
+  const [trackedCharacterKeys, setTrackedCharacterKeys] = useState<string[]>([]);
+  const [trackSaving, setTrackSaving] = useState(false);
+  const [trackError, setTrackError] = useState<string | null>(null);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
 
   // Fetch saved profiles for this character
   useEffect(() => {
@@ -83,24 +86,14 @@ export default function CharacterClient() {
   }, [name, realm, region]);
 
   useEffect(() => {
-    const localKey =
-      typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
-    if (localKey) {
-      setMainCharacterKey(localKey);
+    if (typeof window === 'undefined') return;
+    const raw = localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY) || '[]';
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setTrackedCharacterKeys(parsed.map((v) => String(v)));
+    } catch {
+      setTrackedCharacterKeys([]);
     }
-    fetch(`${API_URL}/api/user/config`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg) => {
-        const key = String(cfg?.main_character || '');
-        if (!key) return;
-        setMainCharacterKey(key);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, key);
-        }
-      })
-      .catch(() => {
-        if (!localKey) setMainCharacterKey('');
-      });
   }, []);
 
   const handleDeleteProfiles = useCallback(async () => {
@@ -115,6 +108,7 @@ export default function CharacterClient() {
       if (!realm || !name) return;
       setLoading(true);
       setError('');
+      const requestedKey = `${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
 
       try {
         const query = `?region=${region}${refresh ? '&refresh=true' : ''}`;
@@ -147,6 +141,13 @@ export default function CharacterClient() {
           mythicPlus,
           raidEncounters,
         });
+        if (refresh) {
+          const ts = Date.now();
+          setLastRefreshedAt(ts);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`${LAST_REFRESH_PREFIX}${requestedKey}`, String(ts));
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch character');
       } finally {
@@ -157,8 +158,16 @@ export default function CharacterClient() {
   );
 
   useEffect(() => {
-    fetchCharacterData();
-  }, [fetchCharacterData]);
+    fetchCharacterData(forceRefresh);
+  }, [fetchCharacterData, forceRefresh]);
+
+  const refreshStorageKey = `${LAST_REFRESH_PREFIX}${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = localStorage.getItem(refreshStorageKey);
+    const parsed = raw ? Number(raw) : 0;
+    setLastRefreshedAt(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+  }, [refreshStorageKey]);
 
   if (loading) {
     return (
@@ -199,7 +208,7 @@ export default function CharacterClient() {
   const canonicalRealm = String(profile.realm?.slug || realm).toLowerCase();
   const canonicalName = String(profile.name || name).toLowerCase();
   const currentKey = `${canonicalRegion}|${canonicalRealm}|${canonicalName}`;
-  const isMainCharacter = mainCharacterKey === currentKey;
+  const isTrackedCharacter = trackedCharacterKeys.includes(currentKey);
   const characterMediaUrl = `${API_URL}/api/blizzard/character/${realm}/${name}/media/main?region=${region}`;
 
   return (
@@ -259,51 +268,47 @@ export default function CharacterClient() {
             )}
             <div className="ml-2">
               <ToggleOptionCard
-                checked={isMainCharacter}
+                checked={isTrackedCharacter}
                 onToggle={() => {
-                  if (mainCharacterSaving) return;
+                  if (trackSaving) return;
                   void (async () => {
-                    setMainCharacterSaving(true);
-                    setMainCharacterError(null);
+                    setTrackSaving(true);
+                    setTrackError(null);
                     try {
-                      const next = isMainCharacter ? '' : currentKey;
+                      const next = isTrackedCharacter
+                        ? trackedCharacterKeys.filter((k) => k !== currentKey)
+                        : [...trackedCharacterKeys, currentKey];
                       if (typeof window !== 'undefined') {
-                        if (next) localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, next);
-                        else localStorage.removeItem(LOCAL_MAIN_CHARACTER_KEY);
+                        localStorage.setItem(LOCAL_TRACKED_CHARACTERS_KEY, JSON.stringify(next));
                       }
-                      const res = await fetch(`${API_URL}/api/user/config`, {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ key: 'main_character', value: next }),
-                      });
-                      if (!res.ok && res.status !== 401) {
-                        const msg = await res.text().catch(() => '');
-                        throw new Error(msg || `Request failed (${res.status})`);
-                      }
-                      setMainCharacterKey(next);
+                      setTrackedCharacterKeys(next);
                     } catch (err) {
-                      setMainCharacterError(
-                        err instanceof Error ? err.message : 'Failed to save main character'
+                      setTrackError(
+                        err instanceof Error ? err.message : 'Failed to update tracked characters'
                       );
                     } finally {
-                      setMainCharacterSaving(false);
+                      setTrackSaving(false);
                     }
                   })();
                 }}
-                title={mainCharacterSaving ? 'Main Character (Saving...)' : 'Main Character'}
-                description="Use this character as your default main."
+                title={trackSaving ? 'Track Character (Saving...)' : 'Track Character'}
+                description="Add this character to your tracked characters on the dashboard."
                 titleClassName="text-xs font-bold text-zinc-200"
                 descriptionClassName="text-[11px] text-zinc-400"
               />
             </div>
           </div>
-          {mainCharacterError && (
-            <p className="mt-1 text-xs text-red-400">Set as Main failed: {mainCharacterError}</p>
+          {trackError && (
+            <p className="mt-1 text-xs text-red-400">Track Character failed: {trackError}</p>
           )}
           <p className="mt-1 font-medium text-zinc-500">
             {profile.realm.name} - {region.toUpperCase()}
           </p>
+          {lastRefreshedAt ? (
+            <p className="mt-1 text-xs text-zinc-500">
+              Last refreshed at {new Date(lastRefreshedAt).toLocaleString()}
+            </p>
+          ) : null}
         </div>
       </div>
 

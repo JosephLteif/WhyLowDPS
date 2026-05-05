@@ -37,6 +37,7 @@ export default function CharacterClient() {
   let realm = (searchParams.get('realm') || (params.realm as string) || '').toLowerCase();
   let name = (searchParams.get('name') || (params.name as string) || '').toLowerCase();
   const tabParam = (searchParams.get('tab') || '').toLowerCase();
+  const forceRefresh = (searchParams.get('refresh') || '').toLowerCase() === 'true';
   const initialTab =
     tabParam === 'vault' || tabParam === 'mythic' || tabParam === 'profile' || tabParam === 'raiding'
       ? (tabParam as 'vault' | 'mythic' | 'profile' | 'raiding')
@@ -157,8 +158,8 @@ export default function CharacterClient() {
   );
 
   useEffect(() => {
-    fetchCharacterData();
-  }, [fetchCharacterData]);
+    fetchCharacterData(forceRefresh);
+  }, [fetchCharacterData, forceRefresh]);
 
   if (loading) {
     return (

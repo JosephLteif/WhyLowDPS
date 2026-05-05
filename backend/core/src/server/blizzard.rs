@@ -106,6 +106,18 @@ pub struct ProxyQuery {
     pub refresh: Option<bool>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct RealmEntry {
+    slug: String,
+    name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct RealmsResponse {
+    region: String,
+    realms: Vec<RealmEntry>,
+}
+
 fn parse_character_path_from_url(url: &str) -> Option<(String, String, String)> {
     let after_character = url.split("/character/").nth(1)?;
     let clean = after_character
@@ -839,4 +851,80 @@ pub async fn proxy_mythic_keystone_dungeon_detail(
         refresh,
     )
     .await
+}
+
+pub async fn proxy_realms_index(
+    req: actix_web::HttpRequest,
+    state: web::Data<Arc<BlizzardState>>,
+    auth_state: web::Data<Option<Arc<BlizzardAuthState>>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    query: web::Query<ProxyQuery>,
+) -> HttpResponse {
+    let region = query.region.as_deref().unwrap_or("us").to_lowercase();
+    let refresh = query.refresh.unwrap_or(false);
+    let cache_key = format!("realms_index_{}", region);
+
+    if !refresh {
+        if let Some(cached) = store.get_cache(&cache_key) {
+            if let Ok(json_val) = serde_json::from_str::<RealmsResponse>(&cached) {
+                return HttpResponse::Ok().json(json_val);
+            }
+        }
+    }
+
+    let token = match get_effective_token(
+        &req,
+        &state,
+        auth_state.as_ref().as_ref().map(|a| a.as_ref()),
+        &***store,
+    )
+    .await
+    {
+        Some(t) => t,
+        None => return HttpResponse::Unauthorized().finish(),
+    };
+
+    let url = format!(
+        "https://{}.api.blizzard.com/data/wow/realm/index?namespace=dynamic-{}&locale=en_US",
+        region, region
+    );
+
+    let res = state
+        .client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .send()
+        .await;
+
+    match res {
+        Ok(r) if r.status().is_success() => {
+            let data: serde_json::Value = r.json().await.unwrap_or(serde_json::json!({}));
+            let mut realms: Vec<RealmEntry> = data
+                .get("realms")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| {
+                            let slug = item.get("slug").and_then(|v| v.as_str())?.to_string();
+                            let name = item
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .map(str::to_string)
+                                .unwrap_or_else(|| slug.clone());
+                            Some(RealmEntry { slug, name })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            realms.sort_by(|a, b| a.name.cmp(&b.name));
+            let payload = RealmsResponse { region, realms };
+            store.set_cache(&cache_key, serde_json::to_string(&payload).unwrap_or_default());
+            HttpResponse::Ok().json(payload)
+        }
+        _ => HttpResponse::Ok().json(RealmsResponse {
+            region,
+            realms: Vec::new(),
+        }),
+    }
 }

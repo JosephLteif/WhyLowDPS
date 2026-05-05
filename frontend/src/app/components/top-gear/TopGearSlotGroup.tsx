@@ -38,6 +38,7 @@ interface TopGearSlotGroupProps {
   upgradeMenuFor: string | null;
   upgradeOptions: UpgradeOption[];
   loadingUpgrades: boolean;
+  hasUpgradePathByUid: Record<string, boolean>;
   onToggle: (item: ResolvedItem) => void;
   onAddClick: (slot: string) => void;
   onUpgradeClick: (item: ResolvedItem) => void;
@@ -71,6 +72,7 @@ export default function TopGearSlotGroup({
   upgradeMenuFor,
   upgradeOptions,
   loadingUpgrades,
+  hasUpgradePathByUid,
   onToggle,
   onAddClick,
   onUpgradeClick,
@@ -160,6 +162,7 @@ export default function TopGearSlotGroup({
               upgradeMenuFor={upgradeMenuFor}
               upgradeOptions={upgradeOptions}
               loadingUpgrades={loadingUpgrades}
+              hasUpgradePath={hasUpgradePathByUid[item.uid] !== false}
               onUpgradeClick={() => onUpgradeClick(item)}
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
@@ -208,6 +211,7 @@ export default function TopGearSlotGroup({
               upgradeMenuFor={upgradeMenuFor}
               upgradeOptions={upgradeOptions}
               loadingUpgrades={loadingUpgrades}
+              hasUpgradePath={hasUpgradePathByUid[item.uid] !== false}
               onUpgradeClick={() => onUpgradeClick(item)}
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}

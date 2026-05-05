@@ -374,7 +374,7 @@ const getEffectiveTier = (
   if (category === 'crafted') {
     const levels = collectCraftedIlevels(item, upgradeTracks);
     if (levels.length === 0) return null;
-    
+
     const currentLevel = itemTiers[item.item_id] || 1;
     const boundedLevel = Math.min(levels.length, Math.max(1, currentLevel));
     const levelInfo = levels[boundedLevel - 1];
@@ -441,6 +441,8 @@ export default function AddItemModal({
     setSelectedInstance,
     drops,
     loading,
+    allPossibleDrops,
+    isGlobalLoading,
     globalSearch,
     setGlobalSearch,
     localSearch,
@@ -521,6 +523,9 @@ export default function AddItemModal({
   };
 
   const effectiveDifficulty = (category === 'world_bosses' || category === 'pvp' || category === 'crafted') ? 'normal' : selectedDifficulty;
+  const isSearchingAcrossCategory = globalSearch.trim().length > 0;
+  const sourceData = isSearchingAcrossCategory ? allPossibleDrops : drops;
+  const isDropListLoading = loading || (isSearchingAcrossCategory && isGlobalLoading);
 
   // Reset per-item ilvl slider selections when top filters change.
   useEffect(() => {
@@ -746,7 +751,7 @@ export default function AddItemModal({
       const craftedBaseBonusIds = Array.isArray(item.crafted_base_bonus_ids)
         ? item.crafted_base_bonus_ids
         : [];
-      
+
       onAdd(item, levelInfo.key, {
         bonus_ids: withEmbellishment(withCraftingBonuses(craftedBaseBonusIds)),
         ilvl: levelInfo.ilvl + ascendantBonusIlvl,
@@ -928,7 +933,7 @@ export default function AddItemModal({
             <div className="group relative flex-1">
               <input
                 type="text"
-                placeholder="Global Item Search..."
+                placeholder="Search by item name, boss, or type..."
                 value={globalSearch}
                 onChange={(e) => {
                   setGlobalSearch(e.target.value);
@@ -968,7 +973,7 @@ export default function AddItemModal({
             onSelect={handleSidebarSelect}
           />
           <div className="scrollbar-thin scrollbar-thumb-white/10 flex-1 overflow-y-auto bg-bg p-6">
-            {loading ? (
+            {isDropListLoading ? (
               <div className="flex h-full items-center justify-center">
                 <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-border border-t-gold" />
               </div>
@@ -1082,7 +1087,7 @@ export default function AddItemModal({
                               </a>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span 
+                                  <span
                                     className="truncate text-xs font-bold transition-colors group-hover:text-gold"
                                     style={{ color: QUALITY_COLORS[displayQuality] || '#f4f4f5' }}
                                   >
@@ -1305,5 +1310,4 @@ export default function AddItemModal({
     </div>
   );
 }
-
 

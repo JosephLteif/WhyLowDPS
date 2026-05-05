@@ -1,5 +1,6 @@
 const TARGETS_STORAGE_KEY = 'whylowdps_sim_return_targets_v1';
 const RESTORE_PREFIX = 'whylowdps_sim_restore_state_v1:';
+const NOTICE_PREFIX = 'whylowdps_sim_return_notice_v1:';
 const MAX_TARGETS = 200;
 
 export interface SimReturnTarget {
@@ -13,6 +14,11 @@ export interface SimReturnRegistration {
   returnUrl: string;
   pageKey?: string;
   state?: unknown;
+}
+
+export interface SimReturnNotice {
+  title: string;
+  message?: string;
 }
 
 function readTargets(): Record<string, SimReturnTarget> {
@@ -121,4 +127,34 @@ export function setSimAgainState(pageKey: string, state: unknown): void {
   try {
     sessionStorage.setItem(storageKey, JSON.stringify(state));
   } catch {}
+}
+
+export function setSimReturnNotice(pageKey: string, notice: SimReturnNotice): void {
+  const key = (pageKey || '').trim();
+  if (!key || typeof window === 'undefined') return;
+  const storageKey = `${NOTICE_PREFIX}${key}`;
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(notice));
+  } catch {}
+}
+
+export function consumeSimReturnNotice(pageKey: string): SimReturnNotice | null {
+  const key = (pageKey || '').trim();
+  if (!key || typeof window === 'undefined') return null;
+  const storageKey = `${NOTICE_PREFIX}${key}`;
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    sessionStorage.removeItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.title !== 'string' || parsed.title.trim().length === 0) return null;
+    return {
+      title: parsed.title,
+      ...(typeof parsed.message === 'string' && parsed.message.trim().length > 0
+        ? { message: parsed.message }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
 }

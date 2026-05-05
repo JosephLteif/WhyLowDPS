@@ -5,12 +5,13 @@ import ComboSummary from '../components/ComboSummary';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import ToggleButtonGroup from '../components/ToggleButtonGroup';
+import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import { API_URL, fetchJson } from '../lib/api';
 import { slotFromInventoryType, slotLabelToSimSlot } from '../lib/gear-utils';
 import { TRACK_COLORS } from '../lib/loot-track';
 import { useSimSubmit } from '../lib/useSimSubmit';
-import { consumeSimAgainState } from '../lib/sim-return';
+import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import type { DifficultyDef } from '../lib/types';
 import CategorySelector from './CategorySelector';
@@ -176,6 +177,7 @@ export default function DropFinderPage() {
   const [copyEnchantsGems, setCopyEnchantsGems] = useState(() =>
     getAppDefaultOption('dropfinder.copyEnchants', { characterKey: characterDefaultsKey })
   );
+  const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
   const [category, setCategory] = useState<Category | ''>('');
   const skipNextDetectedSpecSyncRef = useRef(false);
   const skipNextDropsResetRef = useRef(false);
@@ -214,6 +216,8 @@ export default function DropFinderPage() {
 
   useEffect(() => {
     const restored = consumeSimAgainState<DropFinderSimAgainState>(DROP_FINDER_SIM_AGAIN_KEY);
+    const notice = consumeSimReturnNotice(DROP_FINDER_SIM_AGAIN_KEY);
+    if (notice) setReturnNotice(notice);
     if (!restored) return;
 
     if (Array.isArray(restored.activeSpecs) && restored.activeSpecs.length > 0) {
@@ -679,6 +683,13 @@ export default function DropFinderPage() {
 
   return (
     <div className="space-y-6">
+      {returnNotice ? (
+        <SimReturnNotice
+          title={returnNotice.title}
+          message={returnNotice.message}
+          onDismiss={() => setReturnNotice(null)}
+        />
+      ) : null}
       <CategorySelector
         category={category}
         onChange={(key) => {
@@ -927,23 +938,23 @@ export default function DropFinderPage() {
             upgradeLevel={upgradeLevel}
             upgradeTracks={upgradeTracks}
             headerLabel={headerLabel}
+            headerBreakdown={
+              typeof estimatedComboBreakdown !== 'number'
+                ? `${estimatedComboBreakdown.gearCombos.toLocaleString()} normal${
+                    estimatedComboBreakdown.gearCombos === 1 ? ' combo' : ' combos'
+                  } | +1 Currently Equipped${
+                    estimatedComboBreakdown.autoCatalystCombos > 0
+                      ? ` | ${estimatedComboBreakdown.autoCatalystCombos} Auto Catalyst`
+                      : ''
+                  }`
+                : null
+            }
             headerActions={
               <ComboSummary
                 comboCount={estimatedComboCount}
                 maxCombinations={maxCombinations ?? undefined}
                 size="md"
                 glowWhenActive
-                breakdown={
-                  typeof estimatedComboBreakdown !== 'number'
-                    ? `${estimatedComboBreakdown.gearCombos.toLocaleString()} normal${
-                        estimatedComboBreakdown.gearCombos === 1 ? ' combo' : ' combos'
-                      } | +1 Currently Equipped${
-                        estimatedComboBreakdown.autoCatalystCombos > 0
-                          ? ` | ${estimatedComboBreakdown.autoCatalystCombos} Auto Catalyst`
-                          : ''
-                      }`
-                    : null
-                }
               />
             }
             isWishlisted={(itemId) => wishlistIds.has(itemId)}

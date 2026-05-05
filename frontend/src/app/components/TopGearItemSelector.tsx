@@ -148,6 +148,7 @@ export default function TopGearItemSelector({
     setUpgradeMenuFor,
     upgradeOptions,
     loadingUpgrades,
+    hasUpgradePathByUid,
     isAddItemOpen,
     setAddItemOpen,
     addItemSlot,
@@ -1644,6 +1645,7 @@ export default function TopGearItemSelector({
             upgradeMenuFor={upgradeMenuFor}
             upgradeOptions={upgradeOptions}
             loadingUpgrades={loadingUpgrades}
+            hasUpgradePathByUid={hasUpgradePathByUid}
             onToggle={(item) => handleToggleItem(item, group.slots)}
             onAddClick={openAddItem}
             onUpgradeClick={openUpgradeMenu}

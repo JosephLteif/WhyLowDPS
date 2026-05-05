@@ -93,6 +93,8 @@ interface GearOverviewProps {
   upgradeSlots?: Set<string>;
   downgradeSlots?: Set<string>;
   currencies?: Record<string, { id: number; name: string; icon: string }>;
+  framed?: boolean;
+  comparisonMode?: 'result' | 'provenance';
 }
 
 export default function GearOverview({
@@ -104,6 +106,8 @@ export default function GearOverview({
   upgradeSlots,
   downgradeSlots,
   currencies,
+  framed = true,
+  comparisonMode = 'provenance',
 }: GearOverviewProps) {
   const allItemQueries = useMemo(() => {
     const seen = new Set<string>();
@@ -198,7 +202,9 @@ export default function GearOverview({
   if (Object.keys(gear).length === 0) return null;
 
   return (
-    <div className="card relative mx-auto w-full max-w-6xl overflow-hidden p-4 sm:p-5">
+    <div
+      className={`${framed ? 'card mx-auto max-w-6xl p-4 sm:p-5' : ''} relative w-full overflow-hidden`}
+    >
       {characterRenderUrl && (
         <img
           src={characterRenderUrl}
@@ -226,6 +232,7 @@ export default function GearOverview({
               dropBaselineIlevelByKey={dropBaselineIlevelByKey}
               isUpgrade={upgradeSlots?.has(slot)}
               isDowngrade={downgradeSlots?.has(slot)}
+              comparisonMode={comparisonMode}
               itemInfoMap={itemInfoMap}
               enchantInfoMap={enchantInfoMap}
               gemInfoMap={gemInfoMap}
@@ -244,6 +251,7 @@ export default function GearOverview({
                 dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                 isUpgrade={upgradeSlots?.has(slot)}
                 isDowngrade={downgradeSlots?.has(slot)}
+                comparisonMode={comparisonMode}
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
@@ -261,6 +269,7 @@ export default function GearOverview({
                 dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                 isUpgrade={upgradeSlots?.has(slot)}
                 isDowngrade={downgradeSlots?.has(slot)}
+                comparisonMode={comparisonMode}
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
@@ -280,6 +289,7 @@ export default function GearOverview({
                 dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                 isUpgrade={upgradeSlots?.has('main_hand')}
                 isDowngrade={downgradeSlots?.has('main_hand')}
+                comparisonMode={comparisonMode}
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
@@ -294,6 +304,7 @@ export default function GearOverview({
                 dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                 isUpgrade={upgradeSlots?.has('off_hand')}
                 isDowngrade={downgradeSlots?.has('off_hand')}
+                comparisonMode={comparisonMode}
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
@@ -313,6 +324,7 @@ export function GearSlotRow({
   dropBaselineIlevelByKey = {},
   isUpgrade,
   isDowngrade,
+  comparisonMode = 'provenance',
   itemInfoMap,
   enchantInfoMap,
   gemInfoMap,
@@ -324,6 +336,7 @@ export function GearSlotRow({
   dropBaselineIlevelByKey?: Record<string, number>;
   isUpgrade?: boolean;
   isDowngrade?: boolean;
+  comparisonMode?: 'result' | 'provenance';
   itemInfoMap: Record<number, ItemInfo>;
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
@@ -366,15 +379,23 @@ export function GearSlotRow({
   const levelChanged =
     Number(equippedItem?.ilevel || 0) > 0 &&
     Number(equippedItem?.ilevel || 0) !== Number(item.ilevel || 0);
-  const upgradeState: 'upgrade' | 'downgrade' | null = isDowngrade
+  const comparisonState: 'upgrade' | 'downgrade' | null = isDowngrade
     ? 'downgrade'
-    : needsUpgrade || isUpgrade
+    : isUpgrade
       ? 'upgrade'
       : levelChanged
         ? Number(item.ilevel || 0) > Number(equippedItem?.ilevel || 0)
           ? 'upgrade'
           : 'downgrade'
         : null;
+  const provenanceState: 'upgrade' | 'downgrade' | null = needsUpgrade
+    ? 'upgrade'
+    : levelChanged
+      ? Number(item.ilevel || 0) > Number(equippedItem?.ilevel || 0)
+        ? 'upgrade'
+        : 'downgrade'
+      : null;
+  const upgradeState = comparisonMode === 'result' ? comparisonState : provenanceState;
 
   const gemEligible =
     Number((info as any)?.sockets || 0) > 0 || Number(item.gem_id || 0) > 0;
@@ -422,9 +443,9 @@ export function GearSlotRow({
     <div
       className={`rounded-lg ${
         upgradeState === 'upgrade'
-          ? 'bg-emerald-500/[0.08] ring-2 ring-emerald-400/45'
+          ? 'bg-emerald-500/[0.08] ring-2 ring-inset ring-emerald-400/45'
           : upgradeState === 'downgrade'
-            ? 'bg-red-500/[0.08] ring-1 ring-red-500/25'
+            ? 'bg-red-500/[0.08] ring-1 ring-inset ring-red-500/25'
             : ''
       }`}
     >

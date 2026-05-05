@@ -7,7 +7,7 @@ import type { SavedCharacterProfile } from '../lib/api';
 import type { HistoryTab, SelectedProfileMeta } from './useSimcProfileSelector';
 
 type SimcProfileDropdownProps = {
-  historyDropdownRef: React.RefObject<HTMLDivElement | null>;
+  historyDropdownRef: React.RefObject<HTMLDivElement>;
   historyDropdownOpen: boolean;
   setHistoryDropdownOpen: (value: boolean) => void;
   selectedProfileMeta: SelectedProfileMeta;

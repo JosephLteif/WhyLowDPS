@@ -37,7 +37,7 @@ export function useSimcProfileSelector({
   const [historyTab, setHistoryTab] = useState<HistoryTab>('saved');
   const [bnetProfiles, setBnetProfiles] = useState<SavedCharacterProfile[]>([]);
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null);
-  const historyDropdownRef = useRef<HTMLDivElement | null>(null);
+  const historyDropdownRef = useRef<HTMLDivElement>(null);
   useDismissOnOutside(historyDropdownRef, historyDropdownOpen, () =>
     setHistoryDropdownOpen(false)
   );
@@ -109,19 +109,25 @@ export function useSimcProfileSelector({
     [addToHistoryWithSelection, setSimcInput]
   );
 
-  useEffect(() => {
-    if (!historyDropdownOpen || historyTab !== 'saved') return;
+  const loadProfiles = useCallback(() => {
     listCharacterProfiles()
       .then(setBnetProfiles)
       .catch(() => setBnetProfiles([]));
-  }, [historyDropdownOpen, historyTab]);
+  }, []);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
+
+  useEffect(() => {
+    if (!historyDropdownOpen || historyTab !== 'saved') return;
+    loadProfiles();
+  }, [historyDropdownOpen, historyTab, loadProfiles]);
 
   const refreshProfiles = useCallback(() => {
     if (!historyDropdownOpen || historyTab !== 'saved') return;
-    listCharacterProfiles()
-      .then(setBnetProfiles)
-      .catch(() => setBnetProfiles([]));
-  }, [historyDropdownOpen, historyTab]);
+    loadProfiles();
+  }, [historyDropdownOpen, historyTab, loadProfiles]);
 
   useEffect(() => {
     if (!historyDropdownOpen || historyTab !== 'saved') return;

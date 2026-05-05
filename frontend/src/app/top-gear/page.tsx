@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
+import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import { API_URL } from '../lib/api';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import { useSimSubmit } from '../lib/useSimSubmit';
-import { consumeSimAgainState } from '../lib/sim-return';
+import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 
 const TOP_GEAR_SIM_AGAIN_KEY = 'top-gear';
@@ -72,6 +73,7 @@ export default function TopGearPage() {
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
   const [comboError, setComboError] = useState('');
+  const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
@@ -87,6 +89,8 @@ export default function TopGearPage() {
 
   useEffect(() => {
     const restored = consumeSimAgainState<TopGearSimAgainState>(TOP_GEAR_SIM_AGAIN_KEY);
+    const notice = consumeSimReturnNotice(TOP_GEAR_SIM_AGAIN_KEY);
+    if (notice) setReturnNotice(notice);
     if (!restored) return;
 
     const restoredInput =
@@ -429,6 +433,13 @@ export default function TopGearPage() {
 
   return (
     <div className="space-y-6">
+      {returnNotice ? (
+        <SimReturnNotice
+          title={returnNotice.title}
+          message={returnNotice.message}
+          onDismiss={() => setReturnNotice(null)}
+        />
+      ) : null}
       <div className="card space-y-4 p-5">
         <div className="flex justify-end">
           <button

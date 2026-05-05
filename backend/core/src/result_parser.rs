@@ -582,6 +582,96 @@ fn extract_stats_into(abilities: &mut Vec<Value>, stats: Option<&Value>, pet_nam
     }
 }
 
+fn extract_simulated_stats_snapshot(player: &Value) -> Option<Value> {
+    let buffed_stats = player
+        .get("collected_data")
+        .and_then(|c| c.get("buffed_stats"))
+        .and_then(|v| v.as_object())?;
+    let attributes = buffed_stats
+        .get("attribute")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let stats = buffed_stats
+        .get("stats")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+
+    let primary_candidates = [
+        ("strength", "Strength"),
+        ("agility", "Agility"),
+        ("intellect", "Intellect"),
+    ];
+
+    let primary = primary_candidates
+        .iter()
+        .filter_map(|(key, label)| {
+            let value = attributes.get(*key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            if value > 0.0 {
+                Some((key.to_string(), (*label).to_string(), value))
+            } else {
+                None
+            }
+        })
+        .max_by(|a, b| {
+            a.2.partial_cmp(&b.2)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(key, label, value)| {
+            json!({
+                "key": key,
+                "label": label,
+                "value": value.round() as i64,
+            })
+        });
+
+    let stamina = attributes
+        .get("stamina")
+        .and_then(|v| v.as_f64())
+        .map(|value| json!({ "value": value.round() as i64 }));
+
+    let secondary = |rating_key: &str, percent_key: &str| -> Option<Value> {
+        let rating = stats.get(rating_key).and_then(|v| v.as_f64());
+        let percent = stats
+            .get(percent_key)
+            .and_then(|v| v.as_f64())
+            .map(|value| round2(value * 100.0));
+        if rating.is_none() && percent.is_none() {
+            return None;
+        }
+        Some(json!({
+            "rating": rating.map(|value| value.round() as i64),
+            "percent": percent,
+        }))
+    };
+
+    let snapshot = json!({
+        "source": "simulated",
+        "primary": primary.unwrap_or(Value::Null),
+        "stamina": stamina.unwrap_or(Value::Null),
+        "crit": secondary("crit_rating", "crit_pct").unwrap_or(Value::Null),
+        "haste": secondary("haste_rating", "haste_pct").unwrap_or(Value::Null),
+        "mastery": secondary("mastery_rating", "mastery_pct").unwrap_or(Value::Null),
+        "versatility": secondary("versatility_rating", "versatility_pct").unwrap_or(Value::Null),
+    });
+
+    let has_data = snapshot
+        .as_object()
+        .map(|obj| {
+            ["primary", "stamina", "crit", "haste", "mastery", "versatility"]
+                .iter()
+                .any(|key| obj.get(*key).map(|value| !value.is_null()).unwrap_or(false))
+        })
+        .unwrap_or(false);
+
+    if has_data {
+        Some(snapshot)
+    } else {
+        None
+    }
+}
+
 /// Extract key metrics from raw simc JSON output.
 pub fn parse_simc_result(raw: &Value, include_timeline: bool) -> Value {
     let empty = json!({});
@@ -713,6 +803,10 @@ pub fn parse_simc_result(raw: &Value, include_timeline: bool) -> Value {
     if !all_gear.is_empty() {
         let equipped_gear: serde_json::Map<String, Value> = all_gear.into_iter().collect();
         result["equipped_gear"] = Value::Object(equipped_gear);
+    }
+
+    if let Some(simulated_stats) = extract_simulated_stats_snapshot(player) {
+        result["simulated_stats"] = simulated_stats;
     }
 
     result
@@ -873,6 +967,7 @@ pub fn parse_top_gear_result(
 
         let mut entry = json!({
             "name": combo_name,
+            "profileset_name": combo_name,
             "items": items,
             "dps": round1(mean_dps),
             "delta": round1(mean_dps - base_dps),
@@ -922,6 +1017,7 @@ pub fn parse_top_gear_result(
 
     let mut baseline_entry = json!({
         "name": baseline_key.as_deref().unwrap_or("Currently Equipped"),
+        "profileset_name": "Combo 1",
         "items": baseline_items,
         "dps": round1(base_dps),
         "delta": 0,
@@ -1005,6 +1101,7 @@ pub fn parse_top_gear_result(
         "simc_git_revision": raw.get("git_revision").and_then(|v| v.as_str()).unwrap_or(""),
         "results": results,
         "equipped_gear": Value::Object(equipped_gear),
+        "simulated_stats": extract_simulated_stats_snapshot(player).unwrap_or(Value::Null),
     })
 }
 

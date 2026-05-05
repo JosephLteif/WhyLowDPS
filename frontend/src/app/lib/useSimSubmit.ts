@@ -2,10 +2,12 @@ import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
 import { API_URL, fetchJson } from './api';
+import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 import { simResultHref } from './routes';
 import { buildFightStylePayload } from './fight-style';
+import { normalizeLiveCharacterStats } from './stat-snapshot';
 import {
   buildCurrentReturnUrl,
   registerSimReturnTarget,
@@ -162,6 +164,20 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     [simcInput]
   );
 
+  const fetchBaselineLiveStats = useCallback(async () => {
+    const identity = extractSimcIdentity(simcInput);
+    if (!identity) return null;
+
+    try {
+      const stats = await fetchJson<CharacterStatisticsPayload>(
+        `${API_URL}/api/blizzard/character/${encodeURIComponent(identity.realm.toLowerCase())}/${encodeURIComponent(identity.name.toLowerCase())}/statistics?region=${encodeURIComponent(identity.region.toLowerCase())}`
+      );
+      return normalizeLiveCharacterStats(stats);
+    } catch {
+      return null;
+    }
+  }, [simcInput]);
+
   const submit = useCallback(async () => {
     setError('');
 
@@ -205,6 +221,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         scenarios.length > 0 ? scenarios : [{ id: '', fightStyle, targetCount, fightLength }];
 
       const batchId = scenarios.length > 0 ? crypto.randomUUID() : undefined;
+      const baselineLiveStats = await fetchBaselineLiveStats();
 
       const sharedPayload = {
         ...pagePayload,
@@ -250,6 +267,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         ...(!isConsumableMatrix && consumableTemporaryEnchant.trim()
           ? { consumable_temporary_enchant: consumableTemporaryEnchant.trim() }
           : {}),
+        ...(baselineLiveStats ? { baseline_live_stats: baselineLiveStats } : {}),
       };
 
       const results = await Promise.allSettled(
@@ -353,6 +371,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     scenarios,
     clearScenarios,
     autoLinkJobToCharacter,
+    fetchBaselineLiveStats,
     simAgain,
   ]);
 

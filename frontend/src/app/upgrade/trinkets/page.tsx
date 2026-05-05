@@ -4,12 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../../components/ErrorAlert';
 import ComboSummary from '../../components/ComboSummary';
 import StickyPageHeader from '../../components/StickyPageHeader';
+import SimReturnNotice from '../../components/shared/SimReturnNotice';
 import { useSimContext } from '../../components/SimContext';
 import { API_URL } from '../../lib/api';
 import { getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../../lib/useItemInfo';
 import { useSimSubmit } from '../../lib/useSimSubmit';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
-import { consumeSimAgainState } from '../../lib/sim-return';
+import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../../lib/sim-return';
 
 type TrinketSimMode = 'matrix' | 'lock_trinket1' | 'lock_trinket2';
 type TrinketRolePool = 'auto' | 'dps' | 'tank' | 'healer';
@@ -305,11 +306,14 @@ export default function UpgradeTrinketsPage() {
   const [dropsBySource, setDropsBySource] = useState<Record<SourceKey, DropItem[]>>({});
   const [upgradeTracks, setUpgradeTracks] = useState<Record<string, TrackRow[]>>({});
   const [poolLoading, setPoolLoading] = useState(false);
+  const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
 
   useEffect(() => {
     const restored = consumeSimAgainState<UpgradeTrinketsSimAgainState>(
       UPGRADE_TRINKETS_SIM_AGAIN_KEY
     );
+    const notice = consumeSimReturnNotice(UPGRADE_TRINKETS_SIM_AGAIN_KEY);
+    if (notice) setReturnNotice(notice);
     if (!restored) return;
     if (typeof restored.targetIlevel === 'number' && Number.isFinite(restored.targetIlevel)) {
       setTargetIlevel(Math.max(1, Math.floor(restored.targetIlevel)));
@@ -767,6 +771,14 @@ export default function UpgradeTrinketsPage() {
       }}
       className="space-y-6"
     >
+      {returnNotice ? (
+        <SimReturnNotice
+          title={returnNotice.title}
+          message={returnNotice.message}
+          onDismiss={() => setReturnNotice(null)}
+        />
+      ) : null}
+
       <div className="space-y-1">
         <h2 className="text-xl font-bold tracking-tight text-zinc-100">Upgrade Trinkets</h2>
         <p className="text-sm text-zinc-400">

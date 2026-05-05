@@ -6,6 +6,7 @@ import DpsHeroCard from '../../components/DpsHeroCard';
 import type { GearItem } from '../../components/GearOverview';
 import GearOverview from '../../components/GearOverview';
 import ResultsChart from '../../components/ResultsChart';
+import SimStatsComparisonCard from '../../components/SimStatsComparisonCard';
 import SimStatus from '../../components/SimStatus';
 import StatPlotChart from '../../components/StatPlotChart';
 import StatWeightsTable from '../../components/StatWeightsTable';
@@ -17,6 +18,7 @@ import SimResultTalentsCard from '../../components/SimResultTalentsCard';
 import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
+import type { StatSnapshot } from '../../lib/stat-snapshot';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import {
   AUGMENT_RUNE_OPTIONS,
@@ -33,7 +35,7 @@ import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { API_URL, fetchJson } from '../../lib/api';
 import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
-import { getSimReturnTarget, resolveSimAgainNavigation } from '../../lib/sim-return';
+import { getSimReturnTarget, resolveSimAgainNavigation, setSimReturnNotice } from '../../lib/sim-return';
 
 interface JobData {
   id: string;
@@ -835,6 +837,27 @@ export default function SimResultClient() {
     router.push(getSimTypeFallbackUrl(job?.sim_type));
   }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
 
+  const handleCancelled = useCallback(() => {
+    const currentSimId = getCurrentSimId();
+    if (currentSimId) {
+      const target = getSimReturnTarget(currentSimId);
+      if (target?.returnUrl) {
+        if (target.pageKey) {
+          setSimReturnNotice(target.pageKey, {
+            title: 'Simulation cancelled',
+            message: 'The simulation was cancelled and you were returned to your previous page.',
+          });
+        }
+        const returnUrl = resolveSimAgainNavigation(currentSimId);
+        if (returnUrl) {
+          router.push(returnUrl);
+          return;
+        }
+      }
+    }
+    setJob((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
+  }, [getCurrentSimId, router]);
+
   const navigateToScenario = useCallback(
     (scenarioId: string) => {
       if (!scenarioId || scenarioId === activeScenarioId) return;
@@ -964,7 +987,7 @@ export default function SimResultClient() {
           stageTimings={stageTimings}
           activeStageElapsed={activeStageElapsed}
           jobId={activeScenarioId}
-          onCancelled={() => setJob({ ...job, status: 'cancelled' })}
+          onCancelled={handleCancelled}
           logLines={logLines}
           showLogs={showLogs}
           onToggleLogs={handleToggleLogs}
@@ -997,6 +1020,8 @@ export default function SimResultClient() {
     job.sim_type === 'stat_weights' ||
     job.sim_type === 'stat-weights' ||
     job.sim_type === 'stat_plot';
+  const baselineLiveStats = (r.baseline_live_stats as StatSnapshot | undefined) || null;
+  const simulatedStats = (r.simulated_stats as StatSnapshot | undefined) || null;
 
   const equippedGear = r.equipped_gear as any;
   const avgIlevel = equippedGear ? calculateAverageIlevel(equippedGear) : undefined;
@@ -1048,10 +1073,22 @@ export default function SimResultClient() {
             talentString={r.talent_string as string | undefined}
             currencies={r.currencies as any}
             enableWishlistActions={isDropFinderResult}
+            baselineLiveStats={baselineLiveStats}
+            simulatedStats={simulatedStats}
+            generatedInput={job?.simc_input}
+            simOptions={((job as any)?.options as Record<string, unknown> | undefined) || null}
           />
         </>
       ) : isStatWeights ? (
         <>
+          {(baselineLiveStats || simulatedStats) && (
+            <SimStatsComparisonCard
+              current={baselineLiveStats}
+              simulated={simulatedStats}
+              title="Live vs Simulated Stats"
+              description="The simulated values reflect the active run setup, including raid buffs, consumables, and other selected sim modifiers."
+            />
+          )}
           <div className="card border-gold/10 bg-gold/[0.02] p-6">
             <h2 className="mb-2 text-lg font-bold text-zinc-100">Stat Weights Generated</h2>
             <p className="text-sm text-zinc-400">
@@ -1140,6 +1177,17 @@ export default function SimResultClient() {
               </div>
             )}
           </DpsHeroCard>
+          {(baselineLiveStats || simulatedStats) && (
+            <CollapsibleSection title="Stats Comparison" defaultOpen={false}>
+              <SimStatsComparisonCard
+                current={baselineLiveStats}
+                simulated={simulatedStats}
+                title="Live vs Simulated Stats"
+                description="The simulated values reflect the active run setup, including raid buffs, consumables, and other selected sim modifiers."
+                framed={false}
+              />
+            </CollapsibleSection>
+          )}
           {r.equipped_gear &&
             Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (
               <CollapsibleSection title="Character Panel">

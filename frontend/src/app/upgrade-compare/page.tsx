@@ -7,11 +7,12 @@ import ComboSummary from '../components/ComboSummary';
 import GearItemRow from '../components/GearItemRow';
 import StickyPageHeader from '../components/StickyPageHeader';
 import { useSimContext } from '../components/SimContext';
+import SimReturnNotice from '../components/shared/SimReturnNotice';
 import { API_URL } from '../lib/api';
 import { SLOT_LABELS } from '../lib/types';
 import { QUALITY_COLORS, getIconUrl, useItemInfo, type ItemQuery } from '../lib/useItemInfo';
 import { useSimSubmit } from '../lib/useSimSubmit';
-import { consumeSimAgainState } from '../lib/sim-return';
+import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
 
 const UPGRADE_COMPARE_SIM_AGAIN_KEY = 'upgrade-compare';
 
@@ -130,12 +131,15 @@ export default function UpgradeComparePage() {
     'highest_affordable' | 'all_affordable' | 'highest_any' | 'all_any'
   >('highest_affordable');
   const [budgetOverride, setBudgetOverride] = useState<Record<string, string>>({});
+  const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
   const skipNextDataResetRef = useRef(false);
 
   useEffect(() => {
     const restored = consumeSimAgainState<UpgradeCompareSimAgainState>(
       UPGRADE_COMPARE_SIM_AGAIN_KEY
     );
+    const notice = consumeSimReturnNotice(UPGRADE_COMPARE_SIM_AGAIN_KEY);
+    if (notice) setReturnNotice(notice);
     if (!restored) return;
     if (Array.isArray(restored.selectedSlots)) {
       setSelectedSlots(
@@ -376,6 +380,13 @@ export default function UpgradeComparePage() {
 
   return (
     <div className="space-y-6">
+      {returnNotice ? (
+        <SimReturnNotice
+          title={returnNotice.title}
+          message={returnNotice.message}
+          onDismiss={() => setReturnNotice(null)}
+        />
+      ) : null}
       {/* Explainer */}
       <div className="rounded-lg border border-border/50 bg-surface-2/50 px-4 py-3">
         <p className="text-[15px] leading-relaxed text-zinc-400">

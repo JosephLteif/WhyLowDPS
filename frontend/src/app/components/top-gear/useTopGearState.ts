@@ -41,6 +41,7 @@ export function useTopGearState({
   const [upgradeMenuFor, setUpgradeMenuFor] = useState<string | null>(null);
   const [upgradeOptions, setUpgradeOptions] = useState<UpgradeOption[]>([]);
   const [loadingUpgrades, setLoadingUpgrades] = useState(false);
+  const [hasUpgradePathByUid, setHasUpgradePathByUid] = useState<Record<string, boolean>>({});
   const [isAddItemOpen, setAddItemOpen] = useState(false);
   const [addItemSlot, setAddItemSlot] = useState<string | null>(null);
   const [isOptimizeOpen, setOptimizeOpen] = useState(false);
@@ -79,8 +80,16 @@ export function useTopGearState({
           .map(normalizeUpgradeOption)
           .filter((opt): opt is UpgradeOption => opt !== null);
         setUpgradeOptions(normalizedOptions);
+        setHasUpgradePathByUid((prev) => ({
+          ...prev,
+          [item.uid]: normalizedOptions.length > 0,
+        }));
       } catch {
         setUpgradeOptions([]);
+        setHasUpgradePathByUid((prev) => ({
+          ...prev,
+          [item.uid]: false,
+        }));
       }
       setLoadingUpgrades(false);
     },
@@ -227,6 +236,7 @@ export function useTopGearState({
     setUpgradeMenuFor,
     upgradeOptions,
     loadingUpgrades,
+    hasUpgradePathByUid,
     isAddItemOpen,
     setAddItemOpen,
     addItemSlot,

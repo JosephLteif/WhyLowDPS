@@ -361,7 +361,11 @@ export default function GearItemRow({
   return (
     <div
       onContextMenu={onContextMenu}
-      className={`${baseClass} ${equipped ? 'bg-white/[0.03]' : ''}`}
+      className={`${baseClass} ${
+        equipped
+          ? 'border border-gold/30 bg-gold/[0.05] ring-1 ring-inset ring-gold/25'
+          : ''
+      }`}
     >
       {content}
     </div>

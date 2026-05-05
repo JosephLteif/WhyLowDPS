@@ -124,6 +124,8 @@ pub struct SimOptions {
     pub consumable_matrix_temporary_enchants: Vec<String>,
     #[serde(default)]
     pub consumable_matrix_raid_buffs: Vec<String>,
+    #[serde(default)]
+    pub baseline_live_stats: Option<Value>,
 }
 
 impl SimOptions {
@@ -134,7 +136,7 @@ impl SimOptions {
     }
 
     pub(super) fn to_json(&self) -> Value {
-        json!({
+        let mut v = json!({
             "fight_style": self.fight_style,
             "target_error": self.target_error,
             "iterations": self.iterations,
@@ -176,7 +178,11 @@ impl SimOptions {
             "consumable_matrix_augmentations": self.consumable_matrix_augmentations,
             "consumable_matrix_temporary_enchants": self.consumable_matrix_temporary_enchants,
             "consumable_matrix_raid_buffs": self.consumable_matrix_raid_buffs,
-        })
+        });
+        if let Some(stats) = &self.baseline_live_stats {
+            v["baseline_live_stats"] = stats.clone();
+        }
+        v
     }
 
     pub(super) fn to_json_with_sim_type(&self, sim_type: &str) -> Value {

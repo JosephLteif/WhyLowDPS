@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
-import { API_URL, fetchJsonCached } from '../lib/api';
+import { API_URL, fetchJsonCached, isDesktop } from '../lib/api';
 import { characterHref } from '../lib/routes';
 
 type SearchCharacter = {
@@ -25,6 +25,7 @@ export default function TopHeader() {
   const [characterRegion, setCharacterRegion] = useState('us');
   const [characterRealm, setCharacterRealm] = useState('');
   const [realmOptions, setRealmOptions] = useState<RealmOption[]>([]);
+  const [isMaximized, setIsMaximized] = useState(false);
 
   const handleLoginClick = async () => {
     const status = await checkCredentialsStatus();
@@ -51,6 +52,32 @@ export default function TopHeader() {
   const handleSidebarToggle = () => {
     window.dispatchEvent(new Event('whylowdps:toggle-sidebar'));
   };
+
+  const handleWindowAction = async (action: 'minimize' | 'maximize' | 'close') => {
+    if (!isDesktop) return;
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    const win = getCurrentWindow();
+    if (action === 'minimize') await win.minimize();
+    if (action === 'maximize') {
+      await win.toggleMaximize();
+      setIsMaximized(await win.isMaximized());
+    }
+    if (action === 'close') await win.close();
+  };
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      const { getCurrentWindow } = await import('@tauri-apps/api/window');
+      const win = getCurrentWindow();
+      setIsMaximized(await win.isMaximized());
+      unlisten = await win.onResized(async () => {
+        setIsMaximized(await win.isMaximized());
+      });
+    })();
+    return () => unlisten?.();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,10 +137,26 @@ export default function TopHeader() {
 
   return (
     <>
-      <header className="fixed top-0 z-50 w-full border-b border-border/80 bg-bg/90 backdrop-blur-xl">
-        <div className="flex h-14 items-center justify-between gap-2 px-3 md:px-6">
+      <header className="fixed top-0 z-50 w-full border-b border-white/5 bg-bg/85 backdrop-blur-2xl">
+        {isDesktop && (
+          <div data-tauri-drag-region className="relative h-8">
+            <div data-tauri-drag-region="false" className="absolute right-0 top-0 flex h-8 items-center">
+              <button onClick={() => void handleWindowAction('minimize')} className="grid h-8 w-10 place-items-center text-zinc-400 transition-colors hover:bg-white/10 hover:text-zinc-100" title="Minimize">
+                <span className="mb-1 block h-px w-3 bg-current" />
+              </button>
+              <button onClick={() => void handleWindowAction('maximize')} className="grid h-8 w-10 place-items-center text-zinc-400 transition-colors hover:bg-white/10 hover:text-zinc-100" title={isMaximized ? 'Restore' : 'Maximize'}>
+                <span className="block h-2.5 w-2.5 border border-current" />
+              </button>
+              <button onClick={() => void handleWindowAction('close')} className="grid h-8 w-10 place-items-center text-zinc-400 transition-colors hover:bg-red-500/80 hover:text-white" title="Close">
+                <span className="text-sm leading-none">×</span>
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="flex h-12 items-center justify-between gap-2 px-3 md:px-6">
           <div className="flex items-center gap-3">
             <button
+              data-tauri-drag-region="false"
               type="button"
               onClick={handleSidebarToggle}
               className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-all hover:border-zinc-500 hover:bg-white/5 hover:text-white xl:hidden"
@@ -127,6 +170,7 @@ export default function TopHeader() {
               </svg>
             </button>
             <button
+              data-tauri-drag-region="false"
               type="button"
               onClick={handleBack}
               className="flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[13px] font-medium text-zinc-300 transition-all hover:border-zinc-500 hover:bg-white/5 hover:text-white sm:px-3"
@@ -147,7 +191,7 @@ export default function TopHeader() {
               </svg>
               <span className="hidden sm:inline">Back</span>
             </button>
-            <Link href="/" className="group flex items-center gap-2.5">
+            <Link data-tauri-drag-region="false" href="/" className="group flex items-center gap-2.5">
               <img
                 src="/icon.png"
                 alt="WhyLowDps"

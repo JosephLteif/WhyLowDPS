@@ -348,11 +348,11 @@ export default function Sidebar() {
           type="button"
           aria-label="Close sidebar"
           onClick={() => setIsMobileOpen(false)}
-          className="fixed inset-0 top-14 z-40 bg-black/55 backdrop-blur-[1px]"
+          className="fixed inset-0 top-[5rem] z-40 bg-black/55 backdrop-blur-[1px]"
         />
       )}
       <aside
-        className={`fixed bottom-0 left-0 top-14 z-50 flex flex-col justify-between border-r border-border bg-surface/90 pb-4 pt-3 transition-all duration-200 ${
+        className={`fixed bottom-0 left-0 top-[5rem] z-50 flex flex-col justify-between border-r border-border bg-surface/90 pb-4 pt-3 transition-all duration-200 ${
           isCollapsed ? 'w-20' : 'w-72'
         } ${isNarrowViewport ? (isMobileOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
       >

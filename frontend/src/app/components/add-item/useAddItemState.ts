@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { API_URL, fetchJson } from '../../lib/api';
 import type { SeasonConfigResponse } from '../../lib/types';
 
@@ -58,6 +58,50 @@ export type AddItemCategory =
   | 'delves'
   | 'pvp'
   | 'world_bosses';
+
+function mergeDropMaps(...maps: Array<Record<string, ExternalItem[]>>): Record<string, ExternalItem[]> {
+  const merged: Record<string, ExternalItem[]> = {};
+
+  for (const map of maps) {
+    for (const [slot, items] of Object.entries(map || {})) {
+      if (!merged[slot]) merged[slot] = [];
+      merged[slot].push(...items);
+    }
+  }
+
+  return merged;
+}
+
+function scoreSearchDisplayItem(item: ExternalItem): number {
+  const encounter = String(item.encounter || '').trim().toLowerCase();
+  const instanceName = String(item.instance_name || '').trim().toLowerCase();
+  let score = 0;
+
+  if (encounter && encounter !== instanceName) score += 2;
+  if (instanceName) score += 1;
+  if (item.dungeon_info) score += 1;
+
+  return score;
+}
+
+function dedupeDropMapForSearch(data: Record<string, ExternalItem[]>): Record<string, ExternalItem[]> {
+  const deduped: Record<string, ExternalItem[]> = {};
+
+  for (const [slot, items] of Object.entries(data || {})) {
+    const byItemId = new Map<number, ExternalItem>();
+
+    for (const item of items || []) {
+      const existing = byItemId.get(item.item_id);
+      if (!existing || scoreSearchDisplayItem(item) > scoreSearchDisplayItem(existing)) {
+        byItemId.set(item.item_id, item);
+      }
+    }
+
+    deduped[slot] = Array.from(byItemId.values());
+  }
+
+  return deduped;
+}
 
 function normalizeUpgradeTracks(input: any): Record<string, any[]> {
   if (!input) return {};
@@ -119,6 +163,13 @@ export function useAddItemState(
     Record<number, EmbellishmentOption | null>
   >({});
 
+  const buildQueryString = useCallback(() => {
+    const query = new URLSearchParams();
+    if (className) query.set('class_name', className);
+    if (spec) query.set('spec', spec);
+    return query.toString();
+  }, [className, spec]);
+
   useEffect(() => {
     if (isOpen) {
       setFilterSlot(preferredSlot || null);
@@ -166,47 +217,41 @@ export function useAddItemState(
       setLoading(true);
       setDrops({});
       try {
-        const query = new URLSearchParams();
-        if (className) query.set('class_name', className);
-        if (spec) query.set('spec', spec);
+        const queryString = buildQueryString();
         let data: Record<string, ExternalItem[]> = {};
         if (category === 'crafted') {
-          const res = await fetch(`${API_URL}/api/instances/type/profession/drops?${query.toString()}`, {
+          const res = await fetch(`${API_URL}/api/instances/type/profession/drops?${queryString}`, {
             credentials: 'include',
           });
           data = await res.json();
         } else if (category === 'delves') {
           const [delveRes, preyRes] = await Promise.all([
-            fetch(`${API_URL}/api/instances/type/delve-mid1/drops?${query.toString()}`, { credentials: 'include' }),
-            fetch(`${API_URL}/api/instances/type/prey-mid1/drops?${query.toString()}`, { credentials: 'include' }),
+            fetch(`${API_URL}/api/instances/type/delve-mid1/drops?${queryString}`, { credentials: 'include' }),
+            fetch(`${API_URL}/api/instances/type/prey-mid1/drops?${queryString}`, { credentials: 'include' }),
           ]);
           const delveData = await delveRes.json();
           const preyData = await preyRes.json();
-          for (const slot of Object.keys({ ...delveData, ...preyData })) {
-            data[slot] = [...(delveData[slot] || []), ...(preyData[slot] || [])];
-          }
+          data = mergeDropMaps(delveData, preyData);
         } else if (category === 'tier') {
-          const res = await fetch(`${API_URL}/api/instances/type/catalyst/drops?${query.toString()}`, {
+          const res = await fetch(`${API_URL}/api/instances/type/catalyst/drops?${queryString}`, {
             credentials: 'include',
           });
           data = await res.json();
         } else if (selectedInstance === 0) {
           const [raidRes, dungRes] = await Promise.all([
-            fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, {
+            fetch(`${API_URL}/api/instances/type/raid/drops?${queryString}`, {
               credentials: 'include',
             }),
-            fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, {
+            fetch(`${API_URL}/api/instances/type/dungeon/drops?${queryString}`, {
               credentials: 'include',
             }),
           ]);
           const raidData = await raidRes.json();
           const dungData = await dungRes.json();
-          for (const slot of Object.keys({ ...raidData, ...dungData })) {
-            data[slot] = [...(raidData[slot] || []), ...(dungData[slot] || [])];
-          }
+          data = mergeDropMaps(raidData, dungData);
         } else {
           const res = await fetch(
-            `${API_URL}/api/instances/${selectedInstance}/drops?${query.toString()}`,
+            `${API_URL}/api/instances/${selectedInstance}/drops?${queryString}`,
             { credentials: 'include' }
           );
           data = await res.json();
@@ -223,43 +268,72 @@ export function useAddItemState(
       // The next category/source request owns the UI now; ignore late responses.
       cancelled = true;
     };
-  }, [isOpen, selectedInstance, className, spec, category]);
+  }, [isOpen, selectedInstance, category, buildQueryString]);
 
   useEffect(() => {
     if (!isOpen) return;
+    let cancelled = false;
     const fetchAllPossible = async () => {
       setIsGlobalLoading(true);
       try {
-        const query = new URLSearchParams();
-        if (className) query.set('class_name', className);
-        if (spec) query.set('spec', spec);
-        const [raidRes, dungRes, catRes] = await Promise.all([
-          fetch(`${API_URL}/api/instances/type/raid/drops?${query.toString()}`, {
-            credentials: 'include',
-          }),
-          fetch(`${API_URL}/api/instances/type/dungeon/drops?${query.toString()}`, {
-            credentials: 'include',
-          }),
-          fetch(`${API_URL}/api/instances/type/catalyst/drops?${query.toString()}`, {
-            credentials: 'include',
-          }),
-        ]);
-        const raidData = await raidRes.json();
-        const dungData = await dungRes.json();
-        const catData = await catRes.json();
-        const data: Record<string, ExternalItem[]> = {};
-        const allSlots = Array.from(new Set([...Object.keys(raidData), ...Object.keys(dungData), ...Object.keys(catData)]));
-        for (const slot of allSlots) {
-          data[slot] = [...(raidData[slot] || []), ...(dungData[slot] || []), ...(catData[slot] || [])];
+        const queryString = buildQueryString();
+        let data: Record<string, ExternalItem[]> = {};
+
+        if (category === 'crafted') {
+          data = await fetchJson<Record<string, ExternalItem[]>>(
+            `${API_URL}/api/instances/type/profession/drops?${queryString}`
+          );
+        } else if (category === 'delves') {
+          const [delveData, preyData] = await Promise.all([
+            fetchJson<Record<string, ExternalItem[]>>(
+              `${API_URL}/api/instances/type/delve-mid1/drops?${queryString}`
+            ),
+            fetchJson<Record<string, ExternalItem[]>>(
+              `${API_URL}/api/instances/type/prey-mid1/drops?${queryString}`
+            ),
+          ]);
+          data = mergeDropMaps(delveData, preyData);
+        } else if (category === 'tier') {
+          data = await fetchJson<Record<string, ExternalItem[]>>(
+            `${API_URL}/api/instances/type/catalyst/drops?${queryString}`
+          );
+        } else if (category === 'raid' || category === 'dungeon' || category === 'pvp' || category === 'world_bosses') {
+          const ids = instances
+            .filter((inst) => {
+              const type = String(inst.type || '').toLowerCase();
+              const name = String(inst.name || '').toLowerCase();
+              if (category === 'raid') return type === 'raid' && !name.includes('world boss');
+              if (category === 'dungeon') {
+                return type === 'dungeon' || type === 'expansion-dungeon' || type === 'mplus-chest';
+              }
+              if (category === 'pvp') return type.includes('pvp');
+              if (category === 'world_bosses') {
+                return name.includes('world boss') || type.includes('world-boss') || type.includes('world_boss');
+              }
+              return false;
+            })
+            .map((inst) => Number(inst.id))
+            .filter((id) => Number.isFinite(id));
+
+          if (ids.length > 0) {
+            data = await fetchJson<Record<string, ExternalItem[]>>(
+              `${API_URL}/api/instances/drops?ids=${ids.join(',')}${queryString ? `&${queryString}` : ''}`
+            );
+          }
         }
-        setAllPossibleDrops(data);
+
+        if (!cancelled) setAllPossibleDrops(dedupeDropMapForSearch(data));
       } catch (e) {
+        if (!cancelled) setAllPossibleDrops({});
       } finally {
-        setIsGlobalLoading(false);
+        if (!cancelled) setIsGlobalLoading(false);
       }
     };
     fetchAllPossible();
-  }, [isOpen, className, spec]);
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, category, instances, buildQueryString]);
 
   return {
     instances,

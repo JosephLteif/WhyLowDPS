@@ -20,7 +20,7 @@ interface Character {
 
 const FAVORITES_STORAGE_KEY = 'whylowdps.characters.favorites';
 const HIDDEN_STORAGE_KEY = 'whylowdps.characters.hidden';
-const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
+const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
 
 function normalizeClassKey(value: string): string {
   return (value || '').toLowerCase().replace(/\s+/g, '_');
@@ -86,8 +86,8 @@ function CharacterCard({
   isHidden,
   onToggleFavorite,
   onToggleHidden,
-  onSetMain,
-  isMainCharacter,
+  onToggleTracked,
+  isTrackedCharacter,
 }: {
   char: Character;
   faction: 'alliance' | 'horde';
@@ -95,8 +95,8 @@ function CharacterCard({
   isHidden: boolean;
   onToggleFavorite: (char: Character) => void;
   onToggleHidden: (char: Character) => void;
-  onSetMain: (char: Character) => void;
-  isMainCharacter: boolean;
+  onToggleTracked: (char: Character) => void;
+  isTrackedCharacter: boolean;
 }) {
   const classKey = normalizeClassKey(char.class);
   const color = CLASS_COLORS[classKey] || '#d4d4d8';
@@ -148,9 +148,9 @@ function CharacterCard({
             <p className="text-xl font-black tracking-tight" style={{ color }}>
               {char.name}
               {isFavorite ? <span className="ml-2 align-middle text-gold">&#9733;</span> : null}
-              {isMainCharacter ? (
+              {isTrackedCharacter ? (
                 <span className="ml-2 inline-flex items-center rounded border border-emerald-400/40 bg-emerald-500/15 px-1.5 py-0.5 align-middle text-[10px] font-black uppercase tracking-wider text-emerald-300">
-                  Main
+                  Tracked
                 </span>
               ) : null}
             </p>
@@ -174,12 +174,12 @@ function CharacterCard({
                   <button
                     type="button"
                     onClick={() => {
-                      onSetMain(char);
+                      onToggleTracked(char);
                       setMenuOpen(false);
                     }}
                     className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
                   >
-                    {isMainCharacter ? 'Main Character' : 'Set as Main'}
+                    {isTrackedCharacter ? 'Untrack Character' : 'Track Character'}
                   </button>
                   <button
                     type="button"
@@ -266,7 +266,7 @@ export default function CharactersPage() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [hidden, setHidden] = useState<string[]>([]);
   const [storageHydrated, setStorageHydrated] = useState(false);
-  const [mainCharacterKey, setMainCharacterKey] = useState('');
+  const [trackedCharacterKeys, setTrackedCharacterKeys] = useState<string[]>([]);
 
   const fetchCharacters = useCallback(
     (refresh = false) => {
@@ -303,28 +303,17 @@ export default function CharactersPage() {
         const parsed = JSON.parse(rawHidden);
         if (Array.isArray(parsed)) setHidden(parsed.filter((v) => typeof v === 'string'));
       }
-      const rawMain = window.localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY);
-      if (rawMain) setMainCharacterKey(rawMain);
+      const rawTracked = window.localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY);
+      if (rawTracked) {
+        const parsed = JSON.parse(rawTracked);
+        if (Array.isArray(parsed)) setTrackedCharacterKeys(parsed.filter((v) => typeof v === 'string'));
+      }
     } catch {
       setFavorites([]);
       setHidden([]);
     } finally {
       setStorageHydrated(true);
     }
-  }, []);
-
-  useEffect(() => {
-    fetch(`${API_URL}/api/user/config`, { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg) => {
-        const key = String(cfg?.main_character || '');
-        if (!key) return;
-        setMainCharacterKey(key);
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, key);
-        }
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -347,19 +336,15 @@ export default function CharactersPage() {
     setHidden((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   }, []);
 
-  const setMainCharacter = useCallback(async (char: Character) => {
+  const toggleTrackedCharacter = useCallback((char: Character) => {
     const key = characterId(char);
-    setMainCharacterKey(key);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, key);
-    }
-    try {
-      await fetchJson(`${API_URL}/api/user/config`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'main_character', value: key }),
-      });
-    } catch {}
+    setTrackedCharacterKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((v) => v !== key) : [...prev, key];
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(LOCAL_TRACKED_CHARACTERS_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
   }, []);
 
   const favoriteSet = useMemo(() => new Set(favorites), [favorites]);
@@ -554,8 +539,8 @@ export default function CharactersPage() {
                     isHidden={hiddenSet.has(characterId(char))}
                     onToggleFavorite={toggleFavorite}
                     onToggleHidden={toggleHidden}
-                    onSetMain={setMainCharacter}
-                    isMainCharacter={mainCharacterKey === characterId(char)}
+                    onToggleTracked={toggleTrackedCharacter}
+                    isTrackedCharacter={trackedCharacterKeys.includes(characterId(char))}
                   />
                 ))}
               </div>
@@ -582,8 +567,8 @@ export default function CharactersPage() {
                     isHidden={hiddenSet.has(characterId(char))}
                     onToggleFavorite={toggleFavorite}
                     onToggleHidden={toggleHidden}
-                    onSetMain={setMainCharacter}
-                    isMainCharacter={mainCharacterKey === characterId(char)}
+                    onToggleTracked={toggleTrackedCharacter}
+                    isTrackedCharacter={trackedCharacterKeys.includes(characterId(char))}
                   />
                 ))}
               </div>

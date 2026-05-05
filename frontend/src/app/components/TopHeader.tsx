@@ -105,8 +105,7 @@ export default function TopHeader() {
     const trimmedRealm = characterRealm.trim();
     if (!trimmedName || !trimmedRealm) return;
     const href = characterHref(characterRegion, trimmedRealm, trimmedName);
-    const sep = href.includes('?') ? '&' : '?';
-    router.push(`${href}${sep}refresh=true`);
+    router.push(href);
   };
 
   return (

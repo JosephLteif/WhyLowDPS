@@ -11,6 +11,8 @@ import { simResultHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
 import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
+const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
+const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
 
 type SimStatus = SimSummary['status'];
 
@@ -280,12 +282,17 @@ export default function Home() {
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [mainCharacter, setMainCharacter] = useState<{ region: string; realm: string; name: string } | null>(null);
+  const [trackedCharacters, setTrackedCharacters] = useState<{ region: string; realm: string; name: string }[]>([]);
+  const [activeTrackedIndex, setActiveTrackedIndex] = useState(0);
+  const [trackedClassByCharacter, setTrackedClassByCharacter] = useState<Record<string, string>>({});
   const [mainVault, setMainVault] = useState<{ mplusRuns: number; raidKills: number } | null>(null);
   const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
   const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
   const [mainSimcInput, setMainSimcInput] = useState<string>('');
   const [mainCharacterOpen, setMainCharacterOpen] = useState(true);
+  const [trackedRefreshToken, setTrackedRefreshToken] = useState(0);
+  const [lastRefreshedByCharacter, setLastRefreshedByCharacter] = useState<Record<string, number>>({});
+  const [stampRefreshTime, setStampRefreshTime] = useState(false);
   const [recentResultsOpen, setRecentResultsOpen] = useState(true);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
@@ -323,24 +330,31 @@ export default function Home() {
   useEffect(() => {
     const loadMainCharacter = async () => {
       try {
-        const localKey =
-          typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
-        const cfgRes = await fetch(`${API_URL}/api/user/config`, { credentials: 'include' }).catch(() => null);
-        let key = localKey;
-        if (cfgRes?.ok) {
-          const cfg = await cfgRes.json();
-          const remoteKey = String(cfg?.main_character || '');
-          if (remoteKey) {
-            key = remoteKey;
-            if (typeof window !== 'undefined') {
-              localStorage.setItem(LOCAL_MAIN_CHARACTER_KEY, remoteKey);
-            }
-          }
+        const rawTracked =
+          typeof window !== 'undefined' ? localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY) || '[]' : '[]';
+        let trackedKeys: string[] = [];
+        try {
+          const parsed = JSON.parse(rawTracked);
+          if (Array.isArray(parsed)) trackedKeys = parsed.map((v) => String(v));
+        } catch {}
+        if (trackedKeys.length === 0) {
+          const legacyMain =
+            typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
+          if (legacyMain) trackedKeys = [legacyMain];
         }
-        if (!key) return;
-        const [region, realm, name] = key.split('|');
-        if (!region || !realm || !name) return;
-        setMainCharacter({ region, realm, name });
+
+        const parsedTracked = trackedKeys
+          .map((k) => {
+            const [region, realm, name] = k.split('|');
+            if (!region || !realm || !name) return null;
+            return { region, realm, name };
+          })
+          .filter(Boolean) as { region: string; realm: string; name: string }[];
+        setTrackedCharacters(parsedTracked);
+        if (parsedTracked.length === 0) return;
+
+        const selected = parsedTracked[Math.min(activeTrackedIndex, parsedTracked.length - 1)];
+        const { region, realm, name } = selected;
 
         const query = `?region=${region}`;
         const base = `/api/blizzard/character/${realm}/${name}`;
@@ -354,6 +368,11 @@ export default function Home() {
           className: profileRes?.character_class?.name || undefined,
           ilvl: Number(profileRes?.equipped_item_level || 0) || undefined,
         });
+        const charKey = `${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+        const className = String(profileRes?.character_class?.name || '');
+        if (className) {
+          setTrackedClassByCharacter((prev) => ({ ...prev, [charKey]: className }));
+        }
 
         const profiles = await listCharacterProfiles({ name, realm, region }).catch(() => []);
         const latestSimc = profiles[0]?.simc_input || '';
@@ -392,12 +411,58 @@ export default function Home() {
         const mplusRuns = computeMythicVaultRuns(mythicPlus, region);
         const raidKills = computeWeeklyRaidBossKills(raidEncounters, region);
         setMainVault({ mplusRuns, raidKills });
+        if (stampRefreshTime) {
+          const ts = Date.now();
+          const charKey = `${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
+          setLastRefreshedByCharacter((prev) => ({ ...prev, [charKey]: ts }));
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`${LAST_REFRESH_PREFIX}${charKey}`, String(ts));
+          }
+          setStampRefreshTime(false);
+        }
       } catch {
         // ignore
       }
     };
     void loadMainCharacter();
-  }, []);
+  }, [activeTrackedIndex, trackedRefreshToken, stampRefreshTime]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const next: Record<string, number> = {};
+    for (const c of trackedCharacters) {
+      const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
+      const raw = localStorage.getItem(`${LAST_REFRESH_PREFIX}${key}`);
+      const ts = raw ? Number(raw) : 0;
+      if (Number.isFinite(ts) && ts > 0) next[key] = ts;
+    }
+    setLastRefreshedByCharacter(next);
+  }, [trackedCharacters]);
+
+  useEffect(() => {
+    if (trackedCharacters.length === 0) return;
+    let cancelled = false;
+    const loadTrackedClasses = async () => {
+      const updates: Record<string, string> = {};
+      await Promise.all(
+        trackedCharacters.map(async (c) => {
+          const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
+          if (trackedClassByCharacter[key]) return;
+          const query = `?region=${c.region}`;
+          const base = `/api/blizzard/character/${c.realm}/${c.name}`;
+          const profileRes = await fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(() => null);
+          const className = String(profileRes?.character_class?.name || '');
+          if (className) updates[key] = className;
+        })
+      );
+      if (cancelled || Object.keys(updates).length === 0) return;
+      setTrackedClassByCharacter((prev) => ({ ...prev, ...updates }));
+    };
+    void loadTrackedClasses();
+    return () => {
+      cancelled = true;
+    };
+  }, [trackedCharacters, trackedClassByCharacter]);
 
   const openMainWorkflow = useCallback(
     (path: string) => {
@@ -561,22 +626,88 @@ export default function Home() {
 
       <section className="card p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Main Character</h2>
-          <button
-            type="button"
-            onClick={() => setMainCharacterOpen((prev) => !prev)}
-            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-          >
-            {mainCharacterOpen ? 'Collapse' : 'Expand'}
-          </button>
+          <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setStampRefreshTime(true);
+                setTrackedRefreshToken((v) => v + 1);
+              }}
+              className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => setMainCharacterOpen((prev) => !prev)}
+              className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+            >
+              {mainCharacterOpen ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
         </div>
-        {mainCharacterOpen && !mainCharacter ? (
-          <p className="text-sm text-zinc-500">No main character selected yet. Open a character and click Set as Main.</p>
-        ) : mainCharacterOpen && mainCharacter ? (
+        {(() => {
+          const active = trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
+          if (!active) return null;
+          const key = `${active.region.toLowerCase()}|${active.realm.toLowerCase()}|${active.name.toLowerCase()}`;
+          const ts = lastRefreshedByCharacter[key];
+          if (!ts) return null;
+          return (
+          <p className="mb-2 text-[11px] text-zinc-500">
+            Last refreshed at {new Date(ts).toLocaleString()}
+          </p>
+          );
+        })()}
+        {mainCharacterOpen && trackedCharacters.length === 0 ? (
+          <p className="text-sm text-zinc-500">No tracked characters yet. Open a character and click Track Character.</p>
+        ) : mainCharacterOpen && trackedCharacters.length > 0 ? (
           <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {trackedCharacters.map((c, idx) => (
+                <div key={`${c.region}|${c.realm}|${c.name}`} className={`inline-flex items-center rounded-md border ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'}`}>
+                  {(() => {
+                    const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
+                    const className = trackedClassByCharacter[key];
+                    const classColor = className ? (CLASS_COLORS[className.toLowerCase().replace(/[\s-]+/g, '_')] || '#d4d4d8') : '#d4d4d8';
+                    return (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTrackedIndex(idx)}
+                    className={`px-2.5 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
+                    style={{ color: classColor }}
+                  >
+                    {c.name}
+                  </button>
+                    );
+                  })()}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = trackedCharacters.filter((_, i) => i !== idx);
+                      setTrackedCharacters(next);
+                      if (typeof window !== 'undefined') {
+                        localStorage.setItem(LOCAL_TRACKED_CHARACTERS_KEY, JSON.stringify(next.map((x) => `${x.region}|${x.realm}|${x.name}`)));
+                      }
+                      setActiveTrackedIndex((prev) => {
+                        if (next.length === 0) return 0;
+                        if (prev > idx) return prev - 1;
+                        if (prev === idx) return Math.max(0, prev - 1);
+                        return prev;
+                      });
+                    }}
+                    className={`border-l px-2 py-1 text-[11px] ${idx === activeTrackedIndex ? 'border-gold/30 text-gold/80 hover:text-gold' : 'border-border text-zinc-500 hover:text-red-300'}`}
+                    title={`Untrack ${c.name}`}
+                    aria-label={`Untrack ${c.name}`}
+                  >
+                    Untrack
+                  </button>
+                </div>
+              ))}
+            </div>
             <div className="text-sm text-zinc-200">
-              <span className="font-semibold">{mainCharacter.name}</span>
-              <span className="text-zinc-500"> · {mainCharacter.realm} · {mainCharacter.region.toUpperCase()}</span>
+              <span className="font-semibold">{trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}</span>
+              <span className="text-zinc-500"> · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm} · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region.toUpperCase()}</span>
             </div>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
               <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
@@ -654,10 +785,10 @@ export default function Home() {
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
+              <Link href={`/character/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
               <button onClick={() => openMainWorkflow('/quick-sim')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Run Sim</button>
               <button onClick={() => openMainWorkflow('/top-gear')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Top Gear</button>
-              <Link href={`/character/${mainCharacter.region}/${mainCharacter.realm}/${mainCharacter.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
+              <Link href={`/character/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
             </div>
           </div>
         ) : null}

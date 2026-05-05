@@ -1,6 +1,6 @@
 {
   "name": "whylowdps-frontend",
-  "version": "1.8.0",
+  "version": "1.8.0-nightly.20260505",
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",

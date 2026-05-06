@@ -127,6 +127,26 @@ async function waitForExactStats(jobId: string): Promise<StatSnapshot | null> {
   throw new Error('Exact stats simulation timed out');
 }
 
+async function linkSimToParentCharacter(params: {
+  jobId: string;
+  name?: string;
+  realm?: string;
+  region?: string;
+}): Promise<void> {
+  const name = (params.name || '').trim();
+  const realm = (params.realm || '').trim();
+  const region = (params.region || '').trim().toLowerCase();
+  if (!name || !realm || !region) return;
+  try {
+    await fetchJson(`${API_URL}/api/sim/${params.jobId}/link`, {
+      method: 'POST',
+      body: JSON.stringify({ name, realm, region }),
+    });
+  } catch {
+    // Keep sim usable even when linking fails (e.g. unauthenticated web mode).
+  }
+}
+
 export default function TopGearResults({
   parentSimId,
   playerName,
@@ -316,6 +336,12 @@ export default function TopGearResults({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions, parentSimId)),
+        });
+        await linkSimToParentCharacter({
+          jobId: created.id,
+          name: playerName,
+          realm: playerRealm,
+          region: playerRegion,
         });
         const exactStats = await waitForExactStats(created.id);
         if (!exactStats) {

@@ -133,9 +133,16 @@ export default function ResultRow({
             : 'downgrade'
           : null;
 
+      const ilevelText =
+        nextIlevel > 0
+          ? currentIlevel > 0 && (ilvlChanged || needsUpgradeAction)
+            ? `${currentIlevel} -> ${nextIlevel}`
+            : `iLvl ${nextIlevel}`
+          : undefined;
+
       bySlot[it.slot] = {
         upgradeState,
-        ilevelText: nextIlevel > 0 ? `iLvl ${nextIlevel}` : undefined,
+        ilevelText,
         ilevelTooltip:
           ilvlChanged || needsUpgradeAction
             ? inferredNeedsUpgrade && baselineDropIlevel > 0

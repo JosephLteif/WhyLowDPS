@@ -88,16 +88,6 @@ export default function ItemTag({
         {name}
       </span>
       <span className="shrink-0 text-[14px] text-zinc-100/90">({slotName})</span>
-      {upgradeState === 'upgrade' && (
-        <span className="shrink-0 rounded bg-emerald-500/12 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-          Upgrade
-        </span>
-      )}
-      {upgradeState === 'downgrade' && (
-        <span className="shrink-0 rounded bg-red-500/12 px-1.5 py-px text-[10px] font-bold uppercase tracking-wider text-red-300">
-          Downgrade
-        </span>
-      )}
       {ilevelText && (
         <span
           title={ilevelTooltip}

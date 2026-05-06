@@ -404,16 +404,19 @@ export default function SimTimelineAnalyzer({
     return [...ids];
   }, [laneEvents, topActions, buffUptimes]);
   const icons = useSpellIcons(spellIds);
-  useWowheadTooltips([
-    events,
-    laneGroups,
-    topActions,
-    buffUptimes,
-    sequenceView,
-    showAllEvents,
-    sequenceZoom,
-    equippedItemInfo,
-  ]);
+  const tooltipDepKey = useMemo(() => {
+    const spells = spellIds
+      .filter((id) => Number.isFinite(id) && id > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+    const items = Object.keys(equippedItemInfo || {})
+      .map((k) => Number(k))
+      .filter((n) => Number.isFinite(n) && n > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+    return `${spells}|${items}`;
+  }, [spellIds, equippedItemInfo]);
+  useWowheadTooltips([tooltipDepKey]);
 
   return (
     <div className="space-y-4">

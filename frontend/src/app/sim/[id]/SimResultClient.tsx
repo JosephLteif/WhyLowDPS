@@ -395,7 +395,7 @@ export default function SimResultClient() {
   const [aplFallback, setAplFallback] = useState<any | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
-  const [liveStatsScenarios, setLiveStatsScenarios] = useState<ScenarioSibling[]>([]);
+  const [liveRelatedScenarios, setLiveRelatedScenarios] = useState<ScenarioSibling[]>([]);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
   const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
   const [activeStageElapsed, setActiveStageElapsed] = useState(0);
@@ -571,30 +571,49 @@ export default function SimResultClient() {
     let timer: ReturnType<typeof setTimeout>;
 
     async function pollLiveStatsScenarios() {
-      const parentId = String(job?.batch_id || activeScenarioId || '').trim();
-      if (!parentId || parentId === '_') {
-        if (active) setLiveStatsScenarios([]);
+      const anchorIds = new Set<string>();
+      const pushAnchor = (v?: string | null) => {
+        const s = String(v || '').trim();
+        if (s && s !== '_') anchorIds.add(s);
+      };
+      pushAnchor(activeScenarioId);
+      pushAnchor(job?.id);
+      pushAnchor(job?.batch_id || null);
+      (siblings || []).forEach((s) => pushAnchor(s.id));
+      (liveRelatedScenarios || []).forEach((s) => pushAnchor(s.id));
+
+      if (anchorIds.size === 0) {
+        if (active) setLiveRelatedScenarios([]);
         return;
       }
       try {
         const all = await fetchJson<any[]>(`${API_URL}/api/sims`);
         if (!active) return;
-        const mapped = (Array.isArray(all) ? all : [])
+        const sims = Array.isArray(all) ? all : [];
+        const related = sims.filter(
+          (s) =>
+            s &&
+            (anchorIds.has(String(s.id || '')) || anchorIds.has(String(s.batch_id || '')))
+        );
+        const mapped = related
           .filter(
             (s) =>
               s &&
-              s.id &&
-              s.batch_id === parentId &&
-              s.sim_type === 'top_gear_exact_stats'
+              s.id
           )
           .map((s, idx) => ({
             id: String(s.id),
             fightStyle: s.fight_style || 'Patchwerk',
             targetCount: 0,
             fightLength: 0,
-            simType: `Stats Sim ${idx + 1}`,
+            simType:
+              s.sim_type === 'top_gear_exact_stats'
+                ? `Stats Sim ${idx + 1}`
+                : s.sim_type === 'top_gear'
+                  ? 'Top Gear'
+                  : s.sim_type || `Scenario ${idx + 1}`,
           }));
-        setLiveStatsScenarios(mapped);
+        setLiveRelatedScenarios(mapped);
       } catch {
         // ignore
       }
@@ -606,14 +625,14 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [activeScenarioId, job?.batch_id]);
+  }, [activeScenarioId, job?.id, job?.batch_id, siblings, liveRelatedScenarios]);
 
   const toolbarScenarios = useMemo(() => {
     const base = siblings || [];
     const seen = new Set(base.map((s) => s.id));
-    const extras = liveStatsScenarios.filter((s) => !seen.has(s.id));
+    const extras = liveRelatedScenarios.filter((s) => !seen.has(s.id));
     return [...base, ...extras];
-  }, [siblings, liveStatsScenarios]);
+  }, [siblings, liveRelatedScenarios]);
 
   const getCurrentSimId = useCallback(
     () =>

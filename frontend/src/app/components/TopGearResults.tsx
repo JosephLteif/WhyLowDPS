@@ -11,13 +11,14 @@ import { useItemInfo, useEnchantInfo, useGemInfo } from '../lib/useItemInfo';
 import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import type { TopGearResult, ResultItem } from '../lib/types';
 import { useTopGearResults } from './top-gear-results/useTopGearResults';
 import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
 import SimResultTalentsCard from './SimResultTalentsCard';
-import { addItemsToWishlist, buildWishlistOwnerKey } from '../lib/wishlist';
+import { addItemsToWishlist, buildWishlistOwnerKey, isWishlisted, removeFromWishlist } from '../lib/wishlist';
 import type { DropItem } from '../drop-finder/types';
 
 interface TopGearResultsProps {
@@ -172,6 +173,7 @@ export default function TopGearResults({
   generatedInput,
   simOptions,
 }: TopGearResultsProps) {
+  const router = useRouter();
   const exactStatsStorageKey = useMemo(
     () => `top_gear_exact_stats_jobs_${parentSimId || 'unknown'}`,
     [parentSimId]
@@ -263,6 +265,7 @@ export default function TopGearResults({
 
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
   const [wishlistFeedback, setWishlistFeedback] = useState('');
+  const [wishlistRefreshTick, setWishlistRefreshTick] = useState(0);
   const wishlistOwnerKey = useMemo(
     () =>
       buildWishlistOwnerKey({
@@ -274,10 +277,6 @@ export default function TopGearResults({
     [playerName, playerRealm, playerRegion, playerClass]
   );
 
-  const changedSelectedItems = useMemo(
-    () => selectedResult?.items.filter((it) => !it.is_kept && it.item_id > 0) ?? [],
-    [selectedResult]
-  );
   const [exactStatsCache, setExactStatsCache] = useState<Record<string, ExactStatsCacheEntry>>({});
   const [cachedExactJobIds, setCachedExactJobIds] = useState<Record<string, string>>({});
   const warmStartedRef = useRef(false);
@@ -379,6 +378,83 @@ export default function TopGearResults({
     [generatedInput, simOptions, exactStatsStorageKey, parentSimId]
   );
 
+  const openOrStartExactStats = useCallback(
+    async (result: TopGearResult) => {
+      const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
+      if (isEquipped) return;
+      const profilesetName = getTopGearProfilesetName(result);
+      if (!profilesetName || !generatedInput) return;
+
+      const cachedJobId = cachedExactJobIds[profilesetName] || exactStatsCache[profilesetName]?.jobId;
+      if (cachedJobId) {
+        router.push(`/sim/${cachedJobId}`);
+        return;
+      }
+
+      setExactStatsCache((prev) => ({
+        ...prev,
+        [profilesetName]: {
+          status: 'loading',
+          simulatedStats: prev[profilesetName]?.simulatedStats,
+        },
+      }));
+
+      try {
+        const exactInput = buildExactTopGearSimInput(generatedInput, profilesetName);
+        if (!exactInput) throw new Error('Could not build selected profile.');
+        const created = await fetchJson<{ id: string }>(`${API_URL}/api/sim`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions, parentSimId)),
+        });
+        await linkSimToParentCharacter({
+          jobId: created.id,
+          name: playerName,
+          realm: playerRealm,
+          region: playerRegion,
+        });
+        setExactStatsCache((prev) => ({
+          ...prev,
+          [profilesetName]: {
+            ...(prev[profilesetName] || {}),
+            status: 'loading',
+            jobId: created.id,
+          },
+        }));
+        setCachedExactJobIds((prev) => ({ ...prev, [profilesetName]: created.id }));
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem(exactStatsStorageKey);
+            const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+            map[profilesetName] = created.id;
+            localStorage.setItem(exactStatsStorageKey, JSON.stringify(map));
+          } catch {}
+        }
+        router.push(`/sim/${created.id}`);
+      } catch (error) {
+        setExactStatsCache((prev) => ({
+          ...prev,
+          [profilesetName]: {
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Failed to start stats sim.',
+          },
+        }));
+      }
+    },
+    [
+      cachedExactJobIds,
+      exactStatsCache,
+      generatedInput,
+      simOptions,
+      parentSimId,
+      playerName,
+      playerRealm,
+      playerRegion,
+      exactStatsStorageKey,
+      router,
+    ]
+  );
+
   useEffect(() => {
     if (warmStartedRef.current) return;
     warmStartedRef.current = true;
@@ -466,13 +542,24 @@ export default function TopGearResults({
     [cachedExactJobIds, exactStatsCache]
   );
 
-  const handleAddSelectedToWishlist = () => {
-    if (changedSelectedItems.length === 0) {
-      setWishlistFeedback('No changed items in this selection.');
+  const toggleResultWishlist = useCallback((result: TopGearResult) => {
+    const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+    if (changedItems.length === 0) {
+      setWishlistFeedback('No changed items in this row.');
       return;
     }
-
-    const entries = changedSelectedItems.map((it) => {
+    const allWishlisted = changedItems.every((it) =>
+      isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
+    );
+    if (allWishlisted) {
+      for (const it of changedItems) {
+        removeFromWishlist(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0));
+      }
+      setWishlistFeedback(`Removed ${changedItems.length} item(s) from wishlist.`);
+      setWishlistRefreshTick((v) => v + 1);
+      return;
+    }
+    const entries = changedItems.map((it) => {
       const dropItem: DropItem = {
         item_id: it.item_id,
         name: it.name,
@@ -497,14 +584,20 @@ export default function TopGearResults({
     });
 
     const { added, skipped } = addItemsToWishlist(entries, wishlistOwnerKey);
-    if (added > 0 && skipped > 0) {
-      setWishlistFeedback(`Added ${added} item(s), ${skipped} already saved.`);
-    } else if (added > 0) {
-      setWishlistFeedback(`Added ${added} item(s) to wishlist.`);
-    } else {
-      setWishlistFeedback('All selected items are already in wishlist.');
-    }
-  };
+    if (added > 0 && skipped > 0) setWishlistFeedback(`Added ${added} item(s), ${skipped} already saved.`);
+    else if (added > 0) setWishlistFeedback(`Added ${added} item(s) to wishlist.`);
+    else setWishlistFeedback('All row items are already in wishlist.');
+    setWishlistRefreshTick((v) => v + 1);
+  }, [wishlistOwnerKey]);
+
+  const isResultWishlisted = useCallback((result: TopGearResult) => {
+    void wishlistRefreshTick;
+    const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+    if (changedItems.length === 0) return false;
+    return changedItems.every((it) =>
+      isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
+    );
+  }, [wishlistOwnerKey, wishlistRefreshTick]);
 
   const characterRenderUrl =
     playerRealm && playerName
@@ -669,13 +762,6 @@ export default function TopGearResults({
           <div className="flex flex-wrap items-center gap-3">
             {enableWishlistActions && (
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAddSelectedToWishlist}
-                  className="rounded border border-gold/30 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
-                >
-                  Add Selection To Wishlist
-                </button>
                 <Link
                   href="/wishlist"
                   className="rounded border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 transition-colors hover:border-zinc-500 hover:text-white"
@@ -745,6 +831,28 @@ export default function TopGearResults({
                         gemInfoMap={gemInfoMap}
                         currencies={currencies}
                         dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+                        exactStatsStatus={getExactStatsStatus(result).status}
+                        exactStatsLabel={getExactStatsStatus(result).label}
+                        onLoadExactStats={() => {
+                          void openOrStartExactStats(result);
+                        }}
+                        exactStatsButtonLabel={
+                          getExactStatsStatus(result).status === 'loading'
+                            ? 'Starting...'
+                            : getExactStatsStatus(result).status === 'ready' ||
+                                getExactStatsStatus(result).status === 'error'
+                              ? 'Go to Sim'
+                              : 'Start Sim'
+                        }
+                        exactStatsButtonVariant={
+                          getExactStatsStatus(result).status === 'ready' ||
+                          getExactStatsStatus(result).status === 'error'
+                            ? 'goto'
+                            : 'start'
+                        }
+                        exactStatsButtonDisabled={getExactStatsStatus(result).status === 'loading'}
+                        onAddToWishlist={enableWishlistActions ? () => toggleResultWishlist(result) : undefined}
+                        isWishlisted={enableWishlistActions ? isResultWishlisted(result) : false}
                       />
                     ))}
                   </div>
@@ -768,11 +876,10 @@ export default function TopGearResults({
                 dropBaselineIlevelByKey={dropBaselineIlevelByKey}
                 getExactStatsStatus={getExactStatsStatus}
                 onLoadExactStats={(result) => {
-                  const isEquipped =
-                    result.items.length === 0 || result.name.startsWith('Currently Equipped');
-                  if (isEquipped) return;
-                  void loadExactStats(result);
+                  void openOrStartExactStats(result);
                 }}
+                onAddResultToWishlist={enableWishlistActions ? toggleResultWishlist : undefined}
+                isResultWishlisted={enableWishlistActions ? isResultWishlisted : undefined}
               />
         )}
       </CollapsibleSection>

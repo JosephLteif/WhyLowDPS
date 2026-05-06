@@ -11,7 +11,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const { user, loading, checkCredentialsStatus } = useAuth();
   const [showSetup, setShowSetup] = useState(false);
-  const [isGloballyConfigured, setIsGloballyConfigured] = useState(false);
+  const [isGloballyConfigured, setIsGloballyConfigured] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
         if (!isNetworkUnavailableError(err)) {
           console.error('[DataGuard] Credentials status check failed:', err);
         }
-        setIsGloballyConfigured(false);
+        // Keep previous value on transient errors to avoid splash-state flapping.
       })
       .finally(() => {
         if (cancelled) return;
@@ -38,7 +38,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [checkCredentialsStatus, user]);
+  }, [checkCredentialsStatus]);
 
   const checkStatus = useCallback(async () => {
     try {
@@ -89,12 +89,26 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const isSettingsPage = pathname === '/settings';
 
   // 1. Initial configuration check (no data yet)
-  if ((loading || isChecking) && !isGloballyConfigured && !user && !isSettingsPage) {
+  if ((loading || isChecking) && !isSettingsPage) {
     return null;
   }
 
+  // If user is already authenticated, don't bounce back to auth/setup splash.
+  if (user && !isSettingsPage) {
+    if (!isReady) {
+      return (
+        <SplashScreen
+          status={dataStatus.status}
+          progress={dataStatus.progress}
+          onRetry={handleRetry}
+        />
+      );
+    }
+    return <>{children}</>;
+  }
+
   // 2. If the system is not configured with Blizzard keys, show setup screen
-  if (!isGloballyConfigured && !isSettingsPage) {
+  if (isGloballyConfigured === false && !isSettingsPage) {
     return <SplashScreen status="unauthenticated_needs_keys" progress="" />;
   }
 

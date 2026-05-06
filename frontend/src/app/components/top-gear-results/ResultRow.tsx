@@ -1,10 +1,60 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { specDisplayName } from '../../lib/types';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { getIconUrl } from '../../lib/useItemInfo';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import ItemTag from './ItemTag';
+
+function normalizeTierToken(input?: string): string | null {
+  const normalized = String(input || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.startsWith('explorer')) return 'Exp';
+  if (normalized.startsWith('adventurer')) return 'Adv';
+  if (normalized.startsWith('veteran')) return 'Vet';
+  if (normalized.startsWith('champion')) return 'Champ';
+  if (normalized.startsWith('hero')) return 'Hero';
+  if (normalized.startsWith('myth')) return 'Myth';
+  return null;
+}
+
+function shortTierFromItem(item?: { upgrade?: string; tag?: string; source_type?: string }): string | null {
+  if (!item) return null;
+  const upgradeRaw = String(item.upgrade || '').trim();
+  if (upgradeRaw) {
+    const tokens = upgradeRaw.replace(/[_-]+/g, ' ').split(/\s+/);
+    for (const token of tokens) {
+      const mapped = normalizeTierToken(token);
+      if (mapped) return mapped;
+    }
+    const rankMatch = upgradeRaw.match(/(\d+)\s*\/\s*(\d+)/);
+    if (rankMatch) {
+      const level = Number(rankMatch[1]);
+      const max = Number(rankMatch[2]);
+      if (max >= 6) {
+        if (level <= 2) return 'Vet';
+        if (level <= 4) return 'Champ';
+        return 'Hero';
+      }
+    }
+  }
+  const tagTier = normalizeTierToken(item.tag);
+  if (tagTier) return tagTier;
+  const sourceType = String(item.source_type || '').toLowerCase();
+  for (const tierKey of ['explorer', 'adventurer', 'veteran', 'champion', 'hero', 'myth']) {
+    if (sourceType.includes(tierKey)) {
+      return normalizeTierToken(tierKey);
+    }
+  }
+  const tagRaw = String(item.tag || '').toLowerCase();
+  if (tagRaw.includes('myth')) return 'Myth';
+  if (tagRaw.includes('hero')) return 'Hero';
+  if (tagRaw.includes('champ')) return 'Champ';
+  if (tagRaw.includes('veteran')) return 'Vet';
+  if (tagRaw.includes('adventurer')) return 'Adv';
+  if (tagRaw.includes('explorer')) return 'Exp';
+  return null;
+}
 
 function dropBaselineKey(item: ResultItem): string {
   const slot = String(item.slot || '').toLowerCase();
@@ -33,6 +83,12 @@ interface ResultRowProps {
   exactStatsStatus?: 'idle' | 'loading' | 'ready' | 'error' | 'same_base';
   exactStatsLabel?: string;
   onLoadExactStats?: () => void;
+  exactStatsButtonLabel?: string;
+  exactStatsButtonDisabled?: boolean;
+  exactStatsButtonVariant?: 'start' | 'goto';
+  onAddToWishlist?: () => void;
+  isWishlisted?: boolean;
+  wishlistButtonDisabled?: boolean;
 }
 
 export default function ResultRow({
@@ -53,7 +109,15 @@ export default function ResultRow({
   exactStatsStatus = 'idle',
   exactStatsLabel,
   onLoadExactStats,
+  exactStatsButtonLabel,
+  exactStatsButtonDisabled = false,
+  exactStatsButtonVariant = 'start',
+  onAddToWishlist,
+  isWishlisted = false,
+  wishlistButtonDisabled = false,
 }: ResultRowProps) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
   const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
   const hasTalentBuild = !!result.talent_build;
@@ -96,6 +160,8 @@ export default function ResultRow({
       const equipped = equippedGear?.[it.slot];
       const currentIlevel = Number(equipped?.ilevel || 0);
       const nextIlevel = Number(it.ilevel || 0);
+      const nextTier = shortTierFromItem(it);
+      const currentTier = shortTierFromItem(equipped) || nextTier;
       const currentGem = Number(equipped?.gem_id || 0);
       const nextGem = Number(it.gem_id || 0);
       const currentEnchant = Number(equipped?.enchant_id || 0);
@@ -119,9 +185,16 @@ export default function ResultRow({
             : 'downgrade'
           : null;
 
+      const ilevelText =
+        nextIlevel > 0
+          ? currentIlevel > 0
+            ? `${currentTier || 'Tier'} ${currentIlevel} -> ${nextTier || 'Tier'} ${nextIlevel}`
+            : `${nextTier || 'Tier'} ${nextIlevel}`
+          : undefined;
+
       bySlot[it.slot] = {
         upgradeState,
-        ilevelText: nextIlevel > 0 ? `iLvl ${nextIlevel}` : undefined,
+        ilevelText,
         ilevelTooltip:
           ilvlChanged || needsUpgradeAction
             ? inferredNeedsUpgrade && baselineDropIlevel > 0
@@ -204,9 +277,38 @@ export default function ResultRow({
     );
   }, [result.items, currencies]);
 
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onMouseDown = (e: MouseEvent) => {
+      if (contextMenuRef.current && e.target instanceof Node && contextMenuRef.current.contains(e.target)) {
+        return;
+      }
+      close();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu]);
+
   return (
     <div
       onClick={onSelect}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
       className={`relative cursor-pointer overflow-hidden rounded-xl transition-colors hover:bg-white/[0.04] ${
         isSelected && !isBest
           ? 'bg-emerald-500/[0.04] ring-1 ring-emerald-500/50'
@@ -318,46 +420,83 @@ export default function ResultRow({
                 </span>
               )}
             </span>
-            <details
-              className="text-[11px] text-zinc-400"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <summary className="cursor-pointer list-none rounded border border-border px-1.5 py-0.5 hover:border-zinc-600">
-                Stats Sim
-              </summary>
-              <div className="mt-1 rounded border border-border bg-surface-2 p-2 text-left">
-                <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">Status</div>
-                <div className="text-[11px] text-zinc-300">
-                  {exactStatsLabel ||
-                    (exactStatsStatus === 'same_base'
-                      ? 'Same as base stats'
-                      : exactStatsStatus === 'ready'
-                        ? 'Saved stats sim'
-                        : exactStatsStatus === 'loading'
-                          ? 'Loading stats sim...'
-                          : exactStatsStatus === 'error'
-                            ? 'Failed'
-                            : 'Not loaded')}
-                </div>
-                {(exactStatsStatus === 'idle' || exactStatsStatus === 'error') &&
-                  onLoadExactStats && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onLoadExactStats();
-                    }}
-                    className="mt-2 rounded border border-gold/35 bg-gold/10 px-2 py-1 text-[11px] text-gold disabled:opacity-60"
-                  >
-                    {exactStatsStatus === 'error' ? 'Retry Stats Sim' : 'Load Stats Sim'}
-                  </button>
-                )}
-              </div>
-            </details>
+          </div>
+          <div className="col-span-3 flex items-center justify-end gap-2 lg:col-auto lg:w-52">
+            {onAddToWishlist && !isEquipped && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onAddToWishlist();
+                }}
+                disabled={wishlistButtonDisabled}
+                className="rounded border border-zinc-500/40 bg-zinc-500/10 px-2 py-1 text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
+              >
+                {isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
+              </button>
+            )}
+            {onLoadExactStats && exactStatsStatus !== 'same_base' && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onLoadExactStats();
+                }}
+                disabled={exactStatsButtonDisabled}
+                title={exactStatsLabel}
+                className={`rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                  exactStatsButtonVariant === 'goto'
+                    ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                    : 'border-amber-400/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                }`}
+              >
+                {exactStatsButtonLabel || 'Stats Sim'}
+              </button>
+            )}
           </div>
         </div>
       </div>
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-40 flex min-w-40 flex-col gap-1 rounded-lg border border-border bg-surface-2 p-1.5 shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {onAddToWishlist && !isEquipped && (
+            <button
+              type="button"
+              onClick={() => {
+                onAddToWishlist();
+                setContextMenu(null);
+              }}
+              disabled={wishlistButtonDisabled}
+              className="rounded px-2 py-1 text-left text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
+            >
+              {isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
+            </button>
+          )}
+          {onLoadExactStats && exactStatsStatus !== 'same_base' && (
+            <button
+              type="button"
+              onClick={() => {
+                onLoadExactStats();
+                setContextMenu(null);
+              }}
+              disabled={exactStatsButtonDisabled}
+              className={`rounded px-2 py-1 text-left text-[11px] transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                exactStatsButtonVariant === 'goto'
+                  ? 'text-emerald-300 hover:bg-emerald-500/20'
+                  : 'text-amber-300 hover:bg-amber-500/20'
+              }`}
+            >
+              {exactStatsButtonLabel || 'Stats Sim'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

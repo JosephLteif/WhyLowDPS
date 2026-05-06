@@ -238,6 +238,7 @@ pub fn temp_enchant_options_raw() -> Arc<Vec<Value>> {
 
 // Re-exports from bonuses
 pub use bonuses::{is_minimum_track, resolve_bonuses, track_rank, upgrade_track_max};
+pub use upgrades::describe_upgrade_from_bonus_ids;
 
 pub use loader::hydrate_runtime_metadata;
 

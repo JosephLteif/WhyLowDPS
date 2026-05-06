@@ -20,6 +20,9 @@ export default function RankingsHeader() {
           <span className="w-28 text-right text-[12px] uppercase tracking-[0.15em] text-zinc-300">
             Item Level
           </span>
+          <span className="w-52 text-right text-[12px] uppercase tracking-[0.15em] text-zinc-300">
+            Action
+          </span>
         </div>
       </div>
     </div>

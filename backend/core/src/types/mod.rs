@@ -193,6 +193,10 @@ pub struct ResolvedItem {
     pub instance_name: String,
     #[serde(default)]
     pub source_type: String,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub encounter_id: i64,
+    #[serde(default, skip_serializing_if = "is_zero_i64")]
+    pub instance_id: i64,
     /// Season ID from upgrade track (0 if none).
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub season_id: i64,

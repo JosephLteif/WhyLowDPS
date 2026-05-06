@@ -286,14 +286,7 @@ pub(super) struct BonusIdsQuery {
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct ConsumableOptionsQuery {
-    #[serde(default = "default_consumable_expansion_min")]
-    pub expansion_min: i64,
-}
-
-fn default_consumable_expansion_min() -> i64 {
-    10
-}
+pub(super) struct ConsumableOptionsQuery {}
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ResolveGearRequest {

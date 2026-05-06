@@ -407,6 +407,30 @@ pub fn generate_droptimizer_input(
         }
 
         for (slot, candidate_item) in candidates {
+            if let Some(current_equipped) = equipped_gear.get(slot.as_str()) {
+                if current_equipped
+                    .split(',')
+                    .find_map(|p| p.trim().strip_prefix("id="))
+                    .and_then(|raw| raw.trim().parse::<u64>().ok())
+                    .is_some_and(|equipped_id| equipped_id == candidate_item.item_id && equipped_id > 0)
+                {
+                    continue;
+                }
+            }
+
+            if let Some(paired_slot) = crate::types::class_data::paired_slot(&slot) {
+                if let Some(paired_equipped) = equipped_gear.get(paired_slot) {
+                    if paired_equipped
+                        .split(',')
+                        .find_map(|p| p.trim().strip_prefix("id="))
+                        .and_then(|raw| raw.trim().parse::<u64>().ok())
+                        .is_some_and(|equipped_id| equipped_id == candidate_item.item_id && equipped_id > 0)
+                    {
+                        continue;
+                    }
+                }
+            }
+
             let mut simc = build_item_simc_string(&candidate_item);
             if simc.is_empty() {
                 continue;
@@ -454,13 +478,21 @@ pub fn generate_droptimizer_input(
                     "item_id": candidate_item.item_id,
                     "ilevel": candidate_item.ilevel,
                     "name": candidate_item.name,
+                    "tag": candidate_item.tag,
+                    "upgrade": if candidate_item.upgrade.trim().is_empty() {
+                        crate::item_db::describe_upgrade_from_bonus_ids(&candidate_item.bonus_ids).unwrap_or_default()
+                    } else {
+                        candidate_item.upgrade.clone()
+                    },
                     "bonus_ids": candidate_item.bonus_ids,
                     "enchant_id": enchant_id,
                     "gem_id": gem_id,
                     "is_kept": false,
                     "origin": "bags",
                     "encounter": candidate_item.encounter,
+                    "encounter_id": candidate_item.encounter_id,
                     "instance_name": candidate_item.instance_name,
+                    "instance_id": candidate_item.instance_id,
                     "source_type": candidate_item.source_type
                 }]),
             );

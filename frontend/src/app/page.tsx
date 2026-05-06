@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
 import { useSimContext } from './components/SimContext';
@@ -295,6 +295,20 @@ export default function Home() {
   const [stampRefreshTime, setStampRefreshTime] = useState(false);
   const [recentResultsOpen, setRecentResultsOpen] = useState(true);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [draggedTrackedIndex, setDraggedTrackedIndex] = useState<number | null>(null);
+  const [dragOverTrackedIndex, setDragOverTrackedIndex] = useState<number | null>(null);
+  const [dragPointer, setDragPointer] = useState<{ x: number; y: number; offsetX: number; offsetY: number; width: number; label: string; color: string } | null>(null);
+  const draggedTrackedIndexRef = useRef<number | null>(null);
+  const pendingDragRef = useRef<{
+    idx: number;
+    startX: number;
+    startY: number;
+    width: number;
+    offsetX: number;
+    offsetY: number;
+    label: string;
+    color: string
+  } | null>(null);
 
   const loadAll = useCallback(async () => {
     try {
@@ -462,6 +476,111 @@ export default function Home() {
     [mainSimcInput, router, setSimcInput],
   );
 
+  const persistTrackedCharacters = useCallback((next: { region: string; realm: string; name: string }[]) => {
+    setTrackedCharacters(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(
+        LOCAL_TRACKED_CHARACTERS_KEY,
+        JSON.stringify(next.map((x) => `${x.region}|${x.realm}|${x.name}`)),
+      );
+    }
+  }, []);
+
+  const untrackAtIndex = useCallback((idx: number) => {
+    const next = trackedCharacters.filter((_, i) => i !== idx);
+    persistTrackedCharacters(next);
+    setActiveTrackedIndex((prev) => {
+      if (next.length === 0) return 0;
+      if (prev > idx) return prev - 1;
+      if (prev === idx) return Math.max(0, prev - 1);
+      return prev;
+    });
+  }, [persistTrackedCharacters, trackedCharacters]);
+
+  const moveTrackedCharacter = useCallback((from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= trackedCharacters.length || to >= trackedCharacters.length) {
+      return;
+    }
+    const next = [...trackedCharacters];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    persistTrackedCharacters(next);
+    setActiveTrackedIndex((prev) => {
+      if (prev === from) return to;
+      if (from < prev && to >= prev) return prev - 1;
+      if (from > prev && to <= prev) return prev + 1;
+      return prev;
+    });
+  }, [persistTrackedCharacters, trackedCharacters]);
+
+  useEffect(() => {
+    draggedTrackedIndexRef.current = draggedTrackedIndex;
+  }, [draggedTrackedIndex]);
+
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      if (draggedTrackedIndexRef.current == null && pendingDragRef.current) {
+        const p = pendingDragRef.current;
+        const dx = e.clientX - p.startX;
+        const dy = e.clientY - p.startY;
+        if (Math.hypot(dx, dy) >= 6) {
+          setDraggedTrackedIndex(p.idx);
+          setDragOverTrackedIndex(p.idx);
+          setDragPointer({
+            x: e.clientX,
+            y: e.clientY,
+            offsetX: p.offsetX,
+            offsetY: p.offsetY,
+            width: p.width,
+            label: p.label,
+            color: p.color,
+          });
+          pendingDragRef.current = null;
+        }
+        return;
+      }
+      if (draggedTrackedIndexRef.current != null) {
+        setDragPointer((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+      }
+    };
+
+    const onPointerUp = () => {
+      pendingDragRef.current = null;
+      setDraggedTrackedIndex(null);
+      setDragOverTrackedIndex(null);
+      setDragPointer(null);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (draggedTrackedIndex == null) return;
+    const onPointerMove = (e: PointerEvent) => {
+      setDragPointer((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+    };
+    const onPointerUp = () => {
+      setDraggedTrackedIndex(null);
+      setDragOverTrackedIndex(null);
+      setDragPointer(null);
+    };
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [draggedTrackedIndex]);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -628,6 +747,15 @@ export default function Home() {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
           <div className="flex items-center gap-2">
+            {trackedCharacters.length > 0 && (
+              <button
+                type="button"
+                onClick={() => untrackAtIndex(Math.min(activeTrackedIndex, trackedCharacters.length - 1))}
+                className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
+              >
+                Untrack
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -665,7 +793,18 @@ export default function Home() {
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {trackedCharacters.map((c, idx) => (
-                <div key={`${c.region}|${c.realm}|${c.name}`} className={`inline-flex items-center rounded-md border ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'}`}>
+                <div
+                  key={`${c.region}|${c.realm}|${c.name}`}
+                  onPointerEnter={() => {
+                    const currentDragged = draggedTrackedIndexRef.current;
+                    if (currentDragged == null || currentDragged === idx) return;
+                    moveTrackedCharacter(currentDragged, idx);
+                    setDraggedTrackedIndex(idx);
+                    setDragOverTrackedIndex(idx);
+                  }}
+                  className={`inline-flex items-center rounded-md border transition-all duration-200 ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'} ${draggedTrackedIndex === idx ? 'pointer-events-none opacity-0' : ''} ${dragOverTrackedIndex === idx && draggedTrackedIndex !== idx ? 'border-gold/50' : ''}`}
+                  style={{ cursor: draggedTrackedIndex != null ? 'grabbing' : 'grab' }}
+                >
                   {(() => {
                     const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
                     const className = trackedClassByCharacter[key];
@@ -674,37 +813,47 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setActiveTrackedIndex(idx)}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      const rect = (e.currentTarget as HTMLButtonElement).closest('div')?.getBoundingClientRect();
+                      if (rect) {
+                        pendingDragRef.current = {
+                          idx,
+                          startX: e.clientX,
+                          startY: e.clientY,
+                          offsetX: e.clientX - rect.left,
+                          offsetY: e.clientY - rect.top,
+                          width: rect.width,
+                          label: c.name,
+                          color: classColor,
+                        };
+                      }
+                    }}
                     className={`px-2.5 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
                     style={{ color: classColor }}
+                    title="Drag to reorder"
                   >
                     {c.name}
                   </button>
                     );
                   })()}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = trackedCharacters.filter((_, i) => i !== idx);
-                      setTrackedCharacters(next);
-                      if (typeof window !== 'undefined') {
-                        localStorage.setItem(LOCAL_TRACKED_CHARACTERS_KEY, JSON.stringify(next.map((x) => `${x.region}|${x.realm}|${x.name}`)));
-                      }
-                      setActiveTrackedIndex((prev) => {
-                        if (next.length === 0) return 0;
-                        if (prev > idx) return prev - 1;
-                        if (prev === idx) return Math.max(0, prev - 1);
-                        return prev;
-                      });
-                    }}
-                    className={`border-l px-2 py-1 text-[11px] ${idx === activeTrackedIndex ? 'border-gold/30 text-gold/80 hover:text-gold' : 'border-border text-zinc-500 hover:text-red-300'}`}
-                    title={`Untrack ${c.name}`}
-                    aria-label={`Untrack ${c.name}`}
-                  >
-                    Untrack
-                  </button>
                 </div>
               ))}
             </div>
+            {dragPointer && (
+              <div
+                className="pointer-events-none fixed z-[90] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
+                style={{
+                  left: dragPointer.x - dragPointer.offsetX,
+                  top: dragPointer.y - dragPointer.offsetY - 8,
+                  width: dragPointer.width,
+                  transform: 'translateY(-4px) rotate(-2deg) scale(1.06)',
+                  color: dragPointer.color,
+                }}
+              >
+                {dragPointer.label}
+              </div>
+            )}
             <div className="text-sm text-zinc-200">
               <span className="font-semibold">{trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}</span>
               <span className="text-zinc-500"> · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm} · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region.toUpperCase()}</span>

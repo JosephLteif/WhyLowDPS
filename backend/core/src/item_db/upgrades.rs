@@ -179,6 +179,19 @@ pub fn get_upgrade_options(bonus_ids: &[u64]) -> Vec<UpgradeOption> {
     options
 }
 
+pub fn describe_upgrade_from_bonus_ids(bonus_ids: &[u64]) -> Option<String> {
+    let bonuses = BONUSES.read().unwrap();
+    for &bid in bonus_ids {
+        let bonus = bonuses.get(&bid)?;
+        let upgrade = bonus.upgrade.as_ref()?;
+        let full_name = upgrade.full_name.as_ref()?;
+        if !full_name.trim().is_empty() {
+            return Some(full_name.trim().to_string());
+        }
+    }
+    None
+}
+
 pub fn get_upgrade_cost_between(from_bonus_id: u64, to_bonus_id: u64) -> HashMap<u64, u64> {
     let bonuses = BONUSES.read().unwrap();
     let costs_map = UPGRADE_STEP_COSTS.read().unwrap();

@@ -178,17 +178,10 @@ pub(super) async fn list_upgrade_tracks() -> HttpResponse {
 }
 
 pub(super) async fn list_consumable_options(
-    query: web::Query<ConsumableOptionsQuery>,
+    _query: web::Query<ConsumableOptionsQuery>,
 ) -> HttpResponse {
-    fn normalize(raw: &[Value], expansion_min: i64, main_hand_prefix: bool) -> Vec<Value> {
+    fn normalize(raw: &[Value], main_hand_prefix: bool) -> Vec<Value> {
         raw.iter()
-            .filter(|entry| {
-                entry
-                    .get("expansion")
-                    .and_then(|v| v.as_i64())
-                    .map(|exp| exp >= expansion_min)
-                    .unwrap_or(true)
-            })
             .filter_map(|entry| {
                 let value = entry.get("value").and_then(|v| v.as_str())?;
                 let short_name = entry
@@ -199,6 +192,7 @@ pub(super) async fn list_consumable_options(
                 let icon = entry.get("icon").and_then(|v| v.as_str()).unwrap_or("");
                 let item_id = entry.get("itemId").and_then(|v| v.as_u64());
                 let crafting_quality = entry.get("craftingQuality").and_then(|v| v.as_u64());
+                let expansion = entry.get("expansion").and_then(|v| v.as_i64());
                 let token = if main_hand_prefix {
                     format!("main_hand:{}", value)
                 } else {
@@ -216,21 +210,33 @@ pub(super) async fn list_consumable_options(
                     "icon": icon,
                     "itemId": item_id,
                     "craftingQuality": crafting_quality,
+                    "expansion": expansion,
                 }))
             })
             .collect()
     }
 
-    let expansion_min = query.expansion_min;
-    let flasks = normalize(&crate::item_db::flask_options_raw(), expansion_min, false);
-    let foods = normalize(&crate::item_db::food_options_raw(), expansion_min, false);
-    let potions = normalize(&crate::item_db::potion_options_raw(), expansion_min, false);
-    let augments = normalize(&crate::item_db::augment_options_raw(), expansion_min, false);
-    let temp_enchants = normalize(
-        &crate::item_db::temp_enchant_options_raw(),
-        expansion_min,
-        true,
-    );
+    let mut flasks = normalize(&crate::item_db::flask_options_raw(), false);
+    let mut foods = normalize(&crate::item_db::food_options_raw(), false);
+    let mut potions = normalize(&crate::item_db::potion_options_raw(), false);
+    let mut augments = normalize(&crate::item_db::augment_options_raw(), false);
+    let mut temp_enchants = normalize(&crate::item_db::temp_enchant_options_raw(), true);
+
+    fn keep_latest_expansion_only(items: &mut Vec<Value>) {
+        let max_exp = items
+            .iter()
+            .filter_map(|v| v.get("expansion").and_then(|e| e.as_i64()))
+            .max();
+        if let Some(max_exp) = max_exp {
+            items.retain(|v| v.get("expansion").and_then(|e| e.as_i64()) == Some(max_exp));
+        }
+    }
+
+    keep_latest_expansion_only(&mut flasks);
+    keep_latest_expansion_only(&mut foods);
+    keep_latest_expansion_only(&mut potions);
+    keep_latest_expansion_only(&mut augments);
+    keep_latest_expansion_only(&mut temp_enchants);
 
     HttpResponse::Ok().json(json!({
         "flasks": flasks,

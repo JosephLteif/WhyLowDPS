@@ -250,11 +250,18 @@ pub fn build_combo_meta(
 }
 
 pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
+    let resolved_upgrade = if item.upgrade.trim().is_empty() {
+        crate::item_db::describe_upgrade_from_bonus_ids(&item.bonus_ids).unwrap_or_default()
+    } else {
+        item.upgrade.clone()
+    };
     let mut meta = json!({
         "slot": slot,
         "item_id": item.item_id,
         "ilevel": item.ilevel,
         "name": item.name,
+        "tag": item.tag,
+        "upgrade": resolved_upgrade,
         "bonus_ids": item.bonus_ids,
         "enchant_id": item.enchant_id,
         "gem_id": item.gem_id,
@@ -269,6 +276,12 @@ pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
     }
     if !item.source_type.is_empty() {
         meta["source_type"] = json!(item.source_type);
+    }
+    if item.encounter_id > 0 {
+        meta["encounter_id"] = json!(item.encounter_id);
+    }
+    if item.instance_id > 0 {
+        meta["instance_id"] = json!(item.instance_id);
     }
     if item.is_catalyst {
         meta["is_catalyst"] = json!(true);

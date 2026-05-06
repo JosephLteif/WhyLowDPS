@@ -120,6 +120,8 @@ pub fn build_catalyst_item(
         encounter: source.encounter.clone(),
         instance_name: source.instance_name.clone(),
         source_type: source.source_type.clone(),
+        encounter_id: source.encounter_id,
+        instance_id: source.instance_id,
         season_id: source.season_id,
         inventory_type: source.inventory_type,
         is_catalyst: true,

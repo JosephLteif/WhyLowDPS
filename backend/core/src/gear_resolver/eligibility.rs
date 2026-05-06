@@ -133,6 +133,8 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         encounter: String::new(),
         instance_name: String::new(),
         source_type: String::new(),
+        encounter_id: 0,
+        instance_id: 0,
         season_id,
         inventory_type,
         is_catalyst: false,

@@ -50,12 +50,16 @@ const FIGHT_STYLES = [
 interface FightStyleSelectorProps {
   value: string;
   onChange: (value: string) => void;
+  allowedValues?: string[];
 }
 
-export default function FightStyleSelector({ value, onChange }: FightStyleSelectorProps) {
+export default function FightStyleSelector({ value, onChange, allowedValues }: FightStyleSelectorProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const activeStyle = FIGHT_STYLES.find((fs) => fs.value === value);
+  const availableStyles = Array.isArray(allowedValues) && allowedValues.length > 0
+    ? FIGHT_STYLES.filter((fs) => allowedValues.includes(fs.value))
+    : FIGHT_STYLES;
+  const activeStyle = availableStyles.find((fs) => fs.value === value) || FIGHT_STYLES.find((fs) => fs.value === value);
   const activeLabel = activeStyle?.label ?? value;
   const activeDescription = activeStyle?.desc ?? '';
 
@@ -84,7 +88,7 @@ export default function FightStyleSelector({ value, onChange }: FightStyleSelect
         </button>
         {open && (
           <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface-2 py-1 shadow-lg shadow-black/40">
-            {FIGHT_STYLES.map((fs) => (
+            {availableStyles.map((fs) => (
               <button
                 key={fs.value}
                 type="button"

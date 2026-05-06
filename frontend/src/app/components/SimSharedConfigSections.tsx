@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
@@ -7,6 +7,7 @@ import ScenarioBuilder from './ScenarioBuilder';
 import { CLASS_COLORS, specDisplayName } from '../lib/types';
 import type { PullInfo } from '@/lib/simc-parser';
 import { getFightStyleParamRules } from '../lib/fight-style';
+import { parseCharacterInfo } from '@/lib/simc-parser';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
@@ -395,6 +396,8 @@ export function DungeonInfoBar({
 export function FightSetupOptions() {
   const {
     simcInput,
+    simcFooter,
+    customApl,
     fightStyle,
     setFightStyle,
     targetCount,
@@ -403,6 +406,23 @@ export function FightSetupOptions() {
     setFightLength,
   } = useSimContext();
   const fightStyleRules = getFightStyleParamRules(fightStyle);
+  const hasDungeonRouteInput = useMemo(() => {
+    const footerInfo = parseCharacterInfo(simcFooter || '');
+    if (footerInfo?.kind === 'dungeon') return true;
+    const inputInfo = parseCharacterInfo(simcInput || '');
+    return inputInfo?.kind === 'dungeon';
+  }, [simcInput, simcFooter]);
+  const allowedFightStyles = hasDungeonRouteInput
+    ? ['DungeonRoute']
+    : ['Patchwerk', 'CastingPatchwerk', 'HecticAddCleave', 'CleaveAdd', 'LightMovement', 'HeavyMovement', 'DungeonSlice', 'HelterSkelter'];
+
+  useEffect(() => {
+    if (hasDungeonRouteInput) {
+      if (fightStyle !== 'DungeonRoute') setFightStyle('DungeonRoute');
+      return;
+    }
+    if (fightStyle === 'DungeonRoute') setFightStyle('Patchwerk');
+  }, [hasDungeonRouteInput, fightStyle, setFightStyle]);
   const showFightLength = fightStyleRules.usesFightLength;
   const showTargetCount = fightStyleRules.usesTargetCount;
 
@@ -442,7 +462,11 @@ export function FightSetupOptions() {
       >
         <div className="space-y-2">
           <label className="label-text">Fight Style</label>
-          <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
+            <FightStyleSelector
+              value={fightStyle}
+              onChange={setFightStyle}
+              allowedValues={allowedFightStyles}
+            />
         </div>
 
         {showFightLength && (
@@ -499,6 +523,8 @@ export function FightSetupOptions() {
 export function ConsumablesAndRaidBuffsOptions() {
   const {
     simcInput,
+    simcFooter,
+    customApl,
     externalBuffChaosBrand,
     setExternalBuffChaosBrand,
     externalBuffMysticTouch,
@@ -558,6 +584,40 @@ export function ConsumablesAndRaidBuffsOptions() {
       setChecked: setExternalBuffPowerInfusion,
     },
   };
+  const [buffSource, setBuffSource] = useState<Record<string, 'default' | 'manual' | 'override'>>({});
+
+  const setBuffManual = (key: string, value: boolean) => {
+    const binding = raidBuffBindings[key];
+    if (!binding) return;
+    binding.setChecked(value);
+    setBuffSource((prev) => ({ ...prev, [key]: 'manual' }));
+  };
+
+  useEffect(() => {
+    const combined = `${simcInput || ''}\n${simcFooter || ''}\n${customApl || ''}`;
+    if (!combined.trim()) return;
+    const overrideMap: Record<string, boolean> = {};
+    const re = /^\s*override\.([a-z0-9_]+)\s*=\s*([01])\s*$/gim;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(combined)) !== null) {
+      overrideMap[match[1].toLowerCase()] = match[2] === '1';
+    }
+    for (const [key, value] of Object.entries(overrideMap)) {
+      const binding = raidBuffBindings[key];
+      if (binding) {
+        binding.setChecked(value);
+        setBuffSource((prev) => ({ ...prev, [key]: 'override' }));
+      }
+    }
+    // Any previously overridden buff that no longer has override in SimC falls back to manual source.
+    setBuffSource((prev) => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        if (next[key] === 'override' && !(key in overrideMap)) next[key] = 'manual';
+      }
+      return next;
+    });
+  }, [simcInput, simcFooter, customApl]);
 
   useWowheadTooltips([
     externalBuffChaosBrand,
@@ -613,6 +673,19 @@ export function ConsumablesAndRaidBuffsOptions() {
             setExternalBuffChaosBrand(defaults['raid.chaosBrand']);
             setExternalBuffSkyfury(defaults['raid.skyfury']);
             setExternalBuffPowerInfusion(defaults['raid.powerInfusion']);
+            setBuffSource({
+              bloodlust: 'default',
+              arcane_intellect: 'default',
+              power_word_fortitude: 'default',
+              mark_of_the_wild: 'default',
+              battle_shout: 'default',
+              hunters_mark: 'default',
+              bleeding: 'default',
+              mystic_touch: 'default',
+              chaos_brand: 'default',
+              skyfury: 'default',
+              power_infusion: 'default',
+            });
           }}
           className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
         >
@@ -713,17 +786,25 @@ export function ConsumablesAndRaidBuffsOptions() {
             return {
               id: buff.key,
               label: buff.label,
+              sourceLabel: buffSource[buff.key] || 'manual',
+              disabled: buffSource[buff.key] === 'override',
               spellId: buff.spellId || 0,
               icon: buff.icon,
               checked: binding.checked,
-              onChange: binding.setChecked,
+              onChange: (checked: boolean) => setBuffManual(buff.key, checked),
             };
           })}
           onSelectAll={() => {
-            Object.values(raidBuffBindings).forEach((b) => b.setChecked(true));
+            Object.entries(raidBuffBindings).forEach(([key, b]) => {
+              b.setChecked(true);
+              setBuffSource((prev) => ({ ...prev, [key]: 'manual' }));
+            });
           }}
           onClear={() => {
-            Object.values(raidBuffBindings).forEach((b) => b.setChecked(false));
+            Object.entries(raidBuffBindings).forEach(([key, b]) => {
+              b.setChecked(false);
+              setBuffSource((prev) => ({ ...prev, [key]: 'manual' }));
+            });
           }}
         />
         <p className="text-[12px] text-zinc-300">

@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 interface RaidBuffEntry {
   id: string;
   label: string;
+  sourceLabel?: string;
+  disabled?: boolean;
   spellId: number;
   icon: string;
   checked: boolean;
@@ -110,11 +112,17 @@ export default function RaidBuffGrid({ entries, onSelectAll, onClear }: RaidBuff
                 className="h-4 w-4 shrink-0 rounded-[3px]"
               />
               <span className="truncate text-[14px]">{entry.label}</span>
+              {entry.sourceLabel && (
+                <span className="shrink-0 rounded border border-zinc-600/70 bg-zinc-800/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300">
+                  {entry.sourceLabel}
+                </span>
+              )}
             </a>
             <input
               type="checkbox"
               checked={entry.checked}
               onChange={(e) => entry.onChange(e.target.checked)}
+              disabled={entry.disabled}
               className="h-4 w-4 accent-gold"
             />
           </label>

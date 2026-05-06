@@ -407,6 +407,30 @@ pub fn generate_droptimizer_input(
         }
 
         for (slot, candidate_item) in candidates {
+            if let Some(current_equipped) = equipped_gear.get(slot.as_str()) {
+                if current_equipped
+                    .split(',')
+                    .find_map(|p| p.trim().strip_prefix("id="))
+                    .and_then(|raw| raw.trim().parse::<u64>().ok())
+                    .is_some_and(|equipped_id| equipped_id == candidate_item.item_id && equipped_id > 0)
+                {
+                    continue;
+                }
+            }
+
+            if let Some(paired_slot) = crate::types::class_data::paired_slot(&slot) {
+                if let Some(paired_equipped) = equipped_gear.get(paired_slot) {
+                    if paired_equipped
+                        .split(',')
+                        .find_map(|p| p.trim().strip_prefix("id="))
+                        .and_then(|raw| raw.trim().parse::<u64>().ok())
+                        .is_some_and(|equipped_id| equipped_id == candidate_item.item_id && equipped_id > 0)
+                    {
+                        continue;
+                    }
+                }
+            }
+
             let mut simc = build_item_simc_string(&candidate_item);
             if simc.is_empty() {
                 continue;

@@ -296,6 +296,16 @@ pub fn generate_droptimizer_input(
         (enchant_id, gem_id)
     }
 
+    fn parse_equipped_item_id(simc: &str) -> u64 {
+        simc.split(',')
+            .find_map(|part| {
+                part.trim()
+                    .strip_prefix("id=")
+                    .map(parse_first_numeric)
+            })
+            .unwrap_or(0)
+    }
+
     fn infer_token_slot(item_name: &str) -> Option<&'static str> {
         let n = item_name.to_lowercase();
         if n.contains("hungering") {
@@ -407,6 +417,16 @@ pub fn generate_droptimizer_input(
         }
 
         for (slot, candidate_item) in candidates {
+            if let Some(paired_slot) = crate::types::class_data::paired_slot(&slot) {
+                let paired_item_id = equipped_gear
+                    .get(paired_slot)
+                    .map(|simc| parse_equipped_item_id(simc))
+                    .unwrap_or(0);
+                if paired_item_id != 0 && paired_item_id == candidate_item.item_id {
+                    continue;
+                }
+            }
+
             let mut simc = build_item_simc_string(&candidate_item);
             if simc.is_empty() {
                 continue;

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { specDisplayName } from '../../lib/types';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
@@ -33,6 +33,11 @@ interface ResultRowProps {
   exactStatsStatus?: 'idle' | 'loading' | 'ready' | 'error' | 'same_base';
   exactStatsLabel?: string;
   onLoadExactStats?: () => void;
+  exactStatsButtonLabel?: string;
+  exactStatsButtonDisabled?: boolean;
+  exactStatsButtonVariant?: 'start' | 'goto';
+  onAddToWishlist?: () => void;
+  wishlistButtonDisabled?: boolean;
 }
 
 export default function ResultRow({
@@ -53,7 +58,13 @@ export default function ResultRow({
   exactStatsStatus = 'idle',
   exactStatsLabel,
   onLoadExactStats,
+  exactStatsButtonLabel,
+  exactStatsButtonDisabled = false,
+  exactStatsButtonVariant = 'start',
+  onAddToWishlist,
+  wishlistButtonDisabled = false,
 }: ResultRowProps) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
   const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
   const hasTalentBuild = !!result.talent_build;
@@ -204,9 +215,32 @@ export default function ResultRow({
     );
   }, [result.items, currencies]);
 
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [contextMenu]);
+
   return (
     <div
       onClick={onSelect}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+      }}
       className={`relative cursor-pointer overflow-hidden rounded-xl transition-colors hover:bg-white/[0.04] ${
         isSelected && !isBest
           ? 'bg-emerald-500/[0.04] ring-1 ring-emerald-500/50'
@@ -318,46 +352,82 @@ export default function ResultRow({
                 </span>
               )}
             </span>
-            <details
-              className="text-[11px] text-zinc-400"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <summary className="cursor-pointer list-none rounded border border-border px-1.5 py-0.5 hover:border-zinc-600">
-                Stats Sim
-              </summary>
-              <div className="mt-1 rounded border border-border bg-surface-2 p-2 text-left">
-                <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">Status</div>
-                <div className="text-[11px] text-zinc-300">
-                  {exactStatsLabel ||
-                    (exactStatsStatus === 'same_base'
-                      ? 'Same as base stats'
-                      : exactStatsStatus === 'ready'
-                        ? 'Saved stats sim'
-                        : exactStatsStatus === 'loading'
-                          ? 'Loading stats sim...'
-                          : exactStatsStatus === 'error'
-                            ? 'Failed'
-                            : 'Not loaded')}
-                </div>
-                {(exactStatsStatus === 'idle' || exactStatsStatus === 'error') &&
-                  onLoadExactStats && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onLoadExactStats();
-                    }}
-                    className="mt-2 rounded border border-gold/35 bg-gold/10 px-2 py-1 text-[11px] text-gold disabled:opacity-60"
-                  >
-                    {exactStatsStatus === 'error' ? 'Retry Stats Sim' : 'Load Stats Sim'}
-                  </button>
-                )}
-              </div>
-            </details>
+          </div>
+          <div className="col-span-3 flex items-center justify-end gap-2 lg:col-auto lg:w-52">
+            {onAddToWishlist && !isEquipped && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onAddToWishlist();
+                }}
+                disabled={wishlistButtonDisabled}
+                className="rounded border border-zinc-500/40 bg-zinc-500/10 px-2 py-1 text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
+              >
+                Add to Wishlist
+              </button>
+            )}
+            {onLoadExactStats && exactStatsStatus !== 'same_base' && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onLoadExactStats();
+                }}
+                disabled={exactStatsButtonDisabled}
+                title={exactStatsLabel}
+                className={`rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                  exactStatsButtonVariant === 'goto'
+                    ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                    : 'border-amber-400/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                }`}
+              >
+                {exactStatsButtonLabel || 'Stats Sim'}
+              </button>
+            )}
           </div>
         </div>
       </div>
+      {contextMenu && (
+        <div
+          className="fixed z-40 flex min-w-40 flex-col gap-1 rounded-lg border border-border bg-surface-2 p-1.5 shadow-xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {onAddToWishlist && !isEquipped && (
+            <button
+              type="button"
+              onClick={() => {
+                onAddToWishlist();
+                setContextMenu(null);
+              }}
+              disabled={wishlistButtonDisabled}
+              className="rounded px-2 py-1 text-left text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
+            >
+              Add to Wishlist
+            </button>
+          )}
+          {onLoadExactStats && exactStatsStatus !== 'same_base' && (
+            <button
+              type="button"
+              onClick={() => {
+                onLoadExactStats();
+                setContextMenu(null);
+              }}
+              disabled={exactStatsButtonDisabled}
+              className={`rounded px-2 py-1 text-left text-[11px] transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                exactStatsButtonVariant === 'goto'
+                  ? 'text-emerald-300 hover:bg-emerald-500/20'
+                  : 'text-amber-300 hover:bg-amber-500/20'
+              }`}
+            >
+              {exactStatsButtonLabel || 'Stats Sim'}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

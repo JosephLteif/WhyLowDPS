@@ -25,6 +25,7 @@ interface RankedResultsProps {
     label?: string;
   };
   onLoadExactStats?: (result: TopGearResult) => void;
+  onAddResultToWishlist?: (result: TopGearResult) => void;
 }
 
 export default function RankedResults({
@@ -42,6 +43,7 @@ export default function RankedResults({
   dropBaselineIlevelByKey = {},
   getExactStatsStatus,
   onLoadExactStats,
+  onAddResultToWishlist,
 }: RankedResultsProps) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
@@ -74,6 +76,20 @@ export default function RankedResults({
           exactStatsLabel={exact.label}
           onLoadExactStats={
             onLoadExactStats ? () => onLoadExactStats(result) : undefined
+          }
+          exactStatsButtonLabel={
+            exact.status === 'loading'
+              ? 'Starting...'
+              : exact.status === 'ready' || exact.status === 'error'
+                ? 'Go to Sim'
+                : 'Start Sim'
+          }
+          exactStatsButtonVariant={
+            exact.status === 'ready' || exact.status === 'error' ? 'goto' : 'start'
+          }
+          exactStatsButtonDisabled={exact.status === 'loading'}
+          onAddToWishlist={
+            onAddResultToWishlist ? () => onAddResultToWishlist(result) : undefined
           }
         />
           );

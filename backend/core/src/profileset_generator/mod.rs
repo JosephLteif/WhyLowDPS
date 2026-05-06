@@ -478,6 +478,12 @@ pub fn generate_droptimizer_input(
                     "item_id": candidate_item.item_id,
                     "ilevel": candidate_item.ilevel,
                     "name": candidate_item.name,
+                    "tag": candidate_item.tag,
+                    "upgrade": if candidate_item.upgrade.trim().is_empty() {
+                        crate::item_db::describe_upgrade_from_bonus_ids(&candidate_item.bonus_ids).unwrap_or_default()
+                    } else {
+                        candidate_item.upgrade.clone()
+                    },
                     "bonus_ids": candidate_item.bonus_ids,
                     "enchant_id": enchant_id,
                     "gem_id": gem_id,

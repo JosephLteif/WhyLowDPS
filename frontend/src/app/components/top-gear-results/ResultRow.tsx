@@ -6,6 +6,56 @@ import { getIconUrl } from '../../lib/useItemInfo';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import ItemTag from './ItemTag';
 
+function normalizeTierToken(input?: string): string | null {
+  const normalized = String(input || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.startsWith('explorer')) return 'Exp';
+  if (normalized.startsWith('adventurer')) return 'Adv';
+  if (normalized.startsWith('veteran')) return 'Vet';
+  if (normalized.startsWith('champion')) return 'Champ';
+  if (normalized.startsWith('hero')) return 'Hero';
+  if (normalized.startsWith('myth')) return 'Myth';
+  return null;
+}
+
+function shortTierFromItem(item?: { upgrade?: string; tag?: string; source_type?: string }): string | null {
+  if (!item) return null;
+  const upgradeRaw = String(item.upgrade || '').trim();
+  if (upgradeRaw) {
+    const tokens = upgradeRaw.replace(/[_-]+/g, ' ').split(/\s+/);
+    for (const token of tokens) {
+      const mapped = normalizeTierToken(token);
+      if (mapped) return mapped;
+    }
+    const rankMatch = upgradeRaw.match(/(\d+)\s*\/\s*(\d+)/);
+    if (rankMatch) {
+      const level = Number(rankMatch[1]);
+      const max = Number(rankMatch[2]);
+      if (max >= 6) {
+        if (level <= 2) return 'Vet';
+        if (level <= 4) return 'Champ';
+        return 'Hero';
+      }
+    }
+  }
+  const tagTier = normalizeTierToken(item.tag);
+  if (tagTier) return tagTier;
+  const sourceType = String(item.source_type || '').toLowerCase();
+  for (const tierKey of ['explorer', 'adventurer', 'veteran', 'champion', 'hero', 'myth']) {
+    if (sourceType.includes(tierKey)) {
+      return normalizeTierToken(tierKey);
+    }
+  }
+  const tagRaw = String(item.tag || '').toLowerCase();
+  if (tagRaw.includes('myth')) return 'Myth';
+  if (tagRaw.includes('hero')) return 'Hero';
+  if (tagRaw.includes('champ')) return 'Champ';
+  if (tagRaw.includes('veteran')) return 'Vet';
+  if (tagRaw.includes('adventurer')) return 'Adv';
+  if (tagRaw.includes('explorer')) return 'Exp';
+  return null;
+}
+
 function dropBaselineKey(item: ResultItem): string {
   const slot = String(item.slot || '').toLowerCase();
   const itemId = Number(item.item_id || 0);
@@ -110,6 +160,8 @@ export default function ResultRow({
       const equipped = equippedGear?.[it.slot];
       const currentIlevel = Number(equipped?.ilevel || 0);
       const nextIlevel = Number(it.ilevel || 0);
+      const nextTier = shortTierFromItem(it);
+      const currentTier = shortTierFromItem(equipped) || nextTier;
       const currentGem = Number(equipped?.gem_id || 0);
       const nextGem = Number(it.gem_id || 0);
       const currentEnchant = Number(equipped?.enchant_id || 0);
@@ -135,9 +187,9 @@ export default function ResultRow({
 
       const ilevelText =
         nextIlevel > 0
-          ? currentIlevel > 0 && (ilvlChanged || needsUpgradeAction)
-            ? `${currentIlevel} -> ${nextIlevel}`
-            : `iLvl ${nextIlevel}`
+          ? currentIlevel > 0
+            ? `${currentTier || 'Tier'} ${currentIlevel} -> ${nextTier || 'Tier'} ${nextIlevel}`
+            : `${nextTier || 'Tier'} ${nextIlevel}`
           : undefined;
 
       bySlot[it.slot] = {

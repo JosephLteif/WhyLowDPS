@@ -250,11 +250,18 @@ pub fn build_combo_meta(
 }
 
 pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
+    let resolved_upgrade = if item.upgrade.trim().is_empty() {
+        crate::item_db::describe_upgrade_from_bonus_ids(&item.bonus_ids).unwrap_or_default()
+    } else {
+        item.upgrade.clone()
+    };
     let mut meta = json!({
         "slot": slot,
         "item_id": item.item_id,
         "ilevel": item.ilevel,
         "name": item.name,
+        "tag": item.tag,
+        "upgrade": resolved_upgrade,
         "bonus_ids": item.bonus_ids,
         "enchant_id": item.enchant_id,
         "gem_id": item.gem_id,

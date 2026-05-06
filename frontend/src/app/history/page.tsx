@@ -56,6 +56,7 @@ const FIGHT_STYLE_SHORT: Record<string, string> = {
 const SIM_TYPE_LABELS: Record<string, string> = {
   quick: 'Quick Sim',
   top_gear: 'Top Gear',
+  top_gear_exact_stats: 'Stats Sim',
   droptimizer: 'Drop Finder',
   stat_weights: 'Stat Weights',
   stat_plot: 'Stat Plot',
@@ -229,6 +230,11 @@ function SimRow({
                 </span>
               )}
               {sim.player_class && <span className="ml-1.5 text-zinc-500">{sim.player_class}</span>}
+              {sim.sim_type === 'top_gear_exact_stats' && (
+                <span className="ml-2 inline-flex items-center rounded border border-sky-400/30 bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-300">
+                  Stats Sim
+                </span>
+              )}
               {sim.status === 'done' && sim.upgrades != null && sim.downgrades != null && (
                 <span className="ml-2 text-xs text-zinc-400">
                   &middot;{' '}
@@ -300,11 +306,33 @@ type HistoryEntry =
   | { type: 'batch'; batchId: string; sims: JobSummary[] };
 
 function groupByBatch(sims: JobSummary[]): HistoryEntry[] {
+  const topGearExactType = 'top_gear_exact_stats';
+  const byId = new Map<string, JobSummary>();
+  sims.forEach((sim) => byId.set(sim.id, sim));
+
+  // Build parent-linked groups for exact stats sims so they render under the parent sim row.
+  const parentLinkedChildren = new Map<string, JobSummary[]>();
+  const consumedIds = new Set<string>();
+  sims.forEach((sim) => {
+    if (sim.sim_type !== topGearExactType) return;
+    if (!sim.batch_id) return;
+    const parent = byId.get(sim.batch_id);
+    if (!parent) return;
+    // Allow linking under any real parent sim type (Top Gear, Drop Finder, etc),
+    // but avoid nesting under another exact-stats child.
+    if (parent.sim_type === topGearExactType) return;
+    const arr = parentLinkedChildren.get(parent.id) || [];
+    arr.push(sim);
+    parentLinkedChildren.set(parent.id, arr);
+    consumedIds.add(sim.id);
+  });
+
   const entries: HistoryEntry[] = [];
   const batchMap = new Map<string, JobSummary[]>();
   const singles: { index: number; sim: JobSummary }[] = [];
 
   sims.forEach((sim, index) => {
+    if (consumedIds.has(sim.id)) return;
     if (sim.batch_id) {
       let group = batchMap.get(sim.batch_id);
       if (!group) {
@@ -320,6 +348,15 @@ function groupByBatch(sims: JobSummary[]): HistoryEntry[] {
 
   const seen = new Set<string>();
   for (const { sim } of singles) {
+    const linkedChildren = parentLinkedChildren.get(sim.id);
+    if (linkedChildren && linkedChildren.length > 0) {
+      entries.push({
+        type: 'batch',
+        batchId: `parent-${sim.id}`,
+        sims: [sim, ...linkedChildren],
+      });
+      continue;
+    }
     if (sim.batch_id) {
       if (seen.has(sim.batch_id)) continue;
       seen.add(sim.batch_id);
@@ -800,7 +837,10 @@ export default function HistoryPage() {
               </h3>
               <div className="card overflow-hidden">
                 {filteredEntries[group].map((entry, idx) => {
-                  const id = entry.type === 'single' ? entry.sim.id : entry.batchId;
+                  const id =
+                    entry.type === 'single'
+                      ? `single-${entry.sim.id}-${idx}`
+                      : `batch-${entry.batchId}-${idx}`;
                   const isLast = idx === filteredEntries[group].length - 1;
                   return (
                     <div key={id} className={!isLast ? 'border-b border-border' : ''}>

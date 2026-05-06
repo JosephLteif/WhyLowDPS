@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
@@ -7,6 +7,7 @@ import ScenarioBuilder from './ScenarioBuilder';
 import { CLASS_COLORS, specDisplayName } from '../lib/types';
 import type { PullInfo } from '@/lib/simc-parser';
 import { getFightStyleParamRules } from '../lib/fight-style';
+import { parseCharacterInfo } from '@/lib/simc-parser';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
@@ -395,6 +396,7 @@ export function DungeonInfoBar({
 export function FightSetupOptions() {
   const {
     simcInput,
+    simcFooter,
     fightStyle,
     setFightStyle,
     targetCount,
@@ -403,6 +405,23 @@ export function FightSetupOptions() {
     setFightLength,
   } = useSimContext();
   const fightStyleRules = getFightStyleParamRules(fightStyle);
+  const hasDungeonRouteInput = useMemo(() => {
+    const footerInfo = parseCharacterInfo(simcFooter || '');
+    if (footerInfo?.kind === 'dungeon') return true;
+    const inputInfo = parseCharacterInfo(simcInput || '');
+    return inputInfo?.kind === 'dungeon';
+  }, [simcInput, simcFooter]);
+  const allowedFightStyles = hasDungeonRouteInput
+    ? ['DungeonRoute']
+    : ['Patchwerk', 'CastingPatchwerk', 'HecticAddCleave', 'CleaveAdd', 'LightMovement', 'HeavyMovement', 'DungeonSlice', 'HelterSkelter'];
+
+  useEffect(() => {
+    if (hasDungeonRouteInput) {
+      if (fightStyle !== 'DungeonRoute') setFightStyle('DungeonRoute');
+      return;
+    }
+    if (fightStyle === 'DungeonRoute') setFightStyle('Patchwerk');
+  }, [hasDungeonRouteInput, fightStyle, setFightStyle]);
   const showFightLength = fightStyleRules.usesFightLength;
   const showTargetCount = fightStyleRules.usesTargetCount;
 
@@ -442,7 +461,11 @@ export function FightSetupOptions() {
       >
         <div className="space-y-2">
           <label className="label-text">Fight Style</label>
-          <FightStyleSelector value={fightStyle} onChange={setFightStyle} />
+            <FightStyleSelector
+              value={fightStyle}
+              onChange={setFightStyle}
+              allowedValues={allowedFightStyles}
+            />
         </div>
 
         {showFightLength && (

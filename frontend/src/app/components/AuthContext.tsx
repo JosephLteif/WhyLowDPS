@@ -21,6 +21,25 @@ const AuthContext = createContext<AuthContextType>({
   setSystemCredentials: async () => false,
 });
 
+let authCheckInFlight: Promise<{ battletag: string } | null> | null = null;
+
+async function fetchCurrentUserOnce(): Promise<{ battletag: string } | null> {
+  if (!authCheckInFlight) {
+    authCheckInFlight = (async () => {
+      try {
+        const data = await fetchJson<{ battletag: string }>(`${API_URL}/api/auth/me`);
+        if (data?.battletag) {
+          return { battletag: data.battletag };
+        }
+        return null;
+      } finally {
+        authCheckInFlight = null;
+      }
+    })();
+  }
+  return authCheckInFlight;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<{ battletag: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,10 +47,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const data = await fetchJson<{ battletag: string }>(`${API_URL}/api/auth/me`);
-        if (data.battletag) {
-          setUser({ battletag: data.battletag });
-        }
+        const data = await fetchCurrentUserOnce();
+        setUser(data);
       } catch (err: any) {
         if (err.status !== 401 && !isNetworkUnavailableError(err)) {
           console.error('Auth check failed:', err);

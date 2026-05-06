@@ -112,8 +112,8 @@ export default function StatPlotChart({ statPlots }: StatPlotChartProps) {
         </div>
       </div>
 
-      <div className="h-[340px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-[340px] min-h-[340px] w-full min-w-0">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <LineChart data={data} margin={{ top: 12, right: 12, left: 0, bottom: 8 }}>
             <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
             <XAxis

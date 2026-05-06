@@ -799,8 +799,8 @@ export default function Home() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-200">Simulation Activity (Last 14 Days)</h2>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64 min-h-[256px] min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={activity} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">

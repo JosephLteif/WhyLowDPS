@@ -548,9 +548,13 @@ export default function TopGearResults({
       setWishlistFeedback('No changed items in this row.');
       return;
     }
-    const allWishlisted = changedItems.every((it) => isWishlisted(it.item_id, wishlistOwnerKey));
+    const allWishlisted = changedItems.every((it) =>
+      isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
+    );
     if (allWishlisted) {
-      for (const it of changedItems) removeFromWishlist(it.item_id, wishlistOwnerKey);
+      for (const it of changedItems) {
+        removeFromWishlist(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0));
+      }
       setWishlistFeedback(`Removed ${changedItems.length} item(s) from wishlist.`);
       setWishlistRefreshTick((v) => v + 1);
       return;
@@ -590,7 +594,9 @@ export default function TopGearResults({
     void wishlistRefreshTick;
     const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
     if (changedItems.length === 0) return false;
-    return changedItems.every((it) => isWishlisted(it.item_id, wishlistOwnerKey));
+    return changedItems.every((it) =>
+      isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
+    );
   }, [wishlistOwnerKey, wishlistRefreshTick]);
 
   const characterRenderUrl =

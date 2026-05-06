@@ -43,11 +43,13 @@ function normalizeItemList(items: unknown): WishlistItem[] {
 }
 
 function dedupeItemList(items: WishlistItem[]): WishlistItem[] {
-  const seen = new Set<number>();
+  const seen = new Set<string>();
   const out: WishlistItem[] = [];
   for (const item of items) {
-    if (seen.has(item.item_id)) continue;
-    seen.add(item.item_id);
+    const ilvl = Number(item.wishlist_ilvl ?? item.ilevel ?? 0);
+    const key = `${item.item_id}:${ilvl}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push(item);
   }
   return out;
@@ -182,12 +184,20 @@ export function clearWishlist(ownerKey?: string): void {
   writeStorage(storage);
 }
 
-export function isWishlisted(itemId: number, ownerKey?: string): boolean {
-  return loadWishlist(ownerKey).some((item) => item.item_id === itemId);
+export function isWishlisted(itemId: number, ownerKey?: string, ilvl?: number): boolean {
+  const targetIlvl = Number(ilvl ?? 0);
+  return loadWishlist(ownerKey).some((item) => {
+    const itemIlvl = Number(item.wishlist_ilvl ?? item.ilevel ?? 0);
+    return item.item_id === itemId && itemIlvl === targetIlvl;
+  });
 }
 
-export function removeFromWishlist(itemId: number, ownerKey?: string): WishlistItem[] {
-  const next = loadWishlist(ownerKey).filter((item) => item.item_id !== itemId);
+export function removeFromWishlist(itemId: number, ownerKey?: string, ilvl?: number): WishlistItem[] {
+  const targetIlvl = Number(ilvl ?? 0);
+  const next = loadWishlist(ownerKey).filter((item) => {
+    const itemIlvl = Number(item.wishlist_ilvl ?? item.ilevel ?? 0);
+    return !(item.item_id === itemId && itemIlvl === targetIlvl);
+  });
   saveWishlist(next, ownerKey);
   return next;
 }
@@ -211,14 +221,17 @@ export function addItemsToWishlist(
   ownerKey?: string
 ): { items: WishlistItem[]; added: number; skipped: number } {
   const current = loadWishlist(ownerKey);
-  const existingIds = new Set(current.map((entry) => entry.item_id));
+  const existingKeys = new Set(
+    current.map((entry) => `${entry.item_id}:${Number(entry.wishlist_ilvl ?? entry.ilevel ?? 0)}`)
+  );
   const next = [...current];
   let added = 0;
   let skipped = 0;
 
   for (const entry of entries) {
     if (!entry?.item || typeof entry.item.item_id !== 'number') continue;
-    if (existingIds.has(entry.item.item_id)) {
+    const key = `${entry.item.item_id}:${Number(entry.meta?.ilvl ?? entry.item.ilevel ?? 0)}`;
+    if (existingKeys.has(key)) {
       skipped += 1;
       continue;
     }
@@ -230,7 +243,7 @@ export function addItemsToWishlist(
       wishlist_bonus_id: entry.meta?.bonusId,
       wishlist_upgrade_label: entry.meta?.upgradeLabel,
     });
-    existingIds.add(entry.item.item_id);
+    existingKeys.add(key);
     added += 1;
   }
 

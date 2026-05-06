@@ -63,11 +63,11 @@ export default function ItemTag({
   const gemHref = gemId > 0 ? getWowheadUrl(gemId) : undefined;
 
   return (
-    <div className={`flex min-w-0 max-w-full gap-2 px-0.5 py-0.5 ${kept ? 'opacity-40' : ''}`}>
+    <div className={`grid min-w-0 max-w-full grid-cols-[22px_minmax(0,1fr)] gap-x-2 gap-y-1 px-0.5 py-0.5 ${kept ? 'opacity-40' : ''}`}>
       <a
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
         data-wowhead={whData}
-        className="h-[22px] w-[22px] shrink-0 overflow-hidden rounded"
+        className="col-start-1 row-start-1 h-[22px] w-[22px] shrink-0 overflow-hidden rounded"
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.preventDefault()}
@@ -82,19 +82,16 @@ export default function ItemTag({
         />
       </a>
 
-      <div className="min-w-0">
+      <div className="col-start-2 row-start-1 min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="min-w-0 whitespace-normal break-words text-[15px] font-semibold leading-tight" style={{ color: qc }}>
             {name}
           </span>
           <span className="shrink-0 text-[14px] text-zinc-100/90">({slotName})</span>
 
-          {ilevelText && (
-            <span
-              title={ilevelTooltip}
-              className={`shrink-0 rounded px-1.5 py-px text-[11px] font-mono tabular-nums ${ilevelHighlightClass || 'text-zinc-300'}`}
-            >
-              {ilevelText}
+          {sourceLabel && (
+            <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-px text-[12px] text-cyan-200/90">
+              {sourceLabel}
             </span>
           )}
 
@@ -118,11 +115,21 @@ export default function ItemTag({
             />
           )}
         </div>
+      </div>
 
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-          {sourceLabel && (
-            <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-px text-[12px] text-cyan-200/90">
-              {sourceLabel}
+      <div className="col-start-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5">
+          {ilevelText && (
+            <span
+              title={ilevelTooltip}
+              className={`inline-flex shrink-0 items-center rounded border px-1.5 py-px text-[12px] font-mono tabular-nums ${
+                ilevelHighlightClass?.includes('emerald')
+                  ? 'border-emerald-400/45 bg-emerald-500/10 text-emerald-200/90'
+                  : ilevelHighlightClass?.includes('red')
+                    ? 'border-red-400/45 bg-red-500/10 text-red-200/90'
+                    : 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90'
+              }`}
+            >
+              {ilevelText}
             </span>
           )}
 
@@ -177,7 +184,6 @@ export default function ItemTag({
               <span className="truncate">{gem.name || 'Gem'}</span>
             </a>
           )}
-        </div>
       </div>
     </div>
   );

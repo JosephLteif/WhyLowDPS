@@ -3,17 +3,29 @@ import { fetchWowheadIcons, getWowheadIconCache, type WowheadEntityKind } from '
 
 export function useWowheadIcons(kind: WowheadEntityKind, ids: number[]) {
   const [icons, setIcons] = useState<Map<number, string>>(() => new Map(getWowheadIconCache(kind)));
-  const depKey = useMemo(() => ids.join(','), [ids]);
+  const normalizedIds = useMemo(() => {
+    const unique = new Set<number>();
+    for (const raw of ids) {
+      const n = Number(raw || 0);
+      if (Number.isFinite(n) && n > 0) unique.add(n);
+    }
+    return Array.from(unique).sort((a, b) => a - b);
+  }, [ids]);
+  const depKey = useMemo(() => normalizedIds.join(','), [normalizedIds]);
+  const stableIds = useMemo(
+    () => (depKey ? depKey.split(',').map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0) : []),
+    [depKey]
+  );
 
   useEffect(() => {
     let cancelled = false;
-    fetchWowheadIcons(kind, ids).then((next) => {
+    fetchWowheadIcons(kind, stableIds).then((next) => {
       if (!cancelled) setIcons(next);
     });
     return () => {
       cancelled = true;
     };
-  }, [kind, depKey, ids]);
+  }, [kind, depKey, stableIds]);
 
   return icons;
 }

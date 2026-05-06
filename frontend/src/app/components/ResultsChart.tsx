@@ -43,8 +43,11 @@ const SCHOOL_COLORS: Record<string, string> = {
 
 export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const totalDps = dps || abilities.reduce((s, a) => s + a.portion_dps, 0);
-  const top = abilities.slice(0, 15);
+  const safeAbilities = (Array.isArray(abilities) ? abilities : []).filter(
+    (a) => a && Number.isFinite(Number(a.portion_dps))
+  );
+  const totalDps = dps || safeAbilities.reduce((s, a) => s + Number(a.portion_dps || 0), 0);
+  const top = safeAbilities.slice(0, 15);
   const maxDps = top.length > 0 ? top[0].portion_dps : 1;
   const spellIds = top.flatMap((a) => [
     a.spell_id || 0,
@@ -119,7 +122,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                 </span>
               </div>
               {isOpen &&
-                a.children?.map((child, ci) => {
+                a.children?.slice(0, 40).map((child, ci) => {
                   const childColor = SCHOOL_COLORS[child.school] || SCHOOL_COLORS.physical;
                   const childPct = totalDps > 0 ? (child.portion_dps / totalDps) * 100 : 0;
                   const childName = child.name.replace(/_/g, ' ');

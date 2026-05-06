@@ -26,6 +26,7 @@ interface RankedResultsProps {
   };
   onLoadExactStats?: (result: TopGearResult) => void;
   onAddResultToWishlist?: (result: TopGearResult) => void;
+  isResultWishlisted?: (result: TopGearResult) => boolean;
 }
 
 export default function RankedResults({
@@ -44,6 +45,7 @@ export default function RankedResults({
   getExactStatsStatus,
   onLoadExactStats,
   onAddResultToWishlist,
+  isResultWishlisted,
 }: RankedResultsProps) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
@@ -91,6 +93,7 @@ export default function RankedResults({
           onAddToWishlist={
             onAddResultToWishlist ? () => onAddResultToWishlist(result) : undefined
           }
+          isWishlisted={isResultWishlisted ? isResultWishlisted(result) : false}
         />
           );
         })()

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { specDisplayName } from '../../lib/types';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
@@ -37,6 +37,7 @@ interface ResultRowProps {
   exactStatsButtonDisabled?: boolean;
   exactStatsButtonVariant?: 'start' | 'goto';
   onAddToWishlist?: () => void;
+  isWishlisted?: boolean;
   wishlistButtonDisabled?: boolean;
 }
 
@@ -62,9 +63,11 @@ export default function ResultRow({
   exactStatsButtonDisabled = false,
   exactStatsButtonVariant = 'start',
   onAddToWishlist,
+  isWishlisted = false,
   wishlistButtonDisabled = false,
 }: ResultRowProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
   const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
   const hasTalentBuild = !!result.talent_build;
@@ -218,15 +221,21 @@ export default function ResultRow({
   useEffect(() => {
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
+    const onMouseDown = (e: MouseEvent) => {
+      if (contextMenuRef.current && e.target instanceof Node && contextMenuRef.current.contains(e.target)) {
+        return;
+      }
+      close();
+    };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
-    window.addEventListener('mousedown', close);
+    window.addEventListener('mousedown', onMouseDown);
     window.addEventListener('scroll', close, true);
     window.addEventListener('resize', close);
     window.addEventListener('keydown', onKeyDown);
     return () => {
-      window.removeEventListener('mousedown', close);
+      window.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('scroll', close, true);
       window.removeEventListener('resize', close);
       window.removeEventListener('keydown', onKeyDown);
@@ -365,7 +374,7 @@ export default function ResultRow({
                 disabled={wishlistButtonDisabled}
                 className="rounded border border-zinc-500/40 bg-zinc-500/10 px-2 py-1 text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
               >
-                Add to Wishlist
+                {isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
               </button>
             )}
             {onLoadExactStats && exactStatsStatus !== 'same_base' && (
@@ -392,6 +401,7 @@ export default function ResultRow({
       </div>
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="fixed z-40 flex min-w-40 flex-col gap-1 rounded-lg border border-border bg-surface-2 p-1.5 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
@@ -406,7 +416,7 @@ export default function ResultRow({
               disabled={wishlistButtonDisabled}
               className="rounded px-2 py-1 text-left text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
             >
-              Add to Wishlist
+              {isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
             </button>
           )}
           {onLoadExactStats && exactStatsStatus !== 'same_base' && (

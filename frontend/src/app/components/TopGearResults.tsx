@@ -18,7 +18,7 @@ import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
 import SimResultTalentsCard from './SimResultTalentsCard';
-import { addItemsToWishlist, buildWishlistOwnerKey } from '../lib/wishlist';
+import { addItemsToWishlist, buildWishlistOwnerKey, isWishlisted, removeFromWishlist } from '../lib/wishlist';
 import type { DropItem } from '../drop-finder/types';
 
 interface TopGearResultsProps {
@@ -265,6 +265,7 @@ export default function TopGearResults({
 
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
   const [wishlistFeedback, setWishlistFeedback] = useState('');
+  const [wishlistRefreshTick, setWishlistRefreshTick] = useState(0);
   const wishlistOwnerKey = useMemo(
     () =>
       buildWishlistOwnerKey({
@@ -541,10 +542,17 @@ export default function TopGearResults({
     [cachedExactJobIds, exactStatsCache]
   );
 
-  const addResultToWishlist = useCallback((result: TopGearResult) => {
+  const toggleResultWishlist = useCallback((result: TopGearResult) => {
     const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
     if (changedItems.length === 0) {
       setWishlistFeedback('No changed items in this row.');
+      return;
+    }
+    const allWishlisted = changedItems.every((it) => isWishlisted(it.item_id, wishlistOwnerKey));
+    if (allWishlisted) {
+      for (const it of changedItems) removeFromWishlist(it.item_id, wishlistOwnerKey);
+      setWishlistFeedback(`Removed ${changedItems.length} item(s) from wishlist.`);
+      setWishlistRefreshTick((v) => v + 1);
       return;
     }
     const entries = changedItems.map((it) => {
@@ -575,7 +583,15 @@ export default function TopGearResults({
     if (added > 0 && skipped > 0) setWishlistFeedback(`Added ${added} item(s), ${skipped} already saved.`);
     else if (added > 0) setWishlistFeedback(`Added ${added} item(s) to wishlist.`);
     else setWishlistFeedback('All row items are already in wishlist.');
+    setWishlistRefreshTick((v) => v + 1);
   }, [wishlistOwnerKey]);
+
+  const isResultWishlisted = useCallback((result: TopGearResult) => {
+    void wishlistRefreshTick;
+    const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+    if (changedItems.length === 0) return false;
+    return changedItems.every((it) => isWishlisted(it.item_id, wishlistOwnerKey));
+  }, [wishlistOwnerKey, wishlistRefreshTick]);
 
   const characterRenderUrl =
     playerRealm && playerName
@@ -829,7 +845,8 @@ export default function TopGearResults({
                             : 'start'
                         }
                         exactStatsButtonDisabled={getExactStatsStatus(result).status === 'loading'}
-                        onAddToWishlist={enableWishlistActions ? () => addResultToWishlist(result) : undefined}
+                        onAddToWishlist={enableWishlistActions ? () => toggleResultWishlist(result) : undefined}
+                        isWishlisted={enableWishlistActions ? isResultWishlisted(result) : false}
                       />
                     ))}
                   </div>
@@ -855,7 +872,8 @@ export default function TopGearResults({
                 onLoadExactStats={(result) => {
                   void openOrStartExactStats(result);
                 }}
-                onAddResultToWishlist={enableWishlistActions ? addResultToWishlist : undefined}
+                onAddResultToWishlist={enableWishlistActions ? toggleResultWishlist : undefined}
+                isResultWishlisted={enableWishlistActions ? isResultWishlisted : undefined}
               />
         )}
       </CollapsibleSection>

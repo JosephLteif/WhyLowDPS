@@ -13,10 +13,7 @@ pub(super) async fn list_sims(
     query: web::Query<ListSimsQuery>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
-    // Enforce retention proactively so old unpinned jobs are trimmed even if
-    // no new jobs were inserted since the limit was configured.
     let max_jobs = store.get_max_jobs();
-    store.set_max_jobs(max_jobs);
 
     let player = if query.player.is_empty() {
         None
@@ -38,6 +35,46 @@ pub(super) async fn list_sims(
         query.pinned_only,
     );
     HttpResponse::Ok().json(summaries)
+}
+
+pub(super) async fn list_related_sims(
+    path: web::Path<String>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let id = path.into_inner();
+    let job = match store.get(&id) {
+        Some(j) => j,
+        None => return HttpResponse::NotFound().json(json!({ "detail": "Job not found" })),
+    };
+
+    let parent_id = job.batch_id.clone().unwrap_or_else(|| job.id.clone());
+    let max_jobs = store.get_max_jobs();
+    let summaries = store.list_recent(
+        std::cmp::max(max_jobs, 3000),
+        None,
+        None,
+        false,
+        false,
+        false,
+    );
+
+    let related: Vec<Value> = summaries
+        .into_iter()
+        .filter(|s| s.id == parent_id || s.batch_id.as_deref() == Some(parent_id.as_str()))
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "status": s.status,
+                "sim_type": s.sim_type,
+                "batch_id": s.batch_id,
+                "fight_style": s.fight_style,
+                "player_name": s.player_name,
+                "created_at": s.created_at,
+            })
+        })
+        .collect();
+
+    HttpResponse::Ok().json(related)
 }
 
 pub(super) async fn get_sim_status(

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
-import { API_URL, fetchJson } from './api';
+import { API_URL, fetchJson, isDesktop } from './api';
 import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
@@ -82,6 +82,20 @@ function extractSimcIdentity(
 
   if (!name || !realm) return null;
   return { name, realm, region };
+}
+
+async function emitDesktopTrackedSims(
+  sims: Array<{ id: string; sim_type?: string; player_name?: string }>
+): Promise<void> {
+  if (!isDesktop || sims.length === 0) return;
+  try {
+    const eventApi = (await import('@tauri-apps/api/event')) as {
+      emit: (event: string, payload?: unknown) => Promise<void>;
+    };
+    await eventApi.emit('whylowdps-track-sims', { sims });
+  } catch {
+    // Desktop tracking signal is best effort.
+  }
 }
 
 export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: UseSimSubmitOptions) {
@@ -283,6 +297,11 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
           });
         })
       );
+      const identity = extractSimcIdentity(simcInput);
+      const simType =
+        typeof pagePayload.sim_type === 'string' && pagePayload.sim_type.trim().length > 0
+          ? pagePayload.sim_type
+          : undefined;
 
       if (scenarios.length === 0) {
         const r = results[0];
@@ -290,6 +309,9 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
           if (simAgainTarget) {
             registerSimReturnTarget(r.value.id, simAgainTarget);
           }
+          await emitDesktopTrackedSims([
+            { id: r.value.id, sim_type: simType, player_name: identity?.name },
+          ]);
           void autoLinkJobToCharacter(r.value.id);
           router.push(simResultHref(r.value.id));
         } else {
@@ -317,6 +339,13 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
               simAgainTarget
             );
           }
+          await emitDesktopTrackedSims(
+            siblings.map((s) => ({
+              id: s.id,
+              sim_type: simType,
+              player_name: identity?.name,
+            }))
+          );
           siblings.forEach((s) => {
             void autoLinkJobToCharacter(s.id);
           });
@@ -373,6 +402,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     autoLinkJobToCharacter,
     fetchBaselineLiveStats,
     simAgain,
+    simcInput,
   ]);
 
   const buttonLabel = useCallback(

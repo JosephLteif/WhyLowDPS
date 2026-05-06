@@ -422,6 +422,10 @@ pub async fn start_with_storage_bind(
                 // Job management routes
                 .route("/api/sim/{id}", web::get().to(job_handlers::get_sim_status))
                 .route(
+                    "/api/sim/{id}/related",
+                    web::get().to(job_handlers::list_related_sims),
+                )
+                .route(
                     "/api/sim/{id}/logs",
                     web::get().to(job_handlers::get_sim_logs),
                 )

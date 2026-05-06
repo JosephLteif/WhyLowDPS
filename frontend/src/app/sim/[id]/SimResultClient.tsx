@@ -568,9 +568,8 @@ export default function SimResultClient() {
 
   useEffect(() => {
     let active = true;
-    let timer: ReturnType<typeof setTimeout>;
 
-    async function pollLiveStatsScenarios() {
+    async function loadLiveRelatedScenarios() {
       const anchorIds = new Set<string>();
       const pushAnchor = (v?: string | null) => {
         const s = String(v || '').trim();
@@ -587,7 +586,9 @@ export default function SimResultClient() {
         return;
       }
       try {
-        const all = await fetchJson<any[]>(`${API_URL}/api/sims`);
+        const anchor = String(job?.id || activeScenarioId || '').trim();
+        if (!anchor || anchor === '_') return;
+        const all = await fetchJson<any[]>(`${API_URL}/api/sim/${encodeURIComponent(anchor)}/related`);
         if (!active) return;
         const sims = Array.isArray(all) ? all : [];
         const related = sims.filter(
@@ -617,15 +618,13 @@ export default function SimResultClient() {
       } catch {
         // ignore
       }
-      if (active) timer = setTimeout(pollLiveStatsScenarios, 2000);
     }
 
-    pollLiveStatsScenarios();
+    loadLiveRelatedScenarios();
     return () => {
       active = false;
-      clearTimeout(timer);
     };
-  }, [activeScenarioId, job?.id, job?.batch_id, siblings, liveRelatedScenarios]);
+  }, [activeScenarioId, job?.id, job?.batch_id, siblings]);
 
   const toolbarScenarios = useMemo(() => {
     const base = siblings || [];
@@ -710,6 +709,7 @@ export default function SimResultClient() {
     const siblingList = toolbarScenarios;
     const maxPolledSiblings = 40;
     const limitedSiblings = siblingList.slice(0, maxPolledSiblings);
+    const currentIsActive = job?.status === 'pending' || job?.status === 'running';
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
@@ -721,7 +721,8 @@ export default function SimResultClient() {
             const data = await fetchJson<JobData>(`${API_URL}/api/sim/${s.id}`);
             return { id: s.id, status: data.status || 'pending' };
           } catch {
-            return { id: s.id, status: 'pending' };
+            // Do not keep polling forever for missing/unreachable related jobs.
+            return { id: s.id, status: 'failed' };
           }
         })
       );
@@ -732,9 +733,9 @@ export default function SimResultClient() {
       if (activeScenarioId && job?.status) statuses[activeScenarioId] = job.status;
       setSiblingStatuses(statuses);
 
-      const shouldContinue = Object.values(statuses).some(
-        (status) => status === 'pending' || status === 'running'
-      );
+      // Avoid idle background disk/network churn: only continuously poll while
+      // the currently viewed sim is active.
+      const shouldContinue = currentIsActive;
       if (shouldContinue) timer = setTimeout(pollSiblingStatuses, 2000);
     }
 

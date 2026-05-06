@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useSpellIcons } from '../lib/useWowheadIcons';
+import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
 interface Ability {
   name: string;
@@ -30,6 +31,7 @@ function SpellIcon({ icon }: { icon: string }) {
 const FALLBACK_ICONS: Record<string, string> = {
   auto_attack: 'inv_sword_04',
 };
+const DEFAULT_FALLBACK_ICON = 'inv_misc_questionmark';
 
 const SCHOOL_COLORS: Record<string, string> = {
   physical: '#D4A843',
@@ -43,14 +45,22 @@ const SCHOOL_COLORS: Record<string, string> = {
 
 export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const totalDps = dps || abilities.reduce((s, a) => s + a.portion_dps, 0);
-  const top = abilities.slice(0, 15);
+  const safeAbilities = (Array.isArray(abilities) ? abilities : []).filter(
+    (a) => a && Number.isFinite(Number(a.portion_dps))
+  );
+  const totalDps = dps || safeAbilities.reduce((s, a) => s + Number(a.portion_dps || 0), 0);
+  const top = safeAbilities.slice(0, 15);
   const maxDps = top.length > 0 ? top[0].portion_dps : 1;
   const spellIds = top.flatMap((a) => [
     a.spell_id || 0,
     ...(a.children?.map((c) => c.spell_id || 0) ?? []),
   ]);
+  const tooltipDepKey = spellIds
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .sort((a, b) => a - b)
+    .join(',');
   const icons = useSpellIcons(spellIds);
+  useWowheadTooltips([tooltipDepKey]);
 
   return (
     <div className="card p-5">
@@ -104,12 +114,23 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                       />
                     </svg>
                   )}
-                  {a.spell_id && icons.get(a.spell_id) ? (
-                    <SpellIcon icon={icons.get(a.spell_id)!} />
-                  ) : (
-                    <span className="h-5 w-5 shrink-0 rounded-[3px] bg-surface-2" />
-                  )}
-                  {name}
+                  <a
+                    href={a.spell_id ? `https://www.wowhead.com/spell=${a.spell_id}` : '#'}
+                    data-wowhead={a.spell_id ? `spell=${a.spell_id}` : undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.preventDefault()}
+                    className="inline-flex items-center gap-2 min-w-0"
+                  >
+                    <SpellIcon
+                      icon={
+                        (a.spell_id && icons.get(a.spell_id)) ||
+                        FALLBACK_ICONS[a.name.toLowerCase()] ||
+                        DEFAULT_FALLBACK_ICON
+                      }
+                    />
+                    <span className="truncate">{name}</span>
+                  </a>
                 </span>
                 <span className="relative w-16 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-100">
                   {Math.round(a.portion_dps).toLocaleString()}
@@ -119,7 +140,7 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                 </span>
               </div>
               {isOpen &&
-                a.children?.map((child, ci) => {
+                a.children?.slice(0, 40).map((child, ci) => {
                   const childColor = SCHOOL_COLORS[child.school] || SCHOOL_COLORS.physical;
                   const childPct = totalDps > 0 ? (child.portion_dps / totalDps) * 100 : 0;
                   const childName = child.name.replace(/_/g, ' ');
@@ -134,12 +155,23 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                         }}
                       />
                       <span className="relative flex flex-1 items-center gap-2 truncate pl-10 text-sm text-zinc-200">
-                        {child.spell_id && icons.get(child.spell_id) ? (
-                          <SpellIcon icon={icons.get(child.spell_id)!} />
-                        ) : (
-                          <span className="h-4 w-4 shrink-0 rounded-[2px] bg-surface-2" />
-                        )}
-                        {childName}
+                        <a
+                          href={child.spell_id ? `https://www.wowhead.com/spell=${child.spell_id}` : '#'}
+                          data-wowhead={child.spell_id ? `spell=${child.spell_id}` : undefined}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.preventDefault()}
+                          className="inline-flex items-center gap-2 min-w-0"
+                        >
+                          <SpellIcon
+                            icon={
+                              (child.spell_id && icons.get(child.spell_id)) ||
+                              FALLBACK_ICONS[child.name.toLowerCase()] ||
+                              DEFAULT_FALLBACK_ICON
+                            }
+                          />
+                          <span className="truncate">{childName}</span>
+                        </a>
                       </span>
                       <span className="relative w-16 shrink-0 text-right font-mono text-sm tabular-nums text-zinc-300">
                         {Math.round(child.portion_dps).toLocaleString()}

@@ -214,7 +214,11 @@ impl JobStorage for MemoryStorage {
 
     fn set_max_jobs(&self, limit: usize) {
         let mut mj = self.max_jobs.lock().unwrap();
+        if *mj == limit {
+            return;
+        }
         *mj = limit;
+        drop(mj);
 
         let mut jobs = self.jobs.lock().unwrap();
         if jobs.len() > limit {

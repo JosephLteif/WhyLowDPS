@@ -314,19 +314,6 @@ export default function Home() {
     }
   }, []);
 
-  const loadVolatile = useCallback(async () => {
-    try {
-      const [simData, systemStats] = await Promise.all([
-        listSims(),
-        isDesktop ? getSystemStats().catch(() => null) : Promise.resolve(null),
-      ]);
-      setSims(simData || []);
-      if (isDesktop) setCpuUsage(systemStats?.cpu_usage ?? null);
-    } catch {
-      // Keep stale values; avoid disrupting dashboard on transient polling failures.
-    }
-  }, []);
-
   useEffect(() => {
     const loadMainCharacter = async () => {
       try {
@@ -487,17 +474,21 @@ export default function Home() {
   }, [loadAll]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadVolatile();
-    }, 10000);
-    return () => window.clearInterval(timer);
-  }, [loadVolatile]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
+    if (typeof window === 'undefined') return;
+    const onFocus = () => {
       void loadAll();
-    }, 60000);
-    return () => window.clearInterval(timer);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void loadAll();
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [loadAll]);
 
   useEffect(() => {
@@ -564,6 +555,15 @@ export default function Home() {
           >
             Open Full History
           </Link>
+          <button
+            type="button"
+            onClick={() => {
+              void loadAll();
+            }}
+            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
+          >
+            Refresh Dashboard
+          </button>
         </div>
       </div>
 
@@ -799,8 +799,8 @@ export default function Home() {
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-zinc-200">Simulation Activity (Last 14 Days)</h2>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-64 min-h-[256px] min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <AreaChart data={activity} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">

@@ -61,6 +61,7 @@ interface JobData {
   linked_region?: string;
   linked_realm?: string;
   linked_name?: string;
+  batch_id?: string | null;
 }
 
 interface TimelinePoint {
@@ -394,6 +395,7 @@ export default function SimResultClient() {
   const [aplFallback, setAplFallback] = useState<any | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const [siblings, setSiblings] = useState<ScenarioSibling[] | null>(null);
+  const [liveRelatedScenarios, setLiveRelatedScenarios] = useState<ScenarioSibling[]>([]);
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
   const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
   const [activeStageElapsed, setActiveStageElapsed] = useState(0);
@@ -564,6 +566,73 @@ export default function SimResultClient() {
     setSiblings(getScenarioSiblings());
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadLiveRelatedScenarios() {
+      const anchorIds = new Set<string>();
+      const pushAnchor = (v?: string | null) => {
+        const s = String(v || '').trim();
+        if (s && s !== '_') anchorIds.add(s);
+      };
+      pushAnchor(activeScenarioId);
+      pushAnchor(job?.id);
+      pushAnchor(job?.batch_id || null);
+      (siblings || []).forEach((s) => pushAnchor(s.id));
+      (liveRelatedScenarios || []).forEach((s) => pushAnchor(s.id));
+
+      if (anchorIds.size === 0) {
+        if (active) setLiveRelatedScenarios([]);
+        return;
+      }
+      try {
+        const anchor = String(job?.id || activeScenarioId || '').trim();
+        if (!anchor || anchor === '_') return;
+        const all = await fetchJson<any[]>(`${API_URL}/api/sim/${encodeURIComponent(anchor)}/related`);
+        if (!active) return;
+        const sims = Array.isArray(all) ? all : [];
+        const related = sims.filter(
+          (s) =>
+            s &&
+            (anchorIds.has(String(s.id || '')) || anchorIds.has(String(s.batch_id || '')))
+        );
+        const mapped = related
+          .filter(
+            (s) =>
+              s &&
+              s.id
+          )
+          .map((s, idx) => ({
+            id: String(s.id),
+            fightStyle: s.fight_style || 'Patchwerk',
+            targetCount: 0,
+            fightLength: 0,
+            simType:
+              s.sim_type === 'top_gear_exact_stats'
+                ? `Stats Sim ${idx + 1}`
+                : s.sim_type === 'top_gear'
+                  ? 'Top Gear'
+                  : s.sim_type || `Scenario ${idx + 1}`,
+          }));
+        setLiveRelatedScenarios(mapped);
+      } catch {
+        // ignore
+      }
+    }
+
+    loadLiveRelatedScenarios();
+    return () => {
+      active = false;
+    };
+  }, [activeScenarioId, job?.id, job?.batch_id, siblings]);
+
+  const toolbarScenarios = useMemo(() => {
+    const base = siblings || [];
+    const seen = new Set(base.map((s) => s.id));
+    const extras = liveRelatedScenarios.filter((s) => !seen.has(s.id));
+    return [...base, ...extras];
+  }, [siblings, liveRelatedScenarios]);
+
   const getCurrentSimId = useCallback(
     () =>
       [job?.id, activeScenarioId, id]
@@ -636,28 +705,37 @@ export default function SimResultClient() {
   }, []);
 
   useEffect(() => {
-    if (!siblings || siblings.length === 0) return;
-    const siblingList = siblings;
+    if (toolbarScenarios.length === 0) return;
+    const siblingList = toolbarScenarios;
+    const maxPolledSiblings = 40;
+    const limitedSiblings = siblingList.slice(0, maxPolledSiblings);
+    const currentIsActive = job?.status === 'pending' || job?.status === 'running';
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
     async function pollSiblingStatuses() {
       const statuses: Record<string, string> = {};
-      for (const s of siblingList) {
-        try {
-          const data = await fetchJson<JobData>(`${API_URL}/api/sim/${s.id}`);
-          statuses[s.id] = data.status || 'pending';
-        } catch {
-          statuses[s.id] = 'pending';
-        }
+      const results = await Promise.all(
+        limitedSiblings.map(async (s) => {
+          try {
+            const data = await fetchJson<JobData>(`${API_URL}/api/sim/${s.id}`);
+            return { id: s.id, status: data.status || 'pending' };
+          } catch {
+            // Do not keep polling forever for missing/unreachable related jobs.
+            return { id: s.id, status: 'failed' };
+          }
+        })
+      );
+      for (const item of results) {
+        statuses[item.id] = item.status;
       }
       if (!active) return;
       if (activeScenarioId && job?.status) statuses[activeScenarioId] = job.status;
       setSiblingStatuses(statuses);
 
-      const shouldContinue = Object.values(statuses).some(
-        (status) => status === 'pending' || status === 'running'
-      );
+      // Avoid idle background disk/network churn: only continuously poll while
+      // the currently viewed sim is active.
+      const shouldContinue = currentIsActive;
       if (shouldContinue) timer = setTimeout(pollSiblingStatuses, 2000);
     }
 
@@ -666,7 +744,7 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [siblings, activeScenarioId, job?.status]);
+  }, [toolbarScenarios, activeScenarioId, job?.status]);
 
   useEffect(() => {
     console.log('[SimResult] Initializing with ID:', activeScenarioId);
@@ -908,12 +986,12 @@ export default function SimResultClient() {
 
   const scenarioToolbar = (
     <div className="sticky top-16 z-40 flex flex-wrap items-center justify-between gap-4 py-2">
-      {siblings && siblings.length > 1 ? (
+      {toolbarScenarios.length > 1 ? (
         <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
           <div className="flex flex-wrap items-center gap-2">
             <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">Scenarios</span>
             <span className="h-4 w-px shrink-0 bg-border" />
-            {siblings.map((s) => {
+            {toolbarScenarios.map((s) => {
               const isCurrent = s.id === activeScenarioId;
               const status = siblingStatuses[s.id] || (isCurrent ? job.status : 'pending');
               return (
@@ -1008,7 +1086,13 @@ export default function SimResultClient() {
     return <p className="text-sm text-muted">No result data available.</p>;
   }
 
-  const isTopGear = r.type === 'top_gear';
+  const hasTopGearLikeResults =
+    Array.isArray(r.results) &&
+    (r.results as Array<any>).some(
+      (entry) => entry && typeof entry === 'object' && Array.isArray(entry.items)
+    );
+  const isTopGear =
+    r.type === 'top_gear' || job.sim_type === 'top_gear' || job.sim_type === 'top-gear' || hasTopGearLikeResults;
   const isDropFinderResult =
     job.sim_type === 'droptimizer' ||
     job.sim_type === 'drop_finder' ||
@@ -1022,6 +1106,32 @@ export default function SimResultClient() {
     job.sim_type === 'stat_plot';
   const baselineLiveStats = (r.baseline_live_stats as StatSnapshot | undefined) || null;
   const simulatedStats = (r.simulated_stats as StatSnapshot | undefined) || null;
+  const rawTopGearResults = Array.isArray(r.results) ? (r.results as Array<any>) : [];
+  const topGearResults = rawTopGearResults
+    .filter((entry) => entry && typeof entry === 'object')
+    .map((entry, idx) => {
+      const dps = Number(entry.dps ?? entry.value ?? 0);
+      const delta = Number(entry.delta ?? 0);
+      const items = Array.isArray(entry.items) ? entry.items : [];
+      const name =
+        typeof entry.name === 'string' && entry.name.trim().length > 0
+          ? entry.name
+          : `Result ${idx + 1}`;
+      return {
+        ...entry,
+        name,
+        dps: Number.isFinite(dps) ? dps : 0,
+        delta: Number.isFinite(delta) ? delta : 0,
+        items,
+      } as TopGearResult;
+    })
+    .sort((a, b) => b.dps - a.dps);
+  const normalizedTopGearBaseDps = (() => {
+    const candidate = Number(r.base_dps ?? r.dps ?? 0);
+    if (Number.isFinite(candidate) && candidate > 0) return candidate;
+    const fromBest = Number(topGearResults[0]?.dps ?? 0);
+    return Number.isFinite(fromBest) ? fromBest : 0;
+  })();
 
   const equippedGear = r.equipped_gear as any;
   const avgIlevel = equippedGear ? calculateAverageIlevel(equippedGear) : undefined;
@@ -1055,12 +1165,13 @@ export default function SimResultClient() {
       ) : isTopGear ? (
         <>
           <TopGearResults
+            parentSimId={job.batch_id || activeScenarioId}
             playerName={r.player_name as string}
             playerClass={r.player_class as string}
             playerRealm={r.realm as string | undefined}
             playerRegion={r.region as string | undefined}
-            baseDps={r.base_dps as number}
-            results={r.results as TopGearResult[]}
+            baseDps={normalizedTopGearBaseDps}
+            results={topGearResults}
             equippedGear={r.equipped_gear as Record<string, ResultItem>}
             dpsError={r.dps_error as number | undefined}
             dpsErrorPct={r.dps_error_pct as number | undefined}
@@ -1081,14 +1192,6 @@ export default function SimResultClient() {
         </>
       ) : isStatWeights ? (
         <>
-          {(baselineLiveStats || simulatedStats) && (
-            <SimStatsComparisonCard
-              current={baselineLiveStats}
-              simulated={simulatedStats}
-              title="Live vs Simulated Stats"
-              description="The simulated values reflect the active run setup, including raid buffs, consumables, and other selected sim modifiers."
-            />
-          )}
           <div className="card border-gold/10 bg-gold/[0.02] p-6">
             <h2 className="mb-2 text-lg font-bold text-zinc-100">Stat Weights Generated</h2>
             <p className="text-sm text-zinc-400">
@@ -1111,6 +1214,17 @@ export default function SimResultClient() {
                 </p>
               </div>
             )
+          )}
+          {(baselineLiveStats || simulatedStats) && (
+            <CollapsibleSection title="Character Panel">
+              <SimStatsComparisonCard
+                current={baselineLiveStats}
+                simulated={simulatedStats}
+                title="Live vs Simulated Stats"
+                description="The simulated values reflect the active run setup, including raid buffs, consumables, and other selected sim modifiers."
+                framed={false}
+              />
+            </CollapsibleSection>
           )}
         </>
       ) : (
@@ -1177,31 +1291,35 @@ export default function SimResultClient() {
               </div>
             )}
           </DpsHeroCard>
-          {(baselineLiveStats || simulatedStats) && (
-            <CollapsibleSection title="Stats Comparison" defaultOpen={false}>
-              <SimStatsComparisonCard
-                current={baselineLiveStats}
-                simulated={simulatedStats}
-                title="Live vs Simulated Stats"
-                description="The simulated values reflect the active run setup, including raid buffs, consumables, and other selected sim modifiers."
-                framed={false}
-              />
+          {((baselineLiveStats || simulatedStats) || (r.equipped_gear && Object.keys(r.equipped_gear as Record<string, unknown>).length > 0)) && (
+            <CollapsibleSection title="Character Panel">
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.95fr)] xl:items-start">
+                {r.equipped_gear &&
+                  Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (
+                    <GearOverview
+                      gear={r.equipped_gear as Record<string, GearItem>}
+                      characterRenderUrl={
+                        r.realm && r.player_name
+                          ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
+                          : null
+                      }
+                      currencies={r.currencies as any}
+                      framed={false}
+                    />
+                  )}
+                {(baselineLiveStats || simulatedStats) && (
+                  <div className="xl:sticky xl:top-24">
+                    <SimStatsComparisonCard
+                      current={baselineLiveStats}
+                      simulated={simulatedStats}
+                      title="Live vs Simulated Stats"
+                      description="The simulated values reflect the active run setup, including raid buffs, consumables, and other selected sim modifiers."
+                    />
+                  </div>
+                )}
+              </div>
             </CollapsibleSection>
           )}
-          {r.equipped_gear &&
-            Object.keys(r.equipped_gear as Record<string, unknown>).length > 0 && (
-              <CollapsibleSection title="Character Panel">
-                <GearOverview
-                  gear={r.equipped_gear as Record<string, GearItem>}
-                  characterRenderUrl={
-                    r.realm && r.player_name
-                      ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
-                      : null
-                  }
-                  currencies={r.currencies as any}
-                />
-              </CollapsibleSection>
-            )}
           {typeof r.talent_string === 'string' && r.talent_string && (
             <CollapsibleSection title="Talents" defaultOpen={false}>
               <SimResultTalentsCard talentString={r.talent_string as string} />
@@ -1344,7 +1462,7 @@ export default function SimResultClient() {
               </div>
             </CollapsibleSection>
           )}
-          <CollapsibleSection title="Damage Breakdown">
+          <CollapsibleSection title="Damage Breakdown" defaultOpen={false}>
             <ResultsChart
               dps={r.dps as number}
               abilities={
@@ -1356,7 +1474,7 @@ export default function SimResultClient() {
               }
             />
           </CollapsibleSection>
-          <CollapsibleSection title="Timeline & APL Analyzer">
+          <CollapsibleSection title="Timeline & APL Analyzer" defaultOpen={false}>
             {timelineData || aplData ? (
               <SimTimelineAnalyzer
                 timeline={(timelineData || {}) as any}

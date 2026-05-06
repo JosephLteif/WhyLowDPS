@@ -584,8 +584,15 @@ impl JobStorage for PostgresStorage {
     }
 
     fn set_max_jobs(&self, limit: usize) {
+        let mut should_persist = true;
         if let Ok(mut mj) = self.max_jobs.lock() {
+            if *mj == limit {
+                should_persist = false;
+            }
             *mj = limit;
+        }
+        if !should_persist {
+            return;
         }
         self.blocking(|client| {
             self.rt.block_on(async {

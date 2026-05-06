@@ -7,6 +7,14 @@ declare global {
 }
 
 export function useWowheadTooltips(deps: unknown[] = []) {
+  const depsKey = (() => {
+    try {
+      return JSON.stringify(deps);
+    } catch {
+      return String(deps.length);
+    }
+  })();
+
   useEffect(() => {
     function refresh() {
       if (window.$WowheadPower) {
@@ -25,5 +33,5 @@ export function useWowheadTooltips(deps: unknown[] = []) {
       }
     }, 200);
     return () => clearInterval(interval);
-  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [depsKey]);
 }

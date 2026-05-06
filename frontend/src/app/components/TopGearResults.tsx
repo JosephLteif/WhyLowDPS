@@ -21,6 +21,7 @@ import { addItemsToWishlist, buildWishlistOwnerKey } from '../lib/wishlist';
 import type { DropItem } from '../drop-finder/types';
 
 interface TopGearResultsProps {
+  parentSimId?: string;
   playerName: string;
   playerClass: string;
   playerRealm?: string;
@@ -98,14 +99,15 @@ function CollapsibleSection({
 
 function buildExactStatsRequest(
   simcInput: string,
-  simOptions: Record<string, unknown> | null | undefined
+  simOptions: Record<string, unknown> | null | undefined,
+  parentSimId?: string
 ): Record<string, unknown> {
   return {
     simc_input: simcInput,
-    sim_type: 'quick',
     ...(simOptions || {}),
+    sim_type: 'top_gear_exact_stats',
     include_timeline: false,
-    batch_id: undefined,
+    batch_id: parentSimId || undefined,
   };
 }
 
@@ -125,7 +127,28 @@ async function waitForExactStats(jobId: string): Promise<StatSnapshot | null> {
   throw new Error('Exact stats simulation timed out');
 }
 
+async function linkSimToParentCharacter(params: {
+  jobId: string;
+  name?: string;
+  realm?: string;
+  region?: string;
+}): Promise<void> {
+  const name = (params.name || '').trim();
+  const realm = (params.realm || '').trim();
+  const region = (params.region || '').trim().toLowerCase();
+  if (!name || !realm || !region) return;
+  try {
+    await fetchJson(`${API_URL}/api/sim/${params.jobId}/link`, {
+      method: 'POST',
+      body: JSON.stringify({ name, realm, region }),
+    });
+  } catch {
+    // Keep sim usable even when linking fails (e.g. unauthenticated web mode).
+  }
+}
+
 export default function TopGearResults({
+  parentSimId,
   playerName,
   playerClass,
   playerRealm,
@@ -149,6 +172,10 @@ export default function TopGearResults({
   generatedInput,
   simOptions,
 }: TopGearResultsProps) {
+  const exactStatsStorageKey = useMemo(
+    () => `top_gear_exact_stats_jobs_${parentSimId || 'unknown'}`,
+    [parentSimId]
+  );
   const {
     groupMode,
     setGroupMode,
@@ -252,12 +279,37 @@ export default function TopGearResults({
     [selectedResult]
   );
   const [exactStatsCache, setExactStatsCache] = useState<Record<string, ExactStatsCacheEntry>>({});
+  const [cachedExactJobIds, setCachedExactJobIds] = useState<Record<string, string>>({});
   const warmStartedRef = useRef(false);
 
   const loadExactStats = useCallback(
     async (result: TopGearResult) => {
       const profilesetName = getTopGearProfilesetName(result);
       if (!profilesetName || !generatedInput) return;
+
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem(exactStatsStorageKey);
+          const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+          const existingJobId = map[profilesetName];
+          if (existingJobId) {
+            setExactStatsCache((prev) => ({
+              ...prev,
+              [profilesetName]: { status: 'loading', simulatedStats: prev[profilesetName]?.simulatedStats, jobId: existingJobId },
+            }));
+            const exactStats = await waitForExactStats(existingJobId);
+            if (exactStats) {
+              setExactStatsCache((prev) => ({
+                ...prev,
+                [profilesetName]: { status: 'ready', simulatedStats: exactStats, jobId: existingJobId },
+              }));
+              return;
+            }
+          }
+        } catch {
+          // ignore storage parse issues
+        }
+      }
 
       setExactStatsCache((prev) => {
         const existing = prev[profilesetName];
@@ -283,7 +335,13 @@ export default function TopGearResults({
         const created = await fetchJson<{ id: string }>(`${API_URL}/api/sim`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions)),
+          body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions, parentSimId)),
+        });
+        await linkSimToParentCharacter({
+          jobId: created.id,
+          name: playerName,
+          realm: playerRealm,
+          region: playerRegion,
         });
         const exactStats = await waitForExactStats(created.id);
         if (!exactStats) {
@@ -298,6 +356,16 @@ export default function TopGearResults({
             jobId: created.id,
           },
         }));
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem(exactStatsStorageKey);
+            const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+            map[profilesetName] = created.id;
+            localStorage.setItem(exactStatsStorageKey, JSON.stringify(map));
+          } catch {
+            // ignore storage write issues
+          }
+        }
       } catch (error) {
         setExactStatsCache((prev) => ({
           ...prev,
@@ -308,17 +376,67 @@ export default function TopGearResults({
         }));
       }
     },
-    [generatedInput, simOptions]
+    [generatedInput, simOptions, exactStatsStorageKey, parentSimId]
   );
 
   useEffect(() => {
-    if (!generatedInput || results.length === 0 || warmStartedRef.current) return;
+    if (warmStartedRef.current) return;
     warmStartedRef.current = true;
+  }, []);
 
-    for (const result of results.slice(0, 3)) {
-      void loadExactStats(result);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem(exactStatsStorageKey);
+      const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+      setCachedExactJobIds(map);
+    } catch {
+      setCachedExactJobIds({});
     }
-  }, [generatedInput, results, loadExactStats]);
+  }, [exactStatsStorageKey]);
+
+  useEffect(() => {
+    if (!generatedInput || results.length === 0) return;
+    for (const result of results) {
+      const profilesetName = getTopGearProfilesetName(result);
+      if (!profilesetName) continue;
+      const cachedJobId = cachedExactJobIds[profilesetName];
+      if (!cachedJobId) continue;
+      const current = exactStatsCache[profilesetName];
+      if (current?.status === 'ready' || current?.status === 'loading') continue;
+
+      setExactStatsCache((prev) => ({
+        ...prev,
+        [profilesetName]: {
+          status: 'loading',
+          simulatedStats: prev[profilesetName]?.simulatedStats,
+          jobId: cachedJobId,
+        },
+      }));
+
+      void waitForExactStats(cachedJobId)
+        .then((exactStats) => {
+          setExactStatsCache((prev) => ({
+            ...prev,
+            [profilesetName]: {
+              status: 'ready',
+              simulatedStats: exactStats || null,
+              jobId: cachedJobId,
+            },
+          }));
+        })
+        .catch((error) => {
+          setExactStatsCache((prev) => ({
+            ...prev,
+            [profilesetName]: {
+              status: 'error',
+              jobId: cachedJobId,
+              error: error instanceof Error ? error.message : 'Failed to load cached stats sim.',
+            },
+          }));
+        });
+    }
+  }, [generatedInput, results, cachedExactJobIds, exactStatsCache]);
 
   const selectedProfilesetName = selectedResult ? getTopGearProfilesetName(selectedResult) : null;
   const selectedExactStatsEntry = selectedProfilesetName
@@ -327,6 +445,26 @@ export default function TopGearResults({
   const selectedExactSimulatedStats =
     selectedExactStatsEntry?.status === 'ready' ? selectedExactStatsEntry.simulatedStats || null : null;
   const canLoadSelectedExactStats = Boolean(selectedResult && selectedProfilesetName && generatedInput);
+  const getExactStatsStatus = useCallback(
+    (result: TopGearResult): { status: 'idle' | 'loading' | 'ready' | 'error' | 'same_base'; label?: string } => {
+      const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
+      if (isEquipped) {
+        return { status: 'same_base', label: 'Same as base stats (no extra sim)' };
+      }
+      const profilesetName = getTopGearProfilesetName(result);
+      if (!profilesetName) return { status: 'idle', label: 'No profileset key' };
+      if (!cachedExactJobIds[profilesetName] && !exactStatsCache[profilesetName]) {
+        return { status: 'idle', label: 'Not cached' };
+      }
+      const entry = exactStatsCache[profilesetName];
+      if (!entry) return { status: 'loading', label: 'Loading cached stats sim...' };
+      if (entry.status === 'ready') return { status: 'ready', label: 'Saved stats sim' };
+      if (entry.status === 'loading') return { status: 'loading', label: 'Loading stats sim...' };
+      if (entry.status === 'error') return { status: 'error', label: entry.error || 'Failed' };
+      return { status: 'idle', label: 'Not loaded' };
+    },
+    [cachedExactJobIds, exactStatsCache]
+  );
 
   const handleAddSelectedToWishlist = () => {
     if (changedSelectedItems.length === 0) {
@@ -506,8 +644,7 @@ export default function TopGearResults({
                         </p>
                       ) : null}
                       <p className="text-[12px] text-zinc-500">
-                        Rows 1, 2, and 3 begin warming as soon as the page loads, and any other selected
-                        row can be loaded from here.
+                        Exact stats are loaded only on demand and cached for this sim for future opens.
                       </p>
                     </div>
                   </div>
@@ -616,7 +753,7 @@ export default function TopGearResults({
             )}
           </div>
         ) : (
-          <RankedResults
+              <RankedResults
             results={results}
             maxDps={maxDps}
             baseDps={baseDps}
@@ -625,11 +762,18 @@ export default function TopGearResults({
             itemInfoMap={itemInfoMap}
             enchantInfoMap={enchantInfoMap}
             gemInfoMap={gemInfoMap}
-            selectedResultName={selectedResultName}
-            onSelectResult={setSelectedResultName}
-            currencies={currencies}
-            dropBaselineIlevelByKey={dropBaselineIlevelByKey}
-          />
+                selectedResultName={selectedResultName}
+                onSelectResult={setSelectedResultName}
+                currencies={currencies}
+                dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+                getExactStatsStatus={getExactStatsStatus}
+                onLoadExactStats={(result) => {
+                  const isEquipped =
+                    result.items.length === 0 || result.name.startsWith('Currently Equipped');
+                  if (isEquipped) return;
+                  void loadExactStats(result);
+                }}
+              />
         )}
       </CollapsibleSection>
     </div>

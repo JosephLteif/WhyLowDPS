@@ -20,6 +20,11 @@ interface RankedResultsProps {
   onSelectResult: (name: string) => void;
   currencies?: Record<string, { id: number; name: string; icon: string }>;
   dropBaselineIlevelByKey?: Record<string, number>;
+  getExactStatsStatus?: (result: TopGearResult) => {
+    status: 'idle' | 'loading' | 'ready' | 'error' | 'same_base';
+    label?: string;
+  };
+  onLoadExactStats?: (result: TopGearResult) => void;
 }
 
 export default function RankedResults({
@@ -35,6 +40,8 @@ export default function RankedResults({
   onSelectResult,
   currencies,
   dropBaselineIlevelByKey = {},
+  getExactStatsStatus,
+  onLoadExactStats,
 }: RankedResultsProps) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
@@ -44,6 +51,9 @@ export default function RankedResults({
     <div className="space-y-1">
       <RankingsHeader />
       {visible.map((result, idx) => (
+        (() => {
+          const exact = getExactStatsStatus?.(result) || { status: 'idle' as const };
+          return (
         <ResultRow
           key={result.name}
           result={result}
@@ -60,7 +70,14 @@ export default function RankedResults({
           gemInfoMap={gemInfoMap}
           currencies={currencies}
           dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+          exactStatsStatus={exact.status}
+          exactStatsLabel={exact.label}
+          onLoadExactStats={
+            onLoadExactStats ? () => onLoadExactStats(result) : undefined
+          }
         />
+          );
+        })()
       ))}
       {hasMore && (
         <button

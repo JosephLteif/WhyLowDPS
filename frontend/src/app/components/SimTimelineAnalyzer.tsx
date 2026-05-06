@@ -1,11 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ResponsiveContainer,
   Scatter,
   Tooltip,
   XAxis,
@@ -173,6 +172,42 @@ function laneTickStep(duration: number): number {
   if (duration <= 90) return 5;
   if (duration <= 180) return 10;
   return 15;
+}
+function MeasuredChartFrame({
+  className,
+  minHeight,
+  children,
+}: {
+  className: string;
+  minHeight: number;
+  children: (size: { width: number; height: number }) => ReactNode;
+}) {
+  const [size, setSize] = useState<{ width: number; height: number }>({ width: 0, height: minHeight });
+  const [ready, setReady] = useState(false);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = Math.floor(el.clientWidth || 0);
+      const h = Math.floor(el.clientHeight || minHeight);
+      if (w > 0 && h > 0) {
+        setSize({ width: w, height: h });
+        setReady(true);
+      }
+    };
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [minHeight]);
+
+  return (
+    <div ref={frameRef} className={className}>
+      {ready ? children(size) : null}
+    </div>
+  );
 }
 
 export default function SimTimelineAnalyzer({
@@ -369,16 +404,19 @@ export default function SimTimelineAnalyzer({
     return [...ids];
   }, [laneEvents, topActions, buffUptimes]);
   const icons = useSpellIcons(spellIds);
-  useWowheadTooltips([
-    events,
-    laneGroups,
-    topActions,
-    buffUptimes,
-    sequenceView,
-    showAllEvents,
-    sequenceZoom,
-    equippedItemInfo,
-  ]);
+  const tooltipDepKey = useMemo(() => {
+    const spells = spellIds
+      .filter((id) => Number.isFinite(id) && id > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+    const items = Object.keys(equippedItemInfo || {})
+      .map((k) => Number(k))
+      .filter((n) => Number.isFinite(n) && n > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+    return `${spells}|${items}`;
+  }, [spellIds, equippedItemInfo]);
+  useWowheadTooltips([tooltipDepKey]);
 
   return (
     <div className="space-y-4">
@@ -410,9 +448,14 @@ export default function SimTimelineAnalyzer({
           DPS Timeline
         </h4>
         {dpsSeries.length > 0 ? (
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={dpsSeries} margin={{ top: 10, right: 14, left: -8, bottom: 0 }}>
+          <MeasuredChartFrame className="h-64 min-h-[256px] min-w-0" minHeight={256}>
+            {({ width, height }) => (
+              <ComposedChart
+                width={width}
+                height={height}
+                data={dpsSeries}
+                margin={{ top: 10, right: 14, left: -8, bottom: 0 }}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
                 <XAxis
                   dataKey="t"
@@ -454,8 +497,8 @@ export default function SimTimelineAnalyzer({
                   />
                 )}
               </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+            )}
+          </MeasuredChartFrame>
         ) : (
           <p className="text-sm text-zinc-500">No DPS timeline data available in this result.</p>
         )}
@@ -485,9 +528,11 @@ export default function SimTimelineAnalyzer({
                   <p className="mb-1.5 text-[12px] font-medium text-zinc-300">
                     {formatResource(resourceKey)}
                   </p>
-                  <div className="h-40">
-                    <ResponsiveContainer width="100%" height="100%">
+                  <MeasuredChartFrame className="h-40 min-h-[160px] min-w-0" minHeight={160}>
+                    {({ width, height }) => (
                       <ComposedChart
+                        width={width}
+                        height={height}
                         data={series}
                         margin={{ top: 10, right: 14, left: -8, bottom: 0 }}
                       >
@@ -531,8 +576,8 @@ export default function SimTimelineAnalyzer({
                           isAnimationActive={false}
                         />
                       </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
+                    )}
+                  </MeasuredChartFrame>
                 </div>
               );
             })}

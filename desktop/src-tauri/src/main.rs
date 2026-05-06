@@ -5,12 +5,15 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet};
+use serde_json::Value;
 use tauri::path::BaseDirectory;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::Emitter;
+use tauri::Listener;
 use tauri::Manager;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::WindowEvent;
+use tokio::sync::mpsc;
 use tokio::io::AsyncWriteExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
@@ -96,7 +99,64 @@ struct SimNotificationSummary {
     sim_type: String,
     player_name: Option<String>,
     linked_name: Option<String>,
-    dps: Option<f64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SimTrackEventPayload {
+    sims: Vec<SimTrackEventItem>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct SimTrackEventItem {
+    id: String,
+    sim_type: Option<String>,
+    player_name: Option<String>,
+    linked_name: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SimStatusResponse {
+    status: String,
+    #[serde(default)]
+    sim_type: String,
+    #[serde(default)]
+    simc_input: String,
+    linked_name: Option<String>,
+    result: Option<Value>,
+}
+
+#[derive(Debug)]
+enum SimWatcherCommand {
+    Track(Vec<SimTrackEventItem>),
+}
+
+#[derive(Debug, Clone)]
+struct SimWatcherMeta {
+    sim_type: String,
+    player_name: Option<String>,
+    linked_name: Option<String>,
+}
+
+impl SimWatcherMeta {
+    fn from_summary(summary: &SimNotificationSummary) -> Self {
+        Self {
+            sim_type: summary.sim_type.clone(),
+            player_name: summary.player_name.clone(),
+            linked_name: summary.linked_name.clone(),
+        }
+    }
+
+    fn from_event(item: &SimTrackEventItem) -> Self {
+        Self {
+            sim_type: item
+                .sim_type
+                .clone()
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "quick".to_string()),
+            player_name: item.player_name.clone(),
+            linked_name: item.linked_name.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
@@ -309,6 +369,226 @@ fn notification_title(status: &str) -> &'static str {
     }
 }
 
+fn parse_simc_player_name(simc_input: &str) -> Option<String> {
+    let actor_keys = [
+        "warrior",
+        "paladin",
+        "hunter",
+        "rogue",
+        "priest",
+        "death_knight",
+        "deathknight",
+        "shaman",
+        "mage",
+        "warlock",
+        "monk",
+        "druid",
+        "demon_hunter",
+        "demonhunter",
+        "evoker",
+        "player",
+        "name",
+    ];
+    for raw in simc_input.lines() {
+        let line = raw.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim().to_ascii_lowercase();
+        if actor_keys.contains(&key.as_str()) {
+            let cleaned = value.trim().trim_matches('"').to_string();
+            if !cleaned.is_empty() {
+                return Some(cleaned);
+            }
+        }
+    }
+    None
+}
+
+fn extract_dps_from_result(result: &Value) -> Option<f64> {
+    let candidates = [
+        result.pointer("/statistics/raid_dps/mean"),
+        result.pointer("/statistics/dps"),
+        result.pointer("/dps"),
+    ];
+    for candidate in candidates {
+        let Some(value) = candidate else {
+            continue;
+        };
+        if let Some(num) = value.as_f64() {
+            return Some(num);
+        }
+        if let Some(num) = value.as_i64() {
+            return Some(num as f64);
+        }
+        if let Some(text) = value.as_str() {
+            if let Ok(num) = text.parse::<f64>() {
+                return Some(num);
+            }
+        }
+    }
+    None
+}
+
+fn handle_track_command(
+    items: Vec<SimTrackEventItem>,
+    tracked_active: &mut HashMap<String, SimWatcherMeta>,
+    notified_sims: &mut HashSet<String>,
+) {
+    for item in items {
+        if item.id.trim().is_empty() {
+            continue;
+        }
+        tracked_active
+            .entry(item.id.clone())
+            .or_insert_with(|| SimWatcherMeta::from_event(&item));
+        notified_sims.remove(&item.id);
+    }
+}
+
+async fn run_sim_notification_watcher(
+    notifier_handle: tauri::AppHandle,
+    mut rx: mpsc::UnboundedReceiver<SimWatcherCommand>,
+) {
+    let client = reqwest::Client::new();
+    let mut tracked_active: HashMap<String, SimWatcherMeta> = HashMap::new();
+    let mut notified_sims: HashSet<String> = HashSet::new();
+
+    // One startup scan to attach to pre-existing active sims.
+    for _ in 0..30 {
+        let scan = client
+            .get("http://127.0.0.1:17384/api/sims")
+            .send()
+            .await
+            .and_then(|resp| resp.error_for_status());
+        match scan {
+            Ok(resp) => {
+                if let Ok(sims) = resp.json::<Vec<SimNotificationSummary>>().await {
+                    for sim in sims {
+                        if is_active_status(&sim.status) {
+                            tracked_active.insert(sim.id.clone(), SimWatcherMeta::from_summary(&sim));
+                        } else if is_terminal_status(&sim.status) {
+                            notified_sims.insert(sim.id);
+                        }
+                    }
+                    break;
+                }
+            }
+            Err(_) => {}
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
+    loop {
+        while let Ok(cmd) = rx.try_recv() {
+            match cmd {
+                SimWatcherCommand::Track(items) => {
+                    handle_track_command(items, &mut tracked_active, &mut notified_sims);
+                }
+            }
+        }
+
+        if tracked_active.is_empty() {
+            let Some(cmd) = rx.recv().await else {
+                break;
+            };
+            match cmd {
+                SimWatcherCommand::Track(items) => {
+                    handle_track_command(items, &mut tracked_active, &mut notified_sims);
+                }
+            }
+            continue;
+        }
+
+        tokio::select! {
+            cmd = rx.recv() => {
+                let Some(cmd) = cmd else {
+                    break;
+                };
+                match cmd {
+                    SimWatcherCommand::Track(items) => {
+                        handle_track_command(items, &mut tracked_active, &mut notified_sims);
+                    }
+                }
+            }
+            _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                let ids: Vec<String> = tracked_active.keys().cloned().collect();
+                for id in ids {
+                    let status_url = format!("http://127.0.0.1:17384/api/sim/{id}");
+                    let status_resp = client
+                        .get(&status_url)
+                        .send()
+                        .await
+                        .and_then(|resp| resp.error_for_status());
+                    let Ok(resp) = status_resp else {
+                        continue;
+                    };
+                    let Ok(status) = resp.json::<SimStatusResponse>().await else {
+                        continue;
+                    };
+
+                    if is_active_status(&status.status) {
+                        continue;
+                    }
+                    if !is_terminal_status(&status.status) {
+                        continue;
+                    }
+
+                    let meta = tracked_active.remove(&id).unwrap_or(SimWatcherMeta {
+                        sim_type: status.sim_type.clone(),
+                        player_name: None,
+                        linked_name: None,
+                    });
+                    if notified_sims.contains(&id) {
+                        continue;
+                    }
+
+                    let player = status
+                        .linked_name
+                        .clone()
+                        .or(meta.linked_name.clone())
+                        .or(meta.player_name.clone())
+                        .or_else(|| parse_simc_player_name(&status.simc_input))
+                        .unwrap_or_else(|| "Simulation".to_string());
+
+                    let resolved_sim_type = if status.sim_type.trim().is_empty() {
+                        meta.sim_type
+                    } else {
+                        status.sim_type.clone()
+                    };
+                    let sim_type = sim_type_label(&resolved_sim_type);
+
+                    let dps = status
+                        .result
+                        .as_ref()
+                        .and_then(extract_dps_from_result);
+
+                    let body = if status.status == "done" {
+                        match dps {
+                            Some(v) => format!("{player} - {sim_type} - {} DPS", v.round() as i64),
+                            None => format!("{player} - {sim_type}"),
+                        }
+                    } else {
+                        format!("{player} - {sim_type} - {}", status.status)
+                    };
+
+                    let _ = notifier_handle
+                        .notification()
+                        .builder()
+                        .title(notification_title(&status.status))
+                        .body(body)
+                        .show();
+
+                    notified_sims.insert(id);
+                }
+            }
+        }
+    }
+}
+
 #[tauri::command]
 async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
     let app_data_dir = app
@@ -444,90 +724,25 @@ fn main() {
                 }
             }
 
-            tauri::async_runtime::spawn(async move {
-                let client = reqwest::Client::new();
-                let mut baseline_ready = false;
-                let mut previous_statuses: HashMap<String, String> = HashMap::new();
-                let mut notified_sims: HashSet<String> = HashSet::new();
-
-                loop {
-                    let sims = match client
-                        .get("http://127.0.0.1:17384/api/sims")
-                        .send()
-                        .await
-                        .and_then(|resp| resp.error_for_status())
-                    {
-                        Ok(resp) => match resp.json::<Vec<SimNotificationSummary>>().await {
-                            Ok(sims) => sims,
-                            Err(_) => {
-                                tokio::time::sleep(Duration::from_secs(5)).await;
-                                continue;
-                            }
-                        },
-                        Err(_) => {
-                            tokio::time::sleep(Duration::from_secs(5)).await;
-                            continue;
-                        }
-                    };
-
-                    let mut next_statuses: HashMap<String, String> = HashMap::new();
-
-                    if !baseline_ready {
-                        for sim in sims {
-                            if is_terminal_status(&sim.status) {
-                                notified_sims.insert(sim.id.clone());
-                            }
-                            next_statuses.insert(sim.id, sim.status);
-                        }
-                        previous_statuses = next_statuses;
-                        baseline_ready = true;
-                        tokio::time::sleep(Duration::from_secs(5)).await;
-                        continue;
-                    }
-
-                    for sim in sims {
-                        let prev = previous_statuses.get(&sim.id).map(String::as_str);
-                        let should_notify = if notified_sims.contains(&sim.id) {
-                            false
-                        } else if let Some(prev_status) = prev {
-                            is_active_status(prev_status) && is_terminal_status(&sim.status)
-                        } else {
-                            is_terminal_status(&sim.status)
-                        };
-
-                        if should_notify {
-                            let player = sim
-                                .player_name
-                                .clone()
-                                .or(sim.linked_name.clone())
-                                .unwrap_or_else(|| "Simulation".to_string());
-                            let sim_type = sim_type_label(&sim.sim_type);
-                            let body = if sim.status == "done" {
-                                match sim.dps {
-                                    Some(dps) => format!("{player} - {sim_type} - {} DPS", dps.round() as i64),
-                                    None => format!("{player} - {sim_type}"),
-                                }
-                            } else {
-                                format!("{player} - {sim_type} - {}", sim.status)
-                            };
-
-                            let _ = notifier_handle
-                                .notification()
-                                .builder()
-                                .title(notification_title(&sim.status))
-                                .body(body)
-                                .show();
-
-                            notified_sims.insert(sim.id.clone());
-                        }
-
-                        next_statuses.insert(sim.id, sim.status);
-                    }
-
-                    previous_statuses = next_statuses;
-                    tokio::time::sleep(Duration::from_secs(5)).await;
+            let (sim_watcher_tx_for_events, sim_watcher_rx) =
+                mpsc::unbounded_channel::<SimWatcherCommand>();
+            app.listen("whylowdps-track-sims", move |event| {
+                let payload = event.payload();
+                if payload.trim().is_empty() {
+                    return;
                 }
+                let Ok(parsed) = serde_json::from_str::<SimTrackEventPayload>(payload) else {
+                    return;
+                };
+                if parsed.sims.is_empty() {
+                    return;
+                }
+                let _ = sim_watcher_tx_for_events.send(SimWatcherCommand::Track(parsed.sims));
             });
+            tauri::async_runtime::spawn(run_sim_notification_watcher(
+                notifier_handle,
+                sim_watcher_rx,
+            ));
 
             // 1. Resolve bundled resources
             let resolve_bundled_resource = |path: &str, dev_fallback: &str| {

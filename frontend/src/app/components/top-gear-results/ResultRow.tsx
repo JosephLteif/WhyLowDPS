@@ -30,6 +30,9 @@ interface ResultRowProps {
   gemInfoMap: Record<number, GemInfo>;
   currencies?: Record<string, { id: number; name: string; icon: string }>;
   dropBaselineIlevelByKey?: Record<string, number>;
+  exactStatsStatus?: 'idle' | 'loading' | 'ready' | 'error' | 'same_base';
+  exactStatsLabel?: string;
+  onLoadExactStats?: () => void;
 }
 
 export default function ResultRow({
@@ -47,6 +50,9 @@ export default function ResultRow({
   gemInfoMap,
   currencies,
   dropBaselineIlevelByKey = {},
+  exactStatsStatus = 'idle',
+  exactStatsLabel,
+  onLoadExactStats,
 }: ResultRowProps) {
   const barWidth = maxDps > 0 ? (result.dps / maxDps) * 100 : 0;
   const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
@@ -312,6 +318,43 @@ export default function ResultRow({
                 </span>
               )}
             </span>
+            <details
+              className="text-[11px] text-zinc-400"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <summary className="cursor-pointer list-none rounded border border-border px-1.5 py-0.5 hover:border-zinc-600">
+                Stats Sim
+              </summary>
+              <div className="mt-1 rounded border border-border bg-surface-2 p-2 text-left">
+                <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">Status</div>
+                <div className="text-[11px] text-zinc-300">
+                  {exactStatsLabel ||
+                    (exactStatsStatus === 'same_base'
+                      ? 'Same as base stats'
+                      : exactStatsStatus === 'ready'
+                        ? 'Saved stats sim'
+                        : exactStatsStatus === 'loading'
+                          ? 'Loading stats sim...'
+                          : exactStatsStatus === 'error'
+                            ? 'Failed'
+                            : 'Not loaded')}
+                </div>
+                {(exactStatsStatus === 'idle' || exactStatsStatus === 'error') &&
+                  onLoadExactStats && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onLoadExactStats();
+                    }}
+                    className="mt-2 rounded border border-gold/35 bg-gold/10 px-2 py-1 text-[11px] text-gold disabled:opacity-60"
+                  >
+                    {exactStatsStatus === 'error' ? 'Retry Stats Sim' : 'Load Stats Sim'}
+                  </button>
+                )}
+              </div>
+            </details>
           </div>
         </div>
       </div>

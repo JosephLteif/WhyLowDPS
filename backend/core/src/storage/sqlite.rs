@@ -521,7 +521,11 @@ impl JobStorage for SqliteStorage {
 
     fn set_max_jobs(&self, limit: usize) {
         let mut mj = self.max_jobs.lock().unwrap();
+        if *mj == limit {
+            return;
+        }
         *mj = limit;
+        drop(mj);
         let conn = self.conn.lock().unwrap();
         conn.execute(
             "INSERT INTO settings (key, value) VALUES ('max_jobs', ?1)

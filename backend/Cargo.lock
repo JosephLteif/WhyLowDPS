@@ -3385,7 +3385,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-core"
-version = "1.8.0"
+version = "2.0.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -3412,7 +3412,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-server"
-version = "1.8.0"
+version = "2.0.0"
 dependencies = [
  "tokio",
  "whylowdps-core",

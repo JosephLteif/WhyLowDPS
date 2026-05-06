@@ -277,6 +277,12 @@ pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
     if !item.source_type.is_empty() {
         meta["source_type"] = json!(item.source_type);
     }
+    if item.encounter_id > 0 {
+        meta["encounter_id"] = json!(item.encounter_id);
+    }
+    if item.instance_id > 0 {
+        meta["instance_id"] = json!(item.instance_id);
+    }
     if item.is_catalyst {
         meta["is_catalyst"] = json!(true);
     }

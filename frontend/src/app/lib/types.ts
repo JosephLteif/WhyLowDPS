@@ -24,7 +24,9 @@ export interface ResolvedItem {
   gem_name: string;
   gem_icon: string;
   encounter?: string;
+  encounter_id?: number;
   instance_name?: string;
+  instance_id?: number;
   source_type?: string;
   is_catalyst?: boolean;
   can_catalyst?: boolean;

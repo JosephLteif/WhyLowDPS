@@ -46,6 +46,15 @@ export default function ItemTag({
 
   const slotName = SLOT_LABELS[item.slot] || item.slot;
   const sourceLabel = item.encounter || item.instance_name || '';
+  const sourceIcon = sourceTypeRaw.includes('dungeon')
+    ? 'inv_relics_hourglass'
+    : sourceTypeRaw.includes('raid')
+      ? 'achievement_boss_lichking'
+      : sourceTypeRaw.includes('world')
+        ? 'achievement_zone_tolbarad'
+        : sourceTypeRaw.includes('profession') || sourceTypeRaw.includes('craft')
+          ? 'inv_misc_enggizmos_27'
+          : 'inv_misc_map_01';
 
   const enchantItemId = enchant?.item_id || 0;
   const enchantId = enchant?.enchant_id || item.enchant_id || 0;
@@ -91,6 +100,14 @@ export default function ItemTag({
 
           {sourceLabel && (
             <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-px text-[12px] text-cyan-200/90">
+              <img
+                src={getIconUrl(sourceIcon)}
+                alt=""
+                width={14}
+                height={14}
+                className="h-[14px] w-[14px] shrink-0 rounded-sm"
+                loading="lazy"
+              />
               {sourceLabel}
             </span>
           )}

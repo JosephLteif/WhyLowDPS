@@ -537,6 +537,7 @@ pub fn get_instance_drops(
                 } else {
                     instance_name.clone()
                 };
+                let source_instance_id = if is_meta { *eid } else { instance_id };
                 let source_type_name = if is_meta {
                     encounter_to_type.get(eid).cloned().unwrap_or_default()
                 } else {
@@ -693,7 +694,9 @@ pub fn get_instance_drops(
                     "ilevel": item.base_ilevel.unwrap_or(0),
                     "inventory_type": inv_type,
                     "encounter": encounter_name,
+                    "encounter_id": *eid,
                     "instance_name": source_instance_name,
+                    "instance_id": source_instance_id,
                     "source_type": source_type_name,
                     "is_catalyst": is_catalyst,
                     "can_catalyst": can_catalyst,

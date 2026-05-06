@@ -490,7 +490,9 @@ pub fn generate_droptimizer_input(
                     "is_kept": false,
                     "origin": "bags",
                     "encounter": candidate_item.encounter,
+                    "encounter_id": candidate_item.encounter_id,
                     "instance_name": candidate_item.instance_name,
+                    "instance_id": candidate_item.instance_id,
                     "source_type": candidate_item.source_type
                 }]),
             );

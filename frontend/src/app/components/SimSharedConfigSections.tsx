@@ -587,12 +587,52 @@ export function ConsumablesAndRaidBuffsOptions() {
     },
   };
   const [buffSource, setBuffSource] = useState<Record<string, 'default' | 'manual' | 'override'>>({});
-  const [multiConsumableMode, setMultiConsumableMode] = useState(false);
-  const [matrixFlasks, setMatrixFlasks] = useState<string[]>([]);
-  const [matrixFoods, setMatrixFoods] = useState<string[]>([]);
-  const [matrixPotions, setMatrixPotions] = useState<string[]>([]);
-  const [matrixAugments, setMatrixAugments] = useState<string[]>([]);
-  const [matrixTempEnchants, setMatrixTempEnchants] = useState<string[]>([]);
+  const arraysEqual = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((v, i) => v === b[i]);
+  const readStoredTokens = (key: string): string[] => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+  const [multiConsumableMode, setMultiConsumableMode] = useState(() => {
+    try {
+      return localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [matrixFlasks, setMatrixFlasks] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_flasks'));
+  const [matrixFoods, setMatrixFoods] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_foods'));
+  const [matrixPotions, setMatrixPotions] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_potions'));
+  const [matrixAugments, setMatrixAugments] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_augments'));
+  const [matrixTempEnchants, setMatrixTempEnchants] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_temp_enchants'));
+  useEffect(() => {
+    const rehydrate = () => {
+      try {
+        const nextEnabled = localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+        setMultiConsumableMode((prev) => (prev === nextEnabled ? prev : nextEnabled));
+      } catch {}
+      const nextFlasks = readStoredTokens('whylowdps_matrix_flasks');
+      const nextFoods = readStoredTokens('whylowdps_matrix_foods');
+      const nextPotions = readStoredTokens('whylowdps_matrix_potions');
+      const nextAugments = readStoredTokens('whylowdps_matrix_augments');
+      const nextTempEnchants = readStoredTokens('whylowdps_matrix_temp_enchants');
+      setMatrixFlasks((prev) => (arraysEqual(prev, nextFlasks) ? prev : nextFlasks));
+      setMatrixFoods((prev) => (arraysEqual(prev, nextFoods) ? prev : nextFoods));
+      setMatrixPotions((prev) => (arraysEqual(prev, nextPotions) ? prev : nextPotions));
+      setMatrixAugments((prev) => (arraysEqual(prev, nextAugments) ? prev : nextAugments));
+      setMatrixTempEnchants((prev) =>
+        arraysEqual(prev, nextTempEnchants) ? prev : nextTempEnchants
+      );
+    };
+    window.addEventListener('whylowdps-consumables-matrix-changed', rehydrate);
+    return () => window.removeEventListener('whylowdps-consumables-matrix-changed', rehydrate);
+  }, []);
   useEffect(() => {
     try {
       localStorage.setItem('whylowdps_multi_consumables_enabled', String(multiConsumableMode));
@@ -601,7 +641,6 @@ export function ConsumablesAndRaidBuffsOptions() {
       localStorage.setItem('whylowdps_matrix_potions', JSON.stringify(matrixPotions));
       localStorage.setItem('whylowdps_matrix_augments', JSON.stringify(matrixAugments));
       localStorage.setItem('whylowdps_matrix_temp_enchants', JSON.stringify(matrixTempEnchants));
-      window.dispatchEvent(new CustomEvent('whylowdps-consumables-matrix-changed'));
     } catch {}
   }, [
     multiConsumableMode,

@@ -51,6 +51,10 @@ function toggleToken(list: string[], token: string): string[] {
   return list.includes(t) ? list.filter((v) => v !== t) : [...list, t];
 }
 
+function arraysEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 function MultiPick({
   title,
   options,
@@ -95,7 +99,6 @@ interface TopGearSimAgainState {
   copyEnchants?: boolean;
   catalyst?: boolean;
   catalystCharges?: number | null;
-  resolved?: ResolveGearResponse | null;
   compareConsumables?: boolean;
   matrixFlasks?: string[];
   matrixFoods?: string[];
@@ -133,11 +136,13 @@ export default function TopGearPage() {
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
+  const prevForceResolveSignalRef = useRef(0);
   const skipNextInputResetRef = useRef(false);
   const skipNextResolveRef = useRef(false);
   const previousSimcInputRef = useRef(simcInput);
   const localItemsRef = useRef<LocalGearItem[]>(localItems);
   const comboRequestSeqRef = useRef(0);
+  const [forceResolveSignal, setForceResolveSignal] = useState(0);
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
   const qualityMaxByFamily = useMemo(
     () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
@@ -153,7 +158,7 @@ export default function TopGearPage() {
   const hydrateConsumableMatrixFromStorage = useCallback(() => {
     try {
       const enabled = localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
-      setCompareConsumables(enabled);
+      setCompareConsumables((prev) => (prev === enabled ? prev : enabled));
       const read = (key: string): string[] => {
         try {
           const raw = localStorage.getItem(key);
@@ -164,11 +169,18 @@ export default function TopGearPage() {
           return [];
         }
       };
-      setMatrixFlasks(read('whylowdps_matrix_flasks'));
-      setMatrixFoods(read('whylowdps_matrix_foods'));
-      setMatrixPotions(read('whylowdps_matrix_potions'));
-      setMatrixAugments(read('whylowdps_matrix_augments'));
-      setMatrixTempEnchants(read('whylowdps_matrix_temp_enchants'));
+      const nextFlasks = read('whylowdps_matrix_flasks');
+      const nextFoods = read('whylowdps_matrix_foods');
+      const nextPotions = read('whylowdps_matrix_potions');
+      const nextAugments = read('whylowdps_matrix_augments');
+      const nextTempEnchants = read('whylowdps_matrix_temp_enchants');
+      setMatrixFlasks((prev) => (arraysEqual(prev, nextFlasks) ? prev : nextFlasks));
+      setMatrixFoods((prev) => (arraysEqual(prev, nextFoods) ? prev : nextFoods));
+      setMatrixPotions((prev) => (arraysEqual(prev, nextPotions) ? prev : nextPotions));
+      setMatrixAugments((prev) => (arraysEqual(prev, nextAugments) ? prev : nextAugments));
+      setMatrixTempEnchants((prev) =>
+        arraysEqual(prev, nextTempEnchants) ? prev : nextTempEnchants
+      );
     } catch {}
   }, []);
 
@@ -221,16 +233,47 @@ export default function TopGearPage() {
     if (restored.catalystCharges == null || Number.isFinite(restored.catalystCharges)) {
       setCatalystCharges(restored.catalystCharges ?? null);
     }
-    if (restored.resolved && typeof restored.resolved === 'object') {
-      setResolved(restored.resolved);
-      skipNextResolveRef.current = true;
-    }
     if (typeof restored.compareConsumables === 'boolean') setCompareConsumables(restored.compareConsumables);
-    if (Array.isArray(restored.matrixFlasks)) setMatrixFlasks(restored.matrixFlasks.filter((x) => typeof x === 'string'));
-    if (Array.isArray(restored.matrixFoods)) setMatrixFoods(restored.matrixFoods.filter((x) => typeof x === 'string'));
-    if (Array.isArray(restored.matrixPotions)) setMatrixPotions(restored.matrixPotions.filter((x) => typeof x === 'string'));
-    if (Array.isArray(restored.matrixAugments)) setMatrixAugments(restored.matrixAugments.filter((x) => typeof x === 'string'));
-    if (Array.isArray(restored.matrixTempEnchants)) setMatrixTempEnchants(restored.matrixTempEnchants.filter((x) => typeof x === 'string'));
+    const restoredFlasks = Array.isArray(restored.matrixFlasks)
+      ? restored.matrixFlasks.filter((x) => typeof x === 'string')
+      : null;
+    const restoredFoods = Array.isArray(restored.matrixFoods)
+      ? restored.matrixFoods.filter((x) => typeof x === 'string')
+      : null;
+    const restoredPotions = Array.isArray(restored.matrixPotions)
+      ? restored.matrixPotions.filter((x) => typeof x === 'string')
+      : null;
+    const restoredAugments = Array.isArray(restored.matrixAugments)
+      ? restored.matrixAugments.filter((x) => typeof x === 'string')
+      : null;
+    const restoredTempEnchants = Array.isArray(restored.matrixTempEnchants)
+      ? restored.matrixTempEnchants.filter((x) => typeof x === 'string')
+      : null;
+
+    if (restoredFlasks) setMatrixFlasks(restoredFlasks);
+    if (restoredFoods) setMatrixFoods(restoredFoods);
+    if (restoredPotions) setMatrixPotions(restoredPotions);
+    if (restoredAugments) setMatrixAugments(restoredAugments);
+    if (restoredTempEnchants) setMatrixTempEnchants(restoredTempEnchants);
+
+    // Keep shared consumable UI in sync on Sim Again restore.
+    try {
+      if (typeof restored.compareConsumables === 'boolean') {
+        localStorage.setItem(
+          'whylowdps_multi_consumables_enabled',
+          String(restored.compareConsumables)
+        );
+      }
+      if (restoredFlasks) localStorage.setItem('whylowdps_matrix_flasks', JSON.stringify(restoredFlasks));
+      if (restoredFoods) localStorage.setItem('whylowdps_matrix_foods', JSON.stringify(restoredFoods));
+      if (restoredPotions) localStorage.setItem('whylowdps_matrix_potions', JSON.stringify(restoredPotions));
+      if (restoredAugments) localStorage.setItem('whylowdps_matrix_augments', JSON.stringify(restoredAugments));
+      if (restoredTempEnchants) localStorage.setItem(
+        'whylowdps_matrix_temp_enchants',
+        JSON.stringify(restoredTempEnchants)
+      );
+      window.dispatchEvent(new CustomEvent('whylowdps-consumables-matrix-changed'));
+    } catch {}
 
     prevInputRef.current = restoredInput ?? simcInput.trim();
     prevUpgradeRef.current =
@@ -239,6 +282,7 @@ export default function TopGearPage() {
       typeof restored.catalyst === 'boolean' ? restored.catalyst : catalyst;
 
     skipNextInputResetRef.current = true;
+    setForceResolveSignal((v) => v + 1);
   }, [simcInput, maxUpgrade, catalyst, setSimcInput]);
 
   useEffect(() => {
@@ -261,13 +305,15 @@ export default function TopGearPage() {
     const inputChanged = trimmed !== prevInputRef.current;
     const upgradeChanged = maxUpgrade !== prevUpgradeRef.current;
     const catalystChanged = catalyst !== prevCatalystRef.current;
+    const forceResolve = forceResolveSignal !== prevForceResolveSignalRef.current;
+    prevForceResolveSignalRef.current = forceResolveSignal;
 
     if (skipNextResolveRef.current) {
       skipNextResolveRef.current = false;
       return;
     }
 
-    if (!inputChanged && !upgradeChanged && !catalystChanged) return;
+    if (!forceResolve && !inputChanged && !upgradeChanged && !catalystChanged) return;
 
     if (trimmed.length < 10) {
       setResolved(null);
@@ -336,7 +382,7 @@ export default function TopGearPage() {
       inputChanged ? 300 : 0
     );
     return () => clearTimeout(timer);
-  }, [simcInput, maxUpgrade, catalyst]);
+  }, [simcInput, maxUpgrade, catalyst, forceResolveSignal]);
 
   const buildSubmitInput = useCallback((): string => {
     return appendLocalItemsToSimcInput(simcInput, localItems);
@@ -534,6 +580,7 @@ export default function TopGearPage() {
     simAgain: {
       pageKey: TOP_GEAR_SIM_AGAIN_KEY,
       captureState: () => ({
+        simcInput,
         selectedUids: Object.fromEntries(
           Object.entries(selectedUids).map(([slot, values]) => [slot, [...values]])
         ),
@@ -548,7 +595,6 @@ export default function TopGearPage() {
         matrixPotions,
         matrixAugments,
         matrixTempEnchants,
-        resolved,
       }),
     },
   });

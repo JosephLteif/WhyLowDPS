@@ -113,6 +113,10 @@ function consumableTierSquareClass(label: string): string {
   return 'border-zinc-500/50 bg-zinc-500/40';
 }
 
+function consumableCheckClass(): string {
+  return 'border-zinc-300/70 bg-zinc-300';
+}
+
 function consumableTierFromOption(token: string, opt?: OptionEntry): number {
   if (typeof opt?.craftingQuality === 'number' && opt.craftingQuality > 0) return opt.craftingQuality;
   const m = token.match(/_(\d)$/);
@@ -476,7 +480,13 @@ export default function ResultRow({
                             {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
                             <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
                             {showTierSquare ? (
-                              <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(label)}`} />
+                              tier === 1 ? (
+                                <span className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}>
+                                  <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
+                                </span>
+                              ) : (
+                                <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(label)}`} />
+                              )
                             ) : null}
                           </a>
                         );

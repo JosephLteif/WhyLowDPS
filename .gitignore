@@ -42,3 +42,6 @@ desktop/dist/
 *.swp
 *.swo
 /.codex
+
+
+tools/

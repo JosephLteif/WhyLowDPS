@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   API_URL,
   DungeonAffix,
@@ -150,6 +151,10 @@ function getCurrentMplusDungeonIds(instances: Instance[]): Set<number> {
   return new Set<number>(mplusBucket.encounters.map((encounter) => encounter.id));
 }
 
+function getRaidInstances(instances: Instance[]): Instance[] {
+  return instances.filter((instance) => String(instance.type || '').toLowerCase() === 'raid');
+}
+
 function mergeWithInstancesFallback(dungeons: DungeonInfo[], instances: Instance[]): DungeonInfo[] {
   if (!instances.length) return dungeons;
 
@@ -194,6 +199,16 @@ function normalizeAffixName(name: string): string {
 
 type DisplayAffix = DungeonAffix & {
   wowhead_url?: string | null;
+};
+type WowheadZoneIndexEntry = {
+  id?: number;
+  name?: string;
+  instance?: number;
+  is_raid?: boolean;
+  is_dungeon?: boolean;
+  expansion?: number | null;
+  url?: string;
+  encounters?: Array<{ name?: string }>;
 };
 
 function AffixCard({ affix }: { affix: DisplayAffix }) {
@@ -251,6 +266,7 @@ function DungeonCard({
   seasonName?: string;
   mplusDetail?: MythicKeystoneDungeonDetail | null;
 }) {
+  const router = useRouter();
   const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
   const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
   const imageUrl = localInstanceImage || dungeon.image_url || placeholder?.icon;
@@ -267,12 +283,27 @@ function DungeonCard({
     detailUpgrades.find((upgrade) => upgrade.upgrade_level === 1)?.qualifying_duration ?? null;
   const timer = formatMs(dungeon.keystone_timer_ms ?? oneChestDuration);
   const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
+  const wowheadZoneUrl =
+    dungeon.wowhead_id && dungeon.wowhead_id > 0
+      ? `https://www.wowhead.com/zone=${dungeon.wowhead_id}`
+      : null;
   const rawPayload = dungeon.blizzard_api_data
     ? JSON.stringify(dungeon.blizzard_api_data, null, 2)
     : null;
 
   return (
-    <div className="group flex flex-col rounded-xl border border-white/15 bg-zinc-900/80 p-4 transition-all hover:border-gold/50 hover:bg-zinc-900">
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={() => router.push(`/dungeons/${dungeon.id}`)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          router.push(`/dungeons/${dungeon.id}`);
+        }
+      }}
+      className="group block rounded-xl border border-white/15 bg-zinc-900/80 p-4 transition-all hover:border-gold/50 hover:bg-zinc-900"
+    >
       {imageUrl && !imageFailed ? (
         <div className="relative mb-3 h-28 w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
           <img
@@ -302,6 +333,20 @@ function DungeonCard({
         {zone && <p className="truncate text-sm text-zinc-300">{zone}</p>}
         {dungeon.description && (
           <p className="mt-1 line-clamp-2 text-sm text-zinc-200">{dungeon.description}</p>
+        )}
+        {wowheadZoneUrl && (
+          <div className="mt-2">
+            <a
+              href={wowheadZoneUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
+              aria-label={`Open ${dungeon.name} on Wowhead`}
+            >
+              View on Wowhead
+            </a>
+          </div>
         )}
       </div>
 
@@ -368,7 +413,7 @@ function DungeonCard({
           </pre>
         </details>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -379,6 +424,7 @@ export default function DungeonsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [raids, setRaids] = useState<DungeonInfo[]>([]);
   const hasDungeons = (data?.rotation_dungeons?.length ?? 0) > 0;
   const backendError = (data as (DungeonSeasonData & { error?: string }) | null)?.error;
   const hasAnyBlizzardDetails =
@@ -414,13 +460,108 @@ export default function DungeonsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [seasonData, gameDataState, fallbackInstances] = await Promise.all([
+        const [seasonData, gameDataState, fallbackInstances, wowheadIndexResp] = await Promise.all([
           preferCache ? getDungeonDataCached() : getDungeonData(),
           (preferCache ? getGameDataStateCached() : getGameDataState()).catch(
             () => null as GameDataState | null,
           ),
           fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
+          fetchJson<{ zones?: WowheadZoneIndexEntry[] }>(
+            `${API_URL}/api/data/wowhead-zones-index`,
+          ).catch(() => ({ zones: [] })),
         ]);
+        const wowheadZoneIdByName = new Map<string, number>();
+        const parsedZones: WowheadZoneIndexEntry[] = [];
+        {
+          const zones = Array.isArray(wowheadIndexResp?.zones) ? wowheadIndexResp.zones : [];
+          parsedZones.push(...zones);
+          for (const zone of zones) {
+            const zid = Number(zone?.id ?? 0);
+            const zname = typeof zone?.name === 'string' ? zone.name : '';
+            if (zid > 0 && zname) {
+              wowheadZoneIdByName.set(normalizeDungeonName(zname), zid);
+            }
+          }
+        }
+        const zonesByName = new Map<string, WowheadZoneIndexEntry>();
+        for (const zone of parsedZones) {
+          const n = typeof zone?.name === 'string' ? normalizeDungeonName(zone.name) : '';
+          if (n && !zonesByName.has(n)) zonesByName.set(n, zone);
+        }
+        const zoneRaidRows: DungeonInfo[] = parsedZones
+          .filter((zone) => zone?.is_raid === true)
+          .map((zone) => {
+            const zid = Number(zone?.id ?? 0);
+            const name = String(zone?.name || '').trim();
+            const matchedInstance = fallbackInstances.find(
+              (inst) => normalizeDungeonName(inst.name) === normalizeDungeonName(name),
+            );
+            const encounters = Array.isArray(zone?.encounters)
+              ? zone.encounters.map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0)
+              : (matchedInstance?.encounters || []).map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0);
+            return ({
+              id: matchedInstance?.id ?? zid,
+              name: name || `Raid ${zid}`,
+              description: undefined,
+              zone: matchedInstance?.zone || 'Raid',
+              slug: undefined,
+              short_name: undefined,
+              wowhead_id: zid > 0 ? zid : null,
+              num_bosses: encounters.length > 0 ? encounters.length : null,
+              expansion: typeof zone?.expansion === 'number' ? zone.expansion : null,
+              expansion_name: undefined,
+              map_id: null,
+              challenge_mode_id: null,
+              minimum_level: null,
+              keystone_timer_ms: null,
+              keystone_upgrades: [],
+              encounters,
+              blizzard_href: undefined,
+              image_url: normalizeImageUrl(getLocalInstanceImageUrl(matchedInstance?.id ?? zid)),
+              linked_code: undefined,
+              blizzard_api_data: null,
+            } as unknown as DungeonInfo);
+          })
+          .filter((row) => row.id > 0);
+
+        const fallbackRaidRows: DungeonInfo[] = getRaidInstances(fallbackInstances)
+          .map((raid) => {
+            const matchedZone = zonesByName.get(normalizeDungeonName(raid.name));
+            const zid = Number(matchedZone?.id ?? 0);
+            const encounters = Array.isArray(matchedZone?.encounters)
+              ? matchedZone.encounters
+                  .map((e) => String(e?.name || '').trim())
+                  .filter((n) => n.length > 0)
+              : (raid.encounters || [])
+                  .map((e) => String(e?.name || '').trim())
+                  .filter((n) => n.length > 0);
+            return ({
+              id: raid.id,
+              name: raid.name,
+              description: undefined,
+              zone: raid.zone || 'Raid',
+              slug: undefined,
+              short_name: undefined,
+              wowhead_id: zid > 0 ? zid : null,
+              num_bosses: encounters.length > 0 ? encounters.length : null,
+              expansion: typeof matchedZone?.expansion === 'number' ? matchedZone.expansion : null,
+              expansion_name: undefined,
+              map_id: null,
+              challenge_mode_id: null,
+              minimum_level: null,
+              keystone_timer_ms: null,
+              keystone_upgrades: [],
+              encounters,
+              blizzard_href: undefined,
+              image_url: normalizeImageUrl(getLocalInstanceImageUrl(raid.id)),
+              linked_code: undefined,
+              blizzard_api_data: null,
+            } as unknown as DungeonInfo);
+          })
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const raidRows: DungeonInfo[] = (zoneRaidRows.length > 0 ? zoneRaidRows : fallbackRaidRows).sort(
+          (a, b) => a.name.localeCompare(b.name),
+        );
         const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
         const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
         const mergedWithFallback = mergeWithInstancesFallback(
@@ -430,9 +571,13 @@ export default function DungeonsPage() {
 
         const enrichedDungeons = mergedWithFallback.map((dungeon) => {
           const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
+          const matchedWowheadId =
+            wowheadZoneIdByName.get(normalizeDungeonName(dungeon.name)) ??
+            (dungeon.wowhead_id && dungeon.wowhead_id > 0 ? dungeon.wowhead_id : null);
 
           return {
             ...dungeon,
+            wowhead_id: matchedWowheadId,
             image_url: normalizeImageUrl(localInstanceImage || dungeon.image_url),
           };
         });
@@ -445,6 +590,7 @@ export default function DungeonsPage() {
 
         if (!cancelled) {
           setGameState(gameDataState);
+          setRaids(raidRows);
           setData((previous) => ({
             ...seasonData,
             rotation_dungeons: mergeWithPreviousDungeonData(
@@ -544,11 +690,96 @@ export default function DungeonsPage() {
     try {
       await triggerDungeonDataRefresh(true);
       await waitForDungeonSyncCompletion();
-      const [seasonData, gameDataState, fallbackInstances] = await Promise.all([
+      const [seasonData, gameDataState, fallbackInstances, wowheadIndexResp] = await Promise.all([
         getDungeonData(),
         getGameDataState().catch(() => null as GameDataState | null),
         fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
+        fetchJson<{ zones?: WowheadZoneIndexEntry[] }>(
+          `${API_URL}/api/data/wowhead-zones-index`,
+        ).catch(() => ({ zones: [] })),
       ]);
+      const parsedZones: WowheadZoneIndexEntry[] = [];
+      const zones = Array.isArray(wowheadIndexResp?.zones) ? wowheadIndexResp.zones : [];
+      parsedZones.push(...zones);
+      const zonesByName = new Map<string, WowheadZoneIndexEntry>();
+      for (const zone of parsedZones) {
+        const n = typeof zone?.name === 'string' ? normalizeDungeonName(zone.name) : '';
+        if (n && !zonesByName.has(n)) zonesByName.set(n, zone);
+      }
+      const zoneRaidRows: DungeonInfo[] = parsedZones
+        .filter((zone) => zone?.is_raid === true)
+        .map((zone) => {
+          const zid = Number(zone?.id ?? 0);
+          const name = String(zone?.name || '').trim();
+          const matchedInstance = fallbackInstances.find(
+            (inst) => normalizeDungeonName(inst.name) === normalizeDungeonName(name),
+          );
+          const encounters = Array.isArray(zone?.encounters)
+            ? zone.encounters.map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0)
+            : (matchedInstance?.encounters || []).map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0);
+          return ({
+            id: matchedInstance?.id ?? zid,
+            name: name || `Raid ${zid}`,
+            description: undefined,
+            zone: matchedInstance?.zone || 'Raid',
+            slug: undefined,
+            short_name: undefined,
+            wowhead_id: zid > 0 ? zid : null,
+            num_bosses: encounters.length > 0 ? encounters.length : null,
+            expansion: typeof zone?.expansion === 'number' ? zone.expansion : null,
+            expansion_name: undefined,
+            map_id: null,
+            challenge_mode_id: null,
+            minimum_level: null,
+            keystone_timer_ms: null,
+            keystone_upgrades: [],
+            encounters,
+            blizzard_href: undefined,
+            image_url: normalizeImageUrl(getLocalInstanceImageUrl(matchedInstance?.id ?? zid)),
+            linked_code: undefined,
+            blizzard_api_data: null,
+          } as unknown as DungeonInfo);
+        })
+        .filter((row) => row.id > 0);
+
+      const fallbackRaidRows: DungeonInfo[] = getRaidInstances(fallbackInstances)
+        .map((raid) => {
+          const matchedZone = zonesByName.get(normalizeDungeonName(raid.name));
+          const zid = Number(matchedZone?.id ?? 0);
+          const encounters = Array.isArray(matchedZone?.encounters)
+            ? matchedZone.encounters
+                .map((e) => String(e?.name || '').trim())
+                .filter((n) => n.length > 0)
+            : (raid.encounters || [])
+                .map((e) => String(e?.name || '').trim())
+                .filter((n) => n.length > 0);
+          return ({
+            id: raid.id,
+            name: raid.name,
+            description: undefined,
+            zone: raid.zone || 'Raid',
+            slug: undefined,
+            short_name: undefined,
+            wowhead_id: zid > 0 ? zid : null,
+            num_bosses: encounters.length > 0 ? encounters.length : null,
+            expansion: typeof matchedZone?.expansion === 'number' ? matchedZone.expansion : null,
+            expansion_name: undefined,
+            map_id: null,
+            challenge_mode_id: null,
+            minimum_level: null,
+            keystone_timer_ms: null,
+            keystone_upgrades: [],
+            encounters,
+            blizzard_href: undefined,
+            image_url: normalizeImageUrl(getLocalInstanceImageUrl(raid.id)),
+            linked_code: undefined,
+            blizzard_api_data: null,
+          } as unknown as DungeonInfo);
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const raidRows: DungeonInfo[] = (zoneRaidRows.length > 0 ? zoneRaidRows : fallbackRaidRows).sort(
+        (a, b) => a.name.localeCompare(b.name),
+      );
       const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
       const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
       const mergedWithFallback = mergeWithInstancesFallback(
@@ -572,6 +803,7 @@ export default function DungeonsPage() {
           : enrichedDungeons;
 
       setGameState(gameDataState);
+      setRaids(raidRows);
       setData((previous) => ({
         ...seasonData,
         rotation_dungeons: mergeWithPreviousDungeonData(
@@ -701,6 +933,26 @@ export default function DungeonsPage() {
           <div className="border-white/8 rounded-xl border bg-white/[0.02] px-4 py-6 text-center">
             <p className="text-sm text-zinc-500">No dungeons available</p>
             <p className="mt-2 text-xs text-zinc-600">Dungeon data is currently unavailable.</p>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-bold uppercase tracking-wider text-zinc-300">
+          Raids ({raids.length})
+        </h2>
+        {raids.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {raids.map((raid) => (
+              <DungeonCard key={`raid-${raid.id}`} dungeon={raid} mplusDetail={null} />
+            ))}
+          </div>
+        ) : (
+          <div className="border-white/8 rounded-xl border bg-white/[0.02] px-4 py-6 text-center">
+            <p className="text-sm text-zinc-500">No raids available</p>
+            <p className="mt-2 text-xs text-zinc-600">
+              Raid data is loaded from zones-encounters-index.
+            </p>
           </div>
         )}
       </section>

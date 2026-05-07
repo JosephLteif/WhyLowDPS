@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
@@ -523,6 +524,11 @@ export function FightSetupOptions() {
 }
 
 export function ConsumablesAndRaidBuffsOptions() {
+  const pathname = usePathname();
+  const multiSelectAllowed =
+    pathname.startsWith('/top-gear') ||
+    pathname.startsWith('/analysis/consumable-matrix') ||
+    pathname.startsWith('/drop-finder');
   const {
     simcInput,
     simcFooter,
@@ -633,6 +639,12 @@ export function ConsumablesAndRaidBuffsOptions() {
     window.addEventListener('whylowdps-consumables-matrix-changed', rehydrate);
     return () => window.removeEventListener('whylowdps-consumables-matrix-changed', rehydrate);
   }, []);
+  useEffect(() => {
+    if (!multiSelectAllowed && multiConsumableMode) {
+      setMultiConsumableMode(false);
+    }
+  }, [multiSelectAllowed, multiConsumableMode]);
+
   useEffect(() => {
     try {
       localStorage.setItem('whylowdps_multi_consumables_enabled', String(multiConsumableMode));
@@ -767,12 +779,16 @@ export function ConsumablesAndRaidBuffsOptions() {
             once.
           </p>
         </div>
-        <ToggleOptionCard
-          checked={multiConsumableMode}
-          onToggle={() => setMultiConsumableMode((v) => !v)}
-          title="Multi-select"
-          description="Enable selecting several options and tiers per category."
-        />
+        {multiSelectAllowed && (
+          <ToggleOptionCard
+            checked={multiConsumableMode}
+            onToggle={() => {
+              setMultiConsumableMode((v) => !v);
+            }}
+            title="Multi-select"
+            description="Enable selecting several options and tiers per category."
+          />
+        )}
         <div className="grid gap-3 lg:grid-cols-2">
           <ConsumablePicker
             title="Flask"

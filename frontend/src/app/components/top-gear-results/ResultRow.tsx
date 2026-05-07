@@ -113,6 +113,14 @@ function consumableTierSquareClass(label: string): string {
   return 'border-zinc-500/50 bg-zinc-500/40';
 }
 
+function consumableTierFromOption(token: string, opt?: OptionEntry): number {
+  if (typeof opt?.craftingQuality === 'number' && opt.craftingQuality > 0) return opt.craftingQuality;
+  const m = token.match(/_(\d)$/);
+  if (!m) return 0;
+  const q = Number(m[1]);
+  return Number.isFinite(q) ? q : 0;
+}
+
 function consumableLabelFromToken(token: string, fallbackCategory: string): string {
   const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
   if (opt?.label?.trim()) return opt.label.trim();
@@ -422,32 +430,6 @@ export default function ResultRow({
 
             return (
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                {consumableBadges.length > 0 ? (
-                  consumableBadges.map(({ category, token }) => {
-                    const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
-                    const label = consumableLabelFromToken(token, category);
-                    const icon = opt?.icon
-                      ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
-                      : '';
-                    const itemId = Number(opt?.itemId || 0);
-                    return (
-                      <a
-                        key={`${category}:${token}`}
-                        className="inline-flex items-center gap-1.5 rounded border border-gold/30 bg-gold/10 px-1.5 py-0.5 text-[11px] text-gold"
-                        title={`${category}: ${label}`}
-                        data-wowhead={itemId > 0 ? `item=${itemId}` : undefined}
-                        href={itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined}
-                        onClick={(e) => e.preventDefault()}
-                      >
-                        {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
-                        <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
-                        <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(label)}`} />
-                      </a>
-                    );
-                  })
-                ) : consumableSetLabel ? (
-                  <span className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">{consumableSetLabel}</span>
-                ) : null}
                 {displayItems.map((it, i) => (
                   (() => {
                     const state = itemReasonState[it.slot];
@@ -470,6 +452,42 @@ export default function ResultRow({
                 ))}
                 {costsDisplay}
                 {talentBadge}
+                {consumableBadges.length > 0 ? (
+                  <div className="basis-full pt-0.5">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      {consumableBadges.map(({ category, token }) => {
+                        const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
+                        const label = consumableLabelFromToken(token, category);
+                        const icon = opt?.icon
+                          ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
+                          : '';
+                        const itemId = Number(opt?.itemId || 0);
+                        const tier = consumableTierFromOption(token, opt);
+                        const showTierSquare = tier > 0;
+                        return (
+                          <a
+                            key={`${category}:${token}`}
+                            className="inline-flex items-center gap-1.5 rounded border border-gold/25 bg-gold/[0.07] px-1.5 py-0.5 text-[11px] text-gold/90"
+                            title={`${category}: ${label}`}
+                            data-wowhead={itemId > 0 ? `item=${itemId}` : undefined}
+                            href={itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined}
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
+                            <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
+                            {showTierSquare ? (
+                              <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(label)}`} />
+                            ) : null}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : consumableSetLabel ? (
+                  <div className="basis-full pt-0.5">
+                    <span className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">{consumableSetLabel}</span>
+                  </div>
+                ) : null}
               </div>
             );
           })()}

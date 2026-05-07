@@ -86,6 +86,15 @@ fn prune_equipped_limit_overflow_candidates(
 
 type ProfilesetResult = Result<(String, usize, HashMap<String, Vec<Value>>)>;
 
+#[derive(Debug, Clone, Default)]
+pub struct TopGearConsumableMatrix {
+    pub flasks: Vec<String>,
+    pub foods: Vec<String>,
+    pub potions: Vec<String>,
+    pub augmentations: Vec<String>,
+    pub temporary_enchants: Vec<String>,
+}
+
 pub static MAX_COMBINATIONS: Lazy<usize> = Lazy::new(|| {
     if let Ok(val) = std::env::var("MAX_COMBINATIONS") {
         if let Ok(n) = val.parse() {
@@ -108,6 +117,7 @@ pub fn generate_top_gear_input(
         max_combos_override,
         &[],
         None,
+        None,
     )
 }
 
@@ -118,6 +128,7 @@ pub fn generate_top_gear_input_with_talents(
     max_combos_override: Option<usize>,
     talent_builds: &[(String, String)],
     catalyst_charges: Option<u32>,
+    consumables: Option<&TopGearConsumableMatrix>,
 ) -> ProfilesetResult {
     let (base_lines, equipped_gear, talents_string, spec) =
         parser::parse_base_profile(base_profile);
@@ -189,7 +200,10 @@ pub fn generate_top_gear_input_with_talents(
     }
 
     let effective_talents = get_effective_talents(talent_builds, &talents_string);
-    let total_combo_count = calculate_total_combo_count(gear_combo_count, effective_talents.len());
+    let consumable_scenarios = build_consumable_scenarios(consumables);
+    let consumable_factor = consumable_scenarios.len().max(1);
+    let total_combo_count =
+        calculate_total_combo_count(gear_combo_count, effective_talents.len()) * consumable_factor;
 
     let limit = max_combos_override.unwrap_or(*MAX_COMBINATIONS);
     if total_combo_count > limit {
@@ -228,7 +242,175 @@ pub fn generate_top_gear_input_with_talents(
         &valid_combos,
     );
 
+    if !consumable_scenarios.is_empty() {
+        apply_consumable_profilesets(&mut lines, &mut combo_metadata, &consumable_scenarios);
+    }
+
     Ok((lines.join("\n"), total_combo_count, combo_metadata))
+}
+
+#[derive(Debug, Clone, Default)]
+struct ConsumableScenario {
+    flask: String,
+    food: String,
+    potion: String,
+    augmentation: String,
+    temporary_enchant: String,
+}
+
+fn build_consumable_scenarios(consumables: Option<&TopGearConsumableMatrix>) -> Vec<ConsumableScenario> {
+    let Some(c) = consumables else { return Vec::new() };
+    let flasks = if c.flasks.is_empty() { vec![String::new()] } else { c.flasks.clone() };
+    let foods = if c.foods.is_empty() { vec![String::new()] } else { c.foods.clone() };
+    let potions = if c.potions.is_empty() { vec![String::new()] } else { c.potions.clone() };
+    let augmentations = if c.augmentations.is_empty() { vec![String::new()] } else { c.augmentations.clone() };
+    let temporary_enchants = if c.temporary_enchants.is_empty() { vec![String::new()] } else { c.temporary_enchants.clone() };
+
+    let mut out = Vec::new();
+    for flask in &flasks {
+        for food in &foods {
+            for potion in &potions {
+                for augmentation in &augmentations {
+                    for temporary_enchant in &temporary_enchants {
+                        if flask.is_empty()
+                            && food.is_empty()
+                            && potion.is_empty()
+                            && augmentation.is_empty()
+                            && temporary_enchant.is_empty()
+                        {
+                            continue;
+                        }
+                        out.push(ConsumableScenario {
+                            flask: flask.clone(),
+                            food: food.clone(),
+                            potion: potion.clone(),
+                            augmentation: augmentation.clone(),
+                            temporary_enchant: temporary_enchant.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn apply_consumable_profilesets(
+    lines: &mut Vec<String>,
+    combo_metadata: &mut HashMap<String, Vec<Value>>,
+    scenarios: &[ConsumableScenario],
+) {
+    if scenarios.is_empty() {
+        return;
+    }
+
+    let mut header_positions: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, line)| line.strip_prefix("### ").map(|_| idx))
+        .collect();
+    if header_positions.is_empty() {
+        return;
+    }
+
+    let mut new_lines: Vec<String> = Vec::new();
+    new_lines.extend(lines.iter().take(header_positions[0]).cloned());
+
+    // Keep non-combo metadata (e.g. "Currently Equipped") and rebuild combo keys.
+    let mut rebuilt_metadata: HashMap<String, Vec<Value>> = combo_metadata
+        .iter()
+        .filter(|(key, _)| !key.starts_with("Combo "))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+
+    header_positions.push(lines.len());
+    let mut next_combo_number = 1usize;
+
+    for w in header_positions.windows(2) {
+        let start = w[0];
+        let end = w[1];
+        let Some(header_text) = lines[start].strip_prefix("### ").map(|s| s.trim().to_string()) else {
+            continue;
+        };
+        let section_body = &lines[start + 1..end];
+
+        if !header_text.starts_with("Combo ") {
+            new_lines.push(lines[start].clone());
+            new_lines.extend(section_body.iter().cloned());
+            continue;
+        }
+
+        let combo_number = header_text
+            .strip_prefix("Combo ")
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+
+        if combo_number <= 1 {
+            new_lines.push(format!("### Combo {}", next_combo_number));
+            new_lines.extend(section_body.iter().cloned());
+            if let Some(meta) = combo_metadata.get(&header_text) {
+                rebuilt_metadata.insert(format!("Combo {}", next_combo_number), meta.clone());
+            }
+            next_combo_number += 1;
+            continue;
+        }
+
+        for scenario in scenarios {
+            let new_combo_name = format!("Combo {}", next_combo_number);
+            let old_token = format!("profileset.\"{}\"", header_text);
+            let new_token = format!("profileset.\"{}\"", new_combo_name);
+
+            new_lines.push(format!("### {}", new_combo_name));
+            for body_line in section_body {
+                new_lines.push(body_line.replace(&old_token, &new_token));
+            }
+            if !scenario.flask.is_empty() {
+                new_lines.push(format!("profileset.\"{}\"+=flask={}", new_combo_name, scenario.flask));
+            }
+            if !scenario.food.is_empty() {
+                new_lines.push(format!("profileset.\"{}\"+=food={}", new_combo_name, scenario.food));
+            }
+            if !scenario.potion.is_empty() {
+                new_lines.push(format!("profileset.\"{}\"+=potion={}", new_combo_name, scenario.potion));
+            }
+            if !scenario.augmentation.is_empty() {
+                new_lines.push(format!(
+                    "profileset.\"{}\"+=augmentation={}",
+                    new_combo_name, scenario.augmentation
+                ));
+            }
+            if !scenario.temporary_enchant.is_empty() {
+                new_lines.push(format!(
+                    "profileset.\"{}\"+=temporary_enchant={}",
+                    new_combo_name, scenario.temporary_enchant
+                ));
+            }
+            new_lines.push(String::new());
+
+            let mut new_meta = combo_metadata.get(&header_text).cloned().unwrap_or_default();
+            writer::append_consumable_metadata(
+                &mut rebuilt_metadata,
+                &new_combo_name,
+                &scenario.flask,
+                &scenario.food,
+                &scenario.potion,
+                &scenario.augmentation,
+                &scenario.temporary_enchant,
+            );
+            if !new_meta.is_empty() {
+                let mut combined = rebuilt_metadata.remove(&new_combo_name).unwrap_or_default();
+                let mut out = Vec::with_capacity(new_meta.len() + combined.len());
+                out.append(&mut new_meta);
+                out.append(&mut combined);
+                rebuilt_metadata.insert(new_combo_name.clone(), out);
+            }
+
+            next_combo_number += 1;
+        }
+    }
+
+    *lines = new_lines;
+    *combo_metadata = rebuilt_metadata;
 }
 
 pub fn generate_droptimizer_input(

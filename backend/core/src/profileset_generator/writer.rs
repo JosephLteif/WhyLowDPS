@@ -85,6 +85,50 @@ pub fn write_all_profilesets(
     }
 }
 
+pub fn append_consumable_metadata(
+    combo_metadata: &mut HashMap<String, Vec<Value>>,
+    combo_name: &str,
+    flask: &str,
+    food: &str,
+    potion: &str,
+    augmentation: &str,
+    temporary_enchant: &str,
+) {
+    let mut labels: Vec<String> = Vec::new();
+    if !flask.is_empty() {
+        labels.push(format!("Flask: {}", flask));
+    }
+    if !food.is_empty() {
+        labels.push(format!("Food: {}", food));
+    }
+    if !potion.is_empty() {
+        labels.push(format!("Potion: {}", potion));
+    }
+    if !augmentation.is_empty() {
+        labels.push(format!("Augmentation: {}", augmentation));
+    }
+    if !temporary_enchant.is_empty() {
+        labels.push(format!("Temp Enchant: {}", temporary_enchant));
+    }
+    if labels.is_empty() {
+        return;
+    }
+    let entry = json!({
+        "consumable_set": labels.join(" | "),
+        "consumable_flask": flask,
+        "consumable_food": food,
+        "consumable_potion": potion,
+        "consumable_augmentation": augmentation,
+        "consumable_temporary_enchant": temporary_enchant,
+        "heatmap_kind": "consumable",
+    });
+    if let Some(existing) = combo_metadata.get_mut(combo_name) {
+        existing.push(entry);
+    } else {
+        combo_metadata.insert(combo_name.to_string(), vec![entry]);
+    }
+}
+
 pub fn write_combo(
     ctx: &mut ProfilesetWriterContext,
     combo_number: usize,

@@ -1,13 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
+import ConsumableSelect, { buildQualityMaxByFamily } from '../components/shared/ConsumableSelect';
 import { API_URL } from '../lib/api';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
+import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
@@ -43,6 +45,48 @@ function appendLocalItemsToSimcInput(baseInput: string, localItems: LocalGearIte
   return result;
 }
 
+function toggleToken(list: string[], token: string): string[] {
+  const t = token.trim();
+  if (!t) return list;
+  return list.includes(t) ? list.filter((v) => v !== t) : [...list, t];
+}
+
+function MultiPick({
+  title,
+  options,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  options: { key: string; token?: string; label: string }[];
+  selected: string[];
+  onToggle: (token: string) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+      <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">{title}</p>
+      <div className="max-h-40 space-y-1 overflow-auto pr-1">
+        {options.map((opt) => {
+          const token = opt.token || '';
+          const active = token !== '' && selected.includes(token);
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => token && onToggle(token)}
+              className={`w-full rounded px-2 py-1.5 text-left text-xs ${
+                active ? 'bg-gold/20 text-gold' : 'bg-surface-2 text-zinc-300 hover:bg-white/5'
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface TopGearSimAgainState {
   simcInput?: string;
   selectedUids?: Record<string, string[]>;
@@ -52,6 +96,12 @@ interface TopGearSimAgainState {
   catalyst?: boolean;
   catalystCharges?: number | null;
   resolved?: ResolveGearResponse | null;
+  compareConsumables?: boolean;
+  matrixFlasks?: string[];
+  matrixFoods?: string[];
+  matrixPotions?: string[];
+  matrixAugments?: string[];
+  matrixTempEnchants?: string[];
 }
 
 export default function TopGearPage() {
@@ -74,6 +124,12 @@ export default function TopGearPage() {
   const [comboCount, setComboCount] = useState(0);
   const [comboError, setComboError] = useState('');
   const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
+  const [compareConsumables, setCompareConsumables] = useState(false);
+  const [matrixFlasks, setMatrixFlasks] = useState<string[]>([]);
+  const [matrixFoods, setMatrixFoods] = useState<string[]>([]);
+  const [matrixPotions, setMatrixPotions] = useState<string[]>([]);
+  const [matrixAugments, setMatrixAugments] = useState<string[]>([]);
+  const [matrixTempEnchants, setMatrixTempEnchants] = useState<string[]>([]);
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
@@ -82,10 +138,50 @@ export default function TopGearPage() {
   const previousSimcInputRef = useRef(simcInput);
   const localItemsRef = useRef<LocalGearItem[]>(localItems);
   const comboRequestSeqRef = useRef(0);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const qualityMaxByFamily = useMemo(
+    () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
+    [flasks, potions, augments, tempEnchants]
+  );
+  const hasConsumableMatrix = compareConsumables
+    && (matrixFlasks.length > 0
+      || matrixFoods.length > 0
+      || matrixPotions.length > 0
+      || matrixAugments.length > 0
+      || matrixTempEnchants.length > 0);
+
+  const hydrateConsumableMatrixFromStorage = useCallback(() => {
+    try {
+      const enabled = localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+      setCompareConsumables(enabled);
+      const read = (key: string): string[] => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+        } catch {
+          return [];
+        }
+      };
+      setMatrixFlasks(read('whylowdps_matrix_flasks'));
+      setMatrixFoods(read('whylowdps_matrix_foods'));
+      setMatrixPotions(read('whylowdps_matrix_potions'));
+      setMatrixAugments(read('whylowdps_matrix_augments'));
+      setMatrixTempEnchants(read('whylowdps_matrix_temp_enchants'));
+    } catch {}
+  }, []);
 
   useEffect(() => {
     localItemsRef.current = localItems;
   }, [localItems]);
+
+  useEffect(() => {
+    hydrateConsumableMatrixFromStorage();
+    const onMatrixChanged = () => hydrateConsumableMatrixFromStorage();
+    window.addEventListener('whylowdps-consumables-matrix-changed', onMatrixChanged);
+    return () => window.removeEventListener('whylowdps-consumables-matrix-changed', onMatrixChanged);
+  }, [hydrateConsumableMatrixFromStorage]);
 
   useEffect(() => {
     const restored = consumeSimAgainState<TopGearSimAgainState>(TOP_GEAR_SIM_AGAIN_KEY);
@@ -129,6 +225,12 @@ export default function TopGearPage() {
       setResolved(restored.resolved);
       skipNextResolveRef.current = true;
     }
+    if (typeof restored.compareConsumables === 'boolean') setCompareConsumables(restored.compareConsumables);
+    if (Array.isArray(restored.matrixFlasks)) setMatrixFlasks(restored.matrixFlasks.filter((x) => typeof x === 'string'));
+    if (Array.isArray(restored.matrixFoods)) setMatrixFoods(restored.matrixFoods.filter((x) => typeof x === 'string'));
+    if (Array.isArray(restored.matrixPotions)) setMatrixPotions(restored.matrixPotions.filter((x) => typeof x === 'string'));
+    if (Array.isArray(restored.matrixAugments)) setMatrixAugments(restored.matrixAugments.filter((x) => typeof x === 'string'));
+    if (Array.isArray(restored.matrixTempEnchants)) setMatrixTempEnchants(restored.matrixTempEnchants.filter((x) => typeof x === 'string'));
 
     prevInputRef.current = restoredInput ?? simcInput.trim();
     prevUpgradeRef.current =
@@ -313,6 +415,15 @@ export default function TopGearPage() {
               : {}),
             catalyst,
             ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
+            ...(hasConsumableMatrix
+              ? {
+                  consumable_matrix_flasks: matrixFlasks,
+                  consumable_matrix_foods: matrixFoods,
+                  consumable_matrix_potions: matrixPotions,
+                  consumable_matrix_augmentations: matrixAugments,
+                  consumable_matrix_temporary_enchants: matrixTempEnchants,
+                }
+              : {}),
           }),
           signal: controller.signal,
         });
@@ -348,6 +459,12 @@ export default function TopGearPage() {
     talentBuilds,
     catalyst,
     catalystCharges,
+    hasConsumableMatrix,
+    matrixFlasks,
+    matrixFoods,
+    matrixPotions,
+    matrixAugments,
+    matrixTempEnchants,
     buildSelectedUidsJson,
     buildSubmitInput,
     buildItemsBySlotJson,
@@ -371,6 +488,15 @@ export default function TopGearPage() {
         : {}),
       catalyst,
       ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
+      ...(hasConsumableMatrix
+        ? {
+            consumable_matrix_flasks: matrixFlasks,
+            consumable_matrix_foods: matrixFoods,
+            consumable_matrix_potions: matrixPotions,
+            consumable_matrix_augmentations: matrixAugments,
+            consumable_matrix_temporary_enchants: matrixTempEnchants,
+          }
+        : {}),
     }),
     [
       buildSubmitInput,
@@ -381,6 +507,12 @@ export default function TopGearPage() {
       talentBuilds,
       catalyst,
       catalystCharges,
+      hasConsumableMatrix,
+      matrixFlasks,
+      matrixFoods,
+      matrixPotions,
+      matrixAugments,
+      matrixTempEnchants,
       buildItemsBySlotJson,
     ]
   );
@@ -410,6 +542,12 @@ export default function TopGearPage() {
         copyEnchants,
         catalyst,
         catalystCharges,
+        compareConsumables,
+        matrixFlasks,
+        matrixFoods,
+        matrixPotions,
+        matrixAugments,
+        matrixTempEnchants,
         resolved,
       }),
     },

@@ -154,6 +154,23 @@ export default function TopGearPage() {
       || matrixPotions.length > 0
       || matrixAugments.length > 0
       || matrixTempEnchants.length > 0);
+  const isMultiConsumablesEnabledNow = () => {
+    try {
+      return localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  };
+  const readStoredMatrixTokens = (key: string): string[] => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
 
   const hydrateConsumableMatrixFromStorage = useCallback(() => {
     try {
@@ -440,6 +457,18 @@ export default function TopGearPage() {
     const controller = new AbortController();
     (async () => {
       try {
+        const useMatrix = isMultiConsumablesEnabledNow();
+        const storedFlasks = readStoredMatrixTokens('whylowdps_matrix_flasks');
+        const storedFoods = readStoredMatrixTokens('whylowdps_matrix_foods');
+        const storedPotions = readStoredMatrixTokens('whylowdps_matrix_potions');
+        const storedAugments = readStoredMatrixTokens('whylowdps_matrix_augments');
+        const storedTempEnchants = readStoredMatrixTokens('whylowdps_matrix_temp_enchants');
+        const hasStoredMatrix =
+          storedFlasks.length > 0 ||
+          storedFoods.length > 0 ||
+          storedPotions.length > 0 ||
+          storedAugments.length > 0 ||
+          storedTempEnchants.length > 0;
         const res = await fetch(`${API_URL}/api/top-gear/combo-count`, {
           method: 'POST',
           credentials: 'include',
@@ -461,13 +490,13 @@ export default function TopGearPage() {
               : {}),
             catalyst,
             ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
-            ...(hasConsumableMatrix
+            ...(useMatrix && hasStoredMatrix
               ? {
-                  consumable_matrix_flasks: matrixFlasks,
-                  consumable_matrix_foods: matrixFoods,
-                  consumable_matrix_potions: matrixPotions,
-                  consumable_matrix_augmentations: matrixAugments,
-                  consumable_matrix_temporary_enchants: matrixTempEnchants,
+                  consumable_matrix_flasks: storedFlasks,
+                  consumable_matrix_foods: storedFoods,
+                  consumable_matrix_potions: storedPotions,
+                  consumable_matrix_augmentations: storedAugments,
+                  consumable_matrix_temporary_enchants: storedTempEnchants,
                 }
               : {}),
           }),
@@ -517,33 +546,47 @@ export default function TopGearPage() {
   ]);
 
   const buildPayload = useCallback(
-    () => ({
-      simc_input: buildSubmitInput(),
-      selected_items: buildSelectedUidsJson(),
-      items_by_slot: buildItemsBySlotJson(),
-      max_upgrade: maxUpgrade,
-      copy_enchants: copyEnchants,
-      ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
-      ...(talentBuilds.length > 1
-        ? {
-            talent_builds: talentBuilds.map((tb) => ({
-              name: tb.name,
-              talent_string: tb.talentString,
-            })),
-          }
-        : {}),
-      catalyst,
-      ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
-      ...(hasConsumableMatrix
-        ? {
-            consumable_matrix_flasks: matrixFlasks,
-            consumable_matrix_foods: matrixFoods,
-            consumable_matrix_potions: matrixPotions,
-            consumable_matrix_augmentations: matrixAugments,
-            consumable_matrix_temporary_enchants: matrixTempEnchants,
-          }
-        : {}),
-    }),
+    () => {
+      const useMatrix = isMultiConsumablesEnabledNow();
+      const storedFlasks = readStoredMatrixTokens('whylowdps_matrix_flasks');
+      const storedFoods = readStoredMatrixTokens('whylowdps_matrix_foods');
+      const storedPotions = readStoredMatrixTokens('whylowdps_matrix_potions');
+      const storedAugments = readStoredMatrixTokens('whylowdps_matrix_augments');
+      const storedTempEnchants = readStoredMatrixTokens('whylowdps_matrix_temp_enchants');
+      const hasStoredMatrix =
+        storedFlasks.length > 0 ||
+        storedFoods.length > 0 ||
+        storedPotions.length > 0 ||
+        storedAugments.length > 0 ||
+        storedTempEnchants.length > 0;
+      return {
+        simc_input: buildSubmitInput(),
+        selected_items: buildSelectedUidsJson(),
+        items_by_slot: buildItemsBySlotJson(),
+        max_upgrade: maxUpgrade,
+        copy_enchants: copyEnchants,
+        ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
+        ...(talentBuilds.length > 1
+          ? {
+              talent_builds: talentBuilds.map((tb) => ({
+                name: tb.name,
+                talent_string: tb.talentString,
+              })),
+            }
+          : {}),
+        catalyst,
+        ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
+        ...(useMatrix && hasStoredMatrix
+          ? {
+              consumable_matrix_flasks: storedFlasks,
+              consumable_matrix_foods: storedFoods,
+              consumable_matrix_potions: storedPotions,
+              consumable_matrix_augmentations: storedAugments,
+              consumable_matrix_temporary_enchants: storedTempEnchants,
+            }
+          : {}),
+      };
+    },
     [
       buildSubmitInput,
       buildSelectedUidsJson,
@@ -589,12 +632,12 @@ export default function TopGearPage() {
         copyEnchants,
         catalyst,
         catalystCharges,
-        compareConsumables,
-        matrixFlasks,
-        matrixFoods,
-        matrixPotions,
-        matrixAugments,
-        matrixTempEnchants,
+        compareConsumables: isMultiConsumablesEnabledNow(),
+        matrixFlasks: readStoredMatrixTokens('whylowdps_matrix_flasks'),
+        matrixFoods: readStoredMatrixTokens('whylowdps_matrix_foods'),
+        matrixPotions: readStoredMatrixTokens('whylowdps_matrix_potions'),
+        matrixAugments: readStoredMatrixTokens('whylowdps_matrix_augments'),
+        matrixTempEnchants: readStoredMatrixTokens('whylowdps_matrix_temp_enchants'),
       }),
     },
   });

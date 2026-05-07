@@ -5,6 +5,14 @@ import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { getIconUrl } from '../../lib/useItemInfo';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import ItemTag from './ItemTag';
+import {
+  AUGMENT_RUNE_OPTIONS,
+  FLASK_OPTIONS,
+  FOOD_OPTIONS,
+  POTION_OPTIONS,
+  TEMP_ENCHANT_OPTIONS,
+  type OptionEntry,
+} from '../../lib/sim-options-catalog';
 
 function normalizeTierToken(input?: string): string | null {
   const normalized = String(input || '').trim().toLowerCase();
@@ -91,6 +99,38 @@ interface ResultRowProps {
   wishlistButtonDisabled?: boolean;
 }
 
+const CONSUMABLE_OPTION_BY_TOKEN: Record<string, OptionEntry> = Object.fromEntries(
+  [...FLASK_OPTIONS, ...FOOD_OPTIONS, ...POTION_OPTIONS, ...AUGMENT_RUNE_OPTIONS, ...TEMP_ENCHANT_OPTIONS]
+    .filter((opt) => opt.token)
+    .map((opt) => [String(opt.token), opt])
+);
+
+function consumableTierSquareClass(label: string): string {
+  const text = label.toLowerCase();
+  if (text.includes('gold')) return 'border-amber-300/70 bg-amber-500';
+  if (text.includes('silver')) return 'border-zinc-300/70 bg-zinc-300';
+  if (text.includes('bronze')) return 'border-orange-400/70 bg-orange-500';
+  return 'border-zinc-500/50 bg-zinc-500/40';
+}
+
+function consumableCheckClass(): string {
+  return 'border-zinc-300/70 bg-zinc-300';
+}
+
+function consumableTierFromOption(token: string, opt?: OptionEntry): number {
+  if (typeof opt?.craftingQuality === 'number' && opt.craftingQuality > 0) return opt.craftingQuality;
+  const m = token.match(/_(\d)$/);
+  if (!m) return 0;
+  const q = Number(m[1]);
+  return Number.isFinite(q) ? q : 0;
+}
+
+function consumableLabelFromToken(token: string, fallbackCategory: string): string {
+  const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
+  if (opt?.label?.trim()) return opt.label.trim();
+  return `${fallbackCategory}: ${token}`;
+}
+
 export default function ResultRow({
   result,
   rank,
@@ -132,6 +172,51 @@ export default function ResultRow({
   ) : null;
 
   const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+  const consumableSetLabel = useMemo(() => {
+    const meta = result.items.find((it) => {
+      const row = it as unknown as { consumable_set?: string; heatmap_kind?: string };
+      return (row.consumable_set && row.consumable_set.trim().length > 0) || row.heatmap_kind === 'consumable';
+    }) as (ResultItem & { consumable_set?: string; consumable_flask?: string }) | undefined;
+    if (!meta) return '';
+    if (meta.consumable_set && meta.consumable_set.trim().length > 0) return meta.consumable_set;
+    if (meta.consumable_flask && meta.consumable_flask.trim().length > 0) {
+      return `Flask: ${meta.consumable_flask}`;
+    }
+    return '';
+  }, [result.items]);
+  const consumableBadges = useMemo(() => {
+    const meta = result.items.find((it) => {
+      const row = it as unknown as {
+        consumable_flask?: string;
+        consumable_food?: string;
+        consumable_potion?: string;
+        consumable_augmentation?: string;
+        consumable_temporary_enchant?: string;
+      };
+      return !!(
+        row.consumable_flask
+        || row.consumable_food
+        || row.consumable_potion
+        || row.consumable_augmentation
+        || row.consumable_temporary_enchant
+      );
+    }) as (ResultItem & {
+      consumable_flask?: string;
+      consumable_food?: string;
+      consumable_potion?: string;
+      consumable_augmentation?: string;
+      consumable_temporary_enchant?: string;
+    }) | undefined;
+    if (!meta) return [];
+    const entries: Array<{ category: string; token: string }> = [
+      { category: 'Flask', token: String(meta.consumable_flask || '').trim() },
+      { category: 'Food', token: String(meta.consumable_food || '').trim() },
+      { category: 'Potion', token: String(meta.consumable_potion || '').trim() },
+      { category: 'Augmentation', token: String(meta.consumable_augmentation || '').trim() },
+      { category: 'Temp Enchant', token: String(meta.consumable_temporary_enchant || '').trim() },
+    ].filter((e) => e.token.length > 0);
+    return entries;
+  }, [result.items]);
   const changedSlots = new Set(changedItems.map((it) => it.slot));
 
   const showBothRings = changedSlots.has('finger1') || changedSlots.has('finger2');
@@ -371,6 +456,48 @@ export default function ResultRow({
                 ))}
                 {costsDisplay}
                 {talentBadge}
+                {consumableBadges.length > 0 ? (
+                  <div className="basis-full pt-0.5">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                      {consumableBadges.map(({ category, token }) => {
+                        const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
+                        const label = consumableLabelFromToken(token, category);
+                        const icon = opt?.icon
+                          ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
+                          : '';
+                        const itemId = Number(opt?.itemId || 0);
+                        const tier = consumableTierFromOption(token, opt);
+                        const showTierSquare = tier > 0;
+                        return (
+                          <a
+                            key={`${category}:${token}`}
+                            className="inline-flex items-center gap-1.5 rounded border border-gold/25 bg-gold/[0.07] px-1.5 py-0.5 text-[11px] text-gold/90"
+                            title={`${category}: ${label}`}
+                            data-wowhead={itemId > 0 ? `item=${itemId}` : undefined}
+                            href={itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined}
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
+                            <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
+                            {showTierSquare ? (
+                              tier === 1 ? (
+                                <span className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}>
+                                  <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
+                                </span>
+                              ) : (
+                                <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(label)}`} />
+                              )
+                            ) : null}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : consumableSetLabel ? (
+                  <div className="basis-full pt-0.5">
+                    <span className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">{consumableSetLabel}</span>
+                  </div>
+                ) : null}
               </div>
             );
           })()}

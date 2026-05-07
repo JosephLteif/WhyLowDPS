@@ -8,11 +8,49 @@ import { usePathname } from 'next/navigation';
 
 export default function DataGuard({ children }: { children: React.ReactNode }) {
   const [dataStatus, setDataStatus] = useState<any>({ status: 'syncing', progress: '' });
-  const [isReady, setIsReady] = useState(false);
+  const [isReady, setIsReady] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('whylowdps_data_ready') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const { user, loading, checkCredentialsStatus } = useAuth();
-  const [showSetup, setShowSetup] = useState(false);
   const [isGloballyConfigured, setIsGloballyConfigured] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
+
+  const safeText = (value: unknown, fallback = ''): string => {
+    if (typeof value === 'string') return value;
+    if (value == null) return fallback;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (typeof value === 'object') {
+      const obj = value as Record<string, unknown>;
+      if (typeof obj.detail === 'string') return obj.detail;
+      if (typeof obj.error === 'string') return `error: ${obj.error}`;
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return fallback;
+      }
+    }
+    return fallback;
+  };
+
+  const toSplashStatus = (value: unknown): string => {
+    const text = safeText(value, 'syncing').trim();
+    if (!text) return 'syncing';
+    if (text === 'ready') return 'syncing';
+    if (text === 'syncing' || text === 'unauthenticated' || text === 'unauthenticated_needs_keys') {
+      return text;
+    }
+    const lower = text.toLowerCase();
+    if (lower.includes('error') || lower.includes('failed') || lower.includes('invalid')) {
+      return text;
+    }
+    return 'syncing';
+  };
+
+  const toSplashProgress = (value: unknown): string => safeText(value, 'Syncing with Blizzard...');
 
   useEffect(() => {
     let cancelled = false;
@@ -20,7 +58,6 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     checkCredentialsStatus()
       .then((status) => {
         if (cancelled) return;
-        console.log('[DataGuard] Credentials status:', status);
         setIsGloballyConfigured(status.globally_configured);
       })
       .catch((err) => {
@@ -28,7 +65,6 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
         if (!isNetworkUnavailableError(err)) {
           console.error('[DataGuard] Credentials status check failed:', err);
         }
-        // Keep previous value on transient errors to avoid splash-state flapping.
       })
       .finally(() => {
         if (cancelled) return;
@@ -47,8 +83,10 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
       if (data.status === 'ready') {
         setDataStatus(data);
         setIsReady(true);
+        try {
+          localStorage.setItem('whylowdps_data_ready', 'true');
+        } catch {}
       } else if (data.status === 'needs_credentials') {
-        // Trigger a sync assuming credentials are configured
         setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
         fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).catch(() => {});
       } else {
@@ -63,7 +101,6 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Trigger sync first so fresh installs do not report "ready" before initial data load.
     setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
     fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
       .catch(() => {})
@@ -71,7 +108,6 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
         checkStatus();
       });
 
-    // Poll while not ready
     const interval = setInterval(() => {
       if (!isReady) {
         checkStatus();
@@ -82,24 +118,24 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   }, [isReady, checkStatus]);
 
   const handleRetry = () => {
-    fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).then(() => checkStatus());
+    fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
+      .catch(() => {})
+      .finally(() => checkStatus());
   };
 
   const pathname = usePathname();
   const isSettingsPage = pathname === '/settings';
 
-  // 1. Initial configuration check (no data yet)
   if ((loading || isChecking) && !isSettingsPage) {
     return null;
   }
 
-  // If user is already authenticated, don't bounce back to auth/setup splash.
   if (user && !isSettingsPage) {
     if (!isReady) {
       return (
         <SplashScreen
-          status={dataStatus.status}
-          progress={dataStatus.progress}
+          status={toSplashStatus(dataStatus?.status)}
+          progress={toSplashProgress(dataStatus?.progress)}
           onRetry={handleRetry}
         />
       );
@@ -107,27 +143,23 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // 2. If the system is not configured with Blizzard keys, show setup screen
   if (isGloballyConfigured === false && !isSettingsPage) {
     return <SplashScreen status="unauthenticated_needs_keys" progress="" />;
   }
 
-  // 3. If the system is configured but the user is not logged in, show login screen
   if (!user && !isSettingsPage) {
     return <SplashScreen status="unauthenticated" progress="" />;
   }
 
-  // 4. If data is not ready, show syncing splash screen (only if not on settings)
   if (!isReady && !isSettingsPage) {
     return (
       <SplashScreen
-        status={dataStatus.status}
-        progress={dataStatus.progress}
+        status={toSplashStatus(dataStatus?.status)}
+        progress={toSplashProgress(dataStatus?.progress)}
         onRetry={handleRetry}
       />
     );
   }
 
-  // 5. Default: show application content
   return <>{children}</>;
 }

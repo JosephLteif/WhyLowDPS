@@ -1,13 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
+import ConsumableSelect, { buildQualityMaxByFamily } from '../components/shared/ConsumableSelect';
 import { API_URL } from '../lib/api';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
+import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
@@ -43,6 +45,52 @@ function appendLocalItemsToSimcInput(baseInput: string, localItems: LocalGearIte
   return result;
 }
 
+function toggleToken(list: string[], token: string): string[] {
+  const t = token.trim();
+  if (!t) return list;
+  return list.includes(t) ? list.filter((v) => v !== t) : [...list, t];
+}
+
+function arraysEqual(a: string[], b: string[]) {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function MultiPick({
+  title,
+  options,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  options: { key: string; token?: string; label: string }[];
+  selected: string[];
+  onToggle: (token: string) => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
+      <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">{title}</p>
+      <div className="max-h-40 space-y-1 overflow-auto pr-1">
+        {options.map((opt) => {
+          const token = opt.token || '';
+          const active = token !== '' && selected.includes(token);
+          return (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => token && onToggle(token)}
+              className={`w-full rounded px-2 py-1.5 text-left text-xs ${
+                active ? 'bg-gold/20 text-gold' : 'bg-surface-2 text-zinc-300 hover:bg-white/5'
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface TopGearSimAgainState {
   simcInput?: string;
   selectedUids?: Record<string, string[]>;
@@ -51,7 +99,12 @@ interface TopGearSimAgainState {
   copyEnchants?: boolean;
   catalyst?: boolean;
   catalystCharges?: number | null;
-  resolved?: ResolveGearResponse | null;
+  compareConsumables?: boolean;
+  matrixFlasks?: string[];
+  matrixFoods?: string[];
+  matrixPotions?: string[];
+  matrixAugments?: string[];
+  matrixTempEnchants?: string[];
 }
 
 export default function TopGearPage() {
@@ -74,18 +127,90 @@ export default function TopGearPage() {
   const [comboCount, setComboCount] = useState(0);
   const [comboError, setComboError] = useState('');
   const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
+  const [compareConsumables, setCompareConsumables] = useState(false);
+  const [matrixFlasks, setMatrixFlasks] = useState<string[]>([]);
+  const [matrixFoods, setMatrixFoods] = useState<string[]>([]);
+  const [matrixPotions, setMatrixPotions] = useState<string[]>([]);
+  const [matrixAugments, setMatrixAugments] = useState<string[]>([]);
+  const [matrixTempEnchants, setMatrixTempEnchants] = useState<string[]>([]);
   const prevInputRef = useRef('');
   const prevUpgradeRef = useRef(false);
   const prevCatalystRef = useRef(false);
+  const prevForceResolveSignalRef = useRef(0);
   const skipNextInputResetRef = useRef(false);
   const skipNextResolveRef = useRef(false);
   const previousSimcInputRef = useRef(simcInput);
   const localItemsRef = useRef<LocalGearItem[]>(localItems);
   const comboRequestSeqRef = useRef(0);
+  const [forceResolveSignal, setForceResolveSignal] = useState(0);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const qualityMaxByFamily = useMemo(
+    () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
+    [flasks, potions, augments, tempEnchants]
+  );
+  const hasConsumableMatrix = compareConsumables
+    && (matrixFlasks.length > 0
+      || matrixFoods.length > 0
+      || matrixPotions.length > 0
+      || matrixAugments.length > 0
+      || matrixTempEnchants.length > 0);
+  const isMultiConsumablesEnabledNow = () => {
+    try {
+      return localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  };
+  const readStoredMatrixTokens = (key: string): string[] => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const hydrateConsumableMatrixFromStorage = useCallback(() => {
+    try {
+      const enabled = localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+      setCompareConsumables((prev) => (prev === enabled ? prev : enabled));
+      const read = (key: string): string[] => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+        } catch {
+          return [];
+        }
+      };
+      const nextFlasks = read('whylowdps_matrix_flasks');
+      const nextFoods = read('whylowdps_matrix_foods');
+      const nextPotions = read('whylowdps_matrix_potions');
+      const nextAugments = read('whylowdps_matrix_augments');
+      const nextTempEnchants = read('whylowdps_matrix_temp_enchants');
+      setMatrixFlasks((prev) => (arraysEqual(prev, nextFlasks) ? prev : nextFlasks));
+      setMatrixFoods((prev) => (arraysEqual(prev, nextFoods) ? prev : nextFoods));
+      setMatrixPotions((prev) => (arraysEqual(prev, nextPotions) ? prev : nextPotions));
+      setMatrixAugments((prev) => (arraysEqual(prev, nextAugments) ? prev : nextAugments));
+      setMatrixTempEnchants((prev) =>
+        arraysEqual(prev, nextTempEnchants) ? prev : nextTempEnchants
+      );
+    } catch {}
+  }, []);
 
   useEffect(() => {
     localItemsRef.current = localItems;
   }, [localItems]);
+
+  useEffect(() => {
+    hydrateConsumableMatrixFromStorage();
+    const onMatrixChanged = () => hydrateConsumableMatrixFromStorage();
+    window.addEventListener('whylowdps-consumables-matrix-changed', onMatrixChanged);
+    return () => window.removeEventListener('whylowdps-consumables-matrix-changed', onMatrixChanged);
+  }, [hydrateConsumableMatrixFromStorage]);
 
   useEffect(() => {
     const restored = consumeSimAgainState<TopGearSimAgainState>(TOP_GEAR_SIM_AGAIN_KEY);
@@ -125,10 +250,47 @@ export default function TopGearPage() {
     if (restored.catalystCharges == null || Number.isFinite(restored.catalystCharges)) {
       setCatalystCharges(restored.catalystCharges ?? null);
     }
-    if (restored.resolved && typeof restored.resolved === 'object') {
-      setResolved(restored.resolved);
-      skipNextResolveRef.current = true;
-    }
+    if (typeof restored.compareConsumables === 'boolean') setCompareConsumables(restored.compareConsumables);
+    const restoredFlasks = Array.isArray(restored.matrixFlasks)
+      ? restored.matrixFlasks.filter((x) => typeof x === 'string')
+      : null;
+    const restoredFoods = Array.isArray(restored.matrixFoods)
+      ? restored.matrixFoods.filter((x) => typeof x === 'string')
+      : null;
+    const restoredPotions = Array.isArray(restored.matrixPotions)
+      ? restored.matrixPotions.filter((x) => typeof x === 'string')
+      : null;
+    const restoredAugments = Array.isArray(restored.matrixAugments)
+      ? restored.matrixAugments.filter((x) => typeof x === 'string')
+      : null;
+    const restoredTempEnchants = Array.isArray(restored.matrixTempEnchants)
+      ? restored.matrixTempEnchants.filter((x) => typeof x === 'string')
+      : null;
+
+    if (restoredFlasks) setMatrixFlasks(restoredFlasks);
+    if (restoredFoods) setMatrixFoods(restoredFoods);
+    if (restoredPotions) setMatrixPotions(restoredPotions);
+    if (restoredAugments) setMatrixAugments(restoredAugments);
+    if (restoredTempEnchants) setMatrixTempEnchants(restoredTempEnchants);
+
+    // Keep shared consumable UI in sync on Sim Again restore.
+    try {
+      if (typeof restored.compareConsumables === 'boolean') {
+        localStorage.setItem(
+          'whylowdps_multi_consumables_enabled',
+          String(restored.compareConsumables)
+        );
+      }
+      if (restoredFlasks) localStorage.setItem('whylowdps_matrix_flasks', JSON.stringify(restoredFlasks));
+      if (restoredFoods) localStorage.setItem('whylowdps_matrix_foods', JSON.stringify(restoredFoods));
+      if (restoredPotions) localStorage.setItem('whylowdps_matrix_potions', JSON.stringify(restoredPotions));
+      if (restoredAugments) localStorage.setItem('whylowdps_matrix_augments', JSON.stringify(restoredAugments));
+      if (restoredTempEnchants) localStorage.setItem(
+        'whylowdps_matrix_temp_enchants',
+        JSON.stringify(restoredTempEnchants)
+      );
+      window.dispatchEvent(new CustomEvent('whylowdps-consumables-matrix-changed'));
+    } catch {}
 
     prevInputRef.current = restoredInput ?? simcInput.trim();
     prevUpgradeRef.current =
@@ -137,6 +299,7 @@ export default function TopGearPage() {
       typeof restored.catalyst === 'boolean' ? restored.catalyst : catalyst;
 
     skipNextInputResetRef.current = true;
+    setForceResolveSignal((v) => v + 1);
   }, [simcInput, maxUpgrade, catalyst, setSimcInput]);
 
   useEffect(() => {
@@ -159,13 +322,15 @@ export default function TopGearPage() {
     const inputChanged = trimmed !== prevInputRef.current;
     const upgradeChanged = maxUpgrade !== prevUpgradeRef.current;
     const catalystChanged = catalyst !== prevCatalystRef.current;
+    const forceResolve = forceResolveSignal !== prevForceResolveSignalRef.current;
+    prevForceResolveSignalRef.current = forceResolveSignal;
 
     if (skipNextResolveRef.current) {
       skipNextResolveRef.current = false;
       return;
     }
 
-    if (!inputChanged && !upgradeChanged && !catalystChanged) return;
+    if (!forceResolve && !inputChanged && !upgradeChanged && !catalystChanged) return;
 
     if (trimmed.length < 10) {
       setResolved(null);
@@ -234,7 +399,7 @@ export default function TopGearPage() {
       inputChanged ? 300 : 0
     );
     return () => clearTimeout(timer);
-  }, [simcInput, maxUpgrade, catalyst]);
+  }, [simcInput, maxUpgrade, catalyst, forceResolveSignal]);
 
   const buildSubmitInput = useCallback((): string => {
     return appendLocalItemsToSimcInput(simcInput, localItems);
@@ -292,6 +457,18 @@ export default function TopGearPage() {
     const controller = new AbortController();
     (async () => {
       try {
+        const useMatrix = isMultiConsumablesEnabledNow();
+        const storedFlasks = readStoredMatrixTokens('whylowdps_matrix_flasks');
+        const storedFoods = readStoredMatrixTokens('whylowdps_matrix_foods');
+        const storedPotions = readStoredMatrixTokens('whylowdps_matrix_potions');
+        const storedAugments = readStoredMatrixTokens('whylowdps_matrix_augments');
+        const storedTempEnchants = readStoredMatrixTokens('whylowdps_matrix_temp_enchants');
+        const hasStoredMatrix =
+          storedFlasks.length > 0 ||
+          storedFoods.length > 0 ||
+          storedPotions.length > 0 ||
+          storedAugments.length > 0 ||
+          storedTempEnchants.length > 0;
         const res = await fetch(`${API_URL}/api/top-gear/combo-count`, {
           method: 'POST',
           credentials: 'include',
@@ -313,6 +490,15 @@ export default function TopGearPage() {
               : {}),
             catalyst,
             ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
+            ...(useMatrix && hasStoredMatrix
+              ? {
+                  consumable_matrix_flasks: storedFlasks,
+                  consumable_matrix_foods: storedFoods,
+                  consumable_matrix_potions: storedPotions,
+                  consumable_matrix_augmentations: storedAugments,
+                  consumable_matrix_temporary_enchants: storedTempEnchants,
+                }
+              : {}),
           }),
           signal: controller.signal,
         });
@@ -348,30 +534,59 @@ export default function TopGearPage() {
     talentBuilds,
     catalyst,
     catalystCharges,
+    hasConsumableMatrix,
+    matrixFlasks,
+    matrixFoods,
+    matrixPotions,
+    matrixAugments,
+    matrixTempEnchants,
     buildSelectedUidsJson,
     buildSubmitInput,
     buildItemsBySlotJson,
   ]);
 
   const buildPayload = useCallback(
-    () => ({
-      simc_input: buildSubmitInput(),
-      selected_items: buildSelectedUidsJson(),
-      items_by_slot: buildItemsBySlotJson(),
-      max_upgrade: maxUpgrade,
-      copy_enchants: copyEnchants,
-      ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
-      ...(talentBuilds.length > 1
-        ? {
-            talent_builds: talentBuilds.map((tb) => ({
-              name: tb.name,
-              talent_string: tb.talentString,
-            })),
-          }
-        : {}),
-      catalyst,
-      ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
-    }),
+    () => {
+      const useMatrix = isMultiConsumablesEnabledNow();
+      const storedFlasks = readStoredMatrixTokens('whylowdps_matrix_flasks');
+      const storedFoods = readStoredMatrixTokens('whylowdps_matrix_foods');
+      const storedPotions = readStoredMatrixTokens('whylowdps_matrix_potions');
+      const storedAugments = readStoredMatrixTokens('whylowdps_matrix_augments');
+      const storedTempEnchants = readStoredMatrixTokens('whylowdps_matrix_temp_enchants');
+      const hasStoredMatrix =
+        storedFlasks.length > 0 ||
+        storedFoods.length > 0 ||
+        storedPotions.length > 0 ||
+        storedAugments.length > 0 ||
+        storedTempEnchants.length > 0;
+      return {
+        simc_input: buildSubmitInput(),
+        selected_items: buildSelectedUidsJson(),
+        items_by_slot: buildItemsBySlotJson(),
+        max_upgrade: maxUpgrade,
+        copy_enchants: copyEnchants,
+        ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
+        ...(talentBuilds.length > 1
+          ? {
+              talent_builds: talentBuilds.map((tb) => ({
+                name: tb.name,
+                talent_string: tb.talentString,
+              })),
+            }
+          : {}),
+        catalyst,
+        ...(catalystCharges != null ? { catalyst_charges: catalystCharges } : {}),
+        ...(useMatrix && hasStoredMatrix
+          ? {
+              consumable_matrix_flasks: storedFlasks,
+              consumable_matrix_foods: storedFoods,
+              consumable_matrix_potions: storedPotions,
+              consumable_matrix_augmentations: storedAugments,
+              consumable_matrix_temporary_enchants: storedTempEnchants,
+            }
+          : {}),
+      };
+    },
     [
       buildSubmitInput,
       buildSelectedUidsJson,
@@ -381,6 +596,12 @@ export default function TopGearPage() {
       talentBuilds,
       catalyst,
       catalystCharges,
+      hasConsumableMatrix,
+      matrixFlasks,
+      matrixFoods,
+      matrixPotions,
+      matrixAugments,
+      matrixTempEnchants,
       buildItemsBySlotJson,
     ]
   );
@@ -402,6 +623,7 @@ export default function TopGearPage() {
     simAgain: {
       pageKey: TOP_GEAR_SIM_AGAIN_KEY,
       captureState: () => ({
+        simcInput,
         selectedUids: Object.fromEntries(
           Object.entries(selectedUids).map(([slot, values]) => [slot, [...values]])
         ),
@@ -410,7 +632,12 @@ export default function TopGearPage() {
         copyEnchants,
         catalyst,
         catalystCharges,
-        resolved,
+        compareConsumables: isMultiConsumablesEnabledNow(),
+        matrixFlasks: readStoredMatrixTokens('whylowdps_matrix_flasks'),
+        matrixFoods: readStoredMatrixTokens('whylowdps_matrix_foods'),
+        matrixPotions: readStoredMatrixTokens('whylowdps_matrix_potions'),
+        matrixAugments: readStoredMatrixTokens('whylowdps_matrix_augments'),
+        matrixTempEnchants: readStoredMatrixTokens('whylowdps_matrix_temp_enchants'),
       }),
     },
   });

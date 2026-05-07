@@ -47,11 +47,24 @@ function normalizeQuality(options: OptionEntry[]): OptionEntry[] {
 }
 
 export function useConsumableOptions(_expansionMin = 11) {
-  const [flasks, setFlasks] = useState<OptionEntry[]>(normalizeQuality(FLASK_OPTIONS));
-  const [foods, setFoods] = useState<OptionEntry[]>(normalizeQuality(FOOD_OPTIONS));
-  const [potions, setPotions] = useState<OptionEntry[]>(normalizeQuality(POTION_OPTIONS));
-  const [augments, setAugments] = useState<OptionEntry[]>(normalizeQuality(AUGMENT_RUNE_OPTIONS));
-  const [tempEnchants, setTempEnchants] = useState<OptionEntry[]>(normalizeQuality(TEMP_ENCHANT_OPTIONS));
+  const filterByExpansion = (options: OptionEntry[]): OptionEntry[] => {
+    if (!Number.isFinite(_expansionMin) || _expansionMin <= 0) return options;
+    return options.filter((opt) => {
+      const expansion = opt.expansion;
+      if (typeof expansion !== 'number' || !Number.isFinite(expansion)) return true;
+      return expansion >= _expansionMin;
+    });
+  };
+
+  const [flasks, setFlasks] = useState<OptionEntry[]>(filterByExpansion(normalizeQuality(FLASK_OPTIONS)));
+  const [foods, setFoods] = useState<OptionEntry[]>(filterByExpansion(normalizeQuality(FOOD_OPTIONS)));
+  const [potions, setPotions] = useState<OptionEntry[]>(filterByExpansion(normalizeQuality(POTION_OPTIONS)));
+  const [augments, setAugments] = useState<OptionEntry[]>(
+    filterByExpansion(normalizeQuality(AUGMENT_RUNE_OPTIONS))
+  );
+  const [tempEnchants, setTempEnchants] = useState<OptionEntry[]>(
+    filterByExpansion(normalizeQuality(TEMP_ENCHANT_OPTIONS))
+  );
 
   useEffect(() => {
     let canceled = false;
@@ -62,16 +75,20 @@ export function useConsumableOptions(_expansionMin = 11) {
       })
       .then((data: ConsumableOptionsResponse) => {
         if (canceled) return;
-        if (Array.isArray(data.flasks) && data.flasks.length) setFlasks(dedupeOptions(normalizeQuality(data.flasks)));
-        if (Array.isArray(data.foods) && data.foods.length) setFoods(dedupeOptions(normalizeQuality(data.foods)));
+        if (Array.isArray(data.flasks) && data.flasks.length) {
+          setFlasks(filterByExpansion(dedupeOptions(normalizeQuality(data.flasks))));
+        }
+        if (Array.isArray(data.foods) && data.foods.length) {
+          setFoods(filterByExpansion(dedupeOptions(normalizeQuality(data.foods))));
+        }
         if (Array.isArray(data.potions) && data.potions.length) {
-          setPotions(dedupeOptions(normalizeQuality(data.potions)));
+          setPotions(filterByExpansion(dedupeOptions(normalizeQuality(data.potions))));
         }
         if (Array.isArray(data.augments) && data.augments.length) {
-          setAugments(dedupeOptions(normalizeQuality(data.augments)));
+          setAugments(filterByExpansion(dedupeOptions(normalizeQuality(data.augments))));
         }
         if (Array.isArray(data.temp_enchants) && data.temp_enchants.length) {
-          setTempEnchants(dedupeOptions(normalizeQuality(data.temp_enchants)));
+          setTempEnchants(filterByExpansion(dedupeOptions(normalizeQuality(data.temp_enchants))));
         }
       })
       .catch(() => {

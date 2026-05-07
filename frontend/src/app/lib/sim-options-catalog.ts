@@ -6,6 +6,7 @@ export interface OptionEntry {
   spellId?: number;
   itemId?: number;
   craftingQuality?: number;
+  expansion?: number;
 }
 
 export const EXTERNAL_BUFF_OPTIONS: OptionEntry[] = [

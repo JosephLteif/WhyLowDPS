@@ -130,7 +130,7 @@ export default function CharacterPanel({
     }
     return normalized;
   }, [equipment]);
-  const [pageTab, setPageTab] = useState<CharacterPageTab>(initialTab || 'raiding');
+  const [pageTab, setPageTab] = useState<CharacterPageTab>(initialTab || 'profile');
   const characterSlug = name.toLowerCase();
   const regionSlug = region.toLowerCase();
   const quickLinks = useMemo(

@@ -411,18 +411,61 @@ export function GearSlotRow({
     href?: string;
     wowheadData?: string;
   }> = [
-    {
-      text: `${label} - ${item.ilevel || 0}${displayTag ? ` - ${displayTag}` : ''}`,
-      kind: 'plain' as const,
-      color:
-        upgradeState === 'upgrade'
-          ? 'text-emerald-300'
-          : upgradeState === 'downgrade'
-            ? 'text-red-300'
-            : 'text-zinc-300',
-      tooltip: levelChanged ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}` : undefined,
-    },
   ];
+  const sourceLabel = (() => {
+    if (item.encounter && item.instance_name) return `${item.instance_name}: ${item.encounter}`;
+    if (item.instance_name) return item.instance_name;
+    if (item.encounter) return item.encounter;
+    if (item.source_type) return item.source_type;
+    if (item.origin === 'vault') return 'Great Vault';
+    return '';
+  })();
+  if (gem?.name) {
+    details.push({
+      text: gem.name,
+      kind: 'iconText',
+      badgeVariant: 'gem',
+      icon: gem.icon || 'inv_misc_gem_variety_01',
+      href: gem.gem_id ? getWowheadUrl(gem.gem_id) : undefined,
+      wowheadData: gem.gem_id ? `item=${gem.gem_id}` : undefined,
+      color: 'text-sky-200 border-sky-400/45 bg-sky-500/10',
+    });
+  } else if (gemEligible) {
+    details.push({
+      text: 'Empty Socket',
+      kind: 'iconText',
+      badgeVariant: 'gem',
+      icon: 'inv_misc_gem_variety_01',
+      color: 'text-zinc-200 border-dashed border-zinc-500/60 bg-zinc-500/8',
+    });
+  }
+  if (enchant?.name) {
+    details.push({
+      text: enchant.name,
+      kind: 'iconText',
+      badgeVariant: 'enchant',
+      icon: enchant.icon || 'inv_enchant_shardprismaticsmall',
+      href: enchant.item_id
+        ? getWowheadUrl(enchant.item_id)
+        : enchant.enchant_id
+          ? `https://www.wowhead.com/spell=${enchant.enchant_id}`
+          : undefined,
+      wowheadData: enchant.item_id
+        ? `item=${enchant.item_id}`
+        : enchant.enchant_id
+          ? `spell=${enchant.enchant_id}`
+          : undefined,
+      color: 'text-emerald-200 border-emerald-400/45 bg-emerald-500/10',
+    });
+  } else if (enchantEligible) {
+    details.push({
+      text: 'No Enchant',
+      kind: 'iconText',
+      badgeVariant: 'enchant',
+      icon: 'inv_enchant_shardprismaticsmall',
+      color: 'text-zinc-200 border-dashed border-zinc-500/60 bg-zinc-500/8',
+    });
+  }
   const hasAscendantVoidcore =
     /(?:^|\s)mod:268552(?:\s|$)/i.test(String(item.source_type || '')) ||
     String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
@@ -451,6 +494,43 @@ export function GearSlotRow({
     >
       <GearItemRow
         icon={icon}
+        overline={
+          <>
+            {!reverse ? (
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                {label}
+              </span>
+            ) : null}
+            {!reverse && sourceLabel ? (
+              <span className="rounded border border-amber-400/45 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-200">
+                {sourceLabel}
+              </span>
+            ) : null}
+            {reverse && sourceLabel ? (
+              <span className="rounded border border-amber-400/45 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-200">
+                {sourceLabel}
+              </span>
+            ) : null}
+            <span
+              className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+                upgradeState === 'upgrade'
+                  ? 'text-emerald-200 border-emerald-400/45 bg-emerald-500/12'
+                  : upgradeState === 'downgrade'
+                    ? 'text-red-200 border-red-400/45 bg-red-500/12'
+                    : 'text-zinc-200 border-zinc-500/40 bg-zinc-500/10'
+              }`}
+              title={levelChanged ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}` : undefined}
+            >
+              iLvl {item.ilevel || 0}
+              {displayTag ? ` - ${displayTag}` : ''}
+            </span>
+            {reverse ? (
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                {label}
+              </span>
+            ) : null}
+          </>
+        }
         name={name}
         nameColor={qc}
         details={details}
@@ -460,80 +540,6 @@ export function GearSlotRow({
         vault={item.origin === 'vault'}
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
         wowheadData={whData}
-        iconExtras={
-          <>
-            {gemEligible &&
-              (gem?.icon ? (
-                <a
-                  href={gem.gem_id ? getWowheadUrl(gem.gem_id) : undefined}
-                  data-wowhead={gem.gem_id ? `item=${gem.gem_id}` : undefined}
-                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-sky-500/10 ${
-                    upgradeState === 'upgrade'
-                      ? 'border-2 border-sky-300/85'
-                      : 'border border-sky-400/45'
-                  }`}
-                  title={gem.name || 'Gem'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <img src={getIconUrl(gem.icon)} alt="" className="h-full w-full" loading="lazy" />
-                </a>
-              ) : (
-                <span
-                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-sky-500/5 text-[9px] font-bold leading-none text-sky-200 ${
-                    upgradeState === 'upgrade'
-                      ? 'border-2 border-sky-300/85'
-                      : 'border border-sky-400/35'
-                  }`}
-                  title="Gem slot available"
-                >
-                  G
-                </span>
-              ))}
-            {enchantEligible &&
-              (enchant?.icon ? (
-                <a
-                  href={
-                    enchant.item_id
-                      ? getWowheadUrl(enchant.item_id)
-                      : enchant.enchant_id
-                        ? `https://www.wowhead.com/spell=${enchant.enchant_id}`
-                        : undefined
-                  }
-                  data-wowhead={
-                    enchant.item_id
-                      ? `item=${enchant.item_id}`
-                      : enchant.enchant_id
-                        ? `spell=${enchant.enchant_id}`
-                        : undefined
-                  }
-                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center overflow-hidden rounded-sm bg-emerald-500/10 ${
-                    upgradeState === 'upgrade'
-                      ? 'border-2 border-emerald-300/85'
-                      : 'border border-emerald-400/45'
-                  }`}
-                  title={enchant.name || 'Enchant'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <img src={getIconUrl(enchant.icon)} alt="" className="h-full w-full" loading="lazy" />
-                </a>
-              ) : (
-                <span
-                  className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-emerald-500/5 text-[9px] font-bold leading-none text-emerald-200 ${
-                    upgradeState === 'upgrade'
-                      ? 'border-2 border-emerald-300/85'
-                      : 'border border-emerald-400/35'
-                  }`}
-                  title="Enchant slot available"
-                >
-                  E
-                </span>
-              ))}
-          </>
-        }
       />
     </div>
   );

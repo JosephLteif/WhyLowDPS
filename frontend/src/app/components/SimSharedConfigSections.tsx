@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
 import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
@@ -17,6 +18,8 @@ import {
 } from '../lib/default-options';
 import ConsumableSelect, { buildQualityMaxByFamily } from './shared/ConsumableSelect';
 import RaidBuffGrid from './shared/RaidBuffGrid';
+import ToggleOptionCard from './shared/ToggleOptionCard';
+import ConsumablePicker from './shared/ConsumablePicker';
 
 const EXPERT_TABS = [
   {
@@ -521,6 +524,11 @@ export function FightSetupOptions() {
 }
 
 export function ConsumablesAndRaidBuffsOptions() {
+  const pathname = usePathname();
+  const multiSelectAllowed =
+    pathname.startsWith('/top-gear') ||
+    pathname.startsWith('/analysis/consumable-matrix') ||
+    pathname.startsWith('/drop-finder');
   const {
     simcInput,
     simcFooter,
@@ -585,6 +593,76 @@ export function ConsumablesAndRaidBuffsOptions() {
     },
   };
   const [buffSource, setBuffSource] = useState<Record<string, 'default' | 'manual' | 'override'>>({});
+  const arraysEqual = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((v, i) => v === b[i]);
+  const readStoredTokens = (key: string): string[] => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+  const [multiConsumableMode, setMultiConsumableMode] = useState(() => {
+    try {
+      return localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [matrixFlasks, setMatrixFlasks] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_flasks'));
+  const [matrixFoods, setMatrixFoods] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_foods'));
+  const [matrixPotions, setMatrixPotions] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_potions'));
+  const [matrixAugments, setMatrixAugments] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_augments'));
+  const [matrixTempEnchants, setMatrixTempEnchants] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_temp_enchants'));
+  useEffect(() => {
+    const rehydrate = () => {
+      try {
+        const nextEnabled = localStorage.getItem('whylowdps_multi_consumables_enabled') === 'true';
+        setMultiConsumableMode((prev) => (prev === nextEnabled ? prev : nextEnabled));
+      } catch {}
+      const nextFlasks = readStoredTokens('whylowdps_matrix_flasks');
+      const nextFoods = readStoredTokens('whylowdps_matrix_foods');
+      const nextPotions = readStoredTokens('whylowdps_matrix_potions');
+      const nextAugments = readStoredTokens('whylowdps_matrix_augments');
+      const nextTempEnchants = readStoredTokens('whylowdps_matrix_temp_enchants');
+      setMatrixFlasks((prev) => (arraysEqual(prev, nextFlasks) ? prev : nextFlasks));
+      setMatrixFoods((prev) => (arraysEqual(prev, nextFoods) ? prev : nextFoods));
+      setMatrixPotions((prev) => (arraysEqual(prev, nextPotions) ? prev : nextPotions));
+      setMatrixAugments((prev) => (arraysEqual(prev, nextAugments) ? prev : nextAugments));
+      setMatrixTempEnchants((prev) =>
+        arraysEqual(prev, nextTempEnchants) ? prev : nextTempEnchants
+      );
+    };
+    window.addEventListener('whylowdps-consumables-matrix-changed', rehydrate);
+    return () => window.removeEventListener('whylowdps-consumables-matrix-changed', rehydrate);
+  }, []);
+  useEffect(() => {
+    if (!multiSelectAllowed && multiConsumableMode) {
+      setMultiConsumableMode(false);
+    }
+  }, [multiSelectAllowed, multiConsumableMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('whylowdps_multi_consumables_enabled', String(multiConsumableMode));
+      localStorage.setItem('whylowdps_matrix_flasks', JSON.stringify(matrixFlasks));
+      localStorage.setItem('whylowdps_matrix_foods', JSON.stringify(matrixFoods));
+      localStorage.setItem('whylowdps_matrix_potions', JSON.stringify(matrixPotions));
+      localStorage.setItem('whylowdps_matrix_augments', JSON.stringify(matrixAugments));
+      localStorage.setItem('whylowdps_matrix_temp_enchants', JSON.stringify(matrixTempEnchants));
+    } catch {}
+  }, [
+    multiConsumableMode,
+    matrixFlasks,
+    matrixFoods,
+    matrixPotions,
+    matrixAugments,
+    matrixTempEnchants,
+  ]);
+
 
   const setBuffManual = (key: string, value: boolean) => {
     const binding = raidBuffBindings[key];
@@ -701,74 +779,76 @@ export function ConsumablesAndRaidBuffsOptions() {
             once.
           </p>
         </div>
+        {multiSelectAllowed && (
+          <ToggleOptionCard
+            checked={multiConsumableMode}
+            onToggle={() => {
+              setMultiConsumableMode((v) => !v);
+            }}
+            title="Multi-select"
+            description="Enable selecting several options and tiers per category."
+          />
+        )}
         <div className="grid gap-3 lg:grid-cols-2">
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
-              Flask
-            </p>
-            <ConsumableSelect
-              label="Active Flask"
-              value={consumableFlask}
-              onChange={setConsumableFlask}
-              options={flasks}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
+          <ConsumablePicker
+            title="Flask"
+            label="Active Flask"
+            mode={multiConsumableMode ? 'multi' : 'single'}
+            singleValue={consumableFlask}
+            onSingleChange={setConsumableFlask}
+            multiValues={matrixFlasks}
+            onMultiChange={setMatrixFlasks}
+            options={flasks}
+            disabled={lockSingleConsumableOptions}
+          />
 
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
-              Potion
-            </p>
-            <ConsumableSelect
-              label="Active Potion"
-              value={consumablePotion}
-              onChange={setConsumablePotion}
-              options={potions}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
+          <ConsumablePicker
+            title="Potion"
+            label="Active Potion"
+            mode={multiConsumableMode ? 'multi' : 'single'}
+            singleValue={consumablePotion}
+            onSingleChange={setConsumablePotion}
+            multiValues={matrixPotions}
+            onMultiChange={setMatrixPotions}
+            options={potions}
+            disabled={lockSingleConsumableOptions}
+          />
 
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
-              Augmentation Rune
-            </p>
-            <ConsumableSelect
-              label="Active Augmentation Rune"
-              value={consumableAugmentation}
-              onChange={setConsumableAugmentation}
-              options={augments}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
+          <ConsumablePicker
+            title="Augmentation Rune"
+            label="Active Augmentation Rune"
+            mode={multiConsumableMode ? 'multi' : 'single'}
+            singleValue={consumableAugmentation}
+            onSingleChange={setConsumableAugmentation}
+            multiValues={matrixAugments}
+            onMultiChange={setMatrixAugments}
+            options={augments}
+            disabled={lockSingleConsumableOptions}
+          />
 
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">
-              Temporary Enchant
-            </p>
-            <ConsumableSelect
-              label="Main Hand Temporary Enchant"
-              value={consumableTemporaryEnchant}
-              onChange={setConsumableTemporaryEnchant}
-              options={tempEnchants}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
+          <ConsumablePicker
+            title="Temporary Enchant"
+            label="Main Hand Temporary Enchant"
+            mode={multiConsumableMode ? 'multi' : 'single'}
+            singleValue={consumableTemporaryEnchant}
+            onSingleChange={setConsumableTemporaryEnchant}
+            multiValues={matrixTempEnchants}
+            onMultiChange={setMatrixTempEnchants}
+            options={tempEnchants}
+            disabled={lockSingleConsumableOptions}
+          />
 
-          <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-            <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">Food</p>
-            <ConsumableSelect
-              label="Active Food Buff"
-              value={consumableFood}
-              onChange={setConsumableFood}
-              options={foods}
-              qualityMaxByFamily={qualityMaxByFamily}
-              disabled={lockSingleConsumableOptions}
-            />
-          </div>
+          <ConsumablePicker
+            title="Food"
+            label="Active Food Buff"
+            mode={multiConsumableMode ? 'multi' : 'single'}
+            singleValue={consumableFood}
+            onSingleChange={setConsumableFood}
+            multiValues={matrixFoods}
+            onMultiChange={setMatrixFoods}
+            options={foods}
+            disabled={lockSingleConsumableOptions}
+          />
         </div>
       </div>
 

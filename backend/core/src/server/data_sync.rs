@@ -7,10 +7,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 
 use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 use crate::server::blizzard::BlizzardState;
+use crate::server::wow_data_map;
 use crate::storage::JobStorage;
 
 const IMAGE_CACHE_VERSION: &str = "bapi3";
@@ -1010,8 +1012,10 @@ pub async fn get_data_file_content(
                 .json(json!({"detail": format!("Failed to read file: {}", err)}));
         }
     };
+    let no_truncate_keys = ["runtime_wowhead_zones_index"];
+    let should_truncate = !no_truncate_keys.contains(&entry.key.as_str());
     let max_preview_len = 250_000usize;
-    let truncated = content.len() > max_preview_len;
+    let truncated = should_truncate && content.len() > max_preview_len;
     let preview = if truncated {
         content.chars().take(max_preview_len).collect::<String>()
     } else {
@@ -1225,6 +1229,56 @@ pub async fn get_data_image(
         .append_header(("Cache-Control", "no-store, no-cache, must-revalidate"))
         .content_type(content_type_for_extension(ext))
         .body(bytes)
+}
+
+pub async fn get_wow_data_map(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
+    let use_wow_data_map = std::env::var("USE_WOW_DATA_MAP")
+        .ok()
+        .map(|v| v.eq_ignore_ascii_case("1") || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(cfg!(debug_assertions));
+
+    if !use_wow_data_map {
+        return HttpResponse::NotFound().json(json!({
+            "detail": "wow-data-map endpoint disabled by feature flag"
+        }));
+    }
+
+    let Some(root) = data_dir.get_ref().clone() else {
+        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
+    };
+
+    match wow_data_map::load_wow_data_map(&root) {
+        Ok(v) => HttpResponse::Ok().json(v),
+        Err(err) => HttpResponse::NotFound().json(json!({
+            "detail": err,
+            "hint": "Run data sync to generate wow-data-map.json"
+        })),
+    }
+}
+
+pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
+    let Some(root) = data_dir.get_ref().clone() else {
+        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
+    };
+    let runtime_path = root.join("zones-encounters-index.json");
+    let bundled_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../resources")
+        .join("zones-encounters-index.json");
+    let path = if runtime_path.exists() {
+        runtime_path
+    } else {
+        bundled_path
+    };
+
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match serde_json::from_str::<Value>(&content) {
+            Ok(v) => HttpResponse::Ok().json(v),
+            Err(err) => HttpResponse::InternalServerError()
+                .json(json!({"detail": format!("Failed to parse {}: {}", path.display(), err)})),
+        },
+        Err(err) => HttpResponse::NotFound()
+            .json(json!({"detail": format!("Failed to read {}: {}", path.display(), err)})),
+    }
 }
 
 async fn download_raidbots_file(
@@ -1546,6 +1600,8 @@ async fn perform_sync(
     data_dir: Option<PathBuf>,
     force_refresh: bool,
 ) -> Result<(), String> {
+    let request_timeout = Duration::from_secs(15);
+
     // 1. Fetch from Raidbots
     let base_url = "https://www.raidbots.com/static/data/live";
     let metadata_url = format!("{}/metadata.json", base_url);
@@ -1555,16 +1611,61 @@ async fn perform_sync(
         *p = "Metadata:0:1:Checking Raidbots metadata...".to_string();
     }
 
-    let res = blizzard
-        .client
-        .get(&metadata_url)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch metadata: {}", e))?;
-    let metadata_text = res
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let metadata_text = match tokio::time::timeout(
+        request_timeout,
+        blizzard.client.get(&metadata_url).send(),
+    )
+    .await
+    {
+        Ok(Ok(res)) => res
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read metadata: {}", e))?,
+        Ok(Err(e)) => {
+            if let Some(ref dir) = data_dir {
+                let local_metadata_path = dir.join("metadata.json");
+                if local_metadata_path.exists() {
+                    eprintln!(
+                        "Raidbots metadata fetch failed ({}). Falling back to cached metadata.json.",
+                        e
+                    );
+                    std::fs::read_to_string(&local_metadata_path).map_err(|ioe| {
+                        format!(
+                            "Failed to fetch metadata ({}) and failed to read cached metadata ({}): {}",
+                            e,
+                            local_metadata_path.display(),
+                            ioe
+                        )
+                    })?
+                } else {
+                    return Err(format!("Failed to fetch metadata: {}", e));
+                }
+            } else {
+                return Err(format!("Failed to fetch metadata: {}", e));
+            }
+        }
+        Err(_) => {
+            if let Some(ref dir) = data_dir {
+                let local_metadata_path = dir.join("metadata.json");
+                if local_metadata_path.exists() {
+                    eprintln!(
+                        "Raidbots metadata request timed out. Falling back to cached metadata.json."
+                    );
+                    std::fs::read_to_string(&local_metadata_path).map_err(|ioe| {
+                        format!(
+                            "Metadata request timed out and failed to read cached metadata ({}): {}",
+                            local_metadata_path.display(),
+                            ioe
+                        )
+                    })?
+                } else {
+                    return Err("Raidbots metadata request timed out and no cached metadata.json exists".to_string());
+                }
+            } else {
+                return Err("Raidbots metadata request timed out".to_string());
+            }
+        }
+    };
 
     // Check if we need to sync based on metadata changes
     let mut skip_raidbots = false;
@@ -1613,11 +1714,9 @@ async fn perform_sync(
                     })?;
                 }
 
-                let file_res = blizzard
-                    .client
-                    .get(&file_url)
-                    .send()
+                let file_res = tokio::time::timeout(request_timeout, blizzard.client.get(&file_url).send())
                     .await
+                    .map_err(|_| format!("Timed out while downloading {}", file_name))?
                     .map_err(|e| format!("Failed to download {}: {}", file_name, e))?;
                 let content = file_res
                     .bytes()
@@ -1953,6 +2052,9 @@ async fn perform_sync(
         let runtime_file = dir.join("blizzard-runtime-data.json");
         if runtime_file.exists() {
             crate::item_db::hydrate_runtime_metadata(&runtime_file);
+        }
+        if let Err(err) = wow_data_map::write_wow_data_map(dir) {
+            eprintln!("wow-data-map generation warning: {}", err);
         }
     }
 
@@ -2293,6 +2395,9 @@ async fn perform_dungeon_sync(
         let runtime_file = dir.join("blizzard-runtime-data.json");
         if runtime_file.exists() {
             crate::item_db::hydrate_runtime_metadata(&runtime_file);
+        }
+        if let Err(err) = wow_data_map::write_wow_data_map(dir) {
+            eprintln!("wow-data-map generation warning: {}", err);
         }
     }
 

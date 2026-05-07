@@ -222,21 +222,26 @@ pub(super) async fn list_consumable_options(
     let mut augments = normalize(&crate::item_db::augment_options_raw(), false);
     let mut temp_enchants = normalize(&crate::item_db::temp_enchant_options_raw(), true);
 
-    fn keep_latest_expansion_only(items: &mut Vec<Value>) {
-        let max_exp = items
-            .iter()
-            .filter_map(|v| v.get("expansion").and_then(|e| e.as_i64()))
-            .max();
-        if let Some(max_exp) = max_exp {
-            items.retain(|v| v.get("expansion").and_then(|e| e.as_i64()) == Some(max_exp));
-        }
+    fn keep_expansion_only(items: &mut Vec<Value>, expansion: i64) {
+        items.retain(|v| v.get("expansion").and_then(|e| e.as_i64()) == Some(expansion));
     }
 
-    keep_latest_expansion_only(&mut flasks);
-    keep_latest_expansion_only(&mut foods);
-    keep_latest_expansion_only(&mut potions);
-    keep_latest_expansion_only(&mut augments);
-    keep_latest_expansion_only(&mut temp_enchants);
+    let target_expansion = [&flasks, &foods, &potions, &augments, &temp_enchants]
+        .iter()
+        .flat_map(|items| {
+            items
+                .iter()
+                .filter_map(|v| v.get("expansion").and_then(|e| e.as_i64()))
+        })
+        .max();
+
+    if let Some(expansion) = target_expansion {
+        keep_expansion_only(&mut flasks, expansion);
+        keep_expansion_only(&mut foods, expansion);
+        keep_expansion_only(&mut potions, expansion);
+        keep_expansion_only(&mut augments, expansion);
+        keep_expansion_only(&mut temp_enchants, expansion);
+    }
 
     HttpResponse::Ok().json(json!({
         "flasks": flasks,

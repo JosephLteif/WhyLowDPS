@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
+import ConsumableMatrixSelector from '../components/shared/ConsumableMatrixSelector';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
-import { useItemIcons, useSpellIcons } from '../lib/useWowheadIcons';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { OptionEntry, RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
@@ -38,30 +38,8 @@ interface StatWeightsSimAgainState {
   matrixRaidBuffs?: string[];
 }
 
-function toggleListValue(list: string[], value: string): string[] {
-  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
-}
-
 function uniqueTokens(options: OptionEntry[]): string[] {
   return Array.from(new Set(options.map((o) => o.token || '').filter(Boolean)));
-}
-
-function optionLabel(opt: OptionEntry) {
-  return (opt.label || '').replace(/\s*\(Quality\s*[1-3]\)\s*$/i, '').replace(/\s+[1-3]\s*$/i, '');
-}
-
-function optionQualityFamily(opt: OptionEntry) {
-  const token = (opt.token || opt.key || '').replace(/^main_hand:/, '');
-  return token.replace(/_[1-3]$/i, '');
-}
-
-function remapQuality(quality: number | undefined, familyMax: number | undefined) {
-  if (!quality || quality < 1 || quality > 3) return undefined;
-  if (familyMax === 2) {
-    if (quality === 1) return 2;
-    if (quality === 2) return 3;
-  }
-  return quality;
 }
 
 interface StatWeightsPageContentProps {
@@ -146,19 +124,8 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
     matrixTempEnchants.length +
     matrixRaidBuffs.length;
 
-  const icons = useSpellIcons(
-    RAID_BUFF_MATRIX_OPTIONS.map((b) => b.spellId || 0).filter((v) => v > 0)
-  );
-  const allItemIds = useMemo(() => {
-    const all = [...flasks, ...foods, ...potions, ...augments, ...tempEnchants];
-    return all.map((o) => o.itemId).filter((id): id is number => !!id);
-  }, [flasks, foods, potions, augments, tempEnchants]);
-  const itemIcons = useItemIcons(allItemIds);
-
   useWowheadTooltips([
     mode,
-    icons,
-    itemIcons,
     consumableCount,
     flasks.length,
     foods.length,
@@ -422,296 +389,36 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
           <div className="space-y-3 rounded-lg border border-border bg-surface-2 p-4 text-xs text-zinc-400">
             <p>Compare selected consumables and raid buffs.</p>
             <div className="grid gap-3 lg:grid-cols-2">
-              {[
-                ['Flasks', flasks, matrixFlasks, setMatrixFlasks],
-                ['Food', foods, matrixFoods, setMatrixFoods],
-                ['Potions', potions, matrixPotions, setMatrixPotions],
-                ['Augmentation Runes', augments, matrixAugments, setMatrixAugments],
-                ['Temporary Enchants', tempEnchants, matrixTempEnchants, setMatrixTempEnchants],
-                ['Raid Buffs', RAID_BUFF_MATRIX_OPTIONS, matrixRaidBuffs, setMatrixRaidBuffs],
-              ].map(([title, options, selected, setSelected]) => (
-                <div
-                  key={title as string}
-                  className="space-y-2 rounded-md border border-border bg-surface p-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                      {title as string}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const all = (options as OptionEntry[]).map((o) => o.token || o.key);
-                          (setSelected as (v: string[]) => void)(all);
-                        }}
-                        className="text-[11px] text-zinc-500 hover:text-zinc-300"
-                        title="Select All"
-                      >
-                        All
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => (setSelected as (v: string[]) => void)([])}
-                        className="text-[11px] text-zinc-500 hover:text-zinc-300"
-                        title="Clear"
-                      >
-                        Clear
-                      </button>
-                      {title !== 'Raid Buffs' && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const tokens = uniqueTokens(
-                                (options as OptionEntry[]).filter((opt) => {
-                                  const max = Math.max(
-                                    ...(options as OptionEntry[])
-                                      .filter(
-                                        (o) => optionQualityFamily(o) === optionQualityFamily(opt)
-                                      )
-                                      .map((o) => o.craftingQuality || 0)
-                                  );
-                                  return remapQuality(opt.craftingQuality, max) === 3;
-                                })
-                              );
-                              (setSelected as (v: string[]) => void)(tokens);
-                            }}
-                            className="text-[11px] text-amber-500 hover:text-amber-300"
-                            title="Select All Gold"
-                          >
-                            Gold
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const tokens = uniqueTokens(
-                                (options as OptionEntry[]).filter((opt) => {
-                                  const max = Math.max(
-                                    ...(options as OptionEntry[])
-                                      .filter(
-                                        (o) => optionQualityFamily(o) === optionQualityFamily(opt)
-                                      )
-                                      .map((o) => o.craftingQuality || 0)
-                                  );
-                                  return remapQuality(opt.craftingQuality, max) === 2;
-                                })
-                              );
-                              (setSelected as (v: string[]) => void)(tokens);
-                            }}
-                            className="text-[11px] text-zinc-300 hover:text-white"
-                            title="Select All Silver"
-                          >
-                            Silver
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const tokens = uniqueTokens(
-                                (options as OptionEntry[]).filter((opt) => {
-                                  const max = Math.max(
-                                    ...(options as OptionEntry[])
-                                      .filter(
-                                        (o) => optionQualityFamily(o) === optionQualityFamily(opt)
-                                      )
-                                      .map((o) => o.craftingQuality || 0)
-                                  );
-                                  return remapQuality(opt.craftingQuality, max) === 1;
-                                })
-                              );
-                              (setSelected as (v: string[]) => void)(tokens);
-                            }}
-                            className="text-[11px] text-orange-400 hover:text-orange-300"
-                            title="Select All Bronze"
-                          >
-                            Bronze
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid gap-1">
-                    {(() => {
-                      const groups = new Map<
-                        string,
-                        {
-                          label: string;
-                          icon: string;
-                          itemId?: number;
-                          spellId?: number;
-                          items: OptionEntry[];
-                          familyMax: number;
-                        }
-                      >();
-                      for (const opt of options as OptionEntry[]) {
-                        const familyKey = optionQualityFamily(opt);
-                        if (!groups.has(familyKey)) {
-                          const icon = (opt.itemId && itemIcons.get(opt.itemId)) || opt.icon || '';
-                          groups.set(familyKey, {
-                            label: optionLabel(opt),
-                            icon,
-                            itemId: opt.itemId,
-                            spellId: opt.spellId,
-                            items: [],
-                            familyMax: 0,
-                          });
-                        }
-                        const group = groups.get(familyKey)!;
-                        group.items.push(opt);
-                        group.familyMax = Math.max(group.familyMax, opt.craftingQuality || 0);
-                      }
-
-                      return Array.from(groups.values()).map((group) => {
-                        const sortedItems = [...group.items].sort(
-                          (a, b) => (a.craftingQuality || 0) - (b.craftingQuality || 0)
-                        );
-                        const hasQuality = group.familyMax > 0;
-                        const isSingleNoQuality = sortedItems.length === 1 && !hasQuality;
-                        const isSelected =
-                          isSingleNoQuality &&
-                          (selected as string[]).includes(
-                            sortedItems[0].token || sortedItems[0].key
-                          );
-
-                        return (
-                          <div
-                            key={group.label}
-                            onClick={() => {
-                              if (isSingleNoQuality) {
-                                (setSelected as (v: string[]) => void)(
-                                  toggleListValue(
-                                    selected as string[],
-                                    sortedItems[0].token || sortedItems[0].key
-                                  )
-                                );
-                              }
-                            }}
-                            className={`flex items-center justify-between gap-3 rounded border px-2.5 py-1.5 transition-colors ${
-                              isSingleNoQuality ? 'cursor-pointer' : ''
-                            } ${
-                              isSelected
-                                ? 'border-gold/40 bg-gold/[0.08]'
-                                : 'border-border bg-surface-2 hover:border-zinc-700'
-                            }`}
-                          >
-                            <div className="flex min-w-0 flex-1 items-center gap-2">
-                              {group.itemId || group.spellId ? (
-                                <a
-                                  href={
-                                    group.itemId
-                                      ? `https://www.wowhead.com/item=${group.itemId}`
-                                      : `https://www.wowhead.com/spell=${group.spellId}`
-                                  }
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  data-wowhead={
-                                    group.itemId ? `item=${group.itemId}` : `spell=${group.spellId}`
-                                  }
-                                  className={`flex min-w-0 items-center gap-2 hover:text-zinc-100 ${
-                                    isSelected ? 'text-white' : 'text-zinc-300'
-                                  }`}
-                                  onClick={(e) => {
-                                    if (!isSingleNoQuality) {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }
-                                  }}
-                                >
-                                  <img
-                                    src={`https://wow.zamimg.com/images/wow/icons/small/${icons.get(group.spellId || 0) || group.icon}.jpg`}
-                                    alt=""
-                                    className="h-4 w-4 shrink-0 rounded-[3px]"
-                                  />
-                                  <span className="truncate text-[12px]">{group.label}</span>
-                                </a>
-                              ) : (
-                                <span
-                                  className={`flex min-w-0 items-center gap-2 ${
-                                    isSelected ? 'text-white' : 'text-zinc-300'
-                                  }`}
-                                >
-                                  <img
-                                    src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
-                                    alt=""
-                                    className="h-4 w-4 shrink-0 rounded-[3px]"
-                                  />
-                                  <span className="truncate text-[12px]">{group.label}</span>
-                                </span>
-                              )}
-                            </div>
-
-                            {hasQuality ? (
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                {sortedItems.map((opt) => {
-                                  const q = remapQuality(opt.craftingQuality, group.familyMax);
-                                  const isOptSelected = (selected as string[]).includes(
-                                    opt.token || opt.key
-                                  );
-                                  const style =
-                                    q === 3
-                                      ? isOptSelected
-                                        ? 'border-amber-300/60 bg-amber-500 text-black shadow-[0_0_8px_rgba(251,191,36,0.3)]'
-                                        : 'border-amber-300/30 bg-amber-500/10 text-amber-300/60 hover:border-amber-300/60 hover:bg-amber-500/20'
-                                      : q === 2
-                                        ? isOptSelected
-                                          ? 'border-zinc-300/60 bg-zinc-400 text-black shadow-[0_0_8px_rgba(161,161,170,0.3)]'
-                                          : 'border-zinc-300/30 bg-zinc-400/10 text-zinc-400/60 hover:border-zinc-300/60 hover:bg-zinc-400/20'
-                                        : isOptSelected
-                                          ? 'border-orange-400/60 bg-orange-600 text-black shadow-[0_0_8px_rgba(234,88,12,0.3)]'
-                                          : 'border-orange-400/30 bg-orange-600/10 text-orange-400/60 hover:border-orange-400/60 hover:bg-orange-600/20';
-
-                                  return (
-                                    <button
-                                      key={opt.key}
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        (setSelected as (v: string[]) => void)(
-                                          toggleListValue(
-                                            selected as string[],
-                                            opt.token || opt.key
-                                          )
-                                        );
-                                      }}
-                                      title={`Quality ${q}`}
-                                      className={`flex h-4 w-4 items-center justify-center rounded-[3px] border transition-all ${style}`}
-                                    >
-                                      <span className="sr-only">{q}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <div
-                                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[3px] border transition-all ${
-                                  isSelected
-                                    ? 'border-gold bg-gold shadow-[0_0_8px_rgba(212,175,55,0.3)]'
-                                    : 'border-zinc-700 bg-surface hover:border-zinc-500'
-                                }`}
-                              >
-                                {isSelected && (
-                                  <svg
-                                    className="h-2.5 w-2.5 text-black"
-                                    viewBox="0 0 12 12"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="3"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                  >
-                                    <polyline points="2 6.5 4.5 9 10 3" />
-                                  </svg>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      });
-                    })()}
-                  </div>
-                </div>
-              ))}
-              {/* Raid Buffs section removed for Consumable Matrix mode as requested */}
+              <ConsumableMatrixSelector
+                title="Flasks"
+                options={flasks}
+                selected={matrixFlasks}
+                onChange={setMatrixFlasks}
+              />
+              <ConsumableMatrixSelector
+                title="Food"
+                options={foods}
+                selected={matrixFoods}
+                onChange={setMatrixFoods}
+              />
+              <ConsumableMatrixSelector
+                title="Potions"
+                options={potions}
+                selected={matrixPotions}
+                onChange={setMatrixPotions}
+              />
+              <ConsumableMatrixSelector
+                title="Augmentation Runes"
+                options={augments}
+                selected={matrixAugments}
+                onChange={setMatrixAugments}
+              />
+              <ConsumableMatrixSelector
+                title="Temporary Enchants"
+                options={tempEnchants}
+                selected={matrixTempEnchants}
+                onChange={setMatrixTempEnchants}
+              />
             </div>
           </div>
         )}

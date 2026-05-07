@@ -259,6 +259,44 @@ fn sanitize_matrix_token(input: &str) -> Option<String> {
     }
 }
 
+fn top_gear_consumables_from_options(
+    options: &SimOptions,
+) -> Option<crate::profileset_generator::TopGearConsumableMatrix> {
+    let sanitize = |items: &[String]| -> Vec<String> {
+        items
+            .iter()
+            .filter_map(|raw| sanitize_matrix_token(raw))
+            .filter(|token| !token.trim().is_empty())
+            .collect()
+    };
+
+    let flasks = sanitize(&options.consumable_matrix_flasks);
+    let foods = sanitize(&options.consumable_matrix_foods);
+    let potions = sanitize(&options.consumable_matrix_potions);
+    let augmentations = sanitize(&options.consumable_matrix_augmentations);
+    let temporary_enchants = sanitize(&options.consumable_matrix_temporary_enchants)
+        .into_iter()
+        .filter(|token| !token.starts_with("off_hand:"))
+        .collect::<Vec<_>>();
+
+    if flasks.is_empty()
+        && foods.is_empty()
+        && potions.is_empty()
+        && augmentations.is_empty()
+        && temporary_enchants.is_empty()
+    {
+        return None;
+    }
+
+    Some(crate::profileset_generator::TopGearConsumableMatrix {
+        flasks,
+        foods,
+        potions,
+        augmentations,
+        temporary_enchants,
+    })
+}
+
 fn raid_buff_line(buff_key: &str) -> Option<&'static str> {
     match buff_key {
         "bloodlust" => Some("override.bloodlust=1"),
@@ -1960,6 +1998,7 @@ pub(super) async fn create_top_gear_sim(
         })
         .collect();
 
+    let consumables = top_gear_consumables_from_options(&req.options);
     let (generated_input, combo_count, combo_metadata) =
         match profileset_generator::generate_top_gear_input_with_talents(
             &base_profile,
@@ -1968,6 +2007,7 @@ pub(super) async fn create_top_gear_sim(
             req.max_combinations,
             &talent_builds,
             catalyst_charges,
+            consumables.as_ref(),
         ) {
             Ok(r) => r,
             Err(e) => {
@@ -2099,6 +2139,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         })
         .collect();
 
+    let consumables = top_gear_consumables_from_options(&req.options);
     match profileset_generator::generate_top_gear_input_with_talents(
         &base_profile,
         &items_by_slot,
@@ -2106,6 +2147,7 @@ pub(super) async fn get_top_gear_combo_count(req: web::Json<TopGearRequest>) -> 
         req.max_combinations,
         &talent_builds,
         catalyst_charges,
+        consumables.as_ref(),
     ) {
         Ok((_, count, _)) => HttpResponse::Ok().json(json!({ "combo_count": count })),
         Err(e) => {

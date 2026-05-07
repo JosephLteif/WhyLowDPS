@@ -51,6 +51,8 @@ interface GearItemRowProps {
   children?: React.ReactNode;
   /** Optional inline indicators shown next to the item name */
   headerExtras?: React.ReactNode;
+  /** Optional small overline shown above item name */
+  overline?: React.ReactNode;
   /** Optional indicators shown near the item icon */
   iconExtras?: React.ReactNode;
   /** Optional context menu handler (e.g. right-click item actions) */
@@ -92,6 +94,7 @@ export default function GearItemRow({
   optimized: _optimized,
   children,
   headerExtras,
+  overline,
   iconExtras,
   onContextMenu,
   specWarning,
@@ -103,6 +106,7 @@ export default function GearItemRow({
   const detailsIndentClass = hasLeadingControl ? 'pl-[1.875rem]' : 'pl-0';
   const mainIconUrl = getIconUrl(icon);
   const textAlignClass = reverse ? 'text-right' : '';
+  const detailParts = reverse ? [...(details || [])].reverse() : details || [];
 
   const content = (
     <>
@@ -208,6 +212,11 @@ export default function GearItemRow({
 
       {/* Name + details */}
       <div className={`min-w-0 flex-1 ${textAlignClass}`}>
+        {overline && (
+          <div className={`mb-0.5 flex min-w-0 items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
+            {overline}
+          </div>
+        )}
         <div className={`flex min-w-0 items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
           <span
             className={`block min-w-0 whitespace-normal break-words text-[16px] leading-tight ${
@@ -233,14 +242,14 @@ export default function GearItemRow({
         </span>
       )}
 
-      {details && details.length > 0 && (
+      {detailParts.length > 0 && (
         <div
           className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass} ${dimmed ? 'opacity-75' : ''} ${
             reverse ? 'text-right' : ''
           }`}
         >
           <div className={`flex flex-wrap items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
-            {details.map((p, i) =>
+            {detailParts.map((p, i) =>
               p.kind === 'gemIcon' && p.icon ? (
                 (() => {
                   const detailIconUrl = getIconUrl(p.icon);

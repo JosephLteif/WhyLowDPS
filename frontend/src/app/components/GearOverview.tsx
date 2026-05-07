@@ -432,11 +432,11 @@ export function GearSlotRow({
     });
   } else if (gemEligible) {
     details.push({
-      text: 'Socket Available',
+      text: 'Empty Socket',
       kind: 'iconText',
       badgeVariant: 'gem',
       icon: 'inv_misc_gem_variety_01',
-      color: 'text-sky-200 border-sky-400/45 bg-sky-500/10',
+      color: 'text-zinc-200 border-dashed border-zinc-500/60 bg-zinc-500/8',
     });
   }
   if (enchant?.name) {
@@ -459,11 +459,11 @@ export function GearSlotRow({
     });
   } else if (enchantEligible) {
     details.push({
-      text: 'Enchant Available',
+      text: 'No Enchant',
       kind: 'iconText',
       badgeVariant: 'enchant',
       icon: 'inv_enchant_shardprismaticsmall',
-      color: 'text-emerald-200 border-emerald-400/45 bg-emerald-500/10',
+      color: 'text-zinc-200 border-dashed border-zinc-500/60 bg-zinc-500/8',
     });
   }
   const hasAscendantVoidcore =

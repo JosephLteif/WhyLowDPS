@@ -1,6 +1,6 @@
 import { getIconUrl } from '../../lib/useItemInfo';
 
-export type ItemBadgeVariant = 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
+export type ItemBadgeVariant = 'neutral' | 'gem' | 'enchant' | 'embellishment' | 'mod' | 'source';
 
 interface ItemBadgeProps {
   text: string;
@@ -33,6 +33,7 @@ export default function ItemBadge({
     neutral: { text: 'text-zinc-300', bg: 'bg-white/[0.04]', border: 'border-white/10' },
     gem: { text: 'text-sky-200', bg: 'bg-sky-500/12', border: 'border-sky-400/45' },
     enchant: { text: 'text-emerald-200', bg: 'bg-emerald-500/12', border: 'border-emerald-400/45' },
+    embellishment: { text: 'text-violet-200', bg: 'bg-violet-500/10', border: 'border-violet-400/45' },
     mod: { text: 'text-amber-200', bg: 'bg-amber-500/12', border: 'border-amber-400/35' },
     source: { text: 'text-zinc-200', bg: 'bg-white/[0.06]', border: 'border-white/15' },
   };
@@ -41,14 +42,37 @@ export default function ItemBadge({
   const body = (
     <>
       {icon ? (
-        <img
-          src={getIconUrl(icon)}
-          alt=""
-          width={iconSize}
-          height={iconSize}
-          className="shrink-0 rounded-[3px]"
-          loading="lazy"
-        />
+        href || wowheadData ? (
+          <a
+            href={href}
+            data-wowhead={wowheadData}
+            title={wowheadData ? undefined : title || text}
+            className="shrink-0"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.preventDefault()}
+          >
+            <img
+              src={getIconUrl(icon)}
+              alt=""
+              width={iconSize}
+              height={iconSize}
+              className="shrink-0 rounded-[3px]"
+              loading="lazy"
+            />
+          </a>
+        ) : (
+          <span className="shrink-0" title={title || text}>
+            <img
+              src={getIconUrl(icon)}
+              alt=""
+              width={iconSize}
+              height={iconSize}
+              className="shrink-0 rounded-[3px]"
+              loading="lazy"
+            />
+          </span>
+        )
       ) : null}
       <span className="min-w-0 whitespace-normal break-words leading-snug">{text}</span>
     </>
@@ -58,24 +82,8 @@ export default function ItemBadge({
     'inline-flex min-w-0 max-w-full items-start gap-1 rounded-md border px-1.5 py-0.5 text-[12px] leading-snug';
   const resolvedClass = `${baseClass} ${defaults.text} ${defaults.bg} ${defaults.border} ${textClassName} ${backgroundClassName} ${borderClassName} ${className}`.trim();
 
-  if (href) {
-    return (
-      <a
-        href={href}
-        data-wowhead={wowheadData}
-        title={wowheadData ? undefined : title || text}
-        className={resolvedClass}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.preventDefault()}
-      >
-        {body}
-      </a>
-    );
-  }
-
   return (
-    <span title={title || text} className={resolvedClass}>
+    <span className={resolvedClass}>
       {body}
     </span>
   );

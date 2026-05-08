@@ -9,7 +9,7 @@ interface DetailPart {
   text: string;
   color?: string;
   kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
-  badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
+  badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'embellishment' | 'mod' | 'source';
   icon?: string;
   href?: string;
   wowheadData?: string;
@@ -213,7 +213,7 @@ export default function GearItemRow({
       {/* Name + details */}
       <div className={`min-w-0 flex-1 ${textAlignClass}`}>
         {overline && (
-          <div className={`mb-0.5 flex min-w-0 items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
+          <div className={`mb-1 flex min-w-0 items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
             {overline}
           </div>
         )}
@@ -244,7 +244,7 @@ export default function GearItemRow({
 
       {detailParts.length > 0 && (
         <div
-          className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass} ${dimmed ? 'opacity-75' : ''} ${
+          className={`min-w-0 basis-full pt-1 ${detailsIndentClass} ${dimmed ? 'opacity-75' : ''} ${
             reverse ? 'text-right' : ''
           }`}
         >
@@ -312,7 +312,7 @@ export default function GearItemRow({
       )}
 
       {specWarning && (
-        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass} ${reverse ? 'text-right' : ''}`}>
+        <div className={`min-w-0 basis-full pt-1 ${detailsIndentClass} ${reverse ? 'text-right' : ''}`}>
           <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-amber-400/40 bg-amber-500/12 px-2 py-1 text-[12px] font-semibold text-amber-200">
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-amber-500/20 text-amber-300">
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
@@ -325,7 +325,7 @@ export default function GearItemRow({
       )}
 
       {limitWarning && (
-        <div className={`min-w-0 basis-full pt-0.5 ${detailsIndentClass}`}>
+        <div className={`min-w-0 basis-full pt-1 ${detailsIndentClass}`}>
           <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-red-400/45 bg-red-500/12 px-2 py-1 text-[12px] font-semibold text-red-200">
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-red-500/20 text-red-300">
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
@@ -340,7 +340,7 @@ export default function GearItemRow({
   );
 
   // Row styling
-  const baseClass = `flex flex-wrap items-start gap-x-2.5 gap-y-1 rounded-md px-2.5 py-2 transition-colors ${
+  const baseClass = `flex flex-wrap items-start gap-x-3 gap-y-1.5 rounded-md px-3 py-3 transition-colors ${
     reverse ? 'flex-row-reverse' : ''
   }`;
 

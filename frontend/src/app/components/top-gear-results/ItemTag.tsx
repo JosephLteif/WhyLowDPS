@@ -99,17 +99,13 @@ export default function ItemTag({
           <span className="shrink-0 text-[14px] text-zinc-100/90">({slotName})</span>
 
           {sourceLabel && (
-            <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-px text-[12px] text-cyan-200/90">
-              <img
-                src={getIconUrl(sourceIcon)}
-                alt=""
-                width={14}
-                height={14}
-                className="h-[14px] w-[14px] shrink-0 rounded-sm"
-                loading="lazy"
-              />
-              {sourceLabel}
-            </span>
+            <ItemBadge
+              text={sourceLabel}
+              variant="source"
+              icon={sourceIcon}
+              className="border-cyan-400/30 bg-cyan-500/10 text-cyan-200/90"
+              iconSize={14}
+            />
           )}
 
           {item.upgrade_levels ? (
@@ -134,7 +130,7 @@ export default function ItemTag({
         </div>
       </div>
 
-      <div className="col-start-2 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5">
+      <div className="col-span-2 col-start-1 row-start-2 flex min-w-0 flex-wrap items-center gap-1.5">
           {ilevelText && (
             <span
               title={ilevelTooltip}
@@ -151,55 +147,37 @@ export default function ItemTag({
           )}
 
           {enchant?.icon && (
-            <a
+            <ItemBadge
+              text={enchant.name || 'Enchant'}
+              variant="enchant"
+              icon={enchant.icon}
               href={enchantHref}
-              data-wowhead={enchantTooltipData}
-              className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded border px-1.5 py-px text-[12px] ${
+              wowheadData={enchantTooltipData}
+              title={enchant.name || 'Enchant'}
+              className={
                 enchantChanged
                   ? 'border-emerald-300/80 bg-emerald-500/22 text-emerald-100 ring-1 ring-emerald-300/60'
                   : 'border-emerald-400/45 bg-emerald-500/10 text-emerald-200/90'
-              }`}
-              title={enchant.name || 'Enchant'}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.preventDefault()}
-            >
-              <img
-                src={getIconUrl(enchant.icon)}
-                alt=""
-                width={14}
-                height={14}
-                className="h-[14px] w-[14px] shrink-0 rounded-sm"
-                loading="lazy"
-              />
-              <span className="truncate">{enchant.name || 'Enchant'}</span>
-            </a>
+              }
+              iconSize={14}
+            />
           )}
 
           {gem?.icon && (
-            <a
+            <ItemBadge
+              text={gem.name || 'Gem'}
+              variant="gem"
+              icon={gem.icon}
               href={gemHref}
-              data-wowhead={gemTooltipData}
-              className={`inline-flex min-w-0 max-w-full items-center gap-1 rounded border px-1.5 py-px text-[12px] ${
+              wowheadData={gemTooltipData}
+              title={gem.name || 'Gem'}
+              className={
                 gemChanged
                   ? 'border-sky-300/80 bg-sky-500/22 text-sky-100 ring-1 ring-sky-300/60'
                   : 'border-sky-400/45 bg-sky-500/10 text-sky-200/90'
-              }`}
-              title={gem.name || 'Gem'}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.preventDefault()}
-            >
-              <img
-                src={getIconUrl(gem.icon)}
-                alt=""
-                width={14}
-                height={14}
-                className="h-[14px] w-[14px] shrink-0 rounded-sm"
-                loading="lazy"
-              />
-              <span className="truncate">{gem.name || 'Gem'}</span>
-            </a>
+              }
+              iconSize={14}
+            />
           )}
       </div>
     </div>

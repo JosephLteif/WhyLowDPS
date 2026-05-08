@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   API_URL,
   DungeonAffix,
@@ -19,64 +18,21 @@ import {
   triggerDungeonDataRefresh,
 } from '../lib/api';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import {
+  AffixCard,
+  DungeonCard,
+  DisplayAffix,
+  WowheadZoneIndexEntry,
+  getCurrentMplusDungeonIds,
+  getLocalInstanceImageUrl,
+  getRaidInstances,
+  mergeWithInstancesFallback,
+  normalizeAffixName,
+  normalizeDungeonName,
+  normalizeImageUrl,
+  normalizeMplusName,
+} from './shared';
 import type { Instance } from '../drop-finder/types';
-
-const DUNGEON_PLACEHOLDERS: Record<string, { icon: string; zone: string }> = {
-  'Siege of Boralus': { icon: 'https://wow.zamimages.com/logo/PoS.jpg', zone: 'Darkshore' },
-  Atalzar: { icon: 'https://wow.zamimages.com/logo/Atalzar.jpg', zone: 'Nazmir' },
-  Freehold: { icon: 'https://wow.zamimages.com/logo/Freehold.jpg', zone: 'Zuldazar' },
-  'Kings Rest': { icon: 'https://wow.zamimages.com/logo/KingsRest.jpg', zone: 'Zuldazar' },
-  'Temple of Sethraliss': {
-    icon: 'https://wow.zamimages.com/logo/TempleSethraliss.jpg',
-    zone: 'Zuljan Reach',
-  },
-  'Shrine of the Storm': { icon: 'https://wow.zamimages.com/logo/Shrine.jpg', zone: 'Vol dun' },
-  'Necrotic Wake': { icon: 'https://wow.zamimages.com/logo/NecroticWake.jpg', zone: 'Maldraxxus' },
-  Plaguefall: { icon: 'https://wow.zamimages.com/logo/Plaguefall.jpg', zone: 'Maldraxxus' },
-  'Halls of Atonement': {
-    icon: 'https://wow.zamimages.com/logo/HallsAtonement.jpg',
-    zone: 'Maldraxxus',
-  },
-  'Spires of Ascension': {
-    icon: 'https://wow.zamimages.com/logo/SpiresAscension.jpg',
-    zone: 'Bastion',
-  },
-  'Sanguine Depths': {
-    icon: 'https://wow.zamimages.com/logo/SanguineDepths.jpg',
-    zone: 'Maldraxxus',
-  },
-  'Theater of Pain': { icon: 'https://wow.zamimages.com/logo/TheaterPain.jpg', zone: 'Maldraxxus' },
-  Tazavesh: { icon: 'https://wow.zamimages.com/logo/Tazavesh.jpg', zone: 'Mechagon' },
-};
-
-function getDungeonPlaceholder(name: string) {
-  const lower = name.toLowerCase();
-  for (const [key, val] of Object.entries(DUNGEON_PLACEHOLDERS)) {
-    if (lower.includes(key.toLowerCase())) {
-      return val;
-    }
-  }
-  return null;
-}
-
-function formatMs(ms?: number | null): string | null {
-  if (!ms || ms <= 0) return null;
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
-function normalizeMplusName(name: string): string {
-  return String(name || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function normalizeImageUrl(url?: string | null): string | undefined {
-  return url ?? undefined;
-}
 
 function mergeWithPreviousDungeonData(
   nextDungeons: DungeonInfo[],
@@ -132,292 +88,6 @@ function mergeWithPreviousDungeonData(
   });
 }
 
-function getLocalInstanceImageUrl(instanceId?: number | null): string | null {
-  if (!instanceId || instanceId <= 0) return null;
-  return `${API_URL}/api/data/images/instance/${instanceId}?v=bapi3`;
-}
-
-function normalizeDungeonName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function getCurrentMplusDungeonIds(instances: Instance[]): Set<number> {
-  const mplusBucket =
-    instances.find((instance) => instance.type === 'mplus-chest') ||
-    instances.find((instance) => instance.name.toLowerCase() === 'mythic+ dungeons');
-  if (!mplusBucket || !mplusBucket.encounters?.length) {
-    return new Set<number>();
-  }
-  return new Set<number>(mplusBucket.encounters.map((encounter) => encounter.id));
-}
-
-function getRaidInstances(instances: Instance[]): Instance[] {
-  return instances.filter((instance) => String(instance.type || '').toLowerCase() === 'raid');
-}
-
-function mergeWithInstancesFallback(dungeons: DungeonInfo[], instances: Instance[]): DungeonInfo[] {
-  if (!instances.length) return dungeons;
-
-  const instancesById = new Map<number, Instance>();
-  const instancesByName = new Map<string, Instance>();
-  for (const instance of instances) {
-    instancesById.set(instance.id, instance);
-    instancesByName.set(normalizeDungeonName(instance.name), instance);
-  }
-
-  return dungeons.map((dungeon) => {
-    const fallback =
-      instancesById.get(dungeon.id) || instancesByName.get(normalizeDungeonName(dungeon.name));
-    if (!fallback) return dungeon;
-
-    const fallbackEncounterNames = (fallback.encounters ?? [])
-      .map((encounter) => encounter.name)
-      .filter((name): name is string => !!name);
-    const hasEncounterNames = (dungeon.encounters?.length ?? 0) > 0;
-    const mergedEncounters: string[] = hasEncounterNames
-      ? (dungeon.encounters ?? [])
-      : fallbackEncounterNames;
-    const mergedNumBosses =
-      dungeon.num_bosses && dungeon.num_bosses > 0
-        ? dungeon.num_bosses
-        : mergedEncounters.length > 0
-          ? mergedEncounters.length
-          : null;
-
-    return {
-      ...dungeon,
-      zone: dungeon.zone || fallback.zone || null,
-      encounters: mergedEncounters,
-      num_bosses: mergedNumBosses,
-    };
-  });
-}
-
-function normalizeAffixName(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-type DisplayAffix = DungeonAffix & {
-  wowhead_url?: string | null;
-};
-type WowheadZoneIndexEntry = {
-  id?: number;
-  name?: string;
-  instance?: number;
-  is_raid?: boolean;
-  is_dungeon?: boolean;
-  expansion?: number | null;
-  url?: string;
-  encounters?: Array<{ name?: string }>;
-};
-
-function AffixCard({ affix }: { affix: DisplayAffix }) {
-  const iconUrl = affix.icon || null;
-  const wowheadUrl =
-    affix.wowhead_url || (affix.spell_id ? `https://wowhead.com/spell=${affix.spell_id}` : null);
-  const iconNode = iconUrl ? (
-    <img src={iconUrl} alt="" className="h-10 w-10 rounded object-cover" loading="lazy" />
-  ) : (
-    <span className="text-xl font-bold text-gold">{affix.name[0]}</span>
-  );
-  const wrappedIconNode = wowheadUrl ? (
-    <a
-      href={wowheadUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex h-10 w-10 items-center justify-center"
-      aria-label={`Open ${affix.name} on Wowhead`}
-    >
-      {iconNode}
-    </a>
-  ) : (
-    iconNode
-  );
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-white/15 bg-zinc-900/75 p-4">
-      <div
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800">
-        {wrappedIconNode}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="mb-1 text-lg font-bold leading-tight text-zinc-100 break-words">{affix.name}</p>
-        <p className="text-sm leading-6 text-zinc-300 break-words">{affix.description}</p>
-      </div>
-    </div>
-  );
-}
-
-function InfoPill({ label, value }: { label: string; value?: string | number | null }) {
-  if (value === null || value === undefined || value === '') return null;
-  return (
-    <span className="rounded-md border border-white/10 bg-black/20 px-2 py-1 text-[11px] text-zinc-300">
-      <span className="mr-1 text-zinc-500">{label}:</span>
-      {value}
-    </span>
-  );
-}
-
-function DungeonCard({
-  dungeon,
-  mplusDetail,
-}: {
-  dungeon: DungeonInfo;
-  seasonName?: string;
-  mplusDetail?: MythicKeystoneDungeonDetail | null;
-}) {
-  const router = useRouter();
-  const detailsHref = `/dungeons/details/?id=${encodeURIComponent(String(dungeon.id))}`;
-  const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
-  const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
-  const imageUrl = localInstanceImage || dungeon.image_url || placeholder?.icon;
-  const [imageFailed, setImageFailed] = useState(false);
-  const zone = dungeon.zone || placeholder?.zone;
-  const detailUpgrades = (mplusDetail?.keystone_upgrades ?? [])
-    .map((upgrade) => ({
-      upgrade_level: Number(upgrade?.upgrade_level ?? 0),
-      qualifying_duration: Number(upgrade?.qualifying_duration ?? 0),
-    }))
-    .filter((upgrade) => upgrade.upgrade_level > 0 && upgrade.qualifying_duration > 0)
-    .sort((a, b) => a.upgrade_level - b.upgrade_level);
-  const oneChestDuration =
-    detailUpgrades.find((upgrade) => upgrade.upgrade_level === 1)?.qualifying_duration ?? null;
-  const timer = formatMs(dungeon.keystone_timer_ms ?? oneChestDuration);
-  const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
-  const wowheadZoneUrl =
-    dungeon.wowhead_id && dungeon.wowhead_id > 0
-      ? `https://www.wowhead.com/zone=${dungeon.wowhead_id}`
-      : null;
-  const rawPayload = dungeon.blizzard_api_data
-    ? JSON.stringify(dungeon.blizzard_api_data, null, 2)
-    : null;
-
-  return (
-    <article
-      role="button"
-      tabIndex={0}
-      onClick={() => router.push(detailsHref)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          router.push(detailsHref);
-        }
-      }}
-      className="group block rounded-xl border border-white/15 bg-zinc-900/80 p-4 transition-all hover:border-gold/50 hover:bg-zinc-900"
-    >
-      {imageUrl && !imageFailed ? (
-        <div className="relative mb-3 h-28 w-full overflow-hidden rounded-lg border border-white/10 bg-zinc-900">
-          <img
-            src={imageUrl}
-            alt=""
-            className="h-full w-full object-cover object-center"
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-          />
-        </div>
-      ) : (
-        <div
-          className="relative mb-3 flex h-28 w-full items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-black">
-          <img
-            src="/wow-logo.png"
-            alt="WoW"
-            className="h-[64%] w-[64%] max-h-24 max-w-24 object-contain opacity-95"
-            loading="lazy"
-          />
-        </div>
-      )}
-
-      <div className="mb-3 min-w-0">
-        <p className="truncate text-xl font-bold leading-tight text-zinc-100 sm:text-2xl">
-          {dungeon.name}
-        </p>
-        {zone && <p className="truncate text-sm text-zinc-300">{zone}</p>}
-        {dungeon.description && (
-          <p className="mt-1 line-clamp-2 text-sm text-zinc-200">{dungeon.description}</p>
-        )}
-        {wowheadZoneUrl && (
-          <div className="mt-2">
-            <a
-              href={wowheadZoneUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
-              aria-label={`Open ${dungeon.name} on Wowhead`}
-            >
-              View on Wowhead
-            </a>
-          </div>
-        )}
-      </div>
-
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        <InfoPill label="Min level" value={dungeon.minimum_level} />
-        <InfoPill label="Timer" value={timer} />
-        <InfoPill label="Map ID" value={dungeon.map_id} />
-        <InfoPill label="Challenge ID" value={dungeon.challenge_mode_id} />
-        <InfoPill label="Slug" value={dungeon.slug} />
-        <InfoPill label="Short" value={dungeon.short_name} />
-      </div>
-
-      {detailUpgrades.length > 0 ? (
-        <div className="mb-2">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Keystone Upgrade Timers
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {detailUpgrades.map((upgrade) => (
-              <span
-                key={`${dungeon.id}-upgrade-${upgrade.upgrade_level}`}
-                className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold"
-              >
-                +{upgrade.upgrade_level} ({formatMs(upgrade.qualifying_duration)})
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : dungeon.keystone_upgrades && dungeon.keystone_upgrades.length > 0 ? (
-        <div className="mb-2">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Keystone Upgrades
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {dungeon.keystone_upgrades.map((upgrade) => (
-              <span key={upgrade} className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">
-                +{upgrade}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {dungeon.encounters && dungeon.encounters.length > 0 && (
-        <div className="mb-2">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Encounters ({encounterCount})
-          </p>
-          <ul className="space-y-1 text-sm text-zinc-100">
-            {dungeon.encounters.map((encounter) => (
-              <li key={encounter}>{encounter}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {rawPayload && (
-        <details className="mt-2 rounded-md border border-white/10 bg-black/20 p-2">
-          <summary className="cursor-pointer text-xs font-semibold text-zinc-400">
-            Blizzard API Raw Data
-          </summary>
-          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words text-[10px] leading-4 text-zinc-400">
-            {rawPayload}
-          </pre>
-        </details>
-      )}
-    </article>
-  );
-}
-
 export default function DungeonsPage() {
   const [data, setData] = useState<DungeonSeasonData | null>(null);
   const [mplusDetailsByName, setMplusDetailsByName] = useState<Record<string, MythicKeystoneDungeonDetail>>({});
@@ -425,7 +95,6 @@ export default function DungeonsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [raids, setRaids] = useState<DungeonInfo[]>([]);
   const hasDungeons = (data?.rotation_dungeons?.length ?? 0) > 0;
   const backendError = (data as (DungeonSeasonData & { error?: string }) | null)?.error;
   const hasAnyBlizzardDetails =
@@ -591,7 +260,6 @@ export default function DungeonsPage() {
 
         if (!cancelled) {
           setGameState(gameDataState);
-          setRaids(raidRows);
           setData((previous) => ({
             ...seasonData,
             rotation_dungeons: mergeWithPreviousDungeonData(
@@ -804,7 +472,6 @@ export default function DungeonsPage() {
           : enrichedDungeons;
 
       setGameState(gameDataState);
-      setRaids(raidRows);
       setData((previous) => ({
         ...seasonData,
         rotation_dungeons: mergeWithPreviousDungeonData(
@@ -925,8 +592,8 @@ export default function DungeonsPage() {
               <DungeonCard
                 key={dungeon.id}
                 dungeon={dungeon}
-                seasonName={data.season_name}
                 mplusDetail={mplusDetailsByName[normalizeMplusName(dungeon.name)] || null}
+                detailsBasePath="/dungeons/details"
               />
             ))}
           </div>
@@ -938,25 +605,6 @@ export default function DungeonsPage() {
         )}
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-base font-bold uppercase tracking-wider text-zinc-300">
-          Raids ({raids.length})
-        </h2>
-        {raids.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {raids.map((raid) => (
-              <DungeonCard key={`raid-${raid.id}`} dungeon={raid} mplusDetail={null} />
-            ))}
-          </div>
-        ) : (
-          <div className="border-white/8 rounded-xl border bg-white/[0.02] px-4 py-6 text-center">
-            <p className="text-sm text-zinc-500">No raids available</p>
-            <p className="mt-2 text-xs text-zinc-600">
-              Raid data is loaded from zones-encounters-index.
-            </p>
-          </div>
-        )}
-      </section>
     </div>
   );
 }

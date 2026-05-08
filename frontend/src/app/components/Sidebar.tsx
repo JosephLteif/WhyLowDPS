@@ -81,14 +81,15 @@ const baseNavItems: NavItem[] = [
   {
     href: '/dungeons',
     label: 'Dungeons & Routes',
-    description: 'M+ dungeons, affixes, and routes.',
+    description: 'Dungeons, raids, and routes.',
     icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2v6z',
-    matchPaths: ['/dungeons', '/dungeon-routes'],
+    matchPaths: ['/dungeons', '/raids', '/dungeon-routes'],
     children: [
-      { href: '/dungeons', label: 'Dungeon Info', description: 'Rotation and affixes' },
+      { href: '/dungeons', label: 'Dungeons', description: 'Rotation and affixes' },
+      { href: '/raids', label: 'Raids', description: 'Raid instances and encounters' },
       {
         href: '/dungeon-routes',
-        label: 'Saved Routes',
+        label: 'Routes',
         description: 'Dungeon routes for simulation',
       },
     ],

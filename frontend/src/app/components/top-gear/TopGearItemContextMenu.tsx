@@ -111,6 +111,7 @@ export default function TopGearItemContextMenu({
   const [activeNestedSubmenu, setActiveNestedSubmenu] = useState<NestedSubmenuKey>(null);
   const [activeTierGroup, setActiveTierGroup] = useState<string | null>(null);
   const [upgradeLoadedForUid, setUpgradeLoadedForUid] = useState<string | null>(null);
+  const [hoveredActionKey, setHoveredActionKey] = useState<string | null>(null);
 
   useDismissOnOutside(rootRef, !!item, onClose);
 
@@ -120,6 +121,7 @@ export default function TopGearItemContextMenu({
     setActiveNestedSubmenu(null);
     setActiveTierGroup(null);
     setUpgradeLoadedForUid(null);
+    setHoveredActionKey(null);
   }, [item]);
 
   useEffect(() => {
@@ -181,23 +183,29 @@ export default function TopGearItemContextMenu({
   };
 
   const Action = ({
+    actionKey,
     label,
     onClick,
     danger,
     disabled,
+    onHover,
   }: {
+    actionKey: string;
     label: string;
     onClick: () => void;
     danger?: boolean;
     disabled?: boolean;
+    onHover?: () => void;
   }) => (
     <button
       type="button"
       disabled={disabled}
       onMouseEnter={() => {
-        setActiveSubmenu(null);
-        setActiveNestedSubmenu(null);
-        setActiveTierGroup(null);
+        setHoveredActionKey(actionKey);
+        onHover?.();
+      }}
+      onMouseLeave={() => {
+        setHoveredActionKey((current) => (current === actionKey ? null : current));
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -209,8 +217,12 @@ export default function TopGearItemContextMenu({
         disabled
           ? 'cursor-not-allowed text-zinc-500'
           : danger
-            ? 'text-rose-300 hover:bg-rose-500/10'
-            : 'text-zinc-200 hover:bg-white/[0.07]'
+            ? hoveredActionKey === actionKey
+              ? 'bg-rose-500/10 text-rose-300'
+              : 'text-rose-300 hover:bg-rose-500/10'
+            : hoveredActionKey === actionKey
+              ? 'bg-white/[0.07] text-zinc-100'
+              : 'text-zinc-200 hover:bg-white/[0.07]'
       }`}
     >
       {label}
@@ -228,34 +240,48 @@ export default function TopGearItemContextMenu({
     onOpen?: () => void;
     disabled?: boolean;
   }) => (
-    <button
-      type="button"
-      disabled={disabled}
-      onMouseEnter={() => {
-        if (disabled) return;
-        setActiveSubmenu(submenu);
-        if (submenu !== 'tags') setActiveNestedSubmenu(null);
-        if (submenu !== 'tier') setActiveTierGroup(null);
-        onOpen?.();
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        if (disabled) return;
-        setActiveSubmenu(submenu);
-        if (submenu !== 'tags') setActiveNestedSubmenu(null);
-        if (submenu !== 'tier') setActiveTierGroup(null);
-        onOpen?.();
-      }}
-      className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors ${
-        disabled
-          ? 'cursor-not-allowed text-zinc-500'
-          : 'text-zinc-200 hover:bg-white/[0.07]'
-      }`}
-    >
-      <span>{label}</span>
-      <span className="text-zinc-500">{'>'}</span>
-    </button>
+    (() => {
+      const isActive = activeSubmenu === submenu;
+      const actionKey = `submenu:${submenu}`;
+      return (
+        <button
+          type="button"
+          disabled={disabled}
+          onMouseEnter={() => {
+            if (disabled) return;
+            setHoveredActionKey(actionKey);
+            setActiveSubmenu(submenu);
+            if (submenu !== 'tags') setActiveNestedSubmenu(null);
+            if (submenu !== 'tier') setActiveTierGroup(null);
+            onOpen?.();
+          }}
+          onMouseLeave={() => {
+            setHoveredActionKey((current) => (current === actionKey ? null : current));
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (disabled) return;
+            setActiveSubmenu(submenu);
+            if (submenu !== 'tags') setActiveNestedSubmenu(null);
+            if (submenu !== 'tier') setActiveTierGroup(null);
+            onOpen?.();
+          }}
+          className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs ${
+            disabled
+              ? 'cursor-not-allowed text-zinc-500'
+              : isActive
+                ? 'bg-white/[0.07] text-zinc-100'
+                : hoveredActionKey === actionKey
+                  ? 'bg-white/[0.07] text-zinc-100'
+                : 'text-zinc-200 hover:bg-white/[0.07]'
+          }`}
+        >
+          <span>{label}</span>
+          <span className={isActive || hoveredActionKey === actionKey ? 'text-zinc-400' : 'text-zinc-500'}>{'>'}</span>
+        </button>
+      );
+    })()
   );
 
   const mainWidth = 240;
@@ -323,7 +349,7 @@ export default function TopGearItemContextMenu({
           e.stopPropagation();
         }}
       >
-        <div className="border-b border-border/60 px-3 py-2 text-[10px] uppercase tracking-widest text-zinc-500">
+        <div className="border-b border-border/60 bg-white/[0.02] px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
           Item Actions
         </div>
 
@@ -340,7 +366,13 @@ export default function TopGearItemContextMenu({
 
         {canCatalyst && (
           <Action
+            actionKey="convert-catalyst"
             label="Convert To Catalyst"
+            onHover={() => {
+              setActiveSubmenu(null);
+              setActiveNestedSubmenu(null);
+              setActiveTierGroup(null);
+            }}
             onClick={() => {
               onCatalystConvert(item);
               onClose();
@@ -348,13 +380,28 @@ export default function TopGearItemContextMenu({
           />
         )}
         <Action
+          actionKey="ascendant"
           label={isAscendantApplied ? 'Remove Ascendant Voidcore' : 'Apply Ascendant Voidcore'}
+          onHover={() => {
+            setActiveSubmenu(null);
+            setActiveNestedSubmenu(null);
+            setActiveTierGroup(null);
+          }}
           onClick={() => {
             onSetAscendant(item, !isAscendantApplied);
             onClose();
           }}
         />
-        <Action label="Close" onClick={onClose} />
+        <Action
+          actionKey="close"
+          label="Close"
+          onHover={() => {
+            setActiveSubmenu(null);
+            setActiveNestedSubmenu(null);
+            setActiveTierGroup(null);
+          }}
+          onClick={onClose}
+        />
       </div>
 
       {activeSubmenu === 'upgrade' && (
@@ -488,7 +535,13 @@ export default function TopGearItemContextMenu({
           style={{ left: enchantPos.left, top: enchantPos.top }}
         >
           <Action
+            actionKey="choose-enchant"
             label="Choose Enchant..."
+            onHover={() => {
+              setActiveSubmenu('enchant');
+              setActiveNestedSubmenu(null);
+              setActiveTierGroup(null);
+            }}
             onClick={() => {
               onOptimize(item);
               onClose();
@@ -503,7 +556,13 @@ export default function TopGearItemContextMenu({
           style={{ left: gemPos.left, top: gemPos.top }}
         >
           <Action
+            actionKey="choose-gem"
             label="Choose Gem..."
+            onHover={() => {
+              setActiveSubmenu('gem');
+              setActiveNestedSubmenu(null);
+              setActiveTierGroup(null);
+            }}
             onClick={() => {
               onOptimize(item);
               onClose();
@@ -543,7 +602,13 @@ export default function TopGearItemContextMenu({
             <span className="text-zinc-500">{'>'}</span>
           </button>
           <Action
+            actionKey="wishlist"
             label={wishlist ? 'Unmark Wishlist' : 'Mark As Wishlist'}
+            onHover={() => {
+              setActiveSubmenu('tags');
+              setActiveNestedSubmenu(null);
+              setActiveTierGroup(null);
+            }}
             onClick={() => {
               onSetWishlist(item, !wishlist);
               onClose();
@@ -562,16 +627,28 @@ export default function TopGearItemContextMenu({
           }}
         >
           <Action
+            actionKey="mark-vault"
             label="Mark As Vault"
             disabled={!canMarkOrigin || item.origin === 'vault'}
+            onHover={() => {
+              setActiveSubmenu('tags');
+              setActiveNestedSubmenu('origin');
+              setActiveTierGroup(null);
+            }}
             onClick={() => {
               onSetOrigin(item, 'vault');
               onClose();
             }}
           />
           <Action
+            actionKey="mark-bags"
             label="Mark As Bags"
             disabled={!canMarkOrigin || item.origin === 'bags'}
+            onHover={() => {
+              setActiveSubmenu('tags');
+              setActiveNestedSubmenu('origin');
+              setActiveTierGroup(null);
+            }}
             onClick={() => {
               onSetOrigin(item, 'bags');
               onClose();

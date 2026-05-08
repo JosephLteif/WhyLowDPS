@@ -8,6 +8,7 @@ export type GearIdentityInput = {
   ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
+  gem_ids?: number[];
   crafted_stats?: string[];
   embellishment_item_id?: number;
   modifier_item_ids?: number[];
@@ -25,9 +26,13 @@ export function buildGearItemIdentity(item: GearIdentityInput): string {
     item.modifier_item_ids && item.modifier_item_ids.length > 0
       ? `:m${[...item.modifier_item_ids].sort((a, b) => a - b).join('/')}`
       : '';
+  const gemSegment =
+    item.gem_ids && item.gem_ids.length > 0
+      ? `:g${[...item.gem_ids].filter((id) => id > 0).sort((a, b) => a - b).join('/')}`
+      : `:g${item.gem_id || 0}`;
 
   const ilevelSegment = item.includeIlevel === false ? '' : `:i${item.ilevel || 0}`;
-  return `${item.item_id}:${sortedBonuses.join(':')}:${item.origin}${ilevelSegment}:e${item.enchant_id || 0}:g${item.gem_id || 0}${crafted}${embellishment}${mods}`;
+  return `${item.item_id}:${sortedBonuses.join(':')}:${item.origin}${ilevelSegment}:e${item.enchant_id || 0}${gemSegment}${crafted}${embellishment}${mods}`;
 }
 
 export function buildGearItemUid(item: GearIdentityInput & { slot: string }): string {

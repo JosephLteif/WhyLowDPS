@@ -478,6 +478,29 @@ pub fn generate_droptimizer_input(
         (enchant_id, gem_id)
     }
 
+    fn parse_equipped_item_id_ilevel(simc: &str) -> (u64, i64) {
+        let mut item_id = 0;
+        let mut ilevel = 0;
+        for part in simc.split(',') {
+            let p = part.trim();
+            if item_id == 0 {
+                if let Some(raw) = p.strip_prefix("id=") {
+                    item_id = raw.trim().parse::<u64>().unwrap_or(0);
+                    continue;
+                }
+            }
+            if ilevel == 0 {
+                if let Some(raw) = p.strip_prefix("ilevel=") {
+                    ilevel = raw.trim().parse::<i64>().unwrap_or(0);
+                }
+            }
+            if item_id > 0 && ilevel > 0 {
+                break;
+            }
+        }
+        (item_id, ilevel)
+    }
+
     fn infer_token_slot(item_name: &str) -> Option<&'static str> {
         let n = item_name.to_lowercase();
         if n.contains("hungering") {
@@ -590,11 +613,10 @@ pub fn generate_droptimizer_input(
 
         for (slot, candidate_item) in candidates {
             if let Some(current_equipped) = equipped_gear.get(slot.as_str()) {
-                if current_equipped
-                    .split(',')
-                    .find_map(|p| p.trim().strip_prefix("id="))
-                    .and_then(|raw| raw.trim().parse::<u64>().ok())
-                    .is_some_and(|equipped_id| equipped_id == candidate_item.item_id && equipped_id > 0)
+                let (equipped_id, equipped_ilevel) = parse_equipped_item_id_ilevel(current_equipped);
+                if equipped_id > 0
+                    && equipped_id == candidate_item.item_id
+                    && (candidate_item.ilevel <= 0 || equipped_ilevel >= candidate_item.ilevel)
                 {
                     continue;
                 }

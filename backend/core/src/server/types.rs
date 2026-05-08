@@ -347,6 +347,10 @@ pub(super) struct EnchantOptionsQuery {
     pub slot: String,
     #[serde(default)]
     pub class_name: String,
+    #[serde(default)]
+    pub bonus_ids: String,
+    #[serde(default)]
+    pub season_id: i64,
 }
 
 #[derive(Debug, Deserialize)]

@@ -7,6 +7,66 @@ use crate::addon_parser;
 use crate::game_data;
 use crate::gear_resolver;
 
+fn current_season_label() -> String {
+    crate::item_db::season_cfg()
+        .get("season")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            crate::item_db::get_runtime_data()
+                .get("season_name")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}
+
+fn query_item_season_id(query: &EnchantOptionsQuery) -> i64 {
+    if query.season_id > 0 {
+        return query.season_id;
+    }
+
+    let bonus_ids: Vec<u64> = if query.bonus_ids.is_empty() {
+        Vec::new()
+    } else {
+        query
+            .bonus_ids
+            .split(',')
+            .filter_map(|s| s.trim().parse::<u64>().ok())
+            .collect()
+    };
+
+    if bonus_ids.is_empty() {
+        return 0;
+    }
+
+    crate::item_db::resolve_bonuses(&bonus_ids, &crate::item_db::bonuses())
+        .season_id
+        .unwrap_or(0)
+}
+
+fn slot_has_active_expansion_enchants(query: &EnchantOptionsQuery) -> bool {
+    let normalized = query.slot.trim().to_ascii_lowercase();
+    let season_label = current_season_label().to_ascii_lowercase();
+    let current_season_id = crate::item_db::current_season_id() as i64;
+    let item_season_id = query_item_season_id(query);
+
+    // Midnight current-season gear no longer supports the old TWW cloak/bracer enchants.
+    if season_label.contains("midnight")
+        && current_season_id > 0
+        && item_season_id == current_season_id
+        && matches!(normalized.as_str(), "back" | "wrist")
+    {
+        return false;
+    }
+
+    true
+}
+
 pub(super) async fn get_item_info(
     path: web::Path<u64>,
     query: web::Query<BonusIdsQuery>,
@@ -105,6 +165,10 @@ pub(super) async fn get_gem_info(path: web::Path<u64>) -> HttpResponse {
 }
 
 pub(super) async fn list_enchant_options(query: web::Query<EnchantOptionsQuery>) -> HttpResponse {
+    if !slot_has_active_expansion_enchants(&query) {
+        return HttpResponse::Ok().json(Vec::<Value>::new());
+    }
+
     let inv_type = match gear_resolver::slot_to_inv_type(&query.slot) {
         Some(t) => t,
         None => {

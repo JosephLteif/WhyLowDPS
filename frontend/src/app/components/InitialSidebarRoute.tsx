@@ -42,6 +42,10 @@ export default function InitialSidebarRoute() {
     if (redirectedRef.current) return;
     if (loading) return;
     if (pathname !== '/') return;
+    if (typeof window !== 'undefined') {
+      const realPath = window.location.pathname || '/';
+      if (realPath !== '/') return;
+    }
 
     let order: string[] = [];
     try {

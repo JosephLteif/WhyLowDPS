@@ -95,11 +95,21 @@ fn wowhead_url(kind: &str, id: i64) -> Option<String> {
 
 fn read_wowhead_zone_index(data_dir: &Path) -> Vec<WowheadZoneEntry> {
     let runtime_path = data_dir.join(WOWHEAD_ZONE_INDEX_FILE);
-    let bundled_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let exe_bundled_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|dir| dir.join(format!("resources/{}", WOWHEAD_ZONE_INDEX_FILE))));
+    let dev_bundled_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../resources")
         .join(WOWHEAD_ZONE_INDEX_FILE);
     let v = read_json_file(&runtime_path)
-        .or_else(|_| read_json_file(&bundled_path))
+        .or_else(|_| {
+            if let Some(path) = exe_bundled_path.as_ref().filter(|p| p.exists()) {
+                read_json_file(path)
+            } else {
+                Err("Executable bundled path not found".to_string())
+            }
+        })
+        .or_else(|_| read_json_file(&dev_bundled_path))
         .unwrap_or_else(|_| Value::Null);
     v.get("zones")
         .and_then(|z| z.as_array())

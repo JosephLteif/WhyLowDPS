@@ -267,6 +267,7 @@ function DungeonCard({
   mplusDetail?: MythicKeystoneDungeonDetail | null;
 }) {
   const router = useRouter();
+  const detailsHref = `/dungeons/details/?id=${encodeURIComponent(String(dungeon.id))}`;
   const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
   const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
   const imageUrl = localInstanceImage || dungeon.image_url || placeholder?.icon;
@@ -295,11 +296,11 @@ function DungeonCard({
     <article
       role="button"
       tabIndex={0}
-      onClick={() => router.push(`/dungeons/${dungeon.id}`)}
+      onClick={() => router.push(detailsHref)}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          router.push(`/dungeons/${dungeon.id}`);
+          router.push(detailsHref);
         }
       }}
       className="group block rounded-xl border border-white/15 bg-zinc-900/80 p-4 transition-all hover:border-gold/50 hover:bg-zinc-900"

@@ -1261,13 +1261,18 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
     let runtime_path = root.join("zones-encounters-index.json");
-    let bundled_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let exe_bundled_path = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|dir| dir.join("resources/zones-encounters-index.json")));
+    let dev_bundled_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../resources")
         .join("zones-encounters-index.json");
     let path = if runtime_path.exists() {
         runtime_path
+    } else if let Some(p) = exe_bundled_path.filter(|p| p.exists()) {
+        p
     } else {
-        bundled_path
+        dev_bundled_path
     };
 
     match std::fs::read_to_string(&path) {

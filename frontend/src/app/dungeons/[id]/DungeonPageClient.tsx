@@ -139,8 +139,18 @@ export default function DungeonPageClient({ id }: { id: string }) {
   const [mplusDetail, setMplusDetail] = useState<MythicKeystoneDungeonDetail | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setError('Missing dungeon id.');
+      setLoading(false);
+      return;
+    }
+
     const dungeonId = parseInt(id, 10);
+    if (!Number.isFinite(dungeonId) || dungeonId <= 0) {
+      setError(`Invalid dungeon id: ${id}`);
+      setLoading(false);
+      return;
+    }
 
     Promise.all([
       getDungeonData(),

@@ -118,11 +118,20 @@ function consumableCheckClass(): string {
 }
 
 function consumableTierFromOption(token: string, opt?: OptionEntry): number {
-  if (typeof opt?.craftingQuality === 'number' && opt.craftingQuality > 0) return opt.craftingQuality;
   const m = token.match(/_(\d)$/);
   if (!m) return 0;
   const q = Number(m[1]);
   return Number.isFinite(q) ? q : 0;
+}
+
+function consumableTierFromLabel(label: string): number {
+  const m = String(label).match(/\((gold|silver|bronze)\)\s*$/i);
+  if (!m) return 0;
+  const q = m[1].toLowerCase();
+  if (q === 'gold') return 3;
+  if (q === 'silver') return 2;
+  if (q === 'bronze') return 1;
+  return 0;
 }
 
 function consumableLabelFromToken(token: string, fallbackCategory: string): string {
@@ -436,35 +445,30 @@ export default function ResultRow({
                             ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
                             : '';
                           const itemId = Number(opt?.itemId || 0);
-                          const tier = consumableTierFromOption(token, opt);
-                          const showTierSquare = tier > 0;
+                          const tier = consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
                           const tierLabel = tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
-                          const tooltip = tierLabel ? `${label} (${tierLabel} quality)` : label;
+                          const showTierSquare = tier > 0;
                           return (
-                            <span
+                            <a
                               key={`${category}:${token}`}
-                              className="inline-flex items-center gap-1.5 rounded border border-gold/40 bg-gold/10 px-2 py-[2px] text-[11px] leading-tight text-gold"
-                              title={tooltip}
+                              className="inline-flex items-center gap-1.5 rounded border border-gold/25 bg-gold/[0.07] px-1.5 py-0.5 text-[11px] text-gold/90"
+                              title={`${category}: ${label}`}
+                              data-wowhead={itemId > 0 ? `item=${itemId}` : undefined}
+                              href={itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined}
+                              onClick={(e) => e.preventDefault()}
                             >
-                              {icon ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={icon} alt="" className="h-3.5 w-3.5 rounded-sm object-cover" />
-                              ) : (
-                                <span className="text-[10px] text-gold/80">{category.slice(0, 1)}</span>
-                              )}
-                              <span className="truncate max-w-[13rem]">{label}</span>
+                              {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
+                              <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
                               {showTierSquare ? (
-                                <span
-                                  className={`inline-block h-2.5 w-2.5 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`}
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <span
-                                  className={`inline-block h-2.5 w-2.5 rounded-[2px] border ${consumableCheckClass()}`}
-                                  aria-hidden="true"
-                                />
-                              )}
-                            </span>
+                                tier === 1 ? (
+                                  <span className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}>
+                                    <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
+                                  </span>
+                                ) : (
+                                  <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`} />
+                                )
+                              ) : null}
+                            </a>
                           );
                         })}
                       </div>
@@ -512,7 +516,8 @@ export default function ResultRow({
                           ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
                           : '';
                         const itemId = Number(opt?.itemId || 0);
-                        const tier = consumableTierFromOption(token, opt);
+                        const tier = consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
+                        const tierLabel = tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
                         const showTierSquare = tier > 0;
                         return (
                           <a
@@ -531,7 +536,7 @@ export default function ResultRow({
                                   <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
                                 </span>
                               ) : (
-                                <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(label)}`} />
+                                <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`} />
                               )
                             ) : null}
                           </a>

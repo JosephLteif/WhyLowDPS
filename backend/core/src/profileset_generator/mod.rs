@@ -203,7 +203,7 @@ pub fn generate_top_gear_input_with_talents(
     let consumable_scenarios = build_consumable_scenarios(consumables);
     let consumable_factor = consumable_scenarios.len().max(1);
     let total_combo_count =
-        calculate_total_combo_count(gear_combo_count, effective_talents.len()) * consumable_factor;
+        calculate_total_profileset_count(gear_combo_count, effective_talents.len()) * consumable_factor;
 
     let limit = max_combos_override.unwrap_or(*MAX_COMBINATIONS);
     if total_combo_count > limit {
@@ -344,16 +344,6 @@ fn apply_consumable_profilesets(
             .strip_prefix("Combo ")
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(0);
-
-        if combo_number <= 1 {
-            new_lines.push(format!("### Combo {}", next_combo_number));
-            new_lines.extend(section_body.iter().cloned());
-            if let Some(meta) = combo_metadata.get(&header_text) {
-                rebuilt_metadata.insert(format!("Combo {}", next_combo_number), meta.clone());
-            }
-            next_combo_number += 1;
-            continue;
-        }
 
         for scenario in scenarios {
             let new_combo_name = format!("Combo {}", next_combo_number);
@@ -854,10 +844,6 @@ fn get_effective_talents(
     }
 }
 
-fn calculate_total_combo_count(gear_combo_count: usize, talent_count: usize) -> usize {
-    if talent_count > 1 {
-        (gear_combo_count + 1) * talent_count - 1
-    } else {
-        gear_combo_count
-    }
+fn calculate_total_profileset_count(gear_combo_count: usize, talent_count: usize) -> usize {
+    (gear_combo_count + 1) * talent_count.max(1)
 }

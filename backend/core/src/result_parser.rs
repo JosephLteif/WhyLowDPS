@@ -1031,6 +1031,23 @@ pub fn parse_top_gear_result(
     results.push(baseline_entry);
 
     results.sort_by(|a, b| {
+        let a_is_baseline = a["name"]
+            .as_str()
+            .map(|name| name.starts_with("Currently Equipped"))
+            .unwrap_or(false);
+        let b_is_baseline = b["name"]
+            .as_str()
+            .map(|name| name.starts_with("Currently Equipped"))
+            .unwrap_or(false);
+
+        if a_is_baseline != b_is_baseline {
+            return if a_is_baseline {
+                std::cmp::Ordering::Less
+            } else {
+                std::cmp::Ordering::Greater
+            };
+        }
+
         let a_dps = a["dps"].as_f64().unwrap_or(0.0);
         let b_dps = b["dps"].as_f64().unwrap_or(0.0);
         b_dps

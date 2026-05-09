@@ -218,6 +218,8 @@ export default function ResultRow({
     return entries;
   }, [result.items]);
   const changedSlots = new Set(changedItems.map((it) => it.slot));
+  const hasConsumableOnlyEquippedRow =
+    !isEquipped && changedItems.length === 0 && consumableBadges.length > 0;
 
   const showBothRings = changedSlots.has('finger1') || changedSlots.has('finger2');
   const showBothTrinkets = changedSlots.has('trinket1') || changedSlots.has('trinket2');
@@ -419,11 +421,55 @@ export default function ResultRow({
           {(() => {
             const hasChangedItems = changedItems.length > 0;
 
-            if (isEquipped) {
+            if (isEquipped || hasConsumableOnlyEquippedRow) {
               return (
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="text-[16px] font-semibold text-zinc-100">Currently Equipped</span>
                   {talentBadge}
+                  {consumableBadges.length > 0 ? (
+                    <div className="basis-full pt-0.5">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        {consumableBadges.map(({ category, token }) => {
+                          const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
+                          const label = consumableLabelFromToken(token, category);
+                          const icon = opt?.icon
+                            ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
+                            : '';
+                          const itemId = Number(opt?.itemId || 0);
+                          const tier = consumableTierFromOption(token, opt);
+                          const showTierSquare = tier > 0;
+                          const tierLabel = tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
+                          const tooltip = tierLabel ? `${label} (${tierLabel} quality)` : label;
+                          return (
+                            <span
+                              key={`${category}:${token}`}
+                              className="inline-flex items-center gap-1.5 rounded border border-gold/40 bg-gold/10 px-2 py-[2px] text-[11px] leading-tight text-gold"
+                              title={tooltip}
+                            >
+                              {icon ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={icon} alt="" className="h-3.5 w-3.5 rounded-sm object-cover" />
+                              ) : (
+                                <span className="text-[10px] text-gold/80">{category.slice(0, 1)}</span>
+                              )}
+                              <span className="truncate max-w-[13rem]">{label}</span>
+                              {showTierSquare ? (
+                                <span
+                                  className={`inline-block h-2.5 w-2.5 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`}
+                                  aria-hidden="true"
+                                />
+                              ) : (
+                                <span
+                                  className={`inline-block h-2.5 w-2.5 rounded-[2px] border ${consumableCheckClass()}`}
+                                  aria-hidden="true"
+                                />
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             }

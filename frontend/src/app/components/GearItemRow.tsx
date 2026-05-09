@@ -65,6 +65,8 @@ interface GearItemRowProps {
   dimmed?: boolean;
   /** Flips layout so icon is on the right side */
   reverse?: boolean;
+  /** Optional icon size in px */
+  iconSize?: number;
 }
 
 function getIconUrl(iconName: string): string {
@@ -101,6 +103,7 @@ export default function GearItemRow({
   limitWarning,
   dimmed = false,
   reverse = false,
+  iconSize = 32,
 }: GearItemRowProps) {
   const hasLeadingControl = showCheckbox && (selectable || equipped);
   const detailsIndentClass = hasLeadingControl ? 'pl-[1.875rem]' : 'pl-0';
@@ -153,13 +156,14 @@ export default function GearItemRow({
         <a
           href={href}
           data-wowhead={wowheadData}
-          className={`mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded ${
+          className={`mt-0.5 shrink-0 overflow-hidden rounded ${
             vault
               ? 'ring-2 ring-violet-400/70'
               : catalyst
                 ? 'ring-2 ring-purple-400/70'
                 : 'ring-1 ring-white/5'
           }`}
+          style={{ width: iconSize, height: iconSize }}
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => {
@@ -171,8 +175,8 @@ export default function GearItemRow({
             <img
               src={mainIconUrl}
               alt={name}
-              width={32}
-              height={32}
+              width={iconSize}
+              height={iconSize}
               className={`h-full w-full ${dimmed ? 'brightness-90 saturate-75' : ''}`}
               loading="lazy"
             />
@@ -182,20 +186,21 @@ export default function GearItemRow({
         </a>
       ) : (
         <div
-          className={`mt-0.5 h-8 w-8 shrink-0 overflow-hidden rounded ${
+          className={`mt-0.5 shrink-0 overflow-hidden rounded ${
             vault
               ? 'ring-2 ring-violet-400/70'
               : catalyst
                 ? 'ring-2 ring-purple-400/70'
                 : 'ring-1 ring-white/5'
           }`}
+          style={{ width: iconSize, height: iconSize }}
         >
           {mainIconUrl ? (
             <img
               src={mainIconUrl}
               alt={name}
-              width={32}
-              height={32}
+              width={iconSize}
+              height={iconSize}
               className={`h-full w-full ${dimmed ? 'brightness-90 saturate-75' : ''}`}
               loading="lazy"
             />

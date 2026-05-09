@@ -558,7 +558,7 @@ export default function ResultRow({
                   onAddToWishlist();
                 }}
                 disabled={wishlistButtonDisabled}
-                className="rounded border border-zinc-500/40 bg-zinc-500/10 px-2 py-1 text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
+                className="rounded border border-zinc-500/40 bg-zinc-500/10 px-2 py-1 text-[13px] font-medium text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
               >
                 {isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
               </button>
@@ -573,7 +573,7 @@ export default function ResultRow({
                 }}
                 disabled={exactStatsButtonDisabled}
                 title={exactStatsLabel}
-                className={`rounded border px-2 py-1 text-[11px] transition-colors disabled:cursor-wait disabled:opacity-60 ${
+                className={`rounded border px-2 py-1 text-[13px] font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${
                   exactStatsButtonVariant === 'goto'
                     ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
                     : 'border-amber-400/35 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
@@ -600,7 +600,7 @@ export default function ResultRow({
                 setContextMenu(null);
               }}
               disabled={wishlistButtonDisabled}
-              className="rounded px-2 py-1 text-left text-[11px] text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
+              className="rounded px-2 py-1 text-left text-[13px] font-medium text-zinc-200 transition-colors hover:bg-zinc-500/20 disabled:opacity-60"
             >
               {isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
             </button>
@@ -613,7 +613,7 @@ export default function ResultRow({
                 setContextMenu(null);
               }}
               disabled={exactStatsButtonDisabled}
-              className={`rounded px-2 py-1 text-left text-[11px] transition-colors disabled:cursor-wait disabled:opacity-60 ${
+              className={`rounded px-2 py-1 text-left text-[13px] font-medium transition-colors disabled:cursor-wait disabled:opacity-60 ${
                 exactStatsButtonVariant === 'goto'
                   ? 'text-emerald-300 hover:bg-emerald-500/20'
                   : 'text-amber-300 hover:bg-amber-500/20'

@@ -61,6 +61,34 @@ const GEAR_ORDER_RIGHT = [
   'trinket2',
 ];
 const GEAR_ORDER_STACKED = [...GEAR_ORDER_LEFT, ...GEAR_ORDER_RIGHT, 'main_hand', 'off_hand'];
+const RAIDBOTS_PAPERDOLL_BASE = 'https://www.raidbots.com/images/paperdoll';
+
+function getEmptySlotIcon(slot: string): string {
+  const normalized = String(slot || '').toLowerCase();
+  const slotIconName =
+    {
+      head: 'Head',
+      neck: 'Neck',
+      shoulder: 'Shoulder',
+      back: 'Chest',
+      chest: 'Chest',
+      wrist: 'Wrists',
+      hands: 'Hands',
+      waist: 'Waist',
+      legs: 'Legs',
+      feet: 'Feet',
+      finger1: 'Finger',
+      finger2: 'Finger',
+      trinket1: 'Trinket',
+      trinket2: 'Trinket',
+      main_hand: 'MainHand',
+      off_hand: 'SecondaryHand',
+    }[normalized] || '';
+
+  return slotIconName
+    ? `${RAIDBOTS_PAPERDOLL_BASE}/UI-PaperDoll-Slot-${slotIconName}.png`
+    : 'inv_misc_questionmark';
+}
 
 function dropBaselineKey(item: GearItem): string {
   const slot = String(item.slot || '').toLowerCase();
@@ -375,12 +403,13 @@ export function GearSlotRow({
     return (
       <div className="rounded-lg">
         <GearItemRow
-          icon="inv_misc_questionmark"
+          icon={getEmptySlotIcon(slot)}
           name="Empty"
           nameColor="#d4d4d8"
           showCheckbox={false}
           dimmed
           reverse={reverse}
+          iconSize={38}
         />
       </div>
     );
@@ -590,6 +619,7 @@ export function GearSlotRow({
         vault={item.origin === 'vault'}
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
         wowheadData={whData}
+        iconSize={38}
       />
     </div>
   );

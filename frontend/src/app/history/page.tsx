@@ -726,9 +726,7 @@ export default function HistoryPage() {
             <span className="text-xs text-zinc-500">Filter by Character:</span>
             <select
               className="min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2 py-1.5 text-xs text-zinc-200 focus:border-gold focus:outline-none xl:w-48 xl:flex-none"
-              value={
-                character ? `${character.name}-${character.realm}` : 'all'
-              }
+              value={character ? `${character.name}-${character.realm}` : 'all'}
               onChange={(e) => {
                 const val = e.target.value;
                 if (val === 'all') {
@@ -805,14 +803,14 @@ export default function HistoryPage() {
                 ? 'No pinned simulations found.'
                 : pinFilter === 'unpinned'
                   ? 'No unpinned simulations found.'
-                : character
-                  ? `No simulations found for ${character.name} on ${character.realm}.`
-                  : 'No simulations yet.'}
+                  : character
+                    ? `No simulations found for ${character.name} on ${character.realm}.`
+                    : 'No simulations yet.'}
           </p>
         </div>
       ) : (
         <div className="space-y-8">
-          <div className="sticky top-16 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface/95 px-4 py-2 backdrop-blur">
+          <div className="sticky top-[var(--app-header-height)] z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface/95 px-4 py-2 backdrop-blur">
             <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
               <input
                 type="checkbox"
@@ -826,9 +824,7 @@ export default function HistoryPage() {
               />
               Select all visible
             </label>
-            <span className="text-xs text-zinc-500">
-              {selectedIds.size} selected
-            </span>
+            <span className="text-xs text-zinc-500">{selectedIds.size} selected</span>
           </div>
           {groupKeys.map((group) => (
             <div key={group} className="space-y-2">

@@ -123,7 +123,8 @@ function moveLabelWithPosition(
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const normalizedPath = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  const normalizedPath =
+    pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [navOrder, setNavOrder] = useState<string[] | null>(null);
@@ -349,294 +350,316 @@ export default function Sidebar() {
           type="button"
           aria-label="Close sidebar"
           onClick={() => setIsMobileOpen(false)}
-          className="fixed inset-0 top-[5rem] z-40 bg-black/55 backdrop-blur-[1px]"
+          className="fixed inset-0 z-40 bg-black/55 backdrop-blur-[1px]"
+          style={{ top: 'var(--app-header-height)' }}
         />
       )}
       <aside
-        className={`fixed bottom-0 left-0 top-[5rem] z-50 flex flex-col justify-between border-r border-border bg-surface/90 pb-4 pt-3 transition-all duration-200 ${
+        className={`fixed bottom-0 left-0 z-50 flex flex-col justify-between border-r border-border bg-surface/90 pb-4 pt-3 transition-all duration-200 ${
           isCollapsed ? 'w-20' : 'w-72'
         } ${isNarrowViewport ? (isMobileOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
+        style={{ top: 'var(--app-header-height)' }}
       >
-      <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
-        {!isCollapsed && (
-          <div className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}>
-            {isEditMode && (
-              <div ref={addMenuRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowAddMenu((v) => !v)}
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-sm font-semibold leading-none text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
-                  title="Add sidebar section"
-                  aria-label="Add sidebar section"
-                >
-                  +
-                </button>
-                {showAddMenu && (
-                  <div className="absolute left-0 z-50 mt-1 w-max min-w-44 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
-                    {addableNavItems.length === 0 ? (
-                      <div className="px-2 py-1.5 text-xs text-zinc-500">No sections to add</div>
-                    ) : (
-                      addableNavItems.map((addItem) => (
-                        <button
-                          key={`add-${addItem.label}`}
-                          type="button"
-                          onClick={() => {
-                            setVisibleLabels((prev) => {
-                              const current =
-                                prev && prev.length > 0
-                                  ? prev
-                                  : orderedNavItems.map((i) => i.label);
-                              if (current.includes(addItem.label)) return current;
-                              return [...current, addItem.label];
-                            });
-                            setShowAddMenu(false);
-                          }}
-                          className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
-                        >
-                          {addItem.label}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setIsEditMode((v) => !v);
-                setShowAddMenu(false);
-              }}
-              className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
-                isEditMode
-                  ? 'border-gold/60 bg-gold/15 text-gold'
-                  : 'border-white/15 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.1] hover:text-white'
-              }`}
-              title={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
-              aria-label={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
+        <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
+          {!isCollapsed && (
+            <div
+              className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}
             >
-              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11.5 2.5l2 2L6 12H4v-2l7.5-7.5z" />
-                <path d="M10 4l2 2" />
-              </svg>
-            </button>
-          </div>
-        )}
-        <div className="flex-1 space-y-2 overflow-y-auto pb-2">
-          {visibleNavItems.map((item) => {
-            const isActive = item.matchPaths.some(
-              (p) => pathname === p || pathname.startsWith(p + '/')
-            );
-            const hasChildren = item.children && item.children.length > 0;
-            const isOpen = openMenu === item.label || isActive;
-
-            return (
-              <div
-                key={item.label}
-                data-nav-label={item.label}
-                className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
-                  dragOverLabel === item.label && draggingLabel !== item.label ? 'bg-gold/[0.04]' : ''
-                }`}
-                onPointerEnter={() => {
-                  if (draggingLabel && draggingLabel !== item.label) {
-                    setDragOverLabel(item.label);
-                    setDragOverPosition('before');
-                  }
-                }}
-                onPointerMove={(e) => {
-                  if (draggingLabel && draggingLabel !== item.label) {
-                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                    const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-                    setDragOverLabel(item.label);
-                    setDragOverPosition(position);
-                  }
-                }}
-              >
-                {dragOverLabel === item.label && draggingLabel !== item.label && dragOverPosition === 'before' && (
-                  <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
-                )}
-                <div className="flex items-stretch gap-1">
-                  {isEditMode && !isCollapsed && (
-                    <button
-                      type="button"
-                      onPointerDown={(e) => {
-                        if (!isEditMode) return;
-                        if (e.pointerType === 'mouse' && e.button !== 0) return;
-                        e.preventDefault();
-                        const rect = (e.currentTarget as HTMLButtonElement).closest('[data-nav-label]')?.getBoundingClientRect();
-                        dragSourceRef.current = item.label;
-                        setDraggingLabel(item.label);
-                        setDragOverLabel(item.label);
-                        if (rect) {
-                          setDragPointer({
-                            x: e.clientX,
-                            y: e.clientY,
-                            offsetX: e.clientX - rect.left,
-                            offsetY: e.clientY - rect.top,
-                            width: rect.width,
-                          });
-                        }
-                      }}
-                      className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all hover:bg-white/5 hover:text-zinc-300 active:cursor-grabbing ${
-                        draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
-                      }`}
-                      title={`Drag to reorder ${item.label}`}
-                      aria-label={`Drag to reorder ${item.label}`}
-                    >
-                      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
-                        <circle cx="5" cy="4" r="1.1" />
-                        <circle cx="11" cy="4" r="1.1" />
-                        <circle cx="5" cy="8" r="1.1" />
-                        <circle cx="11" cy="8" r="1.1" />
-                        <circle cx="5" cy="12" r="1.1" />
-                        <circle cx="11" cy="12" r="1.1" />
-                      </svg>
-                    </button>
-                  )}
-                  <Link
-                    href={item.href}
-                    onClick={(e) => {
-                      if (isEditMode) {
-                        e.preventDefault();
-                        return;
-                      }
-                      if (hasChildren) {
-                        e.preventDefault();
-                        setOpenMenu(isOpen ? null : item.label);
-                        return;
-                      }
-                      const normalizedHref =
-                        item.href.endsWith('/') && item.href !== '/' ? item.href.slice(0, -1) : item.href;
-                      if (normalizedPath === normalizedHref) {
-                        e.preventDefault();
-                        window.scrollTo(0, 0);
-                        if (isNarrowViewport) setIsMobileOpen(false);
-                        return;
-                      }
-                      if (isNarrowViewport) setIsMobileOpen(false);
-                    }}
-                    draggable={false}
-                    className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
-                      draggingLabel === item.label ? 'scale-[0.98] opacity-25' : ''
-                    } ${
-                      isActive
-                        ? 'bg-gold/15 text-gold'
-                        : 'text-zinc-200 hover:bg-surface-2 hover:text-white'
-                    }`}
-                    title={item.label}
+              {isEditMode && (
+                <div ref={addMenuRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddMenu((v) => !v)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-sm font-semibold leading-none text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                    title="Add sidebar section"
+                    aria-label="Add sidebar section"
                   >
-                    <svg
-                      className={`h-5 w-5 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d={item.icon} />
-                    </svg>
-                    {!isCollapsed && (
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="text-[15px] font-medium">{item.label}</span>
-                        <span
-                          className={`text-[13px] leading-snug ${isActive ? 'text-gold/80' : 'text-zinc-300'}`}
-                        >
-                          {item.description}
-                        </span>
-                      </div>
-                    )}
-                  </Link>
-                  {isEditMode && !isCollapsed && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setVisibleLabels((prev) => {
-                          const current =
-                            prev && prev.length > 0 ? prev : orderedNavItems.map((i) => i.label);
-                          if (current.length <= 1) return current;
-                          return current.filter((label) => label !== item.label);
-                        })
-                      }
-                      className="shrink-0 rounded-md px-2 text-zinc-500 transition-colors hover:bg-red-500/15 hover:text-red-300"
-                      title={`Remove ${item.label} from sidebar`}
-                      aria-label={`Remove ${item.label} from sidebar`}
-                    >
-                      -
-                    </button>
+                    +
+                  </button>
+                  {showAddMenu && (
+                    <div className="absolute left-0 z-50 mt-1 w-max min-w-44 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
+                      {addableNavItems.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-zinc-500">No sections to add</div>
+                      ) : (
+                        addableNavItems.map((addItem) => (
+                          <button
+                            key={`add-${addItem.label}`}
+                            type="button"
+                            onClick={() => {
+                              setVisibleLabels((prev) => {
+                                const current =
+                                  prev && prev.length > 0
+                                    ? prev
+                                    : orderedNavItems.map((i) => i.label);
+                                if (current.includes(addItem.label)) return current;
+                                return [...current, addItem.label];
+                              });
+                              setShowAddMenu(false);
+                            }}
+                            className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
+                          >
+                            {addItem.label}
+                          </button>
+                        ))
+                      )}
+                    </div>
                   )}
                 </div>
-                {dragOverLabel === item.label && draggingLabel !== item.label && dragOverPosition === 'after' && (
-                  <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
-                )}
-                {hasChildren && isOpen && !isCollapsed && (
-                  <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
-                    {item.children!.map((child) => {
-                      const childActive =
-                        pathname === child.href || pathname.startsWith(child.href + '/');
-                      return (
-                        <Link
-                          key={child.href}
-                          href={child.href}
-                          onClick={(e) => {
-                            const normalizedHref =
-                              child.href.endsWith('/') && child.href !== '/'
-                                ? child.href.slice(0, -1)
-                                : child.href;
-                            if (normalizedPath === normalizedHref) {
-                              e.preventDefault();
-                              window.scrollTo(0, 0);
-                            }
-                            if (isNarrowViewport) setIsMobileOpen(false);
-                          }}
-                          className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
-                            childActive
-                              ? 'text-gold'
-                              : 'text-zinc-200 hover:bg-surface-2 hover:text-white'
-                          }`}
-                        >
-                          <span className="text-[15px] font-medium">{child.label}</span>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {draggingLabel && dragPointer && (
-          <div
-            className="pointer-events-none fixed z-[70] rounded-lg border border-gold/40 bg-[#14151d]/95 px-4 py-3 shadow-[0_16px_30px_rgba(0,0,0,0.45)] ring-1 ring-gold/20"
-            style={{
-              left: dragPointer.x - dragPointer.offsetX,
-              top: dragPointer.y - dragPointer.offsetY,
-              width: dragPointer.width,
-              transform: 'rotate(-1deg)',
-            }}
-          >
-            <div className="text-[15px] font-medium text-zinc-100">{draggingLabel}</div>
-          </div>
-        )}
-        {!isNarrowViewport && (
-          <div className="mb-2 mt-3 flex items-end justify-end">
-          <button
-            type="button"
-            onClick={() => setIsCollapsed((v) => !v)}
-            className="rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? '>>' : '<<'}
-          </button>
-          </div>
-        )}
-      </nav>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditMode((v) => !v);
+                  setShowAddMenu(false);
+                }}
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
+                  isEditMode
+                    ? 'border-gold/60 bg-gold/15 text-gold'
+                    : 'border-white/15 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+                }`}
+                title={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
+                aria-label={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M11.5 2.5l2 2L6 12H4v-2l7.5-7.5z" />
+                  <path d="M10 4l2 2" />
+                </svg>
+              </button>
+            </div>
+          )}
+          <div className="flex-1 space-y-2 overflow-y-auto pb-2">
+            {visibleNavItems.map((item) => {
+              const isActive = item.matchPaths.some(
+                (p) => pathname === p || pathname.startsWith(p + '/')
+              );
+              const hasChildren = item.children && item.children.length > 0;
+              const isOpen = openMenu === item.label || isActive;
 
-      <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
-        <div className="mt-2 px-2 text-center text-xs text-zinc-400">
-          {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
+              return (
+                <div
+                  key={item.label}
+                  data-nav-label={item.label}
+                  className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
+                    dragOverLabel === item.label && draggingLabel !== item.label
+                      ? 'bg-gold/[0.04]'
+                      : ''
+                  }`}
+                  onPointerEnter={() => {
+                    if (draggingLabel && draggingLabel !== item.label) {
+                      setDragOverLabel(item.label);
+                      setDragOverPosition('before');
+                    }
+                  }}
+                  onPointerMove={(e) => {
+                    if (draggingLabel && draggingLabel !== item.label) {
+                      const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                      const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                      setDragOverLabel(item.label);
+                      setDragOverPosition(position);
+                    }
+                  }}
+                >
+                  {dragOverLabel === item.label &&
+                    draggingLabel !== item.label &&
+                    dragOverPosition === 'before' && (
+                      <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
+                    )}
+                  <div className="flex items-stretch gap-1">
+                    {isEditMode && !isCollapsed && (
+                      <button
+                        type="button"
+                        onPointerDown={(e) => {
+                          if (!isEditMode) return;
+                          if (e.pointerType === 'mouse' && e.button !== 0) return;
+                          e.preventDefault();
+                          const rect = (e.currentTarget as HTMLButtonElement)
+                            .closest('[data-nav-label]')
+                            ?.getBoundingClientRect();
+                          dragSourceRef.current = item.label;
+                          setDraggingLabel(item.label);
+                          setDragOverLabel(item.label);
+                          if (rect) {
+                            setDragPointer({
+                              x: e.clientX,
+                              y: e.clientY,
+                              offsetX: e.clientX - rect.left,
+                              offsetY: e.clientY - rect.top,
+                              width: rect.width,
+                            });
+                          }
+                        }}
+                        className={`shrink-0 cursor-grab rounded-md px-2 text-zinc-600 transition-all hover:bg-white/5 hover:text-zinc-300 active:cursor-grabbing ${
+                          draggingLabel === item.label ? 'bg-gold/10 text-gold' : ''
+                        }`}
+                        title={`Drag to reorder ${item.label}`}
+                        aria-label={`Drag to reorder ${item.label}`}
+                      >
+                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
+                          <circle cx="5" cy="4" r="1.1" />
+                          <circle cx="11" cy="4" r="1.1" />
+                          <circle cx="5" cy="8" r="1.1" />
+                          <circle cx="11" cy="8" r="1.1" />
+                          <circle cx="5" cy="12" r="1.1" />
+                          <circle cx="11" cy="12" r="1.1" />
+                        </svg>
+                      </button>
+                    )}
+                    <Link
+                      href={item.href}
+                      onClick={(e) => {
+                        if (isEditMode) {
+                          e.preventDefault();
+                          return;
+                        }
+                        if (hasChildren) {
+                          e.preventDefault();
+                          setOpenMenu(isOpen ? null : item.label);
+                          return;
+                        }
+                        const normalizedHref =
+                          item.href.endsWith('/') && item.href !== '/'
+                            ? item.href.slice(0, -1)
+                            : item.href;
+                        if (normalizedPath === normalizedHref) {
+                          e.preventDefault();
+                          window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                          if (isNarrowViewport) setIsMobileOpen(false);
+                          return;
+                        }
+                        if (isNarrowViewport) setIsMobileOpen(false);
+                      }}
+                      draggable={false}
+                      className={`group flex min-w-0 flex-1 items-center gap-3 rounded-lg px-4 py-3 transition-all duration-150 ${
+                        draggingLabel === item.label ? 'scale-[0.98] opacity-25' : ''
+                      } ${
+                        isActive
+                          ? 'bg-gold/15 text-gold'
+                          : 'text-zinc-200 hover:bg-surface-2 hover:text-white'
+                      }`}
+                      title={item.label}
+                    >
+                      <svg
+                        className={`h-5 w-5 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d={item.icon} />
+                      </svg>
+                      {!isCollapsed && (
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="text-[15px] font-medium">{item.label}</span>
+                          <span
+                            className={`text-[13px] leading-snug ${isActive ? 'text-gold/80' : 'text-zinc-300'}`}
+                          >
+                            {item.description}
+                          </span>
+                        </div>
+                      )}
+                    </Link>
+                    {isEditMode && !isCollapsed && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setVisibleLabels((prev) => {
+                            const current =
+                              prev && prev.length > 0 ? prev : orderedNavItems.map((i) => i.label);
+                            if (current.length <= 1) return current;
+                            return current.filter((label) => label !== item.label);
+                          })
+                        }
+                        className="shrink-0 rounded-md px-2 text-zinc-500 transition-colors hover:bg-red-500/15 hover:text-red-300"
+                        title={`Remove ${item.label} from sidebar`}
+                        aria-label={`Remove ${item.label} from sidebar`}
+                      >
+                        -
+                      </button>
+                    )}
+                  </div>
+                  {dragOverLabel === item.label &&
+                    draggingLabel !== item.label &&
+                    dragOverPosition === 'after' && (
+                      <div className="mx-2 h-[2px] rounded-full bg-gold shadow-[0_0_8px_rgba(212,175,55,0.6)]" />
+                    )}
+                  {hasChildren && isOpen && !isCollapsed && (
+                    <div className="ml-10 flex flex-col border-l-2 border-border/50 pl-2">
+                      {item.children!.map((child) => {
+                        const childActive =
+                          pathname === child.href || pathname.startsWith(child.href + '/');
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            onClick={(e) => {
+                              const normalizedHref =
+                                child.href.endsWith('/') && child.href !== '/'
+                                  ? child.href.slice(0, -1)
+                                  : child.href;
+                              if (normalizedPath === normalizedHref) {
+                                e.preventDefault();
+                                window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                              }
+                              if (isNarrowViewport) setIsMobileOpen(false);
+                            }}
+                            className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
+                              childActive
+                                ? 'text-gold'
+                                : 'text-zinc-200 hover:bg-surface-2 hover:text-white'
+                            }`}
+                          >
+                            <span className="text-[15px] font-medium">{child.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {draggingLabel && dragPointer && (
+            <div
+              className="pointer-events-none fixed z-[70] rounded-lg border border-gold/40 bg-[#14151d]/95 px-4 py-3 shadow-[0_16px_30px_rgba(0,0,0,0.45)] ring-1 ring-gold/20"
+              style={{
+                left: dragPointer.x - dragPointer.offsetX,
+                top: dragPointer.y - dragPointer.offsetY,
+                width: dragPointer.width,
+                transform: 'rotate(-1deg)',
+              }}
+            >
+              <div className="text-[15px] font-medium text-zinc-100">{draggingLabel}</div>
+            </div>
+          )}
+          {!isNarrowViewport && (
+            <div className="mb-2 mt-3 flex items-end justify-end">
+              <button
+                type="button"
+                onClick={() => setIsCollapsed((v) => !v)}
+                className="rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {isCollapsed ? '>>' : '<<'}
+              </button>
+            </div>
+          )}
+        </nav>
+
+        <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
+          <div className="mt-2 px-2 text-center text-xs text-zinc-400">
+            {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
+          </div>
         </div>
-      </div>
       </aside>
     </>
   );

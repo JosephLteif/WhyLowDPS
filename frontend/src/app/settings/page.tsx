@@ -30,7 +30,7 @@ type CloseBehaviorPreferenceResponse = {
 type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const {
     threads,
@@ -47,7 +47,7 @@ export default function SettingsPage() {
   const [secretTouched, setSecretTouched] = useState(false);
   const [hasSecret, setHasSecret] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(true);
   const [blizzardSaving, setBlizzardSaving] = useState(false);
   const [blizzardTesting, setBlizzardTesting] = useState(false);
   const [blizzardMessage, setBlizzardMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -102,8 +102,12 @@ export default function SettingsPage() {
   } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
 
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
     if (!user) {
-      router.push('/');
+      router.replace('/');
       return;
     }
 
@@ -133,9 +137,9 @@ export default function SettingsPage() {
         setPerformanceSaved(true);
       })
       .finally(() => {
-        setLoading(false);
+        setPageLoading(false);
       });
-  }, [user, router, setMaxCombinations, setThreads]);
+  }, [authLoading, user, router, setMaxCombinations, setThreads]);
 
   useEffect(() => {
     fetch(`${API_URL}/health`, { credentials: 'include' })
@@ -285,7 +289,7 @@ export default function SettingsPage() {
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
   );
 
-  if (loading) {
+  if (authLoading || pageLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-gold"></div>
@@ -549,5 +553,4 @@ export default function SettingsPage() {
     </div>
   );
 }
-
 

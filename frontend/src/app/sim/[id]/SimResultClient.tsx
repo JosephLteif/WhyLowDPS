@@ -33,9 +33,17 @@ import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '@/lib/simc-parser'
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
 import { API_URL, fetchJson } from '../../lib/api';
-import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
+import {
+  formatScenarioLabel,
+  getScenarioSiblings,
+  type ScenarioSibling,
+} from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
-import { getSimReturnTarget, resolveSimAgainNavigation, setSimReturnNotice } from '../../lib/sim-return';
+import {
+  getSimReturnTarget,
+  resolveSimAgainNavigation,
+  setSimReturnNotice,
+} from '../../lib/sim-return';
 
 interface JobData {
   id: string;
@@ -588,20 +596,16 @@ export default function SimResultClient() {
       try {
         const anchor = String(job?.id || activeScenarioId || '').trim();
         if (!anchor || anchor === '_') return;
-        const all = await fetchJson<any[]>(`${API_URL}/api/sim/${encodeURIComponent(anchor)}/related`);
+        const all = await fetchJson<any[]>(
+          `${API_URL}/api/sim/${encodeURIComponent(anchor)}/related`
+        );
         if (!active) return;
         const sims = Array.isArray(all) ? all : [];
         const related = sims.filter(
-          (s) =>
-            s &&
-            (anchorIds.has(String(s.id || '')) || anchorIds.has(String(s.batch_id || '')))
+          (s) => s && (anchorIds.has(String(s.id || '')) || anchorIds.has(String(s.batch_id || '')))
         );
         const mapped = related
-          .filter(
-            (s) =>
-              s &&
-              s.id
-          )
+          .filter((s) => s && s.id)
           .map((s, idx) => ({
             id: String(s.id),
             fightStyle: s.fight_style || 'Patchwerk',
@@ -644,7 +648,8 @@ export default function SimResultClient() {
   const getSimTypeFallbackUrl = useCallback((simType?: string) => {
     const normalized = String(simType || '').toLowerCase();
     if (normalized.includes('top_gear') || normalized.includes('top-gear')) return '/top-gear';
-    if (normalized.includes('droptimizer') || normalized.includes('drop_finder')) return '/drop-finder';
+    if (normalized.includes('droptimizer') || normalized.includes('drop_finder'))
+      return '/drop-finder';
     if (normalized.includes('trinket_tier_heatmap')) return '/upgrade/trinkets';
     if (normalized.includes('external_buff_matrix')) return '/stat-weights';
     if (normalized.includes('consumable_matrix')) return '/stat-weights';
@@ -985,11 +990,13 @@ export default function SimResultClient() {
   }
 
   const scenarioToolbar = (
-    <div className="sticky top-16 z-40 flex flex-wrap items-center justify-between gap-4 py-2">
+    <div className="sticky top-[var(--app-header-height)] z-40 flex flex-wrap items-center justify-between gap-4 py-2">
       {toolbarScenarios.length > 1 ? (
         <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">Scenarios</span>
+            <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
+              Scenarios
+            </span>
             <span className="h-4 w-px shrink-0 bg-border" />
             {toolbarScenarios.map((s) => {
               const isCurrent = s.id === activeScenarioId;
@@ -1092,7 +1099,10 @@ export default function SimResultClient() {
       (entry) => entry && typeof entry === 'object' && Array.isArray(entry.items)
     );
   const isTopGear =
-    r.type === 'top_gear' || job.sim_type === 'top_gear' || job.sim_type === 'top-gear' || hasTopGearLikeResults;
+    r.type === 'top_gear' ||
+    job.sim_type === 'top_gear' ||
+    job.sim_type === 'top-gear' ||
+    hasTopGearLikeResults;
   const isDropFinderResult =
     job.sim_type === 'droptimizer' ||
     job.sim_type === 'drop_finder' ||
@@ -1291,7 +1301,10 @@ export default function SimResultClient() {
               </div>
             )}
           </DpsHeroCard>
-          {((baselineLiveStats || simulatedStats) || (r.equipped_gear && Object.keys(r.equipped_gear as Record<string, unknown>).length > 0)) && (
+          {(baselineLiveStats ||
+            simulatedStats ||
+            (r.equipped_gear &&
+              Object.keys(r.equipped_gear as Record<string, unknown>).length > 0)) && (
             <CollapsibleSection title="Character Panel">
               <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(340px,0.95fr)] xl:items-start">
                 {r.equipped_gear &&
@@ -1308,7 +1321,7 @@ export default function SimResultClient() {
                     />
                   )}
                 {(baselineLiveStats || simulatedStats) && (
-                  <div className="xl:sticky xl:top-24">
+                  <div className="xl:sticky xl:top-6">
                     <SimStatsComparisonCard
                       current={baselineLiveStats}
                       simulated={simulatedStats}
@@ -1428,7 +1441,7 @@ export default function SimResultClient() {
                                   {(() => {
                                     const match =
                                       buff.name.match(
-                                        /\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i,
+                                        /\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i
                                       ) || buff.name.match(/\s+(\d+)\s*$/i);
                                     if (!match) return null;
                                     const tierStr = match[1].toLowerCase();

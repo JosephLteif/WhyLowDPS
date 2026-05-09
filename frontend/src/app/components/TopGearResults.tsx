@@ -18,7 +18,12 @@ import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
 import SimResultTalentsCard from './SimResultTalentsCard';
-import { addItemsToWishlist, buildWishlistOwnerKey, isWishlisted, removeFromWishlist } from '../lib/wishlist';
+import {
+  addItemsToWishlist,
+  buildWishlistOwnerKey,
+  isWishlisted,
+  removeFromWishlist,
+} from '../lib/wishlist';
 import type { DropItem } from '../drop-finder/types';
 
 interface TopGearResultsProps {
@@ -57,9 +62,15 @@ interface ExactStatsCacheEntry {
 function dropBaselineKey(item: ResultItem): string {
   const slot = String(item.slot || '').toLowerCase();
   const itemId = Number(item.item_id || 0);
-  const sourceType = String(item.source_type || '').toLowerCase().trim();
-  const instance = String(item.instance_name || '').toLowerCase().trim();
-  const encounter = String(item.encounter || '').toLowerCase().trim();
+  const sourceType = String(item.source_type || '')
+    .toLowerCase()
+    .trim();
+  const instance = String(item.instance_name || '')
+    .toLowerCase()
+    .trim();
+  const encounter = String(item.encounter || '')
+    .toLowerCase()
+    .trim();
   return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
 }
 
@@ -114,9 +125,11 @@ function buildExactStatsRequest(
 
 async function waitForExactStats(jobId: string): Promise<StatSnapshot | null> {
   for (let attempt = 0; attempt < 120; attempt += 1) {
-    const job = await fetchJson<{ status: string; result: Record<string, unknown> | null; error?: string | null }>(
-      `${API_URL}/api/sim/${jobId}`
-    );
+    const job = await fetchJson<{
+      status: string;
+      result: Record<string, unknown> | null;
+      error?: string | null;
+    }>(`${API_URL}/api/sim/${jobId}`);
     if (job.status === 'done') {
       return (job.result?.simulated_stats as StatSnapshot | undefined) || null;
     }
@@ -294,13 +307,21 @@ export default function TopGearResults({
           if (existingJobId) {
             setExactStatsCache((prev) => ({
               ...prev,
-              [profilesetName]: { status: 'loading', simulatedStats: prev[profilesetName]?.simulatedStats, jobId: existingJobId },
+              [profilesetName]: {
+                status: 'loading',
+                simulatedStats: prev[profilesetName]?.simulatedStats,
+                jobId: existingJobId,
+              },
             }));
             const exactStats = await waitForExactStats(existingJobId);
             if (exactStats) {
               setExactStatsCache((prev) => ({
                 ...prev,
-                [profilesetName]: { status: 'ready', simulatedStats: exactStats, jobId: existingJobId },
+                [profilesetName]: {
+                  status: 'ready',
+                  simulatedStats: exactStats,
+                  jobId: existingJobId,
+                },
               }));
               return;
             }
@@ -385,7 +406,8 @@ export default function TopGearResults({
       const profilesetName = getTopGearProfilesetName(result);
       if (!profilesetName || !generatedInput) return;
 
-      const cachedJobId = cachedExactJobIds[profilesetName] || exactStatsCache[profilesetName]?.jobId;
+      const cachedJobId =
+        cachedExactJobIds[profilesetName] || exactStatsCache[profilesetName]?.jobId;
       if (cachedJobId) {
         router.push(`/sim/${cachedJobId}`);
         return;
@@ -519,10 +541,16 @@ export default function TopGearResults({
     ? exactStatsCache[selectedProfilesetName]
     : undefined;
   const selectedExactSimulatedStats =
-    selectedExactStatsEntry?.status === 'ready' ? selectedExactStatsEntry.simulatedStats || null : null;
-  const canLoadSelectedExactStats = Boolean(selectedResult && selectedProfilesetName && generatedInput);
+    selectedExactStatsEntry?.status === 'ready'
+      ? selectedExactStatsEntry.simulatedStats || null
+      : null;
+  const canLoadSelectedExactStats = Boolean(
+    selectedResult && selectedProfilesetName && generatedInput
+  );
   const getExactStatsStatus = useCallback(
-    (result: TopGearResult): { status: 'idle' | 'loading' | 'ready' | 'error' | 'same_base'; label?: string } => {
+    (
+      result: TopGearResult
+    ): { status: 'idle' | 'loading' | 'ready' | 'error' | 'same_base'; label?: string } => {
       const isEquipped = result.items.length === 0 || result.name.startsWith('Currently Equipped');
       if (isEquipped) {
         return { status: 'same_base', label: 'Same as base stats (no extra sim)' };
@@ -542,62 +570,70 @@ export default function TopGearResults({
     [cachedExactJobIds, exactStatsCache]
   );
 
-  const toggleResultWishlist = useCallback((result: TopGearResult) => {
-    const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
-    if (changedItems.length === 0) {
-      setWishlistFeedback('No changed items in this row.');
-      return;
-    }
-    const allWishlisted = changedItems.every((it) =>
-      isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
-    );
-    if (allWishlisted) {
-      for (const it of changedItems) {
-        removeFromWishlist(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0));
+  const toggleResultWishlist = useCallback(
+    (result: TopGearResult) => {
+      const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+      if (changedItems.length === 0) {
+        setWishlistFeedback('No changed items in this row.');
+        return;
       }
-      setWishlistFeedback(`Removed ${changedItems.length} item(s) from wishlist.`);
+      const allWishlisted = changedItems.every((it) =>
+        isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
+      );
+      if (allWishlisted) {
+        for (const it of changedItems) {
+          removeFromWishlist(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0));
+        }
+        setWishlistFeedback(`Removed ${changedItems.length} item(s) from wishlist.`);
+        setWishlistRefreshTick((v) => v + 1);
+        return;
+      }
+      const entries = changedItems.map((it) => {
+        const dropItem: DropItem = {
+          item_id: it.item_id,
+          name: it.name,
+          icon: it.icon,
+          quality: it.quality,
+          ilevel: it.ilevel,
+          encounter: it.encounter || '',
+          instance_name: it.instance_name,
+          source_type: it.source_type || 'Drop Finder Result',
+          inventory_type: it.inventory_type,
+          bonus_ids: Array.isArray(it.bonus_ids) ? it.bonus_ids : [],
+        };
+        return {
+          item: dropItem,
+          slot: it.slot.replace(/_/g, ' '),
+          meta: {
+            ilvl: it.ilevel,
+            bonusId:
+              Array.isArray(it.bonus_ids) && it.bonus_ids.length > 0 ? it.bonus_ids[0] : undefined,
+            upgradeLabel: it.upgrade || undefined,
+          },
+        };
+      });
+
+      const { added, skipped } = addItemsToWishlist(entries, wishlistOwnerKey);
+      if (added > 0 && skipped > 0)
+        setWishlistFeedback(`Added ${added} item(s), ${skipped} already saved.`);
+      else if (added > 0) setWishlistFeedback(`Added ${added} item(s) to wishlist.`);
+      else setWishlistFeedback('All row items are already in wishlist.');
       setWishlistRefreshTick((v) => v + 1);
-      return;
-    }
-    const entries = changedItems.map((it) => {
-      const dropItem: DropItem = {
-        item_id: it.item_id,
-        name: it.name,
-        icon: it.icon,
-        quality: it.quality,
-        ilevel: it.ilevel,
-        encounter: it.encounter || '',
-        instance_name: it.instance_name,
-        source_type: it.source_type || 'Drop Finder Result',
-        inventory_type: it.inventory_type,
-        bonus_ids: Array.isArray(it.bonus_ids) ? it.bonus_ids : [],
-      };
-      return {
-        item: dropItem,
-        slot: it.slot.replace(/_/g, ' '),
-        meta: {
-          ilvl: it.ilevel,
-          bonusId: Array.isArray(it.bonus_ids) && it.bonus_ids.length > 0 ? it.bonus_ids[0] : undefined,
-          upgradeLabel: it.upgrade || undefined,
-        },
-      };
-    });
+    },
+    [wishlistOwnerKey]
+  );
 
-    const { added, skipped } = addItemsToWishlist(entries, wishlistOwnerKey);
-    if (added > 0 && skipped > 0) setWishlistFeedback(`Added ${added} item(s), ${skipped} already saved.`);
-    else if (added > 0) setWishlistFeedback(`Added ${added} item(s) to wishlist.`);
-    else setWishlistFeedback('All row items are already in wishlist.');
-    setWishlistRefreshTick((v) => v + 1);
-  }, [wishlistOwnerKey]);
-
-  const isResultWishlisted = useCallback((result: TopGearResult) => {
-    void wishlistRefreshTick;
-    const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
-    if (changedItems.length === 0) return false;
-    return changedItems.every((it) =>
-      isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
-    );
-  }, [wishlistOwnerKey, wishlistRefreshTick]);
+  const isResultWishlisted = useCallback(
+    (result: TopGearResult) => {
+      void wishlistRefreshTick;
+      const changedItems = result.items.filter((it) => !it.is_kept && it.item_id > 0);
+      if (changedItems.length === 0) return false;
+      return changedItems.every((it) =>
+        isWishlisted(it.item_id, wishlistOwnerKey, Number(it.ilevel || 0))
+      );
+    },
+    [wishlistOwnerKey, wishlistRefreshTick]
+  );
 
   const characterRenderUrl =
     playerRealm && playerName
@@ -685,8 +721,8 @@ export default function TopGearResults({
               comparisonMode="result"
             />
 
-            {(simulatedStats || generatedInput) ? (
-              <div className="xl:sticky xl:top-24">
+            {simulatedStats || generatedInput ? (
+              <div className="xl:sticky xl:top-6">
                 {selectedExactSimulatedStats ? (
                   <SimStatsComparisonCard
                     current={simulatedStats}
@@ -704,8 +740,8 @@ export default function TopGearResults({
                           Exact Simulated Stats
                         </h3>
                         <p className="max-w-xl text-[12px] leading-5 text-zinc-400">
-                          Load an exact follow-up sim for the selected Top Gear row to compare it against
-                          the base simulated profile from the main Top Gear run.
+                          Load an exact follow-up sim for the selected Top Gear row to compare it
+                          against the base simulated profile from the main Top Gear run.
                         </p>
                       </div>
                       {canLoadSelectedExactStats ? (
@@ -728,8 +764,8 @@ export default function TopGearResults({
                         {!canLoadSelectedExactStats
                           ? 'Exact stats are unavailable for this older result. Run Top Gear again to enable row-specific stat snapshots.'
                           : selectedResultName && selectedResultName !== results[0]?.name
-                          ? `Exact stats for "${selectedResultName}" have not been loaded yet.`
-                          : 'The top result exact stats are being prepared or can be loaded on demand.'}
+                            ? `Exact stats for "${selectedResultName}" have not been loaded yet.`
+                            : 'The top result exact stats are being prepared or can be loaded on demand.'}
                       </p>
                       {selectedExactStatsEntry?.status === 'error' ? (
                         <p className="text-[12px] text-red-300">
@@ -737,7 +773,8 @@ export default function TopGearResults({
                         </p>
                       ) : null}
                       <p className="text-[12px] text-zinc-500">
-                        Exact stats are loaded only on demand and cached for this sim for future opens.
+                        Exact stats are loaded only on demand and cached for this sim for future
+                        opens.
                       </p>
                     </div>
                   </div>
@@ -770,8 +807,13 @@ export default function TopGearResults({
                 </Link>
               </div>
             )}
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+              {results.length} results
+            </span>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-widest text-zinc-600">Group by</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                Group by
+              </span>
               <div className="flex gap-1">
                 {(
                   [
@@ -793,7 +835,6 @@ export default function TopGearResults({
                 ))}
               </div>
             </div>
-            <span className="font-mono text-[13px] text-zinc-300 sm:text-[14px]">{results.length} results</span>
           </div>
         </div>
         {enableWishlistActions && wishlistFeedback && (
@@ -851,7 +892,9 @@ export default function TopGearResults({
                             : 'start'
                         }
                         exactStatsButtonDisabled={getExactStatsStatus(result).status === 'loading'}
-                        onAddToWishlist={enableWishlistActions ? () => toggleResultWishlist(result) : undefined}
+                        onAddToWishlist={
+                          enableWishlistActions ? () => toggleResultWishlist(result) : undefined
+                        }
                         isWishlisted={enableWishlistActions ? isResultWishlisted(result) : false}
                       />
                     ))}
@@ -861,7 +904,7 @@ export default function TopGearResults({
             )}
           </div>
         ) : (
-              <RankedResults
+          <RankedResults
             results={results}
             maxDps={maxDps}
             baseDps={baseDps}
@@ -870,17 +913,17 @@ export default function TopGearResults({
             itemInfoMap={itemInfoMap}
             enchantInfoMap={enchantInfoMap}
             gemInfoMap={gemInfoMap}
-                selectedResultName={selectedResultName}
-                onSelectResult={setSelectedResultName}
-                currencies={currencies}
-                dropBaselineIlevelByKey={dropBaselineIlevelByKey}
-                getExactStatsStatus={getExactStatsStatus}
-                onLoadExactStats={(result) => {
-                  void openOrStartExactStats(result);
-                }}
-                onAddResultToWishlist={enableWishlistActions ? toggleResultWishlist : undefined}
-                isResultWishlisted={enableWishlistActions ? isResultWishlisted : undefined}
-              />
+            selectedResultName={selectedResultName}
+            onSelectResult={setSelectedResultName}
+            currencies={currencies}
+            dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+            getExactStatsStatus={getExactStatsStatus}
+            onLoadExactStats={(result) => {
+              void openOrStartExactStats(result);
+            }}
+            onAddResultToWishlist={enableWishlistActions ? toggleResultWishlist : undefined}
+            isResultWishlisted={enableWishlistActions ? isResultWishlisted : undefined}
+          />
         )}
       </CollapsibleSection>
     </div>

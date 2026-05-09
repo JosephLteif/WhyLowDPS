@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { ResolvedItem } from '../../lib/types';
+import type { ItemInfo } from '../../lib/useItemInfo';
+import { QUALITY_COLORS } from '../../lib/useItemInfo';
 import GearItemRow from '../GearItemRow';
 import TopGearUpgradeButton from './TopGearUpgradeButton';
 
@@ -34,6 +36,7 @@ interface TopGearSlotGroupProps {
   slots: string[];
   equipped: ResolvedItem[];
   alternatives: ResolvedItem[];
+  itemInfoMap: Record<number, ItemInfo>;
   selectedUids: Record<string, Set<string>>;
   upgradeMenuFor: string | null;
   upgradeOptions: UpgradeOption[];
@@ -51,7 +54,7 @@ interface TopGearSlotGroupProps {
     text: string;
     color?: string;
     kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
-    badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
+    badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'embellishment' | 'mod' | 'source';
     icon?: string;
     href?: string;
     wowheadData?: string;
@@ -69,6 +72,7 @@ export default function TopGearSlotGroup({
   slots,
   equipped,
   alternatives,
+  itemInfoMap,
   upgradeMenuFor,
   upgradeOptions,
   loadingUpgrades,
@@ -135,12 +139,14 @@ export default function TopGearSlotGroup({
         {equipped.map((item, idx) => (
           (() => {
             const showOffSpecWarning = item.off_spec && !isTierOrCatalystItem(item);
+            const info = itemInfoMap[item.item_id];
+            const nameColor = info ? QUALITY_COLORS[info.quality] || item.quality_color : item.quality_color;
             return (
           <GearItemRow
             key={`eq-${idx}`}
             icon={item.icon}
             name={item.name}
-            nameColor={item.quality_color}
+            nameColor={nameColor}
             specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={showOffSpecWarning === true}
@@ -153,6 +159,7 @@ export default function TopGearSlotGroup({
             optimized={
               item.enchant_id > 0 ||
               item.gem_id > 0 ||
+              (item.gem_ids?.length || 0) > 0 ||
               (item.embellishment_item_id || 0) > 0
             }
             onContextMenu={(event) => onItemContextMenu(item, event)}
@@ -180,12 +187,14 @@ export default function TopGearSlotGroup({
         {alternatives.map((item, idx) => (
           (() => {
             const showOffSpecWarning = item.off_spec && !isTierOrCatalystItem(item);
+            const info = itemInfoMap[item.item_id];
+            const nameColor = info ? QUALITY_COLORS[info.quality] || item.quality_color : item.quality_color;
             return (
           <GearItemRow
             key={`alt-${idx}`}
             icon={item.icon}
             name={item.name}
-            nameColor={item.quality_color}
+            nameColor={nameColor}
             specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={showOffSpecWarning === true}
@@ -202,6 +211,7 @@ export default function TopGearSlotGroup({
             optimized={
               item.enchant_id > 0 ||
               item.gem_id > 0 ||
+              (item.gem_ids?.length || 0) > 0 ||
               (item.embellishment_item_id || 0) > 0
             }
             onContextMenu={(event) => onItemContextMenu(item, event)}

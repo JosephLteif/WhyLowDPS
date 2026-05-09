@@ -13,6 +13,7 @@ export interface ResolvedItem {
   bonus_ids: number[];
   enchant_id: number;
   gem_id: number;
+  gem_ids?: number[];
   name: string;
   icon: string;
   quality: number;

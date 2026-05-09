@@ -63,10 +63,8 @@ export default function DropSlotList({
   onToggleWishlist,
 }: DropSlotListProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
-  const baseButtonClass =
-    'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors';
-  const goldButtonClass =
-    'border-gold/45 bg-gold/[0.12] text-gold hover:bg-gold/[0.2]';
+  const baseButtonClass = 'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors';
+  const goldButtonClass = 'border-gold/45 bg-gold/[0.12] text-gold hover:bg-gold/[0.2]';
   const mutedButtonClass =
     'border-zinc-600 bg-zinc-900/70 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800';
 
@@ -132,14 +130,14 @@ export default function DropSlotList({
 
   return (
     <div className="space-y-4">
-      <div className="sticky top-14 z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-3 py-2 shadow-md backdrop-blur-sm">
+      <div className="sticky top-[var(--app-header-height)] z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-3 py-2 shadow-md backdrop-blur-sm">
         <div className="flex items-start justify-between gap-3">
-        <p className="pt-2 text-sm text-white">
+          <p className="pt-2 text-sm text-white">
             {headerLabel} &mdash; {totalItems} items
-          {selected.size > 0 && (
-            <span className="ml-1.5 text-gold">({selected.size} selected)</span>
-          )}
-        </p>
+            {selected.size > 0 && (
+              <span className="ml-1.5 text-gold">({selected.size} selected)</span>
+            )}
+          </p>
           <div className="flex flex-col items-end gap-1">
             <div className="flex items-center gap-3">
               <div className="flex gap-1.5">
@@ -153,9 +151,7 @@ export default function DropSlotList({
                     key={mode}
                     onClick={() => setGroupMode(mode)}
                     className={`${baseButtonClass} ${
-                      groupMode === mode
-                        ? 'border-white bg-white text-black'
-                        : mutedButtonClass
+                      groupMode === mode ? 'border-white bg-white text-black' : mutedButtonClass
                     }`}
                   >
                     {label}
@@ -168,10 +164,7 @@ export default function DropSlotList({
               >
                 Select all
               </button>
-              <button
-                onClick={onClear}
-                className={`${baseButtonClass} ${mutedButtonClass}`}
-              >
+              <button onClick={onClear} className={`${baseButtonClass} ${mutedButtonClass}`}>
                 Clear
               </button>
               {headerActions}

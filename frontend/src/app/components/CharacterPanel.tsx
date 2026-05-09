@@ -67,6 +67,7 @@ export default function CharacterPanel({
   name,
   realm,
   region,
+  characterClass,
   equipment,
   statistics,
   specializations,
@@ -125,6 +126,11 @@ export default function CharacterPanel({
         name: it.name || '',
         bonus_ids: Array.isArray(it.bonus_list) ? it.bonus_list : [],
         enchant_id: Number(it.enchantments?.[0]?.enchantment_id || 0) || undefined,
+        gem_ids: Array.isArray(it.sockets)
+          ? it.sockets
+              .map((socket) => Number(socket?.item?.id || 0))
+              .filter((id) => id > 0)
+          : undefined,
         gem_id: Number(it.sockets?.[0]?.item?.id || 0) || undefined,
       };
     }
@@ -157,6 +163,7 @@ export default function CharacterPanel({
               gear={profileGear}
               title="Equipped Gear"
               characterRenderUrl={characterMediaUrl}
+              characterClassName={characterClass}
             />
 
             <TalentsCard

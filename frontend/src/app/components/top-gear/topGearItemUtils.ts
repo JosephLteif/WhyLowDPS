@@ -1,7 +1,7 @@
 import { buildGearItemIdentity, buildGearItemUid } from '../../lib/gear-utils';
 import { ResolvedItem } from '../../lib/types';
 
-export type BadgeVariant = 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
+export type BadgeVariant = 'neutral' | 'gem' | 'enchant' | 'embellishment' | 'mod' | 'source';
 
 export interface BadgeDescriptor {
   text: string;
@@ -89,7 +89,13 @@ export function getWowheadData(item: ResolvedItem): string {
   if (item.bonus_ids.length > 0) parts.push(`bonus=${item.bonus_ids.join(':')}`);
   if (item.ilevel > 0) parts.push(`ilvl=${item.ilevel}`);
   if (item.enchant_id > 0) parts.push(`ench=${item.enchant_id}`);
-  if (item.gem_id > 0) parts.push(`gems=${item.gem_id}`);
+  const gemIds =
+    item.gem_ids && item.gem_ids.length > 0
+      ? item.gem_ids.filter((id) => id > 0)
+      : item.gem_id > 0
+        ? [item.gem_id]
+        : [];
+  if (gemIds.length > 0) parts.push(`gems=${gemIds.join(':')}`);
   return parts.join('&');
 }
 
@@ -160,6 +166,7 @@ export function makeUid(item: {
   ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
+  gem_ids?: number[];
   crafted_stats?: string[];
   embellishment_item_id?: number;
   modifier_item_ids?: number[];
@@ -174,6 +181,7 @@ export function makeIdentity(item: {
   ilevel?: number;
   enchant_id?: number;
   gem_id?: number;
+  gem_ids?: number[];
   crafted_stats?: string[];
   embellishment_item_id?: number;
   modifier_item_ids?: number[];
@@ -186,6 +194,15 @@ export function parseFirstIdFromSimc(simc: string, key: 'gem_id' | 'enchant_id')
   if (!match) return 0;
   const rawValue = match[1].split('/')[0];
   return Number.parseInt(rawValue, 10) || 0;
+}
+
+export function parseGemIdsFromSimc(simc: string): number[] {
+  const match = simc.match(/(?:^|,)gem_id=([0-9/:]+)/);
+  if (!match) return [];
+  return match[1]
+    .split(/[/:]/)
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isFinite(value) && value > 0);
 }
 
 export function itemConsumesLimitedCraftedModifier(item: ResolvedItem): boolean {

@@ -1,19 +1,32 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { EnchantInfo, GemInfo, ItemInfo, ItemQuery } from '../lib/useItemInfo';
+import type {
+  EmbellishmentOption,
+  EnchantInfo,
+  GemInfo,
+  ItemInfo,
+  ItemQuery,
+} from '../lib/useItemInfo';
 import {
+  enchantAvailabilityKey,
+  enchantAvailabilityItemKey,
   getIconUrl,
   getWowheadData,
   getWowheadUrl,
   QUALITY_COLORS,
+  useEmbellishmentOptions,
+  useEnchantAvailability,
   useEnchantInfo,
   useGemInfo,
   useItemInfo,
 } from '../lib/useItemInfo';
-import { SLOT_LABELS } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import GearItemRow from './GearItemRow';
+import {
+  ASCENDANT_VOIDCORE_BADGE_CLASS,
+  EMBELLISHMENT_BADGE_CLASS,
+} from './shared/itemBadgeClasses';
 
 export interface GearItem {
   slot: string;
@@ -23,12 +36,17 @@ export interface GearItem {
   bonus_ids?: number[];
   enchant_id?: number;
   gem_id?: number;
+  gem_ids?: number[];
   is_kept?: boolean;
   upgrade_levels?: number;
   origin?: string;
   source_type?: string;
   encounter?: string;
   instance_name?: string;
+  embellishment_item_id?: number;
+  embellishment_name?: string;
+  embellishment_icon?: string;
+  embellishment_bonus_ids?: number[];
 }
 
 const GEAR_ORDER_LEFT = ['head', 'neck', 'shoulder', 'back', 'chest', 'wrist'];
@@ -43,19 +61,34 @@ const GEAR_ORDER_RIGHT = [
   'trinket2',
 ];
 const GEAR_ORDER_STACKED = [...GEAR_ORDER_LEFT, ...GEAR_ORDER_RIGHT, 'main_hand', 'off_hand'];
-const ENCHANTABLE_SLOTS = new Set([
-  'head',
-  'neck',
-  'back',
-  'chest',
-  'wrist',
-  'legs',
-  'feet',
-  'finger1',
-  'finger2',
-  'main_hand',
-  'off_hand',
-]);
+const RAIDBOTS_PAPERDOLL_BASE = 'https://www.raidbots.com/images/paperdoll';
+
+function getEmptySlotIcon(slot: string): string {
+  const normalized = String(slot || '').toLowerCase();
+  const slotIconName =
+    {
+      head: 'Head',
+      neck: 'Neck',
+      shoulder: 'Shoulder',
+      back: 'Chest',
+      chest: 'Chest',
+      wrist: 'Wrists',
+      hands: 'Hands',
+      waist: 'Waist',
+      legs: 'Legs',
+      feet: 'Feet',
+      finger1: 'Finger',
+      finger2: 'Finger',
+      trinket1: 'Trinket',
+      trinket2: 'Trinket',
+      main_hand: 'MainHand',
+      off_hand: 'SecondaryHand',
+    }[normalized] || '';
+
+  return slotIconName
+    ? `${RAIDBOTS_PAPERDOLL_BASE}/UI-PaperDoll-Slot-${slotIconName}.png`
+    : 'inv_misc_questionmark';
+}
 
 function dropBaselineKey(item: GearItem): string {
   const slot = String(item.slot || '').toLowerCase();
@@ -66,28 +99,11 @@ function dropBaselineKey(item: GearItem): string {
   return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
 }
 
-function slotLabel(slot: string): string {
-  const normalized = String(slot || '').toLowerCase();
-  const upper = normalized.toUpperCase();
-  const underscored = upper
-    .replace('FINGER1', 'FINGER_1')
-    .replace('FINGER2', 'FINGER_2')
-    .replace('TRINKET1', 'TRINKET_1')
-    .replace('TRINKET2', 'TRINKET_2');
-
-  return (
-    SLOT_LABELS[slot] ||
-    SLOT_LABELS[normalized] ||
-    SLOT_LABELS[upper] ||
-    SLOT_LABELS[underscored] ||
-    normalized.replace(/_/g, ' ')
-  );
-}
-
 interface GearOverviewProps {
   gear: Record<string, GearItem>;
   title?: string;
   characterRenderUrl?: string | null;
+  characterClassName?: string | null;
   equippedGear?: Record<string, GearItem>;
   dropBaselineIlevelByKey?: Record<string, number>;
   upgradeSlots?: Set<string>;
@@ -101,6 +117,7 @@ export default function GearOverview({
   gear,
   title = 'Equipped Gear',
   characterRenderUrl,
+  characterClassName,
   equippedGear,
   dropBaselineIlevelByKey = {},
   upgradeSlots,
@@ -134,16 +151,35 @@ export default function GearOverview({
   }, [gear]);
 
   const enchantInfoMap = useEnchantInfo(allEnchantIds);
+  const enchantAvailabilityBySlot = useEnchantAvailability(
+    Object.values(gear)
+      .filter((it) => it.item_id > 0)
+      .map((it) => ({
+        slot: it.slot,
+        className: characterClassName,
+        itemId: it.item_id,
+        bonusIds: it.bonus_ids,
+        seasonId: undefined,
+      }))
+  );
 
   const allGemIds = useMemo(() => {
     const ids = new Set<number>();
     for (const it of Object.values(gear)) {
+      for (const gemId of it.gem_ids || []) {
+        if (gemId > 0) ids.add(gemId);
+      }
       if (it.gem_id && it.gem_id > 0) ids.add(it.gem_id);
     }
     return [...ids];
   }, [gear]);
 
   const gemInfoMap = useGemInfo(allGemIds);
+  const embellishmentOptionsByItemId = useEmbellishmentOptions(
+    Object.values(gear)
+      .map((it) => Number(it.item_id || 0))
+      .filter((id) => id > 0)
+  );
   useWowheadTooltips([itemInfoMap]);
 
   const totalCostsDisplay = useMemo(() => {
@@ -222,7 +258,7 @@ export default function GearOverview({
         </div>
         {totalCostsDisplay && <div className="mb-4 md:hidden">{totalCostsDisplay}</div>}
 
-        <div className="space-y-1 md:hidden">
+        <div className="space-y-2 md:hidden">
           {GEAR_ORDER_STACKED.map((slot) => (
             <GearSlotRow
               key={slot}
@@ -236,12 +272,15 @@ export default function GearOverview({
               itemInfoMap={itemInfoMap}
               enchantInfoMap={enchantInfoMap}
               gemInfoMap={gemInfoMap}
+              characterClassName={characterClassName}
+              enchantAvailabilityBySlot={enchantAvailabilityBySlot}
+              embellishmentOptionsByItemId={embellishmentOptionsByItemId}
             />
           ))}
         </div>
 
         <div className={`hidden md:grid ${characterRenderUrl ? 'md:grid-cols-[1fr_200px_1fr] lg:grid-cols-[1fr_230px_1fr] xl:grid-cols-[1fr_260px_1fr]' : 'md:grid-cols-2'} md:gap-x-4 lg:gap-x-6`}>
-          <div className="space-y-1">
+          <div className="space-y-2">
             {GEAR_ORDER_LEFT.map((slot) => (
               <GearSlotRow
                 key={slot}
@@ -255,11 +294,14 @@ export default function GearOverview({
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
+                characterClassName={characterClassName}
+                enchantAvailabilityBySlot={enchantAvailabilityBySlot}
+                embellishmentOptionsByItemId={embellishmentOptionsByItemId}
               />
             ))}
           </div>
           {characterRenderUrl && <div className="hidden md:block" />}
-          <div className="space-y-1">
+          <div className="space-y-2">
             {GEAR_ORDER_RIGHT.map((slot) => (
               <GearSlotRow
                 key={slot}
@@ -273,6 +315,9 @@ export default function GearOverview({
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
+                characterClassName={characterClassName}
+                enchantAvailabilityBySlot={enchantAvailabilityBySlot}
+                embellishmentOptionsByItemId={embellishmentOptionsByItemId}
                 reverse
               />
             ))}
@@ -293,6 +338,9 @@ export default function GearOverview({
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
+                characterClassName={characterClassName}
+                enchantAvailabilityBySlot={enchantAvailabilityBySlot}
+                embellishmentOptionsByItemId={embellishmentOptionsByItemId}
                 reverse
               />
             </div>
@@ -308,6 +356,9 @@ export default function GearOverview({
                 itemInfoMap={itemInfoMap}
                 enchantInfoMap={enchantInfoMap}
                 gemInfoMap={gemInfoMap}
+                characterClassName={characterClassName}
+                enchantAvailabilityBySlot={enchantAvailabilityBySlot}
+                embellishmentOptionsByItemId={embellishmentOptionsByItemId}
               />
             </div>
           </div>
@@ -328,6 +379,9 @@ export function GearSlotRow({
   itemInfoMap,
   enchantInfoMap,
   gemInfoMap,
+  characterClassName,
+  enchantAvailabilityBySlot,
+  embellishmentOptionsByItemId,
   reverse = false,
 }: {
   slot: string;
@@ -340,21 +394,22 @@ export function GearSlotRow({
   itemInfoMap: Record<number, ItemInfo>;
   enchantInfoMap: Record<number, EnchantInfo>;
   gemInfoMap: Record<number, GemInfo>;
+  characterClassName?: string | null;
+  enchantAvailabilityBySlot: Record<string, boolean>;
+  embellishmentOptionsByItemId: Record<number, EmbellishmentOption[]>;
   reverse?: boolean;
 }) {
-  const label = slotLabel(slot);
-
   if (!item || item.item_id <= 0) {
     return (
       <div className="rounded-lg">
         <GearItemRow
-          icon="inv_misc_questionmark"
-          name={label}
+          icon={getEmptySlotIcon(slot)}
+          name="Empty"
           nameColor="#d4d4d8"
-          details={[{ text: 'Empty', kind: 'plain', color: 'text-zinc-400' }]}
           showCheckbox={false}
           dimmed
           reverse={reverse}
+          iconSize={38}
         />
       </div>
     );
@@ -362,14 +417,17 @@ export function GearSlotRow({
 
   const info = itemInfoMap[item.item_id];
   const enchant = item.enchant_id ? enchantInfoMap[item.enchant_id] : undefined;
-  const gem = item.gem_id ? gemInfoMap[item.gem_id] : undefined;
-  const displayTag = info?.tag && info.tag.toLowerCase() !== 'socket' ? info.tag : '';
+  const gemIds = [...new Set((item.gem_ids || []).filter((id) => id > 0))];
+  if (gemIds.length === 0 && item.gem_id && item.gem_id > 0) {
+    gemIds.push(item.gem_id);
+  }
+  const gems = gemIds.map((id) => gemInfoMap[id]).filter(Boolean);
   const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
   const name = info?.name || item.name || `Item ${item.item_id}`;
   const icon = info?.icon || 'inv_misc_questionmark';
   const whData =
     item.item_id > 0
-      ? getWowheadData(item.bonus_ids, item.ilevel, item.enchant_id, item.gem_id)
+      ? getWowheadData(item.bonus_ids, item.ilevel, item.enchant_id, gemIds)
       : undefined;
 
   const baselineDropIlevel = Number(dropBaselineIlevelByKey[dropBaselineKey(item)] || 0);
@@ -397,14 +455,29 @@ export function GearSlotRow({
       : null;
   const upgradeState = comparisonMode === 'result' ? comparisonState : provenanceState;
 
-  const gemEligible =
-    Number((info as any)?.sockets || 0) > 0 || Number(item.gem_id || 0) > 0;
-  const enchantEligible = ENCHANTABLE_SLOTS.has(slot);
+  const socketCount = Number((info as any)?.sockets || 0);
+  const gemEligible = socketCount > 0 || gemIds.length > 0;
+  const enchantEligible =
+    enchantAvailabilityBySlot[
+      enchantAvailabilityItemKey(slot, characterClassName, item.item_id, item.bonus_ids)
+    ] || false;
+  const embellishmentOptions = embellishmentOptionsByItemId[item.item_id] || [];
+  const inferredEmbellishment =
+    embellishmentOptions.find((opt) => opt.item_id === item.embellishment_item_id) ||
+    embellishmentOptions.find(
+      (opt) =>
+        Array.isArray(opt.bonus_ids) &&
+        opt.bonus_ids.length > 0 &&
+        opt.bonus_ids.every((bid) => (item.bonus_ids || []).includes(bid))
+    );
+  const embellishmentName = item.embellishment_name || inferredEmbellishment?.name || '';
+  const embellishmentIcon = item.embellishment_icon || inferredEmbellishment?.icon || '';
+  const embellishmentItemId = item.embellishment_item_id || inferredEmbellishment?.item_id || 0;
 
   const details: Array<{
     text: string;
     kind?: 'text' | 'gemIcon' | 'plain' | 'iconText';
-    badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'mod' | 'source';
+    badgeVariant?: 'neutral' | 'gem' | 'enchant' | 'embellishment' | 'mod' | 'source';
     color?: string;
     tooltip?: string;
     icon?: string;
@@ -420,7 +493,7 @@ export function GearSlotRow({
     if (item.origin === 'vault') return 'Great Vault';
     return '';
   })();
-  if (gem?.name) {
+  for (const gem of gems) {
     details.push({
       text: gem.name,
       kind: 'iconText',
@@ -430,9 +503,19 @@ export function GearSlotRow({
       wowheadData: gem.gem_id ? `item=${gem.gem_id}` : undefined,
       color: 'text-sky-200 border-sky-400/45 bg-sky-500/10',
     });
-  } else if (gemEligible) {
+  }
+  const emptySocketCount = Math.max(0, socketCount - gemIds.length);
+  if (gems.length === 0 && gemEligible) {
     details.push({
-      text: 'Empty Socket',
+      text: emptySocketCount > 1 ? `${emptySocketCount} Empty Sockets` : 'Empty Socket',
+      kind: 'iconText',
+      badgeVariant: 'gem',
+      icon: 'inv_misc_gem_variety_01',
+      color: 'text-zinc-200 border-dashed border-zinc-500/60 bg-zinc-500/8',
+    });
+  } else if (emptySocketCount > 0) {
+    details.push({
+      text: emptySocketCount > 1 ? `${emptySocketCount} Empty Sockets` : 'Empty Socket',
       kind: 'iconText',
       badgeVariant: 'gem',
       icon: 'inv_misc_gem_variety_01',
@@ -466,6 +549,18 @@ export function GearSlotRow({
       color: 'text-zinc-200 border-dashed border-zinc-500/60 bg-zinc-500/8',
     });
   }
+  if (embellishmentName) {
+    details.push({
+      text: embellishmentName,
+      kind: embellishmentIcon ? 'iconText' : 'plain',
+      badgeVariant: 'embellishment',
+      icon: embellishmentIcon || undefined,
+      href: embellishmentItemId > 0 ? getWowheadUrl(embellishmentItemId) : undefined,
+      wowheadData: embellishmentItemId > 0 ? `item=${embellishmentItemId}` : undefined,
+      tooltip: embellishmentName,
+      color: EMBELLISHMENT_BADGE_CLASS,
+    });
+  }
   const hasAscendantVoidcore =
     /(?:^|\s)mod:268552(?:\s|$)/i.test(String(item.source_type || '')) ||
     String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
@@ -478,7 +573,7 @@ export function GearSlotRow({
       icon: 'inv_1205_voidforge_sovereignvoidcores_cosmicvoid',
       href: 'https://www.wowhead.com/item=268552/ascendant-voidcore',
       wowheadData: 'item=268552',
-      color: 'text-amber-200 border-amber-400/50 bg-amber-500/18',
+      color: ASCENDANT_VOIDCORE_BADGE_CLASS,
     });
   }
 
@@ -496,23 +591,13 @@ export function GearSlotRow({
         icon={icon}
         overline={
           <>
-            {!reverse ? (
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                {label}
-              </span>
-            ) : null}
-            {!reverse && sourceLabel ? (
-              <span className="rounded border border-amber-400/45 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-200">
-                {sourceLabel}
-              </span>
-            ) : null}
-            {reverse && sourceLabel ? (
-              <span className="rounded border border-amber-400/45 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-200">
+            {upgradeState === 'upgrade' && sourceLabel ? (
+              <span className="rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200">
                 {sourceLabel}
               </span>
             ) : null}
             <span
-              className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none ${
+              className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
                 upgradeState === 'upgrade'
                   ? 'text-emerald-200 border-emerald-400/45 bg-emerald-500/12'
                   : upgradeState === 'downgrade'
@@ -522,13 +607,7 @@ export function GearSlotRow({
               title={levelChanged ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}` : undefined}
             >
               iLvl {item.ilevel || 0}
-              {displayTag ? ` - ${displayTag}` : ''}
             </span>
-            {reverse ? (
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                {label}
-              </span>
-            ) : null}
           </>
         }
         name={name}
@@ -540,6 +619,7 @@ export function GearSlotRow({
         vault={item.origin === 'vault'}
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
         wowheadData={whData}
+        iconSize={38}
       />
     </div>
   );

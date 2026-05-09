@@ -116,7 +116,39 @@ export interface EnchantInfo {
   quality?: number;
 }
 
+export interface EmbellishmentOption {
+  item_id: number;
+  name: string;
+  icon?: string;
+  bonus_ids: number[];
+}
+
 const enchantCache: Record<number, EnchantInfo> = {};
+const enchantAvailabilityCache: Record<string, boolean> = {};
+const embellishmentOptionsCache: Record<number, EmbellishmentOption[]> = {};
+
+function normalizeClassName(className?: string | null): string {
+  return String(className || '').trim().toLowerCase();
+}
+
+export function enchantAvailabilityKey(slot: string, className?: string | null): string {
+  return `${String(slot || '').trim().toLowerCase()}|${normalizeClassName(className)}`;
+}
+
+export function enchantAvailabilityItemKey(
+  slot: string,
+  className?: string | null,
+  itemId?: number,
+  bonusIds?: number[],
+  seasonId?: number
+): string {
+  const normalizedBonusIds = Array.isArray(bonusIds)
+    ? [...bonusIds].filter((id) => id > 0).sort((a, b) => a - b).join(':')
+    : '';
+  const resolvedSeasonId = Number.isFinite(seasonId) ? Number(seasonId) : 0;
+  const resolvedItemId = Number.isFinite(itemId) ? Number(itemId) : 0;
+  return `${enchantAvailabilityKey(slot, className)}|${resolvedItemId}|${normalizedBonusIds}|${resolvedSeasonId}`;
+}
 
 export function useEnchantInfo(enchantIds: number[]): Record<number, EnchantInfo> {
   const [enchants, setEnchants] = useState<Record<number, EnchantInfo>>({});
@@ -170,6 +202,138 @@ export function useEnchantInfo(enchantIds: number[]): Record<number, EnchantInfo
   }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return enchants;
+}
+
+export function useEnchantAvailability(
+  queries: Array<{
+    slot: string;
+    className?: string | null;
+    itemId?: number;
+    bonusIds?: number[];
+    seasonId?: number;
+  }>
+): Record<string, boolean> {
+  const [availability, setAvailability] = useState<Record<string, boolean>>({});
+
+  const depKey = queries
+    .map(({ slot, className, itemId, bonusIds, seasonId }) =>
+      enchantAvailabilityItemKey(slot, className, itemId, bonusIds, seasonId)
+    )
+    .filter((key) => key.split('|')[0].length > 0)
+    .sort()
+    .join(',');
+
+  useEffect(() => {
+    const unique = new Map<
+      string,
+      {
+        slot: string;
+        className?: string | null;
+        itemId?: number;
+        bonusIds?: number[];
+        seasonId?: number;
+      }
+    >();
+    for (const query of queries) {
+      const slot = String(query.slot || '').trim().toLowerCase();
+      if (!slot) continue;
+      const key = enchantAvailabilityItemKey(
+        slot,
+        query.className,
+        query.itemId,
+        query.bonusIds,
+        query.seasonId
+      );
+      if (!unique.has(key))
+        unique.set(key, {
+          slot,
+          className: query.className,
+          itemId: query.itemId,
+          bonusIds: query.bonusIds,
+          seasonId: query.seasonId,
+        });
+    }
+    if (unique.size === 0) return;
+
+    const cached: Record<string, boolean> = {};
+    const toFetch: Array<{
+      key: string;
+      slot: string;
+      className?: string | null;
+      itemId?: number;
+      bonusIds?: number[];
+      seasonId?: number;
+    }> = [];
+    for (const [key, query] of unique) {
+      if (Object.prototype.hasOwnProperty.call(enchantAvailabilityCache, key)) {
+        cached[key] = enchantAvailabilityCache[key];
+      } else {
+        toFetch.push({
+          key,
+          slot: query.slot,
+          className: query.className,
+          itemId: query.itemId,
+          bonusIds: query.bonusIds,
+          seasonId: query.seasonId,
+        });
+      }
+    }
+
+    if (Object.keys(cached).length > 0) {
+      setAvailability((prev) => ({ ...prev, ...cached }));
+    }
+
+    if (toFetch.length === 0) return;
+
+    let cancelled = false;
+
+    for (const { key, slot, className, itemId, bonusIds, seasonId } of toFetch) {
+      (async () => {
+        try {
+          const params = new URLSearchParams();
+          params.set('slot', slot);
+          const normalizedClass = normalizeClassName(className);
+          if (normalizedClass) params.set('class_name', normalizedClass);
+          if (Number.isFinite(itemId) && Number(itemId) > 0) {
+            params.set('item_id', String(Number(itemId)));
+          }
+          if (Array.isArray(bonusIds) && bonusIds.length > 0) {
+            params.set(
+              'bonus_ids',
+              bonusIds
+                .filter((id) => id > 0)
+                .map((id) => String(id))
+                .join(',')
+            );
+          }
+          if (Number.isFinite(seasonId) && Number(seasonId) > 0) {
+            params.set('season_id', String(Number(seasonId)));
+          }
+          const options = await fetchJsonCached<unknown[]>(
+            `${API_URL}/api/gear/enchant-options?${params.toString()}`,
+            {
+              usePersistentCache: true,
+              ttl: 86400000,
+            }
+          );
+          if (cancelled) return;
+          const hasOptions = Array.isArray(options) && options.length > 0;
+          enchantAvailabilityCache[key] = hasOptions;
+          setAvailability((prev) => ({ ...prev, [key]: hasOptions }));
+        } catch {
+          if (cancelled) return;
+          enchantAvailabilityCache[key] = false;
+          setAvailability((prev) => ({ ...prev, [key]: false }));
+        }
+      })();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return availability;
 }
 
 export interface GemInfo {
@@ -235,6 +399,72 @@ export function useGemInfo(gemIds: number[]): Record<number, GemInfo> {
   return gems;
 }
 
+export function useEmbellishmentOptions(
+  itemIds: number[]
+): Record<number, EmbellishmentOption[]> {
+  const [optionsByItemId, setOptionsByItemId] = useState<Record<number, EmbellishmentOption[]>>(
+    {}
+  );
+
+  const depKey = itemIds
+    .filter((id) => id > 0)
+    .sort((a, b) => a - b)
+    .join(',');
+
+  useEffect(() => {
+    const unique = [...new Set(itemIds.filter((id) => id > 0))];
+    if (unique.length === 0) return;
+
+    const cached: Record<number, EmbellishmentOption[]> = {};
+    const toFetch: number[] = [];
+    for (const itemId of unique) {
+      if (Object.prototype.hasOwnProperty.call(embellishmentOptionsCache, itemId)) {
+        cached[itemId] = embellishmentOptionsCache[itemId];
+      } else {
+        toFetch.push(itemId);
+      }
+    }
+
+    if (Object.keys(cached).length > 0) {
+      setOptionsByItemId((prev) => ({ ...prev, ...cached }));
+    }
+
+    if (toFetch.length === 0) return;
+
+    let cancelled = false;
+
+    for (const itemId of toFetch) {
+      (async () => {
+        try {
+          const options = await fetchJsonCached<EmbellishmentOption[]>(
+            `${API_URL}/api/gear/embellishment-options?item_id=${encodeURIComponent(String(itemId))}`,
+            {
+              usePersistentCache: true,
+              ttl: 86400000,
+            }
+          );
+          if (cancelled) return;
+          embellishmentOptionsCache[itemId] = Array.isArray(options) ? options : [];
+          setOptionsByItemId((prev) => ({
+            ...prev,
+            [itemId]: embellishmentOptionsCache[itemId],
+          }));
+        } catch {
+          if (cancelled) return;
+          embellishmentOptionsCache[itemId] = [];
+          setOptionsByItemId((prev) => ({ ...prev, [itemId]: [] }));
+        }
+      })();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [depKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return optionsByItemId;
+}
+
 export function getIconUrl(iconName: string): string {
   return `https://render.worldofwarcraft.com/icons/56/${iconName}.jpg`;
 }
@@ -247,7 +477,7 @@ export function getWowheadData(
   bonusIds?: number[],
   ilevel?: number,
   enchantId?: number,
-  gemId?: number
+  gemId?: number | number[]
 ): string {
   const parts: string[] = [];
   if (bonusIds && bonusIds.length > 0) {
@@ -259,8 +489,9 @@ export function getWowheadData(
   if (enchantId && enchantId > 0) {
     parts.push(`ench=${enchantId}`);
   }
-  if (gemId && gemId > 0) {
-    parts.push(`gems=${gemId}`);
+  const gemIds = Array.isArray(gemId) ? gemId.filter((id) => id > 0) : gemId && gemId > 0 ? [gemId] : [];
+  if (gemIds.length > 0) {
+    parts.push(`gems=${gemIds.join(':')}`);
   }
   return parts.join('&');
 }

@@ -42,8 +42,9 @@ export default function TopGearUpgradeButton({
     currentLevel != null && maxLevel != null && Number.isFinite(currentLevel) && Number.isFinite(maxLevel)
       ? currentLevel >= maxLevel
       : false;
-  const showUpgradeButton = !!item.upgrade && !isTrackMaxed && hasUpgradePath;
-  const canRender = showUpgradeButton || !!onCatalystConvert || !!onOptimize;
+  const hasTrackUpgrade = !!upgradeMatch && !isTrackMaxed && hasUpgradePath;
+  const showActionMenuButton = hasTrackUpgrade || !!onCatalystConvert;
+  const canRender = showActionMenuButton || !!onOptimize;
   const isMenuOpen = upgradeMenuFor === item.uid;
   useDismissOnOutside(rootRef, isMenuOpen, () => {
     onUpgradeClick();
@@ -95,7 +96,7 @@ export default function TopGearUpgradeButton({
         </button>
       )}
 
-      {showUpgradeButton && (
+      {showActionMenuButton && (
         <button
           type="button"
           onClick={(e) => {
@@ -108,7 +109,7 @@ export default function TopGearUpgradeButton({
               ? 'border-gold/50 bg-gold/20 text-gold'
               : `${trackBgClass} ${trackColorClass} hover:brightness-110`
           }`}
-          title={`Upgrade Track: ${track}`}
+          title={hasTrackUpgrade ? `Upgrade Track: ${track}` : 'Item Actions'}
         >
           <svg
             className="h-3 w-3"
@@ -141,9 +142,9 @@ export default function TopGearUpgradeButton({
               Convert to Catalyst
             </button>
           )}
-          {onCatalystConvert && showUpgradeButton && <div className="my-1 border-t border-border/50" />}
+          {onCatalystConvert && hasTrackUpgrade && <div className="my-1 border-t border-border/50" />}
 
-          {showUpgradeButton && (
+          {hasTrackUpgrade && (
             <div className="max-h-[300px] overflow-y-auto">
               {loadingUpgrades ? (
                 <div className="px-3 py-2 text-xs italic text-muted">Loading options...</div>

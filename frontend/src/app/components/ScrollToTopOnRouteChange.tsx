@@ -21,12 +21,12 @@ export default function ScrollToTopOnRouteChange() {
     if (lastPathRef.current === pathname) return;
     lastPathRef.current = pathname;
 
-    window.scrollTo(0, 0);
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     const raf = window.requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     });
     const timer = window.setTimeout(() => {
-      window.scrollTo(0, 0);
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     }, 90);
 
     return () => {

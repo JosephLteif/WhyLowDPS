@@ -78,6 +78,22 @@ interface OptimizeItemModalProps {
   ) => void;
 }
 
+function parseGemIdsFromItem(item: ResolvedItem | null): number[] {
+  if (!item) return [];
+  if (item.gem_ids && item.gem_ids.length > 0) {
+    return item.gem_ids.filter((id) => Number.isFinite(id) && id > 0);
+  }
+  if (item.gem_id > 0) {
+    return [item.gem_id];
+  }
+  const match = item.simc_string.match(/(?:^|,)gem_id=([0-9/:]+)/);
+  if (!match) return [];
+  return match[1]
+    .split(/[/:]/)
+    .map((value) => Number.parseInt(value, 10))
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
 /**
  * Pick the best (highest crafting quality) enchant per base name.
  * This avoids showing "Cursed Haste 1", "Cursed Haste 2", "Cursed Haste 3" separately.
@@ -146,7 +162,7 @@ export default function OptimizeItemModal({
   const [rawEmbellishments, setRawEmbellishments] = useState<EmbellishmentOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedEnchant, setSelectedEnchant] = useState<number>(0);
-  const [selectedGem, setSelectedGem] = useState<number>(0);
+  const [selectedGemIds, setSelectedGemIds] = useState<number[]>([]);
   const [selectedEmbellishment, setSelectedEmbellishment] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState('');
   const modalRef = useRef<HTMLDivElement | null>(null);
@@ -161,7 +177,11 @@ export default function OptimizeItemModal({
     if (isOpen && item) {
       fetchOptions();
       setSelectedEnchant(item.enchant_id || 0);
-      setSelectedGem(item.gem_id || 0);
+      const itemGemIds = parseGemIdsFromItem(item);
+      const socketCount = Math.max(Number(item.sockets || 0), itemGemIds.length);
+      setSelectedGemIds(
+        Array.from({ length: socketCount }, (_, index) => itemGemIds[index] || 0)
+      );
       setSelectedEmbellishment(item.embellishment_item_id || 0);
       setSearchTerm('');
     }
@@ -173,11 +193,20 @@ export default function OptimizeItemModal({
     if (!item) return;
     setLoading(true);
     try {
+      const enchantParams = new URLSearchParams();
+      enchantParams.set('slot', item.slot);
+      if (className) enchantParams.set('class_name', className);
+      if (item.item_id > 0) enchantParams.set('item_id', String(item.item_id));
+      if (Array.isArray(item.bonus_ids) && item.bonus_ids.length > 0) {
+        enchantParams.set('bonus_ids', item.bonus_ids.join(','));
+      }
+      if (Number.isFinite(item.season_id) && Number(item.season_id) > 0) {
+        enchantParams.set('season_id', String(Number(item.season_id)));
+      }
       const [enchantsRes, gemsRes, embellishmentsRes] = await Promise.all([
-        fetch(
-          `${API_URL}/api/gear/enchant-options?slot=${item.slot}${className ? `&class_name=${encodeURIComponent(className)}` : ''}`,
-          { credentials: 'include' }
-        ),
+        fetch(`${API_URL}/api/gear/enchant-options?${enchantParams.toString()}`, {
+          credentials: 'include',
+        }),
         fetch(`${API_URL}/api/gear/gem-options`, { credentials: 'include' }),
         fetch(
           `${API_URL}/api/gear/embellishment-options?item_id=${encodeURIComponent(String(item.item_id))}`,
@@ -207,6 +236,14 @@ export default function OptimizeItemModal({
     () => gems.reduce((max, g) => (g.expansion > max ? g.expansion : max), 0),
     [gems]
   );
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredEnchants = useMemo(
+    () =>
+      normalizedSearch
+        ? enchants.filter((e) => e.name.toLowerCase().includes(normalizedSearch))
+        : enchants,
+    [enchants, normalizedSearch]
+  );
   const seasonalGems = useMemo(
     () =>
       currentGemExpansion > 0
@@ -214,16 +251,47 @@ export default function OptimizeItemModal({
         : gems,
     [gems, currentGemExpansion]
   );
-  const filteredGems = seasonalGems.filter((g) =>
-    g.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredGems = useMemo(
+    () =>
+      normalizedSearch
+        ? seasonalGems.filter((g) => g.name.toLowerCase().includes(normalizedSearch))
+        : seasonalGems,
+    [seasonalGems, normalizedSearch]
   );
+  const filteredEmbellishments = useMemo(
+    () =>
+      normalizedSearch
+        ? embellishments.filter((emb) => emb.name.toLowerCase().includes(normalizedSearch))
+        : embellishments,
+    [embellishments, normalizedSearch]
+  );
+  const socketCount = Math.max(Number(item?.sockets || 0), parseGemIdsFromItem(item).length);
+  const hasEnchantSection = enchants.length > 0;
+  const hasSocketSection = socketCount > 0;
+  const hasEmbellishmentSection = embellishments.length > 0;
+  const showSearch = hasEnchantSection || hasSocketSection || hasEmbellishmentSection;
 
   if (!isOpen || !item) return null;
 
   function handleApply() {
     const selected =
       embellishments.find((opt) => opt.item_id === selectedEmbellishment) || null;
-    onApply(selectedEnchant, selectedGem ? [selectedGem] : [], selected);
+    onApply(
+      selectedEnchant,
+      selectedGemIds.filter((gemId) => Number.isFinite(gemId) && gemId > 0),
+      selected
+    );
+  }
+
+  function setSocketGem(socketIndex: number, gemItemId: number) {
+    setSelectedGemIds((current) => {
+      const next = Array.from(
+        { length: Math.max(socketCount, current.length) },
+        (_, index) => current[index] || 0
+      );
+      next[socketIndex] = gemItemId;
+      return next;
+    });
   }
 
   return (
@@ -273,8 +341,33 @@ export default function OptimizeItemModal({
 
         <div className="max-h-[70vh] overflow-y-auto p-6">
           <div className="space-y-8">
+            {showSearch && (
+              <section>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search enchants, gems, embellishments..."
+                    className="h-9 w-full rounded-md bg-white/5 pl-9 pr-3 text-sm text-white placeholder-gray-500 ring-1 ring-white/10 focus:bg-white/10 focus:outline-none focus:ring-gold/50"
+                  />
+                  <svg
+                    className="absolute left-3 top-2.5 h-4 w-4 text-gray-500"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+              </section>
+            )}
+
             {/* Enchant Selection */}
-            {enchants.length > 0 && (
+            {hasEnchantSection && (
               <section>
                 <div className="mb-4">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
@@ -301,7 +394,7 @@ export default function OptimizeItemModal({
                     </div>
                     <div className="text-[13px] font-bold">No Enchant</div>
                   </button>
-                  {enchants.map((e, idx) => (
+                  {filteredEnchants.map((e, idx) => (
                     <button
                       key={`ench-${e.enchantId}-${e.name}-${idx}`}
                       onClick={() => setSelectedEnchant(e.enchantId)}
@@ -340,7 +433,7 @@ export default function OptimizeItemModal({
             )}
 
             {/* Embellishment Selection (crafted-capable items only) */}
-            {embellishments.length > 0 && (
+            {hasEmbellishmentSection && (
               <section>
                 <div className="mb-4">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
@@ -367,7 +460,7 @@ export default function OptimizeItemModal({
                     </div>
                     <div className="text-[13px] font-bold">No Embellishment</div>
                   </button>
-                  {embellishments.map((emb, idx) => (
+                  {filteredEmbellishments.map((emb, idx) => (
                     <button
                       key={`emb-${emb.item_id}-${idx}`}
                       onClick={() => setSelectedEmbellishment(emb.item_id)}
@@ -402,98 +495,81 @@ export default function OptimizeItemModal({
             )}
 
             {/* Gem Selection */}
-            <section>
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
-                  Socket Optimization
-                </h3>
-                {item.sockets > 0 && (
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Search gems..."
-                      className="h-8 w-48 rounded-md bg-white/5 pl-8 pr-3 text-xs text-white placeholder-gray-500 ring-1 ring-white/10 focus:bg-white/10 focus:outline-none focus:ring-gold/50"
-                    />
-                    <svg
-                      className="absolute left-2.5 top-2 h-4 w-4 text-gray-500"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </div>
-                )}
-              </div>
-
-              {item.sockets === 0 && (
-                <div className="rounded-lg border border-dashed border-white/5 bg-white/[0.01] px-4 py-8 text-center text-[13px] text-muted">
-                  This item does not have any sockets.
+            {hasSocketSection && (
+              <section>
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
+                    Socket Optimization
+                  </h3>
                 </div>
-              )}
-
-              {item.sockets > 0 && (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button
-                    onClick={() => setSelectedGem(0)}
-                    className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-                      selectedGem === 0
-                        ? 'border-gold bg-gold/5 text-gold'
-                        : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
-                    }`}
-                  >
-                    <div className="flex h-8 w-8 items-center justify-center rounded border border-white/5 bg-black/20 text-muted">
-                      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                    <div className="text-[13px] font-bold">Empty Sockets</div>
-                  </button>
-                  {filteredGems.map((g, idx) => (
-                    <button
-                      key={`gem-${g.gemItemId}-${g.name}-${idx}`}
-                      onClick={() => setSelectedGem(g.gemItemId)}
-                      className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-                        selectedGem === g.gemItemId
-                          ? 'border-gold bg-gold/5 text-gold'
-                          : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
-                      }`}
-                    >
-                      <a
-                        href={`https://www.wowhead.com/item=${g.gemItemId}`}
-                        data-wowhead={`item=${g.gemItemId}`}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center"
-                        onClick={(evt) => {
-                          evt.preventDefault();
-                          evt.stopPropagation();
-                        }}
-                      >
-                        <img
-                          src={`https://render.worldofwarcraft.com/icons/56/${g.icon}.jpg`}
-                          alt=""
-                          className="h-8 w-8 rounded border border-white/10"
-                        />
-                      </a>
-                      <div>
-                        <div className="line-clamp-1 text-[13px] font-bold leading-tight">
-                          {g.name}
+                <div className="space-y-5">
+                  {Array.from({ length: socketCount }, (_, socketIndex) => {
+                    const selectedGemId = selectedGemIds[socketIndex] || 0;
+                    return (
+                      <div key={`socket-${socketIndex}`} className="space-y-2.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                          {socketCount > 1 ? `Socket ${socketIndex + 1}` : 'Socket'}
                         </div>
-                        <div className="mt-0.5 text-[10px] text-muted">Gem</div>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <button
+                            onClick={() => setSocketGem(socketIndex, 0)}
+                            className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                              selectedGemId === 0
+                                ? 'border-gold bg-gold/5 text-gold'
+                                : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
+                            }`}
+                          >
+                            <div className="flex h-8 w-8 items-center justify-center rounded border border-white/5 bg-black/20 text-muted">
+                              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path
+                                  fillRule="evenodd"
+                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            </div>
+                            <div className="text-[13px] font-bold">Empty Socket</div>
+                          </button>
+                          {filteredGems.map((g, idx) => (
+                            <button
+                              key={`socket-${socketIndex}-gem-${g.gemItemId}-${g.name}-${idx}`}
+                              onClick={() => setSocketGem(socketIndex, g.gemItemId)}
+                              className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                                selectedGemId === g.gemItemId
+                                  ? 'border-gold bg-gold/5 text-gold'
+                                  : 'border-white/5 bg-white/[0.02] text-gray-400 hover:border-white/20 hover:bg-white/[0.04]'
+                              }`}
+                            >
+                              <a
+                                href={`https://www.wowhead.com/item=${g.gemItemId}`}
+                                data-wowhead={`item=${g.gemItemId}`}
+                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center"
+                                onClick={(evt) => {
+                                  evt.preventDefault();
+                                  evt.stopPropagation();
+                                }}
+                              >
+                                <img
+                                  src={`https://render.worldofwarcraft.com/icons/56/${g.icon}.jpg`}
+                                  alt=""
+                                  className="h-8 w-8 rounded border border-white/10"
+                                />
+                              </a>
+                              <div>
+                                <div className="line-clamp-1 text-[13px] font-bold leading-tight">
+                                  {g.name}
+                                </div>
+                                <div className="mt-0.5 text-[10px] text-muted">Gem</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
-              )}
-            </section>
+              </section>
+            )}
           </div>
         </div>
 

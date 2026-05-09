@@ -366,8 +366,7 @@ pub fn get_enchant_info(enchant_id: u64) -> Option<Value> {
 pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
     let mask = 1u64 << inv_type;
     let enchants_map = enchants();
-
-    enchants_map
+    let mut matching: Vec<_> = enchants_map
         .values()
         .filter(|e| {
             if let Some(reqs) = &e.requirements {
@@ -384,6 +383,16 @@ pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
                 false
             }
         })
+        .cloned()
+        .collect();
+
+    let latest_expansion = matching.iter().filter_map(|e| e.expansion).max().unwrap_or(0);
+    if latest_expansion > 0 {
+        matching.retain(|e| e.expansion.unwrap_or(0) == latest_expansion);
+    }
+
+    matching
+        .into_iter()
         .map(|e| {
             let name = e
                 .item_name
@@ -403,6 +412,7 @@ pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
                 "itemIcon": e.item_icon,
                 "spellIcon": e.spell_icon,
                 "quality": e.quality.unwrap_or(3),
+                "expansion": e.expansion,
                 "craftingQuality": e.crafting_quality,
                 "slot": e.slot,
             })

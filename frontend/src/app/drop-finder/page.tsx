@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ComboSummary from '../components/ComboSummary';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
-import ToggleButtonGroup from '../components/ToggleButtonGroup';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import { API_URL, fetchJson } from '../lib/api';
@@ -297,8 +296,17 @@ export default function DropFinderPage() {
     return new Set(parseInstanceSelectionIds(selectedId));
   }, [isDungeon, selectedId, allKey, dungeonInstances]);
 
+  const selectedRaidIds = useMemo(() => {
+    if (!isRaid) return new Set<string>();
+    if (selectedId === allKey) {
+      return new Set(raids.map((inst) => String(inst.id)));
+    }
+    return new Set(parseInstanceSelectionIds(selectedId));
+  }, [isRaid, selectedId, allKey, raids]);
+
   const allDungeonsSelected =
     isDungeon && dungeonInstances.length > 0 && selectedDungeonIds.size === dungeonInstances.length;
+  const allRaidsSelected = isRaid && raids.length > 0 && selectedRaidIds.size === raids.length;
 
   const selectedInstance =
     selectedId &&
@@ -346,14 +354,6 @@ export default function DropFinderPage() {
     }
     return null;
   }, [selectedDifficultyDef, upgradeTracks, drops, difficulty, dungeonDiff]);
-
-  const instanceOptions = useMemo(() => {
-    const list = isRaid ? raids : dungeonInstances;
-    return [
-      { key: allKey, label: `All ${isRaid ? 'Raids' : 'Dungeons'}` },
-      ...list.map((inst) => ({ key: String(inst.id), label: inst.name })),
-    ];
-  }, [isRaid, raids, dungeonInstances, allKey]);
 
   const upgradeLevelOptions = useMemo(() => {
     if (!currentTrackInfo) return [];
@@ -491,6 +491,15 @@ export default function DropFinderPage() {
     setSelected(new Set(itemIds));
   }
 
+  const toggleAllRaids = useCallback(() => {
+    if (!isRaid) return;
+    if (allRaidsSelected) {
+      setSelectedId('');
+      return;
+    }
+    setSelectedId(allKey);
+  }, [isRaid, allRaidsSelected, allKey, setSelectedId]);
+
   const toggleAllDungeons = useCallback(() => {
     if (!isDungeon) return;
     if (allDungeonsSelected) {
@@ -520,9 +529,36 @@ export default function DropFinderPage() {
     [isDungeon, selectedDungeonIds, dungeonInstances.length, allKey, setSelectedId]
   );
 
+  const toggleRaidSelection = useCallback(
+    (instanceId: string) => {
+      if (!isRaid) return;
+      const next = new Set(selectedRaidIds);
+      if (next.has(instanceId)) next.delete(instanceId);
+      else next.add(instanceId);
+
+      if (next.size === 0) {
+        setSelectedId('');
+        return;
+      }
+      if (next.size === raids.length && raids.length > 0) {
+        setSelectedId(allKey);
+        return;
+      }
+      setSelectedId(encodeInstanceSelectionIds([...next]));
+    },
+    [isRaid, selectedRaidIds, raids.length, allKey, setSelectedId]
+  );
+
   const headerLabel = useMemo(() => {
     if (selectedInstance?.name) return selectedInstance.name;
     if (selectedId.startsWith('type:')) return `All ${isRaid ? 'Raids' : 'Dungeons'}`;
+    if (isRaid && selectedId === allKey) return 'All Raids';
+    if (isRaid && selectedRaidIds.size > 1) return `${selectedRaidIds.size} Raids`;
+    if (isRaid && selectedRaidIds.size === 1) {
+      const [onlyId] = [...selectedRaidIds];
+      const inst = raids.find((item) => String(item.id) === onlyId);
+      return inst?.name ?? '';
+    }
     if (isDungeon && selectedId === allKey) return `All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`;
     if (isDungeon && selectedDungeonIds.size > 1) return `${selectedDungeonIds.size} Dungeons`;
     if (isDungeon && selectedDungeonIds.size === 1) {
@@ -535,6 +571,8 @@ export default function DropFinderPage() {
     selectedInstance,
     selectedId,
     isRaid,
+    selectedRaidIds,
+    raids,
     isDungeon,
     allKey,
     activeDungeonCat,
@@ -703,24 +741,47 @@ export default function DropFinderPage() {
         <DungeonGrid
           value={selectedId}
           onChange={setSelectedId}
-          multi={isDungeon}
-          selectedValues={isDungeon ? selectedDungeonIds : undefined}
-          allSelected={isDungeon ? allDungeonsSelected : undefined}
-          onToggleValue={isDungeon ? toggleDungeonSelection : undefined}
-          onToggleAll={isDungeon ? toggleAllDungeons : undefined}
+          multi={isRaid || isDungeon}
+          selectedValues={isRaid ? selectedRaidIds : isDungeon ? selectedDungeonIds : undefined}
+          allSelected={isRaid ? allRaidsSelected : isDungeon ? allDungeonsSelected : undefined}
+          onToggleValue={isRaid ? toggleRaidSelection : isDungeon ? toggleDungeonSelection : undefined}
+          onToggleAll={isRaid ? toggleAllRaids : isDungeon ? toggleAllDungeons : undefined}
           instances={activeInstances}
           allKey={allKey}
           allLabel={isRaid ? 'All Raids' : `All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`}
         />
       ) : category ? (
         <div className="card p-5">
-          <label className="label-text">{isRaid ? 'Select Raid' : 'Select Dungeon'}</label>
+          <label className="label-text">{isRaid ? 'Select Raids' : 'Select Dungeons'}</label>
           {isRaid ? (
-            <ToggleButtonGroup
-              value={selectedId}
-              onChange={setSelectedId}
-              options={instanceOptions}
-            />
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={toggleAllRaids}
+                className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
+                  allRaidsSelected
+                    ? 'border-gold/40 bg-gold/[0.08] text-gold'
+                    : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+                }`}
+              >
+                All Raids
+              </button>
+              {raids.map((inst) => {
+                const active = selectedRaidIds.has(String(inst.id));
+                return (
+                  <button
+                    key={inst.id}
+                    onClick={() => toggleRaidSelection(String(inst.id))}
+                    className={`rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-150 ${
+                      active
+                        ? 'border-gold/40 bg-gold/[0.08] text-gold'
+                        : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+                    }`}
+                  >
+                    {inst.name}
+                  </button>
+                );
+              })}
+            </div>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               <button

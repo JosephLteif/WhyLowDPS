@@ -10,7 +10,7 @@ interface StickyPageHeaderProps {
 export default function StickyPageHeader({
   left,
   right,
-  topClassName = 'top-14',
+  topClassName = 'top-[var(--app-header-height)]',
   className = '',
 }: StickyPageHeaderProps) {
   return (

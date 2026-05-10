@@ -84,11 +84,41 @@ function normalizeName(input?: string | null): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
+function singularizeWord(word: string): string {
+  if (word.length < 4) return word;
+  if (word.endsWith('ies') && word.length > 4) return `${word.slice(0, -3)}y`;
+  if (/(ches|shes|xes|zes|ses)$/.test(word) && word.length > 4) return word.slice(0, -2);
+  if (word.endsWith('s') && !/(ss|is|us)$/.test(word)) return word.slice(0, -1);
+  return word;
+}
+
+function buildNameVariants(input?: string | null): string[] {
+  const raw = String(input || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim();
+  if (!raw) return [];
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const variants = new Set<string>();
+  variants.add(words.join(''));
+
+  const singularWords = words.map(singularizeWord);
+  variants.add(singularWords.join(''));
+
+  return Array.from(variants).filter(Boolean);
+}
+
 function renderEncounterDescription(text: string, abilities: WowheadSpell[]): ReactNode {
   const chunks: ReactNode[] = [];
   const byName = new Map<string, WowheadSpell>();
   for (const ability of abilities) {
-    byName.set(normalizeName(ability.name), ability);
+    for (const key of buildNameVariants(ability.name)) {
+      if (!byName.has(key)) {
+        byName.set(key, ability);
+      }
+    }
   }
 
   const re = /\[([^\]]+)\]/g;
@@ -104,7 +134,8 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
       chunks.push(<span key={`txt-${idx++}`}>{text.slice(last, start)}</span>);
     }
 
-    const matched = byName.get(normalizeName(token));
+    const tokenKeys = buildNameVariants(token);
+    const matched = tokenKeys.map((k) => byName.get(k)).find((v) => !!v);
     const href = matched?.url || `https://www.wowhead.com/search?q=${encodeURIComponent(token)}`;
     chunks.push(
       <a

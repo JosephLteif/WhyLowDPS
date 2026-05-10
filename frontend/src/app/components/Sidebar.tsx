@@ -521,6 +521,12 @@ export default function Sidebar() {
                           return;
                         }
                         if (hasChildren) {
+                          if (isCollapsed) {
+                            e.preventDefault();
+                            setIsCollapsed(false);
+                            setOpenMenu(item.label);
+                            return;
+                          }
                           e.preventDefault();
                           setOpenMenu(isOpen ? null : item.label);
                           return;

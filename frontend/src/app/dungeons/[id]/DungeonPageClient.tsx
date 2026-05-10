@@ -161,6 +161,55 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
   return chunks;
 }
 
+function EncounterAvatar({
+  npcId,
+  name,
+  sourceImageUrl,
+  fallbackIconUrl,
+}: {
+  npcId: number;
+  name: string;
+  sourceImageUrl?: string | null;
+  fallbackIconUrl?: string | null;
+}) {
+  const proxyImage = buildImageProxyUrl('encounter', npcId, sourceImageUrl);
+  const preferredSource =
+    isHttpUrl(sourceImageUrl) && !sourceImageUrl.includes('/images/logos/share-icon.png')
+      ? sourceImageUrl
+      : null;
+  const preferredAbilityIcon = isHttpUrl(fallbackIconUrl) ? fallbackIconUrl : null;
+  const sources = [preferredSource, preferredAbilityIcon, proxyImage].filter(
+    (url): url is string => !!url,
+  );
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const src = sources[sourceIndex] || null;
+
+  useEffect(() => {
+    setSourceIndex(0);
+  }, [preferredSource, preferredAbilityIcon, proxyImage]);
+
+  if (!src) {
+    return (
+      <div className="flex h-12 w-12 items-center justify-center rounded bg-zinc-800">
+        <span className="text-xl font-bold text-gold">{name[0] || '?'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="h-12 w-12 rounded object-cover"
+      onError={() => {
+        if (sourceIndex < sources.length - 1) {
+          setSourceIndex((idx) => idx + 1);
+        }
+      }}
+    />
+  );
+}
+
 export default function DungeonPageClient({ id }: { id: string }) {
   const [dungeon, setDungeon] = useState<DungeonInfo | null>(null);
   const [instanceDetails, setInstanceDetails] = useState<Instance | null>(null);
@@ -416,20 +465,18 @@ export default function DungeonPageClient({ id }: { id: string }) {
           <h2 className="text-xl font-bold text-zinc-200">Encounters</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sectionEncounters.map((encounter) => {
-              const encounterImageSrc = encounter.image_url || null;
               return (
                 <div
                   key={encounter.npc_id}
                   className="rounded-lg border border-white/10 bg-white/5 p-4"
                 >
                   <div className="mb-3 flex items-center gap-3">
-                    {encounterImageSrc ? (
-                      <img src={encounterImageSrc} alt="" className="h-12 w-12 rounded object-cover" />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded bg-zinc-800">
-                        <span className="text-xl font-bold text-gold">?</span>
-                      </div>
-                    )}
+                    <EncounterAvatar
+                      npcId={encounter.npc_id}
+                      name={encounter.name}
+                      sourceImageUrl={encounter.image_url || null}
+                      fallbackIconUrl={encounter.abilities?.[0]?.icon_url || null}
+                    />
                     <div>
                       <p className="font-bold text-zinc-200">{encounter.name}</p>
                       {encounter.url && (
@@ -437,9 +484,9 @@ export default function DungeonPageClient({ id }: { id: string }) {
                           href={encounter.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-gold hover:underline"
+                          className="mt-1 inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
                         >
-                          Wowhead
+                          View on Wowhead
                         </a>
                       )}
                     </div>

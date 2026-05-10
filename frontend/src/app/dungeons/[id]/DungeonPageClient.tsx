@@ -79,9 +79,20 @@ function formatMs(ms?: number | null): string | null {
 }
 
 function normalizeName(input?: string | null): string {
-  return String(input || '')
+  return decodeHtmlEntities(input)
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
+}
+
+function decodeHtmlEntities(input?: string | null): string {
+  const text = String(input || '');
+  return text
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
 }
 
 function singularizeWord(word: string): string {
@@ -93,7 +104,7 @@ function singularizeWord(word: string): string {
 }
 
 function buildNameVariants(input?: string | null): string[] {
-  const raw = String(input || '')
+  const raw = decodeHtmlEntities(input)
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .trim();
@@ -128,10 +139,10 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
   while ((m = re.exec(text)) !== null) {
     const start = m.index;
     const end = re.lastIndex;
-    const token = m[1];
+    const token = decodeHtmlEntities(m[1]);
 
     if (start > last) {
-      chunks.push(<span key={`txt-${idx++}`}>{text.slice(last, start)}</span>);
+      chunks.push(<span key={`txt-${idx++}`}>{decodeHtmlEntities(text.slice(last, start))}</span>);
     }
 
     const tokenKeys = buildNameVariants(token);
@@ -144,7 +155,7 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
         target="_blank"
         rel="noopener noreferrer"
         className="mx-0.5 inline-flex items-center rounded border border-white/20 bg-black/35 px-1.5 py-0.5 text-xs text-gold hover:bg-black/55"
-        title={matched?.description || token}
+        title={decodeHtmlEntities(matched?.description || token)}
       >
         {matched?.icon_url ? (
           <img src={matched.icon_url} alt="" className="mr-1 h-3.5 w-3.5 rounded-sm object-cover" />
@@ -156,7 +167,7 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
   }
 
   if (last < text.length) {
-    chunks.push(<span key={`txt-${idx++}`}>{text.slice(last)}</span>);
+    chunks.push(<span key={`txt-${idx++}`}>{decodeHtmlEntities(text.slice(last))}</span>);
   }
   return chunks;
 }
@@ -478,7 +489,7 @@ export default function DungeonPageClient({ id }: { id: string }) {
                       fallbackIconUrl={encounter.abilities?.[0]?.icon_url || null}
                     />
                     <div>
-                      <p className="font-bold text-zinc-200">{encounter.name}</p>
+                      <p className="font-bold text-zinc-200">{decodeHtmlEntities(encounter.name)}</p>
                       {encounter.url && (
                         <a
                           href={encounter.url}
@@ -509,8 +520,8 @@ export default function DungeonPageClient({ id }: { id: string }) {
                           {spell.icon_url ? (
                             <img src={spell.icon_url} alt="" className="h-4 w-4 rounded-sm object-cover" />
                           ) : null}
-                          <span>{spell.name || `Spell ${spell.id}`}</span>
-                        </a>
+                            <span>{decodeHtmlEntities(spell.name || `Spell ${spell.id}`)}</span>
+                          </a>
                       ))}
                     </div>
                   )}

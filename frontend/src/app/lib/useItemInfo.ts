@@ -466,7 +466,12 @@ export function useEmbellishmentOptions(
 }
 
 export function getIconUrl(iconName: string): string {
-  return `https://render.worldofwarcraft.com/icons/56/${iconName}.jpg`;
+  const raw = String(iconName || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const noExt = raw.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+  const base = noExt.split('/').pop() || noExt;
+  return `https://render.worldofwarcraft.com/icons/56/${base}.jpg`;
 }
 
 export function getWowheadUrl(itemId: number): string {

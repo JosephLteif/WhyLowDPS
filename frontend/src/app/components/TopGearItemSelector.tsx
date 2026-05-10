@@ -124,6 +124,14 @@ function getResolvedGemIds(item: ResolvedItem): number[] {
   return parseGemIdsFromSimc(item.simc_string);
 }
 
+function normalizeEmbellishmentName(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s*\((quality|rank|q)\s*\d+\)\s*$/i, '')
+    .replace(/\s*\(\d+\)\s*$/i, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -1445,6 +1453,7 @@ export default function TopGearItemSelector({
     const gemInfos = effectiveGemIds.map((id) => gemInfoById[id]).filter(Boolean);
     const enchantInfo = effectiveEnchantId > 0 ? enchantInfoById[effectiveEnchantId] : undefined;
     const embellishmentOptions = embellishmentOptionsByItem[item.item_id] || [];
+    const normalizedEmbellishmentName = normalizeEmbellishmentName(item.embellishment_name);
     const inferredEmbellishment =
       embellishmentOptions.find((opt) => opt.item_id === item.embellishment_item_id) ||
       embellishmentOptions.find(
@@ -1452,7 +1461,12 @@ export default function TopGearItemSelector({
           Array.isArray(opt.bonus_ids) &&
           opt.bonus_ids.length > 0 &&
           opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
-      );
+      ) ||
+      (normalizedEmbellishmentName
+        ? embellishmentOptions.find(
+            (opt) => normalizeEmbellishmentName(opt.name) === normalizedEmbellishmentName
+          )
+        : undefined);
     const embellishmentName = item.embellishment_name || inferredEmbellishment?.name || '';
     const embellishmentIcon = item.embellishment_icon || inferredEmbellishment?.icon || '';
     const embellishmentItemId = item.embellishment_item_id || inferredEmbellishment?.item_id || 0;
@@ -1543,8 +1557,8 @@ export default function TopGearItemSelector({
     if (embellishmentName) {
       parts.push({
         text: embellishmentName,
-        kind: embellishmentIcon ? 'iconText' : 'plain',
-        icon: embellishmentIcon || undefined,
+        kind: 'iconText',
+        icon: embellishmentIcon || 'inv_misc_questionmark',
         badgeVariant: 'embellishment',
         href:
           embellishmentItemId > 0

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { getIconUrl } from '../../lib/useItemInfo';
 
 export type ItemBadgeVariant = 'neutral' | 'gem' | 'enchant' | 'embellishment' | 'mod' | 'source';
@@ -29,6 +30,11 @@ export default function ItemBadge({
   title,
   iconSize = 16,
 }: ItemBadgeProps) {
+  const [iconFailed, setIconFailed] = useState(false);
+  useEffect(() => {
+    setIconFailed(false);
+  }, [icon]);
+
   const variantDefaults: Record<ItemBadgeVariant, { text: string; bg: string; border: string }> = {
     neutral: { text: 'text-zinc-300', bg: 'bg-white/[0.04]', border: 'border-white/10' },
     gem: { text: 'text-sky-200', bg: 'bg-sky-500/12', border: 'border-sky-400/45' },
@@ -38,10 +44,12 @@ export default function ItemBadge({
     source: { text: 'text-zinc-200', bg: 'bg-white/[0.06]', border: 'border-white/15' },
   };
   const defaults = variantDefaults[variant];
+  const showIcon = Boolean(icon) && !iconFailed;
+  const iconName = icon || '';
 
   const body = (
     <>
-      {icon ? (
+      {showIcon ? (
         href || wowheadData ? (
           <a
             href={href}
@@ -53,23 +61,25 @@ export default function ItemBadge({
             onClick={(e) => e.preventDefault()}
           >
             <img
-              src={getIconUrl(icon)}
+              src={getIconUrl(iconName)}
               alt=""
               width={iconSize}
               height={iconSize}
               className="shrink-0 rounded-[3px]"
               loading="lazy"
+              onError={() => setIconFailed(true)}
             />
           </a>
         ) : (
           <span className="shrink-0" title={title || text}>
             <img
-              src={getIconUrl(icon)}
+              src={getIconUrl(iconName)}
               alt=""
               width={iconSize}
               height={iconSize}
               className="shrink-0 rounded-[3px]"
               loading="lazy"
+              onError={() => setIconFailed(true)}
             />
           </span>
         )

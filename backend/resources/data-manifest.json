@@ -551,14 +551,14 @@
       "key": "runtime_wowhead_zones_index",
       "label": "Runtime: Wowhead Zones Index",
       "section": "Runtime",
-      "local_path": "zones-encounters-index",
+      "local_path": "zones-encounters-index.json",
       "required": false,
       "source": "local",
       "entry_type": "file",
       "remote_path": null,
       "compact_fields": null,
       "compact_mode": null,
-      "bundled_path": "../resources/zones-encounters-index"
+      "bundled_path": "../resources/zones-encounters-index.json"
     },
     {
       "key": "instance_images_dir",

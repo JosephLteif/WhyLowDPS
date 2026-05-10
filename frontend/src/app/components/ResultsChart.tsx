@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { useSpellIcons } from '../lib/useWowheadIcons';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 
@@ -102,17 +103,10 @@ export default function ResultsChart({ dps, abilities }: ResultsChartProps) {
                 />
                 <span className="relative flex flex-1 items-center gap-2 truncate pl-3 text-sm text-zinc-200">
                   {hasChildren && (
-                    <svg
+                    <ChevronRight
                       className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`}
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
+                      strokeWidth={2}
+                    />
                   )}
                   <a
                     href={a.spell_id ? `https://www.wowhead.com/spell=${a.spell_id}` : '#'}

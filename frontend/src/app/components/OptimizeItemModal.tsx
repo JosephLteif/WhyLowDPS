@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { CircleX, Search, X } from 'lucide-react';
 import { API_URL } from '../lib/api';
 import type { ResolvedItem } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
@@ -329,13 +330,7 @@ export default function OptimizeItemModal({
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-white/5 hover:text-white"
           >
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path
-                fillRule="evenodd"
-                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                clipRule="evenodd"
-              />
-            </svg>
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -351,17 +346,7 @@ export default function OptimizeItemModal({
                     placeholder="Search enchants, gems, embellishments..."
                     className="h-9 w-full rounded-md bg-white/5 pl-9 pr-3 text-sm text-white placeholder-gray-500 ring-1 ring-white/10 focus:bg-white/10 focus:outline-none focus:ring-gold/50"
                   />
-                  <svg
-                    className="absolute left-3 top-2.5 h-4 w-4 text-gray-500"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
                 </div>
               </section>
             )}
@@ -384,13 +369,7 @@ export default function OptimizeItemModal({
                     }`}
                   >
                     <div className="flex h-8 w-8 items-center justify-center rounded border border-white/5 bg-black/20">
-                      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
+                      <CircleX className="h-4 w-4" />
                     </div>
                     <div className="text-[13px] font-bold">No Enchant</div>
                   </button>
@@ -450,13 +429,7 @@ export default function OptimizeItemModal({
                     }`}
                   >
                     <div className="flex h-8 w-8 items-center justify-center rounded border border-white/5 bg-black/20">
-                      <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
+                      <CircleX className="h-4 w-4" />
                     </div>
                     <div className="text-[13px] font-bold">No Embellishment</div>
                   </button>
@@ -520,13 +493,7 @@ export default function OptimizeItemModal({
                             }`}
                           >
                             <div className="flex h-8 w-8 items-center justify-center rounded border border-white/5 bg-black/20 text-muted">
-                              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                <path
-                                  fillRule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
+                              <CircleX className="h-4 w-4" />
                             </div>
                             <div className="text-[13px] font-bold">Empty Socket</div>
                           </button>

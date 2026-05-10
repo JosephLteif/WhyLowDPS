@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { Crosshair, Map, Swords } from 'lucide-react';
 import type { DungeonCategory } from '../lib/types';
 
 interface CategoryTab {
   key: string;
   label: string;
-  icon: string;
+  icon: LucideIcon;
 }
 
 interface CategorySelectorProps {
@@ -23,14 +25,11 @@ export default function CategorySelector({
       {
         key: 'raids',
         label: 'Raids',
-        icon: 'M8 1l2 4 4.5.7-3.2 3.1.8 4.5L8 11l-4.1 2.3.8-4.5L1.5 5.7 6 5z',
+        icon: Swords,
       },
     ];
     for (const dc of dungeonCats) {
-      const icon =
-        dc.cat.key === 'mplus'
-          ? 'M8 1v14M1 8h14M4 4l8 8M12 4l-8 8'
-          : 'M2 2h12v12H2zM5 5h6M5 8h6M5 11h3';
+      const icon = dc.cat.key === 'mplus' ? Crosshair : Map;
       result.push({ key: dc.cat.key, label: dc.cat.label, icon });
     }
     return result;
@@ -39,6 +38,9 @@ export default function CategorySelector({
   return (
     <div className="grid grid-cols-3 gap-3">
       {tabs.map((cat) => (
+        (() => {
+          const Icon = cat.icon;
+          return (
         <button
           key={cat.key}
           onClick={() => onChange(cat.key)}
@@ -51,17 +53,7 @@ export default function CategorySelector({
                 : 'border-gold/20 bg-gold/[0.10]'
             }`}
           >
-            <svg
-              className="h-6 w-6 text-gold"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.65"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d={cat.icon} />
-            </svg>
+            <Icon className="h-6 w-6 text-gold" strokeWidth={1.65} />
           </div>
           <p
             className={`text-[1.05rem] font-semibold leading-tight transition-colors ${
@@ -71,6 +63,8 @@ export default function CategorySelector({
             {cat.label}
           </p>
         </button>
+          );
+        })()
       ))}
     </div>
   );

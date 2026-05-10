@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 const FIGHT_STYLES = [
@@ -74,17 +75,10 @@ export default function FightStyleSelector({ value, onChange, allowedValues }: F
           className="input-field flex w-full items-center justify-between text-[15px] font-medium"
         >
           <span>{activeLabel}</span>
-          <svg
+          <ChevronDown
             className={`h-4 w-4 text-zinc-300 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 6l4 4 4-4" />
-          </svg>
+            strokeWidth={2}
+          />
         </button>
         {open && (
           <div className="absolute z-50 mt-1 max-h-72 w-full overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-surface-2 py-1 shadow-lg shadow-black/40">

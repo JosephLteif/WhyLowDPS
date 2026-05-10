@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
@@ -757,15 +758,7 @@ export default function TopGearPage() {
             >
               {submitting ? (
             <>
-              <svg className="h-4 w-4 animate-spin" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-                <path
-                  d="M14 8a6 6 0 00-6-6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
               Starting sim…
             </>
               ) : resolving ? (
@@ -782,3 +775,4 @@ export default function TopGearPage() {
     </div>
   );
 }
+

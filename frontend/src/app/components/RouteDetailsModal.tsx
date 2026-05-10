@@ -2,6 +2,7 @@
 
 import { useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { Map, X } from 'lucide-react';
 import { useSimContext } from './SimContext';
 import { SavedRoute } from '../lib/types';
 import { parseCharacterInfo } from '@/lib/simc-parser';
@@ -75,14 +76,7 @@ export default function RouteDetailsModal({
         <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] p-6">
           <div className="flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold/10 text-gold shadow-inner">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L16 4m0 13V4m0 0L9 7"
-                />
-              </svg>
+              <Map className="h-6 w-6" strokeWidth={2} />
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tight text-white">{route.name}</h2>
@@ -97,14 +91,7 @@ export default function RouteDetailsModal({
             onClick={onClose}
             className="rounded-xl bg-white/5 p-2 text-zinc-400 transition-all hover:bg-white/10 hover:text-white"
           >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
+            <X className="h-6 w-6" strokeWidth={2} />
           </button>
         </div>
 

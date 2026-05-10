@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, List, Database, Cpu } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
 import { useSimContext } from './components/SimContext';
@@ -48,43 +49,19 @@ function StatIcon({ children }: { children: ReactNode }) {
 }
 
 function ActiveIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="8" />
-    </svg>
-  );
+  return <Activity className="h-5 w-5" strokeWidth={2} />;
 }
 
 function ListIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M8 7h10M8 12h10M8 17h10" strokeLinecap="round" />
-      <circle cx="5" cy="7" r="1" fill="currentColor" />
-      <circle cx="5" cy="12" r="1" fill="currentColor" />
-      <circle cx="5" cy="17" r="1" fill="currentColor" />
-    </svg>
-  );
+  return <List className="h-5 w-5" strokeWidth={2} />;
 }
 
 function DatabaseIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <ellipse cx="12" cy="6" rx="7" ry="3" />
-      <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
-      <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
-    </svg>
-  );
+  return <Database className="h-5 w-5" strokeWidth={2} />;
 }
 
 function CpuIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="7" y="7" width="10" height="10" rx="1.5" />
-      <path d="M10 10h4v4h-4z" />
-      <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" />
-    </svg>
-  );
+  return <Cpu className="h-5 w-5" strokeWidth={2} />;
 }
 
 function formatBytes(bytes: number): string {

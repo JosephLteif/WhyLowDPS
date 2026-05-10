@@ -2,6 +2,7 @@
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, CircleAlert } from 'lucide-react';
 import DpsHeroCard from '../../components/DpsHeroCard';
 import type { GearItem } from '../../components/GearOverview';
 import GearOverview from '../../components/GearOverview';
@@ -352,17 +353,10 @@ function CollapsibleSection({
         className="flex w-full items-center justify-between border-b border-border/60 bg-white/[0.01] px-5 py-3.5 text-left transition-colors hover:bg-white/[0.03]"
       >
         <span className="text-xs font-medium uppercase tracking-widest text-muted">{title}</span>
-        <svg
+        <ChevronDown
           className={`h-3.5 w-3.5 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4 6l4 4 4-4" />
-        </svg>
+          strokeWidth={2}
+        />
       </button>
       {open && <div className="p-5">{children}</div>}
     </div>
@@ -1394,16 +1388,7 @@ export default function SimResultClient() {
                                       />
                                     ) : (
                                       <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
-                                        <svg
-                                          className="h-4 w-4 text-zinc-600"
-                                          viewBox="0 0 24 24"
-                                          fill="none"
-                                          stroke="currentColor"
-                                          strokeWidth="2"
-                                        >
-                                          <circle cx="12" cy="12" r="10" />
-                                          <path d="M12 16v-4M12 8h.01" />
-                                        </svg>
+                                        <CircleAlert className="h-4 w-4 text-zinc-600" strokeWidth={2} />
                                       </div>
                                     )}
                                   </a>
@@ -1415,16 +1400,7 @@ export default function SimResultClient() {
                                   />
                                 ) : (
                                   <div className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-white/10">
-                                    <svg
-                                      className="h-4 w-4 text-zinc-600"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                    >
-                                      <circle cx="12" cy="12" r="10" />
-                                      <path d="M12 16v-4M12 8h.01" />
-                                    </svg>
+                                    <CircleAlert className="h-4 w-4 text-zinc-600" strokeWidth={2} />
                                   </div>
                                 )}
                               </div>

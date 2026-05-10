@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, ChevronDown, Package } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { useSimContext } from './SimContext';
@@ -376,16 +377,7 @@ export default function SimSharedConfig() {
         />
         {checksumStatus === 'invalid' && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-            <svg
-              className="h-4 w-4 shrink-0 text-amber-400"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            >
-              <path d="M8 1L1 14h14L8 1zM8 6v4M8 12v.5" />
-            </svg>
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" strokeWidth={1.5} />
             <p className="text-[14px] text-amber-300">
               This input appears to have been manually edited. Results may not reflect your actual
               in-game character.
@@ -412,19 +404,7 @@ export default function SimSharedConfig() {
 
         <div className="flex items-center justify-between gap-4 border-t border-white/5 pt-3">
           <div className="flex items-center gap-2">
-            <svg
-              className="h-4 w-4 text-zinc-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-              />
-            </svg>
+            <Package className="h-4 w-4 text-zinc-500" strokeWidth={2} />
             <span className="text-[13px] font-bold tracking-tight text-zinc-400">
               Dungeon Route
             </span>
@@ -434,14 +414,7 @@ export default function SimSharedConfig() {
             className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-bold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
           >
             <span>{savedRoutes.length} Saved Routes</span>
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
+            <ChevronDown className="h-3.5 w-3.5" strokeWidth={2} />
           </button>
         </div>
 

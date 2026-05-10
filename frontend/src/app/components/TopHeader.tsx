@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, Maximize2, Minimize2, Minus, Menu, X } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
 import { API_URL, fetchJsonCached, isDesktop } from '../lib/api';
@@ -193,16 +194,7 @@ export default function TopHeader() {
                 title="Minimize"
                 aria-label="Minimize"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                >
-                  <path d="M4 11.25h8" />
-                </svg>
+                <Minus className="h-4 w-4" strokeWidth={2} />
               </button>
               <button
                 onClick={() => void handleWindowAction('maximize')}
@@ -210,24 +202,11 @@ export default function TopHeader() {
                 title={isMaximized ? 'Restore' : 'Maximize'}
                 aria-label={isMaximized ? 'Restore' : 'Maximize'}
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  {isMaximized ? (
-                    <>
-                      <path d="M5.5 5.5h5v5h-5z" />
-                      <path d="M7.5 3.5h5v5" />
-                    </>
-                  ) : (
-                    <path d="M4.5 4.5h7v7h-7z" />
-                  )}
-                </svg>
+                {isMaximized ? (
+                  <Minimize2 className="h-4 w-4" strokeWidth={2} />
+                ) : (
+                  <Maximize2 className="h-4 w-4" strokeWidth={2} />
+                )}
               </button>
               <button
                 onClick={() => void handleWindowAction('close')}
@@ -235,17 +214,7 @@ export default function TopHeader() {
                 title="Close"
                 aria-label="Close"
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                >
-                  <path d="M4.5 4.5l7 7" />
-                  <path d="M11.5 4.5l-7 7" />
-                </svg>
+                <X className="h-4 w-4" strokeWidth={2} />
               </button>
             </div>
           </div>
@@ -261,18 +230,7 @@ export default function TopHeader() {
               title="Toggle sidebar"
               aria-label="Toggle sidebar"
             >
-              <svg
-                viewBox="0 0 16 16"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              >
-                <path d="M2.5 4h11" />
-                <path d="M2.5 8h11" />
-                <path d="M2.5 12h11" />
-              </svg>
+              <Menu className="h-4 w-4" strokeWidth={2} />
             </button>
             <button
               data-tauri-drag-region="false"
@@ -282,18 +240,7 @@ export default function TopHeader() {
               title="Go back"
               aria-label="Go back"
             >
-              <svg
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-3.5 w-3.5"
-              >
-                <path d="M7 3L2 8l5 5" />
-                <path d="M3 8h10" />
-              </svg>
+              <ArrowLeft className="h-3.5 w-3.5" strokeWidth={2} />
               <span className="hidden sm:inline">Back</span>
             </button>
           </div>

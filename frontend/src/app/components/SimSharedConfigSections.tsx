@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { Check, ChevronDown, Clock3, Download, Loader2, Map, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
@@ -130,19 +131,10 @@ export function CharacterInfoBar({
             onClick={() => setExpanded((v) => !v)}
             className={`rounded-lg p-2 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white ${expanded ? 'bg-white/5 text-white' : ''}`}
           >
-            <svg
+            <ChevronDown
               className={`h-4 w-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2.5}
-                d="M19 9l-7 7-7-7"
-              />
-            </svg>
+              strokeWidth={2.5}
+            />
           </button>
         </div>
       </div>
@@ -262,14 +254,7 @@ export function DungeonInfoBar({
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] transition-all hover:border-white/10 hover:bg-white/[0.05]">
       <div className="flex items-center gap-3 p-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-sky-500/10 bg-sky-500/5 text-sky-400 shadow-inner">
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L16 4m0 13V4m0 0L9 7"
-            />
-          </svg>
+          <Map className="h-5 w-5" strokeWidth={2} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
@@ -312,40 +297,11 @@ export function DungeonInfoBar({
                   }`}
                 >
                   {isSaving ? (
-                    <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24">
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="none"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
+                    <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
                   ) : isAlreadySaved ? (
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
+                    <Check className="h-3 w-3" strokeWidth={2} />
                   ) : (
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
-                      />
-                    </svg>
+                    <Download className="h-3 w-3" strokeWidth={2} />
                   )}
                   {isAlreadySaved ? 'Saved' : 'Save Route'}
                 </button>
@@ -358,14 +314,7 @@ export function DungeonInfoBar({
               <>
                 <span className="mx-0.5 h-1 w-1 rounded-full bg-zinc-700" />
                 <span className="flex items-center gap-1">
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
+                  <Clock3 className="h-3 w-3" strokeWidth={2} />
                   {Math.round(Number(info.maxTime) / 60)}m
                 </span>
               </>
@@ -1013,18 +962,7 @@ export function AdvancedOptions() {
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-5 py-3.5">
         <div className="flex items-center gap-2.5">
-          <svg
-            className="h-4 w-4 text-zinc-400"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="8" cy="8" r="2" />
-            <path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41" />
-          </svg>
+          <SlidersHorizontal className="h-4 w-4 text-zinc-400" strokeWidth={1.5} />
           <span className="text-[15px] font-medium text-zinc-100">Advanced Options</span>
           {!open && !isDefault && (
             <span className="rounded-md bg-gold/10 px-1.5 py-0.5 text-[12px] font-medium text-gold">
@@ -1032,34 +970,13 @@ export function AdvancedOptions() {
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
-          aria-expanded={open}
-          aria-label={open ? 'Collapse advanced options' : 'Expand advanced options'}
-          title={open ? 'Collapse' : 'Expand'}
-        >
-          <svg
-            className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 6l4 4 4-4" />
-          </svg>
-        </button>
-      </div>
-      <div
-        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
-          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        }`}
-      >
-        <div className="min-h-0 overflow-hidden">
-          <div className="space-y-5 border-t border-border px-5 pb-5 pt-4">
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          strokeWidth={2}
+        />
+      {open && (
+        <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
+          <div className="pt-4" />
 
           {/* Custom APL */}
           <div className="space-y-2">

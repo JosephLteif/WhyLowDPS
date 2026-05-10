@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import {
   API_URL,
   DungeonInfo,
@@ -236,14 +237,7 @@ export default function DungeonPageClient({ id }: { id: string }) {
     return (
       <div className="mx-auto max-w-lg py-20 text-center">
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500">
-          <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
+          <AlertTriangle className="h-8 w-8" strokeWidth={2} />
         </div>
         <h2 className="mb-2 text-xl font-bold text-zinc-200">Dungeon Not Found</h2>
         <p className="mb-6 text-zinc-500">{error || 'The dungeon could not be found.'}</p>

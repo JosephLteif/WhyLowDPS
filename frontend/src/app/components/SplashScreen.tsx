@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { LogIn, X } from 'lucide-react';
 import { API_URL, isDesktop } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { invoke } from '@tauri-apps/api/core';
@@ -139,9 +140,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
                   onClick={() => login()}
                   className="flex w-full items-center justify-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
                 >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2zm4 8h-2V7h2v10z" />
-                  </svg>
+                  <LogIn className="h-5 w-5" strokeWidth={2.25} />
                   Login with Battle.net
                 </button>
               </div>
@@ -201,9 +200,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
                     </div>
                   ) : (
                     <>
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6h2v6zm0-8h-2V7h2v2zm4 8h-2V7h2v10z" />
-                      </svg>
+                      <LogIn className="h-5 w-5" strokeWidth={2.25} />
                       Save & Login with Battle.net
                     </>
                   )}
@@ -260,14 +257,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
                 onClick={() => setShowDebug(false)}
                 className="text-zinc-500 hover:text-white"
               >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <X className="h-6 w-6" strokeWidth={2} />
               </button>
             </div>
 

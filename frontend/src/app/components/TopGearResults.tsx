@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ChevronDown } from 'lucide-react';
 import { API_URL, fetchJson } from '../lib/api';
 import DpsHeroCard from './DpsHeroCard';
 import GearOverview from './GearOverview';
@@ -92,17 +93,10 @@ function CollapsibleSection({
         className="flex w-full items-center justify-between border-b border-border/60 bg-white/[0.01] px-5 py-3.5 text-left transition-colors hover:bg-white/[0.03]"
       >
         <span className="text-xs font-medium uppercase tracking-widest text-muted">{title}</span>
-        <svg
+        <ChevronDown
           className={`h-3.5 w-3.5 text-zinc-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4 6l4 4 4-4" />
-        </svg>
+          strokeWidth={2}
+        />
       </button>
       {open && <div className="p-5">{children}</div>}
     </div>

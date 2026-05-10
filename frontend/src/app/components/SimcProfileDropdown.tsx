@@ -1,6 +1,7 @@
 'use client';
 
 import { parseCharacterInfo } from '@/lib/simc-parser';
+import { ChevronDown } from 'lucide-react';
 import { specDisplayName } from '../lib/types';
 import { formatRealmName, resolveClassColor } from '../lib/profile-format';
 import type { SavedCharacterProfile } from '../lib/api';
@@ -75,19 +76,12 @@ export default function SimcProfileDropdown({
             {selectedProfileMeta?.realmLabel || 'Saved and recent exports'}
           </p>
         </div>
-        <svg
+        <ChevronDown
           className={`h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform duration-200 ${
             historyDropdownOpen ? 'rotate-180' : ''
           }`}
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4 6l4 4 4-4" />
-        </svg>
+          strokeWidth={2}
+        />
       </button>
       {historyDropdownOpen && (
         <div className="absolute right-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur">

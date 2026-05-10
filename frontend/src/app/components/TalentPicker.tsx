@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Check, LayoutGrid } from 'lucide-react';
 import { useSimContext } from './SimContext';
 import {
   parseTalentLoadouts,
@@ -243,17 +244,7 @@ export default function TalentPicker() {
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gold/[0.08]">
-            <svg
-              className="h-3.5 w-3.5 text-gold/60"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M2 2h12v12H2zM5 6h6M5 10h4" />
-            </svg>
+            <LayoutGrid className="h-3.5 w-3.5 text-gold/60" strokeWidth={1.5} />
           </div>
           <span className="text-xs font-medium text-zinc-300">Talents</span>
           {allLoadouts.length >= 2 && (
@@ -419,17 +410,7 @@ export default function TalentPicker() {
                           : 'border-zinc-600 group-hover:border-zinc-500'
                       }`}
                     >
-                      {checked && (
-                        <svg
-                          className="h-2.5 w-2.5 text-black"
-                          viewBox="0 0 12 12"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M2 6l3 3 5-5" />
-                        </svg>
-                      )}
+                      {checked && <Check className="h-2.5 w-2.5 text-black" strokeWidth={2} />}
                     </div>
                     <span
                       className={`truncate text-[12px] font-medium ${checked ? 'text-zinc-200' : 'text-zinc-500'}`}

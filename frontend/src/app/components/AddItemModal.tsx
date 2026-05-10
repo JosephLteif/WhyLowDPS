@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { Search, X } from 'lucide-react';
 import { API_URL } from '../lib/api';
 import { INVENTORY_TYPE_TO_SLOT } from '../lib/gear-utils';
 import { DEFAULT_TRACK_BADGE_CLASS, RAID_TRACK_BY_DIFFICULTY, TRACK_COLORS } from '../lib/loot-track';
@@ -917,14 +918,7 @@ export default function AddItemModal({
                 onClick={onClose}
                 className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-zinc-500 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-white"
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2.5}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
+                <X className="h-4 w-4" strokeWidth={2.5} />
               </button>
             </div>
           </div>
@@ -940,19 +934,7 @@ export default function AddItemModal({
                 }}
                 className="input-field w-full pl-10 pr-4 py-2.5 text-sm"
               />
-              <svg
-                className="absolute left-3.5 top-3 h-4 w-4 text-zinc-500 transition-colors group-focus-within:text-gold"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
+              <Search className="absolute left-3.5 top-3 h-4 w-4 text-zinc-500 transition-colors group-focus-within:text-gold" strokeWidth={2} />
             </div>
             {(category === 'raid' || category === 'dungeon' || category === 'tier' || (category === 'delves' && difficulties.length > 1)) && (
               <AddItemDifficultyToggle
@@ -1310,4 +1292,3 @@ export default function AddItemModal({
     </div>
   );
 }
-

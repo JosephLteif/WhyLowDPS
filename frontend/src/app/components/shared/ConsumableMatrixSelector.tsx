@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { Check } from 'lucide-react';
 import { useItemIcons } from '../../lib/useWowheadIcons';
 import type { OptionEntry } from '../../lib/sim-options-catalog';
 
@@ -302,19 +303,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
                         : 'border-zinc-700 bg-surface hover:border-zinc-500'
                     }`}
                   >
-                    {isSelected ? (
-                      <svg
-                        className="h-2.5 w-2.5 text-black"
-                        viewBox="0 0 12 12"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="2 6.5 4.5 9 10 3" />
-                      </svg>
-                    ) : null}
+                    {isSelected ? <Check className="h-2.5 w-2.5 text-black" strokeWidth={3} /> : null}
                   </div>
                 )}
               </div>

@@ -124,7 +124,9 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   };
 
   const pathname = usePathname();
-  const isSettingsPage = pathname === '/settings';
+  const normalizedPath =
+    pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  const isSettingsPage = normalizedPath === '/settings';
 
   if ((loading || isChecking) && !isSettingsPage) {
     return null;

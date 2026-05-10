@@ -524,6 +524,7 @@ export function FightSetupOptions() {
 }
 
 export function ConsumablesAndRaidBuffsOptions() {
+  const collapseStorageKey = 'whylowdps_consumables_raid_buffs_collapsed';
   const pathname = usePathname();
   const multiSelectAllowed =
     pathname.startsWith('/top-gear') ||
@@ -612,6 +613,13 @@ export function ConsumablesAndRaidBuffsOptions() {
       return false;
     }
   });
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(collapseStorageKey) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [matrixFlasks, setMatrixFlasks] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_flasks'));
   const [matrixFoods, setMatrixFoods] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_foods'));
   const [matrixPotions, setMatrixPotions] = useState<string[]>(() => readStoredTokens('whylowdps_matrix_potions'));
@@ -662,6 +670,11 @@ export function ConsumablesAndRaidBuffsOptions() {
     matrixAugments,
     matrixTempEnchants,
   ]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(collapseStorageKey, String(isCollapsed));
+    } catch {}
+  }, [collapseStorageKey, isCollapsed]);
 
 
   const setBuffManual = (key: string, value: boolean) => {
@@ -720,176 +733,231 @@ export function ConsumablesAndRaidBuffsOptions() {
     return null;
   }
 
+  const selectedConsumableCount = multiConsumableMode
+    ? [
+        matrixFlasks.length,
+        matrixPotions.length,
+        matrixAugments.length,
+        matrixTempEnchants.length,
+        matrixFoods.length,
+      ].filter((count) => count > 0).length
+    : [
+        consumableFlask,
+        consumablePotion,
+        consumableAugmentation,
+        consumableTemporaryEnchant,
+        consumableFood,
+      ].filter(Boolean).length;
+  const enabledRaidBuffCount = Object.values(raidBuffBindings).filter((binding) => binding.checked).length;
+  const collapsedSummary = `${selectedConsumableCount} consumable categories set - ${enabledRaidBuffCount} raid buffs enabled`;
+
   return (
-    <div className="card space-y-5 p-5">
+    <div className="card p-5">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
           <p className="text-[14px] text-zinc-300">
             Manage consumable picks and raid buff assumptions outside of Advanced Options.
           </p>
+          {isCollapsed && (
+            <p className="mt-3 text-[13px] font-medium text-gold">{collapsedSummary}</p>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            const defaults = getAllAppDefaultOptions({
-              characterKey: getCharacterDefaultsKeyFromSimcInput(simcInput),
-            });
-            setConsumableFlask(defaults['consumable.flask']);
-            setConsumableFood(defaults['consumable.food']);
-            setConsumablePotion(defaults['consumable.potion']);
-            setConsumableAugmentation(defaults['consumable.augmentation']);
-            setConsumableTemporaryEnchant(defaults['consumable.temporaryEnchant']);
-            setRaidBuffBloodlust(defaults['raid.bloodlust']);
-            setRaidBuffArcaneIntellect(defaults['raid.arcaneIntellect']);
-            setRaidBuffPowerWordFortitude(defaults['raid.powerWordFortitude']);
-            setRaidBuffMarkOfTheWild(defaults['raid.markOfTheWild']);
-            setRaidBuffBattleShout(defaults['raid.battleShout']);
-            setRaidBuffHuntersMark(defaults['raid.huntersMark']);
-            setRaidBuffBleeding(defaults['raid.bleeding']);
-            setExternalBuffMysticTouch(defaults['raid.mysticTouch']);
-            setExternalBuffChaosBrand(defaults['raid.chaosBrand']);
-            setExternalBuffSkyfury(defaults['raid.skyfury']);
-            setExternalBuffPowerInfusion(defaults['raid.powerInfusion']);
-            setBuffSource({
-              bloodlust: 'default',
-              arcane_intellect: 'default',
-              power_word_fortitude: 'default',
-              mark_of_the_wild: 'default',
-              battle_shout: 'default',
-              hunters_mark: 'default',
-              bleeding: 'default',
-              mystic_touch: 'default',
-              chaos_brand: 'default',
-              skyfury: 'default',
-              power_infusion: 'default',
-            });
-          }}
-          className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
-        >
-          Apply Defaults
-        </button>
-      </div>
-
-      <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-        <div>
-          <p className="text-[15px] font-medium text-zinc-100">Consumables</p>
-          <p className="text-[14px] text-zinc-300">
-            Select one per category for normal sims. Use Stat Weights matrix to compare many at
-            once.
-          </p>
-        </div>
-        {multiSelectAllowed && (
-          <ToggleOptionCard
-            checked={multiConsumableMode}
-            onToggle={() => {
-              setMultiConsumableMode((v) => !v);
+        <div className="flex shrink-0 items-start gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const defaults = getAllAppDefaultOptions({
+                characterKey: getCharacterDefaultsKeyFromSimcInput(simcInput),
+              });
+              setConsumableFlask(defaults['consumable.flask']);
+              setConsumableFood(defaults['consumable.food']);
+              setConsumablePotion(defaults['consumable.potion']);
+              setConsumableAugmentation(defaults['consumable.augmentation']);
+              setConsumableTemporaryEnchant(defaults['consumable.temporaryEnchant']);
+              setRaidBuffBloodlust(defaults['raid.bloodlust']);
+              setRaidBuffArcaneIntellect(defaults['raid.arcaneIntellect']);
+              setRaidBuffPowerWordFortitude(defaults['raid.powerWordFortitude']);
+              setRaidBuffMarkOfTheWild(defaults['raid.markOfTheWild']);
+              setRaidBuffBattleShout(defaults['raid.battleShout']);
+              setRaidBuffHuntersMark(defaults['raid.huntersMark']);
+              setRaidBuffBleeding(defaults['raid.bleeding']);
+              setExternalBuffMysticTouch(defaults['raid.mysticTouch']);
+              setExternalBuffChaosBrand(defaults['raid.chaosBrand']);
+              setExternalBuffSkyfury(defaults['raid.skyfury']);
+              setExternalBuffPowerInfusion(defaults['raid.powerInfusion']);
+              setBuffSource({
+                bloodlust: 'default',
+                arcane_intellect: 'default',
+                power_word_fortitude: 'default',
+                mark_of_the_wild: 'default',
+                battle_shout: 'default',
+                hunters_mark: 'default',
+                bleeding: 'default',
+                mystic_touch: 'default',
+                chaos_brand: 'default',
+                skyfury: 'default',
+                power_infusion: 'default',
+              });
             }}
-            title="Multi-select"
-            description="Enable selecting several options and tiers per category."
-          />
-        )}
-        <div className="grid gap-3 lg:grid-cols-2">
-          <ConsumablePicker
-            title="Flask"
-            label="Active Flask"
-            mode={multiConsumableMode ? 'multi' : 'single'}
-            singleValue={consumableFlask}
-            onSingleChange={setConsumableFlask}
-            multiValues={matrixFlasks}
-            onMultiChange={setMatrixFlasks}
-            options={flasks}
-            disabled={lockSingleConsumableOptions}
-          />
-
-          <ConsumablePicker
-            title="Potion"
-            label="Active Potion"
-            mode={multiConsumableMode ? 'multi' : 'single'}
-            singleValue={consumablePotion}
-            onSingleChange={setConsumablePotion}
-            multiValues={matrixPotions}
-            onMultiChange={setMatrixPotions}
-            options={potions}
-            disabled={lockSingleConsumableOptions}
-          />
-
-          <ConsumablePicker
-            title="Augmentation Rune"
-            label="Active Augmentation Rune"
-            mode={multiConsumableMode ? 'multi' : 'single'}
-            singleValue={consumableAugmentation}
-            onSingleChange={setConsumableAugmentation}
-            multiValues={matrixAugments}
-            onMultiChange={setMatrixAugments}
-            options={augments}
-            disabled={lockSingleConsumableOptions}
-          />
-
-          <ConsumablePicker
-            title="Temporary Enchant"
-            label="Main Hand Temporary Enchant"
-            mode={multiConsumableMode ? 'multi' : 'single'}
-            singleValue={consumableTemporaryEnchant}
-            onSingleChange={setConsumableTemporaryEnchant}
-            multiValues={matrixTempEnchants}
-            onMultiChange={setMatrixTempEnchants}
-            options={tempEnchants}
-            disabled={lockSingleConsumableOptions}
-          />
-
-          <ConsumablePicker
-            title="Food"
-            label="Active Food Buff"
-            mode={multiConsumableMode ? 'multi' : 'single'}
-            singleValue={consumableFood}
-            onSingleChange={setConsumableFood}
-            multiValues={matrixFoods}
-            onMultiChange={setMatrixFoods}
-            options={foods}
-            disabled={lockSingleConsumableOptions}
-          />
+            className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
+          >
+            Apply Defaults
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+            aria-expanded={!isCollapsed}
+            aria-label={isCollapsed ? 'Expand consumables and raid buffs' : 'Collapse consumables and raid buffs'}
+            title={isCollapsed ? 'Expand' : 'Collapse'}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              className={`h-3.5 w-3.5 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 6l4 4 4-4" />
+            </svg>
+          </button>
         </div>
       </div>
 
-      <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
-        <div>
-          <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
-          <p className="text-[14px] text-zinc-300">Control default raid buffs for normal sims.</p>
+      <div
+        className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
+          isCollapsed ? 'mt-0 grid-rows-[0fr] opacity-0' : 'mt-5 grid-rows-[1fr] opacity-100'
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-5 pt-1">
+            <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+              <div>
+                <p className="text-[15px] font-medium text-zinc-100">Consumables</p>
+                <p className="text-[14px] text-zinc-300">
+                  Select one per category for normal sims. Use Stat Weights matrix to compare many at
+                  once.
+                </p>
+              </div>
+              {multiSelectAllowed && (
+                <ToggleOptionCard
+                  checked={multiConsumableMode}
+                  onToggle={() => {
+                    setMultiConsumableMode((v) => !v);
+                  }}
+                  title="Multi-select"
+                  description="Enable selecting several options and tiers per category."
+                />
+              )}
+              <div className="grid gap-3 lg:grid-cols-2">
+                <ConsumablePicker
+                  title="Flask"
+                  label="Active Flask"
+                  mode={multiConsumableMode ? 'multi' : 'single'}
+                  singleValue={consumableFlask}
+                  onSingleChange={setConsumableFlask}
+                  multiValues={matrixFlasks}
+                  onMultiChange={setMatrixFlasks}
+                  options={flasks}
+                  disabled={lockSingleConsumableOptions}
+                />
+
+                <ConsumablePicker
+                  title="Potion"
+                  label="Active Potion"
+                  mode={multiConsumableMode ? 'multi' : 'single'}
+                  singleValue={consumablePotion}
+                  onSingleChange={setConsumablePotion}
+                  multiValues={matrixPotions}
+                  onMultiChange={setMatrixPotions}
+                  options={potions}
+                  disabled={lockSingleConsumableOptions}
+                />
+
+                <ConsumablePicker
+                  title="Augmentation Rune"
+                  label="Active Augmentation Rune"
+                  mode={multiConsumableMode ? 'multi' : 'single'}
+                  singleValue={consumableAugmentation}
+                  onSingleChange={setConsumableAugmentation}
+                  multiValues={matrixAugments}
+                  onMultiChange={setMatrixAugments}
+                  options={augments}
+                  disabled={lockSingleConsumableOptions}
+                />
+
+                <ConsumablePicker
+                  title="Temporary Enchant"
+                  label="Main Hand Temporary Enchant"
+                  mode={multiConsumableMode ? 'multi' : 'single'}
+                  singleValue={consumableTemporaryEnchant}
+                  onSingleChange={setConsumableTemporaryEnchant}
+                  multiValues={matrixTempEnchants}
+                  onMultiChange={setMatrixTempEnchants}
+                  options={tempEnchants}
+                  disabled={lockSingleConsumableOptions}
+                />
+
+                <ConsumablePicker
+                  title="Food"
+                  label="Active Food Buff"
+                  mode={multiConsumableMode ? 'multi' : 'single'}
+                  singleValue={consumableFood}
+                  onSingleChange={setConsumableFood}
+                  multiValues={matrixFoods}
+                  onMultiChange={setMatrixFoods}
+                  options={foods}
+                  disabled={lockSingleConsumableOptions}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/70 bg-surface-2/70 p-3.5">
+              <div>
+                <p className="text-[15px] font-medium text-zinc-100">Raid Buffs</p>
+                <p className="text-[14px] text-zinc-300">
+                  Control default raid buffs for normal sims.
+                </p>
+              </div>
+              <RaidBuffGrid
+                entries={RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
+                  const binding = raidBuffBindings[buff.key] || {
+                    checked: false,
+                    setChecked: (_: boolean) => {},
+                  };
+                  return {
+                    id: buff.key,
+                    label: buff.label,
+                    sourceLabel: buffSource[buff.key] || 'manual',
+                    disabled: buffSource[buff.key] === 'override',
+                    spellId: buff.spellId || 0,
+                    icon: buff.icon,
+                    checked: binding.checked,
+                    onChange: (checked: boolean) => setBuffManual(buff.key, checked),
+                  };
+                })}
+                onSelectAll={() => {
+                  Object.entries(raidBuffBindings).forEach(([key, b]) => {
+                    b.setChecked(true);
+                    setBuffSource((prev) => ({ ...prev, [key]: 'manual' }));
+                  });
+                }}
+                onClear={() => {
+                  Object.entries(raidBuffBindings).forEach(([key, b]) => {
+                    b.setChecked(false);
+                    setBuffSource((prev) => ({ ...prev, [key]: 'manual' }));
+                  });
+                }}
+              />
+              <p className="text-[12px] text-zinc-300">
+                If your character provides one of these buffs, SimC may still include it.
+              </p>
+            </div>
+          </div>
         </div>
-        <RaidBuffGrid
-          entries={RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
-            const binding = raidBuffBindings[buff.key] || {
-              checked: false,
-              setChecked: (_: boolean) => {},
-            };
-            return {
-              id: buff.key,
-              label: buff.label,
-              sourceLabel: buffSource[buff.key] || 'manual',
-              disabled: buffSource[buff.key] === 'override',
-              spellId: buff.spellId || 0,
-              icon: buff.icon,
-              checked: binding.checked,
-              onChange: (checked: boolean) => setBuffManual(buff.key, checked),
-            };
-          })}
-          onSelectAll={() => {
-            Object.entries(raidBuffBindings).forEach(([key, b]) => {
-              b.setChecked(true);
-              setBuffSource((prev) => ({ ...prev, [key]: 'manual' }));
-            });
-          }}
-          onClear={() => {
-            Object.entries(raidBuffBindings).forEach(([key, b]) => {
-              b.setChecked(false);
-              setBuffSource((prev) => ({ ...prev, [key]: 'manual' }));
-            });
-          }}
-        />
-        <p className="text-[12px] text-zinc-300">
-          If your character provides one of these buffs, SimC may still include it.
-        </p>
       </div>
     </div>
   );
@@ -943,11 +1011,7 @@ export function AdvancedOptions() {
 
   return (
     <div className="card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between px-5 py-3.5 transition-colors hover:bg-white/[0.02]"
-      >
+      <div className="flex items-center justify-between gap-3 px-5 py-3.5">
         <div className="flex items-center gap-2.5">
           <svg
             className="h-4 w-4 text-zinc-400"
@@ -968,21 +1032,34 @@ export function AdvancedOptions() {
             </span>
           )}
         </div>
-        <svg
-          className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+          aria-expanded={open}
+          aria-label={open ? 'Collapse advanced options' : 'Expand advanced options'}
+          title={open ? 'Collapse' : 'Expand'}
         >
-          <path d="M4 6l4 4 4-4" />
-        </svg>
-      </button>
-      {open && (
-        <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
-          <div className="pt-4" />
+          <svg
+            className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
+      </div>
+      <div
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-5 border-t border-border px-5 pb-5 pt-4">
 
           {/* Custom APL */}
           <div className="space-y-2">
@@ -1031,7 +1108,8 @@ export function AdvancedOptions() {
             activeTabInfo={activeTabInfo}
           />
         </div>
-      )}
+      </div>
+      </div>
     </div>
   );
 }
@@ -1108,6 +1186,3 @@ function ExpertToggle({
     </div>
   );
 }
-
-
-

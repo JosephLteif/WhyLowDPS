@@ -645,21 +645,11 @@ export default function TopGearPage() {
   const handleSubmit = useCallback(() => {
     void submit();
   }, [submit]);
-
-  if (!resolved) {
-    return (
-      <p className="py-6 text-center text-sm text-muted">
-        {resolving
-          ? 'Resolving gear...'
-          : 'Paste your SimC addon export above to see gear options.'}
-      </p>
-    );
-  } else {
-    console.log(resolved);
-  }
+  const hasSimcInput = simcInput.trim().length >= 10;
+  const submitDisabled = submitting || !!pageLevelError || !resolved;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28">
       {returnNotice ? (
         <SimReturnNotice
           title={returnNotice.title}
@@ -729,28 +719,43 @@ export default function TopGearPage() {
         </div>
       </div>
 
-      <TopGearItemSelector
-        resolved={resolved}
-        selectedUids={selectedUids}
-        onSelectionChange={setSelectedUids}
-        onResolvedChange={setResolved}
-        onItemAdded={(slot, simcString, origin) =>
-          setLocalItems((prev) => [...prev, { slot, simc_string: simcString, origin }])
-        }
-        maxUpgrade={maxUpgrade}
-        comboCount={comboCount}
-        comboError={comboError}
-      />
+      {resolved ? (
+        <TopGearItemSelector
+          resolved={resolved}
+          selectedUids={selectedUids}
+          onSelectionChange={setSelectedUids}
+          onResolvedChange={setResolved}
+          onItemAdded={(slot, simcString, origin) =>
+            setLocalItems((prev) => [...prev, { slot, simc_string: simcString, origin }])
+          }
+          maxUpgrade={maxUpgrade}
+          comboCount={comboCount}
+          comboError={comboError}
+        />
+      ) : (
+        <p className="py-6 text-center text-sm text-muted">
+          {resolving
+            ? 'Resolving gear...'
+            : 'Paste your SimC addon export above to see gear options.'}
+        </p>
+      )}
 
       <ErrorAlert message={pageLevelError || error} />
 
-      <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
-        <button
-          onClick={handleSubmit}
-          disabled={submitting || !!pageLevelError}
-          className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 ml-[var(--sidebar-width)] px-3 pb-4 pt-6 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16">
+        <div
+          className="mx-auto w-full min-w-0"
+          style={{
+            maxWidth: 'min(2200px, calc(100vw - var(--sidebar-width) - 1.5rem))',
+          }}
         >
-          {submitting ? (
+          <div className="pointer-events-auto bg-gradient-to-t from-[#111] via-[#111] to-transparent pt-6">
+            <button
+              onClick={handleSubmit}
+              disabled={submitDisabled}
+              className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
+            >
+              {submitting ? (
             <>
               <svg className="h-4 w-4 animate-spin" viewBox="0 0 16 16" fill="none">
                 <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
@@ -763,10 +768,16 @@ export default function TopGearPage() {
               </svg>
               Starting sim…
             </>
-          ) : (
-            buttonLabel('Find Top Gear')
-          )}
-        </button>
+              ) : resolving ? (
+                'Resolving gear...'
+              ) : hasSimcInput ? (
+                buttonLabel('Find Top Gear')
+              ) : (
+                'Find Top Gear'
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

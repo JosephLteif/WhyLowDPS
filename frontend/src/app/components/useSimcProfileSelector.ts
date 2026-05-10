@@ -11,6 +11,15 @@ import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import { formatRealmName, resolveClassColor } from '../lib/profile-format';
 import { specDisplayName } from '../lib/types';
 
+function titleCaseWords(value: string | null | undefined): string {
+  if (!value) return '';
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export type HistoryTab = 'saved' | 'history';
 
 export type SelectedProfileMeta = {
@@ -191,7 +200,7 @@ export function useSimcProfileSelector({
     if (selectedSavedId !== null) {
       const saved = bnetProfiles.find((profile) => profile.id === selectedSavedId);
       if (!saved) return null;
-      const classLabel = [saved.spec ? specDisplayName(saved.spec) : null, saved.class]
+      const classLabel = [saved.spec ? specDisplayName(saved.spec) : null, titleCaseWords(saved.class)]
         .filter(Boolean)
         .join(' ');
       const realmLabel = [formatRealmName(saved.realm), saved.region ? `(${saved.region})` : null]
@@ -214,7 +223,9 @@ export function useSimcProfileSelector({
       if (!profile) return null;
       const info = parseCharacterInfo(profile);
       if (info?.kind === 'character') {
-        const classLabel = [specDisplayName(info.spec), info.className].filter(Boolean).join(' ');
+        const classLabel = [specDisplayName(info.spec), titleCaseWords(info.className)]
+          .filter(Boolean)
+          .join(' ');
         const realmLabel = [info.server, info.region ? `(${info.region})` : null]
           .filter(Boolean)
           .join(' ');

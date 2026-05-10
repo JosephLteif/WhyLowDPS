@@ -1,6 +1,6 @@
 {
   "productName": "WhyLowDps",
-  "version": "2.4.0",
+  "version": "2.4.0-nightly.20260510",
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",

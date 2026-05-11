@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Pencil, Trash2 } from 'lucide-react';
 import TalentTree from '../components/TalentTree';
-import { API_URL, fetchJsonCached } from '../lib/api';
+import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import { decodeHeader } from '../lib/talentDecode';
 import { encodeTalentString } from '../lib/talentEncode';
 import {
@@ -143,18 +143,43 @@ export default function TalentPlaygroundPage() {
   const [entryTab, setEntryTab] = useState<'starter' | 'import' | 'blank'>('import');
   const [buildContextMenu, setBuildContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [renameDialog, setRenameDialog] = useState<{ id: string; value: string } | null>(null);
+  const [buildsHydrated, setBuildsHydrated] = useState(false);
 
   const blankSpecId = useMemo(() => SPEC_NAME_TO_ID[blankSpecName] || null, [blankSpecName]);
   const blankTree = useTalentTree(blankSpecId);
 
   useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    setBuildsByScope(safeParseBuildsByScope(raw));
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchJson<Record<string, string>>(`${API_URL}/api/user/config`);
+        const remoteRaw = typeof data?.[STORAGE_KEY] === 'string' ? data[STORAGE_KEY] : null;
+        const localRaw = localStorage.getItem(STORAGE_KEY);
+        const parsedRemote = safeParseBuildsByScope(remoteRaw);
+        const parsedLocal = safeParseBuildsByScope(localRaw);
+        const merged = Object.keys(parsedRemote).length > 0 ? parsedRemote : parsedLocal;
+        if (!cancelled) setBuildsByScope(merged);
+      } catch {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!cancelled) setBuildsByScope(safeParseBuildsByScope(raw));
+      } finally {
+        if (!cancelled) setBuildsHydrated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
+    if (!buildsHydrated) return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(buildsByScope));
-  }, [buildsByScope]);
+    fetchJson(`${API_URL}/api/user/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: STORAGE_KEY, value: JSON.stringify(buildsByScope) }),
+    }).catch(() => {});
+  }, [buildsByScope, buildsHydrated]);
 
   useEffect(() => {
     fetchJsonCached<{ characters?: any[] }>(`${API_URL}/api/bnet/user/characters`, { ttl: 600000 })

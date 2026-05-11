@@ -1,4 +1,5 @@
 import { type ReactNode, useMemo, useState } from 'react';
+import { Heart } from 'lucide-react';
 import type { DropItem, UpgradeTracks } from './types';
 import { getTrackInfo, itemMatchesActiveLootSpec, resolveUpgrade, QUALITY_COLORS } from './types';
 
@@ -270,17 +271,11 @@ function DropItemCard({
         }`}
         title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
       >
-        <svg
-          viewBox="0 0 16 16"
+        <Heart
           className="h-4 w-4"
           fill={isWishlisted ? 'currentColor' : 'none'}
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M8 13.2l-4.5-4.2a2.8 2.8 0 010-4 2.9 2.9 0 014 0L8 5.5l.5-.5a2.9 2.9 0 014 0 2.8 2.8 0 010 4L8 13.2z" />
-        </svg>
+          strokeWidth={1.6}
+        />
       </button>
       <div className="relative shrink-0">
         <a

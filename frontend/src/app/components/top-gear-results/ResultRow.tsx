@@ -118,11 +118,20 @@ function consumableCheckClass(): string {
 }
 
 function consumableTierFromOption(token: string, opt?: OptionEntry): number {
-  if (typeof opt?.craftingQuality === 'number' && opt.craftingQuality > 0) return opt.craftingQuality;
   const m = token.match(/_(\d)$/);
   if (!m) return 0;
   const q = Number(m[1]);
   return Number.isFinite(q) ? q : 0;
+}
+
+function consumableTierFromLabel(label: string): number {
+  const m = String(label).match(/\((gold|silver|bronze)\)\s*$/i);
+  if (!m) return 0;
+  const q = m[1].toLowerCase();
+  if (q === 'gold') return 3;
+  if (q === 'silver') return 2;
+  if (q === 'bronze') return 1;
+  return 0;
 }
 
 function consumableLabelFromToken(token: string, fallbackCategory: string): string {
@@ -218,6 +227,8 @@ export default function ResultRow({
     return entries;
   }, [result.items]);
   const changedSlots = new Set(changedItems.map((it) => it.slot));
+  const hasConsumableOnlyEquippedRow =
+    !isEquipped && changedItems.length === 0 && consumableBadges.length > 0;
 
   const showBothRings = changedSlots.has('finger1') || changedSlots.has('finger2');
   const showBothTrinkets = changedSlots.has('trinket1') || changedSlots.has('trinket2');
@@ -419,11 +430,50 @@ export default function ResultRow({
           {(() => {
             const hasChangedItems = changedItems.length > 0;
 
-            if (isEquipped) {
+            if (isEquipped || hasConsumableOnlyEquippedRow) {
               return (
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="text-[16px] font-semibold text-zinc-100">Currently Equipped</span>
                   {talentBadge}
+                  {consumableBadges.length > 0 ? (
+                    <div className="basis-full pt-0.5">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        {consumableBadges.map(({ category, token }) => {
+                          const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
+                          const label = consumableLabelFromToken(token, category);
+                          const icon = opt?.icon
+                            ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
+                            : '';
+                          const itemId = Number(opt?.itemId || 0);
+                          const tier = consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
+                          const tierLabel = tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
+                          const showTierSquare = tier > 0;
+                          return (
+                            <a
+                              key={`${category}:${token}`}
+                              className="inline-flex items-center gap-1.5 rounded border border-gold/25 bg-gold/[0.07] px-1.5 py-0.5 text-[11px] text-gold/90"
+                              title={`${category}: ${label}`}
+                              data-wowhead={itemId > 0 ? `item=${itemId}` : undefined}
+                              href={itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined}
+                              onClick={(e) => e.preventDefault()}
+                            >
+                              {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
+                              <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
+                              {showTierSquare ? (
+                                tier === 1 ? (
+                                  <span className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}>
+                                    <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
+                                  </span>
+                                ) : (
+                                  <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`} />
+                                )
+                              ) : null}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             }
@@ -466,7 +516,8 @@ export default function ResultRow({
                           ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
                           : '';
                         const itemId = Number(opt?.itemId || 0);
-                        const tier = consumableTierFromOption(token, opt);
+                        const tier = consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
+                        const tierLabel = tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
                         const showTierSquare = tier > 0;
                         return (
                           <a
@@ -485,7 +536,7 @@ export default function ResultRow({
                                   <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
                                 </span>
                               ) : (
-                                <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(label)}`} />
+                                <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`} />
                               )
                             ) : null}
                           </a>

@@ -99,6 +99,14 @@ function dropBaselineKey(item: GearItem): string {
   return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
 }
 
+function normalizeEmbellishmentName(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\s*\((quality|rank|q)\s*\d+\)\s*$/i, '')
+    .replace(/\s*\(\d+\)\s*$/i, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 interface GearOverviewProps {
   gear: Record<string, GearItem>;
   title?: string;
@@ -462,6 +470,7 @@ export function GearSlotRow({
       enchantAvailabilityItemKey(slot, characterClassName, item.item_id, item.bonus_ids)
     ] || false;
   const embellishmentOptions = embellishmentOptionsByItemId[item.item_id] || [];
+  const normalizedEmbellishmentName = normalizeEmbellishmentName(item.embellishment_name);
   const inferredEmbellishment =
     embellishmentOptions.find((opt) => opt.item_id === item.embellishment_item_id) ||
     embellishmentOptions.find(
@@ -469,9 +478,20 @@ export function GearSlotRow({
         Array.isArray(opt.bonus_ids) &&
         opt.bonus_ids.length > 0 &&
         opt.bonus_ids.every((bid) => (item.bonus_ids || []).includes(bid))
-    );
+    ) ||
+    (normalizedEmbellishmentName
+      ? embellishmentOptions.find(
+          (opt) => normalizeEmbellishmentName(opt.name) === normalizedEmbellishmentName
+        )
+      : undefined);
   const embellishmentName = item.embellishment_name || inferredEmbellishment?.name || '';
-  const embellishmentIcon = item.embellishment_icon || inferredEmbellishment?.icon || '';
+  const embellishmentIcon =
+    item.embellishment_icon ||
+    inferredEmbellishment?.icon ||
+    (inferredEmbellishment?.item_id
+      ? itemInfoMap[inferredEmbellishment.item_id]?.icon
+      : undefined) ||
+    '';
   const embellishmentItemId = item.embellishment_item_id || inferredEmbellishment?.item_id || 0;
 
   const details: Array<{
@@ -552,9 +572,9 @@ export function GearSlotRow({
   if (embellishmentName) {
     details.push({
       text: embellishmentName,
-      kind: embellishmentIcon ? 'iconText' : 'plain',
+      kind: 'iconText',
       badgeVariant: 'embellishment',
-      icon: embellishmentIcon || undefined,
+      icon: embellishmentIcon || 'inv_misc_questionmark',
       href: embellishmentItemId > 0 ? getWowheadUrl(embellishmentItemId) : undefined,
       wowheadData: embellishmentItemId > 0 ? `item=${embellishmentItemId}` : undefined,
       tooltip: embellishmentName,

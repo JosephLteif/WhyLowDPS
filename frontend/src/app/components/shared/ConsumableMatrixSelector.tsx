@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
+import { Check } from 'lucide-react';
 import { useItemIcons } from '../../lib/useWowheadIcons';
 import type { OptionEntry } from '../../lib/sim-options-catalog';
 
@@ -104,7 +105,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
               const all = options.map((o) => o.token || o.key);
               onChange(all);
             }}
-            className="text-[11px] text-zinc-500 hover:text-zinc-300"
+            className="h-7 rounded-md border border-amber-300/40 bg-amber-500/14 px-2.5 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-500/24 hover:text-amber-200"
             title="Select All"
           >
             All
@@ -112,7 +113,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
           <button
             type="button"
             onClick={() => onChange([])}
-            className="text-[11px] text-zinc-500 hover:text-zinc-300"
+            className="h-7 rounded-md border border-zinc-600/80 bg-zinc-800/55 px-2.5 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-700/65"
             title="Clear"
           >
             Clear
@@ -302,19 +303,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
                         : 'border-zinc-700 bg-surface hover:border-zinc-500'
                     }`}
                   >
-                    {isSelected ? (
-                      <svg
-                        className="h-2.5 w-2.5 text-black"
-                        viewBox="0 0 12 12"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="2 6.5 4.5 9 10 3" />
-                      </svg>
-                    ) : null}
+                    {isSelected ? <Check className="h-2.5 w-2.5 text-black" strokeWidth={3} /> : null}
                   </div>
                 )}
               </div>

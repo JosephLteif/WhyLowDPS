@@ -41,6 +41,7 @@ import {
   normalizeRealmSlug,
   parseVaultRewardsFromSimcInput,
 } from '../lib/character-panel-utils';
+import { parseTalentLoadouts, type TalentLoadoutParsed } from '../lib/types';
 import { useMythicDungeonDetails } from '../lib/useMythicDungeonDetails';
 const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
 
@@ -172,6 +173,7 @@ export default function CharacterPanel({
               talentString={talentString}
               specId={specId}
               tree={tree}
+              latestSimcInput={latestSimcInput}
             />
           </div>
 
@@ -1126,15 +1128,43 @@ function TalentsCard({
   talentString,
   specId,
   tree,
+  latestSimcInput,
 }: {
   activeSpec: CharacterSpecialization | null;
   activeLoadout: CharacterTalentLoadout | null;
   talentString: string | null;
   specId: number | null;
   tree: TalentTreeData | null;
+  latestSimcInput?: string | null;
 }) {
   const loading = specId !== null && !tree;
   const [collapsed, setCollapsed] = useState(false);
+  const simcLoadouts = useMemo(() => {
+    if (!latestSimcInput) return [] as TalentLoadoutParsed[];
+    const parsed = parseTalentLoadouts(latestSimcInput);
+    const seen = new Set<string>();
+    const out: TalentLoadoutParsed[] = [];
+    for (const loadout of parsed) {
+      const key = String(loadout.talentString || '').trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(loadout);
+    }
+    return out;
+  }, [latestSimcInput]);
+  const [selectedSimcTalent, setSelectedSimcTalent] = useState('');
+  useEffect(() => {
+    if (simcLoadouts.length === 0) {
+      setSelectedSimcTalent('');
+      return;
+    }
+    const active =
+      simcLoadouts.find((l) => l.isActive)?.talentString ||
+      simcLoadouts[0]?.talentString ||
+      '';
+    setSelectedSimcTalent(active);
+  }, [simcLoadouts]);
+  const displayedTalentString = selectedSimcTalent || talentString;
 
   if (!activeSpec) {
     return (
@@ -1160,12 +1190,37 @@ function TalentsCard({
     <div className="card overflow-hidden">
       <div className="border-b border-white/5 bg-white/[0.01] p-5">
         <div className="flex items-center justify-between">
-          <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-            Specialization: <span className="text-gold">{activeSpec.specialization?.name || 'Unknown'}</span>
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+              Specialization: <span className="text-gold">{activeSpec.specialization?.name || 'Unknown'}</span>
+            </h1>
+            {simcLoadouts.length > 1 && (
+              <select
+                value={selectedSimcTalent}
+                onChange={(e) => setSelectedSimcTalent(e.target.value)}
+                className="input-field h-8 min-w-[180px] px-2 py-1 text-[11px] font-bold text-zinc-100"
+                style={{ colorScheme: 'dark' }}
+              >
+                {simcLoadouts.map((loadout, idx) => (
+                  <option key={`${loadout.name}-${idx}`} value={loadout.talentString}>
+                    {loadout.name}
+                    {loadout.isActive ? ' (active)' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {loading && (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
+            )}
+            {displayedTalentString && (
+              <Link
+                href={`/talent-playground?talent=${encodeURIComponent(displayedTalentString)}&name=${encodeURIComponent('Character Build')}`}
+                className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+              >
+                Playground
+              </Link>
             )}
             <button
               type="button"
@@ -1179,13 +1234,13 @@ function TalentsCard({
       </div>
 
       {!collapsed ? (
-        talentString ? (
+        displayedTalentString ? (
         <div className="bg-black/20 p-2 lg:max-h-[620px] lg:overflow-y-auto">
           <div
             className="origin-top scale-100 transform transition-opacity duration-500"
             style={{ opacity: loading ? 0.3 : 1 }}
           >
-            <TalentTree talentString={talentString} specId={specId ?? undefined} bare />
+            <TalentTree talentString={displayedTalentString} specId={specId ?? undefined} bare />
           </div>
         </div>
       ) : (

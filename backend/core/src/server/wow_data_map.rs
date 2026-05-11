@@ -95,22 +95,31 @@ fn wowhead_url(kind: &str, id: i64) -> Option<String> {
 
 fn read_wowhead_zone_index(data_dir: &Path) -> Vec<WowheadZoneEntry> {
     let runtime_path = data_dir.join(WOWHEAD_ZONE_INDEX_FILE);
-    let exe_bundled_path = std::env::current_exe()
+    let mut candidates = path_variants_with_json_alias(&runtime_path);
+    if let Some(exe_dir) = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|dir| dir.join(format!("resources/{}", WOWHEAD_ZONE_INDEX_FILE))));
-    let dev_bundled_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../resources")
-        .join(WOWHEAD_ZONE_INDEX_FILE);
-    let v = read_json_file(&runtime_path)
-        .or_else(|_| {
-            if let Some(path) = exe_bundled_path.as_ref().filter(|p| p.exists()) {
-                read_json_file(path)
-            } else {
-                Err("Executable bundled path not found".to_string())
-            }
-        })
-        .or_else(|_| read_json_file(&dev_bundled_path))
-        .unwrap_or_else(|_| Value::Null);
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    {
+        candidates.extend(path_variants_with_json_alias(
+            &exe_dir.join("resources").join(WOWHEAD_ZONE_INDEX_FILE),
+        ));
+    }
+    candidates.extend(path_variants_with_json_alias(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../resources")
+            .join(WOWHEAD_ZONE_INDEX_FILE),
+    ));
+
+    let mut v = Value::Null;
+    for candidate in candidates {
+        if !candidate.exists() {
+            continue;
+        }
+        if let Ok(parsed) = read_json_file(&candidate) {
+            v = parsed;
+            break;
+        }
+    }
     v.get("zones")
         .and_then(|z| z.as_array())
         .map(|arr| {
@@ -119,6 +128,16 @@ fn read_wowhead_zone_index(data_dir: &Path) -> Vec<WowheadZoneEntry> {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
+}
+
+fn path_variants_with_json_alias(path: &Path) -> Vec<std::path::PathBuf> {
+    let mut out = vec![path.to_path_buf()];
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("json") => out.push(path.with_extension("")),
+        None => out.push(path.with_extension("json")),
+        _ => {}
+    }
+    out
 }
 
 

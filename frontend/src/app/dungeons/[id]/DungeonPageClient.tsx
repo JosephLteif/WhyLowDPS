@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import {
   API_URL,
   DungeonInfo,
@@ -78,16 +79,57 @@ function formatMs(ms?: number | null): string | null {
 }
 
 function normalizeName(input?: string | null): string {
-  return String(input || '')
+  return decodeHtmlEntities(input)
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
+}
+
+function decodeHtmlEntities(input?: string | null): string {
+  const text = String(input || '');
+  return text
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function singularizeWord(word: string): string {
+  if (word.length < 4) return word;
+  if (word.endsWith('ies') && word.length > 4) return `${word.slice(0, -3)}y`;
+  if (/(ches|shes|xes|zes|ses)$/.test(word) && word.length > 4) return word.slice(0, -2);
+  if (word.endsWith('s') && !/(ss|is|us)$/.test(word)) return word.slice(0, -1);
+  return word;
+}
+
+function buildNameVariants(input?: string | null): string[] {
+  const raw = decodeHtmlEntities(input)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim();
+  if (!raw) return [];
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+
+  const variants = new Set<string>();
+  variants.add(words.join(''));
+
+  const singularWords = words.map(singularizeWord);
+  variants.add(singularWords.join(''));
+
+  return Array.from(variants).filter(Boolean);
 }
 
 function renderEncounterDescription(text: string, abilities: WowheadSpell[]): ReactNode {
   const chunks: ReactNode[] = [];
   const byName = new Map<string, WowheadSpell>();
   for (const ability of abilities) {
-    byName.set(normalizeName(ability.name), ability);
+    for (const key of buildNameVariants(ability.name)) {
+      if (!byName.has(key)) {
+        byName.set(key, ability);
+      }
+    }
   }
 
   const re = /\[([^\]]+)\]/g;
@@ -97,13 +139,14 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
   while ((m = re.exec(text)) !== null) {
     const start = m.index;
     const end = re.lastIndex;
-    const token = m[1];
+    const token = decodeHtmlEntities(m[1]);
 
     if (start > last) {
-      chunks.push(<span key={`txt-${idx++}`}>{text.slice(last, start)}</span>);
+      chunks.push(<span key={`txt-${idx++}`}>{decodeHtmlEntities(text.slice(last, start))}</span>);
     }
 
-    const matched = byName.get(normalizeName(token));
+    const tokenKeys = buildNameVariants(token);
+    const matched = tokenKeys.map((k) => byName.get(k)).find((v) => !!v);
     const href = matched?.url || `https://www.wowhead.com/search?q=${encodeURIComponent(token)}`;
     chunks.push(
       <a
@@ -112,7 +155,7 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
         target="_blank"
         rel="noopener noreferrer"
         className="mx-0.5 inline-flex items-center rounded border border-white/20 bg-black/35 px-1.5 py-0.5 text-xs text-gold hover:bg-black/55"
-        title={matched?.description || token}
+        title={decodeHtmlEntities(matched?.description || token)}
       >
         {matched?.icon_url ? (
           <img src={matched.icon_url} alt="" className="mr-1 h-3.5 w-3.5 rounded-sm object-cover" />
@@ -124,9 +167,58 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
   }
 
   if (last < text.length) {
-    chunks.push(<span key={`txt-${idx++}`}>{text.slice(last)}</span>);
+    chunks.push(<span key={`txt-${idx++}`}>{decodeHtmlEntities(text.slice(last))}</span>);
   }
   return chunks;
+}
+
+function EncounterAvatar({
+  npcId,
+  name,
+  sourceImageUrl,
+  fallbackIconUrl,
+}: {
+  npcId: number;
+  name: string;
+  sourceImageUrl?: string | null;
+  fallbackIconUrl?: string | null;
+}) {
+  const proxyImage = buildImageProxyUrl('encounter', npcId, sourceImageUrl);
+  const preferredSource =
+    isHttpUrl(sourceImageUrl) && !sourceImageUrl.includes('/images/logos/share-icon.png')
+      ? sourceImageUrl
+      : null;
+  const preferredAbilityIcon = isHttpUrl(fallbackIconUrl) ? fallbackIconUrl : null;
+  const sources = [preferredSource, preferredAbilityIcon, proxyImage].filter(
+    (url): url is string => !!url,
+  );
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const src = sources[sourceIndex] || null;
+
+  useEffect(() => {
+    setSourceIndex(0);
+  }, [preferredSource, preferredAbilityIcon, proxyImage]);
+
+  if (!src) {
+    return (
+      <div className="flex h-12 w-12 items-center justify-center rounded bg-zinc-800">
+        <span className="text-xl font-bold text-gold">{name[0] || '?'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className="h-12 w-12 rounded object-cover"
+      onError={() => {
+        if (sourceIndex < sources.length - 1) {
+          setSourceIndex((idx) => idx + 1);
+        }
+      }}
+    />
+  );
 }
 
 export default function DungeonPageClient({ id }: { id: string }) {
@@ -236,14 +328,7 @@ export default function DungeonPageClient({ id }: { id: string }) {
     return (
       <div className="mx-auto max-w-lg py-20 text-center">
         <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10 text-red-500">
-          <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            />
-          </svg>
+          <AlertTriangle className="h-8 w-8" strokeWidth={2} />
         </div>
         <h2 className="mb-2 text-xl font-bold text-zinc-200">Dungeon Not Found</h2>
         <p className="mb-6 text-zinc-500">{error || 'The dungeon could not be found.'}</p>
@@ -391,30 +476,28 @@ export default function DungeonPageClient({ id }: { id: string }) {
           <h2 className="text-xl font-bold text-zinc-200">Encounters</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sectionEncounters.map((encounter) => {
-              const encounterImageSrc = encounter.image_url || null;
               return (
                 <div
                   key={encounter.npc_id}
                   className="rounded-lg border border-white/10 bg-white/5 p-4"
                 >
                   <div className="mb-3 flex items-center gap-3">
-                    {encounterImageSrc ? (
-                      <img src={encounterImageSrc} alt="" className="h-12 w-12 rounded object-cover" />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded bg-zinc-800">
-                        <span className="text-xl font-bold text-gold">?</span>
-                      </div>
-                    )}
+                    <EncounterAvatar
+                      npcId={encounter.npc_id}
+                      name={encounter.name}
+                      sourceImageUrl={encounter.image_url || null}
+                      fallbackIconUrl={encounter.abilities?.[0]?.icon_url || null}
+                    />
                     <div>
-                      <p className="font-bold text-zinc-200">{encounter.name}</p>
+                      <p className="font-bold text-zinc-200">{decodeHtmlEntities(encounter.name)}</p>
                       {encounter.url && (
                         <a
                           href={encounter.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-xs text-gold hover:underline"
+                          className="mt-1 inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
                         >
-                          Wowhead
+                          View on Wowhead
                         </a>
                       )}
                     </div>
@@ -437,8 +520,8 @@ export default function DungeonPageClient({ id }: { id: string }) {
                           {spell.icon_url ? (
                             <img src={spell.icon_url} alt="" className="h-4 w-4 rounded-sm object-cover" />
                           ) : null}
-                          <span>{spell.name || `Spell ${spell.id}`}</span>
-                        </a>
+                            <span>{decodeHtmlEntities(spell.name || `Spell ${spell.id}`)}</span>
+                          </a>
                       ))}
                     </div>
                   )}

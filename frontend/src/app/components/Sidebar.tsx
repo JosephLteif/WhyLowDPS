@@ -3,6 +3,19 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  BarChart3,
+  Play,
+  ArrowUp,
+  ScrollText,
+  Map as MapIcon,
+  LineChart,
+  Users,
+  Settings as SettingsIcon,
+  Pencil,
+  GripVertical,
+} from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
@@ -11,7 +24,7 @@ interface NavItem {
   href: string;
   label: string;
   description: string;
-  icon: string;
+  icon: LucideIcon;
   matchPaths: string[];
   children?: { href: string; label: string; description: string }[];
 }
@@ -21,14 +34,14 @@ const baseNavItems: NavItem[] = [
     href: '/',
     label: 'Dashboard',
     description: 'Overview of sims, activity, and results.',
-    icon: 'M2.5 8L8 3.5 13.5 8M4.5 7.3V12.5h7V7.3',
+    icon: BarChart3,
     matchPaths: ['/'],
   },
   {
     href: '/top-gear',
     label: 'Sim',
     description: 'Run sims and optimize setups.',
-    icon: 'M13 8l-5 5-5-5M3 3h10',
+    icon: Play,
     matchPaths: ['/quick-sim', '/top-gear'],
     children: [
       { href: '/top-gear', label: 'Top Gear', description: 'Best gear from your bags' },
@@ -39,7 +52,7 @@ const baseNavItems: NavItem[] = [
     href: '/drop-finder',
     label: 'Upgrades',
     description: 'Find and sim gear upgrades.',
-    icon: 'M7 7m-4.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0M10.5 10.5L14 14',
+    icon: ArrowUp,
     matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade'],
     children: [
       { href: '/drop-finder', label: 'Drop Finder', description: 'Sim raid & dungeon loot' },
@@ -50,7 +63,7 @@ const baseNavItems: NavItem[] = [
     href: '/analysis/quick-weights',
     label: 'Analysis',
     description: 'Weights and matrix analysis.',
-    icon: 'M4 8V6a6 6 0 1 1 12 0v2m1-2a7 7 0 1 1-14 0m7 7v4M8 11.232v4.5A4.5 4.5 0 0 0 12.5 11.232H3.5a4.5 4.5 0 0 0 4.5 4.5',
+    icon: LineChart,
     matchPaths: [
       '/stat-weights',
       '/analysis/quick-weights',
@@ -82,7 +95,7 @@ const baseNavItems: NavItem[] = [
     href: '/dungeons',
     label: 'Dungeons & Routes',
     description: 'Dungeons, raids, and routes.',
-    icon: 'M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2v6z',
+    icon: MapIcon,
     matchPaths: ['/dungeons', '/raids', '/dungeon-routes'],
     children: [
       { href: '/dungeons', label: 'Dungeons', description: 'Rotation and affixes' },
@@ -98,7 +111,7 @@ const baseNavItems: NavItem[] = [
     href: '/history',
     label: 'History',
     description: 'View recent simulation results.',
-    icon: 'M8 8m-6.5 0a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0M8 4.5V8l2.5 2.5',
+    icon: ScrollText,
     matchPaths: ['/history'],
   },
 ];
@@ -157,11 +170,16 @@ export default function Sidebar() {
         href: '/characters',
         label: 'My Characters',
         description: 'View your Battle.net roster.',
-        icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z',
-        matchPaths: ['/characters', '/wishlist'],
+        icon: Users,
+        matchPaths: ['/characters', '/wishlist', '/talent-playground'],
         children: [
           { href: '/characters', label: 'Roster', description: 'Your Battle.net characters' },
           { href: '/wishlist', label: 'Wishlist', description: 'Saved target drops by character' },
+          {
+            href: '/talent-playground',
+            label: 'Talent Playground',
+            description: 'Build, import, and save talent trees',
+          },
         ],
       });
 
@@ -169,7 +187,7 @@ export default function Sidebar() {
         href: '/settings',
         label: 'Settings',
         description: 'API keys and account setup.',
-        icon: 'M9.594 3.94c.09-.542.56-.94 1.11-.94h2.592c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456c.53-.199 1.144.02 1.41.52l1.296 2.247c.266.46.16 1.05-.24 1.411l-1.014.891c-.265.233-.367.618-.266.953.013.045.024.09.033.135a1.275 1.275 0 0 1 0 .524c-.01.045-.02.09-.033.135a1.275 1.275 0 0 1 .266.953l1.014.891c.4.364.506.95.24 1.411l-1.296 2.247c-.266.5-.88.719-1.41.52l-1.217-.456a1.275 1.275 0 0 1-1.075-.124c-.073.044-.146.087-.22.127a1.275 1.275 0 0 1-.645.87l-.213 1.282c-.09.542-.56.94-1.11.94h-2.592a1.275 1.275 0 0 1-1.11-.94l-.213-1.281a1.275 1.275 0 0 1-.645-.87c-.074-.04-.147-.083-.22-.127a1.275 1.275 0 0 1-1.075-.124l-1.217.456c-.53.199-1.144-.02-1.41-.52l-1.296-2.247c-.266-.46-.16-1.05.24-1.411l1.014-.891c.265-.233.367-.618.266-.953a1.275 1.275 0 0 1-.033-.135 1.275 1.275 0 0 1 0-.524 1.275 1.275 0 0 1 .033-.135 1.275 1.275 0 0 1-.266-.953l-1.014-.891c-.4-.364-.506-.95-.24-1.411l1.296-2.247c.266-.5.88-.719 1.41-.52l1.217.456c.355.133.751.072 1.075-.124.074-.044.147-.087.22-.127a1.275 1.275 0 0 1 .645-.87l.213-1.282z',
+        icon: SettingsIcon,
         matchPaths: ['/settings'],
       });
     }
@@ -426,18 +444,7 @@ export default function Sidebar() {
                 title={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
                 aria-label={isEditMode ? 'Finish sidebar edit mode' : 'Edit sidebar'}
               >
-                <svg
-                  viewBox="0 0 16 16"
-                  className="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M11.5 2.5l2 2L6 12H4v-2l7.5-7.5z" />
-                  <path d="M10 4l2 2" />
-                </svg>
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
               </button>
             </div>
           )}
@@ -508,14 +515,7 @@ export default function Sidebar() {
                         title={`Drag to reorder ${item.label}`}
                         aria-label={`Drag to reorder ${item.label}`}
                       >
-                        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
-                          <circle cx="5" cy="4" r="1.1" />
-                          <circle cx="11" cy="4" r="1.1" />
-                          <circle cx="5" cy="8" r="1.1" />
-                          <circle cx="11" cy="8" r="1.1" />
-                          <circle cx="5" cy="12" r="1.1" />
-                          <circle cx="11" cy="12" r="1.1" />
-                        </svg>
+                        <GripVertical className="h-3.5 w-3.5" strokeWidth={2} />
                       </button>
                     )}
                     <Link
@@ -526,6 +526,12 @@ export default function Sidebar() {
                           return;
                         }
                         if (hasChildren) {
+                          if (isCollapsed) {
+                            e.preventDefault();
+                            setIsCollapsed(false);
+                            setOpenMenu(item.label);
+                            return;
+                          }
                           e.preventDefault();
                           setOpenMenu(isOpen ? null : item.label);
                           return;
@@ -552,17 +558,10 @@ export default function Sidebar() {
                       }`}
                       title={item.label}
                     >
-                      <svg
-                        className={`h-5 w-5 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <path d={item.icon} />
-                      </svg>
+                      <item.icon
+                        className={`h-6 w-6 shrink-0 ${isActive ? 'text-gold' : 'text-zinc-500 group-hover:text-zinc-300'}`}
+                        strokeWidth={2}
+                      />
                       {!isCollapsed && (
                         <div className="flex min-w-0 flex-1 flex-col">
                           <span className="text-[15px] font-medium">{item.label}</span>

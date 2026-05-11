@@ -1,4 +1,5 @@
 import ItemBadge from './shared/ItemBadge';
+import { AlertTriangle, Check } from 'lucide-react';
 
 /**
  * Shared gear item row used across Top Gear, Upgrade Compare, and other pages.
@@ -124,30 +125,14 @@ export default function GearItemRow({
               }`}
             >
               {checked && (
-                <svg className="h-3 w-3 text-black" viewBox="0 0 16 16" fill="none">
-                  <path
-                    d="M12 5L6.5 10.5L4 8"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+                <Check className="h-3 w-3 text-black" strokeWidth={2} />
               )}
             </div>
           )}
         </>
       ) : equipped && showCheckbox ? (
         <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[3px] bg-white/10">
-          <svg className="h-3 w-3 text-white/40" viewBox="0 0 16 16" fill="none">
-            <path
-              d="M12 5L6.5 10.5L4 8"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <Check className="h-3 w-3 text-white/40" strokeWidth={2} />
         </div>
       ) : null}
 
@@ -320,9 +305,7 @@ export default function GearItemRow({
         <div className={`min-w-0 basis-full pt-1 ${detailsIndentClass} ${reverse ? 'text-right' : ''}`}>
           <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-amber-400/40 bg-amber-500/12 px-2 py-1 text-[12px] font-semibold text-amber-200">
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-amber-500/20 text-amber-300">
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                <path d="M10 2.5L18 16.5H2L10 2.5zm0 5.1a1 1 0 00-1 1v3.3a1 1 0 002 0V8.6a1 1 0 00-1-1zm0 7.1a1.1 1.1 0 100-2.2 1.1 1.1 0 000 2.2z" />
-              </svg>
+              <AlertTriangle className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             </span>
             <span className="min-w-0 whitespace-normal break-words">{specWarning}</span>
           </div>
@@ -333,9 +316,7 @@ export default function GearItemRow({
         <div className={`min-w-0 basis-full pt-1 ${detailsIndentClass}`}>
           <div className="inline-flex max-w-full items-center gap-2 rounded-md border border-red-400/45 bg-red-500/12 px-2 py-1 text-[12px] font-semibold text-red-200">
             <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-red-500/20 text-red-300">
-              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-                <path d="M10 2.5L18 16.5H2L10 2.5zm0 5.1a1 1 0 00-1 1v3.3a1 1 0 002 0V8.6a1 1 0 00-1-1zm0 7.1a1.1 1.1 0 100-2.2 1.1 1.1 0 000 2.2z" />
-              </svg>
+              <AlertTriangle className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             </span>
             <span className="min-w-0 whitespace-normal break-words">{limitWarning}</span>
           </div>

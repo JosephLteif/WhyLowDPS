@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
@@ -129,17 +130,10 @@ export default function CustomSelect({
             {selected ? selected.label : placeholder}
           </span>
         </span>
-        <svg
+        <ChevronDown
           className={`h-3 w-3 text-zinc-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-          viewBox="0 0 16 16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M4 6l4 4 4-4" />
-        </svg>
+          strokeWidth={2}
+        />
       </div>
 
       {open && (

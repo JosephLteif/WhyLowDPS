@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Check, ScrollText } from 'lucide-react';
 import { API_URL } from '../lib/api';
 import { formatElapsedCompact, formatMegabytes } from '../lib/format';
 
@@ -276,18 +277,7 @@ export default function SimStatus({
               onClick={onToggleLogs}
               className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-gray-300"
             >
-              <svg
-                className="h-3.5 w-3.5"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="2" y="3" width="12" height="10" rx="1.5" />
-                <path d="M5 7l2 2 2-2" />
-              </svg>
+              <ScrollText className="h-3.5 w-3.5" strokeWidth={1.5} />
               {showLogs ? 'Hide Logs' : 'Show Logs'}
             </button>
           )}
@@ -298,17 +288,7 @@ export default function SimStatus({
         <div className="w-72 space-y-1 pt-2">
           {stagesCompleted!.map((stage, i) => (
             <div key={i} className="flex items-center gap-2">
-              <svg
-                className="h-3 w-3 shrink-0 text-emerald-500"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 5L6.5 10.5L4 8" />
-              </svg>
+              <Check className="h-3 w-3 shrink-0 text-emerald-500" strokeWidth={2.5} />
               <span className="text-sm text-zinc-300">
                 {stage}
                 {stageTimings[i] && (

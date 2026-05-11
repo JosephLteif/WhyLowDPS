@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { OptionEntry } from '../../lib/sim-options-catalog';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
@@ -213,17 +214,10 @@ export default function ConsumableSelect({
             <span className="truncate">{selected ? optionSelectLabel(selected) : 'None'}</span>
             <QualityBadge quality={selectedQuality} />
           </a>
-          <svg
+          <ChevronDown
             className={`ml-auto h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 6l4 4 4-4" />
-          </svg>
+            strokeWidth={2}
+          />
         </div>
         <div
           className={`absolute z-30 mt-1 w-full origin-top overflow-hidden rounded-md border border-border bg-surface shadow-xl transition-[opacity,transform] duration-250 ease-out ${

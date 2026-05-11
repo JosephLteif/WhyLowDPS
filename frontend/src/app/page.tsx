@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, List, Database, Cpu } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
 import { useSimContext } from './components/SimContext';
@@ -48,43 +49,19 @@ function StatIcon({ children }: { children: ReactNode }) {
 }
 
 function ActiveIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M12 6v6l4 2" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="8" />
-    </svg>
-  );
+  return <Activity className="h-5 w-5" strokeWidth={2} />;
 }
 
 function ListIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M8 7h10M8 12h10M8 17h10" strokeLinecap="round" />
-      <circle cx="5" cy="7" r="1" fill="currentColor" />
-      <circle cx="5" cy="12" r="1" fill="currentColor" />
-      <circle cx="5" cy="17" r="1" fill="currentColor" />
-    </svg>
-  );
+  return <List className="h-5 w-5" strokeWidth={2} />;
 }
 
 function DatabaseIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <ellipse cx="12" cy="6" rx="7" ry="3" />
-      <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
-      <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
-    </svg>
-  );
+  return <Database className="h-5 w-5" strokeWidth={2} />;
 }
 
 function CpuIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="7" y="7" width="10" height="10" rx="1.5" />
-      <path d="M10 10h4v4h-4z" />
-      <path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3" />
-    </svg>
-  );
+  return <Cpu className="h-5 w-5" strokeWidth={2} />;
 }
 
 function formatBytes(bytes: number): string {
@@ -292,13 +269,14 @@ export default function Home() {
   const [mainCharacterOpen, setMainCharacterOpen] = useState(true);
   const [trackedRefreshToken, setTrackedRefreshToken] = useState(0);
   const [lastRefreshedByCharacter, setLastRefreshedByCharacter] = useState<Record<string, number>>({});
-  const [stampRefreshTime, setStampRefreshTime] = useState(false);
+  const [trackedRefreshing, setTrackedRefreshing] = useState(false);
   const [recentResultsOpen, setRecentResultsOpen] = useState(true);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [draggedTrackedIndex, setDraggedTrackedIndex] = useState<number | null>(null);
   const [dragOverTrackedIndex, setDragOverTrackedIndex] = useState<number | null>(null);
   const [dragPointer, setDragPointer] = useState<{ x: number; y: number; offsetX: number; offsetY: number; width: number; label: string; color: string } | null>(null);
   const draggedTrackedIndexRef = useRef<number | null>(null);
+  const pendingTrackedRefreshRef = useRef(false);
   const pendingDragRef = useRef<{
     idx: number;
     startX: number;
@@ -357,7 +335,8 @@ export default function Home() {
         const selected = parsedTracked[Math.min(activeTrackedIndex, parsedTracked.length - 1)];
         const { region, realm, name } = selected;
 
-        const query = `?region=${region}`;
+        const shouldRefresh = pendingTrackedRefreshRef.current;
+        const query = `?region=${region}${shouldRefresh ? '&refresh=true' : ''}`;
         const base = `/api/blizzard/character/${realm}/${name}`;
         const [profileRes, mythicPlus, raidEncounters] = await Promise.all([
           fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(() => ({})),
@@ -412,21 +391,26 @@ export default function Home() {
         const mplusRuns = computeMythicVaultRuns(mythicPlus, region);
         const raidKills = computeWeeklyRaidBossKills(raidEncounters, region);
         setMainVault({ mplusRuns, raidKills });
-        if (stampRefreshTime) {
+        if (shouldRefresh) {
           const ts = Date.now();
           const charKey = `${region.toLowerCase()}|${realm.toLowerCase()}|${name.toLowerCase()}`;
           setLastRefreshedByCharacter((prev) => ({ ...prev, [charKey]: ts }));
           if (typeof window !== 'undefined') {
             localStorage.setItem(`${LAST_REFRESH_PREFIX}${charKey}`, String(ts));
           }
-          setStampRefreshTime(false);
+          pendingTrackedRefreshRef.current = false;
+          setTrackedRefreshing(false);
         }
       } catch {
+        if (pendingTrackedRefreshRef.current) {
+          pendingTrackedRefreshRef.current = false;
+          setTrackedRefreshing(false);
+        }
         // ignore
       }
     };
     void loadMainCharacter();
-  }, [activeTrackedIndex, trackedRefreshToken, stampRefreshTime]);
+  }, [activeTrackedIndex, trackedRefreshToken]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -759,12 +743,14 @@ export default function Home() {
             <button
               type="button"
               onClick={() => {
-                setStampRefreshTime(true);
+                pendingTrackedRefreshRef.current = true;
+                setTrackedRefreshing(true);
                 setTrackedRefreshToken((v) => v + 1);
               }}
+              disabled={trackedRefreshing}
               className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
             >
-              Refresh
+              {trackedRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
             <button
               type="button"

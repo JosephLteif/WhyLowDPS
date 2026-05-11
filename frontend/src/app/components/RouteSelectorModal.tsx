@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
+import { Map, Search, Trash2, X } from 'lucide-react';
 import { parseCharacterInfo } from '@/lib/simc-parser';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import type { SavedRoute } from '../lib/types';
@@ -108,20 +109,11 @@ export default function RouteSelectorModal({
       >
         <div className="flex items-center justify-between border-b border-white/5 p-4">
           <div className="flex items-center gap-2">
-            <svg className="h-5 w-5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
-              />
-            </svg>
+            <Map className="h-5 w-5 text-sky-400" strokeWidth={2} />
             <h2 className="text-lg font-bold text-white">Select Saved Route</h2>
           </div>
           <button onClick={onClose} className="text-zinc-400 hover:text-white">
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="h-6 w-6" strokeWidth={2} />
           </button>
         </div>
         <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3 text-xs text-zinc-400">
@@ -132,19 +124,7 @@ export default function RouteSelectorModal({
         </div>
         <div className="grid grid-cols-1 gap-2 border-b border-white/5 bg-white/[0.01] px-4 py-3 md:grid-cols-[1fr_220px_auto] md:items-center">
           <div className="relative">
-            <svg
-              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-5.2-5.2m1.7-4.3a6 6 0 11-12 0 6 6 0 0112 0z"
-              />
-            </svg>
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" strokeWidth={2} />
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
@@ -260,14 +240,7 @@ export default function RouteSelectorModal({
                     className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/10 hover:text-red-400"
                     title="Delete saved route"
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      />
-                    </svg>
+                    <Trash2 className="h-4 w-4" strokeWidth={2} />
                   </button>
                   <div className="absolute bottom-2 right-3 text-[10px] text-zinc-600 transition-colors group-hover:text-zinc-400">
                     Click to load route

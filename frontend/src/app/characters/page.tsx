@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Star, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
@@ -42,41 +43,11 @@ function characterId(char: Character): string {
 }
 
 function StarIcon({ filled }: { filled?: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill={filled ? 'currentColor' : 'none'}>
-      <path
-        d="M12 3.5l2.67 5.41 5.97.87-4.32 4.2 1.02 5.95L12 17.13l-5.34 2.8 1.02-5.95-4.32-4.2 5.97-.87L12 3.5z"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  return <Star className="h-4 w-4" strokeWidth={2} fill={filled ? 'currentColor' : 'none'} />;
 }
 
 function EyeIcon({ hidden }: { hidden?: boolean }) {
-  return hidden ? (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
-      <path
-        d="M3 3l18 18M10.6 10.6A2 2 0 0013.4 13.4M9.88 5.19A10.93 10.93 0 0112 5c6 0 10 7 10 7a16.7 16.7 0 01-4.26 4.82M6.68 6.68C3.8 8.43 2 12 2 12a16.9 16.9 0 005.35 5.62A10.89 10.89 0 0012 19c1.33 0 2.6-.24 3.78-.68"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  ) : (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none">
-      <path
-        d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z"
-        stroke="currentColor"
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth={1.8} />
-    </svg>
-  );
+  return hidden ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />;
 }
 
 function CharacterCard({
@@ -159,6 +130,14 @@ function CharacterCard({
             </p>
           </div>
           <div className="pointer-events-auto relative z-30 flex items-center gap-2">
+            <Link
+              href={`/talent-playground?char=${encodeURIComponent(characterId(char))}`}
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-gold/40 bg-gold/15 px-2 text-[11px] font-bold text-gold transition hover:bg-gold/25"
+              title="Open Talent Playground for this character"
+              aria-label="Open Talent Playground for this character"
+            >
+              Talents
+            </Link>
             <div className="relative">
               <button
                 type="button"
@@ -426,6 +405,12 @@ export default function CharactersPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+          <Link
+            href="/talent-playground"
+            className="rounded border border-gold/40 bg-gold/[0.12] px-3 py-1 text-xs font-bold text-gold hover:bg-gold/[0.2]"
+          >
+            Talent Playground
+          </Link>
           <input
             type="text"
             value={search}

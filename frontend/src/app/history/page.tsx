@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Trash2, ChevronDown, Search, Pin } from 'lucide-react';
 import {
   API_URL,
   deleteSim,
@@ -66,60 +67,19 @@ const SIM_TYPE_LABELS: Record<string, string> = {
 };
 
 function TrashIcon() {
-  return (
-    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-      />
-    </svg>
-  );
+  return <Trash2 className="h-4 w-4" strokeWidth={2} />;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`h-4 w-4 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-  );
+  return <ChevronDown className={`h-4 w-4 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={2} />;
 }
 
 function SearchIcon() {
-  return (
-    <svg className="h-4 w-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-      />
-    </svg>
-  );
+  return <Search className="h-4 w-4 text-zinc-500" strokeWidth={2} />;
 }
 
 function PinIcon({ pinned }: { pinned: boolean }) {
-  return (
-    <svg
-      className={`h-4 w-4 ${pinned ? 'fill-gold text-gold' : 'text-zinc-500'}`}
-      fill={pinned ? 'currentColor' : 'none'}
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M12 17l-5.878 3.09 1.122-6.545L2.49 8.91l6.572-.955L12 2l2.938 5.955 6.572.955-4.755 4.635 1.122 6.545z"
-      />
-    </svg>
-  );
+  return <Pin className={`h-4 w-4 ${pinned ? 'fill-gold text-gold' : 'text-zinc-500'}`} strokeWidth={2} />;
 }
 
 function formatSize(bytes: number): string {

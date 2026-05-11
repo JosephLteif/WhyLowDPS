@@ -67,16 +67,16 @@ export default function RaidBuffGrid({ entries, onSelectAll, onClear }: RaidBuff
             <button
               type="button"
               onClick={onSelectAll}
-              className="rounded-md border border-gold/45 bg-gold/[0.12] px-2.5 py-1 text-[12px] font-semibold text-gold transition-colors hover:bg-gold/[0.2]"
+              className="h-7 rounded-md border border-amber-300/40 bg-amber-500/14 px-2.5 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-500/24 hover:text-amber-200"
             >
-              Select All
+              All
             </button>
           )}
           {onClear && (
             <button
               type="button"
               onClick={onClear}
-              className="rounded-md border border-zinc-600 bg-zinc-900/70 px-2.5 py-1 text-[12px] font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
+              className="h-7 rounded-md border border-zinc-600/80 bg-zinc-800/55 px-2.5 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-700/65"
             >
               Clear
             </button>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { useSimContext } from './SimContext';
 import { formatScenarioLabel } from '../lib/scenario-siblings';
 import { API_URL } from '../lib/api';
@@ -48,16 +49,7 @@ export default function ScenarioBuilder() {
                 onClick={() => removeScenario(s.id)}
                 className="ml-0.5 text-zinc-300 transition-colors hover:text-white"
               >
-                <svg
-                  className="h-3 w-3"
-                  viewBox="0 0 12 12"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                >
-                  <path d="M3 3l6 6M9 3l-6 6" />
-                </svg>
+                <X className="h-3 w-3" strokeWidth={2} />
               </button>
             </div>
           ))}

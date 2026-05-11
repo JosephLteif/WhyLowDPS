@@ -161,15 +161,50 @@ fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
 
 fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
     let runtime = root.join(&entry.local_path);
-    if runtime.exists() {
-        return runtime;
+    for candidate in path_variants_with_json_alias(&runtime) {
+        if candidate.exists() {
+            return candidate;
+        }
     }
 
     if let Some(bundled_path) = &entry.bundled_path {
-        return Path::new(env!("CARGO_MANIFEST_DIR")).join(bundled_path);
+        let dev_bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join(bundled_path);
+        for candidate in path_variants_with_json_alias(&dev_bundled) {
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+
+        if let Some(exe_dir) = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        {
+            if let Some(file_name) = Path::new(bundled_path).file_name() {
+                let exe_bundled = exe_dir.join("resources").join(file_name);
+                for candidate in path_variants_with_json_alias(&exe_bundled) {
+                    if candidate.exists() {
+                        return candidate;
+                    }
+                }
+            }
+        }
     }
 
     runtime
+}
+
+fn path_variants_with_json_alias(path: &Path) -> Vec<PathBuf> {
+    let mut out = vec![path.to_path_buf()];
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("json") => {
+            out.push(path.with_extension(""));
+        }
+        None => {
+            out.push(path.with_extension("json"));
+        }
+        _ => {}
+    }
+    out
 }
 
 impl DataSyncState {
@@ -1260,30 +1295,48 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
-    let runtime_path = root.join("zones-encounters-index.json");
-    let exe_bundled_path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|dir| dir.join("resources/zones-encounters-index.json")));
-    let dev_bundled_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../resources")
-        .join("zones-encounters-index.json");
-    let path = if runtime_path.exists() {
-        runtime_path
-    } else if let Some(p) = exe_bundled_path.filter(|p| p.exists()) {
-        p
-    } else {
-        dev_bundled_path
-    };
 
-    match std::fs::read_to_string(&path) {
-        Ok(content) => match serde_json::from_str::<Value>(&content) {
-            Ok(v) => HttpResponse::Ok().json(v),
-            Err(err) => HttpResponse::InternalServerError()
-                .json(json!({"detail": format!("Failed to parse {}: {}", path.display(), err)})),
-        },
-        Err(err) => HttpResponse::NotFound()
-            .json(json!({"detail": format!("Failed to read {}: {}", path.display(), err)})),
+    let runtime_base = root.join("zones-encounters-index.json");
+    let mut candidates = path_variants_with_json_alias(&runtime_base);
+    if let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    {
+        candidates.extend(path_variants_with_json_alias(
+            &exe_dir.join("resources").join("zones-encounters-index.json"),
+        ));
     }
+    candidates.extend(path_variants_with_json_alias(
+        &Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../resources")
+            .join("zones-encounters-index.json"),
+    ));
+
+    let existing: Vec<PathBuf> = candidates.into_iter().filter(|p| p.exists()).collect();
+    if existing.is_empty() {
+        return HttpResponse::NotFound().json(json!({
+            "detail": "zones-encounters-index file not found in runtime or bundled resources"
+        }));
+    }
+
+    let mut last_error: Option<String> = None;
+    for path in existing {
+        match std::fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str::<Value>(&content) {
+                Ok(v) => return HttpResponse::Ok().json(v),
+                Err(err) => {
+                    last_error = Some(format!("Failed to parse {}: {}", path.display(), err));
+                }
+            },
+            Err(err) => {
+                last_error = Some(format!("Failed to read {}: {}", path.display(), err));
+            }
+        }
+    }
+
+    HttpResponse::InternalServerError().json(json!({
+        "detail": last_error.unwrap_or_else(|| "Failed to read zones-encounters-index".to_string())
+    }))
 }
 
 async fn download_raidbots_file(

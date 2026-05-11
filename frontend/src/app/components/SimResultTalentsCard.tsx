@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import Link from 'next/link';
 import TalentTree from './TalentTree';
 import { decodeHeader } from '../lib/talentDecode';
 import { SPEC_ID_TO_NAME, specDisplayName } from '../lib/types';
@@ -33,6 +34,12 @@ export default function SimResultTalentsCard({ talentString }: SimResultTalentsC
               'Talents'
             )}
           </h3>
+          <Link
+            href={`/talent-playground?talent=${encodeURIComponent(talentString)}&name=${encodeURIComponent(specLabel ? `${specLabel} Result` : 'Sim Result')}`}
+            className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+          >
+            Playground
+          </Link>
         </div>
       </div>
       <div className="bg-black/20 p-2">

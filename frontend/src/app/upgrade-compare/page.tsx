@@ -2,6 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
 import ComboSummary from '../components/ComboSummary';
 import GearItemRow from '../components/GearItemRow';
@@ -563,15 +564,7 @@ export default function UpgradeComparePage() {
 
         {loading ? (
           <div className="card flex justify-center p-8">
-            <svg className="h-6 w-6 animate-spin text-gold" viewBox="0 0 16 16" fill="none">
-              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-              <path
-                d="M14 8a6 6 0 00-6-6"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
+            <Loader2 className="h-6 w-6 animate-spin text-gold" strokeWidth={2} />
           </div>
         ) : candidates.length === 0 ? (
           <div className="card p-8 text-center">
@@ -658,15 +651,7 @@ export default function UpgradeComparePage() {
         >
           {submitting ? (
             <>
-              <svg className="h-4 w-4 animate-spin" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-                <path
-                  d="M14 8a6 6 0 00-6-6"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
               Starting sim...
             </>
           ) : (

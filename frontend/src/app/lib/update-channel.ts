@@ -14,11 +14,10 @@ export function isValidUpdateChannel(value: string): value is UpdateChannel {
 
 export function classifyReleaseChannel(tagOrVersion: string): UpdateChannel {
   const value = String(tagOrVersion || '').toLowerCase();
-  // Match channel markers after x.y.z, e.g. 1.2.3-nightly.20260423, 1.2.3-nightly, 1.2.3+nightly
-  if (/\d+\.\d+\.\d+[-+][^ ]*nightly/.test(value)) return 'nightly';
-  if (/\d+\.\d+\.\d+[-+][^ ]*weekly/.test(value)) return 'weekly';
-  if (value.includes('-nightly.')) return 'nightly';
-  if (value.includes('-weekly.')) return 'weekly';
+  // Prefer explicit markers; release tags/names are not always strict semver.
+  // Examples handled: 1.2.3-nightly.20260423, v1.2.3+weekly, nightly-20260510, weekly build 2026-05-10
+  if (/nightly/.test(value)) return 'nightly';
+  if (/weekly/.test(value)) return 'weekly';
   return 'stable';
 }
 

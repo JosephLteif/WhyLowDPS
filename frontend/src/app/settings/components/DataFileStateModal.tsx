@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { formatBytesDecimal } from '../../lib/format';
 import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
 import type { DataFileState, DataFileStatesResponse, SettingsStatusMessage } from '../types';
@@ -43,12 +43,27 @@ export default function DataFileStateModal({
   dataFilePreviewLoading,
 }: DataFileStateModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   useDismissOnOutside(modalRef, isOpen && !disableOutsideDismiss, onClose);
-
-  if (!isOpen) return null;
 
   const formatBytes = (n: number) =>
     formatBytesDecimal(n, { empty: '0 B', includeBytes: true, kbDigits: 1, mbDigits: 1 });
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredGroupedDataFiles = useMemo(() => {
+    const source = groupedDataFiles || {};
+    if (!normalizedQuery) return source;
+    const out: Record<string, DataFileState[]> = {};
+    for (const [section, files] of Object.entries(source)) {
+      const filtered = files.filter((file) => {
+        const hay = `${section} ${file.label} ${file.key} ${file.relative_path}`.toLowerCase();
+        return hay.includes(normalizedQuery);
+      });
+      if (filtered.length > 0) out[section] = filtered;
+    }
+    return out;
+  }, [groupedDataFiles, normalizedQuery]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/65 p-4">
@@ -96,6 +111,13 @@ export default function DataFileStateModal({
             >
               Open Data Dir
             </button>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search files..."
+              className="ml-auto min-w-[220px] rounded-md border border-zinc-700 bg-black/40 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500"
+            />
           </div>
 
           {dataStateLoading && <p className="text-sm text-zinc-400">Loading data state...</p>}
@@ -120,7 +142,7 @@ export default function DataFileStateModal({
 
           {!dataStateLoading && !dataStateError && dataFileStates && (
             <div className="space-y-4">
-              {Object.entries(groupedDataFiles || {}).map(([section, files]) => (
+              {Object.entries(filteredGroupedDataFiles).map(([section, files]) => (
                 <div key={section} className="space-y-2">
                   <div className="flex items-center gap-3">
                     <h4 className="text-sm font-semibold uppercase tracking-[0.18em] text-zinc-400">
@@ -185,6 +207,11 @@ export default function DataFileStateModal({
                   </div>
                 </div>
               ))}
+              {Object.keys(filteredGroupedDataFiles).length === 0 && (
+                <div className="rounded-lg border border-border/70 bg-surface/40 p-3 text-sm text-zinc-400">
+                  No files match your search.
+                </div>
+              )}
             </div>
           )}
         </div>

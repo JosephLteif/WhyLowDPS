@@ -1,8 +1,6 @@
 import { APP_VERSION } from './version';
 import { classifyReleaseChannel, type UpdateChannel } from './update-channel';
 
-const UPDATER_MANIFEST_URL =
-  'https://github.com/JosephLteif/simcraft/releases/latest/download/latest.json';
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
 
 type ParsedSemver = {
@@ -106,19 +104,23 @@ export function isRemoteNewerForSelectedChannel(
 ): boolean {
   if (!currentVersion) return true;
 
+  const currentChannel = classifyReleaseChannel(currentVersion);
+  const remoteChannel = classifyReleaseChannel(remoteVersion);
+
   const semverComparison = compareVersions(currentVersion, remoteVersion);
   if (selectedChannel === 'stable') {
     return semverComparison === -1;
   }
 
+  if (remoteChannel !== selectedChannel) return false;
+  // Switching channels should still surface the selected channel build even if its base
+  // semver is lower than the currently installed channel.
+  if (currentChannel !== selectedChannel) return true;
+
   const baseComparison = compareBaseVersions(currentVersion, remoteVersion);
   if (baseComparison === -1) return true;
   if (baseComparison === 1) return false;
 
-  const currentChannel = classifyReleaseChannel(currentVersion);
-  const remoteChannel = classifyReleaseChannel(remoteVersion);
-  if (remoteChannel !== selectedChannel) return false;
-  if (currentChannel !== selectedChannel) return true;
   return semverComparison === -1;
 }
 
@@ -149,45 +151,6 @@ function pickWindowsAssetUrl(
     urls.find((asset) => /\.(exe|msi|zip)$/i.test(asset.name || asset.url)) ||
     urls[0];
   return preferred.url;
-}
-
-async function fetchManifestVersionFromLatestJson(): Promise<RemoteReleaseInfo | null> {
-  try {
-    const response = await fetch(UPDATER_MANIFEST_URL, { cache: 'no-store' });
-    if (!response.ok) return null;
-    const raw = await response.text();
-    let payload: {
-      version?: unknown;
-      notes?: unknown;
-      platforms?: Record<string, { url?: unknown }>;
-    };
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      return null;
-    }
-
-    const version = typeof payload.version === 'string' ? payload.version : '';
-    if (!version) return null;
-
-    const platforms = payload.platforms || {};
-    const preferredKeys = ['windows-x86_64', 'windows-x86_64-nsis'];
-    const preferredUrl =
-      preferredKeys
-        .map((key) => platforms[key]?.url)
-        .find((url) => typeof url === 'string' && url.length > 0) ||
-      Object.values(platforms)
-        .map((platform) => platform?.url)
-        .find((url) => typeof url === 'string' && url.length > 0);
-
-    return {
-      version,
-      notes: typeof payload.notes === 'string' ? payload.notes : undefined,
-      downloadUrl: typeof preferredUrl === 'string' ? preferredUrl : undefined,
-    };
-  } catch {
-    return null;
-  }
 }
 
 async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
@@ -237,9 +200,5 @@ async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promis
 }
 
 export async function fetchManifestVersion(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
-  if (channel === 'stable') {
-    const fromLatestJson = await fetchManifestVersionFromLatestJson();
-    if (fromLatestJson) return fromLatestJson;
-  }
   return fetchManifestVersionFromGitHubApi(channel);
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import ComboSummary from '../components/ComboSummary';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
@@ -71,10 +72,7 @@ interface DropFinderSimAgainState {
 function Spinner() {
   return (
     <div className="flex justify-center py-8">
-      <svg className="h-6 w-6 animate-spin text-gold" viewBox="0 0 16 16" fill="none">
-        <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-        <path d="M14 8a6 6 0 00-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      </svg>
+      <Loader2 className="h-6 w-6 animate-spin text-gold" strokeWidth={2} />
     </div>
   );
 }
@@ -964,10 +962,7 @@ export default function DropFinderPage() {
 
       {loading && drops && (
         <div className="flex items-center justify-center py-2">
-          <svg className="h-4 w-4 animate-spin text-gold" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-            <path d="M14 8a6 6 0 00-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
+          <Loader2 className="h-4 w-4 animate-spin text-gold" strokeWidth={2} />
         </div>
       )}
 
@@ -1035,22 +1030,7 @@ export default function DropFinderPage() {
             >
               {submitting ? (
                 <>
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 16 16" fill="none">
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="6"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      opacity="0.25"
-                    />
-                    <path
-                      d="M14 8a6 6 0 00-6-6"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
+                  <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2} />
                   Starting sim...
                 </>
               ) : (

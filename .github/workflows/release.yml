@@ -236,8 +236,14 @@ jobs:
       - name: Ensure bundled resource paths exist
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p backend/resources/data
           mkdir -p backend/resources/simc
+          if [[ ! -f backend/resources/zones-encounters-index.json ]]; then
+            echo "backend/resources/zones-encounters-index.json is required for release bundles"
+            exit 1
+          fi
+          cp backend/resources/zones-encounters-index.json backend/resources/data/zones-encounters-index.json
           touch backend/resources/data/.keep
           touch backend/resources/simc/.keep
 

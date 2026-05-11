@@ -41,6 +41,12 @@ const DIM = 'rgba(255,255,255,0.15)';
 const DIM_ICON = 0.3;
 const LOCKED_ICON = 0.15;
 
+function talentIconUrl(icon?: string): string {
+  if (!icon) return '';
+  const normalized = icon.replace(/\.(jpg|jpeg|png|webp)$/i, '').toLowerCase();
+  return `https://wow.zamimg.com/images/wow/icons/large/${normalized}.jpg`;
+}
+
 function filterRenderableNodes(
   nodes: TalentNode[],
   selections: Map<number, NodeSelection>
@@ -60,22 +66,14 @@ export default function TalentTree({
   mini,
   bare,
 }: TalentTreeProps) {
-  // In edit mode, freeze the initial talent string so prop changes don't re-decode
-  const initialTalentRef = useRef(talentString);
-  useEffect(() => {
-    if (!editable || !initialTalentRef.current) initialTalentRef.current = talentString;
-  }, [editable, talentString]);
-
-  const stableTalentString = editable ? initialTalentRef.current : talentString;
-
   const header = useMemo(() => {
-    if (!stableTalentString) return null;
+    if (!talentString) return null;
     try {
-      return decodeHeader(stableTalentString);
+      return decodeHeader(talentString);
     } catch {
       return null;
     }
-  }, [stableTalentString]);
+  }, [talentString]);
 
   const resolvedSpecId = specIdProp ?? header?.specId ?? null;
   const tree = useTalentTree(resolvedSpecId);
@@ -697,7 +695,7 @@ function TreeSection({
               >
                 {choice.icon ? (
                   <img
-                    src={`https://render.worldofwarcraft.com/icons/56/${choice.icon}.jpg`}
+                    src={talentIconUrl(choice.icon)}
                     alt=""
                     width={54}
                     height={54}
@@ -857,7 +855,7 @@ function TalentNodeSvg({
       </clipPath>
       {icon && (
         <image
-          href={`https://render.worldofwarcraft.com/icons/56/${icon}.jpg`}
+          href={talentIconUrl(icon)}
           x={node.posX - iconHalf}
           y={node.posY - iconHalf}
           width={ICON_SIZE}

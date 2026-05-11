@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { Pencil, Trash2 } from 'lucide-react';
 import TalentTree from '../components/TalentTree';
 import { API_URL, fetchJsonCached } from '../lib/api';
 import { decodeHeader } from '../lib/talentDecode';
@@ -139,6 +140,9 @@ export default function TalentPlaygroundPage() {
   const [hasAppliedQueryBuild, setHasAppliedQueryBuild] = useState(false);
   const [starterBuilds, setStarterBuilds] = useState<StarterBuild[]>([]);
   const [selectedStarterTalent, setSelectedStarterTalent] = useState('');
+  const [entryTab, setEntryTab] = useState<'starter' | 'import' | 'blank'>('import');
+  const [buildContextMenu, setBuildContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{ id: string; value: string } | null>(null);
 
   const blankSpecId = useMemo(() => SPEC_NAME_TO_ID[blankSpecName] || null, [blankSpecName]);
   const blankTree = useTalentTree(blankSpecId);
@@ -272,6 +276,12 @@ export default function TalentPlaygroundPage() {
     };
   }, [characters, selectedCharacterKey]);
 
+  useEffect(() => {
+    if (!selectedCharacterKey && entryTab === 'starter') {
+      setEntryTab('import');
+    }
+  }, [entryTab, selectedCharacterKey]);
+
   const scopeKey = useMemo(() => {
     if (selectedCharacterKey) return `character:${selectedCharacterKey}`;
     return `class:${selectedClassKey}`;
@@ -403,9 +413,49 @@ export default function TalentPlaygroundPage() {
     (id: string) => {
       updateScopeBuilds((prev) => prev.filter((build) => build.id !== id));
       if (activeBuildId === id) setActiveBuildId('');
+      setBuildContextMenu((prev) => (prev?.id === id ? null : prev));
     },
     [activeBuildId, updateScopeBuilds]
   );
+
+  const onRename = useCallback(
+    (id: string) => {
+      const target = savedBuilds.find((build) => build.id === id);
+      if (!target) return;
+      setBuildContextMenu(null);
+      setRenameDialog({ id, value: target.name });
+    },
+    [savedBuilds]
+  );
+
+  useEffect(() => {
+    const closeMenu = () => setBuildContextMenu(null);
+    window.addEventListener('click', closeMenu);
+    return () => window.removeEventListener('click', closeMenu);
+  }, []);
+
+  useEffect(() => {
+    if (!renameDialog) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setRenameDialog(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [renameDialog]);
+
+  const onConfirmRename = useCallback(() => {
+    if (!renameDialog) return;
+    const nextName = renameDialog.value.trim();
+    const target = savedBuilds.find((build) => build.id === renameDialog.id);
+    if (!nextName || !target || nextName === target.name) {
+      setRenameDialog(null);
+      return;
+    }
+    updateScopeBuilds((prev) =>
+      prev.map((build) => (build.id === renameDialog.id ? { ...build, name: nextName } : build))
+    );
+    setRenameDialog(null);
+  }, [renameDialog, savedBuilds, updateScopeBuilds]);
 
   const onExport = useCallback(async () => {
     if (!editorTalentString) return;
@@ -498,8 +548,45 @@ export default function TalentPlaygroundPage() {
 
       <div className="card p-5">
         <h2 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Import or Start Blank</h2>
-        {selectedCharacterKey && (
-          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+        <div className="mt-3 inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] p-1">
+          {selectedCharacterKey && (
+            <button
+              type="button"
+              onClick={() => setEntryTab('starter')}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                entryTab === 'starter'
+                  ? 'border border-gold/45 bg-gold/[0.12] text-gold'
+                  : 'border border-transparent text-zinc-300 hover:bg-white/[0.08] hover:text-zinc-100'
+              }`}
+            >
+              Use Starter
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setEntryTab('import')}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+              entryTab === 'import'
+                ? 'border border-gold/45 bg-gold/[0.12] text-gold'
+                : 'border border-transparent text-zinc-300 hover:bg-white/[0.08] hover:text-zinc-100'
+            }`}
+          >
+            Import
+          </button>
+          <button
+            type="button"
+            onClick={() => setEntryTab('blank')}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+              entryTab === 'blank'
+                ? 'border border-gold/45 bg-gold/[0.12] text-gold'
+                : 'border border-transparent text-zinc-300 hover:bg-white/[0.08] hover:text-zinc-100'
+            }`}
+          >
+            Start Blank
+          </button>
+        </div>
+        {entryTab === 'starter' && selectedCharacterKey ? (
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_220px_auto]">
             <select
               value={selectedStarterTalent}
               onChange={(e) => setSelectedStarterTalent(e.target.value)}
@@ -516,6 +603,12 @@ export default function TalentPlaygroundPage() {
                 <option value="">No saved/equipped talents found</option>
               )}
             </select>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Build name (optional)"
+              className="input-field"
+            />
             <button
               type="button"
               onClick={onUseStarter}
@@ -525,63 +618,57 @@ export default function TalentPlaygroundPage() {
               Use Starter
             </button>
           </div>
-        )}
-        <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_220px_auto]">
-          <input
-            value={importText}
-            onChange={(e) => setImportText(e.target.value)}
-            placeholder="Paste talent string, Wowhead URL, or SimC talent blocks"
-            className="input-field"
-          />
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Build name (optional)"
-            className="input-field"
-          />
-          <button
-            type="button"
-            onClick={onImport}
-            className="rounded-md border border-gold/45 bg-gold/[0.12] px-3 py-2 text-sm font-semibold text-gold hover:bg-gold/[0.2]"
-          >
-            Import
-          </button>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-[220px_220px_auto]">
-          {!selectedCharacterKey && (
+        ) : entryTab === 'import' ? (
+          <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_220px_auto]">
+            <input
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+              placeholder="Paste talent string, Wowhead URL, or SimC talent blocks"
+              className="input-field"
+            />
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Build name (optional)"
+              className="input-field"
+            />
+            <button
+              type="button"
+              onClick={onImport}
+              className="rounded-md border border-gold/45 bg-gold/[0.12] px-3 py-2 text-sm font-semibold text-gold hover:bg-gold/[0.2]"
+            >
+              Import
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 grid gap-2 md:grid-cols-[220px_1fr_auto]">
             <select
-              value={selectedClassKey}
-              onChange={(e) => setSelectedClassKey(e.target.value)}
+              value={blankSpecName}
+              onChange={(e) => setBlankSpecName(e.target.value)}
               className="input-field"
               style={{ colorScheme: 'dark' }}
             >
-              {classOptions.map((classKey) => (
-                <option key={classKey} value={classKey}>
-                  {prettyLabel(classKey)}
+              {specChoices.map((spec) => (
+                <option key={spec.key} value={spec.key}>
+                  {spec.label}
                 </option>
               ))}
             </select>
-          )}
-          <select
-            value={blankSpecName}
-            onChange={(e) => setBlankSpecName(e.target.value)}
-            className="input-field"
-            style={{ colorScheme: 'dark' }}
-          >
-            {specChoices.map((spec) => (
-              <option key={spec.key} value={spec.key}>
-                {spec.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={onCreateBlank}
-            className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-white/[0.1]"
-          >
-            Start Blank
-          </button>
-        </div>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Build name (optional)"
+              className="input-field"
+            />
+            <button
+              type="button"
+              onClick={onCreateBlank}
+              className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-white/[0.1]"
+            >
+              Start Blank
+            </button>
+          </div>
+        )}
         {simcLoadouts.length > 0 && (
           <div className="mt-2 text-xs text-zinc-400">
             Detected {simcLoadouts.length} loadout{simcLoadouts.length > 1 ? 's' : ''} in SimC input.
@@ -602,25 +689,64 @@ export default function TalentPlaygroundPage() {
                 return (
                   <div
                     key={build.id}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setBuildContextMenu({ id: build.id, x: e.clientX, y: e.clientY });
+                    }}
                     className={`rounded-md border px-3 py-2 ${active ? 'border-gold/50 bg-gold/10' : 'border-white/10 bg-black/20'}`}
                   >
-                    <button
-                      type="button"
-                      onClick={() => setActiveBuildId(build.id)}
-                      className="w-full text-left"
-                    >
-                      <div className="truncate text-sm font-semibold text-zinc-100">{build.name}</div>
-                      <div className="text-xs text-zinc-500">
-                        {new Date(build.createdAt).toLocaleString()}
+                    <div className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveBuildId(build.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <div className="truncate text-sm font-semibold text-zinc-100">{build.name}</div>
+                        <div className="text-xs text-zinc-500">
+                          {new Date(build.createdAt).toLocaleString()}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRename(build.id)}
+                        className="mt-0.5 rounded p-1 text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+                        title="Rename build"
+                        aria-label="Rename build"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(build.id)}
+                        className="mt-0.5 rounded p-1 text-zinc-400 hover:bg-red-500/10 hover:text-red-300"
+                        title="Delete build"
+                        aria-label="Delete build"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    {buildContextMenu?.id === build.id && (
+                      <div
+                        className="fixed z-[130] min-w-[130px] rounded-md border border-white/15 bg-[#11141c] p-1 shadow-lg"
+                        style={{ left: buildContextMenu.x, top: buildContextMenu.y }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onRename(build.id)}
+                          className="block w-full rounded px-2 py-1 text-left text-xs text-zinc-200 hover:bg-white/10"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(build.id)}
+                          className="mt-0.5 block w-full rounded px-2 py-1 text-left text-xs text-red-300 hover:bg-red-500/10"
+                        >
+                          Delete
+                        </button>
                       </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(build.id)}
-                      className="mt-2 text-xs text-red-300 hover:text-red-200"
-                    >
-                      Delete
-                    </button>
+                    )}
                   </div>
                 );
               })}
@@ -665,6 +791,7 @@ export default function TalentPlaygroundPage() {
           <div className="bg-black/20 p-3">
             {activeBuild ? (
               <TalentTree
+                key={activeBuild.id}
                 talentString={editorTalentString}
                 editable
                 bare
@@ -705,11 +832,46 @@ export default function TalentPlaygroundPage() {
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-3">
               <TalentTree
+                key={`${activeBuild.id}-fullscreen`}
                 talentString={editorTalentString}
                 editable
                 bare
                 onTalentStringChange={setEditorTalentString}
               />
+            </div>
+          </div>
+        </div>
+      )}
+      {renameDialog && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-lg border border-white/15 bg-[#10131a] p-4 shadow-xl">
+            <div className="text-sm font-semibold text-zinc-100">Rename build</div>
+            <input
+              value={renameDialog.value}
+              onChange={(e) =>
+                setRenameDialog((prev) => (prev ? { ...prev, value: e.target.value } : prev))
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onConfirmRename();
+              }}
+              className="input-field mt-3"
+              autoFocus
+            />
+            <div className="mt-3 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRenameDialog(null)}
+                className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-white/[0.1]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirmRename}
+                className="rounded-md border border-gold/45 bg-gold/[0.12] px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/[0.2]"
+              >
+                Save
+              </button>
             </div>
           </div>
         </div>

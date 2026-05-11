@@ -63,7 +63,7 @@ export default function TalentTree({
   // In edit mode, freeze the initial talent string so prop changes don't re-decode
   const initialTalentRef = useRef(talentString);
   useEffect(() => {
-    if (!editable) initialTalentRef.current = talentString;
+    if (!editable || !initialTalentRef.current) initialTalentRef.current = talentString;
   }, [editable, talentString]);
 
   const stableTalentString = editable ? initialTalentRef.current : talentString;
@@ -252,11 +252,8 @@ export default function TalentTree({
   }
 
   const selectedSubTreeId = getActiveSubTreeId(selections, tree);
-  const heroSubTreeControllers = useMemo(
-    () => (tree.subTreeNodes ?? []).filter((node) => node.entries.length > 1),
-    [tree.subTreeNodes]
-  );
-  const heroSubTreeOptions = useMemo(() => {
+  const heroSubTreeControllers = (tree.subTreeNodes ?? []).filter((node) => node.entries.length > 1);
+  const heroSubTreeOptions = (() => {
     const out: { nodeId: number; entryIndex: number; label: string; traitSubTreeId?: number }[] = [];
     for (const controller of heroSubTreeControllers) {
       controller.entries.forEach((entry, entryIndex) => {
@@ -269,8 +266,8 @@ export default function TalentTree({
       });
     }
     return out;
-  }, [heroSubTreeControllers]);
-  const selectedHeroSubTreeKey = useMemo(() => {
+  })();
+  const selectedHeroSubTreeKey = (() => {
     for (const option of heroSubTreeOptions) {
       const sel = selections.get(option.nodeId);
       if (sel && sel.choiceIndex === option.entryIndex) {
@@ -278,35 +275,32 @@ export default function TalentTree({
       }
     }
     return '';
-  }, [heroSubTreeOptions, selections]);
+  })();
 
-  const handleHeroTreeChange = useCallback(
-    (value: string) => {
-      if (!editable || !tree) return;
-      const [nodeIdRaw, entryIndexRaw] = value.split(':');
-      const nodeId = Number(nodeIdRaw);
-      const entryIndex = Number(entryIndexRaw);
-      if (!Number.isFinite(nodeId) || !Number.isFinite(entryIndex)) return;
-      const controller = heroSubTreeControllers.find((node) => node.id === nodeId);
-      if (!controller || entryIndex < 0 || entryIndex >= controller.entries.length) return;
-      const targetTraitSubTreeId = controller.entries[entryIndex]?.traitSubTreeId;
+  const handleHeroTreeChange = (value: string) => {
+    if (!editable || !tree) return;
+    const [nodeIdRaw, entryIndexRaw] = value.split(':');
+    const nodeId = Number(nodeIdRaw);
+    const entryIndex = Number(entryIndexRaw);
+    if (!Number.isFinite(nodeId) || !Number.isFinite(entryIndex)) return;
+    const controller = heroSubTreeControllers.find((node) => node.id === nodeId);
+    if (!controller || entryIndex < 0 || entryIndex >= controller.entries.length) return;
+    const targetTraitSubTreeId = controller.entries[entryIndex]?.traitSubTreeId;
 
-      setEditSelections((prev) => {
-        const next = new Map(prev);
-        next.set(controller.id, {
-          ranks: Math.max(1, controller.maxRanks || 1),
-          choiceIndex: entryIndex,
-        });
-        for (const heroNode of tree.heroNodes) {
-          if (!heroNode.subTreeId || heroNode.subTreeId === targetTraitSubTreeId) continue;
-          next.delete(heroNode.id);
-        }
-        pendingEmit.current = next;
-        return next;
+    setEditSelections((prev) => {
+      const next = new Map(prev);
+      next.set(controller.id, {
+        ranks: Math.max(1, controller.maxRanks || 1),
+        choiceIndex: entryIndex,
       });
-    },
-    [editable, heroSubTreeControllers, tree]
-  );
+      for (const heroNode of tree.heroNodes) {
+        if (!heroNode.subTreeId || heroNode.subTreeId === targetTraitSubTreeId) continue;
+        next.delete(heroNode.id);
+      }
+      pendingEmit.current = next;
+      return next;
+    });
+  };
 
   const activeHeroNodes = selectedSubTreeId
     ? tree.heroNodes.filter((n) => n.subTreeId === selectedSubTreeId)

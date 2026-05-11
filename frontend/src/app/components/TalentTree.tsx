@@ -19,6 +19,7 @@ import {
 import { useTalentTree } from '../lib/useTalentTree';
 import type { TalentNode, TalentTreeData } from '../lib/useTalentTree';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import { useSpellIcons } from '../lib/useWowheadIcons';
 
 interface TalentTreeProps {
   talentString?: string;
@@ -45,6 +46,18 @@ function talentIconUrl(icon?: string): string {
   if (!icon) return '';
   const normalized = icon.replace(/\.(jpg|jpeg|png|webp)$/i, '').toLowerCase();
   return `https://wow.zamimg.com/images/wow/icons/large/${normalized}.jpg`;
+}
+
+function talentIconUrlFromSpellIconName(iconName?: string): string {
+  if (!iconName) return '';
+  const normalized = iconName.replace(/\.(jpg|jpeg|png|webp)$/i, '').toLowerCase();
+  return `https://wow.zamimg.com/images/wow/icons/large/${normalized}.jpg`;
+}
+
+function resolveTalentIconUrl(iconToken: string | undefined, spellId: number | undefined, spellIcons: Map<number, string>): string {
+  const bySpell = spellId ? talentIconUrlFromSpellIconName(spellIcons.get(spellId)) : '';
+  if (bySpell) return bySpell;
+  return talentIconUrl(iconToken);
 }
 
 function filterRenderableNodes(
@@ -239,6 +252,19 @@ export default function TalentTree({
 
   useWowheadTooltips([selections, openChoiceNodeId]);
 
+  const treeSpellIds = useMemo(() => {
+    if (!tree) return [] as number[];
+    const ids = new Set<number>();
+    for (const node of [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]) {
+      for (const entry of node.entries) {
+        const sid = Number(entry?.spellId || 0);
+        if (Number.isFinite(sid) && sid > 0) ids.add(sid);
+      }
+    }
+    return Array.from(ids);
+  }, [tree]);
+  const spellIcons = useSpellIcons(treeSpellIds);
+
   if (!tree || !selections) {
     if (!talentString && !specIdProp) return null;
     if (mini) return null;
@@ -405,6 +431,7 @@ export default function TalentTree({
           onChoiceSelect={handleChoiceSelect}
           onChoiceOpen={handleChoiceOpen}
           openChoiceNodeId={openChoiceNodeId}
+          spellIcons={spellIcons}
           pointsSpent={classSpent}
           pointsTotal={CLASS_POINTS}
           reqLevel={10}
@@ -427,6 +454,7 @@ export default function TalentTree({
               onChoiceSelect={handleChoiceSelect}
               onChoiceOpen={handleChoiceOpen}
               openChoiceNodeId={openChoiceNodeId}
+              spellIcons={spellIcons}
               heroTreeOptions={editable ? heroSubTreeOptions : undefined}
               selectedHeroTreeKey={
                 selectedHeroSubTreeKey ||
@@ -455,6 +483,7 @@ export default function TalentTree({
           onChoiceSelect={handleChoiceSelect}
           onChoiceOpen={handleChoiceOpen}
           openChoiceNodeId={openChoiceNodeId}
+          spellIcons={spellIcons}
           pointsSpent={specSpent}
           pointsTotal={SPEC_POINTS}
           reqLevel={11}
@@ -480,6 +509,7 @@ interface TreeSectionProps {
   onChoiceSelect?: (nodeId: number, choiceIndex: number) => void;
   onChoiceOpen?: (nodeId: number) => void;
   openChoiceNodeId?: number | null;
+  spellIcons: Map<number, string>;
   heroTreeOptions?: { nodeId: number; entryIndex: number; label: string; traitSubTreeId?: number }[];
   selectedHeroTreeKey?: string;
   onHeroTreeChange?: (value: string) => void;
@@ -504,6 +534,7 @@ function TreeSection({
   onChoiceSelect,
   onChoiceOpen,
   openChoiceNodeId,
+  spellIcons,
   heroTreeOptions,
   selectedHeroTreeKey,
   onHeroTreeChange,
@@ -646,6 +677,7 @@ function TreeSection({
             <TalentNodeSvg
               key={node.id}
               node={node}
+              spellIcons={spellIcons}
               selection={sel}
               editable={editable}
               selectable={selectable}
@@ -669,6 +701,7 @@ function TreeSection({
           >
           {openChoiceNode.entries.map((choice, index) => {
             const activeChoice = selections.get(openChoiceNode.id)?.choiceIndex === index;
+            const choiceIconUrl = resolveTalentIconUrl(choice.icon, choice.spellId, spellIcons);
             return (
               <a
                 key={`${openChoiceNode.id}-${choice.id}-${index}`}
@@ -693,9 +726,9 @@ function TreeSection({
                     : 'border-white/20 bg-surface-2/80 text-zinc-200 hover:border-white/40 hover:bg-surface-2'
                 }`}
               >
-                {choice.icon ? (
+                {choiceIconUrl ? (
                   <img
-                    src={talentIconUrl(choice.icon)}
+                    src={choiceIconUrl}
                     alt=""
                     width={54}
                     height={54}
@@ -723,6 +756,7 @@ function TreeSection({
 
 function TalentNodeSvg({
   node,
+  spellIcons,
   selection,
   editable,
   selectable,
@@ -733,6 +767,7 @@ function TalentNodeSvg({
   onChoiceOpen,
 }: {
   node: TalentNode;
+  spellIcons: Map<number, string>;
   selection?: NodeSelection;
   editable?: boolean;
   selectable?: boolean;
@@ -759,6 +794,7 @@ function TalentNodeSvg({
 
   const icon = entry?.icon;
   const spellId = entry?.spellId;
+  const resolvedIconUrl = resolveTalentIconUrl(icon, spellId, spellIcons);
   const isActive = entry?.type === 'active';
   const half = NODE_SIZE / 2;
   const iconHalf = ICON_SIZE / 2;
@@ -853,9 +889,9 @@ function TalentNodeSvg({
           />
         )}
       </clipPath>
-      {icon && (
+      {resolvedIconUrl && (
         <image
-          href={talentIconUrl(icon)}
+          href={resolvedIconUrl}
           x={node.posX - iconHalf}
           y={node.posY - iconHalf}
           width={ICON_SIZE}

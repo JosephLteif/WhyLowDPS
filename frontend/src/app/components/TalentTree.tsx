@@ -13,6 +13,7 @@ import {
   getPointsSpent,
   getActiveSubTreeId,
   CLASS_POINTS,
+  HERO_POINTS,
   SPEC_POINTS,
 } from '../lib/talentRules';
 import { useTalentTree } from '../lib/useTalentTree';
@@ -31,9 +32,9 @@ interface TalentTreeProps {
 }
 
 // Node dimensions in SVG units (posX/posY use ~600 unit spacing)
-const NODE_SIZE = 380;
-const ICON_SIZE = 315;
-const PADDING = 240;
+const NODE_SIZE = 440;
+const ICON_SIZE = 360;
+const PADDING = 280;
 
 const GOLD = '#C8992A';
 const DIM = 'rgba(255,255,255,0.15)';
@@ -412,7 +413,9 @@ export default function TalentTree({
           onChoiceSelect={handleChoiceSelect}
           onChoiceOpen={handleChoiceOpen}
           openChoiceNodeId={openChoiceNodeId}
-          pointsDisplay={`${classSpent}/${CLASS_POINTS}`}
+          pointsSpent={classSpent}
+          pointsTotal={CLASS_POINTS}
+          reqLevel={10}
           viewport={sharedViewport}
         />
         {heroNodesForRender.length > 0 && (
@@ -438,7 +441,9 @@ export default function TalentTree({
                 `${heroSubTreeOptions[0]?.nodeId}:${heroSubTreeOptions[0]?.entryIndex}`
               }
               onHeroTreeChange={handleHeroTreeChange}
-              pointsDisplay={`${heroSpent}`}
+              pointsSpent={heroSpent}
+              pointsTotal={HERO_POINTS}
+              reqLevel={71}
               viewport={sharedViewport}
             />
           </>
@@ -458,7 +463,9 @@ export default function TalentTree({
           onChoiceSelect={handleChoiceSelect}
           onChoiceOpen={handleChoiceOpen}
           openChoiceNodeId={openChoiceNodeId}
-          pointsDisplay={`${specSpent}/${SPEC_POINTS}`}
+          pointsSpent={specSpent}
+          pointsTotal={SPEC_POINTS}
+          reqLevel={11}
           viewport={sharedViewport}
         />
       </div>
@@ -484,7 +491,9 @@ interface TreeSectionProps {
   heroTreeOptions?: { nodeId: number; entryIndex: number; label: string; traitSubTreeId?: number }[];
   selectedHeroTreeKey?: string;
   onHeroTreeChange?: (value: string) => void;
-  pointsDisplay?: string;
+  pointsSpent?: number;
+  pointsTotal?: number;
+  reqLevel?: number;
   viewport?: { width: number; height: number };
 }
 
@@ -506,7 +515,9 @@ function TreeSection({
   heroTreeOptions,
   selectedHeroTreeKey,
   onHeroTreeChange,
-  pointsDisplay,
+  pointsSpent,
+  pointsTotal,
+  reqLevel,
   viewport,
 }: TreeSectionProps) {
   const nodeById = useMemo(() => new Map(allNodes.map((n) => [n.id, n])), [allNodes]);
@@ -547,12 +558,34 @@ function TreeSection({
         <p className="text-center text-[12px] font-medium uppercase tracking-wider text-muted">
           {label}
         </p>
-        {pointsDisplay && (
+        {typeof pointsSpent === 'number' && typeof pointsTotal === 'number' && (
           <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[12px] font-bold tabular-nums text-muted">
-            {pointsDisplay}
+            {pointsSpent}/{pointsTotal}
           </span>
         )}
       </div>
+      {typeof pointsSpent === 'number' && typeof pointsTotal === 'number' && (
+        <div className="mb-2 flex items-center justify-center gap-3 text-[11px] text-zinc-300">
+          <span>
+            Spent <span className="font-bold text-zinc-100">{pointsSpent}</span>
+            /{pointsTotal}
+          </span>
+          <span>
+            Available{' '}
+            <span className="font-bold text-emerald-300">{Math.max(0, pointsTotal - pointsSpent)}</span>
+          </span>
+          {typeof reqLevel === 'number' && (
+            <span>
+              Req Lv <span className="font-bold text-zinc-100">{reqLevel}</span>
+            </span>
+          )}
+          {typeof reqLevel === 'number' && (
+            <span>
+              Est Lv <span className="font-bold text-zinc-100">{reqLevel + pointsSpent}</span>
+            </span>
+          )}
+        </div>
+      )}
       {heroTreeOptions && heroTreeOptions.length > 1 && onHeroTreeChange && (
         <div className="mb-2 flex justify-center">
           <div className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.03] p-1">
@@ -579,7 +612,7 @@ function TreeSection({
       )}
       <svg
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-        className={`w-full ${compact ? 'max-h-[460px]' : 'max-h-[620px]'}`}
+        className={`w-full ${compact ? 'max-h-[540px]' : 'max-h-[760px]'}`}
         preserveAspectRatio="xMidYMid meet"
         onContextMenu={editable ? (e) => e.preventDefault() : undefined}
       >
@@ -741,9 +774,9 @@ function TalentNodeSvg({
   const borderColor = isSelected
     ? GOLD
     : editable && selectable
-      ? 'rgba(34,197,94,0.95)'
-      : 'rgba(255,255,255,0.1)';
-  const borderWidth = isSelected ? 12 : 6;
+      ? 'rgba(34,255,112,1)'
+      : 'rgba(255,255,255,0.14)';
+  const borderWidth = isSelected ? 14 : 8;
 
   const opacity = isSelected ? 1 : editable ? (selectable ? 0.85 : LOCKED_ICON) : DIM_ICON;
 
@@ -798,8 +831,8 @@ function TalentNodeSvg({
             cy={node.posY}
             size={half + 24}
             fill="none"
-            stroke="rgba(34,197,94,0.55)"
-            strokeWidth={8}
+            stroke="rgba(34,255,112,0.9)"
+            strokeWidth={10}
           />
         ) : (
           <rect
@@ -809,8 +842,8 @@ function TalentNodeSvg({
             height={NODE_SIZE + 48}
             rx={isActive ? 14 : half + 24}
             fill="none"
-            stroke="rgba(34,197,94,0.55)"
-            strokeWidth={8}
+            stroke="rgba(34,255,112,0.9)"
+            strokeWidth={10}
           />
         )
       )}
@@ -839,28 +872,28 @@ function TalentNodeSvg({
         />
       )}
       {/* Rank badge for multi-rank nodes */}
-      {node.maxRanks > 1 && isSelected && selection && (
+      {node.maxRanks > 0 && (
         <g>
           <rect
-            x={node.posX + half - 122}
-            y={node.posY + half - 96}
-            width={180}
-            height={108}
+            x={node.posX + half - 204}
+            y={node.posY + half - 132}
+            width={286}
+            height={140}
             rx={18}
-            fill="#0a0a0a"
-            stroke={borderColor}
-            strokeWidth={6}
+            fill="rgba(0,0,0,0.92)"
+            stroke={isSelected ? borderColor : 'rgba(255,255,255,0.18)'}
+            strokeWidth={5}
           />
           <text
-            x={node.posX + half - 32}
-            y={node.posY + half - 24}
+            x={node.posX + half - 61}
+            y={node.posY + half - 50}
             textAnchor="middle"
-            fill={selection.ranks >= node.maxRanks ? GOLD : '#999'}
-            fontSize={72}
+            fill={isSelected ? '#ffffff' : 'rgba(222,226,235,0.95)'}
+            fontSize={76}
             fontFamily="system-ui, sans-serif"
-            fontWeight="bold"
+            fontWeight="800"
           >
-            {selection.ranks}/{node.maxRanks}
+            {Math.min(selection?.ranks ?? 0, node.maxRanks)}/{node.maxRanks}
           </text>
         </g>
       )}

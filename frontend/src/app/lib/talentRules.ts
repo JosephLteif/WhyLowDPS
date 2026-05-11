@@ -7,6 +7,7 @@ import type { TalentNode, TalentTreeData } from './useTalentTree';
 
 export const CLASS_POINTS = 34;
 export const SPEC_POINTS = 34;
+export const HERO_POINTS = 13;
 
 /** Count points spent (non-free, non-entry nodes only). */
 export function getPointsSpent(
@@ -18,6 +19,20 @@ export function getPointsSpent(
     if (node.freeNode) continue;
     const sel = selections.get(node.id);
     if (sel) total += sel.ranks;
+  }
+  return total;
+}
+
+/** Count section progress used by reqPoints gates (includes selected free nodes). */
+function getReqProgress(
+  selections: Map<number, NodeSelection>,
+  nodes: TalentNode[]
+): number {
+  let total = 0;
+  for (const node of nodes) {
+    const sel = selections.get(node.id);
+    if (!sel) continue;
+    total += sel.ranks;
   }
   return total;
 }
@@ -53,12 +68,17 @@ export function canSelectNode(
 
   // Check reqPoints threshold
   if (node.reqPoints) {
-    const spent = getPointsSpent(selections, section);
-    if (spent < node.reqPoints) return false;
+    // reqPoints gates are evaluated with the pending rank allocation.
+    // Example: a 13-point capstone should be selectable at 12 allocated points.
+    const progressAfterClick = getReqProgress(selections, section) + 1;
+    if (progressAfterClick < node.reqPoints) return false;
   }
 
-  // Check requiresNode
-  if (node.requiresNode && !selections.has(node.requiresNode)) return false;
+  // Some hero talents carry spec-specific requiresNode ids for sibling specs.
+  // Only enforce the requirement when that required node exists in this tree.
+  if (node.requiresNode && nodeMap.has(node.requiresNode) && !selections.has(node.requiresNode)) {
+    return false;
+  }
 
   // Hero node: check subtree is active
   if (node.subTreeId) {
@@ -103,12 +123,12 @@ export function canDeselectNode(
   const sel = selections.get(nodeId);
   if (sel) {
     const section = getSectionNodes(node, tree);
-    const currentSpent = getPointsSpent(selections, section);
-    const afterSpent = currentSpent - sel.ranks;
+    const currentProgress = getReqProgress(selections, section);
+    const afterProgress = currentProgress - sel.ranks;
     for (const sn of section) {
       if (sn.id === nodeId) continue;
       if (!selections.has(sn.id)) continue;
-      if (sn.reqPoints && afterSpent < sn.reqPoints) return false;
+      if (sn.reqPoints && afterProgress < sn.reqPoints) return false;
     }
   }
 
@@ -197,13 +217,13 @@ export function cycleChoice(
 // --- Helpers ---
 
 function getSectionNodes(node: TalentNode, tree: TalentTreeData): TalentNode[] {
-  if (node.subTreeId) return tree.heroNodes;
+  if (tree.heroNodes.some((n) => n.id === node.id)) return tree.heroNodes;
   if (tree.specNodes.some((n) => n.id === node.id)) return tree.specNodes;
   return tree.classNodes;
 }
 
 function getSectionBudget(node: TalentNode, tree: TalentTreeData): number {
-  if (node.subTreeId) return 0; // hero nodes have no strict budget
+  if (tree.heroNodes.some((n) => n.id === node.id)) return HERO_POINTS;
   if (tree.specNodes.some((n) => n.id === node.id)) return SPEC_POINTS;
   return CLASS_POINTS;
 }

@@ -171,10 +171,15 @@ export default function Sidebar() {
         label: 'My Characters',
         description: 'View your Battle.net roster.',
         icon: Users,
-        matchPaths: ['/characters', '/wishlist'],
+        matchPaths: ['/characters', '/wishlist', '/talent-playground'],
         children: [
           { href: '/characters', label: 'Roster', description: 'Your Battle.net characters' },
           { href: '/wishlist', label: 'Wishlist', description: 'Saved target drops by character' },
+          {
+            href: '/talent-playground',
+            label: 'Talent Playground',
+            description: 'Build, import, and save talent trees',
+          },
         ],
       });
 

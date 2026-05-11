@@ -130,6 +130,14 @@ function CharacterCard({
             </p>
           </div>
           <div className="pointer-events-auto relative z-30 flex items-center gap-2">
+            <Link
+              href={`/talent-playground?char=${encodeURIComponent(characterId(char))}`}
+              className="inline-flex h-8 items-center justify-center rounded-lg border border-gold/40 bg-gold/15 px-2 text-[11px] font-bold text-gold transition hover:bg-gold/25"
+              title="Open Talent Playground for this character"
+              aria-label="Open Talent Playground for this character"
+            >
+              Talents
+            </Link>
             <div className="relative">
               <button
                 type="button"
@@ -397,6 +405,12 @@ export default function CharactersPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+          <Link
+            href="/talent-playground"
+            className="rounded border border-gold/40 bg-gold/[0.12] px-3 py-1 text-xs font-bold text-gold hover:bg-gold/[0.2]"
+          >
+            Talent Playground
+          </Link>
           <input
             type="text"
             value={search}

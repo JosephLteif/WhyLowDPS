@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Check, LayoutGrid } from 'lucide-react';
 import { useSimContext } from './SimContext';
 import {
@@ -268,6 +269,14 @@ export default function TalentPicker() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {currentTalent && (
+            <Link
+              href={`/talent-playground?talent=${encodeURIComponent(currentTalent)}&name=${encodeURIComponent(allLoadouts[selectedLoadoutIdx]?.name || 'Current Build')}`}
+              className="rounded-md px-2.5 py-1 text-[13px] text-zinc-500 transition-all hover:bg-surface-2 hover:text-zinc-300"
+            >
+              Playground
+            </Link>
+          )}
           {viewMode !== 'collapsed' && (
             <>
               <button

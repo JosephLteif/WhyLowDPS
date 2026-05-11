@@ -1214,6 +1214,14 @@ function TalentsCard({
             {loading && (
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-gold border-t-transparent" />
             )}
+            {displayedTalentString && (
+              <Link
+                href={`/talent-playground?talent=${encodeURIComponent(displayedTalentString)}&name=${encodeURIComponent('Character Build')}`}
+                className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-bold text-zinc-300 hover:bg-white/10 hover:text-white"
+              >
+                Playground
+              </Link>
+            )}
             <button
               type="button"
               onClick={() => setCollapsed((v) => !v)}

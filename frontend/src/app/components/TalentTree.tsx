@@ -136,6 +136,7 @@ export default function TalentTree({
 
   // Editable state — initialized from decoded string once
   const [editSelections, setEditSelections] = useState<Map<number, NodeSelection>>(new Map());
+  const [openChoiceNodeId, setOpenChoiceNodeId] = useState<number | null>(null);
   const didInit = useRef(false);
 
   useEffect(() => {
@@ -171,6 +172,7 @@ export default function TalentTree({
   const handleNodeClick = useCallback(
     (nodeId: number) => {
       if (!editable || !tree) return;
+      setOpenChoiceNodeId(null);
       setEditSelections((prev) => {
         const next = toggleNode(nodeId, prev, tree, nodeMap);
         if (next !== prev) pendingEmit.current = next;
@@ -183,6 +185,7 @@ export default function TalentTree({
   const handleNodeRightClick = useCallback(
     (nodeId: number) => {
       if (!editable || !tree) return;
+      setOpenChoiceNodeId(null);
       setEditSelections((prev) => {
         const next = decrementNode(nodeId, prev, tree, nodeMap);
         if (next !== prev) pendingEmit.current = next;
@@ -204,6 +207,37 @@ export default function TalentTree({
     [editable, nodeMap]
   );
 
+  const handleChoiceSelect = useCallback(
+    (nodeId: number, choiceIndex: number) => {
+      if (!editable || !tree) return;
+      const node = nodeMap.get(nodeId);
+      if (!node || node.type !== 'choice' || choiceIndex < 0 || choiceIndex >= node.entries.length) {
+        return;
+      }
+      setEditSelections((prev) => {
+        const current = prev.get(nodeId);
+        if (!current && !canSelectNode(nodeId, prev, tree, nodeMap)) return prev;
+        const next = new Map(prev);
+        next.set(nodeId, {
+          ranks: current?.ranks ?? (node.freeNode ? node.maxRanks : 1),
+          choiceIndex,
+        });
+        pendingEmit.current = next;
+        return next;
+      });
+      setOpenChoiceNodeId(null);
+    },
+    [editable, tree, nodeMap]
+  );
+
+  const handleChoiceOpen = useCallback(
+    (nodeId: number) => {
+      if (!editable) return;
+      setOpenChoiceNodeId((current) => (current === nodeId ? null : nodeId));
+    },
+    [editable]
+  );
+
   useWowheadTooltips([selections]);
 
   if (!tree || !selections) {
@@ -217,6 +251,61 @@ export default function TalentTree({
   }
 
   const selectedSubTreeId = getActiveSubTreeId(selections, tree);
+  const heroSubTreeControllers = useMemo(
+    () => (tree.subTreeNodes ?? []).filter((node) => node.entries.length > 1),
+    [tree.subTreeNodes]
+  );
+  const heroSubTreeOptions = useMemo(() => {
+    const out: { nodeId: number; entryIndex: number; label: string; traitSubTreeId?: number }[] = [];
+    for (const controller of heroSubTreeControllers) {
+      controller.entries.forEach((entry, entryIndex) => {
+        out.push({
+          nodeId: controller.id,
+          entryIndex,
+          label: entry.name || `Hero Tree ${entryIndex + 1}`,
+          traitSubTreeId: entry.traitSubTreeId,
+        });
+      });
+    }
+    return out;
+  }, [heroSubTreeControllers]);
+  const selectedHeroSubTreeKey = useMemo(() => {
+    for (const option of heroSubTreeOptions) {
+      const sel = selections.get(option.nodeId);
+      if (sel && sel.choiceIndex === option.entryIndex) {
+        return `${option.nodeId}:${option.entryIndex}`;
+      }
+    }
+    return '';
+  }, [heroSubTreeOptions, selections]);
+
+  const handleHeroTreeChange = useCallback(
+    (value: string) => {
+      if (!editable || !tree) return;
+      const [nodeIdRaw, entryIndexRaw] = value.split(':');
+      const nodeId = Number(nodeIdRaw);
+      const entryIndex = Number(entryIndexRaw);
+      if (!Number.isFinite(nodeId) || !Number.isFinite(entryIndex)) return;
+      const controller = heroSubTreeControllers.find((node) => node.id === nodeId);
+      if (!controller || entryIndex < 0 || entryIndex >= controller.entries.length) return;
+      const targetTraitSubTreeId = controller.entries[entryIndex]?.traitSubTreeId;
+
+      setEditSelections((prev) => {
+        const next = new Map(prev);
+        next.set(controller.id, {
+          ranks: Math.max(1, controller.maxRanks || 1),
+          choiceIndex: entryIndex,
+        });
+        for (const heroNode of tree.heroNodes) {
+          if (!heroNode.subTreeId || heroNode.subTreeId === targetTraitSubTreeId) continue;
+          next.delete(heroNode.id);
+        }
+        pendingEmit.current = next;
+        return next;
+      });
+    },
+    [editable, heroSubTreeControllers, tree]
+  );
 
   const activeHeroNodes = selectedSubTreeId
     ? tree.heroNodes.filter((n) => n.subTreeId === selectedSubTreeId)
@@ -308,6 +397,25 @@ export default function TalentTree({
   return (
     <div className={bare ? 'space-y-3' : 'card space-y-3 p-4'}>
       {!bare && <p className="text-xs font-medium uppercase tracking-widest text-muted">Talents</p>}
+      {editable && heroSubTreeOptions.length > 1 && (
+        <div className="flex items-center justify-end">
+          <select
+            value={selectedHeroSubTreeKey || `${heroSubTreeOptions[0]?.nodeId}:${heroSubTreeOptions[0]?.entryIndex}`}
+            onChange={(e) => handleHeroTreeChange(e.target.value)}
+            className="input-field h-8 min-w-[220px] px-2 py-1 text-[11px] font-bold text-zinc-100"
+            style={{ colorScheme: 'dark' }}
+          >
+            {heroSubTreeOptions.map((option) => (
+              <option
+                key={`${option.nodeId}:${option.entryIndex}`}
+                value={`${option.nodeId}:${option.entryIndex}`}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
         <TreeSection
           label={tree.className}
@@ -320,6 +428,9 @@ export default function TalentTree({
           onNodeClick={handleNodeClick}
           onNodeRightClick={handleNodeRightClick}
           onChoiceCycle={handleChoiceCycle}
+          onChoiceSelect={handleChoiceSelect}
+          onChoiceOpen={handleChoiceOpen}
+          openChoiceNodeId={openChoiceNodeId}
           pointsDisplay={`${classSpent}/${CLASS_POINTS}`}
           viewport={sharedViewport}
         />
@@ -337,6 +448,9 @@ export default function TalentTree({
               onNodeClick={handleNodeClick}
               onNodeRightClick={handleNodeRightClick}
               onChoiceCycle={handleChoiceCycle}
+              onChoiceSelect={handleChoiceSelect}
+              onChoiceOpen={handleChoiceOpen}
+              openChoiceNodeId={openChoiceNodeId}
               pointsDisplay={`${heroSpent}`}
               viewport={sharedViewport}
             />
@@ -354,6 +468,9 @@ export default function TalentTree({
           onNodeClick={handleNodeClick}
           onNodeRightClick={handleNodeRightClick}
           onChoiceCycle={handleChoiceCycle}
+          onChoiceSelect={handleChoiceSelect}
+          onChoiceOpen={handleChoiceOpen}
+          openChoiceNodeId={openChoiceNodeId}
           pointsDisplay={`${specSpent}/${SPEC_POINTS}`}
           viewport={sharedViewport}
         />
@@ -374,6 +491,9 @@ interface TreeSectionProps {
   onNodeClick?: (nodeId: number) => void;
   onNodeRightClick?: (nodeId: number) => void;
   onChoiceCycle?: (nodeId: number) => void;
+  onChoiceSelect?: (nodeId: number, choiceIndex: number) => void;
+  onChoiceOpen?: (nodeId: number) => void;
+  openChoiceNodeId?: number | null;
   pointsDisplay?: string;
   viewport?: { width: number; height: number };
 }
@@ -390,6 +510,9 @@ function TreeSection({
   onNodeClick,
   onNodeRightClick,
   onChoiceCycle,
+  onChoiceSelect,
+  onChoiceOpen,
+  openChoiceNodeId,
   pointsDisplay,
   viewport,
 }: TreeSectionProps) {
@@ -410,10 +533,36 @@ function TreeSection({
     return { minX, maxX, minY, maxY };
   }, [nodes]);
 
-  const centerX = (bounds.minX + bounds.maxX) / 2;
-  const centerY = (bounds.minY + bounds.maxY) / 2;
-  const vbW = viewport?.width ?? bounds.maxX - bounds.minX + NODE_SIZE + PADDING * 2;
-  const vbH = viewport?.height ?? bounds.maxY - bounds.minY + NODE_SIZE + PADDING * 2;
+  const openChoiceNode = useMemo(
+    () => nodes.find((node) => node.id === openChoiceNodeId),
+    [nodes, openChoiceNodeId]
+  );
+  const choicePickerWidth = openChoiceNode
+    ? openChoiceNode.entries.length * 420 + Math.max(0, openChoiceNode.entries.length - 1) * 44
+    : 0;
+  const choiceBounds = openChoiceNode
+    ? {
+        minX: openChoiceNode.posX - choicePickerWidth / 2,
+        maxX: openChoiceNode.posX + choicePickerWidth / 2,
+        minY: openChoiceNode.posY - NODE_SIZE / 2 - 190,
+        maxY: openChoiceNode.posY - NODE_SIZE / 2 - 40,
+      }
+    : null;
+
+  const effectiveBounds = choiceBounds
+    ? {
+        minX: Math.min(bounds.minX, choiceBounds.minX),
+        maxX: Math.max(bounds.maxX, choiceBounds.maxX),
+        minY: Math.min(bounds.minY, choiceBounds.minY),
+        maxY: Math.max(bounds.maxY, choiceBounds.maxY),
+      }
+    : bounds;
+  const centerX = (effectiveBounds.minX + effectiveBounds.maxX) / 2;
+  const centerY = (effectiveBounds.minY + effectiveBounds.maxY) / 2;
+  const neededVbW = effectiveBounds.maxX - effectiveBounds.minX + NODE_SIZE + PADDING * 2;
+  const neededVbH = effectiveBounds.maxY - effectiveBounds.minY + NODE_SIZE + PADDING * 2;
+  const vbW = viewport ? Math.max(viewport.width, neededVbW) : neededVbW;
+  const vbH = viewport ? Math.max(viewport.height, neededVbH) : neededVbH;
   const vbX = centerX - vbW / 2;
   const vbY = centerY - vbH / 2;
 
@@ -482,6 +631,9 @@ function TreeSection({
               onClick={onNodeClick}
               onRightClick={onNodeRightClick}
               onChoiceCycle={onChoiceCycle}
+              onChoiceSelect={onChoiceSelect}
+              onChoiceOpen={onChoiceOpen}
+              choicePickerOpen={openChoiceNodeId === node.id}
             />
           );
         })}
@@ -499,6 +651,9 @@ function TalentNodeSvg({
   onClick,
   onRightClick,
   onChoiceCycle,
+  onChoiceSelect,
+  onChoiceOpen,
+  choicePickerOpen,
 }: {
   node: TalentNode;
   selection?: NodeSelection;
@@ -508,6 +663,9 @@ function TalentNodeSvg({
   onClick?: (nodeId: number) => void;
   onRightClick?: (nodeId: number) => void;
   onChoiceCycle?: (nodeId: number) => void;
+  onChoiceSelect?: (nodeId: number, choiceIndex: number) => void;
+  onChoiceOpen?: (nodeId: number) => void;
+  choicePickerOpen?: boolean;
 }) {
   const isSelected = !!selection;
   const isChoice = node.type === 'choice' && node.entries.length > 1;
@@ -533,16 +691,16 @@ function TalentNodeSvg({
   const borderColor = isSelected
     ? GOLD
     : editable && selectable
-      ? 'rgba(200,153,42,0.4)'
+      ? 'rgba(34,197,94,0.95)'
       : 'rgba(255,255,255,0.1)';
   const borderWidth = isSelected ? 12 : 6;
 
-  const opacity = isSelected ? 1 : editable ? (selectable ? 0.5 : LOCKED_ICON) : DIM_ICON;
+  const opacity = isSelected ? 1 : editable ? (selectable ? 0.85 : LOCKED_ICON) : DIM_ICON;
 
   const handleClick = () => {
     if (!editable) return;
-    if (isChoice && isSelected) {
-      onChoiceCycle?.(node.id);
+    if (isChoice && (selectable || isSelected)) {
+      onChoiceOpen?.(node.id);
     } else {
       onClick?.(node.id);
     }
@@ -558,6 +716,7 @@ function TalentNodeSvg({
     <g
       opacity={opacity}
       className={isInteractable ? 'cursor-pointer' : ''}
+      data-wowhead={spellId ? `spell=${spellId}` : undefined}
       onClick={editable ? handleClick : undefined}
       onContextMenu={editable ? handleRightClick : undefined}
     >
@@ -581,6 +740,29 @@ function TalentNodeSvg({
           stroke={borderColor}
           strokeWidth={borderWidth}
         />
+      )}
+      {editable && selectable && !isSelected && (
+        isChoice ? (
+          <OctagonShape
+            cx={node.posX}
+            cy={node.posY}
+            size={half + 24}
+            fill="none"
+            stroke="rgba(34,197,94,0.55)"
+            strokeWidth={8}
+          />
+        ) : (
+          <rect
+            x={node.posX - half - 24}
+            y={node.posY - half - 24}
+            width={NODE_SIZE + 48}
+            height={NODE_SIZE + 48}
+            rx={isActive ? 14 : half + 24}
+            fill="none"
+            stroke="rgba(34,197,94,0.55)"
+            strokeWidth={8}
+          />
+        )
       )}
       {/* Clip icon to shape */}
       <clipPath id={`clip-${node.id}`}>
@@ -632,8 +814,87 @@ function TalentNodeSvg({
           </text>
         </g>
       )}
-      {/* Tooltip hit area (non-editable mode only) */}
-      {!editable && spellId && (
+      {editable && isChoice && choicePickerOpen && (
+        <g>
+          {node.entries.map((choice, index) => {
+            const cardW = 420;
+            const cardH = 150;
+            const gap = 44;
+            const totalW = node.entries.length * cardW + (node.entries.length - 1) * gap;
+            const x = node.posX - totalW / 2 + index * (cardW + gap);
+            const y = node.posY - half - 190;
+            const activeChoice = selection?.choiceIndex === index;
+            return (
+              <g
+                key={`${node.id}-${choice.id}-${index}`}
+                className="cursor-pointer"
+                data-wowhead={choice.spellId ? `spell=${choice.spellId}` : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChoiceSelect?.(node.id, index);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+              >
+                <rect
+                  x={x}
+                  y={y}
+                  width={cardW}
+                  height={cardH}
+                  rx={24}
+                  fill={activeChoice ? 'rgba(200,153,42,0.22)' : 'rgba(13,15,21,0.98)'}
+                  stroke={activeChoice ? GOLD : 'rgba(255,255,255,0.28)'}
+                  strokeWidth={activeChoice ? 8 : 5}
+                />
+                <rect
+                  x={x + 18}
+                  y={y + 18}
+                  width={112}
+                  height={112}
+                  rx={18}
+                  fill="#07080b"
+                  stroke={activeChoice ? GOLD : 'rgba(255,255,255,0.22)'}
+                  strokeWidth={5}
+                />
+                {choice.icon && (
+                  <image
+                    href={`https://render.worldofwarcraft.com/icons/56/${choice.icon}.jpg`}
+                    x={x + 24}
+                    y={y + 24}
+                    width={100}
+                    height={100}
+                  />
+                )}
+                <text
+                  x={x + 150}
+                  y={y + 64}
+                  fill="#f4f4f5"
+                  fontSize={38}
+                  fontFamily="system-ui, sans-serif"
+                  fontWeight="800"
+                >
+                  {(choice.name || `Option ${index + 1}`).slice(0, 18)}
+                </text>
+                <text
+                  x={x + 150}
+                  y={y + 108}
+                  fill={activeChoice ? GOLD : 'rgba(212,212,216,0.72)'}
+                  fontSize={28}
+                  fontFamily="system-ui, sans-serif"
+                  fontWeight="700"
+                >
+                  {activeChoice ? 'Selected' : 'Choose'}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      )}
+      {/* Hover-only Wowhead tooltip layer (no redirect link). */}
+      {spellId && (
         <foreignObject
           x={node.posX - half}
           y={node.posY - half}
@@ -646,7 +907,49 @@ function TalentNodeSvg({
             style={{ display: 'block', width: '100%', height: '100%' }}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.preventDefault()}
+            onPointerDownCapture={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onPointerUpCapture={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseDownCapture={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseUpCapture={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClickCapture={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (editable) handleClick();
+            }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (editable) handleClick();
+            }}
+            onAuxClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (editable) onRightClick?.(node.id);
+            }}
           />
         </foreignObject>
       )}

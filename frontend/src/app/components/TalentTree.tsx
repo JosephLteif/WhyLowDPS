@@ -397,25 +397,6 @@ export default function TalentTree({
   return (
     <div className={bare ? 'space-y-3' : 'card space-y-3 p-4'}>
       {!bare && <p className="text-xs font-medium uppercase tracking-widest text-muted">Talents</p>}
-      {editable && heroSubTreeOptions.length > 1 && (
-        <div className="flex items-center justify-end">
-          <select
-            value={selectedHeroSubTreeKey || `${heroSubTreeOptions[0]?.nodeId}:${heroSubTreeOptions[0]?.entryIndex}`}
-            onChange={(e) => handleHeroTreeChange(e.target.value)}
-            className="input-field h-8 min-w-[220px] px-2 py-1 text-[11px] font-bold text-zinc-100"
-            style={{ colorScheme: 'dark' }}
-          >
-            {heroSubTreeOptions.map((option) => (
-              <option
-                key={`${option.nodeId}:${option.entryIndex}`}
-                value={`${option.nodeId}:${option.entryIndex}`}
-              >
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-5">
         <TreeSection
           label={tree.className}
@@ -451,6 +432,12 @@ export default function TalentTree({
               onChoiceSelect={handleChoiceSelect}
               onChoiceOpen={handleChoiceOpen}
               openChoiceNodeId={openChoiceNodeId}
+              heroTreeOptions={editable ? heroSubTreeOptions : undefined}
+              selectedHeroTreeKey={
+                selectedHeroSubTreeKey ||
+                `${heroSubTreeOptions[0]?.nodeId}:${heroSubTreeOptions[0]?.entryIndex}`
+              }
+              onHeroTreeChange={handleHeroTreeChange}
               pointsDisplay={`${heroSpent}`}
               viewport={sharedViewport}
             />
@@ -494,6 +481,9 @@ interface TreeSectionProps {
   onChoiceSelect?: (nodeId: number, choiceIndex: number) => void;
   onChoiceOpen?: (nodeId: number) => void;
   openChoiceNodeId?: number | null;
+  heroTreeOptions?: { nodeId: number; entryIndex: number; label: string; traitSubTreeId?: number }[];
+  selectedHeroTreeKey?: string;
+  onHeroTreeChange?: (value: string) => void;
   pointsDisplay?: string;
   viewport?: { width: number; height: number };
 }
@@ -513,6 +503,9 @@ function TreeSection({
   onChoiceSelect,
   onChoiceOpen,
   openChoiceNodeId,
+  heroTreeOptions,
+  selectedHeroTreeKey,
+  onHeroTreeChange,
   pointsDisplay,
   viewport,
 }: TreeSectionProps) {
@@ -560,6 +553,30 @@ function TreeSection({
           </span>
         )}
       </div>
+      {heroTreeOptions && heroTreeOptions.length > 1 && onHeroTreeChange && (
+        <div className="mb-2 flex justify-center">
+          <div className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-white/[0.03] p-1">
+            {heroTreeOptions.map((option) => {
+              const key = `${option.nodeId}:${option.entryIndex}`;
+              const active = selectedHeroTreeKey === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => onHeroTreeChange(key)}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                    active
+                      ? 'bg-gold/20 text-gold ring-1 ring-inset ring-gold/50'
+                      : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <svg
         viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
         className={`w-full ${compact ? 'max-h-[460px]' : 'max-h-[620px]'}`}

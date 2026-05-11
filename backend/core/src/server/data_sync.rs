@@ -1298,12 +1298,26 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
 
     let runtime_base = root.join("zones-encounters-index.json");
     let mut candidates = path_variants_with_json_alias(&runtime_base);
+    if let Ok(catalog) = data_file_catalog() {
+        if let Some(entry) = catalog
+            .iter()
+            .find(|entry| entry.local_path == "zones-encounters-index.json")
+        {
+            candidates.extend(path_variants_with_json_alias(&resolve_catalog_path(&root, entry)));
+        }
+    }
     if let Some(exe_dir) = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
     {
         candidates.extend(path_variants_with_json_alias(
             &exe_dir.join("resources").join("zones-encounters-index.json"),
+        ));
+        candidates.extend(path_variants_with_json_alias(
+            &exe_dir
+                .join("resources")
+                .join("data")
+                .join("zones-encounters-index.json"),
         ));
     }
     candidates.extend(path_variants_with_json_alias(

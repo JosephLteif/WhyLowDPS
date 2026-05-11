@@ -238,7 +238,7 @@ export default function TalentTree({
     [editable]
   );
 
-  useWowheadTooltips([selections]);
+  useWowheadTooltips([selections, openChoiceNodeId]);
 
   if (!tree || !selections) {
     if (!talentString && !specIdProp) return null;
@@ -537,30 +537,10 @@ function TreeSection({
     () => nodes.find((node) => node.id === openChoiceNodeId),
     [nodes, openChoiceNodeId]
   );
-  const choicePickerWidth = openChoiceNode
-    ? openChoiceNode.entries.length * 420 + Math.max(0, openChoiceNode.entries.length - 1) * 44
-    : 0;
-  const choiceBounds = openChoiceNode
-    ? {
-        minX: openChoiceNode.posX - choicePickerWidth / 2,
-        maxX: openChoiceNode.posX + choicePickerWidth / 2,
-        minY: openChoiceNode.posY - NODE_SIZE / 2 - 190,
-        maxY: openChoiceNode.posY - NODE_SIZE / 2 - 40,
-      }
-    : null;
-
-  const effectiveBounds = choiceBounds
-    ? {
-        minX: Math.min(bounds.minX, choiceBounds.minX),
-        maxX: Math.max(bounds.maxX, choiceBounds.maxX),
-        minY: Math.min(bounds.minY, choiceBounds.minY),
-        maxY: Math.max(bounds.maxY, choiceBounds.maxY),
-      }
-    : bounds;
-  const centerX = (effectiveBounds.minX + effectiveBounds.maxX) / 2;
-  const centerY = (effectiveBounds.minY + effectiveBounds.maxY) / 2;
-  const neededVbW = effectiveBounds.maxX - effectiveBounds.minX + NODE_SIZE + PADDING * 2;
-  const neededVbH = effectiveBounds.maxY - effectiveBounds.minY + NODE_SIZE + PADDING * 2;
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const neededVbW = bounds.maxX - bounds.minX + NODE_SIZE + PADDING * 2;
+  const neededVbH = bounds.maxY - bounds.minY + NODE_SIZE + PADDING * 2;
   const vbW = viewport ? Math.max(viewport.width, neededVbW) : neededVbW;
   const vbH = viewport ? Math.max(viewport.height, neededVbH) : neededVbH;
   const vbX = centerX - vbW / 2;
@@ -569,7 +549,7 @@ function TreeSection({
   const sectionNodeIds = useMemo(() => new Set(nodes.map((n) => n.id)), [nodes]);
 
   return (
-    <div className={compact ? 'w-[260px] shrink-0' : 'min-w-0 flex-1'}>
+    <div className={`${compact ? 'w-[260px] shrink-0' : 'min-w-0 flex-1'} relative`}>
       <div className="mb-1 flex items-center justify-center gap-2">
         <p className="text-center text-[12px] font-medium uppercase tracking-wider text-muted">
           {label}
@@ -631,13 +611,70 @@ function TreeSection({
               onClick={onNodeClick}
               onRightClick={onNodeRightClick}
               onChoiceCycle={onChoiceCycle}
-              onChoiceSelect={onChoiceSelect}
               onChoiceOpen={onChoiceOpen}
-              choicePickerOpen={openChoiceNodeId === node.id}
             />
           );
         })}
       </svg>
+      {editable && openChoiceNode && openChoiceNode.entries.length > 1 && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 px-2">
+          <div className="pointer-events-auto">
+          <div
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(2, openChoiceNode.entries.length)}, minmax(0, 1fr))`,
+            }}
+          >
+          {openChoiceNode.entries.map((choice, index) => {
+            const activeChoice = selections.get(openChoiceNode.id)?.choiceIndex === index;
+            return (
+              <a
+                key={`${openChoiceNode.id}-${choice.id}-${index}`}
+                href={choice.spellId ? `https://www.wowhead.com/spell=${choice.spellId}` : '#'}
+                data-wowhead={choice.spellId ? `spell=${choice.spellId}` : undefined}
+                onPointerDownCapture={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onMouseDownCapture={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onChoiceSelect?.(openChoiceNode.id, index);
+                }}
+                className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-3 text-left transition ${
+                  activeChoice
+                    ? 'border-gold/80 bg-gold/20 text-zinc-100'
+                    : 'border-white/20 bg-surface-2/80 text-zinc-200 hover:border-white/40 hover:bg-surface-2'
+                }`}
+              >
+                {choice.icon ? (
+                  <img
+                    src={`https://render.worldofwarcraft.com/icons/56/${choice.icon}.jpg`}
+                    alt=""
+                    width={54}
+                    height={54}
+                    className="h-[54px] w-[54px] rounded-md border border-white/15 object-cover"
+                  />
+                ) : (
+                  <div className="h-[54px] w-[54px] rounded-md border border-white/15 bg-black/40" />
+                )}
+                <div className="min-w-0">
+                  <div className="truncate text-[14px] font-bold">{choice.name || `Option ${index + 1}`}</div>
+                  <div className={`text-[12px] ${activeChoice ? 'text-gold' : 'text-zinc-400'}`}>
+                    {activeChoice ? 'Selected' : 'Click to choose'}
+                  </div>
+                </div>
+              </a>
+            );
+          })}
+          </div>
+        </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -651,9 +688,7 @@ function TalentNodeSvg({
   onClick,
   onRightClick,
   onChoiceCycle,
-  onChoiceSelect,
   onChoiceOpen,
-  choicePickerOpen,
 }: {
   node: TalentNode;
   selection?: NodeSelection;
@@ -663,9 +698,7 @@ function TalentNodeSvg({
   onClick?: (nodeId: number) => void;
   onRightClick?: (nodeId: number) => void;
   onChoiceCycle?: (nodeId: number) => void;
-  onChoiceSelect?: (nodeId: number, choiceIndex: number) => void;
   onChoiceOpen?: (nodeId: number) => void;
-  choicePickerOpen?: boolean;
 }) {
   const isSelected = !!selection;
   const isChoice = node.type === 'choice' && node.entries.length > 1;
@@ -812,85 +845,6 @@ function TalentNodeSvg({
           >
             {selection.ranks}/{node.maxRanks}
           </text>
-        </g>
-      )}
-      {editable && isChoice && choicePickerOpen && (
-        <g>
-          {node.entries.map((choice, index) => {
-            const cardW = 420;
-            const cardH = 150;
-            const gap = 44;
-            const totalW = node.entries.length * cardW + (node.entries.length - 1) * gap;
-            const x = node.posX - totalW / 2 + index * (cardW + gap);
-            const y = node.posY - half - 190;
-            const activeChoice = selection?.choiceIndex === index;
-            return (
-              <g
-                key={`${node.id}-${choice.id}-${index}`}
-                className="cursor-pointer"
-                data-wowhead={choice.spellId ? `spell=${choice.spellId}` : undefined}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onChoiceSelect?.(node.id, index);
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
-              >
-                <rect
-                  x={x}
-                  y={y}
-                  width={cardW}
-                  height={cardH}
-                  rx={24}
-                  fill={activeChoice ? 'rgba(200,153,42,0.22)' : 'rgba(13,15,21,0.98)'}
-                  stroke={activeChoice ? GOLD : 'rgba(255,255,255,0.28)'}
-                  strokeWidth={activeChoice ? 8 : 5}
-                />
-                <rect
-                  x={x + 18}
-                  y={y + 18}
-                  width={112}
-                  height={112}
-                  rx={18}
-                  fill="#07080b"
-                  stroke={activeChoice ? GOLD : 'rgba(255,255,255,0.22)'}
-                  strokeWidth={5}
-                />
-                {choice.icon && (
-                  <image
-                    href={`https://render.worldofwarcraft.com/icons/56/${choice.icon}.jpg`}
-                    x={x + 24}
-                    y={y + 24}
-                    width={100}
-                    height={100}
-                  />
-                )}
-                <text
-                  x={x + 150}
-                  y={y + 64}
-                  fill="#f4f4f5"
-                  fontSize={38}
-                  fontFamily="system-ui, sans-serif"
-                  fontWeight="800"
-                >
-                  {(choice.name || `Option ${index + 1}`).slice(0, 18)}
-                </text>
-                <text
-                  x={x + 150}
-                  y={y + 108}
-                  fill={activeChoice ? GOLD : 'rgba(212,212,216,0.72)'}
-                  fontSize={28}
-                  fontFamily="system-ui, sans-serif"
-                  fontWeight="700"
-                >
-                  {activeChoice ? 'Selected' : 'Choose'}
-                </text>
-              </g>
-            );
-          })}
         </g>
       )}
       {/* Hover-only Wowhead tooltip layer (no redirect link). */}

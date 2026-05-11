@@ -974,6 +974,7 @@ export function AdvancedOptions() {
           className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           strokeWidth={2}
         />
+      </div>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
           <div className="pt-4" />
@@ -1025,8 +1026,7 @@ export function AdvancedOptions() {
             activeTabInfo={activeTabInfo}
           />
         </div>
-      </div>
-      </div>
+      )}
     </div>
   );
 }

@@ -168,10 +168,10 @@ export default function ConsumableSelect({
           role="button"
           tabIndex={0}
           onClick={() => !disabled && setOpen((v) => !v)}
-          className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm ${
+          className={`flex w-full items-center gap-2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-sm transition-colors ${
             disabled
               ? 'cursor-not-allowed text-zinc-500 opacity-70'
-              : 'cursor-pointer text-zinc-200'
+              : 'cursor-pointer text-zinc-200 hover:border-border-light'
           }`}
         >
           {selected?.icon || (selected?.itemId && itemIcons.get(selected.itemId)) ? (
@@ -192,11 +192,11 @@ export default function ConsumableSelect({
                   (selected?.itemId && itemIcons.get(selected.itemId)) || selected?.icon
                 }.jpg`}
                 alt=""
-                className="h-4 w-4 shrink-0 rounded-[3px]"
+                className="h-5 w-5 shrink-0 rounded-[4px]"
               />
             </a>
           ) : (
-            <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
+            <span className="h-5 w-5 shrink-0 rounded-[4px] border border-border bg-surface-2" />
           )}
           <a
             href="#"
@@ -225,8 +225,15 @@ export default function ConsumableSelect({
             <path d="M4 6l4 4 4-4" />
           </svg>
         </div>
-        {open && (
-          <div className="absolute z-30 mt-1 max-h-80 w-full overflow-y-auto rounded-md border border-border bg-surface p-1 shadow-xl">
+        <div
+          className={`absolute z-30 mt-1 w-full origin-top overflow-hidden rounded-md border border-border bg-surface shadow-xl transition-[opacity,transform] duration-250 ease-out ${
+            open
+              ? 'pointer-events-auto translate-y-0 scale-[1] opacity-100'
+              : 'pointer-events-none -translate-y-1 scale-[0.985] opacity-0'
+          }`}
+          aria-hidden={!open}
+        >
+          <div className="max-h-80 overflow-y-auto p-1">
             <button
               type="button"
               onClick={() => {
@@ -235,7 +242,7 @@ export default function ConsumableSelect({
               }}
               className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
             >
-              <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border bg-surface-2" />
+              <span className="h-5 w-5 shrink-0 rounded-[4px] border border-border bg-surface-2" />
               <span className="truncate">None</span>
             </button>
             <div className="my-1 h-px bg-border/50" />
@@ -247,7 +254,7 @@ export default function ConsumableSelect({
               return (
                 <div
                   key={group.label}
-                  className={`flex items-center justify-between gap-2 rounded px-2.5 py-2 text-sm transition-colors ${
+                  className={`flex items-center justify-between gap-2 rounded px-2.5 py-2 text-sm transition-[background-color,color,transform] duration-150 ease-out ${
                     !hasQuality ? 'cursor-pointer hover:bg-white/[0.04]' : ''
                   } ${isSelectedFamily && !hasQuality ? 'bg-gold/[0.08] text-white' : 'text-zinc-300'}`}
                   onClick={() => {
@@ -276,7 +283,7 @@ export default function ConsumableSelect({
                     <img
                       src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                       alt=""
-                      className="h-4 w-4 shrink-0 rounded-[3px]"
+                      className="h-5 w-5 shrink-0 rounded-[4px]"
                     />
                     <span className="truncate">{group.label}</span>
                   </a>
@@ -330,7 +337,7 @@ export default function ConsumableSelect({
               );
             })}
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

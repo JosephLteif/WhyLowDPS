@@ -106,6 +106,7 @@ const baseNavItems: NavItem[] = [
 const SIDEBAR_COLLAPSED_KEY = 'whylowdps_sidebar_collapsed';
 const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
 const SIDEBAR_VISIBLE_KEY = 'whylowdps_sidebar_visible';
+const SIDEBAR_AUTH_ONLY_LABELS = new Set(['My Characters']);
 function moveLabelWithPosition(
   order: string[],
   source: string,
@@ -289,7 +290,12 @@ export default function Sidebar() {
       if (!prev || prev.length === 0) return labels;
       const deduped = prev.filter((label, idx) => prev.indexOf(label) === idx);
       const filtered = deduped.filter((label) => labels.includes(label));
-      return filtered.length > 0 ? filtered : labels;
+      if (filtered.length === 0) return labels;
+      for (const label of labels) {
+        if (!SIDEBAR_AUTH_ONLY_LABELS.has(label) || filtered.includes(label)) continue;
+        filtered.push(label);
+      }
+      return filtered;
     });
   }, [navItems]);
 

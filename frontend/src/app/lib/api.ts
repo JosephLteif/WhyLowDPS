@@ -2,6 +2,9 @@ import { SavedRoute, SimSummary, SystemStats } from './types';
 import { Instance } from '../drop-finder/types';
 
 export function isDesktopRuntime(): boolean {
+  const desktopBuild =
+    process.env.DESKTOP_BUILD === 'true' || process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true';
+  if (desktopBuild) return true;
   if (typeof window === 'undefined') return false;
   return (
     window.location.protocol === 'tauri:' ||
@@ -11,9 +14,7 @@ export function isDesktopRuntime(): boolean {
     !!(window as any).__TAURI__ ||
     !!(window as any).__TAURI_METADATA__ ||
     !!(window as any).__TAURI_INTERNALS__ ||
-    !!(window as any).__TAURI_IPC__ ||
-    process.env.DESKTOP_BUILD === 'true' ||
-    process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true'
+    !!(window as any).__TAURI_IPC__
   );
 }
 

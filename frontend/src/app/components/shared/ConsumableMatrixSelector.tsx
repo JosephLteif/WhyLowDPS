@@ -212,7 +212,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
                     onChange(toggleListValue(selected, sortedItems[0].token || sortedItems[0].key));
                   }
                 }}
-                className={`flex items-center justify-between gap-3 rounded border px-2.5 py-1.5 transition-colors ${
+                className={`flex items-center justify-between gap-3 rounded border px-2.5 py-2 transition-colors ${
                   isSingleNoQuality ? 'cursor-pointer' : ''
                 } ${
                   isSelected && !isSingleNoQuality
@@ -240,7 +240,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
                       <img
                         src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                         alt=""
-                        className="h-4 w-4 shrink-0 rounded-[3px]"
+                        className="h-5 w-5 shrink-0 rounded-[4px]"
                       />
                       <span className="truncate text-[12px]">{group.label}</span>
                     </a>
@@ -253,7 +253,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
                       <img
                         src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                         alt=""
-                        className="h-4 w-4 shrink-0 rounded-[3px]"
+                        className="h-5 w-5 shrink-0 rounded-[4px]"
                       />
                       <span className="truncate text-[12px]">{group.label}</span>
                     </span>

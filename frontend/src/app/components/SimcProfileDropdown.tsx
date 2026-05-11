@@ -6,6 +6,15 @@ import { formatRealmName, resolveClassColor } from '../lib/profile-format';
 import type { SavedCharacterProfile } from '../lib/api';
 import type { HistoryTab, SelectedProfileMeta } from './useSimcProfileSelector';
 
+function titleCaseWords(value: string | null | undefined): string {
+  if (!value) return '';
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
 type SimcProfileDropdownProps = {
   historyDropdownRef: React.RefObject<HTMLDivElement | null>;
   historyDropdownOpen: boolean;
@@ -67,17 +76,17 @@ export default function SimcProfileDropdown({
           </p>
         </div>
         <svg
-          className={`h-3.5 w-3.5 shrink-0 text-zinc-500 transition-transform ${
-            historyDropdownOpen ? 'rotate-180 text-zinc-300' : ''
+          className={`h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform duration-200 ${
+            historyDropdownOpen ? 'rotate-180' : ''
           }`}
           viewBox="0 0 16 16"
           fill="none"
           stroke="currentColor"
-          strokeWidth="1.5"
+          strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <path d="M3.5 6.5L8 11l4.5-4.5" />
+          <path d="M4 6l4 4 4-4" />
         </svg>
       </button>
       {historyDropdownOpen && (
@@ -131,10 +140,10 @@ export default function SimcProfileDropdown({
                       </div>
                     </button>
                     <span
-                      className="text-[11px] font-medium"
+                      className="text-[12px] font-semibold"
                       style={{ color: resolveClassColor(profile.class) || '#71717a' }}
                     >
-                      {[profile.spec ? specDisplayName(profile.spec) : null, profile.class]
+                      {[profile.spec ? specDisplayName(profile.spec) : null, titleCaseWords(profile.class)]
                         .filter(Boolean)
                         .join(' ')}
                     </span>
@@ -144,9 +153,25 @@ export default function SimcProfileDropdown({
                         e.stopPropagation();
                         onRequestDeleteSavedProfile(profile.id);
                       }}
-                      className="ml-2 text-[10px] text-zinc-500 hover:text-red-400"
+                      className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-400/80 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                      title="Delete profile"
+                      aria-label="Delete profile"
                     >
-                      Delete
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3.5 5h9" />
+                        <path d="M6 2.75h4" />
+                        <path d="M5 5v7.25h6V5" />
+                        <path d="M7 7.25v3.5" />
+                        <path d="M9 7.25v3.5" />
+                      </svg>
                     </button>
                   </div>
                 ))
@@ -185,10 +210,10 @@ export default function SimcProfileDropdown({
                     </button>
                     {charClass && (
                       <span
-                        className="text-[11px] font-medium"
+                        className="text-[12px] font-semibold"
                         style={{ color: resolveClassColor(charClass) || '#71717a' }}
                       >
-                        {[charSpec ? specDisplayName(charSpec) : null, charClass]
+                        {[charSpec ? specDisplayName(charSpec) : null, titleCaseWords(charClass)]
                           .filter(Boolean)
                           .join(' ')}
                       </span>
@@ -199,9 +224,25 @@ export default function SimcProfileDropdown({
                         e.stopPropagation();
                         onDeleteHistoryProfile(idx);
                       }}
-                      className="ml-2 text-[10px] text-zinc-500 hover:text-red-400"
+                      className="ml-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-400/80 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                      title="Delete profile"
+                      aria-label="Delete profile"
                     >
-                      Delete
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3.5 5h9" />
+                        <path d="M6 2.75h4" />
+                        <path d="M5 5v7.25h6V5" />
+                        <path d="M7 7.25v3.5" />
+                        <path d="M9 7.25v3.5" />
+                      </svg>
                     </button>
                   </div>
                 );

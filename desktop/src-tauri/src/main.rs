@@ -22,11 +22,6 @@ use whylowdps_core::server;
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
 
 fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path) {
-    let runtime_classes = runtime_data_dir.join("classes.json");
-    if runtime_classes.exists() {
-        return;
-    }
-
     let bundled_classes = bundled_data_dir.join("classes.json");
     if !bundled_classes.exists() {
         return;
@@ -46,7 +41,7 @@ fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path
             let dst_path = dst_dir.join(entry.file_name());
             if src_path.is_dir() {
                 stack.push((src_path, dst_path));
-            } else if src_path.is_file() {
+            } else if src_path.is_file() && !dst_path.exists() {
                 if let Some(parent) = dst_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }

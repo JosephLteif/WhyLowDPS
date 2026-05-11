@@ -1,23 +1,15 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Pencil, Trash2 } from 'lucide-react';
 import TalentTree from '../components/TalentTree';
-import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
+import { API_URL, fetchJson, fetchJsonCached, listCharacterProfiles } from '../lib/api';
 import { decodeHeader } from '../lib/talentDecode';
 import { encodeTalentString } from '../lib/talentEncode';
-import {
-  CLASS_SPECS,
-  SPEC_ID_TO_NAME,
-  SPEC_NAME_TO_ID,
-  parseTalentLoadouts,
-  specDisplayName,
-} from '../lib/types';
 import type { TalentLoadoutParsed } from '../lib/types';
+import { CLASS_SPECS, parseTalentLoadouts, SPEC_ID_TO_NAME, SPEC_NAME_TO_ID, specDisplayName } from '../lib/types';
 import { useTalentTree } from '../lib/useTalentTree';
-import { listCharacterProfiles } from '../lib/api';
 
 type SavedBuild = {
   id: string;
@@ -524,12 +516,6 @@ export default function TalentPlaygroundPage() {
               Build talents per character, import new trees, and export final strings.
             </p>
           </div>
-          <Link
-            href="/characters"
-            className="rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/[0.1]"
-          >
-            Back to My Characters
-          </Link>
         </div>
       </div>
 

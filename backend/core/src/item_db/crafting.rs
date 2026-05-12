@@ -1,6 +1,6 @@
 use super::state::{
-    CraftingReagentData, CraftingSlotData, CRAFTING_LIMIT_CATS, CRAFTING_REAGENTS,
-    CRAFTING_SLOTS, ITEMS, ItemLimitMap,
+    CraftingReagentData, CraftingSlotData, ItemLimitMap, CRAFTING_LIMIT_CATS, CRAFTING_REAGENTS,
+    CRAFTING_SLOTS, ITEMS,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -65,11 +65,11 @@ fn current_track_ilevel(track_name: Option<String>, level: Option<u64>) -> Optio
     let track_name = track_name?;
     let level = level?;
     let tracks = crate::item_db::upgrade_tracks();
-    tracks
-        .iter()
-        .find_map(|((name, current_level, _max_level), (ilvl, _bonus_id, _quality))| {
+    tracks.iter().find_map(
+        |((name, current_level, _max_level), (ilvl, _bonus_id, _quality))| {
             (name == &track_name && *current_level == level).then_some(*ilvl)
-        })
+        },
+    )
 }
 
 pub fn derive_crafted_item_levels(item_id: u64) -> Vec<u64> {
@@ -133,7 +133,8 @@ pub fn derive_crafted_item_levels(item_id: u64) -> Vec<u64> {
     levels.sort_unstable();
     levels.dedup();
 
-    let champion_start = current_track_ilevel(crate::item_db::difficulty_track_name("normal"), Some(1));
+    let champion_start =
+        current_track_ilevel(crate::item_db::difficulty_track_name("normal"), Some(1));
     let myth_start = current_track_ilevel(crate::item_db::difficulty_track_name("mythic"), Some(1));
     let myth_apex = crate::item_db::difficulty_track_name("mythic").and_then(|track_name| {
         let tracks = crate::item_db::upgrade_tracks();
@@ -265,12 +266,18 @@ pub fn list_embellishments_for_item(item_id: u64) -> Vec<Value> {
     };
     let Some(item) = item else {
         let options = Vec::new();
-        EMBELLISHMENT_OPTIONS_CACHE.write().unwrap().insert(item_id, options.clone());
+        EMBELLISHMENT_OPTIONS_CACHE
+            .write()
+            .unwrap()
+            .insert(item_id, options.clone());
         return options;
     };
     let Some(profession) = item.profession.as_ref() else {
         let options = Vec::new();
-        EMBELLISHMENT_OPTIONS_CACHE.write().unwrap().insert(item_id, options.clone());
+        EMBELLISHMENT_OPTIONS_CACHE
+            .write()
+            .unwrap()
+            .insert(item_id, options.clone());
         return options;
     };
 
@@ -368,7 +375,8 @@ pub fn list_embellishments_for_item(item_id: u64) -> Vec<Value> {
         .max()
         .unwrap_or(0);
     if latest_expansion > 0 {
-        by_item_id.retain(|_, reagent| reagent.expansion.unwrap_or(latest_expansion) == latest_expansion);
+        by_item_id
+            .retain(|_, reagent| reagent.expansion.unwrap_or(latest_expansion) == latest_expansion);
     }
 
     let mut options: Vec<Value> = by_item_id
@@ -489,7 +497,10 @@ pub fn list_current_missives() -> Vec<Value> {
         stat_tokens.sort_unstable();
         stat_tokens.dedup();
         let token = stat_tokens.join("/");
-        let labels: Vec<&str> = stat_tokens.iter().filter_map(|t| stat_token_to_label(t)).collect();
+        let labels: Vec<&str> = stat_tokens
+            .iter()
+            .filter_map(|t| stat_token_to_label(t))
+            .collect();
         if labels.is_empty() {
             continue;
         }
@@ -503,9 +514,13 @@ pub fn list_current_missives() -> Vec<Value> {
             "quality": reagent.quality,
             "stat_count": stat_tokens.len(),
         });
-        let should_replace = by_token
-            .get(&token)
-            .is_none_or(|existing| existing.get("quality").and_then(|v| v.as_u64()).unwrap_or(0) < reagent.quality);
+        let should_replace = by_token.get(&token).is_none_or(|existing| {
+            existing
+                .get("quality")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                < reagent.quality
+        });
         if should_replace {
             by_token.insert(token, payload);
         }

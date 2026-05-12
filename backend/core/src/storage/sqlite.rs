@@ -135,7 +135,8 @@ impl SqliteStorage {
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_region TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_realm TEXT;");
         let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_name TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;");
+        let _ =
+            conn.execute_batch("ALTER TABLE jobs ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;");
         let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN level INTEGER;");
         let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN pull_count INTEGER;");
         let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN timer_seconds INTEGER;");
@@ -915,9 +916,7 @@ impl JobStorage for SqliteStorage {
                     report_title: row.get(18)?,
                     report_end_time: row.get(19)?,
                     start_time: row.get(20)?,
-                    locked_in: row
-                        .get::<_, Option<i64>>(21)?
-                        .map(|v| v != 0),
+                    locked_in: row.get::<_, Option<i64>>(21)?.map(|v| v != 0),
                 })
             },
         )

@@ -5,7 +5,6 @@ mod character_profile_handlers;
 #[cfg(feature = "web")]
 mod data_provider;
 mod data_sync;
-mod wow_data_map;
 #[cfg(feature = "web")]
 pub mod dungeon_data;
 #[cfg(feature = "web")]
@@ -24,6 +23,7 @@ mod sim_handlers;
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
+mod wow_data_map;
 
 #[cfg(feature = "web")]
 use actix_cors::Cors;

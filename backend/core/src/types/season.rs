@@ -79,4 +79,3 @@ pub struct SeasonConfigResponse {
     pub raid_difficulties: Vec<DifficultyDef>,
     pub dungeon_categories: Vec<DungeonCategory>,
 }
-

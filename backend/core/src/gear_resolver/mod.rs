@@ -65,11 +65,7 @@ fn mark_off_spec_items(
     spec_name: &str,
 ) {
     let class_name = class_name.trim();
-    let spec_name = spec_name
-        .split(',')
-        .next()
-        .unwrap_or(spec_name)
-        .trim();
+    let spec_name = spec_name.split(',').next().unwrap_or(spec_name).trim();
     if class_name.is_empty() || spec_name.is_empty() {
         return;
     }

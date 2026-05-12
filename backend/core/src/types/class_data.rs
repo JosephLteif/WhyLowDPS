@@ -203,13 +203,13 @@ fn normalize_spec_name(raw: &str) -> String {
 /// 3=Agility, 4=Strength, 5=Intellect.
 pub fn expand_primary_stat(stat_id: u64) -> &'static [u64] {
     match stat_id {
-        3 => &[3],             // Agility
-        4 => &[4],             // Strength
-        5 => &[5],             // Intellect
-        71 => &[3, 4, 5],      // Any primary
-        72 => &[3, 4],         // Agility or Strength
-        73 => &[3, 5],         // Agility or Intellect
-        74 => &[4, 5],         // Strength or Intellect
+        3 => &[3],        // Agility
+        4 => &[4],        // Strength
+        5 => &[5],        // Intellect
+        71 => &[3, 4, 5], // Any primary
+        72 => &[3, 4],    // Agility or Strength
+        73 => &[3, 5],    // Agility or Intellect
+        74 => &[4, 5],    // Strength or Intellect
         _ => &[],
     }
 }
@@ -226,12 +226,16 @@ pub fn can_dual_wield(spec: &str) -> bool {
 
 /// Max armor subclass: 1=Cloth, 2=Leather, 3=Mail, 4=Plate.
 pub fn class_max_armor(class_name: &str) -> Option<u64> {
-    find_class(class_name).map(|c| c.max_armor).filter(|v| *v > 0)
+    find_class(class_name)
+        .map(|c| c.max_armor)
+        .filter(|v| *v > 0)
 }
 
 /// Weapon subclass IDs each class can equip (broad filter for drop tables).
 pub fn class_allowed_weapons(class_name: &str) -> Option<Vec<u64>> {
-    find_class(class_name).map(|c| c.weapons).filter(|v| !v.is_empty())
+    find_class(class_name)
+        .map(|c| c.weapons)
+        .filter(|v| !v.is_empty())
 }
 
 /// Per-spec weapon eligibility. Returns the full `SpecDef` which includes

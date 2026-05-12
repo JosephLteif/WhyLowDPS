@@ -614,10 +614,7 @@ fn extract_simulated_stats_snapshot(player: &Value) -> Option<Value> {
                 None
             }
         })
-        .max_by(|a, b| {
-            a.2.partial_cmp(&b.2)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(key, label, value)| {
             json!({
                 "key": key,
@@ -659,9 +656,16 @@ fn extract_simulated_stats_snapshot(player: &Value) -> Option<Value> {
     let has_data = snapshot
         .as_object()
         .map(|obj| {
-            ["primary", "stamina", "crit", "haste", "mastery", "versatility"]
-                .iter()
-                .any(|key| obj.get(*key).map(|value| !value.is_null()).unwrap_or(false))
+            [
+                "primary",
+                "stamina",
+                "crit",
+                "haste",
+                "mastery",
+                "versatility",
+            ]
+            .iter()
+            .any(|key| obj.get(*key).map(|value| !value.is_null()).unwrap_or(false))
         })
         .unwrap_or(false);
 

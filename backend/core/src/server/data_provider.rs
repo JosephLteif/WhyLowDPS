@@ -152,7 +152,11 @@ async fn fetch_raider_affix_names(client: &reqwest::Client) -> Option<Vec<String
             names.push(name);
         }
     }
-    if names.is_empty() { None } else { Some(names) }
+    if names.is_empty() {
+        None
+    } else {
+        Some(names)
+    }
 }
 
 async fn fetch_blizzard_state(
@@ -217,7 +221,8 @@ async fn fetch_fresh_state(
         state.active_affixes = active_affixes;
     }
 
-    if let Some((season_id, season_name, rotation)) = fetch_blizzard_state(client, credentials).await
+    if let Some((season_id, season_name, rotation)) =
+        fetch_blizzard_state(client, credentials).await
     {
         state.season_id = season_id;
         state.season_name = season_name;

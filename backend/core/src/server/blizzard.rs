@@ -812,16 +812,7 @@ pub async fn proxy_mythic_keystone_dungeon_index(
         region, region
     );
 
-    proxy_blizzard_data_url(
-        &req,
-        &state,
-        &auth_state,
-        &store,
-        &cache_key,
-        &url,
-        refresh,
-    )
-    .await
+    proxy_blizzard_data_url(&req, &state, &auth_state, &store, &cache_key, &url, refresh).await
 }
 
 pub async fn proxy_mythic_keystone_dungeon_detail(
@@ -841,16 +832,7 @@ pub async fn proxy_mythic_keystone_dungeon_detail(
         region, dungeon_id, region
     );
 
-    proxy_blizzard_data_url(
-        &req,
-        &state,
-        &auth_state,
-        &store,
-        &cache_key,
-        &url,
-        refresh,
-    )
-    .await
+    proxy_blizzard_data_url(&req, &state, &auth_state, &store, &cache_key, &url, refresh).await
 }
 
 pub async fn proxy_realms_index(
@@ -919,7 +901,10 @@ pub async fn proxy_realms_index(
                 .unwrap_or_default();
             realms.sort_by(|a, b| a.name.cmp(&b.name));
             let payload = RealmsResponse { region, realms };
-            store.set_cache(&cache_key, serde_json::to_string(&payload).unwrap_or_default());
+            store.set_cache(
+                &cache_key,
+                serde_json::to_string(&payload).unwrap_or_default(),
+            );
             HttpResponse::Ok().json(payload)
         }
         _ => HttpResponse::Ok().json(RealmsResponse {

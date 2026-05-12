@@ -1296,14 +1296,29 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let runtime_base = root.join("zones-encounters-index.json");
-    let mut candidates = path_variants_with_json_alias(&runtime_base);
+    let file_name = "zones-encounters-index.json";
+    let mut candidates = Vec::new();
+
+    #[cfg(windows)]
+    if !cfg!(debug_assertions) {
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            candidates.extend(path_variants_with_json_alias(
+                &PathBuf::from(local_app_data)
+                    .join("WhyLowDps")
+                    .join("data")
+                    .join(file_name),
+            ));
+        }
+    }
+
+    let runtime_base = root.join(file_name);
+    candidates.extend(path_variants_with_json_alias(&runtime_base));
+
     if let Ok(catalog) = data_file_catalog() {
-        if let Some(entry) = catalog
-            .iter()
-            .find(|entry| entry.local_path == "zones-encounters-index.json")
-        {
-            candidates.extend(path_variants_with_json_alias(&resolve_catalog_path(&root, entry)));
+        if let Some(entry) = catalog.iter().find(|entry| entry.local_path == file_name) {
+            candidates.extend(path_variants_with_json_alias(&resolve_catalog_path(
+                &root, entry,
+            )));
         }
     }
     if let Some(exe_dir) = std::env::current_exe()
@@ -1311,19 +1326,16 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
     {
         candidates.extend(path_variants_with_json_alias(
-            &exe_dir.join("resources").join("zones-encounters-index.json"),
+            &exe_dir.join("resources").join(file_name),
         ));
         candidates.extend(path_variants_with_json_alias(
-            &exe_dir
-                .join("resources")
-                .join("data")
-                .join("zones-encounters-index.json"),
+            &exe_dir.join("resources").join("data").join(file_name),
         ));
     }
     candidates.extend(path_variants_with_json_alias(
         &Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../resources")
-            .join("zones-encounters-index.json"),
+            .join(file_name),
     ));
 
     let existing: Vec<PathBuf> = candidates.into_iter().filter(|p| p.exists()).collect();

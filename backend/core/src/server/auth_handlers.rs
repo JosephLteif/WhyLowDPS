@@ -424,7 +424,10 @@ pub async fn bnet_callback(
         Err(e) => {
             println!("Network error during token exchange: {}", e);
             if flow_id_opt.is_some() {
-                store.set_cache(&error_cache_key, "Network error during token exchange".to_string());
+                store.set_cache(
+                    &error_cache_key,
+                    "Network error during token exchange".to_string(),
+                );
                 store.remove_cache(&status_cache_key);
             }
             return HttpResponse::BadRequest()

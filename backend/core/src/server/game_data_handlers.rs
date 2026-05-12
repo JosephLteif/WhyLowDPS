@@ -526,9 +526,8 @@ pub(super) async fn get_multi_instance_drops(query: web::Query<MultiDropsQuery>)
 
     match game_data::get_drops_by_instances(&instance_ids, class_name, spec) {
         Some(drops) => HttpResponse::Ok().json(drops),
-        None => {
-            HttpResponse::NotFound().json(json!({"detail": "No drops found for requested instances"}))
-        }
+        None => HttpResponse::NotFound()
+            .json(json!({"detail": "No drops found for requested instances"})),
     }
 }
 

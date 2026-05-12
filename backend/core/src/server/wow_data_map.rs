@@ -140,12 +140,10 @@ fn path_variants_with_json_alias(path: &Path) -> Vec<std::path::PathBuf> {
     out
 }
 
-
 fn read_json_file(path: &Path) -> Result<Value, String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
+    serde_json::from_str(&content).map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
 }
 
 fn read_optional_json_file(path: &Path) -> Option<Value> {
@@ -270,7 +268,9 @@ fn apply_overrides(mut map: Value, overrides: Option<Value>) -> (Value, usize) {
             .and_then(|v| v.as_i64())
             .unwrap_or_default();
 
-        if let Some(ov) = dungeon_overrides.get(&dungeon_id.to_string()).and_then(|v| v.as_object())
+        if let Some(ov) = dungeon_overrides
+            .get(&dungeon_id.to_string())
+            .and_then(|v| v.as_object())
         {
             if let Some(name) = ov.get("name").and_then(|v| v.as_str()) {
                 dungeon_obj.insert(
@@ -308,7 +308,11 @@ fn apply_overrides(mut map: Value, overrides: Option<Value>) -> (Value, usize) {
                         applied += 1;
                     }
                     if let Some(spells) = ov.get("spell_ids").and_then(|v| v.as_array()) {
-                        let vals: Vec<Value> = spells.iter().filter_map(|v| v.as_u64()).map(Value::from).collect();
+                        let vals: Vec<Value> = spells
+                            .iter()
+                            .filter_map(|v| v.as_u64())
+                            .map(Value::from)
+                            .collect();
                         boss_obj.insert(
                             "spell_ids".to_string(),
                             field(Value::Array(vals), "override", "high", true),
@@ -316,7 +320,11 @@ fn apply_overrides(mut map: Value, overrides: Option<Value>) -> (Value, usize) {
                         applied += 1;
                     }
                     if let Some(npcs) = ov.get("npc_ids").and_then(|v| v.as_array()) {
-                        let vals: Vec<Value> = npcs.iter().filter_map(|v| v.as_u64()).map(Value::from).collect();
+                        let vals: Vec<Value> = npcs
+                            .iter()
+                            .filter_map(|v| v.as_u64())
+                            .map(Value::from)
+                            .collect();
                         boss_obj.insert(
                             "npc_ids".to_string(),
                             field(Value::Array(vals), "override", "high", true),
@@ -397,13 +405,18 @@ pub fn generate_wow_data_map(data_dir: &Path) -> Result<(Value, WowDataMapStats)
         let mut fallback_instances: Vec<&Value> = instances
             .iter()
             .filter(|instance| {
-                let id = instance.get("id").and_then(|v| v.as_i64()).unwrap_or_default();
+                let id = instance
+                    .get("id")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or_default();
                 let instance_type = instance
                     .get("type")
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_ascii_lowercase();
-                id > 0 && instance_type == "dungeon" && (target_ids.is_empty() || target_ids.contains(&id))
+                id > 0
+                    && instance_type == "dungeon"
+                    && (target_ids.is_empty() || target_ids.contains(&id))
             })
             .collect();
 
@@ -424,7 +437,10 @@ pub fn generate_wow_data_map(data_dir: &Path) -> Result<(Value, WowDataMapStats)
                 continue;
             }
 
-            let dungeon_id = instance.get("id").and_then(|v| v.as_i64()).unwrap_or_default();
+            let dungeon_id = instance
+                .get("id")
+                .and_then(|v| v.as_i64())
+                .unwrap_or_default();
             let dungeon_name = instance
                 .get("name")
                 .and_then(|v| v.as_str())
@@ -507,7 +523,10 @@ pub fn generate_wow_data_map(data_dir: &Path) -> Result<(Value, WowDataMapStats)
 
     for dungeon in filtered {
         let mut warnings = Vec::new();
-        let dungeon_id = dungeon.get("id").and_then(|v| v.as_i64()).unwrap_or_default();
+        let dungeon_id = dungeon
+            .get("id")
+            .and_then(|v| v.as_i64())
+            .unwrap_or_default();
         let dungeon_name = dungeon
             .get("name")
             .and_then(|v| v.as_str())
@@ -676,8 +695,11 @@ pub fn generate_wow_data_map(data_dir: &Path) -> Result<(Value, WowDataMapStats)
 pub fn write_wow_data_map(data_dir: &Path) -> Result<WowDataMapStats, String> {
     let (map, stats) = generate_wow_data_map(data_dir)?;
     let out_path = data_dir.join(WOW_DATA_MAP_FILE);
-    fs::write(&out_path, serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("Failed to write {}: {}", out_path.display(), e))?;
+    fs::write(
+        &out_path,
+        serde_json::to_string_pretty(&map).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("Failed to write {}: {}", out_path.display(), e))?;
 
     println!(
         "wow-data-map: dungeons={}, bosses={}, unmatched_bosses={}, low_confidence_fields={}, overrides_applied={}",
@@ -702,7 +724,10 @@ mod tests {
     #[test]
     fn test_normalize_name() {
         assert_eq!(normalize_name("The Stonevault"), "the stonevault");
-        assert_eq!(normalize_name("Ara-Kara, City of Echoes"), "ara kara city of echoes");
+        assert_eq!(
+            normalize_name("Ara-Kara, City of Echoes"),
+            "ara kara city of echoes"
+        );
     }
 
     #[test]

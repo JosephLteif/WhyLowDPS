@@ -24,8 +24,10 @@ pub fn build_slot_candidates(
             .collect();
         let mut selected_identities: HashSet<String> =
             selected_uids.iter().map(|uid| uid_identity(uid)).collect();
-        let mut selected_core_keys: HashSet<String> =
-            selected_uids.iter().filter_map(|uid| uid_core_key(uid)).collect();
+        let mut selected_core_keys: HashSet<String> = selected_uids
+            .iter()
+            .filter_map(|uid| uid_core_key(uid))
+            .collect();
         if let Some(paired) = class_data::paired_slot(&slot_str) {
             if let Some(p_uids) = selected_items.get(paired) {
                 selected_identities.extend(p_uids.iter().map(|uid| uid_identity(uid)));

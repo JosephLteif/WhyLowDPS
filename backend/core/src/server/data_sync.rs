@@ -12,7 +12,6 @@ use tokio::sync::Mutex;
 
 use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 use crate::server::blizzard::BlizzardState;
-use crate::server::wow_data_map;
 use crate::storage::JobStorage;
 
 const IMAGE_CACHE_VERSION: &str = "bapi3";
@@ -1266,44 +1265,34 @@ pub async fn get_data_image(
         .body(bytes)
 }
 
-pub async fn get_wow_data_map(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
-    let use_wow_data_map = std::env::var("USE_WOW_DATA_MAP")
-        .ok()
-        .map(|v| v.eq_ignore_ascii_case("1") || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(cfg!(debug_assertions));
-
-    if !use_wow_data_map {
-        return HttpResponse::NotFound().json(json!({
-            "detail": "wow-data-map endpoint disabled by feature flag"
-        }));
-    }
-
-    let Some(root) = data_dir.get_ref().clone() else {
-        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
-    };
-
-    match wow_data_map::load_wow_data_map(&root) {
-        Ok(v) => HttpResponse::Ok().json(v),
-        Err(err) => HttpResponse::NotFound().json(json!({
-            "detail": err,
-            "hint": "Run data sync to generate wow-data-map.json"
-        })),
-    }
-}
-
 pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let runtime_base = root.join("zones-encounters-index.json");
-    let mut candidates = path_variants_with_json_alias(&runtime_base);
+    let file_name = "zones-encounters-index.json";
+    let mut candidates = Vec::new();
+
+    #[cfg(windows)]
+    if !cfg!(debug_assertions) {
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            candidates.extend(path_variants_with_json_alias(
+                &PathBuf::from(local_app_data)
+                    .join("WhyLowDps")
+                    .join("data")
+                    .join(file_name),
+            ));
+        }
+    }
+
+    let runtime_base = root.join(file_name);
+    candidates.extend(path_variants_with_json_alias(&runtime_base));
+
     if let Ok(catalog) = data_file_catalog() {
-        if let Some(entry) = catalog
-            .iter()
-            .find(|entry| entry.local_path == "zones-encounters-index.json")
-        {
-            candidates.extend(path_variants_with_json_alias(&resolve_catalog_path(&root, entry)));
+        if let Some(entry) = catalog.iter().find(|entry| entry.local_path == file_name) {
+            candidates.extend(path_variants_with_json_alias(&resolve_catalog_path(
+                &root, entry,
+            )));
         }
     }
     if let Some(exe_dir) = std::env::current_exe()
@@ -1311,19 +1300,16 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
     {
         candidates.extend(path_variants_with_json_alias(
-            &exe_dir.join("resources").join("zones-encounters-index.json"),
+            &exe_dir.join("resources").join(file_name),
         ));
         candidates.extend(path_variants_with_json_alias(
-            &exe_dir
-                .join("resources")
-                .join("data")
-                .join("zones-encounters-index.json"),
+            &exe_dir.join("resources").join("data").join(file_name),
         ));
     }
     candidates.extend(path_variants_with_json_alias(
         &Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../resources")
-            .join("zones-encounters-index.json"),
+            .join(file_name),
     ));
 
     let existing: Vec<PathBuf> = candidates.into_iter().filter(|p| p.exists()).collect();
@@ -2125,9 +2111,6 @@ async fn perform_sync(
         if runtime_file.exists() {
             crate::item_db::hydrate_runtime_metadata(&runtime_file);
         }
-        if let Err(err) = wow_data_map::write_wow_data_map(dir) {
-            eprintln!("wow-data-map generation warning: {}", err);
-        }
     }
 
     {
@@ -2467,9 +2450,6 @@ async fn perform_dungeon_sync(
         let runtime_file = dir.join("blizzard-runtime-data.json");
         if runtime_file.exists() {
             crate::item_db::hydrate_runtime_metadata(&runtime_file);
-        }
-        if let Err(err) = wow_data_map::write_wow_data_map(dir) {
-            eprintln!("wow-data-map generation warning: {}", err);
         }
     }
 

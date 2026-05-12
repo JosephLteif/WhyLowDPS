@@ -10,16 +10,16 @@ pub mod bonuses;
 pub mod crafting;
 pub mod enchants;
 pub mod loader;
-pub mod state;
 pub mod missives;
+pub mod state;
 pub mod upgrades;
 
 pub use state::CatalystTierItem;
 
 // Re-exports for convenience
 
-pub use enchants::*;
 pub use crafting::*;
+pub use enchants::*;
 pub use missives::*;
 pub use upgrades::*;
 
@@ -386,7 +386,11 @@ pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
         .cloned()
         .collect();
 
-    let latest_expansion = matching.iter().filter_map(|e| e.expansion).max().unwrap_or(0);
+    let latest_expansion = matching
+        .iter()
+        .filter_map(|e| e.expansion)
+        .max()
+        .unwrap_or(0);
     if latest_expansion > 0 {
         matching.retain(|e| e.expansion.unwrap_or(0) == latest_expansion);
     }

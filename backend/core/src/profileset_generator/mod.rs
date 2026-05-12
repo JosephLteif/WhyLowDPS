@@ -26,12 +26,13 @@ fn has_item_limit_only_blockers(
             spec,
         );
 
-        let passes_non_limit_checks = crate::profileset::validation::validate_unique_equipped(&gear_set)
-            && crate::profileset::validation::validate_vault_constraint(&gear_set)
-            && crate::profileset::validation::validate_weapon_constraint(&gear_set, spec)
-            && catalyst_charges.is_none_or(|c| {
-                crate::profileset::validation::validate_catalyst_constraint(&gear_set, c)
-            });
+        let passes_non_limit_checks =
+            crate::profileset::validation::validate_unique_equipped(&gear_set)
+                && crate::profileset::validation::validate_vault_constraint(&gear_set)
+                && crate::profileset::validation::validate_weapon_constraint(&gear_set, spec)
+                && catalyst_charges.is_none_or(|c| {
+                    crate::profileset::validation::validate_catalyst_constraint(&gear_set, c)
+                });
         if !passes_non_limit_checks {
             continue;
         }
@@ -174,8 +175,7 @@ pub fn generate_top_gear_input_with_talents(
                 .iter()
                 .map(|slot| pruned_slot_item_lists.get(slot).unwrap())
                 .collect();
-            let pruned_all_combos =
-                combinator::generate_cartesian_product(&pruned_option_lists);
+            let pruned_all_combos = combinator::generate_cartesian_product(&pruned_option_lists);
             let pruned_valid_combos = combinator::filter_valid_combos(
                 &pruned_all_combos,
                 &pruned_varying_slots,
@@ -203,7 +203,8 @@ pub fn generate_top_gear_input_with_talents(
     let consumable_scenarios = build_consumable_scenarios(consumables);
     let consumable_factor = consumable_scenarios.len().max(1);
     let total_combo_count =
-        calculate_total_profileset_count(gear_combo_count, effective_talents.len()) * consumable_factor;
+        calculate_total_profileset_count(gear_combo_count, effective_talents.len())
+            * consumable_factor;
 
     let limit = max_combos_override.unwrap_or(*MAX_COMBINATIONS);
     if total_combo_count > limit {
@@ -258,13 +259,37 @@ struct ConsumableScenario {
     temporary_enchant: String,
 }
 
-fn build_consumable_scenarios(consumables: Option<&TopGearConsumableMatrix>) -> Vec<ConsumableScenario> {
-    let Some(c) = consumables else { return Vec::new() };
-    let flasks = if c.flasks.is_empty() { vec![String::new()] } else { c.flasks.clone() };
-    let foods = if c.foods.is_empty() { vec![String::new()] } else { c.foods.clone() };
-    let potions = if c.potions.is_empty() { vec![String::new()] } else { c.potions.clone() };
-    let augmentations = if c.augmentations.is_empty() { vec![String::new()] } else { c.augmentations.clone() };
-    let temporary_enchants = if c.temporary_enchants.is_empty() { vec![String::new()] } else { c.temporary_enchants.clone() };
+fn build_consumable_scenarios(
+    consumables: Option<&TopGearConsumableMatrix>,
+) -> Vec<ConsumableScenario> {
+    let Some(c) = consumables else {
+        return Vec::new();
+    };
+    let flasks = if c.flasks.is_empty() {
+        vec![String::new()]
+    } else {
+        c.flasks.clone()
+    };
+    let foods = if c.foods.is_empty() {
+        vec![String::new()]
+    } else {
+        c.foods.clone()
+    };
+    let potions = if c.potions.is_empty() {
+        vec![String::new()]
+    } else {
+        c.potions.clone()
+    };
+    let augmentations = if c.augmentations.is_empty() {
+        vec![String::new()]
+    } else {
+        c.augmentations.clone()
+    };
+    let temporary_enchants = if c.temporary_enchants.is_empty() {
+        vec![String::new()]
+    } else {
+        c.temporary_enchants.clone()
+    };
 
     let mut out = Vec::new();
     for flask in &flasks {
@@ -329,7 +354,10 @@ fn apply_consumable_profilesets(
     for w in header_positions.windows(2) {
         let start = w[0];
         let end = w[1];
-        let Some(header_text) = lines[start].strip_prefix("### ").map(|s| s.trim().to_string()) else {
+        let Some(header_text) = lines[start]
+            .strip_prefix("### ")
+            .map(|s| s.trim().to_string())
+        else {
             continue;
         };
         let section_body = &lines[start + 1..end];
@@ -339,11 +367,6 @@ fn apply_consumable_profilesets(
             new_lines.extend(section_body.iter().cloned());
             continue;
         }
-
-        let combo_number = header_text
-            .strip_prefix("Combo ")
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(0);
 
         for scenario in scenarios {
             let new_combo_name = format!("Combo {}", next_combo_number);
@@ -355,13 +378,22 @@ fn apply_consumable_profilesets(
                 new_lines.push(body_line.replace(&old_token, &new_token));
             }
             if !scenario.flask.is_empty() {
-                new_lines.push(format!("profileset.\"{}\"+=flask={}", new_combo_name, scenario.flask));
+                new_lines.push(format!(
+                    "profileset.\"{}\"+=flask={}",
+                    new_combo_name, scenario.flask
+                ));
             }
             if !scenario.food.is_empty() {
-                new_lines.push(format!("profileset.\"{}\"+=food={}", new_combo_name, scenario.food));
+                new_lines.push(format!(
+                    "profileset.\"{}\"+=food={}",
+                    new_combo_name, scenario.food
+                ));
             }
             if !scenario.potion.is_empty() {
-                new_lines.push(format!("profileset.\"{}\"+=potion={}", new_combo_name, scenario.potion));
+                new_lines.push(format!(
+                    "profileset.\"{}\"+=potion={}",
+                    new_combo_name, scenario.potion
+                ));
             }
             if !scenario.augmentation.is_empty() {
                 new_lines.push(format!(
@@ -377,7 +409,10 @@ fn apply_consumable_profilesets(
             }
             new_lines.push(String::new());
 
-            let mut new_meta = combo_metadata.get(&header_text).cloned().unwrap_or_default();
+            let mut new_meta = combo_metadata
+                .get(&header_text)
+                .cloned()
+                .unwrap_or_default();
             writer::append_consumable_metadata(
                 &mut rebuilt_metadata,
                 &new_combo_name,
@@ -438,11 +473,7 @@ pub fn generate_droptimizer_input(
     }
 
     fn parse_first_numeric(value: &str) -> u64 {
-        let first = value
-            .split(['/', ':'])
-            .next()
-            .unwrap_or("")
-            .trim();
+        let first = value.split(['/', ':']).next().unwrap_or("").trim();
         first.parse::<u64>().unwrap_or(0)
     }
 
@@ -603,7 +634,8 @@ pub fn generate_droptimizer_input(
 
         for (slot, candidate_item) in candidates {
             if let Some(current_equipped) = equipped_gear.get(slot.as_str()) {
-                let (equipped_id, equipped_ilevel) = parse_equipped_item_id_ilevel(current_equipped);
+                let (equipped_id, equipped_ilevel) =
+                    parse_equipped_item_id_ilevel(current_equipped);
                 if equipped_id > 0
                     && equipped_id == candidate_item.item_id
                     && (candidate_item.ilevel <= 0 || equipped_ilevel >= candidate_item.ilevel)
@@ -618,7 +650,9 @@ pub fn generate_droptimizer_input(
                         .split(',')
                         .find_map(|p| p.trim().strip_prefix("id="))
                         .and_then(|raw| raw.trim().parse::<u64>().ok())
-                        .is_some_and(|equipped_id| equipped_id == candidate_item.item_id && equipped_id > 0)
+                        .is_some_and(|equipped_id| {
+                            equipped_id == candidate_item.item_id && equipped_id > 0
+                        })
                     {
                         continue;
                     }

@@ -55,8 +55,10 @@ impl CharacterInfo {
 
     pub fn can_use_offhand(&self) -> bool {
         match (self.class_name.as_deref(), self.spec.as_deref()) {
-            (Some(class_name), Some(spec_name)) => class_data::spec_weapon_profile(class_name, spec_name)
-                .is_some_and(|profile| profile.can_use_offhand || profile.can_use_shield),
+            (Some(class_name), Some(spec_name)) => {
+                class_data::spec_weapon_profile(class_name, spec_name)
+                    .is_some_and(|profile| profile.can_use_offhand || profile.can_use_shield)
+            }
             _ => false,
         }
     }

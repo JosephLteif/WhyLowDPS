@@ -5,7 +5,6 @@ mod character_profile_handlers;
 #[cfg(feature = "web")]
 mod data_provider;
 mod data_sync;
-mod wow_data_map;
 #[cfg(feature = "web")]
 pub mod dungeon_data;
 #[cfg(feature = "web")]
@@ -372,10 +371,6 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/data/files/{key}/content",
                     web::get().to(data_sync::get_data_file_content),
-                )
-                .route(
-                    "/api/data/wow-map",
-                    web::get().to(data_sync::get_wow_data_map),
                 )
                 .route(
                     "/api/data/wowhead-zones-index",

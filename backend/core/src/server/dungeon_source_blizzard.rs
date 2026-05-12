@@ -29,7 +29,6 @@ struct RaiderAffixDetail {
     wowhead_url: Option<String>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DungeonDetail {
     pub id: u32,

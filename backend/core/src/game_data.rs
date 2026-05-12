@@ -10,10 +10,9 @@ use crate::types::class_data;
 
 pub use crate::item_db::{
     apply_copy_enchants, apply_copy_enchants_to_map, catalyst_currency_id, catalyst_tier_item,
-    get_currency_info, get_enchant_info, get_gem_info, get_inventory_type,
-    get_item_armor_subclass, get_item_info, get_item_limit_categories,
-    get_upgrade_cost_between, get_upgrade_options, get_upgrade_tracks,
-    is_catalyst_tier_item, list_embellishments_for_item, load, talent_tree,
+    get_currency_info, get_enchant_info, get_gem_info, get_inventory_type, get_item_armor_subclass,
+    get_item_info, get_item_limit_categories, get_upgrade_cost_between, get_upgrade_options,
+    get_upgrade_tracks, is_catalyst_tier_item, list_embellishments_for_item, load, talent_tree,
     upgrade_bonus_ids_to_max, upgrade_items_by_slot, upgrade_simc_input, CatalystTierItem,
     UpgradeOption,
 };
@@ -33,13 +32,17 @@ fn restrictions_match_active_specs(
     let has_spec_entries = item_restrictions.iter().any(|id| *id > 13);
     if has_spec_entries {
         // When explicit spec IDs exist, do not fall back to class IDs.
-        return !allowed_specs.is_empty() && allowed_specs.iter().any(|s| item_restrictions.contains(s));
+        return !allowed_specs.is_empty()
+            && allowed_specs.iter().any(|s| item_restrictions.contains(s));
     }
 
     allowed_class_id.is_some_and(|cid| item_restrictions.contains(&cid))
 }
 
-fn item_matches_primary_stats(item: &crate::types::GameItem, allowed_primary: &HashSet<u64>) -> bool {
+fn item_matches_primary_stats(
+    item: &crate::types::GameItem,
+    allowed_primary: &HashSet<u64>,
+) -> bool {
     if allowed_primary.is_empty() {
         return true;
     }
@@ -143,8 +146,14 @@ fn drop_value_dedupe_key(slot: &str, item: &Value) -> String {
 }
 
 fn drop_value_score(item: &Value) -> i64 {
-    let quality = item.get("quality").and_then(|v| v.as_i64()).unwrap_or_default();
-    let ilevel = item.get("ilevel").and_then(|v| v.as_i64()).unwrap_or_default();
+    let quality = item
+        .get("quality")
+        .and_then(|v| v.as_i64())
+        .unwrap_or_default();
+    let ilevel = item
+        .get("ilevel")
+        .and_then(|v| v.as_i64())
+        .unwrap_or_default();
     let can_catalyst = item
         .get("can_catalyst")
         .and_then(|v| v.as_bool())
@@ -219,10 +228,7 @@ fn finalize_slot_map(
 
     for &slot in class_data::SLOT_DISPLAY_ORDER {
         if let Some(slot_items) = by_slot.remove(slot) {
-            let mut values: Vec<Value> = slot_items
-                .into_values()
-                .map(|(_, item)| item)
-                .collect();
+            let mut values: Vec<Value> = slot_items.into_values().map(|(_, item)| item).collect();
             values.sort_by(|a, b| {
                 b.get("ilevel")
                     .and_then(|v| v.as_u64())
@@ -234,10 +240,7 @@ fn finalize_slot_map(
     }
 
     for (slot, slot_items) in by_slot {
-        let mut values: Vec<Value> = slot_items
-            .into_values()
-            .map(|(_, item)| item)
-            .collect();
+        let mut values: Vec<Value> = slot_items.into_values().map(|(_, item)| item).collect();
         values.sort_by(|a, b| {
             b.get("ilevel")
                 .and_then(|v| v.as_u64())
@@ -334,15 +337,14 @@ pub fn get_instance_drops(
     } else {
         HashSet::new()
     };
-    let main_spec_primary_stats: HashSet<u64> = if let (Some(cn), Some(main_spec)) =
-        (class_name, active_spec_names.first().copied())
-    {
-        class_data::spec_weapon_profile(cn, main_spec)
-            .map(|profile| profile.primary_stats.into_iter().collect())
-            .unwrap_or_default()
-    } else {
-        HashSet::new()
-    };
+    let main_spec_primary_stats: HashSet<u64> =
+        if let (Some(cn), Some(main_spec)) = (class_name, active_spec_names.first().copied()) {
+            class_data::spec_weapon_profile(cn, main_spec)
+                .map(|profile| profile.primary_stats.into_iter().collect())
+                .unwrap_or_default()
+        } else {
+            HashSet::new()
+        };
 
     let instance_name = instance
         .get("name")
@@ -627,7 +629,8 @@ pub fn get_instance_drops(
                     || encounter_lower.contains("alchemy")
                     || encounter_lower.contains("enchanting");
 
-                let is_pvp_crafted = is_profession_source && (item.name.contains("Competitor") || source_type_lower.contains("pvp"));
+                let is_pvp_crafted = is_profession_source
+                    && (item.name.contains("Competitor") || source_type_lower.contains("pvp"));
 
                 if is_profession_source && !is_pvp_crafted {
                     diff_info.clear();
@@ -635,7 +638,9 @@ pub fn get_instance_drops(
                     for diff in &["normal", "heroic", "mythic"] {
                         if let Some(track) = item_db::difficulty_track_name(diff) {
                             let effective_level = upgrade_lvl.unwrap_or(1);
-                            if let Some(&(ilvl, bonus_id, _)) = tracks.get(&(track.clone(), effective_level, tm)) {
+                            if let Some(&(ilvl, bonus_id, _)) =
+                                tracks.get(&(track.clone(), effective_level, tm))
+                            {
                                 diff_info.insert(
                                     diff.to_string(),
                                     serde_json::json!({
@@ -745,7 +750,12 @@ pub fn get_instance_drops(
                     } else {
                         // In Retail, Epic+ (Quality 4+) or Jewelry always have 2 stats.
                         // Competitor's gear and high-ilevel profession gear also often have 2.
-                        missive_count = if inv_type == 2 || inv_type == 11 || item.quality >= 4 || item.name.contains("Competitor") || item.base_ilevel.unwrap_or(0) >= 200 {
+                        missive_count = if inv_type == 2
+                            || inv_type == 11
+                            || item.quality >= 4
+                            || item.name.contains("Competitor")
+                            || item.base_ilevel.unwrap_or(0) >= 200
+                        {
                             2
                         } else {
                             1
@@ -855,11 +865,18 @@ fn get_catalyst_drops(
             let mut new_arr = Vec::new();
             for item in arr.drain(..) {
                 let mut obj = item.as_object().unwrap().clone();
-                if obj.get("can_catalyst").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    let inv_type = obj.get("inventory_type").and_then(|v| v.as_u64()).unwrap_or(0);
+                if obj
+                    .get("can_catalyst")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
+                    let inv_type = obj
+                        .get("inventory_type")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
                     if let Some(tier_info) = item_db::catalyst_tier_item(class_id, inv_type) {
                         obj.insert("item_id".to_string(), serde_json::json!(tier_info.item_id));
-                        
+
                         if let Some(info) = item_db::get_item_info(tier_info.item_id, None) {
                             obj.insert("name".to_string(), serde_json::json!(info.name));
                             obj.insert("icon".to_string(), serde_json::json!(info.icon));
@@ -868,10 +885,10 @@ fn get_catalyst_drops(
                             obj.insert("name".to_string(), serde_json::json!(tier_info.name));
                             obj.insert("icon".to_string(), serde_json::json!(tier_info.icon));
                         }
-                        
+
                         obj.insert("is_catalyst".to_string(), serde_json::json!(true));
                         obj.insert("can_catalyst".to_string(), serde_json::json!(false));
-                        
+
                         new_arr.push(serde_json::Value::Object(obj));
                     }
                 }
@@ -879,9 +896,9 @@ fn get_catalyst_drops(
             *arr = new_arr;
         }
     }
-    
+
     raid_drops.retain(|_, v| v.as_array().map_or(false, |arr| !arr.is_empty()));
-    
+
     if raid_drops.is_empty() {
         None
     } else {

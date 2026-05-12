@@ -8,6 +8,278 @@ use crate::addon_parser;
 use crate::game_data;
 use crate::gear_resolver;
 
+fn read_runtime_array(root: Option<&Path>, file_names: &[&str]) -> Option<Vec<Value>> {
+    let root = root?;
+    for file_name in file_names {
+        let path = root.join(file_name);
+        let Ok(file) = std::fs::File::open(path) else {
+            continue;
+        };
+        if let Ok(values) = serde_json::from_reader(std::io::BufReader::new(file)) {
+            return Some(values);
+        }
+    }
+    None
+}
+
+fn enchant_name(entry: &Value) -> String {
+    entry
+        .get("itemName")
+        .and_then(|v| v.as_str())
+        .or_else(|| entry.get("displayName").and_then(|v| v.as_str()))
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn enchant_icon(entry: &Value) -> String {
+    entry
+        .get("itemIcon")
+        .and_then(|v| v.as_str())
+        .or_else(|| entry.get("spellIcon").and_then(|v| v.as_str()))
+        .unwrap_or("inv_misc_questionmark")
+        .to_string()
+}
+
+fn enchant_info_from_files(root: Option<&Path>, enchant_id: u64) -> Option<Value> {
+    read_runtime_array(root, &["enchantments.json", "enchantments-all.json"])?
+        .into_iter()
+        .find(|entry| {
+            entry.get("id").and_then(|v| v.as_u64()) == Some(enchant_id)
+                || entry.get("itemId").and_then(|v| v.as_u64()) == Some(enchant_id)
+        })
+        .map(|entry| {
+            json!({
+                "enchant_id": enchant_id,
+                "name": enchant_name(&entry),
+                "icon": enchant_icon(&entry),
+                "item_id": entry.get("itemId").and_then(|v| v.as_u64()).unwrap_or(0),
+                "quality": entry.get("quality").and_then(|v| v.as_u64()).unwrap_or(3),
+            })
+        })
+}
+
+fn gem_info_from_files(root: Option<&Path>, gem_id: u64) -> Option<Value> {
+    if let Some(gems) = read_runtime_array(root, &["gems.json"]) {
+        if let Some(entry) = gems
+            .into_iter()
+            .find(|entry| entry.get("id").and_then(|v| v.as_u64()) == Some(gem_id))
+        {
+            return Some(json!({
+                "gem_id": gem_id,
+                "name": entry.get("name").and_then(|v| v.as_str()).unwrap_or_default(),
+                "icon": entry.get("icon").and_then(|v| v.as_str()).unwrap_or("inv_misc_questionmark"),
+                "quality": entry.get("quality").and_then(|v| v.as_u64()).unwrap_or(3),
+            }));
+        }
+    }
+
+    read_runtime_array(root, &["enchantments.json", "enchantments-all.json"])?
+        .into_iter()
+        .find(|entry| {
+            entry.get("itemId").and_then(|v| v.as_u64()) == Some(gem_id)
+                || entry.get("id").and_then(|v| v.as_u64()) == Some(gem_id)
+        })
+        .map(|entry| {
+            json!({
+                "gem_id": gem_id,
+                "name": enchant_name(&entry),
+                "icon": enchant_icon(&entry),
+                "quality": entry.get("quality").and_then(|v| v.as_u64()).unwrap_or(3),
+            })
+        })
+}
+
+fn list_gems_from_files(root: Option<&Path>) -> Option<Vec<Value>> {
+    if let Some(enchantments) =
+        read_runtime_array(root, &["enchantments.json", "enchantments-all.json"])
+    {
+        let current_expansion = enchantments
+            .iter()
+            .filter(|entry| entry.get("slot").and_then(|v| v.as_str()) == Some("socket"))
+            .filter(|entry| {
+                entry
+                    .get("socketType")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("PRISMATIC")
+                    == "PRISMATIC"
+            })
+            .filter_map(|entry| entry.get("expansion").and_then(|v| v.as_u64()))
+            .max()
+            .unwrap_or(0);
+        let mut by_item_id: HashMap<u64, Value> = HashMap::new();
+        for entry in enchantments {
+            if entry.get("slot").and_then(|v| v.as_str()) != Some("socket") {
+                continue;
+            }
+            if entry
+                .get("socketType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("PRISMATIC")
+                != "PRISMATIC"
+            {
+                continue;
+            }
+            if current_expansion > 0
+                && entry.get("expansion").and_then(|v| v.as_u64()) != Some(current_expansion)
+            {
+                continue;
+            }
+            let item_id = entry
+                .get("itemId")
+                .and_then(|v| v.as_u64())
+                .or_else(|| entry.get("id").and_then(|v| v.as_u64()))
+                .unwrap_or(0);
+            if item_id == 0 {
+                continue;
+            }
+            let candidate = json!({
+                "id": entry.get("id").and_then(|v| v.as_u64()).unwrap_or(item_id),
+                "item_id": item_id,
+                "name": enchant_name(&entry),
+                "icon": enchant_icon(&entry),
+                "quality": entry.get("quality").and_then(|v| v.as_u64()).unwrap_or(3),
+                "craftingQuality": entry.get("craftingQuality").and_then(|v| v.as_u64()),
+                "expansion": entry.get("expansion").and_then(|v| v.as_u64()),
+                "socketType": entry.get("socketType").and_then(|v| v.as_str()),
+            });
+            let candidate_score = candidate
+                .get("quality")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0)
+                * 10
+                + candidate
+                    .get("craftingQuality")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+            let existing_score = by_item_id
+                .get(&item_id)
+                .and_then(|existing| {
+                    Some(
+                        existing
+                            .get("quality")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0)
+                            * 10
+                            + existing
+                                .get("craftingQuality")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0),
+                    )
+                })
+                .unwrap_or(0);
+            if candidate_score > existing_score {
+                by_item_id.insert(item_id, candidate);
+            }
+        }
+        if !by_item_id.is_empty() {
+            let mut values: Vec<Value> = by_item_id.into_values().collect();
+            values.sort_by(|a, b| {
+                a.get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .cmp(b.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+            });
+            return Some(values);
+        }
+    }
+
+    let gems = read_runtime_array(root, &["gems.json"])?;
+    let current_expansion = gems
+        .iter()
+        .filter_map(|entry| entry.get("expansion").and_then(|v| v.as_u64()))
+        .max()
+        .unwrap_or(0);
+    let mut values: Vec<Value> = gems
+        .into_iter()
+        .filter(|entry| {
+            current_expansion == 0
+                || entry.get("expansion").and_then(|v| v.as_u64()) == Some(current_expansion)
+        })
+        .map(|entry| {
+            let item_id = entry.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+            json!({
+                "id": item_id,
+                "item_id": item_id,
+                "name": entry.get("name").and_then(|v| v.as_str()).unwrap_or_default(),
+                "icon": entry.get("icon").and_then(|v| v.as_str()).unwrap_or("inv_misc_questionmark"),
+                "quality": entry.get("quality").and_then(|v| v.as_u64()).unwrap_or(3),
+                "craftingQuality": entry.get("craftingQuality").and_then(|v| v.as_u64()),
+                "expansion": entry.get("expansion").and_then(|v| v.as_u64()),
+                "socketType": entry.get("socket").and_then(|v| v.as_str()),
+            })
+        })
+        .collect();
+    values.sort_by(|a, b| {
+        a.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .cmp(b.get("name").and_then(|v| v.as_str()).unwrap_or(""))
+    });
+    Some(values)
+}
+
+fn list_enchants_for_slot_from_files(root: Option<&Path>, inv_type: u64) -> Option<Vec<Value>> {
+    let mask = 1u64 << inv_type;
+    let mut matching: Vec<Value> =
+        read_runtime_array(root, &["enchantments.json", "enchantments-all.json"])?
+            .into_iter()
+            .filter(|entry| entry.get("slot").and_then(|v| v.as_str()) != Some("socket"))
+            .filter(|entry| {
+                let Some(reqs) = entry.get("equipRequirements") else {
+                    return false;
+                };
+                let type_mask = reqs
+                    .get("invTypeMask")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                if type_mask == 0 {
+                    let item_class = reqs.get("itemClass").and_then(|v| v.as_u64()).unwrap_or(0);
+                    if inv_type == 13 || inv_type == 17 || inv_type == 21 || inv_type == 22 {
+                        return item_class == 2;
+                    }
+                    return false;
+                }
+                (type_mask & mask) != 0
+            })
+            .collect();
+
+    let latest_expansion = matching
+        .iter()
+        .filter_map(|entry| entry.get("expansion").and_then(|v| v.as_u64()))
+        .max()
+        .unwrap_or(0);
+    if latest_expansion > 0 {
+        matching.retain(|entry| {
+            entry.get("expansion").and_then(|v| v.as_u64()) == Some(latest_expansion)
+        });
+    }
+
+    Some(
+        matching
+            .into_iter()
+            .map(|entry| {
+                let id = entry.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                json!({
+                    "id": id,
+                    "enchant_id": id,
+                    "name": enchant_name(&entry),
+                    "displayName": entry.get("displayName").cloned(),
+                    "baseDisplayName": entry.get("baseDisplayName").cloned(),
+                    "categoryName": entry.get("categoryName").cloned(),
+                    "itemId": entry.get("itemId").cloned(),
+                    "itemName": entry.get("itemName").cloned(),
+                    "itemIcon": entry.get("itemIcon").cloned(),
+                    "spellIcon": entry.get("spellIcon").cloned(),
+                    "quality": entry.get("quality").and_then(|v| v.as_u64()).unwrap_or(3),
+                    "expansion": entry.get("expansion").cloned(),
+                    "craftingQuality": entry.get("craftingQuality").cloned(),
+                    "slot": entry.get("slot").cloned(),
+                })
+            })
+            .collect(),
+    )
+}
+
 fn current_season_label() -> String {
     crate::item_db::season_cfg()
         .get("season")
@@ -150,22 +422,36 @@ pub(super) async fn get_item_info_batch(req: web::Json<ItemInfoBatchRequest>) ->
     HttpResponse::Ok().json(results)
 }
 
-pub(super) async fn get_enchant_info(path: web::Path<u64>) -> HttpResponse {
+pub(super) async fn get_enchant_info(
+    path: web::Path<u64>,
+    data_dir: web::Data<Option<std::path::PathBuf>>,
+) -> HttpResponse {
     let enchant_id = path.into_inner();
-    let result = game_data::get_enchant_info(enchant_id).unwrap_or_else(
-        || json!({"enchant_id": enchant_id, "name": "", "icon": "", "item_id": 0, "quality": 3}),
-    );
+    let root = data_dir.get_ref().as_deref();
+    let result = enchant_info_from_files(root, enchant_id)
+        .or_else(|| game_data::get_enchant_info(enchant_id))
+        .unwrap_or_else(|| {
+            json!({"enchant_id": enchant_id, "name": "", "icon": "", "item_id": 0, "quality": 3})
+        });
     HttpResponse::Ok().json(result)
 }
 
-pub(super) async fn get_gem_info(path: web::Path<u64>) -> HttpResponse {
+pub(super) async fn get_gem_info(
+    path: web::Path<u64>,
+    data_dir: web::Data<Option<std::path::PathBuf>>,
+) -> HttpResponse {
     let gem_id = path.into_inner();
-    let result = game_data::get_gem_info(gem_id)
+    let root = data_dir.get_ref().as_deref();
+    let result = gem_info_from_files(root, gem_id)
+        .or_else(|| game_data::get_gem_info(gem_id))
         .unwrap_or_else(|| json!({"gem_id": gem_id, "name": "", "icon": "", "quality": 3}));
     HttpResponse::Ok().json(result)
 }
 
-pub(super) async fn list_enchant_options(query: web::Query<EnchantOptionsQuery>) -> HttpResponse {
+pub(super) async fn list_enchant_options(
+    query: web::Query<EnchantOptionsQuery>,
+    data_dir: web::Data<Option<std::path::PathBuf>>,
+) -> HttpResponse {
     if !slot_has_active_expansion_enchants(&query) {
         return HttpResponse::Ok().json(Vec::<Value>::new());
     }
@@ -177,7 +463,9 @@ pub(super) async fn list_enchant_options(query: web::Query<EnchantOptionsQuery>)
                 .json(json!({"detail": "Invalid slot for enchantments"}))
         }
     };
-    let mut options = crate::item_db::list_enchants_for_slot(inv_type);
+    let root = data_dir.get_ref().as_deref();
+    let mut options = list_enchants_for_slot_from_files(root, inv_type)
+        .unwrap_or_else(|| crate::item_db::list_enchants_for_slot(inv_type));
     let is_death_knight = matches!(
         query.class_name.trim().to_ascii_lowercase().as_str(),
         "death_knight" | "deathknight" | "dk"
@@ -192,8 +480,11 @@ pub(super) async fn list_enchant_options(query: web::Query<EnchantOptionsQuery>)
     HttpResponse::Ok().json(options)
 }
 
-pub(super) async fn list_gem_options() -> HttpResponse {
-    let options = crate::item_db::list_gems();
+pub(super) async fn list_gem_options(
+    data_dir: web::Data<Option<std::path::PathBuf>>,
+) -> HttpResponse {
+    let root = data_dir.get_ref().as_deref();
+    let options = list_gems_from_files(root).unwrap_or_else(crate::item_db::list_gems);
     HttpResponse::Ok().json(options)
 }
 
@@ -246,12 +537,6 @@ pub(super) async fn list_consumable_options(
     query: web::Query<ConsumableOptionsQuery>,
     data_dir: web::Data<Option<std::path::PathBuf>>,
 ) -> HttpResponse {
-    fn read_runtime_array(root: Option<&Path>, file_name: &str) -> Option<Vec<Value>> {
-        let path = root?.join(file_name);
-        let file = std::fs::File::open(path).ok()?;
-        serde_json::from_reader(std::io::BufReader::new(file)).ok()
-    }
-
     fn normalize(raw: &[Value], main_hand_prefix: bool) -> Vec<Value> {
         raw.iter()
             .filter_map(|entry| {
@@ -289,15 +574,15 @@ pub(super) async fn list_consumable_options(
     }
 
     let root = data_dir.get_ref().as_deref();
-    let flasks_raw = read_runtime_array(root, "flasks.json")
+    let flasks_raw = read_runtime_array(root, &["flasks.json"])
         .unwrap_or_else(|| crate::item_db::flask_options_raw().as_ref().clone());
-    let foods_raw = read_runtime_array(root, "foods.json")
+    let foods_raw = read_runtime_array(root, &["foods.json"])
         .unwrap_or_else(|| crate::item_db::food_options_raw().as_ref().clone());
-    let potions_raw = read_runtime_array(root, "potions.json")
+    let potions_raw = read_runtime_array(root, &["potions.json"])
         .unwrap_or_else(|| crate::item_db::potion_options_raw().as_ref().clone());
-    let augments_raw = read_runtime_array(root, "augments.json")
+    let augments_raw = read_runtime_array(root, &["augments.json"])
         .unwrap_or_else(|| crate::item_db::augment_options_raw().as_ref().clone());
-    let temp_enchants_raw = read_runtime_array(root, "temp-enchants.json")
+    let temp_enchants_raw = read_runtime_array(root, &["temp-enchants.json"])
         .unwrap_or_else(|| crate::item_db::temp_enchant_options_raw().as_ref().clone());
 
     let mut flasks = normalize(&flasks_raw, false);

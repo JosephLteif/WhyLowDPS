@@ -8,7 +8,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
 import { useSimContext } from './components/SimContext';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
-import { simResultHref } from './lib/routes';
+import { characterHref, simResultHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
 import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
@@ -775,7 +775,10 @@ export default function Home() {
         })()}
         {mainCharacterOpen && trackedCharacters.length === 0 ? (
           <p className="text-sm text-zinc-500">No tracked characters yet. Open a character and click Track Character.</p>
-        ) : mainCharacterOpen && trackedCharacters.length > 0 ? (
+        ) : mainCharacterOpen && trackedCharacters.length > 0 ? (() => {
+          const active = trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
+          if (!active) return null;
+          return (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {trackedCharacters.map((c, idx) => (
@@ -920,13 +923,14 @@ export default function Home() {
               </div>
             )}
             <div className="flex flex-wrap gap-2">
-              <Link href={`/character/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
+              <Link href={characterHref(active.region, active.realm, active.name)} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
               <button onClick={() => openMainWorkflow('/quick-sim')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Run Sim</button>
               <button onClick={() => openMainWorkflow('/top-gear')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Top Gear</button>
-              <Link href={`/character/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
+              <Link href={characterHref(active.region, active.realm, active.name, 'vault')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
             </div>
           </div>
-        ) : null}
+          );
+        })() : null}
       </section>
 
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">

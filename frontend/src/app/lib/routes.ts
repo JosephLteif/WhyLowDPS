@@ -9,7 +9,7 @@ export function simResultHref(id: string): string {
   return isDesktopBuild ? `/sim/_/?id=${encodedId}` : `/sim/${encodedId}`;
 }
 
-export function characterHref(region: string, realm: string, name: string): string {
+export function characterHref(region: string, realm: string, name: string, tab?: string): string {
   const normalizedRegion = (region || 'us').toLowerCase();
   const normalizedRealm = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const normalizedName = name.toLowerCase();
@@ -20,8 +20,10 @@ export function characterHref(region: string, realm: string, name: string): stri
       realm: normalizedRealm,
       name: normalizedName,
     });
+    if (tab) query.set('tab', tab);
     return `/character/us/realm/name/?${query.toString()}`;
   }
 
-  return `/character/${encodeURIComponent(normalizedRegion)}/${encodeURIComponent(normalizedRealm)}/${encodeURIComponent(normalizedName)}`;
+  const path = `/character/${encodeURIComponent(normalizedRegion)}/${encodeURIComponent(normalizedRealm)}/${encodeURIComponent(normalizedName)}`;
+  return tab ? `${path}?tab=${encodeURIComponent(tab)}` : path;
 }

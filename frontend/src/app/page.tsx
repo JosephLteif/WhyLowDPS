@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, List, Database, Cpu } from 'lucide-react';
+import { Activity, List, Database, Cpu, Pencil, Plus } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
 import { useSimContext } from './components/SimContext';
@@ -11,9 +11,44 @@ import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultReward
 import { characterHref, simResultHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
 import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
+import { useDismissOnOutside } from './lib/useDismissOnOutside';
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
+const LOCAL_QUICK_LINKS_KEY = 'whylowdps_quick_links';
 const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
+
+type QuickLink = {
+  label: string;
+  href: string;
+};
+
+const DEFAULT_QUICK_LINKS: QuickLink[] = [
+  { label: 'New Quick Sim', href: '/quick-sim' },
+  { label: 'Top Gear', href: '/top-gear' },
+  { label: 'Drop Finder', href: '/drop-finder' },
+  { label: 'Simulation History', href: '/history' },
+];
+
+const QUICK_LINK_OPTIONS: QuickLink[] = [
+  { label: 'Dashboard', href: '/' },
+  { label: 'New Quick Sim', href: '/quick-sim' },
+  { label: 'Top Gear', href: '/top-gear' },
+  { label: 'Drop Finder', href: '/drop-finder' },
+  { label: 'Crest Upgrades', href: '/upgrade-compare' },
+  { label: 'Quick Weights', href: '/analysis/quick-weights' },
+  { label: 'Stat Plot', href: '/analysis/stat-plot' },
+  { label: 'Consumable Matrix', href: '/analysis/consumable-matrix' },
+  { label: 'Tier Slot Matrix', href: '/analysis/tier-slot-matrix' },
+  { label: 'Trinkets', href: '/upgrade/trinkets' },
+  { label: 'Dungeons', href: '/dungeons' },
+  { label: 'Raids', href: '/raids' },
+  { label: 'Routes', href: '/dungeon-routes' },
+  { label: 'Simulation History', href: '/history' },
+  { label: 'My Characters', href: '/characters' },
+  { label: 'Wishlist', href: '/wishlist' },
+  { label: 'Talent Playground', href: '/talent-playground' },
+  { label: 'Settings', href: '/settings' },
+];
 
 type SimStatus = SimSummary['status'];
 
@@ -275,7 +310,11 @@ export default function Home() {
   const [draggedTrackedIndex, setDraggedTrackedIndex] = useState<number | null>(null);
   const [dragOverTrackedIndex, setDragOverTrackedIndex] = useState<number | null>(null);
   const [dragPointer, setDragPointer] = useState<{ x: number; y: number; offsetX: number; offsetY: number; width: number; label: string; color: string } | null>(null);
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>(DEFAULT_QUICK_LINKS);
+  const [quickLinksEditMode, setQuickLinksEditMode] = useState(false);
+  const [showQuickLinkAddMenu, setShowQuickLinkAddMenu] = useState(false);
   const draggedTrackedIndexRef = useRef<number | null>(null);
+  const quickLinkAddMenuRef = useRef<HTMLDivElement | null>(null);
   const pendingTrackedRefreshRef = useRef(false);
   const pendingDragRef = useRef<{
     idx: number;
@@ -303,6 +342,22 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data.');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_QUICK_LINKS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const optionsByHref = new Map(QUICK_LINK_OPTIONS.map((link) => [link.href, link]));
+      const links = parsed
+        .map((link) => optionsByHref.get(String(link?.href || '').trim()))
+        .filter((link): link is QuickLink => Boolean(link));
+      setQuickLinks(links.length > 0 ? links : DEFAULT_QUICK_LINKS);
+    } catch {
+      setQuickLinks(DEFAULT_QUICK_LINKS);
     }
   }, []);
 
@@ -459,6 +514,33 @@ export default function Home() {
     },
     [mainSimcInput, router, setSimcInput],
   );
+
+  const persistQuickLinks = useCallback((next: QuickLink[]) => {
+    setQuickLinks(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LOCAL_QUICK_LINKS_KEY, JSON.stringify(next));
+    }
+  }, []);
+
+  const addableQuickLinks = useMemo(() => {
+    const currentHrefs = new Set(quickLinks.map((link) => link.href));
+    return QUICK_LINK_OPTIONS.filter((link) => !currentHrefs.has(link.href));
+  }, [quickLinks]);
+
+  const addQuickLink = useCallback((link: QuickLink) => {
+    if (quickLinks.some((item) => item.href === link.href)) return;
+    persistQuickLinks([...quickLinks, link]);
+    setShowQuickLinkAddMenu(false);
+  }, [persistQuickLinks, quickLinks]);
+
+  const removeQuickLink = useCallback(
+    (index: number) => {
+      persistQuickLinks(quickLinks.filter((_, i) => i !== index));
+    },
+    [persistQuickLinks, quickLinks],
+  );
+
+  useDismissOnOutside(quickLinkAddMenuRef, showQuickLinkAddMenu, () => setShowQuickLinkAddMenu(false));
 
   const persistTrackedCharacters = useCallback((next: { region: string; realm: string; name: string }[]) => {
     setTrackedCharacters(next);
@@ -972,32 +1054,87 @@ export default function Home() {
         </div>
 
         <div className="card p-4">
-          <h2 className="mb-3 text-sm font-semibold text-zinc-200">Quick Links</h2>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-zinc-200">Quick Links</h2>
+            <div className="flex items-center gap-2">
+              {quickLinksEditMode && (
+                <div ref={quickLinkAddMenuRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickLinkAddMenu((v) => !v)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                    title="Add quick link"
+                    aria-label="Add quick link"
+                  >
+                    <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                  {showQuickLinkAddMenu && (
+                    <div className="absolute right-0 z-50 mt-1 w-max min-w-48 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
+                      {addableQuickLinks.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-zinc-500">No links to add</div>
+                      ) : (
+                        addableQuickLinks.map((link) => (
+                          <button
+                            key={`add-quick-link-${link.href}`}
+                            type="button"
+                            onClick={() => addQuickLink(link)}
+                            className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
+                          >
+                            {link.label}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickLinksEditMode((v) => !v);
+                  setShowQuickLinkAddMenu(false);
+                }}
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                  quickLinksEditMode
+                    ? 'border-gold/60 bg-gold/15 text-gold'
+                    : 'border-white/15 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+                }`}
+                title={quickLinksEditMode ? 'Finish quick links edit mode' : 'Edit quick links'}
+                aria-label={quickLinksEditMode ? 'Finish quick links edit mode' : 'Edit quick links'}
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            </div>
+          </div>
           <div className="space-y-2">
-            <Link
-              href="/quick-sim"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              New Quick Sim
-            </Link>
-            <Link
-              href="/top-gear"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              Top Gear
-            </Link>
-            <Link
-              href="/drop-finder"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              Drop Finder
-            </Link>
-            <Link
-              href="/history"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              Simulation History
-            </Link>
+            {quickLinks.map((link, index) => {
+              const className =
+                'block min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface';
+              return (
+                <div key={`${link.href}-${index}`} className="flex items-center gap-2">
+                  <Link
+                    href={link.href}
+                    onClick={(e) => {
+                      if (quickLinksEditMode) e.preventDefault();
+                    }}
+                    className={className}
+                  >
+                    {link.label}
+                  </Link>
+                  {quickLinksEditMode && (
+                    <button
+                      type="button"
+                      onClick={() => removeQuickLink(index)}
+                      aria-label={`Remove ${link.label}`}
+                      title={`Remove ${link.label}`}
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-400 transition-colors hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300"
+                    >
+                      -
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

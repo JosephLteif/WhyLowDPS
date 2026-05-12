@@ -1,6 +1,7 @@
 use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::path::Path;
 
 use super::types::*;
 use crate::addon_parser;
@@ -242,8 +243,15 @@ pub(super) async fn list_upgrade_tracks() -> HttpResponse {
 }
 
 pub(super) async fn list_consumable_options(
-    _query: web::Query<ConsumableOptionsQuery>,
+    query: web::Query<ConsumableOptionsQuery>,
+    data_dir: web::Data<Option<std::path::PathBuf>>,
 ) -> HttpResponse {
+    fn read_runtime_array(root: Option<&Path>, file_name: &str) -> Option<Vec<Value>> {
+        let path = root?.join(file_name);
+        let file = std::fs::File::open(path).ok()?;
+        serde_json::from_reader(std::io::BufReader::new(file)).ok()
+    }
+
     fn normalize(raw: &[Value], main_hand_prefix: bool) -> Vec<Value> {
         raw.iter()
             .filter_map(|entry| {
@@ -280,24 +288,40 @@ pub(super) async fn list_consumable_options(
             .collect()
     }
 
-    let mut flasks = normalize(&crate::item_db::flask_options_raw(), false);
-    let mut foods = normalize(&crate::item_db::food_options_raw(), false);
-    let mut potions = normalize(&crate::item_db::potion_options_raw(), false);
-    let mut augments = normalize(&crate::item_db::augment_options_raw(), false);
-    let mut temp_enchants = normalize(&crate::item_db::temp_enchant_options_raw(), true);
+    let root = data_dir.get_ref().as_deref();
+    let flasks_raw = read_runtime_array(root, "flasks.json")
+        .unwrap_or_else(|| crate::item_db::flask_options_raw().as_ref().clone());
+    let foods_raw = read_runtime_array(root, "foods.json")
+        .unwrap_or_else(|| crate::item_db::food_options_raw().as_ref().clone());
+    let potions_raw = read_runtime_array(root, "potions.json")
+        .unwrap_or_else(|| crate::item_db::potion_options_raw().as_ref().clone());
+    let augments_raw = read_runtime_array(root, "augments.json")
+        .unwrap_or_else(|| crate::item_db::augment_options_raw().as_ref().clone());
+    let temp_enchants_raw = read_runtime_array(root, "temp-enchants.json")
+        .unwrap_or_else(|| crate::item_db::temp_enchant_options_raw().as_ref().clone());
+
+    let mut flasks = normalize(&flasks_raw, false);
+    let mut foods = normalize(&foods_raw, false);
+    let mut potions = normalize(&potions_raw, false);
+    let mut augments = normalize(&augments_raw, false);
+    let mut temp_enchants = normalize(&temp_enchants_raw, true);
 
     fn keep_expansion_only(items: &mut Vec<Value>, expansion: i64) {
         items.retain(|v| v.get("expansion").and_then(|e| e.as_i64()) == Some(expansion));
     }
 
-    let target_expansion = [&flasks, &foods, &potions, &augments, &temp_enchants]
-        .iter()
-        .flat_map(|items| {
-            items
-                .iter()
-                .filter_map(|v| v.get("expansion").and_then(|e| e.as_i64()))
-        })
-        .max();
+    let target_expansion = if query.expansion > 0 {
+        Some(query.expansion)
+    } else {
+        [&flasks, &foods, &potions, &augments, &temp_enchants]
+            .iter()
+            .flat_map(|items| {
+                items
+                    .iter()
+                    .filter_map(|v| v.get("expansion").and_then(|e| e.as_i64()))
+            })
+            .max()
+    };
 
     if let Some(expansion) = target_expansion {
         keep_expansion_only(&mut flasks, expansion);

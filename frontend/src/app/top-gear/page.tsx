@@ -172,6 +172,14 @@ export default function TopGearPage() {
       return [];
     }
   };
+  const filterMatrixTokens = (
+    tokens: string[],
+    options: { token?: string; key: string }[]
+  ): string[] => {
+    if (!options.length) return [];
+    const allowed = new Set(options.map((opt) => opt.token || opt.key).filter(Boolean));
+    return tokens.filter((token) => allowed.has(token));
+  };
 
   const hydrateConsumableMatrixFromStorage = useCallback(() => {
     try {
@@ -459,11 +467,26 @@ export default function TopGearPage() {
     (async () => {
       try {
         const useMatrix = isMultiConsumablesEnabledNow();
-        const storedFlasks = readStoredMatrixTokens('whylowdps_matrix_flasks');
-        const storedFoods = readStoredMatrixTokens('whylowdps_matrix_foods');
-        const storedPotions = readStoredMatrixTokens('whylowdps_matrix_potions');
-        const storedAugments = readStoredMatrixTokens('whylowdps_matrix_augments');
-        const storedTempEnchants = readStoredMatrixTokens('whylowdps_matrix_temp_enchants');
+        const storedFlasks = filterMatrixTokens(
+          readStoredMatrixTokens('whylowdps_matrix_flasks'),
+          flasks
+        );
+        const storedFoods = filterMatrixTokens(
+          readStoredMatrixTokens('whylowdps_matrix_foods'),
+          foods
+        );
+        const storedPotions = filterMatrixTokens(
+          readStoredMatrixTokens('whylowdps_matrix_potions'),
+          potions
+        );
+        const storedAugments = filterMatrixTokens(
+          readStoredMatrixTokens('whylowdps_matrix_augments'),
+          augments
+        );
+        const storedTempEnchants = filterMatrixTokens(
+          readStoredMatrixTokens('whylowdps_matrix_temp_enchants'),
+          tempEnchants
+        );
         const hasStoredMatrix =
           storedFlasks.length > 0 ||
           storedFoods.length > 0 ||
@@ -541,6 +564,11 @@ export default function TopGearPage() {
     matrixPotions,
     matrixAugments,
     matrixTempEnchants,
+    flasks,
+    foods,
+    potions,
+    augments,
+    tempEnchants,
     buildSelectedUidsJson,
     buildSubmitInput,
     buildItemsBySlotJson,
@@ -549,11 +577,26 @@ export default function TopGearPage() {
   const buildPayload = useCallback(
     () => {
       const useMatrix = isMultiConsumablesEnabledNow();
-      const storedFlasks = readStoredMatrixTokens('whylowdps_matrix_flasks');
-      const storedFoods = readStoredMatrixTokens('whylowdps_matrix_foods');
-      const storedPotions = readStoredMatrixTokens('whylowdps_matrix_potions');
-      const storedAugments = readStoredMatrixTokens('whylowdps_matrix_augments');
-      const storedTempEnchants = readStoredMatrixTokens('whylowdps_matrix_temp_enchants');
+      const storedFlasks = filterMatrixTokens(
+        readStoredMatrixTokens('whylowdps_matrix_flasks'),
+        flasks
+      );
+      const storedFoods = filterMatrixTokens(
+        readStoredMatrixTokens('whylowdps_matrix_foods'),
+        foods
+      );
+      const storedPotions = filterMatrixTokens(
+        readStoredMatrixTokens('whylowdps_matrix_potions'),
+        potions
+      );
+      const storedAugments = filterMatrixTokens(
+        readStoredMatrixTokens('whylowdps_matrix_augments'),
+        augments
+      );
+      const storedTempEnchants = filterMatrixTokens(
+        readStoredMatrixTokens('whylowdps_matrix_temp_enchants'),
+        tempEnchants
+      );
       const hasStoredMatrix =
         storedFlasks.length > 0 ||
         storedFoods.length > 0 ||
@@ -603,6 +646,11 @@ export default function TopGearPage() {
       matrixPotions,
       matrixAugments,
       matrixTempEnchants,
+      flasks,
+      foods,
+      potions,
+      augments,
+      tempEnchants,
       buildItemsBySlotJson,
     ]
   );
@@ -775,4 +823,3 @@ export default function TopGearPage() {
     </div>
   );
 }
-

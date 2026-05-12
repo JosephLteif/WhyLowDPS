@@ -9,6 +9,7 @@ import {
   POTION_OPTIONS,
   TEMP_ENCHANT_OPTIONS,
 } from './sim-options-catalog';
+import { API_URL } from './api';
 
 type ConsumableOptionsResponse = {
   flasks?: OptionEntry[];
@@ -46,13 +47,13 @@ function normalizeQuality(options: OptionEntry[]): OptionEntry[] {
   return options.map((opt) => ({ ...opt, craftingQuality: inferQuality(opt) }));
 }
 
-export function useConsumableOptions(_expansionMin = 11) {
+export function useConsumableOptions(expansion = 11) {
   const filterByExpansion = (options: OptionEntry[]): OptionEntry[] => {
-    if (!Number.isFinite(_expansionMin) || _expansionMin <= 0) return options;
+    if (!Number.isFinite(expansion) || expansion <= 0) return options;
     return options.filter((opt) => {
-      const expansion = opt.expansion;
-      if (typeof expansion !== 'number' || !Number.isFinite(expansion)) return true;
-      return expansion >= _expansionMin;
+      const optionExpansion = opt.expansion;
+      if (typeof optionExpansion !== 'number' || !Number.isFinite(optionExpansion)) return false;
+      return optionExpansion === expansion;
     });
   };
 
@@ -68,7 +69,11 @@ export function useConsumableOptions(_expansionMin = 11) {
 
   useEffect(() => {
     let canceled = false;
-    fetch(`/api/gear/consumable-options`)
+    const query =
+      Number.isFinite(expansion) && expansion > 0
+        ? `?expansion=${encodeURIComponent(String(expansion))}`
+        : '';
+    fetch(`${API_URL}/api/gear/consumable-options${query}`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json();
@@ -97,7 +102,7 @@ export function useConsumableOptions(_expansionMin = 11) {
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [expansion]);
 
   return { flasks, foods, potions, augments, tempEnchants };
 }

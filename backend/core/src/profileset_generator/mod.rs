@@ -368,11 +368,6 @@ fn apply_consumable_profilesets(
             continue;
         }
 
-        let combo_number = header_text
-            .strip_prefix("Combo ")
-            .and_then(|s| s.parse::<usize>().ok())
-            .unwrap_or(0);
-
         for scenario in scenarios {
             let new_combo_name = format!("Combo {}", next_combo_number);
             let old_token = format!("profileset.\"{}\"", header_text);

@@ -23,7 +23,6 @@ mod sim_handlers;
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
-mod wow_data_map;
 
 #[cfg(feature = "web")]
 use actix_cors::Cors;
@@ -372,10 +371,6 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/data/files/{key}/content",
                     web::get().to(data_sync::get_data_file_content),
-                )
-                .route(
-                    "/api/data/wow-map",
-                    web::get().to(data_sync::get_wow_data_map),
                 )
                 .route(
                     "/api/data/wowhead-zones-index",

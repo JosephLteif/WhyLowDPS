@@ -12,7 +12,6 @@ use tokio::sync::Mutex;
 
 use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
 use crate::server::blizzard::BlizzardState;
-use crate::server::wow_data_map;
 use crate::storage::JobStorage;
 
 const IMAGE_CACHE_VERSION: &str = "bapi3";
@@ -1266,31 +1265,6 @@ pub async fn get_data_image(
         .body(bytes)
 }
 
-pub async fn get_wow_data_map(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
-    let use_wow_data_map = std::env::var("USE_WOW_DATA_MAP")
-        .ok()
-        .map(|v| v.eq_ignore_ascii_case("1") || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(cfg!(debug_assertions));
-
-    if !use_wow_data_map {
-        return HttpResponse::NotFound().json(json!({
-            "detail": "wow-data-map endpoint disabled by feature flag"
-        }));
-    }
-
-    let Some(root) = data_dir.get_ref().clone() else {
-        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
-    };
-
-    match wow_data_map::load_wow_data_map(&root) {
-        Ok(v) => HttpResponse::Ok().json(v),
-        Err(err) => HttpResponse::NotFound().json(json!({
-            "detail": err,
-            "hint": "Run data sync to generate wow-data-map.json"
-        })),
-    }
-}
-
 pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
@@ -2137,9 +2111,6 @@ async fn perform_sync(
         if runtime_file.exists() {
             crate::item_db::hydrate_runtime_metadata(&runtime_file);
         }
-        if let Err(err) = wow_data_map::write_wow_data_map(dir) {
-            eprintln!("wow-data-map generation warning: {}", err);
-        }
     }
 
     {
@@ -2479,9 +2450,6 @@ async fn perform_dungeon_sync(
         let runtime_file = dir.join("blizzard-runtime-data.json");
         if runtime_file.exists() {
             crate::item_db::hydrate_runtime_metadata(&runtime_file);
-        }
-        if let Err(err) = wow_data_map::write_wow_data_map(dir) {
-            eprintln!("wow-data-map generation warning: {}", err);
         }
     }
 

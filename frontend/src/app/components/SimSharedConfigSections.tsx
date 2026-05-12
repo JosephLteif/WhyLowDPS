@@ -619,6 +619,74 @@ export function ConsumablesAndRaidBuffsOptions() {
     matrixAugments,
     matrixTempEnchants,
   ]);
+
+  useEffect(() => {
+    const allowed = (options: { token?: string; key: string }[]) =>
+      new Set(options.map((opt) => opt.token || opt.key).filter(Boolean));
+    const prune = (values: string[], options: { token?: string; key: string }[]) => {
+      if (!options.length) return values;
+      const allowedTokens = allowed(options);
+      return values.filter((value) => allowedTokens.has(value));
+    };
+    const clearStaleSingle = (
+      value: string,
+      options: { token?: string; key: string }[],
+      setValue: (next: string) => void
+    ) => {
+      if (!value || !options.length) return;
+      if (!allowed(options).has(value)) setValue('');
+    };
+
+    setMatrixFlasks((prev) => {
+      const next = prune(prev, flasks);
+      return arraysEqual(prev, next) ? prev : next;
+    });
+    setMatrixFoods((prev) => {
+      const next = prune(prev, foods);
+      return arraysEqual(prev, next) ? prev : next;
+    });
+    setMatrixPotions((prev) => {
+      const next = prune(prev, potions);
+      return arraysEqual(prev, next) ? prev : next;
+    });
+    setMatrixAugments((prev) => {
+      const next = prune(prev, augments);
+      return arraysEqual(prev, next) ? prev : next;
+    });
+    setMatrixTempEnchants((prev) => {
+      const next = prune(prev, tempEnchants);
+      return arraysEqual(prev, next) ? prev : next;
+    });
+
+    if (!lockSingleConsumableOptions) {
+      clearStaleSingle(consumableFlask, flasks, setConsumableFlask);
+      clearStaleSingle(consumableFood, foods, setConsumableFood);
+      clearStaleSingle(consumablePotion, potions, setConsumablePotion);
+      clearStaleSingle(consumableAugmentation, augments, setConsumableAugmentation);
+      clearStaleSingle(
+        consumableTemporaryEnchant,
+        tempEnchants,
+        setConsumableTemporaryEnchant
+      );
+    }
+  }, [
+    flasks,
+    foods,
+    potions,
+    augments,
+    tempEnchants,
+    consumableFlask,
+    consumableFood,
+    consumablePotion,
+    consumableAugmentation,
+    consumableTemporaryEnchant,
+    lockSingleConsumableOptions,
+    setConsumableFlask,
+    setConsumableFood,
+    setConsumablePotion,
+    setConsumableAugmentation,
+    setConsumableTemporaryEnchant,
+  ]);
   useEffect(() => {
     try {
       localStorage.setItem(collapseStorageKey, String(isCollapsed));

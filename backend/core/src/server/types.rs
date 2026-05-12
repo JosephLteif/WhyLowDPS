@@ -286,7 +286,10 @@ pub(super) struct BonusIdsQuery {
 }
 
 #[derive(Debug, Deserialize)]
-pub(super) struct ConsumableOptionsQuery {}
+pub(super) struct ConsumableOptionsQuery {
+    #[serde(default)]
+    pub expansion: i64,
+}
 
 #[derive(Debug, Deserialize)]
 pub(super) struct ResolveGearRequest {

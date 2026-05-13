@@ -15,6 +15,8 @@ import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 import { setSimAgainState } from '../lib/sim-return';
 import { parseCharacterInfo } from '../../lib/simc-parser';
+import type { Instance } from '../drop-finder/types';
+import { buildSourceTagLinks } from '../lib/source-navigation';
 import {
   WISHLIST_STORAGE_KEY,
   buildWishlistOwnerKey,
@@ -155,6 +157,7 @@ export default function WishlistPage() {
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
   const [bnetCharacters, setBnetCharacters] = useState<BnetCharacter[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
   const [groupBy, setGroupBy] = useState<'instance' | 'slot'>('instance');
   const [preparingTopGear, setPreparingTopGear] = useState(false);
   const [error, setError] = useState('');
@@ -231,6 +234,22 @@ export default function WishlistPage() {
       .catch(() => {
         if (cancelled) return;
         setBnetCharacters([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<Instance[]>(`${API_URL}/api/instances`)
+      .then((response) => {
+        if (cancelled) return;
+        setInstances(Array.isArray(response) ? response : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInstances([]);
       });
     return () => {
       cancelled = true;
@@ -542,11 +561,10 @@ export default function WishlistPage() {
                     item.bonus_ids ||
                     (item.wishlist_bonus_id ? [item.wishlist_bonus_id] : undefined);
                   const wowheadExtra = getWowheadData(itemBonusIds, itemIlvl);
-                  const sourceTags = [
-                    item.instance_name || '',
-                    item.source_type || '',
-                    item.encounter || 'Unknown Encounter',
-                  ].filter((tag) => tag.trim().length > 0);
+                  const sourceTags = buildSourceTagLinks(
+                    { ...item, encounter: item.encounter || 'Unknown Encounter' },
+                    instances
+                  );
 
                   return (
                     <div
@@ -572,12 +590,17 @@ export default function WishlistPage() {
                               </span>
                             ) : null}
                             {sourceTags.map((tag, index) => (
-                              <span
+                              <button
+                                type="button"
                                 key={`${item.item_id}:${itemIlvl || 0}:src:${index}`}
-                                className="inline-flex shrink-0 items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  router.push(tag.path);
+                                }}
+                                className="inline-flex shrink-0 items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200 transition-colors hover:bg-amber-500/20"
                               >
-                                {tag}
-                              </span>
+                                {tag.text}
+                              </button>
                             ))}
                           </div>
                         </div>

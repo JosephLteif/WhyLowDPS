@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
+import type { Instance } from '../../drop-finder/types';
 
 import RankingsHeader from './RankingsHeader';
 import ResultRow from './ResultRow';
@@ -27,6 +28,7 @@ interface RankedResultsProps {
   onLoadExactStats?: (result: TopGearResult) => void;
   onAddResultToWishlist?: (result: TopGearResult) => void;
   isResultWishlisted?: (result: TopGearResult) => boolean;
+  sourceInstances?: Instance[];
 }
 
 export default function RankedResults({
@@ -46,6 +48,7 @@ export default function RankedResults({
   onLoadExactStats,
   onAddResultToWishlist,
   isResultWishlisted,
+  sourceInstances = [],
 }: RankedResultsProps) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
@@ -54,50 +57,49 @@ export default function RankedResults({
   return (
     <div className="space-y-1">
       <RankingsHeader />
-      {visible.map((result, idx) => (
+      {visible.map((result, idx) =>
         (() => {
           const exact = getExactStatsStatus?.(result) || { status: 'idle' as const };
           return (
-        <ResultRow
-          key={result.name}
-          result={result}
-          rank={idx + 1}
-          maxDps={maxDps}
-          baseDps={baseDps}
-          equippedGear={equippedGear}
-          baseAvgIlevel={baseAvgIlevel}
-          isBest={idx === 0 && result.delta > 0}
-          isSelected={result.name === (selectedResultName || results[0]?.name)}
-          onSelect={() => onSelectResult(result.name)}
-          itemInfoMap={itemInfoMap}
-          enchantInfoMap={enchantInfoMap}
-          gemInfoMap={gemInfoMap}
-          currencies={currencies}
-          dropBaselineIlevelByKey={dropBaselineIlevelByKey}
-          exactStatsStatus={exact.status}
-          exactStatsLabel={exact.label}
-          onLoadExactStats={
-            onLoadExactStats ? () => onLoadExactStats(result) : undefined
-          }
-          exactStatsButtonLabel={
-            exact.status === 'loading'
-              ? 'Starting...'
-              : exact.status === 'ready' || exact.status === 'error'
-                ? 'Go to Sim'
-                : 'Start Sim'
-          }
-          exactStatsButtonVariant={
-            exact.status === 'ready' || exact.status === 'error' ? 'goto' : 'start'
-          }
-          exactStatsButtonDisabled={exact.status === 'loading'}
-          onAddToWishlist={
-            onAddResultToWishlist ? () => onAddResultToWishlist(result) : undefined
-          }
-          isWishlisted={isResultWishlisted ? isResultWishlisted(result) : false}
-        />
+            <ResultRow
+              key={result.name}
+              result={result}
+              rank={idx + 1}
+              maxDps={maxDps}
+              baseDps={baseDps}
+              equippedGear={equippedGear}
+              baseAvgIlevel={baseAvgIlevel}
+              isBest={idx === 0 && result.delta > 0}
+              isSelected={result.name === (selectedResultName || results[0]?.name)}
+              onSelect={() => onSelectResult(result.name)}
+              itemInfoMap={itemInfoMap}
+              enchantInfoMap={enchantInfoMap}
+              gemInfoMap={gemInfoMap}
+              currencies={currencies}
+              dropBaselineIlevelByKey={dropBaselineIlevelByKey}
+              exactStatsStatus={exact.status}
+              exactStatsLabel={exact.label}
+              onLoadExactStats={onLoadExactStats ? () => onLoadExactStats(result) : undefined}
+              exactStatsButtonLabel={
+                exact.status === 'loading'
+                  ? 'Starting...'
+                  : exact.status === 'ready' || exact.status === 'error'
+                    ? 'Go to Sim'
+                    : 'Start Sim'
+              }
+              exactStatsButtonVariant={
+                exact.status === 'ready' || exact.status === 'error' ? 'goto' : 'start'
+              }
+              exactStatsButtonDisabled={exact.status === 'loading'}
+              onAddToWishlist={
+                onAddResultToWishlist ? () => onAddResultToWishlist(result) : undefined
+              }
+              isWishlisted={isResultWishlisted ? isResultWishlisted(result) : false}
+              sourceInstances={sourceInstances}
+            />
           );
         })()
-      ))}
+      )}
       {hasMore && (
         <button
           onClick={() => setExpanded(!expanded)}

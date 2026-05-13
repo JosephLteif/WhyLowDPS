@@ -25,7 +25,7 @@ import {
   isWishlisted,
   removeFromWishlist,
 } from '../lib/wishlist';
-import type { DropItem } from '../drop-finder/types';
+import type { DropItem, Instance } from '../drop-finder/types';
 
 interface TopGearResultsProps {
   parentSimId?: string;
@@ -272,6 +272,7 @@ export default function TopGearResults({
 
   const hasGearOverview = equippedGear && Object.keys(equippedGear).length > 0;
   const [wishlistFeedback, setWishlistFeedback] = useState('');
+  const [sourceInstances, setSourceInstances] = useState<Instance[]>([]);
   const [wishlistRefreshTick, setWishlistRefreshTick] = useState(0);
   const wishlistOwnerKey = useMemo(
     () =>
@@ -287,6 +288,22 @@ export default function TopGearResults({
   const [exactStatsCache, setExactStatsCache] = useState<Record<string, ExactStatsCacheEntry>>({});
   const [cachedExactJobIds, setCachedExactJobIds] = useState<Record<string, string>>({});
   const warmStartedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<Instance[]>(`${API_URL}/api/instances`)
+      .then((response) => {
+        if (cancelled) return;
+        setSourceInstances(Array.isArray(response) ? response : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSourceInstances([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadExactStats = useCallback(
     async (result: TopGearResult) => {
@@ -713,6 +730,7 @@ export default function TopGearResults({
               currencies={currencies}
               framed={false}
               comparisonMode="result"
+              sourceInstances={sourceInstances}
             />
 
             {simulatedStats || generatedInput ? (
@@ -890,6 +908,7 @@ export default function TopGearResults({
                           enableWishlistActions ? () => toggleResultWishlist(result) : undefined
                         }
                         isWishlisted={enableWishlistActions ? isResultWishlisted(result) : false}
+                        sourceInstances={sourceInstances}
                       />
                     ))}
                   </div>
@@ -917,6 +936,7 @@ export default function TopGearResults({
             }}
             onAddResultToWishlist={enableWishlistActions ? toggleResultWishlist : undefined}
             isResultWishlisted={enableWishlistActions ? isResultWishlisted : undefined}
+            sourceInstances={sourceInstances}
           />
         )}
       </CollapsibleSection>

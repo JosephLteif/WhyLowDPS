@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type {
   EmbellishmentOption,
   EnchantInfo,
@@ -21,7 +22,10 @@ import {
   useGemInfo,
   useItemInfo,
 } from '../lib/useItemInfo';
+import { API_URL, fetchJson } from '../lib/api';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
+import type { Instance } from '../drop-finder/types';
+import { buildSourceTagLinks } from '../lib/source-navigation';
 import GearItemRow from './GearItemRow';
 import {
   ASCENDANT_VOIDCORE_BADGE_CLASS,
@@ -93,9 +97,15 @@ function getEmptySlotIcon(slot: string): string {
 function dropBaselineKey(item: GearItem): string {
   const slot = String(item.slot || '').toLowerCase();
   const itemId = Number(item.item_id || 0);
-  const sourceType = String(item.source_type || '').toLowerCase().trim();
-  const instance = String(item.instance_name || '').toLowerCase().trim();
-  const encounter = String(item.encounter || '').toLowerCase().trim();
+  const sourceType = String(item.source_type || '')
+    .toLowerCase()
+    .trim();
+  const instance = String(item.instance_name || '')
+    .toLowerCase()
+    .trim();
+  const encounter = String(item.encounter || '')
+    .toLowerCase()
+    .trim();
   return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
 }
 
@@ -119,6 +129,7 @@ interface GearOverviewProps {
   currencies?: Record<string, { id: number; name: string; icon: string }>;
   framed?: boolean;
   comparisonMode?: 'result' | 'provenance';
+  sourceInstances?: Instance[];
 }
 
 export default function GearOverview({
@@ -133,7 +144,28 @@ export default function GearOverview({
   currencies,
   framed = true,
   comparisonMode = 'provenance',
+  sourceInstances,
 }: GearOverviewProps) {
+  const [loadedSourceInstances, setLoadedSourceInstances] = useState<Instance[]>([]);
+  const effectiveSourceInstances = sourceInstances ?? loadedSourceInstances;
+
+  useEffect(() => {
+    if (sourceInstances) return;
+    let cancelled = false;
+    fetchJson<Instance[]>(`${API_URL}/api/instances`)
+      .then((response) => {
+        if (cancelled) return;
+        setLoadedSourceInstances(Array.isArray(response) ? response : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLoadedSourceInstances([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceInstances]);
+
   const allItemQueries = useMemo(() => {
     const seen = new Set<string>();
     const queries: ItemQuery[] = [];
@@ -253,7 +285,7 @@ export default function GearOverview({
         <img
           src={characterRenderUrl}
           alt=""
-          className="pointer-events-none absolute inset-0 mx-auto hidden h-[120%] w-auto -translate-y-[8%] object-contain opacity-26 md:block"
+          className="opacity-26 pointer-events-none absolute inset-0 mx-auto hidden h-[120%] w-auto -translate-y-[8%] object-contain md:block"
           onError={(e) => {
             (e.currentTarget as HTMLImageElement).style.display = 'none';
           }}
@@ -283,11 +315,14 @@ export default function GearOverview({
               characterClassName={characterClassName}
               enchantAvailabilityBySlot={enchantAvailabilityBySlot}
               embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+              sourceInstances={effectiveSourceInstances}
             />
           ))}
         </div>
 
-        <div className={`hidden md:grid ${characterRenderUrl ? 'md:grid-cols-[1fr_200px_1fr] lg:grid-cols-[1fr_230px_1fr] xl:grid-cols-[1fr_260px_1fr]' : 'md:grid-cols-2'} md:gap-x-4 lg:gap-x-6`}>
+        <div
+          className={`hidden md:grid ${characterRenderUrl ? 'md:grid-cols-[1fr_200px_1fr] lg:grid-cols-[1fr_230px_1fr] xl:grid-cols-[1fr_260px_1fr]' : 'md:grid-cols-2'} md:gap-x-4 lg:gap-x-6`}
+        >
           <div className="space-y-2">
             {GEAR_ORDER_LEFT.map((slot) => (
               <GearSlotRow
@@ -305,6 +340,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                sourceInstances={effectiveSourceInstances}
               />
             ))}
           </div>
@@ -327,6 +363,7 @@ export default function GearOverview({
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
                 reverse
+                sourceInstances={effectiveSourceInstances}
               />
             ))}
           </div>
@@ -334,7 +371,7 @@ export default function GearOverview({
 
         <div className="hidden md:flex md:justify-center">
           <div className="grid w-full max-w-4xl grid-cols-2 gap-6 pt-4">
-            <div className="justify-self-end w-full max-w-md">
+            <div className="w-full max-w-md justify-self-end">
               <GearSlotRow
                 slot="main_hand"
                 item={gear.main_hand}
@@ -350,9 +387,10 @@ export default function GearOverview({
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
                 reverse
+                sourceInstances={effectiveSourceInstances}
               />
             </div>
-            <div className="justify-self-start w-full max-w-md">
+            <div className="w-full max-w-md justify-self-start">
               <GearSlotRow
                 slot="off_hand"
                 item={gear.off_hand}
@@ -367,6 +405,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                sourceInstances={effectiveSourceInstances}
               />
             </div>
           </div>
@@ -391,6 +430,7 @@ export function GearSlotRow({
   enchantAvailabilityBySlot,
   embellishmentOptionsByItemId,
   reverse = false,
+  sourceInstances = [],
 }: {
   slot: string;
   item?: GearItem;
@@ -406,7 +446,9 @@ export function GearSlotRow({
   enchantAvailabilityBySlot: Record<string, boolean>;
   embellishmentOptionsByItemId: Record<number, EmbellishmentOption[]>;
   reverse?: boolean;
+  sourceInstances?: Instance[];
 }) {
+  const router = useRouter();
   if (!item || item.item_id <= 0) {
     return (
       <div className="rounded-lg">
@@ -503,16 +545,8 @@ export function GearSlotRow({
     icon?: string;
     href?: string;
     wowheadData?: string;
-  }> = [
-  ];
-  const sourceLabel = (() => {
-    if (item.encounter && item.instance_name) return `${item.instance_name}: ${item.encounter}`;
-    if (item.instance_name) return item.instance_name;
-    if (item.encounter) return item.encounter;
-    if (item.source_type) return item.source_type;
-    if (item.origin === 'vault') return 'Great Vault';
-    return '';
-  })();
+  }> = [];
+  const sourceTags = buildSourceTagLinks(item, sourceInstances);
   for (const gem of gems) {
     details.push({
       text: gem.name,
@@ -583,8 +617,12 @@ export function GearSlotRow({
   }
   const hasAscendantVoidcore =
     /(?:^|\s)mod:268552(?:\s|$)/i.test(String(item.source_type || '')) ||
-    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
-    String(item.name || '').toLowerCase().includes('ascendant');
+    String(item.source_type || '')
+      .toLowerCase()
+      .includes('ascendant_voidcore') ||
+    String(item.name || '')
+      .toLowerCase()
+      .includes('ascendant');
   if (hasAscendantVoidcore) {
     details.push({
       text: 'Ascendant Voidcore',
@@ -611,20 +649,34 @@ export function GearSlotRow({
         icon={icon}
         overline={
           <>
-            {upgradeState === 'upgrade' && sourceLabel ? (
-              <span className="rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200">
-                {sourceLabel}
-              </span>
-            ) : null}
+            {upgradeState === 'upgrade'
+              ? sourceTags.map((tag) => (
+                  <button
+                    key={`${tag.path}:${tag.text}`}
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      router.push(tag.path);
+                    }}
+                    className="rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200 transition-colors hover:bg-amber-500/20"
+                  >
+                    {tag.text}
+                  </button>
+                ))
+              : null}
             <span
               className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
                 upgradeState === 'upgrade'
-                  ? 'text-emerald-200 border-emerald-400/45 bg-emerald-500/12'
+                  ? 'bg-emerald-500/12 border-emerald-400/45 text-emerald-200'
                   : upgradeState === 'downgrade'
-                    ? 'text-red-200 border-red-400/45 bg-red-500/12'
-                    : 'text-zinc-200 border-zinc-500/40 bg-zinc-500/10'
+                    ? 'bg-red-500/12 border-red-400/45 text-red-200'
+                    : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'
               }`}
-              title={levelChanged ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}` : undefined}
+              title={
+                levelChanged
+                  ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
+                  : undefined
+              }
             >
               iLvl {item.ilevel || 0}
             </span>

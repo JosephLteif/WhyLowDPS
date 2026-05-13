@@ -3,6 +3,7 @@ import { specDisplayName } from '../../lib/types';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { getIconUrl } from '../../lib/useItemInfo';
+import type { Instance } from '../../drop-finder/types';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import ItemTag from './ItemTag';
 import {
@@ -15,7 +16,9 @@ import {
 } from '../../lib/sim-options-catalog';
 
 function normalizeTierToken(input?: string): string | null {
-  const normalized = String(input || '').trim().toLowerCase();
+  const normalized = String(input || '')
+    .trim()
+    .toLowerCase();
   if (!normalized) return null;
   if (normalized.startsWith('explorer')) return 'Exp';
   if (normalized.startsWith('adventurer')) return 'Adv';
@@ -26,7 +29,11 @@ function normalizeTierToken(input?: string): string | null {
   return null;
 }
 
-function shortTierFromItem(item?: { upgrade?: string; tag?: string; source_type?: string }): string | null {
+function shortTierFromItem(item?: {
+  upgrade?: string;
+  tag?: string;
+  source_type?: string;
+}): string | null {
   if (!item) return null;
   const upgradeRaw = String(item.upgrade || '').trim();
   if (upgradeRaw) {
@@ -67,9 +74,15 @@ function shortTierFromItem(item?: { upgrade?: string; tag?: string; source_type?
 function dropBaselineKey(item: ResultItem): string {
   const slot = String(item.slot || '').toLowerCase();
   const itemId = Number(item.item_id || 0);
-  const sourceType = String(item.source_type || '').toLowerCase().trim();
-  const instance = String(item.instance_name || '').toLowerCase().trim();
-  const encounter = String(item.encounter || '').toLowerCase().trim();
+  const sourceType = String(item.source_type || '')
+    .toLowerCase()
+    .trim();
+  const instance = String(item.instance_name || '')
+    .toLowerCase()
+    .trim();
+  const encounter = String(item.encounter || '')
+    .toLowerCase()
+    .trim();
   return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
 }
 
@@ -97,10 +110,17 @@ interface ResultRowProps {
   onAddToWishlist?: () => void;
   isWishlisted?: boolean;
   wishlistButtonDisabled?: boolean;
+  sourceInstances?: Instance[];
 }
 
 const CONSUMABLE_OPTION_BY_TOKEN: Record<string, OptionEntry> = Object.fromEntries(
-  [...FLASK_OPTIONS, ...FOOD_OPTIONS, ...POTION_OPTIONS, ...AUGMENT_RUNE_OPTIONS, ...TEMP_ENCHANT_OPTIONS]
+  [
+    ...FLASK_OPTIONS,
+    ...FOOD_OPTIONS,
+    ...POTION_OPTIONS,
+    ...AUGMENT_RUNE_OPTIONS,
+    ...TEMP_ENCHANT_OPTIONS,
+  ]
     .filter((opt) => opt.token)
     .map((opt) => [String(opt.token), opt])
 );
@@ -164,6 +184,7 @@ export default function ResultRow({
   onAddToWishlist,
   isWishlisted = false,
   wishlistButtonDisabled = false,
+  sourceInstances = [],
 }: ResultRowProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -184,7 +205,10 @@ export default function ResultRow({
   const consumableSetLabel = useMemo(() => {
     const meta = result.items.find((it) => {
       const row = it as unknown as { consumable_set?: string; heatmap_kind?: string };
-      return (row.consumable_set && row.consumable_set.trim().length > 0) || row.heatmap_kind === 'consumable';
+      return (
+        (row.consumable_set && row.consumable_set.trim().length > 0) ||
+        row.heatmap_kind === 'consumable'
+      );
     }) as (ResultItem & { consumable_set?: string; consumable_flask?: string }) | undefined;
     if (!meta) return '';
     if (meta.consumable_set && meta.consumable_set.trim().length > 0) return meta.consumable_set;
@@ -203,19 +227,21 @@ export default function ResultRow({
         consumable_temporary_enchant?: string;
       };
       return !!(
-        row.consumable_flask
-        || row.consumable_food
-        || row.consumable_potion
-        || row.consumable_augmentation
-        || row.consumable_temporary_enchant
+        row.consumable_flask ||
+        row.consumable_food ||
+        row.consumable_potion ||
+        row.consumable_augmentation ||
+        row.consumable_temporary_enchant
       );
-    }) as (ResultItem & {
-      consumable_flask?: string;
-      consumable_food?: string;
-      consumable_potion?: string;
-      consumable_augmentation?: string;
-      consumable_temporary_enchant?: string;
-    }) | undefined;
+    }) as
+      | (ResultItem & {
+          consumable_flask?: string;
+          consumable_food?: string;
+          consumable_potion?: string;
+          consumable_augmentation?: string;
+          consumable_temporary_enchant?: string;
+        })
+      | undefined;
     if (!meta) return [];
     const entries: Array<{ category: string; token: string }> = [
       { category: 'Flask', token: String(meta.consumable_flask || '').trim() },
@@ -377,7 +403,11 @@ export default function ResultRow({
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
     const onMouseDown = (e: MouseEvent) => {
-      if (contextMenuRef.current && e.target instanceof Node && contextMenuRef.current.contains(e.target)) {
+      if (
+        contextMenuRef.current &&
+        e.target instanceof Node &&
+        contextMenuRef.current.contains(e.target)
+      ) {
         return;
       }
       close();
@@ -433,7 +463,9 @@ export default function ResultRow({
             if (isEquipped || hasConsumableOnlyEquippedRow) {
               return (
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="text-[16px] font-semibold text-zinc-100">Currently Equipped</span>
+                  <span className="text-[16px] font-semibold text-zinc-100">
+                    Currently Equipped
+                  </span>
                   {talentBadge}
                   {consumableBadges.length > 0 ? (
                     <div className="basis-full pt-0.5">
@@ -442,11 +474,14 @@ export default function ResultRow({
                           const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
                           const label = consumableLabelFromToken(token, category);
                           const icon = opt?.icon
-                            ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
+                            ? getIconUrl(opt.icon) ||
+                              `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
                             : '';
                           const itemId = Number(opt?.itemId || 0);
-                          const tier = consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
-                          const tierLabel = tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
+                          const tier =
+                            consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
+                          const tierLabel =
+                            tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
                           const showTierSquare = tier > 0;
                           return (
                             <a
@@ -454,18 +489,28 @@ export default function ResultRow({
                               className="inline-flex items-center gap-1.5 rounded border border-gold/25 bg-gold/[0.07] px-1.5 py-0.5 text-[11px] text-gold/90"
                               title={`${category}: ${label}`}
                               data-wowhead={itemId > 0 ? `item=${itemId}` : undefined}
-                              href={itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined}
+                              href={
+                                itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined
+                              }
                               onClick={(e) => e.preventDefault()}
                             >
-                              {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
-                              <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
+                              {icon ? (
+                                <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" />
+                              ) : null}
+                              <span className="text-gold/85">
+                                {label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}
+                              </span>
                               {showTierSquare ? (
                                 tier === 1 ? (
-                                  <span className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}>
+                                  <span
+                                    className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}
+                                  >
                                     <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
                                   </span>
                                 ) : (
-                                  <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`} />
+                                  <span
+                                    className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`}
+                                  />
                                 )
                               ) : null}
                             </a>
@@ -484,7 +529,7 @@ export default function ResultRow({
 
             return (
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                {displayItems.map((it, i) => (
+                {displayItems.map((it, i) =>
                   (() => {
                     const state = itemReasonState[it.slot];
                     return (
@@ -500,10 +545,11 @@ export default function ResultRow({
                         ilevelHighlightClass={state?.ilevelHighlightClass}
                         gemChanged={state?.gemChanged}
                         enchantChanged={state?.enchantChanged}
+                        sourceInstances={sourceInstances}
                       />
                     );
                   })()
-                ))}
+                )}
                 {costsDisplay}
                 {talentBadge}
                 {consumableBadges.length > 0 ? (
@@ -513,11 +559,14 @@ export default function ResultRow({
                         const opt = CONSUMABLE_OPTION_BY_TOKEN[token];
                         const label = consumableLabelFromToken(token, category);
                         const icon = opt?.icon
-                          ? getIconUrl(opt.icon) || `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
+                          ? getIconUrl(opt.icon) ||
+                            `https://wow.zamimg.com/images/wow/icons/small/${opt.icon}.jpg`
                           : '';
                         const itemId = Number(opt?.itemId || 0);
-                        const tier = consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
-                        const tierLabel = tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
+                        const tier =
+                          consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
+                        const tierLabel =
+                          tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
                         const showTierSquare = tier > 0;
                         return (
                           <a
@@ -528,15 +577,23 @@ export default function ResultRow({
                             href={itemId > 0 ? `https://www.wowhead.com/item=${itemId}` : undefined}
                             onClick={(e) => e.preventDefault()}
                           >
-                            {icon ? <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" /> : null}
-                            <span className="text-gold/85">{label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}</span>
+                            {icon ? (
+                              <img src={icon} alt="" className="h-3.5 w-3.5 rounded-[2px]" />
+                            ) : null}
+                            <span className="text-gold/85">
+                              {label.replace(/\s*\((Gold|Silver|Bronze)\)\s*$/i, '')}
+                            </span>
                             {showTierSquare ? (
                               tier === 1 ? (
-                                <span className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}>
+                                <span
+                                  className={`inline-flex h-3 w-3 items-center justify-center rounded-[2px] border ${consumableCheckClass()}`}
+                                >
                                   <span className="h-1.5 w-1.5 rounded-[1px] bg-black/70" />
                                 </span>
                               ) : (
-                                <span className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`} />
+                                <span
+                                  className={`h-3 w-3 rounded-[2px] border ${consumableTierSquareClass(tierLabel)}`}
+                                />
                               )
                             ) : null}
                           </a>
@@ -546,7 +603,9 @@ export default function ResultRow({
                   </div>
                 ) : consumableSetLabel ? (
                   <div className="basis-full pt-0.5">
-                    <span className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">{consumableSetLabel}</span>
+                    <span className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">
+                      {consumableSetLabel}
+                    </span>
                   </div>
                 ) : null}
               </div>

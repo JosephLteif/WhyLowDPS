@@ -54,7 +54,6 @@ export default function SettingsPage() {
   const [performanceSaved, setPerformanceSaved] = useState(false);
   const {
     cacheSyncing,
-    cacheSyncProgress,
     cacheMessage,
     syncProgress,
     syncProgressPct,
@@ -500,7 +499,6 @@ export default function SettingsPage() {
           viewDataStates={viewDataStates}
           syncProgress={syncProgress}
           syncProgressPct={syncProgressPct}
-          cacheSyncProgress={cacheSyncProgress}
           cacheMessage={cacheMessage}
         />
       )}
@@ -553,4 +551,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

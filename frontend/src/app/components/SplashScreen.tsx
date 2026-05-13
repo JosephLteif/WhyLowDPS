@@ -7,6 +7,7 @@ import { useAuth } from './AuthContext';
 import { invoke } from '@tauri-apps/api/core';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { formatBytesDecimal, formatElapsedCompact, formatTransferSpeed } from '../lib/format';
+import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 
 interface SplashScreenProps {
   status: string;
@@ -112,6 +113,8 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden bg-zinc-950">
+      <DesktopWindowTitleBar className="absolute left-0 top-0 z-10 w-full" />
+
       {/* Background Glows */}
       <div className="absolute left-1/4 top-1/4 h-96 w-96 animate-pulse rounded-full bg-gold/10 blur-[120px]" />
       <div className="absolute bottom-1/4 right-1/4 h-96 w-96 animate-pulse rounded-full bg-gold-dark/10 blur-[120px] delay-1000" />

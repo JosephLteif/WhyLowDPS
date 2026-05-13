@@ -3,11 +3,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Maximize2, Minimize2, Minus, Menu, X } from 'lucide-react';
+import { ArrowLeft, Menu } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
-import { API_URL, fetchJsonCached, isDesktop } from '../lib/api';
+import { API_URL, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
+import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 
 type SearchCharacter = {
   realm: string;
@@ -29,7 +30,6 @@ export default function TopHeader() {
   const [characterRegion, setCharacterRegion] = useState('us');
   const [characterRealm, setCharacterRealm] = useState('');
   const [realmOptions, setRealmOptions] = useState<RealmOption[]>([]);
-  const [isMaximized, setIsMaximized] = useState(false);
 
   const handleLoginClick = async () => {
     const status = await checkCredentialsStatus();
@@ -53,32 +53,6 @@ export default function TopHeader() {
   const handleSidebarToggle = () => {
     window.dispatchEvent(new Event('whylowdps:toggle-sidebar'));
   };
-
-  const handleWindowAction = async (action: 'minimize' | 'maximize' | 'close') => {
-    if (!isDesktop) return;
-    const { getCurrentWindow } = await import('@tauri-apps/api/window');
-    const win = getCurrentWindow();
-    if (action === 'minimize') await win.minimize();
-    if (action === 'maximize') {
-      await win.toggleMaximize();
-      setIsMaximized(await win.isMaximized());
-    }
-    if (action === 'close') await win.close();
-  };
-
-  useEffect(() => {
-    if (!isDesktop) return;
-    let unlisten: (() => void) | undefined;
-    (async () => {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const win = getCurrentWindow();
-      setIsMaximized(await win.isMaximized());
-      unlisten = await win.onResized(async () => {
-        setIsMaximized(await win.isMaximized());
-      });
-    })();
-    return () => unlisten?.();
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,62 +137,13 @@ export default function TopHeader() {
     router.push(characterHref(characterRegion, trimmedRealm, trimmedName));
   };
 
-  const windowControlButtonClass =
-    'grid h-8 w-11 place-items-center text-zinc-400 transition-colors hover:bg-white/10 hover:text-zinc-100';
-
   return (
     <>
       <header
         ref={headerRef}
         className="fixed top-0 z-50 w-full border-b border-white/5 bg-bg/90 backdrop-blur-xl"
       >
-        {isDesktop && (
-          <div data-tauri-drag-region className="relative h-8 border-b border-white/5 bg-[#0a0a0b]">
-            <Link
-              data-tauri-drag-region="false"
-              href="/"
-              className="absolute left-2 top-0 flex h-8 items-center gap-2 pr-2"
-            >
-              <img src="/icon.png" alt="WhyLowDps" className="h-5 w-5 object-contain" />
-              <span className="text-[14px] font-semibold tracking-tight text-zinc-100">
-                WhyLowDps
-              </span>
-            </Link>
-            <div
-              data-tauri-drag-region="false"
-              className="absolute right-0 top-0 flex h-8 items-center"
-            >
-              <button
-                onClick={() => void handleWindowAction('minimize')}
-                className={windowControlButtonClass}
-                title="Minimize"
-                aria-label="Minimize"
-              >
-                <Minus className="h-4 w-4" strokeWidth={2} />
-              </button>
-              <button
-                onClick={() => void handleWindowAction('maximize')}
-                className={windowControlButtonClass}
-                title={isMaximized ? 'Restore' : 'Maximize'}
-                aria-label={isMaximized ? 'Restore' : 'Maximize'}
-              >
-                {isMaximized ? (
-                  <Minimize2 className="h-4 w-4" strokeWidth={2} />
-                ) : (
-                  <Maximize2 className="h-4 w-4" strokeWidth={2} />
-                )}
-              </button>
-              <button
-                onClick={() => void handleWindowAction('close')}
-                className={`${windowControlButtonClass} hover:bg-red-500/85 hover:text-white`}
-                title="Close"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" strokeWidth={2} />
-              </button>
-            </div>
-          </div>
-        )}
+        <DesktopWindowTitleBar />
 
         <div className="grid h-12 grid-cols-[auto_1fr_auto] items-center gap-3 px-3 md:px-5">
           <div className="flex items-center gap-2">

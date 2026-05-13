@@ -1,6 +1,7 @@
 import { UNIT_TO_MINUTES, type RefreshUnit } from '../refreshInterval';
 import type { SettingsStatusMessage } from '../types';
 import type { DataCacheSyncProgress } from '../useDataCacheRefresh';
+import { formatBytesDecimal, formatElapsedCompact, formatTransferSpeed } from '../../lib/format';
 
 type DataCacheSettingsSectionProps = {
   refreshEveryValue: number;
@@ -13,7 +14,6 @@ type DataCacheSettingsSectionProps = {
   viewDataStates: () => Promise<void>;
   syncProgress: DataCacheSyncProgress;
   syncProgressPct: number;
-  cacheSyncProgress: string;
   cacheMessage: SettingsStatusMessage | null;
 };
 
@@ -28,9 +28,13 @@ export default function DataCacheSettingsSection({
   viewDataStates,
   syncProgress,
   syncProgressPct,
-  cacheSyncProgress,
   cacheMessage,
 }: DataCacheSettingsSectionProps) {
+  const fileProgressPct =
+    syncProgress.totalBytes > 0
+      ? Math.min(100, Math.round((syncProgress.downloadedBytes / syncProgress.totalBytes) * 100))
+      : null;
+
   return (
     <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
       <h2 className="mb-3 text-xl font-semibold text-white">Game Data Cache</h2>
@@ -115,12 +119,27 @@ export default function DataCacheSettingsSection({
                 style={{ width: `${syncProgressPct}%` }}
               />
             </div>
-          </div>
-        )}
-
-        {!!cacheSyncProgress && (
-          <div className="rounded-lg border border-border bg-surface-2 p-3">
-            <p className="text-sm text-zinc-200">{syncProgress.details || cacheSyncProgress}</p>
+            {syncProgress.task === 'Files' && (
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+                <span>File size</span>
+                <span className="text-right text-zinc-300">
+                  {formatBytesDecimal(syncProgress.totalBytes)}
+                </span>
+                <span>Downloaded</span>
+                <span className="text-right text-zinc-300">
+                  {formatBytesDecimal(syncProgress.downloadedBytes)}
+                  {fileProgressPct != null ? ` (${fileProgressPct}%)` : ''}
+                </span>
+                <span>Speed</span>
+                <span className="text-right text-zinc-300">
+                  {formatTransferSpeed(syncProgress.speedBytesPerSec)}
+                </span>
+                <span>Time spent</span>
+                <span className="text-right text-zinc-300">
+                  {formatElapsedCompact(syncProgress.elapsedSeconds)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 

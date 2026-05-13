@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isDesktopRuntime } from '../lib/api';
 import { normalizeInvokeError } from '../lib/error-utils';
-import { formatBytesDecimal, formatEta, formatTransferSpeed } from '../lib/format';
+import {
+  formatBytesDecimal,
+  formatElapsedCompact,
+  formatEta,
+  formatTransferSpeed,
+} from '../lib/format';
 import {
   readStoredUpdateChannel,
   type UpdateChannel,
@@ -38,6 +43,16 @@ type DownloadProgress = {
   totalBytes?: number;
   speedBytesPerSec?: number;
   etaSeconds?: number | null;
+};
+
+type CacheProgress = {
+  current: number;
+  total: number;
+  details: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  elapsedSeconds: number;
+  speedBytesPerSec: number;
 };
 
 type TauriDownloadEvent =
@@ -105,9 +120,14 @@ export default function UpdatePrompt() {
   const [parsesRefreshErrorText, setParsesRefreshErrorText] = useState<string>('');
   const [parsesRefreshBackgroundMode, setParsesRefreshBackgroundMode] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress>({ downloadedBytes: 0 });
-  const [cacheProgress, setCacheProgress] = useState<{ current: number; total: number }>({
+  const [cacheProgress, setCacheProgress] = useState<CacheProgress>({
     current: 0,
     total: 0,
+    details: '',
+    downloadedBytes: 0,
+    totalBytes: 0,
+    elapsedSeconds: 0,
+    speedBytesPerSec: 0,
   });
   const updateRef = useRef<any>(null);
   const isCheckingRef = useRef(false);
@@ -139,6 +159,13 @@ export default function UpdatePrompt() {
   const cacheProgressPercent = useMemo(() => {
     if (!cacheProgress.total || cacheProgress.total <= 0) return null;
     return Math.min(100, Math.round((cacheProgress.current / cacheProgress.total) * 100));
+  }, [cacheProgress]);
+  const cacheFileProgressPercent = useMemo(() => {
+    if (!cacheProgress.totalBytes || cacheProgress.totalBytes <= 0) return null;
+    return Math.min(
+      100,
+      Math.round((cacheProgress.downloadedBytes / cacheProgress.totalBytes) * 100),
+    );
   }, [cacheProgress]);
 
   const resetSpeedTracking = useCallback(() => {
@@ -506,7 +533,15 @@ export default function UpdatePrompt() {
       setCacheErrorText('');
       setCacheBackgroundMode(true);
       setDismissed(true);
-      setCacheProgress({ current: 0, total: 0 });
+      setCacheProgress({
+        current: 0,
+        total: 0,
+        details: '',
+        downloadedBytes: 0,
+        totalBytes: 0,
+        elapsedSeconds: 0,
+        speedBytesPerSec: 0,
+      });
     };
 
     const onCacheRefreshStatus = (event: Event) => {
@@ -526,8 +561,20 @@ export default function UpdatePrompt() {
         if (parts.length >= 4) {
           const current = parseInt(parts[1], 10);
           const total = parseInt(parts[2], 10);
+          const downloadedBytes = Number(parts[4] || 0);
+          const totalBytes = Number(parts[5] || 0);
+          const elapsedMs = Number(parts[6] || 0);
+          const speedBytesPerSec = Number(parts[7] || 0);
           if (Number.isFinite(current) && Number.isFinite(total)) {
-            setCacheProgress({ current, total });
+            setCacheProgress({
+              current,
+              total,
+              details: parts[3] || '',
+              downloadedBytes: Number.isFinite(downloadedBytes) ? downloadedBytes : 0,
+              totalBytes: Number.isFinite(totalBytes) ? totalBytes : 0,
+              elapsedSeconds: Number.isFinite(elapsedMs) ? elapsedMs / 1000 : 0,
+              speedBytesPerSec: Number.isFinite(speedBytesPerSec) ? speedBytesPerSec : 0,
+            });
           }
         }
         return;
@@ -822,6 +869,22 @@ export default function UpdatePrompt() {
               ? `${cacheProgressPercent}% complete`
               : cacheDetails || 'Running in background...'}
           </p>
+          {cacheProgress.details && (
+            <p className="mt-1 truncate text-[11px] text-zinc-500">{cacheProgress.details}</p>
+          )}
+          {cacheProgress.totalBytes > 0 && (
+            <>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {formatBytesDecimal(cacheProgress.downloadedBytes)} /{' '}
+                {formatBytesDecimal(cacheProgress.totalBytes)}
+                {cacheFileProgressPercent != null ? ` (${cacheFileProgressPercent}%)` : ''}
+              </p>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {formatTransferSpeed(cacheProgress.speedBytesPerSec)} |{' '}
+                {formatElapsedCompact(cacheProgress.elapsedSeconds)}
+              </p>
+            </>
+          )}
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
             {cacheProgressPercent != null ? (
               <div

@@ -1,4 +1,5 @@
 use actix_web::{web, HttpResponse};
+use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -7,7 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
@@ -30,6 +31,32 @@ pub enum SyncStatus {
 pub struct DataSyncState {
     pub status: Mutex<SyncStatus>,
     pub progress: Mutex<String>,
+}
+
+fn raidbots_file_progress(
+    index: usize,
+    total_files: usize,
+    file_name: &str,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    elapsed: Duration,
+) -> String {
+    let elapsed_ms = elapsed.as_millis() as u64;
+    let speed_bytes_per_sec = if elapsed_ms > 0 {
+        downloaded_bytes.saturating_mul(1000) / elapsed_ms
+    } else {
+        0
+    };
+    format!(
+        "Files:{}:{}:{}:{}:{}:{}:{}",
+        index,
+        total_files,
+        file_name,
+        downloaded_bytes,
+        total_bytes.unwrap_or(0),
+        elapsed_ms,
+        speed_bytes_per_sec
+    )
 }
 
 #[derive(Debug, Deserialize)]
@@ -1772,14 +1799,34 @@ async fn perform_sync(
                     })?;
                 }
 
-                let file_res = tokio::time::timeout(request_timeout, blizzard.client.get(&file_url).send())
-                    .await
-                    .map_err(|_| format!("Timed out while downloading {}", file_name))?
-                    .map_err(|e| format!("Failed to download {}: {}", file_name, e))?;
-                let content = file_res
-                    .bytes()
-                    .await
-                    .map_err(|e| format!("Failed to read {}: {}", file_name, e))?;
+                let file_res =
+                    tokio::time::timeout(request_timeout, blizzard.client.get(&file_url).send())
+                        .await
+                        .map_err(|_| format!("Timed out while downloading {}", file_name))?
+                        .map_err(|e| format!("Failed to download {}: {}", file_name, e))?;
+                let total_bytes = file_res.content_length();
+                let started_at = Instant::now();
+                let mut downloaded_bytes = 0_u64;
+                let mut content =
+                    Vec::with_capacity(total_bytes.unwrap_or(0).min(10_000_000) as usize);
+                let mut stream = file_res.bytes_stream();
+
+                while let Some(chunk) = stream.next().await {
+                    let chunk =
+                        chunk.map_err(|e| format!("Failed to read {}: {}", file_name, e))?;
+                    downloaded_bytes += chunk.len() as u64;
+                    content.extend_from_slice(&chunk);
+
+                    let mut p = state.progress.lock().await;
+                    *p = raidbots_file_progress(
+                        i + 1,
+                        total_files,
+                        file_name,
+                        downloaded_bytes,
+                        total_bytes,
+                        started_at.elapsed(),
+                    );
+                }
 
                 std::fs::write(&file_path, content)
                     .map_err(|e| format!("Failed to save {}: {}", file_name, e))?;

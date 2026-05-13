@@ -458,10 +458,7 @@ pub(super) async fn list_enchant_options(
 
     let inv_type = match gear_resolver::slot_to_inv_type(&query.slot) {
         Some(t) => t,
-        None => {
-            return HttpResponse::BadRequest()
-                .json(json!({"detail": "Invalid slot for enchantments"}))
-        }
+        None => return HttpResponse::Ok().json(Vec::<Value>::new()),
     };
     let root = data_dir.get_ref().as_deref();
     let mut options = list_enchants_for_slot_from_files(root, inv_type)

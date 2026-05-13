@@ -1,9 +1,9 @@
 'use client';
 
 import { useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Copy, Heart, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Copy, Heart, Trash2 } from 'lucide-react';
 import {
   API_URL,
   deleteCharacterProfile,
@@ -90,6 +90,8 @@ export default function CharacterClient() {
   const [trackSaving, setTrackSaving] = useState(false);
   const [trackError, setTrackError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
+  const [simcMenuOpen, setSimcMenuOpen] = useState(false);
+  const simcMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch saved profiles for this character
   useEffect(() => {
@@ -128,6 +130,25 @@ export default function CharacterClient() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!simcMenuOpen) return;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && simcMenuRef.current?.contains(target)) return;
+      setSimcMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSimcMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [simcMenuOpen]);
 
   const handleDeleteProfiles = useCallback(async () => {
     for (const p of savedProfiles) {
@@ -295,25 +316,48 @@ export default function CharacterClient() {
               </Link>
             ) : null}
             {savedProfiles.length > 0 && (
-              <>
+              <div ref={simcMenuRef} className="relative ml-2">
                 <button
-                  onClick={() => {
-                    const latestProfile = savedProfiles[0];
-                    navigator.clipboard.writeText(latestProfile.simc_input);
-                  }}
-                  className="ml-2 flex items-center gap-1.5 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95"
+                  type="button"
+                  onClick={() => setSimcMenuOpen((prev) => !prev)}
+                  aria-expanded={simcMenuOpen}
+                  className="flex items-center gap-1.5 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-zinc-200 backdrop-blur-sm hover:bg-white/10 active:scale-95"
                 >
                   <CopyIcon />
-                  Copy SimC
+                  SimC
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 transition-transform ${simcMenuOpen ? 'rotate-180' : ''}`}
+                    strokeWidth={2}
+                  />
                 </button>
-                <button
-                  onClick={() => setDeleteModalOpen(true)}
-                  className="ml-2 flex items-center gap-1.5 rounded border border-white/10 bg-black/20 px-3 py-1 text-xs font-bold text-red-400 backdrop-blur-sm hover:bg-white/10 active:scale-95"
-                >
-                  <Trash2 className="h-4 w-4" strokeWidth={2} />
-                  Delete SimC
-                </button>
-              </>
+                {simcMenuOpen ? (
+                  <div className="absolute right-0 top-8 z-40 min-w-[150px] rounded-md border border-white/15 bg-[#111317] p-1 shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const latestProfile = savedProfiles[0];
+                        navigator.clipboard.writeText(latestProfile.simc_input);
+                        setSimcMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
+                    >
+                      <Copy className="h-3.5 w-3.5" strokeWidth={2} />
+                      Copy SimC
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteModalOpen(true);
+                        setSimcMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-red-300 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+                      Delete SimC
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             )}
             <div className="ml-2">
               <ToggleOptionCard

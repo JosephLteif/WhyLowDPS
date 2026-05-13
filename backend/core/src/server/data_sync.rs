@@ -219,6 +219,68 @@ fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
     runtime
 }
 
+fn resolve_runtime_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
+    let runtime = root.join(&entry.local_path);
+    for candidate in path_variants_with_json_alias(&runtime) {
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    runtime
+}
+
+fn resolve_bundled_path(entry: &DataFileEntry) -> Option<PathBuf> {
+    let bundled_path = entry.bundled_path.as_ref()?;
+
+    let dev_bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join(bundled_path);
+    for candidate in path_variants_with_json_alias(&dev_bundled) {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))?;
+    let file_name = Path::new(bundled_path).file_name()?;
+    let exe_bundled = exe_dir.join("resources").join(file_name);
+    for candidate in path_variants_with_json_alias(&exe_bundled) {
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+fn restore_local_file_from_bundle(root: &Path, entry: &DataFileEntry) -> Result<(), String> {
+    let source = resolve_bundled_path(entry).ok_or_else(|| {
+        format!(
+            "Bundled source is unavailable for {} ({})",
+            entry.key, entry.local_path
+        )
+    })?;
+    let target = root.join(&entry.local_path);
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create directory for {}: {}",
+                target.display(),
+                e
+            )
+        })?;
+    }
+    std::fs::copy(&source, &target).map_err(|e| {
+        format!(
+            "Failed to restore {} from bundled copy {}: {}",
+            target.display(),
+            source.display(),
+            e
+        )
+    })?;
+    Ok(())
+}
+
 fn path_variants_with_json_alias(path: &Path) -> Vec<PathBuf> {
     let mut out = vec![path.to_path_buf()];
     match path.extension().and_then(|ext| ext.to_str()) {
@@ -360,7 +422,7 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
     let files: Vec<DataFileState> = catalog
         .iter()
         .map(|entry| {
-            let metadata = std::fs::metadata(resolve_catalog_path(&root, entry)).ok();
+            let metadata = std::fs::metadata(resolve_runtime_path(&root, entry)).ok();
             let is_dir = entry.entry_type == DataFileEntryType::Directory
                 || metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size_bytes = if is_dir {
@@ -374,9 +436,11 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
                 section: entry.section.clone(),
                 relative_path: entry.local_path.clone(),
                 required: entry.required,
-                downloadable: entry.source == DataFileSource::Raidbots
-                    && entry.remote_path.is_some()
-                    && entry.entry_type == DataFileEntryType::File,
+                downloadable: entry.entry_type == DataFileEntryType::File
+                    && ((entry.source == DataFileSource::Raidbots
+                        && entry.remote_path.is_some())
+                        || (entry.source == DataFileSource::Local
+                            && entry.bundled_path.is_some())),
                 exists: metadata.is_some(),
                 size_bytes,
             }
@@ -1468,6 +1532,27 @@ pub async fn download_data_file(
         return HttpResponse::NotFound().json(json!({"detail": "Unknown data file key"}));
     };
 
+    if entry.source == DataFileSource::Local {
+        match restore_local_file_from_bundle(&root, entry) {
+            Ok(()) => {
+                crate::item_db::load(&root);
+                let runtime_file = root.join("blizzard-runtime-data.json");
+                if runtime_file.exists() {
+                    crate::item_db::hydrate_runtime_metadata(&runtime_file);
+                }
+                return HttpResponse::Ok().json(json!({
+                    "status": "ok",
+                    "key": entry.key,
+                    "relative_path": entry.local_path,
+                    "restored_from_bundled": true,
+                }));
+            }
+            Err(e) => {
+                return HttpResponse::InternalServerError().json(json!({"detail": e}));
+            }
+        }
+    }
+
     if entry.source != DataFileSource::Raidbots {
         return HttpResponse::BadRequest()
             .json(json!({"detail": "This entry cannot be downloaded directly"}));
@@ -1517,13 +1602,25 @@ pub async fn download_missing_data_files(
     for entry in catalog
         .iter()
         .filter(|e| {
-            e.source == DataFileSource::Raidbots
-                && e.entry_type == DataFileEntryType::File
-                && e.remote_path.is_some()
+            e.entry_type == DataFileEntryType::File
+                && ((e.source == DataFileSource::Raidbots && e.remote_path.is_some())
+                    || (e.source == DataFileSource::Local && e.bundled_path.is_some()))
         })
     {
         let path = root.join(&entry.local_path);
         if path.exists() {
+            continue;
+        }
+
+        if entry.source == DataFileSource::Local {
+            match restore_local_file_from_bundle(&root, entry) {
+                Ok(()) => downloaded.push(entry.key.clone()),
+                Err(err) => failed.push(json!({
+                    "key": entry.key,
+                    "relative_path": entry.local_path,
+                    "error": err,
+                })),
+            }
             continue;
         }
 

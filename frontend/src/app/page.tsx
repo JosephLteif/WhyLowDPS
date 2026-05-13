@@ -3,7 +3,17 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Cpu, Database, GripVertical, List, Pencil, Plus } from 'lucide-react';
+import {
+  Activity,
+  Cpu,
+  Database,
+  GripVertical,
+  List,
+  MoveHorizontal,
+  Pencil,
+  Plus,
+  X,
+} from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -115,7 +125,7 @@ function DashboardWidgetShell({
   size,
   widgetId,
   onRemove,
-  onResize,
+  onResizeHandleDown,
   isDragged,
   isDragTarget,
   isDraggingAny,
@@ -130,7 +140,7 @@ function DashboardWidgetShell({
   size: DashboardWidgetSize;
   widgetId: DashboardWidgetId;
   onRemove: (id: DashboardWidgetId) => void;
-  onResize: (id: DashboardWidgetId, size: DashboardWidgetSize) => void;
+  onResizeHandleDown: (id: DashboardWidgetId, e: React.PointerEvent<HTMLButtonElement>) => void;
   isDragged: boolean;
   isDragTarget: boolean;
   isDraggingAny: boolean;
@@ -148,61 +158,45 @@ function DashboardWidgetShell({
               isDragTarget && !isDragged ? 'border-gold/65 bg-gold/5' : 'border-gold/35'
             }`
           : ''
-      } ${isDragged ? 'pointer-events-none opacity-25' : ''}`}
+      } ${isDragged ? 'pointer-events-none opacity-25' : ''} relative h-full`}
       style={{ order: index }}
     >
       {editMode && (
-        <div className="mb-1 flex items-center justify-between rounded-lg border border-white/10 bg-black/20 px-2 py-1">
-          <div className="flex items-center gap-1.5">
+        <>
+          <button
+            type="button"
+            onPointerDown={(e) => onDragHandleDown(widgetId, e)}
+            className={`absolute left-2 top-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded border border-white/10 bg-black/70 text-zinc-300 hover:bg-white/10 ${
+              isDraggingAny ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
+            title={`Drag ${label}`}
+            aria-label={`Drag ${label}`}
+          >
+            <GripVertical className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+          <div className="absolute right-2 top-2 z-20 inline-flex items-center gap-1">
             <button
               type="button"
-              onPointerDown={(e) => onDragHandleDown(widgetId, e)}
-              className={`inline-flex h-6 w-6 items-center justify-center rounded border border-white/10 text-zinc-300 hover:bg-white/10 ${
-                isDraggingAny ? 'cursor-grabbing' : 'cursor-grab'
-              }`}
-              title="Drag to reorder"
-              aria-label="Drag to reorder"
+              onPointerDown={(e) => onResizeHandleDown(widgetId, e)}
+              className="inline-flex h-6 w-6 cursor-ew-resize items-center justify-center rounded border border-white/10 bg-black/70 text-zinc-300 hover:bg-white/10"
+              title={`Resize ${label} (${size}/3)`}
+              aria-label={`Resize ${label}`}
             >
-              <GripVertical className="h-3.5 w-3.5" strokeWidth={2} />
+              <MoveHorizontal className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-gold">
-              {label}
-            </span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="inline-flex items-center rounded border border-white/10 bg-black/20 p-0.5">
-              {[1, 2, 3].map((value) => {
-                const targetSize = value as DashboardWidgetSize;
-                return (
-                  <button
-                    key={`widget-size-${widgetId}-${targetSize}`}
-                    type="button"
-                    onClick={() => onResize(widgetId, targetSize)}
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                      size === targetSize
-                        ? 'bg-gold/20 text-gold'
-                        : 'text-zinc-400 hover:bg-white/10 hover:text-zinc-200'
-                    }`}
-                    title={
-                      targetSize === 1 ? '1/3 width' : targetSize === 2 ? '2/3 width' : 'Full width'
-                    }
-                  >
-                    {targetSize === 1 ? '1/3' : targetSize === 2 ? '2/3' : 'Full'}
-                  </button>
-                );
-              })}
-            </div>
             <button
               type="button"
               onClick={() => onRemove(widgetId)}
-              className="rounded border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
+              className="inline-flex h-6 w-6 items-center justify-center rounded border border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
+              title={`Remove ${label}`}
+              aria-label={`Remove ${label}`}
             >
-              Remove
+              <X className="h-3.5 w-3.5" strokeWidth={2} />
             </button>
           </div>
-        </div>
+        </>
       )}
-      {children}
+      <div className={`h-full ${editMode ? 'pt-8' : ''}`}>{children}</div>
     </div>
   );
 }
@@ -469,6 +463,11 @@ export default function Home() {
     offsetY: number;
     width: number;
     label: string;
+  } | null>(null);
+  const pendingWidgetResizeRef = useRef<{
+    id: DashboardWidgetId;
+    startX: number;
+    startSize: DashboardWidgetSize;
   } | null>(null);
   const pendingTrackedRefreshRef = useRef(false);
   const pendingDragRef = useRef<{
@@ -805,6 +804,19 @@ export default function Home() {
     [dashboardWidgetSizes, persistDashboardWidgetSizes]
   );
 
+  const handleWidgetResizeHandleDown = useCallback(
+    (id: DashboardWidgetId, e: React.PointerEvent<HTMLButtonElement>) => {
+      if (!dashboardEditMode || e.button !== 0) return;
+      pendingWidgetResizeRef.current = {
+        id,
+        startX: e.clientX,
+        startSize: dashboardWidgetSizes[id] || 3,
+      };
+      e.preventDefault();
+    },
+    [dashboardEditMode, dashboardWidgetSizes]
+  );
+
   const hiddenStatCards = useMemo(
     () => STAT_CARD_ORDER.filter((id) => !visibleStatCards.includes(id)),
     [visibleStatCards]
@@ -1012,6 +1024,15 @@ export default function Home() {
 
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
+      if (pendingWidgetResizeRef.current) {
+        const pending = pendingWidgetResizeRef.current;
+        const step = Math.round((e.clientX - pending.startX) / 120);
+        const next = Math.max(1, Math.min(3, pending.startSize + step)) as DashboardWidgetSize;
+        if ((dashboardWidgetSizes[pending.id] || 3) !== next) {
+          resizeDashboardWidget(pending.id, next);
+        }
+        return;
+      }
       if (draggingWidgetIdRef.current == null && pendingWidgetDragRef.current) {
         const pending = pendingWidgetDragRef.current;
         const moved =
@@ -1035,6 +1056,7 @@ export default function Home() {
     };
 
     const onPointerUp = () => {
+      pendingWidgetResizeRef.current = null;
       pendingWidgetDragRef.current = null;
       setDraggingWidgetId(null);
       setDragOverWidgetId(null);
@@ -1049,7 +1071,7 @@ export default function Home() {
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);
     };
-  }, []);
+  }, [dashboardWidgetSizes, resizeDashboardWidget]);
 
   useEffect(() => {
     let active = true;
@@ -1128,7 +1150,7 @@ export default function Home() {
         index={index}
         size={size}
         onRemove={removeDashboardWidget}
-        onResize={resizeDashboardWidget}
+        onResizeHandleDown={handleWidgetResizeHandleDown}
         isDragged={draggingWidgetId === id}
         isDragTarget={dragOverWidgetId === id}
         isDraggingAny={draggingWidgetId != null}
@@ -1352,7 +1374,7 @@ export default function Home() {
         {renderWidgetShell(
           'activity',
           <>
-            <section className="card p-4">
+            <section className="card flex h-full min-h-0 flex-col p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-zinc-200">
                   Simulation Activity (Last 14 Days)
@@ -1401,7 +1423,7 @@ export default function Home() {
         {renderWidgetShell(
           'quick-links',
           <>
-            <section className="card p-4">
+            <section className="card flex h-full min-h-0 flex-col p-4">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-zinc-200">Quick Links</h2>
                 <div className="flex items-center gap-2">
@@ -1456,7 +1478,7 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-              <div className="max-h-72 overflow-y-auto pr-1">
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 <div className="space-y-2">
                   {quickLinks.map((link, index) => {
                     const className =
@@ -1495,7 +1517,9 @@ export default function Home() {
         {renderWidgetShell(
           'tracked-characters',
           <>
-            <section className={`card ${trackedCompact ? 'p-2.5' : 'p-3'}`}>
+            <section
+              className={`card flex h-full min-h-0 flex-col ${trackedCompact ? 'p-2.5' : 'p-3'}`}
+            >
               <div
                 className={`mb-2 flex items-center justify-between ${trackedCompact ? 'gap-2' : ''}`}
               >

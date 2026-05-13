@@ -3,15 +3,25 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, List, Database, Cpu, Pencil, Plus } from 'lucide-react';
+import { Activity, Cpu, Database, List, Pencil, Plus } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
+import {
+  API_URL,
+  fetchJson,
+  getHistoryStats,
+  getSystemStats,
+  type HistoryStats,
+  isDesktop,
+  listCharacterProfiles,
+  listSims,
+} from './lib/api';
 import { useSimContext } from './components/SimContext';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
-import { characterHref, simResultHref } from './lib/routes';
+import { characterHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
 import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 import { useDismissOnOutside } from './lib/useDismissOnOutside';
+
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
 const LOCAL_QUICK_LINKS_KEY = 'whylowdps_quick_links';
@@ -50,34 +60,9 @@ const QUICK_LINK_OPTIONS: QuickLink[] = [
   { label: 'Settings', href: '/settings' },
 ];
 
-type SimStatus = SimSummary['status'];
-
-const STATUS_STYLES: Record<SimStatus, string> = {
-  done: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
-  running: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',
-  failed: 'bg-red-500/15 text-red-300 border border-red-500/30',
-  pending: 'bg-zinc-600/20 text-zinc-300 border border-zinc-600/40',
-  cancelled: 'bg-zinc-700/30 text-zinc-300 border border-zinc-600/50',
-};
-
-const SIM_TYPE_LABELS: Record<string, string> = {
-  quick: 'Quick Sim',
-  top_gear: 'Top Gear',
-  droptimizer: 'Drop Finder',
-  upgrade_compare: 'Upgrade Compare',
-  stat_weights: 'Stat Weights',
-  stat_plot: 'Stat Plot',
-  external_buff_matrix: 'External Buff Matrix',
-  consumable_matrix: 'Consumable Matrix',
-  trinket_tier_heatmap: 'Trinket / Tier Heatmaps',
-};
-
-const relativeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
-
 function StatIcon({ children }: { children: ReactNode }) {
   return (
-    <div
-      className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-zinc-200">
+    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-zinc-200">
       {children}
     </div>
   );
@@ -110,26 +95,6 @@ function formatBytes(bytes: number): string {
     i += 1;
   }
   return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[i]}`;
-}
-
-function formatRelativeTime(dateIso: string): string {
-  const target = new Date(dateIso).getTime();
-  if (!Number.isFinite(target)) return '-';
-  const diffSec = Math.round((target - Date.now()) / 1000);
-  const absSec = Math.abs(diffSec);
-  if (absSec < 60) return relativeFormatter.format(diffSec, 'second');
-  const diffMin = Math.round(diffSec / 60);
-  if (Math.abs(diffMin) < 60) return relativeFormatter.format(diffMin, 'minute');
-  const diffHour = Math.round(diffMin / 60);
-  if (Math.abs(diffHour) < 24) return relativeFormatter.format(diffHour, 'hour');
-  const diffDay = Math.round(diffHour / 24);
-  return relativeFormatter.format(diffDay, 'day');
-}
-
-function classColor(playerClass?: string): string {
-  if (!playerClass) return '#d4d4d8';
-  const key = playerClass.toLowerCase().replace(/[\s-]+/g, '_');
-  return CLASS_COLORS[key] || CLASS_COLORS[key.replace(/_/g, '')] || '#d4d4d8';
 }
 
 function chartDateLabel(date: Date): string {
@@ -172,7 +137,7 @@ function toTimestampMs(raw: unknown): number {
 
 function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
   const region = String(regionRaw || 'us').toLowerCase();
-  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2; // Sun=0, Tue=2, Wed=3, Thu=4
+  const resetDayUtc = region === 'eu' ? 3 : region === 'Asia' ? 4 : 2; // Sun=0, Tue=2, Wed=3, Thu=4
   // Weekly reset schedule (from provided timer reference):
   // - US: Tuesday 6:00 PM GMT+3 => 15:00 UTC
   // - EU: Wednesday 7:00 AM GMT+3 => 04:00 UTC
@@ -188,8 +153,8 @@ function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new D
       resetHourUtc,
       0,
       0,
-      0,
-    ),
+      0
+    )
   );
   const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
   let reset = new Date(todayReset);
@@ -246,13 +211,15 @@ function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
       if (!current || seen.has(current)) continue;
       seen.add(current);
       if (Array.isArray(current)) {
-        if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+        if (current.some((item) => isRunLike(item)))
+          out.push(...current.filter((item) => isRunLike(item)));
         else for (const item of current) if (item && typeof item === 'object') stack.push(item);
         continue;
       }
       if (typeof current === 'object') {
         if (isRunLike(current)) out.push(current);
-        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+        for (const value of Object.values(current))
+          if (value && typeof value === 'object') stack.push(value);
       }
     }
     return out;
@@ -268,12 +235,14 @@ function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
         run?.start_timestamp ??
         run?.startTimestamp ??
         run?.timestamp ??
-        0,
+        0
     );
 
   const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
   const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
-  const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
+  const recentRuns = [...recentSource]
+    .sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a))
+    .slice(0, 20);
   const weekStart = getWeeklyResetStartMs(region);
   const recentWeekCount = recentRuns.filter((run) => {
     const ts = getRunTimestamp(run);
@@ -294,22 +263,39 @@ export default function Home() {
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [trackedCharacters, setTrackedCharacters] = useState<{ region: string; realm: string; name: string }[]>([]);
+  const [trackedCharacters, setTrackedCharacters] = useState<
+    { region: string; realm: string; name: string }[]
+  >([]);
   const [activeTrackedIndex, setActiveTrackedIndex] = useState(0);
-  const [trackedClassByCharacter, setTrackedClassByCharacter] = useState<Record<string, string>>({});
+  const [trackedClassByCharacter, setTrackedClassByCharacter] = useState<Record<string, string>>(
+    {}
+  );
   const [mainVault, setMainVault] = useState<{ mplusRuns: number; raidKills: number } | null>(null);
-  const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
+  const [mainMeta, setMainMeta] = useState<{
+    level?: number;
+    className?: string;
+    ilvl?: number;
+  } | null>(null);
   const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
   const [mainSimcInput, setMainSimcInput] = useState<string>('');
   const [mainCharacterOpen, setMainCharacterOpen] = useState(true);
   const [trackedRefreshToken, setTrackedRefreshToken] = useState(0);
-  const [lastRefreshedByCharacter, setLastRefreshedByCharacter] = useState<Record<string, number>>({});
+  const [lastRefreshedByCharacter, setLastRefreshedByCharacter] = useState<Record<string, number>>(
+    {}
+  );
   const [trackedRefreshing, setTrackedRefreshing] = useState(false);
-  const [recentResultsOpen, setRecentResultsOpen] = useState(true);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [draggedTrackedIndex, setDraggedTrackedIndex] = useState<number | null>(null);
   const [dragOverTrackedIndex, setDragOverTrackedIndex] = useState<number | null>(null);
-  const [dragPointer, setDragPointer] = useState<{ x: number; y: number; offsetX: number; offsetY: number; width: number; label: string; color: string } | null>(null);
+  const [dragPointer, setDragPointer] = useState<{
+    x: number;
+    y: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    label: string;
+    color: string;
+  } | null>(null);
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>(DEFAULT_QUICK_LINKS);
   const [quickLinksEditMode, setQuickLinksEditMode] = useState(false);
   const [showQuickLinkAddMenu, setShowQuickLinkAddMenu] = useState(false);
@@ -324,7 +310,7 @@ export default function Home() {
     offsetX: number;
     offsetY: number;
     label: string;
-    color: string
+    color: string;
   } | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -365,7 +351,9 @@ export default function Home() {
     const loadMainCharacter = async () => {
       try {
         const rawTracked =
-          typeof window !== 'undefined' ? localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY) || '[]' : '[]';
+          typeof window !== 'undefined'
+            ? localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY) || '[]'
+            : '[]';
         let trackedKeys: string[] = [];
         try {
           const parsed = JSON.parse(rawTracked);
@@ -373,7 +361,9 @@ export default function Home() {
         } catch {}
         if (trackedKeys.length === 0) {
           const legacyMain =
-            typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
+            typeof window !== 'undefined'
+              ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || ''
+              : '';
           if (legacyMain) trackedKeys = [legacyMain];
         }
 
@@ -417,7 +407,10 @@ export default function Home() {
         for (const raw of lines) {
           const line = raw.trim();
           const lower = line.toLowerCase();
-          if (lower.includes('weekly reward choices') && !lower.includes('end of weekly reward choices')) {
+          if (
+            lower.includes('weekly reward choices') &&
+            !lower.includes('end of weekly reward choices')
+          ) {
             inBlock = true;
             continue;
           }
@@ -490,7 +483,9 @@ export default function Home() {
           if (trackedClassByCharacter[key]) return;
           const query = `?region=${c.region}`;
           const base = `/api/blizzard/character/${c.realm}/${c.name}`;
-          const profileRes = await fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(() => null);
+          const profileRes = await fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(
+            () => null
+          );
           const className = String(profileRes?.character_class?.name || '');
           if (className) updates[key] = className;
         })
@@ -512,7 +507,7 @@ export default function Home() {
       }
       router.push(path);
     },
-    [mainSimcInput, router, setSimcInput],
+    [mainSimcInput, router, setSimcInput]
   );
 
   const persistQuickLinks = useCallback((next: QuickLink[]) => {
@@ -527,57 +522,77 @@ export default function Home() {
     return QUICK_LINK_OPTIONS.filter((link) => !currentHrefs.has(link.href));
   }, [quickLinks]);
 
-  const addQuickLink = useCallback((link: QuickLink) => {
-    if (quickLinks.some((item) => item.href === link.href)) return;
-    persistQuickLinks([...quickLinks, link]);
-    setShowQuickLinkAddMenu(false);
-  }, [persistQuickLinks, quickLinks]);
+  const addQuickLink = useCallback(
+    (link: QuickLink) => {
+      if (quickLinks.some((item) => item.href === link.href)) return;
+      persistQuickLinks([...quickLinks, link]);
+      setShowQuickLinkAddMenu(false);
+    },
+    [persistQuickLinks, quickLinks]
+  );
 
   const removeQuickLink = useCallback(
     (index: number) => {
       persistQuickLinks(quickLinks.filter((_, i) => i !== index));
     },
-    [persistQuickLinks, quickLinks],
+    [persistQuickLinks, quickLinks]
   );
 
-  useDismissOnOutside(quickLinkAddMenuRef, showQuickLinkAddMenu, () => setShowQuickLinkAddMenu(false));
+  useDismissOnOutside(quickLinkAddMenuRef, showQuickLinkAddMenu, () =>
+    setShowQuickLinkAddMenu(false)
+  );
 
-  const persistTrackedCharacters = useCallback((next: { region: string; realm: string; name: string }[]) => {
-    setTrackedCharacters(next);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(
-        LOCAL_TRACKED_CHARACTERS_KEY,
-        JSON.stringify(next.map((x) => `${x.region}|${x.realm}|${x.name}`)),
-      );
-    }
-  }, []);
+  const persistTrackedCharacters = useCallback(
+    (next: { region: string; realm: string; name: string }[]) => {
+      setTrackedCharacters(next);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(
+          LOCAL_TRACKED_CHARACTERS_KEY,
+          JSON.stringify(next.map((x) => `${x.region}|${x.realm}|${x.name}`))
+        );
+      }
+    },
+    []
+  );
 
-  const untrackAtIndex = useCallback((idx: number) => {
-    const next = trackedCharacters.filter((_, i) => i !== idx);
-    persistTrackedCharacters(next);
-    setActiveTrackedIndex((prev) => {
-      if (next.length === 0) return 0;
-      if (prev > idx) return prev - 1;
-      if (prev === idx) return Math.max(0, prev - 1);
-      return prev;
-    });
-  }, [persistTrackedCharacters, trackedCharacters]);
+  const untrackAtIndex = useCallback(
+    (idx: number) => {
+      const next = trackedCharacters.filter((_, i) => i !== idx);
+      persistTrackedCharacters(next);
+      setActiveTrackedIndex((prev) => {
+        if (next.length === 0) return 0;
+        if (prev > idx) return prev - 1;
+        if (prev === idx) return Math.max(0, prev - 1);
+        return prev;
+      });
+    },
+    [persistTrackedCharacters, trackedCharacters]
+  );
 
-  const moveTrackedCharacter = useCallback((from: number, to: number) => {
-    if (from === to || from < 0 || to < 0 || from >= trackedCharacters.length || to >= trackedCharacters.length) {
-      return;
-    }
-    const next = [...trackedCharacters];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    persistTrackedCharacters(next);
-    setActiveTrackedIndex((prev) => {
-      if (prev === from) return to;
-      if (from < prev && to >= prev) return prev - 1;
-      if (from > prev && to <= prev) return prev + 1;
-      return prev;
-    });
-  }, [persistTrackedCharacters, trackedCharacters]);
+  const moveTrackedCharacter = useCallback(
+    (from: number, to: number) => {
+      if (
+        from === to ||
+        from < 0 ||
+        to < 0 ||
+        from >= trackedCharacters.length ||
+        to >= trackedCharacters.length
+      ) {
+        return;
+      }
+      const next = [...trackedCharacters];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      persistTrackedCharacters(next);
+      setActiveTrackedIndex((prev) => {
+        if (prev === from) return to;
+        if (from < prev && to >= prev) return prev - 1;
+        if (from > prev && to <= prev) return prev + 1;
+        return prev;
+      });
+    },
+    [persistTrackedCharacters, trackedCharacters]
+  );
 
   useEffect(() => {
     draggedTrackedIndexRef.current = draggedTrackedIndex;
@@ -685,23 +700,16 @@ export default function Home() {
 
   const usResetCountdown = useMemo(
     () => formatCountdown(getNextWeeklyResetMs('us', new Date(nowMs)) - nowMs),
-    [nowMs],
+    [nowMs]
   );
   const euResetCountdown = useMemo(
     () => formatCountdown(getNextWeeklyResetMs('eu', new Date(nowMs)) - nowMs),
-    [nowMs],
+    [nowMs]
   );
   const usNextResetMs = useMemo(() => getNextWeeklyResetMs('us', new Date(nowMs)), [nowMs]);
   const euNextResetMs = useMemo(() => getNextWeeklyResetMs('eu', new Date(nowMs)), [nowMs]);
 
   const activeSims = useMemo(() => sims.filter((sim) => sim.status === 'running').length, [sims]);
-  const sortedRecent = useMemo(
-    () =>
-      [...sims]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10),
-    [sims],
-  );
   const activity = useMemo(() => buildActivityData(sims, 14), [sims]);
 
   if (loading) {
@@ -734,12 +742,6 @@ export default function Home() {
           >
             <span className="font-semibold text-zinc-200">EU reset:</span> {euResetCountdown}
           </div>
-          <Link
-            href="/history"
-            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-          >
-            Open Full History
-          </Link>
           <button
             type="button"
             onClick={() => {
@@ -774,7 +776,9 @@ export default function Home() {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-zinc-500">Total Sims</p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-100">{historyStats?.count ?? 0}</p>
+              <p className="mt-2 text-3xl font-semibold text-zinc-100">
+                {historyStats?.count ?? 0}
+              </p>
             </div>
             <StatIcon>
               <ListIcon />
@@ -809,216 +813,12 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
-          <div className="flex items-center gap-2">
-            {trackedCharacters.length > 0 && (
-              <button
-                type="button"
-                onClick={() => untrackAtIndex(Math.min(activeTrackedIndex, trackedCharacters.length - 1))}
-                className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
-              >
-                Untrack
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                pendingTrackedRefreshRef.current = true;
-                setTrackedRefreshing(true);
-                setTrackedRefreshToken((v) => v + 1);
-              }}
-              disabled={trackedRefreshing}
-              className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
-            >
-              {trackedRefreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMainCharacterOpen((prev) => !prev)}
-              className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-            >
-              {mainCharacterOpen ? 'Collapse' : 'Expand'}
-            </button>
-          </div>
-        </div>
-        {(() => {
-          const active = trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
-          if (!active) return null;
-          const key = `${active.region.toLowerCase()}|${active.realm.toLowerCase()}|${active.name.toLowerCase()}`;
-          const ts = lastRefreshedByCharacter[key];
-          if (!ts) return null;
-          return (
-          <p className="mb-2 text-[11px] text-zinc-500">
-            Last refreshed at {new Date(ts).toLocaleString()}
-          </p>
-          );
-        })()}
-        {mainCharacterOpen && trackedCharacters.length === 0 ? (
-          <p className="text-sm text-zinc-500">No tracked characters yet. Open a character and click Track Character.</p>
-        ) : mainCharacterOpen && trackedCharacters.length > 0 ? (() => {
-          const active = trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
-          if (!active) return null;
-          return (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              {trackedCharacters.map((c, idx) => (
-                <div
-                  key={`${c.region}|${c.realm}|${c.name}`}
-                  onPointerEnter={() => {
-                    const currentDragged = draggedTrackedIndexRef.current;
-                    if (currentDragged == null || currentDragged === idx) return;
-                    moveTrackedCharacter(currentDragged, idx);
-                    setDraggedTrackedIndex(idx);
-                    setDragOverTrackedIndex(idx);
-                  }}
-                  className={`inline-flex items-center rounded-md border transition-all duration-200 ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'} ${draggedTrackedIndex === idx ? 'pointer-events-none opacity-0' : ''} ${dragOverTrackedIndex === idx && draggedTrackedIndex !== idx ? 'border-gold/50' : ''}`}
-                  style={{ cursor: draggedTrackedIndex != null ? 'grabbing' : 'grab' }}
-                >
-                  {(() => {
-                    const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
-                    const className = trackedClassByCharacter[key];
-                    const classColor = className ? (CLASS_COLORS[className.toLowerCase().replace(/[\s-]+/g, '_')] || '#d4d4d8') : '#d4d4d8';
-                    return (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTrackedIndex(idx)}
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      const rect = (e.currentTarget as HTMLButtonElement).closest('div')?.getBoundingClientRect();
-                      if (rect) {
-                        pendingDragRef.current = {
-                          idx,
-                          startX: e.clientX,
-                          startY: e.clientY,
-                          offsetX: e.clientX - rect.left,
-                          offsetY: e.clientY - rect.top,
-                          width: rect.width,
-                          label: c.name,
-                          color: classColor,
-                        };
-                      }
-                    }}
-                    className={`px-2.5 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
-                    style={{ color: classColor }}
-                    title="Drag to reorder"
-                  >
-                    {c.name}
-                  </button>
-                    );
-                  })()}
-                </div>
-              ))}
-            </div>
-            {dragPointer && (
-              <div
-                className="pointer-events-none fixed z-[90] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
-                style={{
-                  left: dragPointer.x - dragPointer.offsetX,
-                  top: dragPointer.y - dragPointer.offsetY - 8,
-                  width: dragPointer.width,
-                  transform: 'translateY(-4px) rotate(-2deg) scale(1.06)',
-                  color: dragPointer.color,
-                }}
-              >
-                {dragPointer.label}
-              </div>
-            )}
-            <div className="text-sm text-zinc-200">
-              <span className="font-semibold">{trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}</span>
-              <span className="text-zinc-500"> · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm} · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region.toUpperCase()}</span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                Level: <span className="font-semibold text-zinc-100">{mainMeta?.level ?? '-'}</span>
-              </div>
-              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                Class: <span className="font-semibold text-zinc-100">{mainMeta?.className ?? '-'}</span>
-              </div>
-              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                iLvl: <span className="font-semibold text-zinc-100">{mainMeta?.ilvl ?? '-'}</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <div className="rounded border border-white/10 bg-black/20 p-2">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mythic+ Vault</p>
-                <div className="space-y-2">
-                  {[1, 4, 8].map((threshold, idx) => {
-                    const current = mainVault?.mplusRuns ?? 0;
-                    const unlocked = current >= threshold;
-                    const progress = Math.min(1, current / threshold);
-                    return (
-                      <div key={`main-mplus-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
-                        <div className="mb-1 flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
-                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
-                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
-                          </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                            style={{ width: `${Math.max(6, progress * 100)}%` }}
-                          />
-                        </div>
-                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} runs</p>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.mplusRuns ?? 0} runs completed this week.</p>
-              </div>
-              <div className="rounded border border-white/10 bg-black/20 p-2">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Raid Vault</p>
-                <div className="space-y-2">
-                  {[2, 4, 6].map((threshold, idx) => {
-                    const current = mainVault?.raidKills ?? 0;
-                    const unlocked = current >= threshold;
-                    const progress = Math.min(1, current / threshold);
-                    return (
-                      <div key={`main-raid-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
-                        <div className="mb-1 flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
-                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
-                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
-                          </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                            style={{ width: `${Math.max(6, progress * 100)}%` }}
-                          />
-                        </div>
-                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} boss kills</p>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.raidKills ?? 0} boss kills completed this week.</p>
-              </div>
-            </div>
-            {mainVaultRewards.length > 0 && (
-              <div className="rounded border border-white/10 bg-black/20 p-2">
-                <div className="mb-2 text-xs font-semibold text-zinc-200">Vault Rewards</div>
-                <VaultRewardsGrid items={mainVaultRewards} />
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Link href={characterHref(active.region, active.realm, active.name)} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
-              <button onClick={() => openMainWorkflow('/quick-sim')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Run Sim</button>
-              <button onClick={() => openMainWorkflow('/top-gear')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Top Gear</button>
-              <Link href={characterHref(active.region, active.realm, active.name, 'vault')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
-            </div>
-          </div>
-          );
-        })() : null}
-      </section>
-
       <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
         <div className="card p-4 xl:col-span-2">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-200">Simulation Activity (Last 14 Days)</h2>
+            <h2 className="text-sm font-semibold text-zinc-200">
+              Simulation Activity (Last 14 Days)
+            </h2>
           </div>
           <div className="h-64 min-h-[256px] min-w-0">
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -1100,7 +900,9 @@ export default function Home() {
                     : 'border-white/15 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.1] hover:text-white'
                 }`}
                 title={quickLinksEditMode ? 'Finish quick links edit mode' : 'Edit quick links'}
-                aria-label={quickLinksEditMode ? 'Finish quick links edit mode' : 'Edit quick links'}
+                aria-label={
+                  quickLinksEditMode ? 'Finish quick links edit mode' : 'Edit quick links'
+                }
               >
                 <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
               </button>
@@ -1139,72 +941,289 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-zinc-200">Recent Results</h2>
-          <button
-            type="button"
-            onClick={() => setRecentResultsOpen((prev) => !prev)}
-            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-          >
-            {recentResultsOpen ? 'Collapse' : 'Expand'}
-          </button>
-        </div>
-        {recentResultsOpen && sortedRecent.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-zinc-500">No simulations yet.</div>
-        ) : recentResultsOpen ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-surface-2/60 text-left text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-4 py-3">Player</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Result</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-              </thead>
-              <tbody>
-              {sortedRecent.map((sim) => (
-                <tr key={sim.id} className="border-t border-border/80 text-zinc-300">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-zinc-100">
-                      {sim.player_name || sim.linked_name || 'Unknown Player'}
-                    </div>
-                    {sim.player_class && (
-                      <div className="text-xs" style={{ color: classColor(sim.player_class) }}>
-                        {sim.player_class}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-300">
-                    {SIM_TYPE_LABELS[sim.sim_type] || sim.sim_type}
-                  </td>
-                  <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[sim.status]}`}
-                      >
-                        {sim.status}
-                      </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-100">
-                    {sim.dps != null ? Math.round(sim.dps).toLocaleString() : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-400">{formatRelativeTime(sim.created_at)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={simResultHref(sim.id)}
-                      className="text-gold transition-colors hover:text-gold-light"
-                    >
-                      Open
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              </tbody>
-            </table>
+      <section className="card p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
+          <div className="flex items-center gap-2">
+            {trackedCharacters.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  untrackAtIndex(Math.min(activeTrackedIndex, trackedCharacters.length - 1))
+                }
+                className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
+              >
+                Untrack
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                pendingTrackedRefreshRef.current = true;
+                setTrackedRefreshing(true);
+                setTrackedRefreshToken((v) => v + 1);
+              }}
+              disabled={trackedRefreshing}
+              className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
+            >
+              {trackedRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMainCharacterOpen((prev) => !prev)}
+              className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+            >
+              {mainCharacterOpen ? 'Collapse' : 'Expand'}
+            </button>
           </div>
+        </div>
+        {(() => {
+          const active =
+            trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
+          if (!active) return null;
+          const key = `${active.region.toLowerCase()}|${active.realm.toLowerCase()}|${active.name.toLowerCase()}`;
+          const ts = lastRefreshedByCharacter[key];
+          if (!ts) return null;
+          return (
+            <p className="mb-2 text-[11px] text-zinc-500">
+              Last refreshed at {new Date(ts).toLocaleString()}
+            </p>
+          );
+        })()}
+        {mainCharacterOpen && trackedCharacters.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            No tracked characters yet. Open a character and click Track Character.
+          </p>
+        ) : mainCharacterOpen && trackedCharacters.length > 0 ? (
+          (() => {
+            const active =
+              trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
+            if (!active) return null;
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {trackedCharacters.map((c, idx) => (
+                    <div
+                      key={`${c.region}|${c.realm}|${c.name}`}
+                      onPointerEnter={() => {
+                        const currentDragged = draggedTrackedIndexRef.current;
+                        if (currentDragged == null || currentDragged === idx) return;
+                        moveTrackedCharacter(currentDragged, idx);
+                        setDraggedTrackedIndex(idx);
+                        setDragOverTrackedIndex(idx);
+                      }}
+                      className={`inline-flex items-center rounded-md border transition-all duration-200 ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'} ${draggedTrackedIndex === idx ? 'pointer-events-none opacity-0' : ''} ${dragOverTrackedIndex === idx && draggedTrackedIndex !== idx ? 'border-gold/50' : ''}`}
+                      style={{ cursor: draggedTrackedIndex != null ? 'grabbing' : 'grab' }}
+                    >
+                      {(() => {
+                        const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
+                        const className = trackedClassByCharacter[key];
+                        const classColor = className
+                          ? CLASS_COLORS[className.toLowerCase().replace(/[\s-]+/g, '_')] ||
+                          '#d4d4d8'
+                          : '#d4d4d8';
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTrackedIndex(idx)}
+                            onPointerDown={(e) => {
+                              if (e.button !== 0) return;
+                              const rect = (e.currentTarget as HTMLButtonElement)
+                                .closest('div')
+                                ?.getBoundingClientRect();
+                              if (rect) {
+                                pendingDragRef.current = {
+                                  idx,
+                                  startX: e.clientX,
+                                  startY: e.clientY,
+                                  offsetX: e.clientX - rect.left,
+                                  offsetY: e.clientY - rect.top,
+                                  width: rect.width,
+                                  label: c.name,
+                                  color: classColor,
+                                };
+                              }
+                            }}
+                            className={`px-2.5 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
+                            style={{ color: classColor }}
+                            title="Drag to reorder"
+                          >
+                            {c.name}
+                          </button>
+                        );
+                      })()}
+                    </div>
+                  ))}
+                </div>
+                {dragPointer && (
+                  <div
+                    className="pointer-events-none fixed z-[90] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
+                    style={{
+                      left: dragPointer.x - dragPointer.offsetX,
+                      top: dragPointer.y - dragPointer.offsetY - 8,
+                      width: dragPointer.width,
+                      transform: 'translateY(-4px) rotate(-2deg) scale(1.06)',
+                      color: dragPointer.color,
+                    }}
+                  >
+                    {dragPointer.label}
+                  </div>
+                )}
+                <div className="text-sm text-zinc-200">
+                  <span className="font-semibold">
+                    {
+                      trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]
+                        ?.name
+                    }
+                  </span>
+                  <span className="text-zinc-500">
+                    {' '}
+                    ·{' '}
+                    {
+                      trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]
+                        ?.realm
+                    }{' '}
+                    ·{' '}
+                    {trackedCharacters[
+                      Math.min(activeTrackedIndex, trackedCharacters.length - 1)
+                      ]?.region.toUpperCase()}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                    Level:{' '}
+                    <span className="font-semibold text-zinc-100">{mainMeta?.level ?? '-'}</span>
+                  </div>
+                  <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                    Class:{' '}
+                    <span className="font-semibold text-zinc-100">
+                      {mainMeta?.className ?? '-'}
+                    </span>
+                  </div>
+                  <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                    iLvl:{' '}
+                    <span className="font-semibold text-zinc-100">{mainMeta?.ilvl ?? '-'}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  <div className="rounded border border-white/10 bg-black/20 p-2">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                      Mythic+ Vault
+                    </p>
+                    <div className="space-y-2">
+                      {[1, 4, 8].map((threshold, idx) => {
+                        const current = mainVault?.mplusRuns ?? 0;
+                        const unlocked = current >= threshold;
+                        const progress = Math.min(1, current / threshold);
+                        return (
+                          <div
+                            key={`main-mplus-${threshold}`}
+                            className="rounded border border-white/10 bg-black/25 p-2"
+                          >
+                            <div className="mb-1 flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
+                              <span
+                                className={
+                                  unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'
+                                }
+                              >
+                                {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
+                              </span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                                style={{ width: `${Math.max(6, progress * 100)}%` }}
+                              />
+                            </div>
+                            <p className="mt-1 text-[10px] text-zinc-500">
+                              Requires {threshold} runs
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-[11px] text-zinc-500">
+                      {mainVault?.mplusRuns ?? 0} runs completed this week.
+                    </p>
+                  </div>
+                  <div className="rounded border border-white/10 bg-black/20 p-2">
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                      Raid Vault
+                    </p>
+                    <div className="space-y-2">
+                      {[2, 4, 6].map((threshold, idx) => {
+                        const current = mainVault?.raidKills ?? 0;
+                        const unlocked = current >= threshold;
+                        const progress = Math.min(1, current / threshold);
+                        return (
+                          <div
+                            key={`main-raid-${threshold}`}
+                            className="rounded border border-white/10 bg-black/25 p-2"
+                          >
+                            <div className="mb-1 flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
+                              <span
+                                className={
+                                  unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'
+                                }
+                              >
+                                {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
+                              </span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                                style={{ width: `${Math.max(6, progress * 100)}%` }}
+                              />
+                            </div>
+                            <p className="mt-1 text-[10px] text-zinc-500">
+                              Requires {threshold} boss kills
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-[11px] text-zinc-500">
+                      {mainVault?.raidKills ?? 0} boss kills completed this week.
+                    </p>
+                  </div>
+                </div>
+                {mainVaultRewards.length > 0 && (
+                  <div className="rounded border border-white/10 bg-black/20 p-2">
+                    <div className="mb-2 text-xs font-semibold text-zinc-200">Vault Rewards</div>
+                    <VaultRewardsGrid items={mainVaultRewards} />
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={characterHref(active.region, active.realm, active.name)}
+                    className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                  >
+                    Open Character
+                  </Link>
+                  <button
+                    onClick={() => openMainWorkflow('/quick-sim')}
+                    className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                  >
+                    Run Sim
+                  </button>
+                  <button
+                    onClick={() => openMainWorkflow('/top-gear')}
+                    className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                  >
+                    Top Gear
+                  </button>
+                  <Link
+                    href={characterHref(active.region, active.realm, active.name, 'vault')}
+                    className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                  >
+                    Open Vault
+                  </Link>
+                </div>
+              </div>
+            );
+          })()
         ) : null}
       </section>
     </div>

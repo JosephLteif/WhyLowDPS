@@ -113,7 +113,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden bg-zinc-950">
-      <DesktopWindowTitleBar className="absolute left-0 top-0 z-10 w-full" />
+      <DesktopWindowTitleBar overlay />
 
       {/* Background Glows */}
       <div className="absolute left-1/4 top-1/4 h-96 w-96 animate-pulse rounded-full bg-gold/10 blur-[120px]" />

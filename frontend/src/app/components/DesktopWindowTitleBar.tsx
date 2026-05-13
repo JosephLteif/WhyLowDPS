@@ -7,9 +7,13 @@ import { isDesktop } from '../lib/api';
 
 type DesktopWindowTitleBarProps = {
   className?: string;
+  overlay?: boolean;
 };
 
-export default function DesktopWindowTitleBar({ className = '' }: DesktopWindowTitleBarProps) {
+export default function DesktopWindowTitleBar({
+  className = '',
+  overlay = false,
+}: DesktopWindowTitleBarProps) {
   const [isMaximized, setIsMaximized] = useState(false);
 
   const handleWindowAction = async (action: 'minimize' | 'maximize' | 'close') => {
@@ -46,7 +50,7 @@ export default function DesktopWindowTitleBar({ className = '' }: DesktopWindowT
   return (
     <div
       data-tauri-drag-region
-      className={`relative h-8 border-b border-white/5 bg-[#0a0a0b] ${className}`}
+      className={`${overlay ? 'absolute left-0 top-0 z-10 w-full' : 'relative'} h-8 border-b border-white/5 bg-[#0a0a0b] ${className}`}
     >
       <Link
         data-tauri-drag-region="false"

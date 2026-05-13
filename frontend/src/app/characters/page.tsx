@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Star, Eye, EyeOff } from 'lucide-react';
+import { Star, Eye, EyeOff, Heart } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
 import { CLASS_COLORS } from '../lib/types';
+import { buildWishlistHref } from '../lib/wishlist';
 
 interface Character {
   name: string;
@@ -47,7 +48,20 @@ function StarIcon({ filled }: { filled?: boolean }) {
 }
 
 function EyeIcon({ hidden }: { hidden?: boolean }) {
-  return hidden ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />;
+  return hidden ? (
+    <EyeOff className="h-4 w-4" strokeWidth={2} />
+  ) : (
+    <Eye className="h-4 w-4" strokeWidth={2} />
+  );
+}
+
+function wishlistHrefForCharacter(char: Character): string {
+  return buildWishlistHref({
+    name: char.name,
+    realm: char.realm,
+    region: char.region,
+    className: char.class,
+  });
 }
 
 function CharacterCard({
@@ -137,6 +151,15 @@ function CharacterCard({
               aria-label="Open Talent Playground for this character"
             >
               Talents
+            </Link>
+            <Link
+              href={wishlistHrefForCharacter(char)}
+              className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-rose-400/40 bg-rose-500/15 px-2 text-[11px] font-bold text-rose-200 transition hover:bg-rose-500/25"
+              title="Open Wishlist for this character"
+              aria-label="Open Wishlist for this character"
+            >
+              <Heart className="h-3.5 w-3.5" strokeWidth={2} />
+              Wishlist
             </Link>
             <div className="relative">
               <button
@@ -285,7 +308,8 @@ export default function CharactersPage() {
       const rawTracked = window.localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY);
       if (rawTracked) {
         const parsed = JSON.parse(rawTracked);
-        if (Array.isArray(parsed)) setTrackedCharacterKeys(parsed.filter((v) => typeof v === 'string'));
+        if (Array.isArray(parsed))
+          setTrackedCharacterKeys(parsed.filter((v) => typeof v === 'string'));
       }
     } catch {
       setFavorites([]);
@@ -365,7 +389,16 @@ export default function CharactersPage() {
         `${char.name} ${char.realm} ${char.class} ${char.race} ${char.region}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [characters, search, regionFilter, classFilter, realmFilter, viewFilter, favoriteSet, hiddenSet]);
+  }, [
+    characters,
+    search,
+    regionFilter,
+    classFilter,
+    realmFilter,
+    viewFilter,
+    favoriteSet,
+    hiddenSet,
+  ]);
 
   const allianceCharacters = useMemo(
     () => filteredCharacters.filter((c) => normalizeFaction(c.faction) === 'alliance'),

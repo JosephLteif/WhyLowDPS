@@ -2,7 +2,8 @@
 
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Copy, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, Copy, Heart, Trash2 } from 'lucide-react';
 import {
   API_URL,
   deleteCharacterProfile,
@@ -10,12 +11,29 @@ import {
   listCharacterProfiles,
   SavedCharacterProfile,
 } from '@/app/lib/api';
+import { buildWishlistHref } from '@/app/lib/wishlist';
 import CharacterPanel from '../../../../components/CharacterPanel';
 import ConfirmModal from '../../../../components/ConfirmModal';
 import ToggleOptionCard from '../../../../components/shared/ToggleOptionCard';
 
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
 const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
+
+type RosterCharacter = {
+  name?: string;
+  realm?: string;
+  region?: string;
+  class?: string;
+  className?: string;
+  character_class?: { name?: string };
+};
+
+function normalizeCharacterSlug(value?: string): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/'/g, '')
+    .replace(/\s+/g, '-');
+}
 
 function CopyIcon() {
   return <Copy className="h-4 w-4" strokeWidth={2} />;
@@ -32,7 +50,10 @@ export default function CharacterClient() {
   const tabParam = (searchParams.get('tab') || '').toLowerCase();
   const forceRefresh = (searchParams.get('refresh') || '').toLowerCase() === 'true';
   const initialTab =
-    tabParam === 'vault' || tabParam === 'mythic' || tabParam === 'profile' || tabParam === 'raiding'
+    tabParam === 'vault' ||
+    tabParam === 'mythic' ||
+    tabParam === 'profile' ||
+    tabParam === 'raiding'
       ? (tabParam as 'vault' | 'mythic' | 'profile' | 'raiding')
       : undefined;
 
@@ -65,6 +86,7 @@ export default function CharacterClient() {
   const [savedProfiles, setSavedProfiles] = useState<SavedCharacterProfile[]>([]);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [trackedCharacterKeys, setTrackedCharacterKeys] = useState<string[]>([]);
+  const [rosterCharacters, setRosterCharacters] = useState<RosterCharacter[]>([]);
   const [trackSaving, setTrackSaving] = useState(false);
   const [trackError, setTrackError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);
@@ -86,6 +108,25 @@ export default function CharacterClient() {
     } catch {
       setTrackedCharacterKeys([]);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<{ characters?: RosterCharacter[] } | RosterCharacter[]>(
+      `${API_URL}/api/bnet/user/characters`
+    )
+      .then((response) => {
+        if (cancelled) return;
+        const list = Array.isArray(response) ? response : response?.characters || [];
+        setRosterCharacters(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRosterCharacters([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleDeleteProfiles = useCallback(async () => {
@@ -194,6 +235,27 @@ export default function CharacterClient() {
   const canonicalName = String(profile.name || name).toLowerCase();
   const currentKey = `${canonicalRegion}|${canonicalRealm}|${canonicalName}`;
   const isTrackedCharacter = trackedCharacterKeys.includes(currentKey);
+  const rosterCharacter =
+    rosterCharacters.find((char) => {
+      const charName = String(char.name || '').toLowerCase();
+      const charRealm = normalizeCharacterSlug(char.realm);
+      const charRegion = String(char.region || '').toLowerCase();
+      return (
+        charName === canonicalName && charRealm === canonicalRealm && charRegion === canonicalRegion
+      );
+    }) || null;
+  const rosterWishlistHref = rosterCharacter
+    ? buildWishlistHref({
+        name: rosterCharacter.name || profile.name,
+        realm: rosterCharacter.realm || profile.realm?.name || realm,
+        region: rosterCharacter.region || region,
+        className:
+          rosterCharacter.className ||
+          rosterCharacter.class ||
+          rosterCharacter.character_class?.name ||
+          profile.character_class?.name,
+      })
+    : '';
   const characterMediaUrl = `${API_URL}/api/blizzard/character/${realm}/${name}/media/main?region=${region}`;
 
   return (
@@ -223,6 +285,15 @@ export default function CharacterClient() {
             >
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
+            {rosterWishlistHref ? (
+              <Link
+                href={rosterWishlistHref}
+                className="ml-2 flex items-center gap-1.5 rounded border border-rose-400/35 bg-rose-500/15 px-3 py-1 text-xs font-bold text-rose-200 backdrop-blur-sm hover:bg-rose-500/25 active:scale-95"
+              >
+                <Heart className="h-4 w-4" strokeWidth={2} />
+                Open Wishlist
+              </Link>
+            ) : null}
             {savedProfiles.length > 0 && (
               <>
                 <button

@@ -16,7 +16,7 @@ interface WishlistStorageV2 {
   by_owner: Record<string, WishlistItem[]>;
 }
 
-interface WishlistOwnerInput {
+export interface WishlistOwnerInput {
   name?: string | null;
   realm?: string | null;
   region?: string | null;
@@ -144,6 +144,10 @@ export function buildWishlistOwnerKey(owner: WishlistOwnerInput): string {
   return `${region}:${realm}:${name}`;
 }
 
+export function buildWishlistHref(owner: WishlistOwnerInput): string {
+  return `/wishlist?owner=${encodeURIComponent(buildWishlistOwnerKey(owner))}`;
+}
+
 export function parseWishlistOwnerKey(ownerKey: string): WishlistOwnerInput {
   const key = resolveOwnerKey(ownerKey);
   if (key === GLOBAL_WISHLIST_OWNER_KEY) return {};
@@ -192,7 +196,11 @@ export function isWishlisted(itemId: number, ownerKey?: string, ilvl?: number): 
   });
 }
 
-export function removeFromWishlist(itemId: number, ownerKey?: string, ilvl?: number): WishlistItem[] {
+export function removeFromWishlist(
+  itemId: number,
+  ownerKey?: string,
+  ilvl?: number
+): WishlistItem[] {
   const targetIlvl = Number(ilvl ?? 0);
   const next = loadWishlist(ownerKey).filter((item) => {
     const itemIlvl = Number(item.wishlist_ilvl ?? item.ilevel ?? 0);
@@ -202,7 +210,11 @@ export function removeFromWishlist(itemId: number, ownerKey?: string, ilvl?: num
   return next;
 }
 
-export function toggleWishlistItem(item: DropItem, slot?: string, ownerKey?: string): WishlistItem[] {
+export function toggleWishlistItem(
+  item: DropItem,
+  slot?: string,
+  ownerKey?: string
+): WishlistItem[] {
   const current = loadWishlist(ownerKey);
   const exists = current.some((entry) => entry.item_id === item.item_id);
   const next = exists

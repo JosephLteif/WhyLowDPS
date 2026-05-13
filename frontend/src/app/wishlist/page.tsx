@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
@@ -153,6 +153,7 @@ async function resolveSimcInputForOwner(opts: {
 
 export default function WishlistPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { simcInput, setSimcInput } = useSimContext();
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
@@ -177,10 +178,11 @@ export default function WishlistPage() {
   }, [characterInfo]);
 
   const [selectedOwnerKey, setSelectedOwnerKey] = useState(activeCharacterOwnerKey);
+  const requestedOwnerKey = (searchParams.get('owner') || '').trim().toLowerCase();
 
   useEffect(() => {
-    setSelectedOwnerKey(activeCharacterOwnerKey);
-  }, [activeCharacterOwnerKey]);
+    setSelectedOwnerKey(requestedOwnerKey || activeCharacterOwnerKey);
+  }, [requestedOwnerKey, activeCharacterOwnerKey]);
 
   const selectedOwnerSummary = useMemo(
     () => owners.find((owner) => owner.key === selectedOwnerKey) || null,
@@ -292,6 +294,18 @@ export default function WishlistPage() {
       });
     }
 
+    if (selectedOwnerKey && !byKey.has(selectedOwnerKey)) {
+      const parsed = parseWishlistOwnerKey(selectedOwnerKey);
+      byKey.set(selectedOwnerKey, {
+        key: selectedOwnerKey,
+        label: parsed.name || 'Selected character',
+        count: loadWishlist(selectedOwnerKey).length,
+        name: parsed.name || undefined,
+        realm: parsed.realm || undefined,
+        region: parsed.region || undefined,
+      });
+    }
+
     return [...byKey.values()].sort((a, b) => {
       const aIsGlobal = a.key === 'global';
       const bIsGlobal = b.key === 'global';
@@ -300,7 +314,7 @@ export default function WishlistPage() {
       if (a.count !== b.count) return b.count - a.count;
       return a.label.localeCompare(b.label);
     });
-  }, [owners, bnetCharacters, activeCharacterOwnerKey, characterInfo]);
+  }, [owners, bnetCharacters, activeCharacterOwnerKey, characterInfo, selectedOwnerKey]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, WishlistItem[]>();

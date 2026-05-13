@@ -127,6 +127,12 @@ const enchantCache: Record<number, EnchantInfo> = {};
 const enchantAvailabilityCache: Record<string, boolean> = {};
 const embellishmentOptionsCache: Record<number, EmbellishmentOption[]> = {};
 
+function normalizeEnchantQuerySlot(slot: string): string {
+  if (slot === 'finger1' || slot === 'finger2') return 'finger';
+  if (slot === 'trinket1' || slot === 'trinket2') return 'trinket';
+  return slot;
+}
+
 function normalizeClassName(className?: string | null): string {
   return String(className || '').trim().toLowerCase();
 }
@@ -291,7 +297,7 @@ export function useEnchantAvailability(
       (async () => {
         try {
           const params = new URLSearchParams();
-          params.set('slot', slot);
+          params.set('slot', normalizeEnchantQuerySlot(slot));
           const normalizedClass = normalizeClassName(className);
           if (normalizedClass) params.set('class_name', normalizedClass);
           if (Number.isFinite(itemId) && Number(itemId) > 0) {

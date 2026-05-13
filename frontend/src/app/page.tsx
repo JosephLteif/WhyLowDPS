@@ -3,47 +3,200 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, List, Database, Cpu } from 'lucide-react';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { API_URL, fetchJson, getHistoryStats, getSystemStats, listCharacterProfiles, type HistoryStats, isDesktop, listSims } from './lib/api';
+import {
+  Activity,
+  Cpu,
+  Database,
+  GripVertical,
+  List,
+  MoveHorizontal,
+  Pencil,
+  Plus,
+  X,
+} from 'lucide-react';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
+  API_URL,
+  fetchJson,
+  getHistoryStats,
+  getSystemStats,
+  type HistoryStats,
+  isDesktop,
+  listCharacterProfiles,
+  listSims,
+} from './lib/api';
 import { useSimContext } from './components/SimContext';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
-import { simResultHref } from './lib/routes';
+import { characterHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
 import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
+import { useDismissOnOutside } from './lib/useDismissOnOutside';
+
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
+const LOCAL_QUICK_LINKS_KEY = 'whylowdps_quick_links';
+const LOCAL_DASHBOARD_WIDGETS_KEY = 'whylowdps_dashboard_widgets';
+const LOCAL_DASHBOARD_WIDGET_SIZES_KEY = 'whylowdps_dashboard_widget_sizes';
+const LOCAL_DASHBOARD_STATS_WIDGET_KEY = 'whylowdps_dashboard_stats_cards';
 const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
 
-type SimStatus = SimSummary['status'];
+type DashboardWidgetId = 'stats' | 'activity' | 'quick-links' | 'tracked-characters';
+type DashboardWidgetSize = 1 | 2 | 3;
+type StatCardId = 'active' | 'total' | 'history' | 'system';
 
-const STATUS_STYLES: Record<SimStatus, string> = {
-  done: 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30',
-  running: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',
-  failed: 'bg-red-500/15 text-red-300 border border-red-500/30',
-  pending: 'bg-zinc-600/20 text-zinc-300 border border-zinc-600/40',
-  cancelled: 'bg-zinc-700/30 text-zinc-300 border border-zinc-600/50',
+const DASHBOARD_WIDGETS: {
+  id: DashboardWidgetId;
+  label: string;
+  defaultSize: DashboardWidgetSize;
+}[] = [
+  { id: 'stats', label: 'Stats', defaultSize: 3 },
+  { id: 'activity', label: 'Simulation Activity', defaultSize: 2 },
+  { id: 'quick-links', label: 'Quick Links', defaultSize: 1 },
+  { id: 'tracked-characters', label: 'Tracked Characters', defaultSize: 3 },
+];
+
+const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetId[] = DASHBOARD_WIDGETS.map(({ id }) => id);
+const DEFAULT_DASHBOARD_WIDGET_SIZES: Record<DashboardWidgetId, DashboardWidgetSize> =
+  DASHBOARD_WIDGETS.reduce(
+    (acc, widget) => {
+      acc[widget.id] = widget.defaultSize;
+      return acc;
+    },
+    {} as Record<DashboardWidgetId, DashboardWidgetSize>
+  );
+
+const STAT_CARD_ORDER: StatCardId[] = ['active', 'total', 'history', 'system'];
+
+type QuickLink = {
+  label: string;
+  href: string;
 };
 
-const SIM_TYPE_LABELS: Record<string, string> = {
-  quick: 'Quick Sim',
-  top_gear: 'Top Gear',
-  droptimizer: 'Drop Finder',
-  upgrade_compare: 'Upgrade Compare',
-  stat_weights: 'Stat Weights',
-  stat_plot: 'Stat Plot',
-  external_buff_matrix: 'External Buff Matrix',
-  consumable_matrix: 'Consumable Matrix',
-  trinket_tier_heatmap: 'Trinket / Tier Heatmaps',
-};
+const DEFAULT_QUICK_LINKS: QuickLink[] = [
+  { label: 'New Quick Sim', href: '/quick-sim' },
+  { label: 'Top Gear', href: '/top-gear' },
+  { label: 'Drop Finder', href: '/drop-finder' },
+  { label: 'Simulation History', href: '/history' },
+];
 
-const relativeFormatter = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+const QUICK_LINK_OPTIONS: QuickLink[] = [
+  { label: 'Dashboard', href: '/' },
+  { label: 'New Quick Sim', href: '/quick-sim' },
+  { label: 'Top Gear', href: '/top-gear' },
+  { label: 'Drop Finder', href: '/drop-finder' },
+  { label: 'Crest Upgrades', href: '/upgrade-compare' },
+  { label: 'Quick Weights', href: '/analysis/quick-weights' },
+  { label: 'Stat Plot', href: '/analysis/stat-plot' },
+  { label: 'Consumable Matrix', href: '/analysis/consumable-matrix' },
+  { label: 'Tier Slot Matrix', href: '/analysis/tier-slot-matrix' },
+  { label: 'Trinkets', href: '/upgrade/trinkets' },
+  { label: 'Dungeons', href: '/dungeons' },
+  { label: 'Raids', href: '/raids' },
+  { label: 'Routes', href: '/dungeon-routes' },
+  { label: 'Simulation History', href: '/history' },
+  { label: 'My Characters', href: '/characters' },
+  { label: 'Wishlist', href: '/wishlist' },
+  { label: 'Talent Playground', href: '/talent-playground' },
+  { label: 'Settings', href: '/settings' },
+];
 
 function StatIcon({ children }: { children: ReactNode }) {
   return (
-    <div
-      className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-zinc-200">
+    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface-2 text-zinc-200">
       {children}
+    </div>
+  );
+}
+
+function DashboardWidgetShell({
+  children,
+  className,
+  editMode,
+  index,
+  label,
+  size,
+  widgetId,
+  onRemove,
+  onResizeHandleDown,
+  isDragged,
+  isDragTarget,
+  isDraggingAny,
+  onDragHandleDown,
+  onDragTargetEnter,
+}: {
+  children: ReactNode;
+  className: string;
+  editMode: boolean;
+  index: number;
+  label: string;
+  size: DashboardWidgetSize;
+  widgetId: DashboardWidgetId;
+  onRemove: (id: DashboardWidgetId) => void;
+  onResizeHandleDown: (id: DashboardWidgetId, e: React.PointerEvent<HTMLButtonElement>) => void;
+  isDragged: boolean;
+  isDragTarget: boolean;
+  isDraggingAny: boolean;
+  onDragHandleDown: (id: DashboardWidgetId, e: React.PointerEvent<HTMLButtonElement>) => void;
+  onDragTargetEnter: (id: DashboardWidgetId) => void;
+}) {
+  return (
+    <div
+      onPointerEnter={() => {
+        if (editMode) onDragTargetEnter(widgetId);
+      }}
+      className={`${className} ${
+        editMode
+          ? `rounded-xl border border-dashed p-1 ${
+              isDragTarget && !isDragged ? 'border-gold/65 bg-gold/5' : 'border-gold/35'
+            }`
+          : ''
+      } ${isDragged ? 'pointer-events-none opacity-25' : ''} relative h-full`}
+      style={{ order: index }}
+    >
+      {editMode && (
+        <>
+          <button
+            type="button"
+            onPointerDown={(e) => onDragHandleDown(widgetId, e)}
+            className={`absolute left-2 top-2 z-20 inline-flex h-6 w-6 items-center justify-center rounded border border-white/10 bg-black/70 text-zinc-300 hover:bg-white/10 ${
+              isDraggingAny ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
+            title={`Drag ${label}`}
+            aria-label={`Drag ${label}`}
+          >
+            <GripVertical className="h-3.5 w-3.5" strokeWidth={2} />
+          </button>
+          <div className="absolute right-2 top-2 z-20 inline-flex items-center gap-1">
+            <button
+              type="button"
+              onPointerDown={(e) => onResizeHandleDown(widgetId, e)}
+              className="inline-flex h-6 w-6 cursor-ew-resize items-center justify-center rounded border border-white/10 bg-black/70 text-zinc-300 hover:bg-white/10"
+              title={`Resize ${label} (${size}/3)`}
+              aria-label={`Resize ${label}`}
+            >
+              <MoveHorizontal className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onRemove(widgetId)}
+              className="inline-flex h-6 w-6 items-center justify-center rounded border border-red-500/40 bg-red-500/15 text-red-300 hover:bg-red-500/25"
+              title={`Remove ${label}`}
+              aria-label={`Remove ${label}`}
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+          </div>
+        </>
+      )}
+      <div className={`h-full ${editMode ? 'pt-8' : ''}`}>{children}</div>
     </div>
   );
 }
@@ -75,26 +228,6 @@ function formatBytes(bytes: number): string {
     i += 1;
   }
   return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[i]}`;
-}
-
-function formatRelativeTime(dateIso: string): string {
-  const target = new Date(dateIso).getTime();
-  if (!Number.isFinite(target)) return '-';
-  const diffSec = Math.round((target - Date.now()) / 1000);
-  const absSec = Math.abs(diffSec);
-  if (absSec < 60) return relativeFormatter.format(diffSec, 'second');
-  const diffMin = Math.round(diffSec / 60);
-  if (Math.abs(diffMin) < 60) return relativeFormatter.format(diffMin, 'minute');
-  const diffHour = Math.round(diffMin / 60);
-  if (Math.abs(diffHour) < 24) return relativeFormatter.format(diffHour, 'hour');
-  const diffDay = Math.round(diffHour / 24);
-  return relativeFormatter.format(diffDay, 'day');
-}
-
-function classColor(playerClass?: string): string {
-  if (!playerClass) return '#d4d4d8';
-  const key = playerClass.toLowerCase().replace(/[\s-]+/g, '_');
-  return CLASS_COLORS[key] || CLASS_COLORS[key.replace(/_/g, '')] || '#d4d4d8';
 }
 
 function chartDateLabel(date: Date): string {
@@ -137,7 +270,7 @@ function toTimestampMs(raw: unknown): number {
 
 function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
   const region = String(regionRaw || 'us').toLowerCase();
-  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2; // Sun=0, Tue=2, Wed=3, Thu=4
+  const resetDayUtc = region === 'eu' ? 3 : region === 'Asia' ? 4 : 2; // Sun=0, Tue=2, Wed=3, Thu=4
   // Weekly reset schedule (from provided timer reference):
   // - US: Tuesday 6:00 PM GMT+3 => 15:00 UTC
   // - EU: Wednesday 7:00 AM GMT+3 => 04:00 UTC
@@ -153,8 +286,8 @@ function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new D
       resetHourUtc,
       0,
       0,
-      0,
-    ),
+      0
+    )
   );
   const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
   let reset = new Date(todayReset);
@@ -211,13 +344,15 @@ function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
       if (!current || seen.has(current)) continue;
       seen.add(current);
       if (Array.isArray(current)) {
-        if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+        if (current.some((item) => isRunLike(item)))
+          out.push(...current.filter((item) => isRunLike(item)));
         else for (const item of current) if (item && typeof item === 'object') stack.push(item);
         continue;
       }
       if (typeof current === 'object') {
         if (isRunLike(current)) out.push(current);
-        for (const value of Object.values(current)) if (value && typeof value === 'object') stack.push(value);
+        for (const value of Object.values(current))
+          if (value && typeof value === 'object') stack.push(value);
       }
     }
     return out;
@@ -233,12 +368,14 @@ function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
         run?.start_timestamp ??
         run?.startTimestamp ??
         run?.timestamp ??
-        0,
+        0
     );
 
   const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
   const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
-  const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
+  const recentRuns = [...recentSource]
+    .sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a))
+    .slice(0, 20);
   const weekStart = getWeeklyResetStartMs(region);
   const recentWeekCount = recentRuns.filter((run) => {
     const ts = getRunTimestamp(run);
@@ -259,23 +396,79 @@ export default function Home() {
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [trackedCharacters, setTrackedCharacters] = useState<{ region: string; realm: string; name: string }[]>([]);
+  const [trackedCharacters, setTrackedCharacters] = useState<
+    { region: string; realm: string; name: string }[]
+  >([]);
   const [activeTrackedIndex, setActiveTrackedIndex] = useState(0);
-  const [trackedClassByCharacter, setTrackedClassByCharacter] = useState<Record<string, string>>({});
+  const [trackedClassByCharacter, setTrackedClassByCharacter] = useState<Record<string, string>>(
+    {}
+  );
   const [mainVault, setMainVault] = useState<{ mplusRuns: number; raidKills: number } | null>(null);
-  const [mainMeta, setMainMeta] = useState<{ level?: number; className?: string; ilvl?: number } | null>(null);
+  const [mainMeta, setMainMeta] = useState<{
+    level?: number;
+    className?: string;
+    ilvl?: number;
+  } | null>(null);
   const [mainVaultRewards, setMainVaultRewards] = useState<VaultRewardItem[]>([]);
   const [mainSimcInput, setMainSimcInput] = useState<string>('');
   const [mainCharacterOpen, setMainCharacterOpen] = useState(true);
   const [trackedRefreshToken, setTrackedRefreshToken] = useState(0);
-  const [lastRefreshedByCharacter, setLastRefreshedByCharacter] = useState<Record<string, number>>({});
+  const [lastRefreshedByCharacter, setLastRefreshedByCharacter] = useState<Record<string, number>>(
+    {}
+  );
   const [trackedRefreshing, setTrackedRefreshing] = useState(false);
-  const [recentResultsOpen, setRecentResultsOpen] = useState(true);
+  const [dashboardWidgets, setDashboardWidgets] =
+    useState<DashboardWidgetId[]>(DEFAULT_DASHBOARD_WIDGETS);
+  const [dashboardWidgetSizes, setDashboardWidgetSizes] = useState<
+    Record<DashboardWidgetId, DashboardWidgetSize>
+  >(DEFAULT_DASHBOARD_WIDGET_SIZES);
+  const [visibleStatCards, setVisibleStatCards] = useState<StatCardId[]>(STAT_CARD_ORDER);
+  const [dashboardEditMode, setDashboardEditMode] = useState(false);
+  const [showDashboardAddMenu, setShowDashboardAddMenu] = useState(false);
+  const [draggingWidgetId, setDraggingWidgetId] = useState<DashboardWidgetId | null>(null);
+  const [dragOverWidgetId, setDragOverWidgetId] = useState<DashboardWidgetId | null>(null);
+  const [dashboardDragPointer, setDashboardDragPointer] = useState<{
+    x: number;
+    y: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    label: string;
+  } | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [draggedTrackedIndex, setDraggedTrackedIndex] = useState<number | null>(null);
   const [dragOverTrackedIndex, setDragOverTrackedIndex] = useState<number | null>(null);
-  const [dragPointer, setDragPointer] = useState<{ x: number; y: number; offsetX: number; offsetY: number; width: number; label: string; color: string } | null>(null);
+  const [dragPointer, setDragPointer] = useState<{
+    x: number;
+    y: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    label: string;
+    color: string;
+  } | null>(null);
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>(DEFAULT_QUICK_LINKS);
+  const [quickLinksEditMode, setQuickLinksEditMode] = useState(false);
+  const [showQuickLinkAddMenu, setShowQuickLinkAddMenu] = useState(false);
   const draggedTrackedIndexRef = useRef<number | null>(null);
+  const quickLinkAddMenuRef = useRef<HTMLDivElement | null>(null);
+  const dashboardAddMenuRef = useRef<HTMLDivElement | null>(null);
+  const draggingWidgetIdRef = useRef<DashboardWidgetId | null>(null);
+  const dragOverWidgetIdRef = useRef<DashboardWidgetId | null>(null);
+  const pendingWidgetDragRef = useRef<{
+    id: DashboardWidgetId;
+    startX: number;
+    startY: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    label: string;
+  } | null>(null);
+  const pendingWidgetResizeRef = useRef<{
+    id: DashboardWidgetId;
+    startX: number;
+    startSize: DashboardWidgetSize;
+  } | null>(null);
   const pendingTrackedRefreshRef = useRef(false);
   const pendingDragRef = useRef<{
     idx: number;
@@ -285,7 +478,7 @@ export default function Home() {
     offsetX: number;
     offsetY: number;
     label: string;
-    color: string
+    color: string;
   } | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -307,10 +500,74 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_QUICK_LINKS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const optionsByHref = new Map(QUICK_LINK_OPTIONS.map((link) => [link.href, link]));
+      const links = parsed
+        .map((link) => optionsByHref.get(String(link?.href || '').trim()))
+        .filter((link): link is QuickLink => Boolean(link));
+      setQuickLinks(links.length > 0 ? links : DEFAULT_QUICK_LINKS);
+    } catch {
+      setQuickLinks(DEFAULT_QUICK_LINKS);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_DASHBOARD_WIDGETS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const validIds = new Set(DEFAULT_DASHBOARD_WIDGETS);
+      const next = parsed.filter((id): id is DashboardWidgetId => validIds.has(id));
+      setDashboardWidgets(next.length > 0 ? next : DEFAULT_DASHBOARD_WIDGETS);
+    } catch {
+      setDashboardWidgets(DEFAULT_DASHBOARD_WIDGETS);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_DASHBOARD_WIDGET_SIZES_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<Record<DashboardWidgetId, number>>;
+      const next = { ...DEFAULT_DASHBOARD_WIDGET_SIZES };
+      for (const widget of DASHBOARD_WIDGETS) {
+        const size = Number(parsed?.[widget.id] || widget.defaultSize);
+        if (size === 1 || size === 2 || size === 3) {
+          next[widget.id] = size as DashboardWidgetSize;
+        }
+      }
+      setDashboardWidgetSizes(next);
+    } catch {
+      setDashboardWidgetSizes(DEFAULT_DASHBOARD_WIDGET_SIZES);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_DASHBOARD_STATS_WIDGET_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const valid = new Set<StatCardId>(STAT_CARD_ORDER);
+      const next = parsed.filter((id): id is StatCardId => valid.has(id));
+      setVisibleStatCards(next.length > 0 ? next : STAT_CARD_ORDER);
+    } catch {
+      setVisibleStatCards(STAT_CARD_ORDER);
+    }
+  }, []);
+
+  useEffect(() => {
     const loadMainCharacter = async () => {
       try {
         const rawTracked =
-          typeof window !== 'undefined' ? localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY) || '[]' : '[]';
+          typeof window !== 'undefined'
+            ? localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY) || '[]'
+            : '[]';
         let trackedKeys: string[] = [];
         try {
           const parsed = JSON.parse(rawTracked);
@@ -318,7 +575,9 @@ export default function Home() {
         } catch {}
         if (trackedKeys.length === 0) {
           const legacyMain =
-            typeof window !== 'undefined' ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || '' : '';
+            typeof window !== 'undefined'
+              ? localStorage.getItem(LOCAL_MAIN_CHARACTER_KEY) || ''
+              : '';
           if (legacyMain) trackedKeys = [legacyMain];
         }
 
@@ -362,7 +621,10 @@ export default function Home() {
         for (const raw of lines) {
           const line = raw.trim();
           const lower = line.toLowerCase();
-          if (lower.includes('weekly reward choices') && !lower.includes('end of weekly reward choices')) {
+          if (
+            lower.includes('weekly reward choices') &&
+            !lower.includes('end of weekly reward choices')
+          ) {
             inBlock = true;
             continue;
           }
@@ -435,7 +697,9 @@ export default function Home() {
           if (trackedClassByCharacter[key]) return;
           const query = `?region=${c.region}`;
           const base = `/api/blizzard/character/${c.realm}/${c.name}`;
-          const profileRes = await fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(() => null);
+          const profileRes = await fetchJson<any>(`${API_URL}${base}/profile${query}`).catch(
+            () => null
+          );
           const className = String(profileRes?.character_class?.name || '');
           if (className) updates[key] = className;
         })
@@ -457,45 +721,230 @@ export default function Home() {
       }
       router.push(path);
     },
-    [mainSimcInput, router, setSimcInput],
+    [mainSimcInput, router, setSimcInput]
   );
 
-  const persistTrackedCharacters = useCallback((next: { region: string; realm: string; name: string }[]) => {
-    setTrackedCharacters(next);
+  const persistQuickLinks = useCallback((next: QuickLink[]) => {
+    setQuickLinks(next);
     if (typeof window !== 'undefined') {
-      localStorage.setItem(
-        LOCAL_TRACKED_CHARACTERS_KEY,
-        JSON.stringify(next.map((x) => `${x.region}|${x.realm}|${x.name}`)),
-      );
+      localStorage.setItem(LOCAL_QUICK_LINKS_KEY, JSON.stringify(next));
     }
   }, []);
 
-  const untrackAtIndex = useCallback((idx: number) => {
-    const next = trackedCharacters.filter((_, i) => i !== idx);
-    persistTrackedCharacters(next);
-    setActiveTrackedIndex((prev) => {
-      if (next.length === 0) return 0;
-      if (prev > idx) return prev - 1;
-      if (prev === idx) return Math.max(0, prev - 1);
-      return prev;
-    });
-  }, [persistTrackedCharacters, trackedCharacters]);
+  const addableQuickLinks = useMemo(() => {
+    const currentHrefs = new Set(quickLinks.map((link) => link.href));
+    return QUICK_LINK_OPTIONS.filter((link) => !currentHrefs.has(link.href));
+  }, [quickLinks]);
 
-  const moveTrackedCharacter = useCallback((from: number, to: number) => {
-    if (from === to || from < 0 || to < 0 || from >= trackedCharacters.length || to >= trackedCharacters.length) {
-      return;
+  const addQuickLink = useCallback(
+    (link: QuickLink) => {
+      if (quickLinks.some((item) => item.href === link.href)) return;
+      persistQuickLinks([...quickLinks, link]);
+      setShowQuickLinkAddMenu(false);
+    },
+    [persistQuickLinks, quickLinks]
+  );
+
+  const removeQuickLink = useCallback(
+    (index: number) => {
+      persistQuickLinks(quickLinks.filter((_, i) => i !== index));
+    },
+    [persistQuickLinks, quickLinks]
+  );
+
+  const persistDashboardWidgets = useCallback((next: DashboardWidgetId[]) => {
+    setDashboardWidgets(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LOCAL_DASHBOARD_WIDGETS_KEY, JSON.stringify(next));
     }
-    const next = [...trackedCharacters];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
-    persistTrackedCharacters(next);
-    setActiveTrackedIndex((prev) => {
-      if (prev === from) return to;
-      if (from < prev && to >= prev) return prev - 1;
-      if (from > prev && to <= prev) return prev + 1;
-      return prev;
-    });
-  }, [persistTrackedCharacters, trackedCharacters]);
+  }, []);
+
+  const persistDashboardWidgetSizes = useCallback(
+    (next: Record<DashboardWidgetId, DashboardWidgetSize>) => {
+      setDashboardWidgetSizes(next);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LOCAL_DASHBOARD_WIDGET_SIZES_KEY, JSON.stringify(next));
+      }
+    },
+    []
+  );
+
+  const persistVisibleStatCards = useCallback((next: StatCardId[]) => {
+    setVisibleStatCards(next.length > 0 ? next : STAT_CARD_ORDER);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LOCAL_DASHBOARD_STATS_WIDGET_KEY, JSON.stringify(next));
+    }
+  }, []);
+
+  const hiddenDashboardWidgets = useMemo(
+    () => DASHBOARD_WIDGETS.filter((widget) => !dashboardWidgets.includes(widget.id)),
+    [dashboardWidgets]
+  );
+
+  const addDashboardWidget = useCallback(
+    (id: DashboardWidgetId) => {
+      if (dashboardWidgets.includes(id)) return;
+      persistDashboardWidgets([...dashboardWidgets, id]);
+      setShowDashboardAddMenu(false);
+    },
+    [dashboardWidgets, persistDashboardWidgets]
+  );
+
+  const removeDashboardWidget = useCallback(
+    (id: DashboardWidgetId) => {
+      persistDashboardWidgets(dashboardWidgets.filter((widgetId) => widgetId !== id));
+    },
+    [dashboardWidgets, persistDashboardWidgets]
+  );
+
+  const resizeDashboardWidget = useCallback(
+    (id: DashboardWidgetId, size: DashboardWidgetSize) => {
+      persistDashboardWidgetSizes({ ...dashboardWidgetSizes, [id]: size });
+    },
+    [dashboardWidgetSizes, persistDashboardWidgetSizes]
+  );
+
+  const handleWidgetResizeHandleDown = useCallback(
+    (id: DashboardWidgetId, e: React.PointerEvent<HTMLButtonElement>) => {
+      if (!dashboardEditMode || e.button !== 0) return;
+      pendingWidgetResizeRef.current = {
+        id,
+        startX: e.clientX,
+        startSize: dashboardWidgetSizes[id] || 3,
+      };
+      e.preventDefault();
+    },
+    [dashboardEditMode, dashboardWidgetSizes]
+  );
+
+  const hiddenStatCards = useMemo(
+    () => STAT_CARD_ORDER.filter((id) => !visibleStatCards.includes(id)),
+    [visibleStatCards]
+  );
+
+  const removeStatCard = useCallback(
+    (id: StatCardId) => {
+      if (visibleStatCards.length <= 1) return;
+      persistVisibleStatCards(visibleStatCards.filter((cardId) => cardId !== id));
+    },
+    [persistVisibleStatCards, visibleStatCards]
+  );
+
+  const addStatCard = useCallback(
+    (id: StatCardId) => {
+      if (visibleStatCards.includes(id)) return;
+      const next = [...visibleStatCards, id].sort(
+        (a, b) => STAT_CARD_ORDER.indexOf(a) - STAT_CARD_ORDER.indexOf(b)
+      );
+      persistVisibleStatCards(next);
+    },
+    [persistVisibleStatCards, visibleStatCards]
+  );
+
+  const reorderDashboardWidget = useCallback(
+    (source: DashboardWidgetId, target: DashboardWidgetId) => {
+      if (source === target) return;
+      const from = dashboardWidgets.indexOf(source);
+      const to = dashboardWidgets.indexOf(target);
+      if (from < 0 || to < 0) return;
+      const next = [...dashboardWidgets];
+      next.splice(from, 1);
+      next.splice(to, 0, source);
+      persistDashboardWidgets(next);
+    },
+    [dashboardWidgets, persistDashboardWidgets]
+  );
+
+  const handleWidgetDragHandleDown = useCallback(
+    (id: DashboardWidgetId, e: React.PointerEvent<HTMLButtonElement>) => {
+      if (!dashboardEditMode || e.button !== 0) return;
+      const rect = (e.currentTarget as HTMLButtonElement).closest('div')?.getBoundingClientRect();
+      if (!rect) return;
+      const meta = DASHBOARD_WIDGETS.find((widget) => widget.id === id);
+      pendingWidgetDragRef.current = {
+        id,
+        startX: e.clientX,
+        startY: e.clientY,
+        offsetX: e.clientX - rect.left,
+        offsetY: e.clientY - rect.top,
+        width: Math.max(160, rect.width),
+        label: meta?.label || id,
+      };
+      e.preventDefault();
+    },
+    [dashboardEditMode]
+  );
+
+  const handleWidgetDragTargetEnter = useCallback(
+    (id: DashboardWidgetId) => {
+      if (!dashboardEditMode) return;
+      const source = draggingWidgetIdRef.current;
+      if (!source || source === id) return;
+      if (dragOverWidgetIdRef.current === id) return;
+      reorderDashboardWidget(source, id);
+      setDragOverWidgetId(id);
+    },
+    [dashboardEditMode, reorderDashboardWidget]
+  );
+
+  useDismissOnOutside(quickLinkAddMenuRef, showQuickLinkAddMenu, () =>
+    setShowQuickLinkAddMenu(false)
+  );
+  useDismissOnOutside(dashboardAddMenuRef, showDashboardAddMenu, () =>
+    setShowDashboardAddMenu(false)
+  );
+
+  const persistTrackedCharacters = useCallback(
+    (next: { region: string; realm: string; name: string }[]) => {
+      setTrackedCharacters(next);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(
+          LOCAL_TRACKED_CHARACTERS_KEY,
+          JSON.stringify(next.map((x) => `${x.region}|${x.realm}|${x.name}`))
+        );
+      }
+    },
+    []
+  );
+
+  const untrackAtIndex = useCallback(
+    (idx: number) => {
+      const next = trackedCharacters.filter((_, i) => i !== idx);
+      persistTrackedCharacters(next);
+      setActiveTrackedIndex((prev) => {
+        if (next.length === 0) return 0;
+        if (prev > idx) return prev - 1;
+        if (prev === idx) return Math.max(0, prev - 1);
+        return prev;
+      });
+    },
+    [persistTrackedCharacters, trackedCharacters]
+  );
+
+  const moveTrackedCharacter = useCallback(
+    (from: number, to: number) => {
+      if (
+        from === to ||
+        from < 0 ||
+        to < 0 ||
+        from >= trackedCharacters.length ||
+        to >= trackedCharacters.length
+      ) {
+        return;
+      }
+      const next = [...trackedCharacters];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      persistTrackedCharacters(next);
+      setActiveTrackedIndex((prev) => {
+        if (prev === from) return to;
+        if (from < prev && to >= prev) return prev - 1;
+        if (from > prev && to <= prev) return prev + 1;
+        return prev;
+      });
+    },
+    [persistTrackedCharacters, trackedCharacters]
+  );
 
   useEffect(() => {
     draggedTrackedIndexRef.current = draggedTrackedIndex;
@@ -566,6 +1015,65 @@ export default function Home() {
   }, [draggedTrackedIndex]);
 
   useEffect(() => {
+    draggingWidgetIdRef.current = draggingWidgetId;
+  }, [draggingWidgetId]);
+
+  useEffect(() => {
+    dragOverWidgetIdRef.current = dragOverWidgetId;
+  }, [dragOverWidgetId]);
+
+  useEffect(() => {
+    const onPointerMove = (e: PointerEvent) => {
+      if (pendingWidgetResizeRef.current) {
+        const pending = pendingWidgetResizeRef.current;
+        const step = Math.round((e.clientX - pending.startX) / 120);
+        const next = Math.max(1, Math.min(3, pending.startSize + step)) as DashboardWidgetSize;
+        if ((dashboardWidgetSizes[pending.id] || 3) !== next) {
+          resizeDashboardWidget(pending.id, next);
+        }
+        return;
+      }
+      if (draggingWidgetIdRef.current == null && pendingWidgetDragRef.current) {
+        const pending = pendingWidgetDragRef.current;
+        const moved =
+          Math.abs(e.clientX - pending.startX) > 5 || Math.abs(e.clientY - pending.startY) > 5;
+        if (moved) {
+          setDraggingWidgetId(pending.id);
+          setDragOverWidgetId(pending.id);
+          setDashboardDragPointer({
+            x: e.clientX,
+            y: e.clientY,
+            offsetX: pending.offsetX,
+            offsetY: pending.offsetY,
+            width: pending.width,
+            label: pending.label,
+          });
+        }
+      }
+      if (draggingWidgetIdRef.current != null) {
+        setDashboardDragPointer((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+      }
+    };
+
+    const onPointerUp = () => {
+      pendingWidgetResizeRef.current = null;
+      pendingWidgetDragRef.current = null;
+      setDraggingWidgetId(null);
+      setDragOverWidgetId(null);
+      setDashboardDragPointer(null);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
+    };
+  }, [dashboardWidgetSizes, resizeDashboardWidget]);
+
+  useEffect(() => {
     let active = true;
     (async () => {
       await loadAll();
@@ -603,24 +1111,56 @@ export default function Home() {
 
   const usResetCountdown = useMemo(
     () => formatCountdown(getNextWeeklyResetMs('us', new Date(nowMs)) - nowMs),
-    [nowMs],
+    [nowMs]
   );
   const euResetCountdown = useMemo(
     () => formatCountdown(getNextWeeklyResetMs('eu', new Date(nowMs)) - nowMs),
-    [nowMs],
+    [nowMs]
   );
   const usNextResetMs = useMemo(() => getNextWeeklyResetMs('us', new Date(nowMs)), [nowMs]);
   const euNextResetMs = useMemo(() => getNextWeeklyResetMs('eu', new Date(nowMs)), [nowMs]);
 
   const activeSims = useMemo(() => sims.filter((sim) => sim.status === 'running').length, [sims]);
-  const sortedRecent = useMemo(
-    () =>
-      [...sims]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .slice(0, 10),
-    [sims],
-  );
   const activity = useMemo(() => buildActivityData(sims, 14), [sims]);
+  const widgetMetaById = useMemo(
+    () => new Map(DASHBOARD_WIDGETS.map((widget) => [widget.id, widget])),
+    []
+  );
+  const dashboardWidgetClassBySize: Record<DashboardWidgetSize, string> = {
+    1: 'xl:col-span-1',
+    2: 'xl:col-span-2',
+    3: 'xl:col-span-3',
+  };
+  const statsWidgetSize = dashboardWidgetSizes.stats || 3;
+  const trackedWidgetSize = dashboardWidgetSizes['tracked-characters'] || 3;
+  const statsCompact = statsWidgetSize === 1;
+  const trackedCompact = trackedWidgetSize === 1;
+
+  const renderWidgetShell = (id: DashboardWidgetId, children: ReactNode) => {
+    const index = dashboardWidgets.indexOf(id);
+    if (index < 0) return null;
+    const meta = widgetMetaById.get(id);
+    const size = dashboardWidgetSizes[id] || meta?.defaultSize || 3;
+    return (
+      <DashboardWidgetShell
+        widgetId={id}
+        label={meta?.label || id}
+        className={dashboardWidgetClassBySize[size]}
+        editMode={dashboardEditMode}
+        index={index}
+        size={size}
+        onRemove={removeDashboardWidget}
+        onResizeHandleDown={handleWidgetResizeHandleDown}
+        isDragged={draggingWidgetId === id}
+        isDragTarget={dragOverWidgetId === id}
+        isDraggingAny={draggingWidgetId != null}
+        onDragHandleDown={handleWidgetDragHandleDown}
+        onDragTargetEnter={handleWidgetDragTargetEnter}
+      >
+        {children}
+      </DashboardWidgetShell>
+    );
+  };
 
   if (loading) {
     return (
@@ -652,12 +1192,6 @@ export default function Home() {
           >
             <span className="font-semibold text-zinc-200">EU reset:</span> {euResetCountdown}
           </div>
-          <Link
-            href="/history"
-            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-          >
-            Open Full History
-          </Link>
           <button
             type="button"
             onClick={() => {
@@ -676,396 +1210,648 @@ export default function Home() {
         </div>
       )}
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div className="card p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Active Sims</p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-100">{activeSims}</p>
-            </div>
-            <StatIcon>
-              <ActiveIcon />
-            </StatIcon>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+        <div>
+          <p className="text-sm font-semibold text-zinc-200">Dashboard Widgets</p>
+          <p className="text-xs text-zinc-500">Add, remove, and reorder dashboard sections.</p>
         </div>
-        <div className="card p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-zinc-500">Total Sims</p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-100">{historyStats?.count ?? 0}</p>
-            </div>
-            <StatIcon>
-              <ListIcon />
-            </StatIcon>
-          </div>
-        </div>
-        <div className="card p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-zinc-500">History Size</p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-100">
-                {formatBytes(historyStats?.size_bytes ?? 0)}
-              </p>
-            </div>
-            <StatIcon>
-              <DatabaseIcon />
-            </StatIcon>
-          </div>
-        </div>
-        <div className="card p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-zinc-500">System Load</p>
-              <p className="mt-2 text-3xl font-semibold text-zinc-100">
-                {isDesktop ? (cpuUsage != null ? `${Math.round(cpuUsage)}%` : 'N/A') : 'N/A'}
-              </p>
-            </div>
-            <StatIcon>
-              <CpuIcon />
-            </StatIcon>
-          </div>
-        </div>
-      </section>
-
-      <section className="card p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
-          <div className="flex items-center gap-2">
-            {trackedCharacters.length > 0 && (
+        <div className="flex items-center gap-2">
+          {dashboardEditMode && (
+            <div ref={dashboardAddMenuRef} className="relative">
               <button
                 type="button"
-                onClick={() => untrackAtIndex(Math.min(activeTrackedIndex, trackedCharacters.length - 1))}
-                className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
+                onClick={() => setShowDashboardAddMenu((value) => !value)}
+                className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-surface"
               >
-                Untrack
+                Add Widget
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                pendingTrackedRefreshRef.current = true;
-                setTrackedRefreshing(true);
-                setTrackedRefreshToken((v) => v + 1);
-              }}
-              disabled={trackedRefreshing}
-              className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
-            >
-              {trackedRefreshing ? 'Refreshing...' : 'Refresh'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMainCharacterOpen((prev) => !prev)}
-              className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-            >
-              {mainCharacterOpen ? 'Collapse' : 'Expand'}
-            </button>
-          </div>
-        </div>
-        {(() => {
-          const active = trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
-          if (!active) return null;
-          const key = `${active.region.toLowerCase()}|${active.realm.toLowerCase()}|${active.name.toLowerCase()}`;
-          const ts = lastRefreshedByCharacter[key];
-          if (!ts) return null;
-          return (
-          <p className="mb-2 text-[11px] text-zinc-500">
-            Last refreshed at {new Date(ts).toLocaleString()}
-          </p>
-          );
-        })()}
-        {mainCharacterOpen && trackedCharacters.length === 0 ? (
-          <p className="text-sm text-zinc-500">No tracked characters yet. Open a character and click Track Character.</p>
-        ) : mainCharacterOpen && trackedCharacters.length > 0 ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              {trackedCharacters.map((c, idx) => (
-                <div
-                  key={`${c.region}|${c.realm}|${c.name}`}
-                  onPointerEnter={() => {
-                    const currentDragged = draggedTrackedIndexRef.current;
-                    if (currentDragged == null || currentDragged === idx) return;
-                    moveTrackedCharacter(currentDragged, idx);
-                    setDraggedTrackedIndex(idx);
-                    setDragOverTrackedIndex(idx);
-                  }}
-                  className={`inline-flex items-center rounded-md border transition-all duration-200 ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'} ${draggedTrackedIndex === idx ? 'pointer-events-none opacity-0' : ''} ${dragOverTrackedIndex === idx && draggedTrackedIndex !== idx ? 'border-gold/50' : ''}`}
-                  style={{ cursor: draggedTrackedIndex != null ? 'grabbing' : 'grab' }}
-                >
-                  {(() => {
-                    const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
-                    const className = trackedClassByCharacter[key];
-                    const classColor = className ? (CLASS_COLORS[className.toLowerCase().replace(/[\s-]+/g, '_')] || '#d4d4d8') : '#d4d4d8';
-                    return (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTrackedIndex(idx)}
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      const rect = (e.currentTarget as HTMLButtonElement).closest('div')?.getBoundingClientRect();
-                      if (rect) {
-                        pendingDragRef.current = {
-                          idx,
-                          startX: e.clientX,
-                          startY: e.clientY,
-                          offsetX: e.clientX - rect.left,
-                          offsetY: e.clientY - rect.top,
-                          width: rect.width,
-                          label: c.name,
-                          color: classColor,
-                        };
-                      }
-                    }}
-                    className={`px-2.5 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
-                    style={{ color: classColor }}
-                    title="Drag to reorder"
-                  >
-                    {c.name}
-                  </button>
-                    );
-                  })()}
+              {showDashboardAddMenu && (
+                <div className="absolute right-0 z-50 mt-1 w-52 rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
+                  {hiddenDashboardWidgets.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-zinc-500">All widgets are visible</div>
+                  ) : (
+                    hiddenDashboardWidgets.map((widget) => (
+                      <button
+                        key={`add-dashboard-widget-${widget.id}`}
+                        type="button"
+                        onClick={() => addDashboardWidget(widget.id)}
+                        className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
+                      >
+                        {widget.label}
+                      </button>
+                    ))
+                  )}
                 </div>
-              ))}
+              )}
             </div>
-            {dragPointer && (
-              <div
-                className="pointer-events-none fixed z-[90] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
-                style={{
-                  left: dragPointer.x - dragPointer.offsetX,
-                  top: dragPointer.y - dragPointer.offsetY - 8,
-                  width: dragPointer.width,
-                  transform: 'translateY(-4px) rotate(-2deg) scale(1.06)',
-                  color: dragPointer.color,
-                }}
-              >
-                {dragPointer.label}
-              </div>
-            )}
-            <div className="text-sm text-zinc-200">
-              <span className="font-semibold">{trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}</span>
-              <span className="text-zinc-500"> · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm} · {trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region.toUpperCase()}</span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                Level: <span className="font-semibold text-zinc-100">{mainMeta?.level ?? '-'}</span>
-              </div>
-              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                Class: <span className="font-semibold text-zinc-100">{mainMeta?.className ?? '-'}</span>
-              </div>
-              <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                iLvl: <span className="font-semibold text-zinc-100">{mainMeta?.ilvl ?? '-'}</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <div className="rounded border border-white/10 bg-black/20 p-2">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Mythic+ Vault</p>
-                <div className="space-y-2">
-                  {[1, 4, 8].map((threshold, idx) => {
-                    const current = mainVault?.mplusRuns ?? 0;
-                    const unlocked = current >= threshold;
-                    const progress = Math.min(1, current / threshold);
-                    return (
-                      <div key={`main-mplus-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
-                        <div className="mb-1 flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
-                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
-                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
-                          </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                            style={{ width: `${Math.max(6, progress * 100)}%` }}
-                          />
-                        </div>
-                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} runs</p>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.mplusRuns ?? 0} runs completed this week.</p>
-              </div>
-              <div className="rounded border border-white/10 bg-black/20 p-2">
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">Raid Vault</p>
-                <div className="space-y-2">
-                  {[2, 4, 6].map((threshold, idx) => {
-                    const current = mainVault?.raidKills ?? 0;
-                    const unlocked = current >= threshold;
-                    const progress = Math.min(1, current / threshold);
-                    return (
-                      <div key={`main-raid-${threshold}`} className="rounded border border-white/10 bg-black/25 p-2">
-                        <div className="mb-1 flex items-center justify-between text-[11px]">
-                          <span className="font-semibold text-zinc-200">Slot {idx + 1}</span>
-                          <span className={unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'}>
-                            {unlocked ? 'Unlocked' : `${Math.max(0, threshold - current)} more`}
-                          </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                            style={{ width: `${Math.max(6, progress * 100)}%` }}
-                          />
-                        </div>
-                        <p className="mt-1 text-[10px] text-zinc-500">Requires {threshold} boss kills</p>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-[11px] text-zinc-500">{mainVault?.raidKills ?? 0} boss kills completed this week.</p>
-              </div>
-            </div>
-            {mainVaultRewards.length > 0 && (
-              <div className="rounded border border-white/10 bg-black/20 p-2">
-                <div className="mb-2 text-xs font-semibold text-zinc-200">Vault Rewards</div>
-                <VaultRewardsGrid items={mainVaultRewards} />
-              </div>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Link href={`/character/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Character</Link>
-              <button onClick={() => openMainWorkflow('/quick-sim')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Run Sim</button>
-              <button onClick={() => openMainWorkflow('/top-gear')} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Top Gear</button>
-              <Link href={`/character/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.region}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.realm}/${trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)]?.name}?tab=vault`} className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface">Open Vault</Link>
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      <section className="grid grid-cols-1 gap-3 xl:grid-cols-3">
-        <div className="card p-4 xl:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-200">Simulation Activity (Last 14 Days)</h2>
-          </div>
-          <div className="h-64 min-h-[256px] min-w-0">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <AreaChart data={activity} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#d4a843" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#d4a843" stopOpacity={0.05} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
-                <XAxis dataKey="date" stroke="#71717a" tickLine={false} axisLine={false} />
-                <YAxis allowDecimals={false} stroke="#71717a" tickLine={false} axisLine={false} />
-                <Tooltip
-                  cursor={{ stroke: '#3f3f46' }}
-                  contentStyle={{
-                    backgroundColor: '#18181b',
-                    border: '1px solid #3f3f46',
-                    borderRadius: '8px',
-                    color: '#e4e4e7',
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="count"
-                  stroke="#d4a843"
-                  strokeWidth={2}
-                  fill="url(#activityGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="card p-4">
-          <h2 className="mb-3 text-sm font-semibold text-zinc-200">Quick Links</h2>
-          <div className="space-y-2">
-            <Link
-              href="/quick-sim"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              New Quick Sim
-            </Link>
-            <Link
-              href="/top-gear"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              Top Gear
-            </Link>
-            <Link
-              href="/drop-finder"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              Drop Finder
-            </Link>
-            <Link
-              href="/history"
-              className="block rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface"
-            >
-              Simulation History
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-zinc-200">Recent Results</h2>
+          )}
           <button
             type="button"
-            onClick={() => setRecentResultsOpen((prev) => !prev)}
-            className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+            onClick={() => {
+              setDashboardEditMode((value) => !value);
+              setShowDashboardAddMenu(false);
+            }}
+            className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors ${
+              dashboardEditMode
+                ? 'border-gold/50 bg-gold/15 text-gold'
+                : 'border-border bg-surface-2 text-zinc-200 hover:bg-surface'
+            }`}
           >
-            {recentResultsOpen ? 'Collapse' : 'Expand'}
+            {dashboardEditMode ? 'Done' : 'Customize'}
           </button>
         </div>
-        {recentResultsOpen && sortedRecent.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-zinc-500">No simulations yet.</div>
-        ) : recentResultsOpen ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-surface-2/60 text-left text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-4 py-3">Player</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Result</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-              </thead>
-              <tbody>
-              {sortedRecent.map((sim) => (
-                <tr key={sim.id} className="border-t border-border/80 text-zinc-300">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-zinc-100">
-                      {sim.player_name || sim.linked_name || 'Unknown Player'}
-                    </div>
-                    {sim.player_class && (
-                      <div className="text-xs" style={{ color: classColor(sim.player_class) }}>
-                        {sim.player_class}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-300">
-                    {SIM_TYPE_LABELS[sim.sim_type] || sim.sim_type}
-                  </td>
-                  <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[sim.status]}`}
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-flow-row-dense xl:grid-cols-3">
+        {renderWidgetShell(
+          'stats',
+          <>
+            <section className="space-y-2">
+              {dashboardEditMode && (
+                <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-1.5">
+                  <span className="px-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                    Stats Cards
+                  </span>
+                  {hiddenStatCards.length === 0 ? (
+                    <span className="px-1.5 text-[11px] text-zinc-500">All visible</span>
+                  ) : (
+                    hiddenStatCards.map((id) => (
+                      <button
+                        key={`show-stat-${id}`}
+                        type="button"
+                        onClick={() => addStatCard(id)}
+                        className="rounded border border-white/10 bg-black/20 px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-white/10"
                       >
-                        {sim.status}
-                      </span>
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono tabular-nums text-zinc-100">
-                    {sim.dps != null ? Math.round(sim.dps).toLocaleString() : '-'}
-                  </td>
-                  <td className="px-4 py-3 text-zinc-400">{formatRelativeTime(sim.created_at)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={simResultHref(sim.id)}
-                      className="text-gold transition-colors hover:text-gold-light"
+                        Add{' '}
+                        {id === 'active'
+                          ? 'Active Sims'
+                          : id === 'total'
+                            ? 'Total Sims'
+                            : id === 'history'
+                              ? 'History Size'
+                              : 'System Load'}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+              <div>
+                <div
+                  className={`grid gap-3 ${
+                    statsCompact
+                      ? 'grid-cols-1'
+                      : statsWidgetSize === 2
+                        ? 'grid-cols-2'
+                        : 'grid-cols-1 md:grid-cols-2 xl:grid-cols-4'
+                  }`}
+                >
+                  {visibleStatCards.map((id) => {
+                    const metric =
+                      id === 'active'
+                        ? { label: 'Active Sims', value: String(activeSims), icon: <ActiveIcon /> }
+                        : id === 'total'
+                          ? {
+                              label: 'Total Sims',
+                              value: String(historyStats?.count ?? 0),
+                              icon: <ListIcon />,
+                            }
+                          : id === 'history'
+                            ? {
+                                label: 'History Size',
+                                value: formatBytes(historyStats?.size_bytes ?? 0),
+                                icon: <DatabaseIcon />,
+                              }
+                            : {
+                                label: 'System Load',
+                                value: isDesktop
+                                  ? cpuUsage != null
+                                    ? `${Math.round(cpuUsage)}%`
+                                    : 'N/A'
+                                  : 'N/A',
+                                icon: <CpuIcon />,
+                              };
+                    return (
+                      <div
+                        key={`stat-card-${id}`}
+                        className={`card ${statsCompact ? 'p-3' : 'p-4'}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-xs uppercase tracking-wide text-zinc-500">
+                              {metric.label}
+                            </p>
+                            <p
+                              className={`mt-2 font-semibold text-zinc-100 ${
+                                statsCompact ? 'text-2xl' : 'text-3xl'
+                              }`}
+                            >
+                              {metric.value}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <StatIcon>{metric.icon}</StatIcon>
+                            {dashboardEditMode && (
+                              <button
+                                type="button"
+                                onClick={() => removeStatCard(id)}
+                                disabled={visibleStatCards.length <= 1}
+                                className="rounded border border-red-500/30 bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {renderWidgetShell(
+          'activity',
+          <>
+            <section className="card flex h-full min-h-0 flex-col p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-zinc-200">
+                  Simulation Activity (Last 14 Days)
+                </h2>
+              </div>
+              <div className="h-64 min-h-[256px] min-w-0">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <AreaChart data={activity} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#d4a843" stopOpacity={0.45} />
+                        <stop offset="100%" stopColor="#d4a843" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
+                    <XAxis dataKey="date" stroke="#71717a" tickLine={false} axisLine={false} />
+                    <YAxis
+                      allowDecimals={false}
+                      stroke="#71717a"
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: '#3f3f46' }}
+                      contentStyle={{
+                        backgroundColor: '#18181b',
+                        border: '1px solid #3f3f46',
+                        borderRadius: '8px',
+                        color: '#e4e4e7',
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#d4a843"
+                      strokeWidth={2}
+                      fill="url(#activityGradient)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+          </>
+        )}
+
+        {renderWidgetShell(
+          'quick-links',
+          <>
+            <section className="card flex h-full min-h-0 flex-col p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-zinc-200">Quick Links</h2>
+                <div className="flex items-center gap-2">
+                  {quickLinksEditMode && (
+                    <div ref={quickLinkAddMenuRef} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickLinkAddMenu((v) => !v)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                        title="Add quick link"
+                        aria-label="Add quick link"
+                      >
+                        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+                      </button>
+                      {showQuickLinkAddMenu && (
+                        <div className="absolute right-0 z-50 mt-1 w-max min-w-48 max-w-[calc(100vw-2rem)] rounded-md border border-white/10 bg-[#111218] p-1 shadow-xl">
+                          {addableQuickLinks.length === 0 ? (
+                            <div className="px-2 py-1.5 text-xs text-zinc-500">No links to add</div>
+                          ) : (
+                            addableQuickLinks.map((link) => (
+                              <button
+                                key={`add-quick-link-${link.href}`}
+                                type="button"
+                                onClick={() => addQuickLink(link)}
+                                className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 transition-colors hover:bg-white/10"
+                              >
+                                {link.label}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickLinksEditMode((v) => !v);
+                      setShowQuickLinkAddMenu(false);
+                    }}
+                    className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
+                      quickLinksEditMode
+                        ? 'border-gold/60 bg-gold/15 text-gold'
+                        : 'border-white/15 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+                    }`}
+                    title={quickLinksEditMode ? 'Finish quick links edit mode' : 'Edit quick links'}
+                    aria-label={
+                      quickLinksEditMode ? 'Finish quick links edit mode' : 'Edit quick links'
+                    }
+                  >
+                    <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                <div className="space-y-2">
+                  {quickLinks.map((link, index) => {
+                    const className =
+                      'block min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface';
+                    return (
+                      <div key={`${link.href}-${index}`} className="flex items-center gap-2">
+                        <Link
+                          href={link.href}
+                          onClick={(e) => {
+                            if (quickLinksEditMode) e.preventDefault();
+                          }}
+                          className={className}
+                        >
+                          {link.label}
+                        </Link>
+                        {quickLinksEditMode && (
+                          <button
+                            type="button"
+                            onClick={() => removeQuickLink(index)}
+                            aria-label={`Remove ${link.label}`}
+                            title={`Remove ${link.label}`}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-400 transition-colors hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300"
+                          >
+                            -
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        {renderWidgetShell(
+          'tracked-characters',
+          <>
+            <section
+              className={`card flex h-full min-h-0 flex-col ${trackedCompact ? 'p-2.5' : 'p-3'}`}
+            >
+              <div
+                className={`mb-2 flex items-center justify-between ${trackedCompact ? 'gap-2' : ''}`}
+              >
+                <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
+                <div
+                  className={`flex items-center gap-2 ${trackedCompact ? 'flex-wrap justify-end' : ''}`}
+                >
+                  {trackedCharacters.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        untrackAtIndex(Math.min(activeTrackedIndex, trackedCharacters.length - 1))
+                      }
+                      className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
                     >
-                      Open
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </section>
+                      Untrack
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      pendingTrackedRefreshRef.current = true;
+                      setTrackedRefreshing(true);
+                      setTrackedRefreshToken((v) => v + 1);
+                    }}
+                    disabled={trackedRefreshing}
+                    className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
+                  >
+                    {trackedRefreshing ? 'Refreshing...' : 'Refresh'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMainCharacterOpen((prev) => !prev)}
+                    className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+                  >
+                    {mainCharacterOpen ? 'Collapse' : 'Expand'}
+                  </button>
+                </div>
+              </div>
+              {(() => {
+                const active =
+                  trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
+                if (!active) return null;
+                const key = `${active.region.toLowerCase()}|${active.realm.toLowerCase()}|${active.name.toLowerCase()}`;
+                const ts = lastRefreshedByCharacter[key];
+                if (!ts) return null;
+                return (
+                  <p className="mb-2 text-[11px] text-zinc-500">
+                    Last refreshed at {new Date(ts).toLocaleString()}
+                  </p>
+                );
+              })()}
+              <div>
+                {mainCharacterOpen && trackedCharacters.length === 0 ? (
+                  <p className="text-sm text-zinc-500">
+                    No tracked characters yet. Open a character and click Track Character.
+                  </p>
+                ) : mainCharacterOpen && trackedCharacters.length > 0 ? (
+                  (() => {
+                    const active =
+                      trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
+                    if (!active) return null;
+                    return (
+                      <div className={`space-y-2 ${trackedCompact ? 'text-[13px]' : ''}`}>
+                        <div className={`flex flex-wrap ${trackedCompact ? 'gap-1.5' : 'gap-2'}`}>
+                          {trackedCharacters.map((c, idx) => (
+                            <div
+                              key={`${c.region}|${c.realm}|${c.name}`}
+                              onPointerEnter={() => {
+                                const currentDragged = draggedTrackedIndexRef.current;
+                                if (currentDragged == null || currentDragged === idx) return;
+                                moveTrackedCharacter(currentDragged, idx);
+                                setDraggedTrackedIndex(idx);
+                                setDragOverTrackedIndex(idx);
+                              }}
+                              className={`inline-flex items-center rounded-md border transition-all duration-200 ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'} ${draggedTrackedIndex === idx ? 'pointer-events-none opacity-0' : ''} ${dragOverTrackedIndex === idx && draggedTrackedIndex !== idx ? 'border-gold/50' : ''}`}
+                              style={{ cursor: draggedTrackedIndex != null ? 'grabbing' : 'grab' }}
+                            >
+                              {(() => {
+                                const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
+                                const className = trackedClassByCharacter[key];
+                                const classColor = className
+                                  ? CLASS_COLORS[className.toLowerCase().replace(/[\s-]+/g, '_')] ||
+                                    '#d4d4d8'
+                                  : '#d4d4d8';
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveTrackedIndex(idx)}
+                                    onPointerDown={(e) => {
+                                      if (e.button !== 0) return;
+                                      const rect = (e.currentTarget as HTMLButtonElement)
+                                        .closest('div')
+                                        ?.getBoundingClientRect();
+                                      if (rect) {
+                                        pendingDragRef.current = {
+                                          idx,
+                                          startX: e.clientX,
+                                          startY: e.clientY,
+                                          offsetX: e.clientX - rect.left,
+                                          offsetY: e.clientY - rect.top,
+                                          width: rect.width,
+                                          label: c.name,
+                                          color: classColor,
+                                        };
+                                      }
+                                    }}
+                                    className={`px-2 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
+                                    style={{ color: classColor }}
+                                    title="Drag to reorder"
+                                  >
+                                    {c.name}
+                                  </button>
+                                );
+                              })()}
+                            </div>
+                          ))}
+                        </div>
+                        {dragPointer && (
+                          <div
+                            className="pointer-events-none fixed z-[90] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
+                            style={{
+                              left: dragPointer.x - dragPointer.offsetX,
+                              top: dragPointer.y - dragPointer.offsetY - 8,
+                              width: dragPointer.width,
+                              transform: 'translateY(-4px) rotate(-2deg) scale(1.06)',
+                              color: dragPointer.color,
+                            }}
+                          >
+                            {dragPointer.label}
+                          </div>
+                        )}
+                        <div
+                          className={`text-zinc-200 ${trackedCompact ? 'text-[13px]' : 'text-sm'}`}
+                        >
+                          <span className="font-semibold">
+                            {
+                              trackedCharacters[
+                                Math.min(activeTrackedIndex, trackedCharacters.length - 1)
+                              ]?.name
+                            }
+                          </span>
+                          <span className="text-zinc-500">
+                            {' '}
+                            ·{' '}
+                            {
+                              trackedCharacters[
+                                Math.min(activeTrackedIndex, trackedCharacters.length - 1)
+                              ]?.realm
+                            }{' '}
+                            ·{' '}
+                            {trackedCharacters[
+                              Math.min(activeTrackedIndex, trackedCharacters.length - 1)
+                            ]?.region.toUpperCase()}
+                          </span>
+                        </div>
+                        <div
+                          className={`grid gap-2 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
+                        >
+                          <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                            Level:{' '}
+                            <span className="font-semibold text-zinc-100">
+                              {mainMeta?.level ?? '-'}
+                            </span>
+                          </div>
+                          <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                            Class:{' '}
+                            <span className="font-semibold text-zinc-100">
+                              {mainMeta?.className ?? '-'}
+                            </span>
+                          </div>
+                          <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                            iLvl:{' '}
+                            <span className="font-semibold text-zinc-100">
+                              {mainMeta?.ilvl ?? '-'}
+                            </span>
+                          </div>
+                        </div>
+                        <div
+                          className={`grid grid-cols-1 gap-2 ${trackedCompact ? '' : 'md:grid-cols-2'}`}
+                        >
+                          <div className="rounded border border-white/10 bg-black/20 p-2">
+                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                              Mythic+ Vault
+                            </p>
+                            <div
+                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
+                            >
+                              {[1, 4, 8].map((threshold, idx) => {
+                                const current = mainVault?.mplusRuns ?? 0;
+                                const unlocked = current >= threshold;
+                                const progress = Math.min(1, current / threshold);
+                                return (
+                                  <div
+                                    key={`main-mplus-${threshold}`}
+                                    className="rounded border border-white/10 bg-black/25 p-1.5"
+                                  >
+                                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                                      <span className="font-semibold text-zinc-200">
+                                        Slot {idx + 1}
+                                      </span>
+                                      <span
+                                        className={
+                                          unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'
+                                        }
+                                      >
+                                        {unlocked
+                                          ? 'Unlocked'
+                                          : `${Math.max(0, threshold - current)} more`}
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                                      <div
+                                        className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                                        style={{ width: `${Math.max(6, progress * 100)}%` }}
+                                      />
+                                    </div>
+                                    <p className="mt-1 text-[10px] text-zinc-500">
+                                      Requires {threshold} runs
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <p className="mt-2 text-[11px] text-zinc-500">
+                              {mainVault?.mplusRuns ?? 0} runs completed this week.
+                            </p>
+                          </div>
+                          <div className="rounded border border-white/10 bg-black/20 p-2">
+                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                              Raid Vault
+                            </p>
+                            <div
+                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
+                            >
+                              {[2, 4, 6].map((threshold, idx) => {
+                                const current = mainVault?.raidKills ?? 0;
+                                const unlocked = current >= threshold;
+                                const progress = Math.min(1, current / threshold);
+                                return (
+                                  <div
+                                    key={`main-raid-${threshold}`}
+                                    className="rounded border border-white/10 bg-black/25 p-1.5"
+                                  >
+                                    <div className="mb-1 flex items-center justify-between text-[11px]">
+                                      <span className="font-semibold text-zinc-200">
+                                        Slot {idx + 1}
+                                      </span>
+                                      <span
+                                        className={
+                                          unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'
+                                        }
+                                      >
+                                        {unlocked
+                                          ? 'Unlocked'
+                                          : `${Math.max(0, threshold - current)} more`}
+                                      </span>
+                                    </div>
+                                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                                      <div
+                                        className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                                        style={{ width: `${Math.max(6, progress * 100)}%` }}
+                                      />
+                                    </div>
+                                    <p className="mt-1 text-[10px] text-zinc-500">
+                                      Requires {threshold} boss kills
+                                    </p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <p className="mt-2 text-[11px] text-zinc-500">
+                              {mainVault?.raidKills ?? 0} boss kills completed this week.
+                            </p>
+                          </div>
+                        </div>
+                        {mainVaultRewards.length > 0 && (
+                          <div className="rounded border border-white/10 bg-black/20 p-2">
+                            <div className="mb-2 text-xs font-semibold text-zinc-200">
+                              Vault Rewards
+                            </div>
+                            <VaultRewardsGrid items={mainVaultRewards} />
+                          </div>
+                        )}
+                        <div className={`flex flex-wrap gap-2 ${trackedCompact ? 'pt-1' : ''}`}>
+                          <Link
+                            href={characterHref(active.region, active.realm, active.name)}
+                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                          >
+                            Open Character
+                          </Link>
+                          <button
+                            onClick={() => openMainWorkflow('/quick-sim')}
+                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                          >
+                            Run Sim
+                          </button>
+                          <button
+                            onClick={() => openMainWorkflow('/top-gear')}
+                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                          >
+                            Top Gear
+                          </button>
+                          <Link
+                            href={characterHref(active.region, active.realm, active.name, 'vault')}
+                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                          >
+                            Open Vault
+                          </Link>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : null}
+              </div>
+            </section>
+          </>
+        )}
+      </div>
+      {draggingWidgetId && dashboardDragPointer && (
+        <div
+          className="pointer-events-none fixed z-[95] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold text-zinc-100 shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
+          style={{
+            left: dashboardDragPointer.x - dashboardDragPointer.offsetX,
+            top: dashboardDragPointer.y - dashboardDragPointer.offsetY - 8,
+            width: dashboardDragPointer.width,
+            transform: 'translateY(-4px) rotate(-1.5deg) scale(1.03)',
+          }}
+        >
+          {dashboardDragPointer.label}
+        </div>
+      )}
     </div>
   );
 }

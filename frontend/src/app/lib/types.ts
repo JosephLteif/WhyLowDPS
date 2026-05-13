@@ -114,7 +114,11 @@ export interface SimSummary {
   player_class?: string;
   realm?: string;
   dps?: number;
+  batch_id?: string | null;
   size_bytes: number;
+  upgrades?: number | null;
+  downgrades?: number | null;
+  pinned?: boolean;
   linked_region?: string;
   linked_realm?: string;
   linked_name?: string;

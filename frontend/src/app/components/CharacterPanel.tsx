@@ -9,11 +9,7 @@ import CharacterQuickLinks from './character/CharacterQuickLinks';
 import CharacterPageTabs, { type CharacterPageTab } from './character/CharacterPageTabs';
 import RaidProgressionGrid from './RaidProgressionGrid';
 import GearOverview, { type GearItem as OverviewGearItem } from './GearOverview';
-import {
-  API_URL,
-  fetchJson,
-  type MythicKeystoneDungeonDetail,
-} from '../lib/api';
+import { API_URL, fetchJson, type MythicKeystoneDungeonDetail } from '../lib/api';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
 import SectionCard from './shared/SectionCard';
 import ProgressSlotCard from './shared/ProgressSlotCard';
@@ -44,6 +40,13 @@ import {
 import { parseTalentLoadouts, type TalentLoadoutParsed } from '../lib/types';
 import { useMythicDungeonDetails } from '../lib/useMythicDungeonDetails';
 const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
+
+function getUpgradeLabel(item: Record<string, any>): string {
+  const upgrade = item?.upgrade;
+  if (!upgrade) return '';
+  if (typeof upgrade === 'string') return upgrade;
+  return String(upgrade.display_string || upgrade.displayString || upgrade.name || '').trim();
+}
 
 interface CharacterPanelProps {
   name: string;
@@ -87,7 +90,9 @@ export default function CharacterPanel({
     const list = specializations.specializations;
     const activeId = specializations.active_specialization?.id;
     if (activeId) {
-      return list.find((spec: CharacterSpecialization) => spec.specialization?.id === activeId) || null;
+      return (
+        list.find((spec: CharacterSpecialization) => spec.specialization?.id === activeId) || null
+      );
     }
     return (
       list.find((spec: CharacterSpecialization) =>
@@ -125,12 +130,11 @@ export default function CharacterPanel({
         item_id: Number(it.item?.id || 0),
         ilevel: Number(it.level?.value || 0),
         name: it.name || '',
+        upgrade: getUpgradeLabel(it),
         bonus_ids: Array.isArray(it.bonus_list) ? it.bonus_list : [],
         enchant_id: Number(it.enchantments?.[0]?.enchantment_id || 0) || undefined,
         gem_ids: Array.isArray(it.sockets)
-          ? it.sockets
-              .map((socket) => Number(socket?.item?.id || 0))
-              .filter((id) => id > 0)
+          ? it.sockets.map((socket) => Number(socket?.item?.id || 0)).filter((id) => id > 0)
           : undefined,
         gem_id: Number(it.sockets?.[0]?.item?.id || 0) || undefined,
       };
@@ -188,10 +192,20 @@ export default function CharacterPanel({
       )}
 
       {pageTab === 'raiding' && (
-        <RaidSectionCard raidEncounters={raidEncounters} region={region} realm={realm} name={name} />
+        <RaidSectionCard
+          raidEncounters={raidEncounters}
+          region={region}
+          realm={realm}
+          name={name}
+        />
       )}
       {pageTab === 'vault' && (
-        <VaultOverviewCard mythicPlus={mythicPlus} raidEncounters={raidEncounters} latestSimcInput={latestSimcInput} region={region} />
+        <VaultOverviewCard
+          mythicPlus={mythicPlus}
+          raidEncounters={raidEncounters}
+          latestSimcInput={latestSimcInput}
+          region={region}
+        />
       )}
     </div>
   );
@@ -208,7 +222,10 @@ function VaultOverviewCard({
   latestSimcInput?: string | null;
   region?: string;
 }) {
-  const mythicRunsThisWeek = useMemo(() => computeMythicVaultProgress(mythicPlus, region).runsForVault, [mythicPlus, region]);
+  const mythicRunsThisWeek = useMemo(
+    () => computeMythicVaultProgress(mythicPlus, region).runsForVault,
+    [mythicPlus, region]
+  );
 
   const raidBossesThisWeek = useMemo(() => {
     return computeWeeklyRaidBossKills(raidEncounters, region);
@@ -218,7 +235,10 @@ function VaultOverviewCard({
     () => parseVaultRewardsFromSimcInput(latestSimcInput) as VaultRewardItem[],
     [latestSimcInput]
   );
-  const mythicVaultProgress = useMemo(() => computeMythicVaultProgress(mythicPlus, region), [mythicPlus, region]);
+  const mythicVaultProgress = useMemo(
+    () => computeMythicVaultProgress(mythicPlus, region),
+    [mythicPlus, region]
+  );
   const mythicSlots = mythicVaultProgress.slots;
 
   const raidSlots = useMemo(
@@ -230,12 +250,14 @@ function VaultOverviewCard({
         remaining: Math.max(0, threshold - raidBossesThisWeek),
         progress: Math.min(1, raidBossesThisWeek / threshold),
       })),
-    [raidBossesThisWeek],
+    [raidBossesThisWeek]
   );
 
   return (
-    <div className="card p-5 space-y-4">
-      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Overall Vault Progress</h3>
+    <div className="card space-y-4 p-5">
+      <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+        Overall Vault Progress
+      </h3>
 
       <div className="grid grid-cols-1 gap-3">
         <SectionCard title="Mythic+ Track">
@@ -333,14 +355,16 @@ function MythicPlusCard({
     const getTimedByDurationFallback = (run: MythicRun): boolean | null => {
       const detail = getMplusDungeonDetail(run);
       if (!detail) return null;
-      const oneChestDuration = detail.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
-        ?.qualifying_duration;
+      const oneChestDuration = detail.keystone_upgrades?.find(
+        (u) => Number(u?.upgrade_level) === 1
+      )?.qualifying_duration;
       const durationMs = getRunDurationMs(run);
       if (!oneChestDuration || !durationMs) return null;
       return durationMs <= oneChestDuration;
     };
     const getRunTimed = (run: MythicRun): boolean | null => {
-      if (typeof run?.is_completed_within_timeout === 'boolean') return run.is_completed_within_timeout;
+      if (typeof run?.is_completed_within_timeout === 'boolean')
+        return run.is_completed_within_timeout;
       if (typeof run?.completed_in_time === 'boolean') return run.completed_in_time;
       if (typeof run?.completedWithinTime === 'boolean') return run.completedWithinTime;
       return getTimedByDurationFallback(run);
@@ -354,7 +378,7 @@ function MythicPlusCard({
           run?.start_timestamp ??
           run?.startTimestamp ??
           run?.timestamp ??
-          0,
+          0
       );
 
     const formatDuration = (ms: number) => {
@@ -367,8 +391,9 @@ function MythicPlusCard({
 
     const formatClockDelta = (run: MythicRun) => {
       const detail = getMplusDungeonDetail(run);
-      const timerMs = detail?.keystone_upgrades?.find((u) => Number(u?.upgrade_level) === 1)
-        ?.qualifying_duration;
+      const timerMs = detail?.keystone_upgrades?.find(
+        (u) => Number(u?.upgrade_level) === 1
+      )?.qualifying_duration;
       const durationMs = getRunDurationMs(run);
       if (!timerMs || !durationMs) return null;
       const diff = timerMs - durationMs;
@@ -397,7 +422,8 @@ function MythicPlusCard({
         if (!current || seen.has(current)) continue;
         seen.add(current);
         if (Array.isArray(current)) {
-          if (current.some((item) => isRunLike(item))) out.push(...current.filter((item) => isRunLike(item)));
+          if (current.some((item) => isRunLike(item)))
+            out.push(...current.filter((item) => isRunLike(item)));
           else for (const item of current) if (item && typeof item === 'object') stack.push(item);
           continue;
         }
@@ -424,16 +450,19 @@ function MythicPlusCard({
           continue;
         }
         const currentObj = current as Record<string, unknown>;
-        const level = Number(currentObj.keystone_level ?? currentObj.keystoneLevel ?? currentObj.level ?? 0);
+        const level = Number(
+          currentObj.keystone_level ?? currentObj.keystoneLevel ?? currentObj.level ?? 0
+        );
         const ilvl = Number(
           currentObj.item_level ??
             currentObj.itemLevel ??
             currentObj.reward_item_level ??
             currentObj.rewardItemLevel ??
-            0,
+            0
         );
         if (level > 0 && ilvl > 0) map.set(level, Math.max(ilvl, map.get(level) || 0));
-        for (const value of Object.values(currentObj)) if (value && typeof value === 'object') stack.push(value);
+        for (const value of Object.values(currentObj))
+          if (value && typeof value === 'object') stack.push(value);
       }
       return map;
     };
@@ -492,7 +521,9 @@ function MythicPlusCard({
 
     const currentRating = asRecord(mythicPlusObj.current_mythic_rating);
     const currentRatingAlt = asRecord(mythicPlusObj.currentMythicRating);
-    const score = Number(currentRating?.rating ?? currentRatingAlt?.rating ?? currentRating?.value ?? 0);
+    const score = Number(
+      currentRating?.rating ?? currentRatingAlt?.rating ?? currentRating?.value ?? 0
+    );
 
     return {
       score: score > 0 ? Math.round(score) : null,
@@ -539,8 +570,9 @@ function MythicPlusCard({
         .replace(/[\s_]+/g, ' ')
         .replace(/[^a-z0-9 ]+/g, '')
         .replace(/\s+/g, ' ');
-      const timerMs = detail?.keystone_upgrades?.find((upgrade) => Number(upgrade?.upgrade_level) === 1)
-        ?.qualifying_duration;
+      const timerMs = detail?.keystone_upgrades?.find(
+        (upgrade) => Number(upgrade?.upgrade_level) === 1
+      )?.qualifying_duration;
       if (name && Number(timerMs) > 0) out[name] = Math.round(Number(timerMs) / 1000);
     }
     return out;
@@ -555,7 +587,9 @@ function MythicPlusCard({
             type="button"
             onClick={() => setActiveTab('overview')}
             className={`rounded px-2 py-1 text-[11px] font-bold ${
-              activeTab === 'overview' ? 'bg-gold/20 text-gold' : 'text-zinc-400 hover:text-zinc-200'
+              activeTab === 'overview'
+                ? 'bg-gold/20 text-gold'
+                : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             Overview
@@ -574,9 +608,15 @@ function MythicPlusCard({
       {summary ? (
         activeTab === 'overview' ? (
           <div className="space-y-3">
-            <StatRow label="Current Score" value={summary.score ? summary.score.toLocaleString() : '-'} />
+            <StatRow
+              label="Current Score"
+              value={summary.score ? summary.score.toLocaleString() : '-'}
+            />
             <StatRow label="Best Runs (Period)" value={summary.runs.toString()} />
-            <StatRow label="Highest Key" value={summary.bestLevel ? `+${summary.bestLevel}` : '-'} />
+            <StatRow
+              label="Highest Key"
+              value={summary.bestLevel ? `+${summary.bestLevel}` : '-'}
+            />
             <StatRow label="Top Dungeon" value={summary.bestDungeonName || '-'} />
             <div className="my-2 h-px bg-white/5" />
             <div className="rounded-md border border-white/5 bg-white/[0.02] p-3">
@@ -584,18 +624,27 @@ function MythicPlusCard({
                 Weekly Vault Tracker
               </p>
               <p className="mb-3 text-[11px] text-zinc-400">
-                Completed runs counted: <span className="font-bold text-zinc-200">{summary.vaultProgressCount}</span>
+                Completed runs counted:{' '}
+                <span className="font-bold text-zinc-200">{summary.vaultProgressCount}</span>
               </p>
               <div className="space-y-2">
                 {summary.vaultSlots.map((slot) => (
                   <ProgressSlotCard
                     key={slot.slot}
                     slotLabel={`Slot ${slot.slot}`}
-                    statusLabel={slot.unlocked ? 'Unlocked' : `${slot.threshold - summary.vaultProgressCount} more`}
+                    statusLabel={
+                      slot.unlocked
+                        ? 'Unlocked'
+                        : `${slot.threshold - summary.vaultProgressCount} more`
+                    }
                     tone={slot.unlocked ? 'success' : 'neutral'}
                     description={slot.keyLevel ? `Based on +${slot.keyLevel}` : 'Run more keys'}
                     progress={slot.progress}
-                    footerRight={summary.hasAnyVaultIlvl && slot.rewardIlvl ? `iLvl ${slot.rewardIlvl}` : undefined}
+                    footerRight={
+                      summary.hasAnyVaultIlvl && slot.rewardIlvl
+                        ? `iLvl ${slot.rewardIlvl}`
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -614,10 +663,14 @@ function MythicPlusCard({
             </div>
             <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
               {summary.recentRuns.map((run) => {
-                const runStatus = run.timed === true ? 'Timed' : run.timed === false ? 'Depleted' : null;
+                const runStatus =
+                  run.timed === true ? 'Timed' : run.timed === false ? 'Depleted' : null;
                 const statusOrDelta = run.clockDelta || runStatus;
                 return (
-                  <div key={run.id} className="rounded-md border border-white/5 bg-white/[0.02] p-2.5">
+                  <div
+                    key={run.id}
+                    className="rounded-md border border-white/5 bg-white/[0.02] p-2.5"
+                  >
                     <div className="flex items-center gap-2">
                       {run.timed !== null ? (
                         <span
@@ -635,7 +688,7 @@ function MythicPlusCard({
                         <p className="text-[10px] text-zinc-500">{formatRelative(run.timestamp)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[11px] font-mono text-zinc-200">{run.duration}</p>
+                        <p className="font-mono text-[11px] text-zinc-200">{run.duration}</p>
                         {statusOrDelta ? (
                           <p
                             className={`text-[10px] font-bold ${
@@ -675,44 +728,44 @@ function MythicPlusCard({
                             member?.profile?.character_class?.name ||
                             member?.specialization?.name ||
                             member?.character_class?.name ||
-                            (typeof member?.class === 'object' ? member.class?.name : member?.class) ||
+                            (typeof member?.class === 'object'
+                              ? member.class?.name
+                              : member?.class) ||
                             '';
                           const memberProfile = getMemberProfileHref(member, region);
                           const memberLabel = `${memberName}${memberClass ? ` (${memberClass})` : ''}`;
-                          return (
-                            memberProfile ? (
-                              memberProfile.external ? (
-                                <a
-                                  key={`${memberName}-${idx}`}
-                                  href={memberProfile.href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
-                                  title={`Open ${memberName} profile`}
-                                >
-                                  {memberLabel}
-                                  {memberRealm ? ` - ${memberRealm}` : ''}
-                                </a>
-                              ) : (
-                                <Link
-                                  key={`${memberName}-${idx}`}
-                                  href={memberProfile.href}
-                                  className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
-                                  title={`Open ${memberName} profile`}
-                                >
-                                  {memberLabel}
-                                  {memberRealm ? ` - ${memberRealm}` : ''}
-                                </Link>
-                              )
-                            ) : (
-                              <span
+                          return memberProfile ? (
+                            memberProfile.external ? (
+                              <a
                                 key={`${memberName}-${idx}`}
-                                className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300"
+                                href={memberProfile.href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
+                                title={`Open ${memberName} profile`}
                               >
                                 {memberLabel}
                                 {memberRealm ? ` - ${memberRealm}` : ''}
-                              </span>
+                              </a>
+                            ) : (
+                              <Link
+                                key={`${memberName}-${idx}`}
+                                href={memberProfile.href}
+                                className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300 transition-colors hover:border-gold/40 hover:text-gold"
+                                title={`Open ${memberName} profile`}
+                              >
+                                {memberLabel}
+                                {memberRealm ? ` - ${memberRealm}` : ''}
+                              </Link>
                             )
+                          ) : (
+                            <span
+                              key={`${memberName}-${idx}`}
+                              className="rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] text-zinc-300"
+                            >
+                              {memberLabel}
+                              {memberRealm ? ` - ${memberRealm}` : ''}
+                            </span>
                           );
                         })}
                         {run.members.length > 5 && (
@@ -756,10 +809,17 @@ function RaidSectionCard({
       return canonical.toLowerCase().replace(/[\s_]+/g, '-');
     };
     const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-    const out = new Map<string, { label: string; isCurrent: boolean; isPlaceholderLabel: boolean }>();
+    const out = new Map<
+      string,
+      { label: string; isCurrent: boolean; isPlaceholderLabel: boolean }
+    >();
     for (const exp of expansions) {
       const raw =
-        exp?.expansion?.name || exp?.expansion_name || exp?.label || exp?.name || 'Unknown expansion';
+        exp?.expansion?.name ||
+        exp?.expansion_name ||
+        exp?.label ||
+        exp?.name ||
+        'Unknown expansion';
       const rawLabel = String(raw || 'Unknown expansion').trim() || 'Unknown expansion';
       const isCurrent = isCurrentExpansionPlaceholder(rawLabel);
       const label = isCurrent ? 'Midnight' : rawLabel;
@@ -782,10 +842,7 @@ function RaidSectionCard({
       label: value.label,
       isCurrent: value.isCurrent || isLikelyCurrentExpansionLabel(value.label),
     }));
-    return [
-      { key: 'all', label: 'All expansions', isCurrent: false },
-      ...entries,
-    ];
+    return [{ key: 'all', label: 'All expansions', isCurrent: false }, ...entries];
   }, [raidEncounters]);
 
   useEffect(() => {
@@ -845,7 +902,6 @@ function RaidProgressCard({
   selectedRaidName?: string;
   onActiveRaidNameChange?: (raidName: string | null) => void;
 }) {
-
   const raids = useMemo(() => {
     if (!raidEncounters || typeof raidEncounters !== 'object') return [];
     const expansions = Array.isArray(raidEncounters.expansions) ? raidEncounters.expansions : [];
@@ -971,15 +1027,24 @@ function RaidProgressCard({
   }, [raidEncounters]);
 
   const visibleRaids = useMemo(
-    () => raids.filter((raid) => selectedExpansion === 'all' || raid.expansionKey === selectedExpansion),
-    [raids, selectedExpansion],
+    () =>
+      raids.filter(
+        (raid) => selectedExpansion === 'all' || raid.expansionKey === selectedExpansion
+      ),
+    [raids, selectedExpansion]
   );
 
   const content = (
     <>
-      {!embedded && <div className="mb-4 flex items-center justify-between gap-3">
-        {!embedded && <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">Raid Progress</h3>}
-      </div>}
+      {!embedded && (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          {!embedded && (
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+              Raid Progress
+            </h3>
+          )}
+        </div>
+      )}
       {visibleRaids.length > 0 ? (
         <RaidProgressionGrid
           raidEncounters={raidEncounters}
@@ -1033,13 +1098,9 @@ function StatsCard({ statistics }: { statistics: CharacterStatisticsPayload }) {
 
     const getPercentValue = (stat?: StatValue, rating?: StatValue) => {
       const statObj =
-        stat && typeof stat === 'object'
-          ? (stat as Exclude<StatValue, number>)
-          : null;
+        stat && typeof stat === 'object' ? (stat as Exclude<StatValue, number>) : null;
       const ratingObj =
-        rating && typeof rating === 'object'
-          ? (rating as Exclude<StatValue, number>)
-          : null;
+        rating && typeof rating === 'object' ? (rating as Exclude<StatValue, number>) : null;
       const p =
         (typeof stat === 'number' ? stat : null) ??
         (typeof statObj?.value === 'number' ? statObj.value : null) ??
@@ -1087,7 +1148,8 @@ function StatsCard({ statistics }: { statistics: CharacterStatisticsPayload }) {
       { label: 'Mastery', value: getPercentValue(mastery, mastery) ?? '0.0%' },
       {
         label: 'Versatility',
-        value: getPercentValue(versatility, statsObj.versatility as StatValue | undefined) ?? '0.0%',
+        value:
+          getPercentValue(versatility, statsObj.versatility as StatValue | undefined) ?? '0.0%',
       },
     ];
   }, [statistics]);
@@ -1159,9 +1221,7 @@ function TalentsCard({
       return;
     }
     const active =
-      simcLoadouts.find((l) => l.isActive)?.talentString ||
-      simcLoadouts[0]?.talentString ||
-      '';
+      simcLoadouts.find((l) => l.isActive)?.talentString || simcLoadouts[0]?.talentString || '';
     setSelectedSimcTalent(active);
   }, [simcLoadouts]);
   const displayedTalentString = selectedSimcTalent || talentString;
@@ -1192,7 +1252,8 @@ function TalentsCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h1 className="text-xs font-bold uppercase tracking-wider text-zinc-500">
-              Specialization: <span className="text-gold">{activeSpec.specialization?.name || 'Unknown'}</span>
+              Specialization:{' '}
+              <span className="text-gold">{activeSpec.specialization?.name || 'Unknown'}</span>
             </h1>
             {simcLoadouts.length > 1 && (
               <select
@@ -1235,32 +1296,33 @@ function TalentsCard({
 
       {!collapsed ? (
         displayedTalentString ? (
-        <div className="bg-black/20 p-2 lg:max-h-[620px] lg:overflow-y-auto">
-          <div
-            className="origin-top scale-100 transform transition-opacity duration-500"
-            style={{ opacity: loading ? 0.3 : 1 }}
-          >
-            <TalentTree talentString={displayedTalentString} specId={specId ?? undefined} bare />
+          <div className="bg-black/20 p-2 lg:max-h-[620px] lg:overflow-y-auto">
+            <div
+              className="origin-top scale-100 transform transition-opacity duration-500"
+              style={{ opacity: loading ? 0.3 : 1 }}
+            >
+              <TalentTree talentString={displayedTalentString} specId={specId ?? undefined} bare />
+            </div>
           </div>
-        </div>
-      ) : (
-        <div className="p-5">
-          <div className="flex flex-wrap gap-1.5">
-            {talentNames.length > 0 ? (
-              talentNames.map((name: string, i: number) => (
-                <span
-                  key={`${name}-${i}`}
-                  className="rounded-md bg-white/[0.03] px-2 py-1 text-[10px] font-bold text-zinc-400 ring-1 ring-inset ring-white/5"
-                >
-                  {name}
-                </span>
-              ))
-            ) : (
-              <p className="text-[11px] italic text-zinc-600">No talent data available</p>
-            )}
+        ) : (
+          <div className="p-5">
+            <div className="flex flex-wrap gap-1.5">
+              {talentNames.length > 0 ? (
+                talentNames.map((name: string, i: number) => (
+                  <span
+                    key={`${name}-${i}`}
+                    className="rounded-md bg-white/[0.03] px-2 py-1 text-[10px] font-bold text-zinc-400 ring-1 ring-inset ring-white/5"
+                  >
+                    {name}
+                  </span>
+                ))
+              ) : (
+                <p className="text-[11px] italic text-zinc-600">No talent data available</p>
+              )}
+            </div>
           </div>
-        </div>
-      )) : null}
+        )
+      ) : null}
     </div>
   );
 }

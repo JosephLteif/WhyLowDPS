@@ -1,16 +1,22 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { API_URL, fetchJson, listCharacterProfiles } from '../lib/api';
-import { buildGearItemUid, slotCandidatesFromWishlistSlot, slotFromInventoryType } from '../lib/gear-utils';
+import {
+  buildGearItemUid,
+  slotCandidatesFromWishlistSlot,
+  slotFromInventoryType,
+} from '../lib/gear-utils';
 import { getWowheadData, QUALITY_COLORS, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
 import { setSimAgainState } from '../lib/sim-return';
 import { parseCharacterInfo } from '../../lib/simc-parser';
+import type { Instance } from '../drop-finder/types';
+import { buildSourceTagLinks } from '../lib/source-navigation';
 import {
   WISHLIST_STORAGE_KEY,
   buildWishlistOwnerKey,
@@ -147,10 +153,12 @@ async function resolveSimcInputForOwner(opts: {
 
 export default function WishlistPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { simcInput, setSimcInput } = useSimContext();
   const [wishlist, setWishlist] = useState<WishlistItem[]>([]);
   const [owners, setOwners] = useState<WishlistOwnerSummary[]>([]);
   const [bnetCharacters, setBnetCharacters] = useState<BnetCharacter[]>([]);
+  const [instances, setInstances] = useState<Instance[]>([]);
   const [groupBy, setGroupBy] = useState<'instance' | 'slot'>('instance');
   const [preparingTopGear, setPreparingTopGear] = useState(false);
   const [error, setError] = useState('');
@@ -170,10 +178,11 @@ export default function WishlistPage() {
   }, [characterInfo]);
 
   const [selectedOwnerKey, setSelectedOwnerKey] = useState(activeCharacterOwnerKey);
+  const requestedOwnerKey = (searchParams.get('owner') || '').trim().toLowerCase();
 
   useEffect(() => {
-    setSelectedOwnerKey(activeCharacterOwnerKey);
-  }, [activeCharacterOwnerKey]);
+    setSelectedOwnerKey(requestedOwnerKey || activeCharacterOwnerKey);
+  }, [requestedOwnerKey, activeCharacterOwnerKey]);
 
   const selectedOwnerSummary = useMemo(
     () => owners.find((owner) => owner.key === selectedOwnerKey) || null,
@@ -216,7 +225,9 @@ export default function WishlistPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchJson<{ characters?: BnetCharacter[] } | BnetCharacter[]>(`${API_URL}/api/bnet/user/characters`)
+    fetchJson<{ characters?: BnetCharacter[] } | BnetCharacter[]>(
+      `${API_URL}/api/bnet/user/characters`
+    )
       .then((response) => {
         if (cancelled) return;
         const list = Array.isArray(response) ? response : response?.characters || [];
@@ -225,6 +236,22 @@ export default function WishlistPage() {
       .catch(() => {
         if (cancelled) return;
         setBnetCharacters([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson<Instance[]>(`${API_URL}/api/instances`)
+      .then((response) => {
+        if (cancelled) return;
+        setInstances(Array.isArray(response) ? response : []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInstances([]);
       });
     return () => {
       cancelled = true;
@@ -267,6 +294,18 @@ export default function WishlistPage() {
       });
     }
 
+    if (selectedOwnerKey && !byKey.has(selectedOwnerKey)) {
+      const parsed = parseWishlistOwnerKey(selectedOwnerKey);
+      byKey.set(selectedOwnerKey, {
+        key: selectedOwnerKey,
+        label: parsed.name || 'Selected character',
+        count: loadWishlist(selectedOwnerKey).length,
+        name: parsed.name || undefined,
+        realm: parsed.realm || undefined,
+        region: parsed.region || undefined,
+      });
+    }
+
     return [...byKey.values()].sort((a, b) => {
       const aIsGlobal = a.key === 'global';
       const bIsGlobal = b.key === 'global';
@@ -275,7 +314,7 @@ export default function WishlistPage() {
       if (a.count !== b.count) return b.count - a.count;
       return a.label.localeCompare(b.label);
     });
-  }, [owners, bnetCharacters, activeCharacterOwnerKey, characterInfo]);
+  }, [owners, bnetCharacters, activeCharacterOwnerKey, characterInfo, selectedOwnerKey]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, WishlistItem[]>();
@@ -322,11 +361,7 @@ export default function WishlistPage() {
       if (slots.length === 0) continue;
       const bonusIds = Array.isArray(wish.bonus_ids) ? wish.bonus_ids : [];
       const finalBonusIds =
-        bonusIds.length > 0
-          ? bonusIds
-          : wish.wishlist_bonus_id
-            ? [wish.wishlist_bonus_id]
-            : [];
+        bonusIds.length > 0 ? bonusIds : wish.wishlist_bonus_id ? [wish.wishlist_bonus_id] : [];
       const simcString =
         finalBonusIds.length > 0
           ? `,id=${wish.item_id},bonus_id=${finalBonusIds.join('/')},ilevel=${wish.wishlist_ilvl || wish.ilevel}`
@@ -336,8 +371,7 @@ export default function WishlistPage() {
         const uid = makeUid(wish.item_id, finalBonusIds, 'bags', slot);
         const slotRes = nextResolved.slots[slot];
         const exists =
-          slotRes?.equipped?.uid === uid ||
-          slotRes?.alternatives?.some((item) => item.uid === uid);
+          slotRes?.equipped?.uid === uid || slotRes?.alternatives?.some((item) => item.uid === uid);
         if (!exists) {
           const itemInfo = itemInfoMap[wish.item_id];
           const resolvedIcon = itemInfoMap[wish.item_id]?.icon || wish.icon || '';
@@ -533,53 +567,70 @@ export default function WishlistPage() {
             <div key={group} className="card p-4">
               <h3 className="mb-3 text-sm font-semibold text-zinc-200">{group}</h3>
               <div className="space-y-2">
-                {items.map((item) => (
-                  <div
-                    key={item.item_id}
-                    className="flex items-center justify-between rounded border border-border bg-surface-2 px-3 py-2"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <WishlistItemIcon
-                        icon={itemInfoMap[item.item_id]?.icon || item.icon}
-                        name={itemInfoMap[item.item_id]?.name || item.name}
-                      />
-                      <div className="min-w-0">
-                        <a
-                          href={`https://www.wowhead.com/item=${item.item_id}`}
-                          data-wowhead={`item=${item.item_id}${
-                            (() => {
-                              const extra = getWowheadData(
-                                item.bonus_ids ||
-                                  (item.wishlist_bonus_id ? [item.wishlist_bonus_id] : undefined),
-                                item.wishlist_ilvl || item.ilevel
-                              );
-                              return extra ? `&${extra}` : '';
-                            })()
-                          }`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="truncate text-sm font-medium text-zinc-100 hover:text-gold"
-                        >
-                          {itemInfoMap[item.item_id]?.name || item.name}
-                        </a>
-                        <p className="text-xs text-zinc-400">
-                          {item.encounter || 'Unknown Encounter'} - ilvl{' '}
-                          {item.wishlist_ilvl || item.ilevel}
-                          {item.wishlist_upgrade_label ? ` - ${item.wishlist_upgrade_label}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        removeFromWishlist(item.item_id, selectedOwnerKey);
-                        refreshWishlist();
-                      }}
-                      className="rounded border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/15"
+                {items.map((item) => {
+                  const itemName = itemInfoMap[item.item_id]?.name || item.name;
+                  const itemIcon = itemInfoMap[item.item_id]?.icon || item.icon;
+                  const itemIlvl = item.wishlist_ilvl || item.ilevel;
+                  const itemBonusIds =
+                    item.bonus_ids ||
+                    (item.wishlist_bonus_id ? [item.wishlist_bonus_id] : undefined);
+                  const wowheadExtra = getWowheadData(itemBonusIds, itemIlvl);
+                  const sourceTags = buildSourceTagLinks(
+                    { ...item, encounter: item.encounter || 'Unknown Encounter' },
+                    instances
+                  );
+
+                  return (
+                    <div
+                      key={`${item.item_id}:${itemIlvl || 0}`}
+                      className="flex items-center justify-between rounded border border-border bg-surface-2 px-3 py-2"
                     >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex min-w-0 items-center gap-3">
+                        <WishlistItemIcon icon={itemIcon} name={itemName} />
+                        <div className="min-w-0">
+                          <a
+                            href={`https://www.wowhead.com/item=${item.item_id}`}
+                            data-wowhead={`item=${item.item_id}${wowheadExtra ? `&${wowheadExtra}` : ''}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate text-sm font-medium text-zinc-100 hover:text-gold"
+                          >
+                            {itemName}
+                          </a>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {itemIlvl ? (
+                              <span className="inline-flex shrink-0 items-center rounded border border-emerald-400/45 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-emerald-200">
+                                {itemIlvl} ilvl
+                              </span>
+                            ) : null}
+                            {sourceTags.map((tag, index) => (
+                              <button
+                                type="button"
+                                key={`${item.item_id}:${itemIlvl || 0}:src:${index}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  router.push(tag.path);
+                                }}
+                                className="inline-flex shrink-0 items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200 transition-colors hover:bg-amber-500/20"
+                              >
+                                {tag.text}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          removeFromWishlist(item.item_id, selectedOwnerKey, itemIlvl);
+                          refreshWishlist();
+                        }}
+                        className="rounded border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/15"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

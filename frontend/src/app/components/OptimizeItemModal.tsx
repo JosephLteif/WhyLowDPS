@@ -79,6 +79,12 @@ interface OptimizeItemModalProps {
   ) => void;
 }
 
+function normalizeEnchantQuerySlot(slot: string): string {
+  if (slot === 'finger1' || slot === 'finger2') return 'finger';
+  if (slot === 'trinket1' || slot === 'trinket2') return 'trinket';
+  return slot;
+}
+
 function parseGemIdsFromItem(item: ResolvedItem | null): number[] {
   if (!item) return [];
   if (item.gem_ids && item.gem_ids.length > 0) {
@@ -195,7 +201,7 @@ export default function OptimizeItemModal({
     setLoading(true);
     try {
       const enchantParams = new URLSearchParams();
-      enchantParams.set('slot', item.slot);
+      enchantParams.set('slot', normalizeEnchantQuerySlot(item.slot));
       if (className) enchantParams.set('class_name', className);
       if (item.item_id > 0) enchantParams.set('item_id', String(item.item_id));
       if (Array.isArray(item.bonus_ids) && item.bonus_ids.length > 0) {

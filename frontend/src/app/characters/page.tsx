@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Star, Eye, EyeOff } from 'lucide-react';
+import { Star } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
 import { CLASS_COLORS } from '../lib/types';
+import { buildWishlistHref } from '../lib/wishlist';
 
 interface Character {
   name: string;
@@ -46,8 +47,13 @@ function StarIcon({ filled }: { filled?: boolean }) {
   return <Star className="h-4 w-4" strokeWidth={2} fill={filled ? 'currentColor' : 'none'} />;
 }
 
-function EyeIcon({ hidden }: { hidden?: boolean }) {
-  return hidden ? <EyeOff className="h-4 w-4" strokeWidth={2} /> : <Eye className="h-4 w-4" strokeWidth={2} />;
+function wishlistHrefForCharacter(char: Character): string {
+  return buildWishlistHref({
+    name: char.name,
+    realm: char.realm,
+    region: char.region,
+    className: char.class,
+  });
 }
 
 function CharacterCard({
@@ -130,14 +136,6 @@ function CharacterCard({
             </p>
           </div>
           <div className="pointer-events-auto relative z-30 flex items-center gap-2">
-            <Link
-              href={`/talent-playground?char=${encodeURIComponent(characterId(char))}`}
-              className="inline-flex h-8 items-center justify-center rounded-lg border border-gold/40 bg-gold/15 px-2 text-[11px] font-bold text-gold transition hover:bg-gold/25"
-              title="Open Talent Playground for this character"
-              aria-label="Open Talent Playground for this character"
-            >
-              Talents
-            </Link>
             <div className="relative">
               <button
                 type="button"
@@ -149,7 +147,20 @@ function CharacterCard({
                 ⋯
               </button>
               {menuOpen ? (
-                <div className="absolute right-0 top-9 z-40 min-w-[140px] rounded-md border border-white/15 bg-[#111317] p-1 shadow-xl">
+                <div className="absolute right-0 top-9 z-40 min-w-[170px] rounded-md border border-white/15 bg-[#111317] p-1 shadow-xl">
+                  <Link
+                    href={`/talent-playground?char=${encodeURIComponent(characterId(char))}`}
+                    className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
+                  >
+                    Open Talents
+                  </Link>
+                  <Link
+                    href={wishlistHrefForCharacter(char)}
+                    className="block w-full rounded px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-white/10"
+                  >
+                    Open Wishlist
+                  </Link>
+                  <div className="my-1 h-px bg-white/10" />
                   <button
                     type="button"
                     onClick={() => {
@@ -183,32 +194,6 @@ function CharacterCard({
                 </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              onClick={() => onToggleFavorite(char)}
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                isFavorite
-                  ? 'border-gold/60 bg-gold/20 text-gold'
-                  : 'border-white/15 bg-black/35 text-zinc-300 hover:border-gold/40 hover:text-gold'
-              }`}
-              title={isFavorite ? 'Remove favorite' : 'Favorite'}
-              aria-label={isFavorite ? 'Remove favorite' : 'Favorite character'}
-            >
-              <StarIcon filled={isFavorite} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onToggleHidden(char)}
-              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                isHidden
-                  ? 'border-amber-400/50 bg-amber-500/15 text-amber-300'
-                  : 'border-white/15 bg-black/35 text-zinc-300 hover:border-white/30 hover:text-white'
-              }`}
-              title={isHidden ? 'Unhide character' : 'Hide character'}
-              aria-label={isHidden ? 'Unhide character' : 'Hide character'}
-            >
-              <EyeIcon hidden={isHidden} />
-            </button>
             <span
               className={`rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white ${
                 isAlliance ? 'bg-blue-700' : 'bg-red-700'
@@ -285,7 +270,8 @@ export default function CharactersPage() {
       const rawTracked = window.localStorage.getItem(LOCAL_TRACKED_CHARACTERS_KEY);
       if (rawTracked) {
         const parsed = JSON.parse(rawTracked);
-        if (Array.isArray(parsed)) setTrackedCharacterKeys(parsed.filter((v) => typeof v === 'string'));
+        if (Array.isArray(parsed))
+          setTrackedCharacterKeys(parsed.filter((v) => typeof v === 'string'));
       }
     } catch {
       setFavorites([]);
@@ -365,7 +351,16 @@ export default function CharactersPage() {
         `${char.name} ${char.realm} ${char.class} ${char.race} ${char.region}`.toLowerCase();
       return haystack.includes(query);
     });
-  }, [characters, search, regionFilter, classFilter, realmFilter, viewFilter, favoriteSet, hiddenSet]);
+  }, [
+    characters,
+    search,
+    regionFilter,
+    classFilter,
+    realmFilter,
+    viewFilter,
+    favoriteSet,
+    hiddenSet,
+  ]);
 
   const allianceCharacters = useMemo(
     () => filteredCharacters.filter((c) => normalizeFaction(c.faction) === 'alliance'),

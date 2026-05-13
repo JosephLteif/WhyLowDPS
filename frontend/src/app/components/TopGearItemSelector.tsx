@@ -114,6 +114,12 @@ const DISPLAY_GROUPS: DisplayGroup[] = [
 
 const UPGRADE_TRACK_MAX_LEVEL = 6;
 
+function normalizeEnchantQuerySlot(slot: string): string {
+  if (slot === 'finger1' || slot === 'finger2') return 'finger';
+  if (slot === 'trinket1' || slot === 'trinket2') return 'trinket';
+  return slot;
+}
+
 function getResolvedGemIds(item: ResolvedItem): number[] {
   if (item.gem_ids && item.gem_ids.length > 0) {
     return item.gem_ids.filter((id) => Number.isFinite(id) && id > 0);
@@ -379,7 +385,7 @@ export default function TopGearItemSelector({
         }
         try {
           const params = new URLSearchParams();
-          params.set('slot', target.slot);
+          params.set('slot', normalizeEnchantQuerySlot(target.slot));
           if (className) params.set('class_name', className);
           if (target.item_id > 0) params.set('item_id', String(target.item_id));
           if (Array.isArray(target.bonus_ids) && target.bonus_ids.length > 0) {
@@ -1126,7 +1132,7 @@ export default function TopGearItemSelector({
         missing.map(async ([key, item]) => {
           try {
             const params = new URLSearchParams();
-            params.set('slot', item.slot);
+            params.set('slot', normalizeEnchantQuerySlot(item.slot));
             if (className) params.set('class_name', className);
             if (item.item_id > 0) params.set('item_id', String(item.item_id));
             if (Array.isArray(item.bonus_ids) && item.bonus_ids.length > 0) {
@@ -1151,8 +1157,8 @@ export default function TopGearItemSelector({
       if (cancelled) return;
       setEnchantAvailabilityBySlot((prev) => {
         const next = { ...prev };
-        for (const [slot, available] of fetched) {
-          next[`${slot}|${className}`] = available;
+        for (const [key, available] of fetched) {
+          next[key] = available;
         }
         return next;
       });

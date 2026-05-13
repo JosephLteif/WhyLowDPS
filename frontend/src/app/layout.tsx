@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="https://wow.zamimg.com/js/tooltips.js" strategy="afterInteractive" />
       </head>
       <body
-        className="min-h-screen overflow-x-hidden"
+        className="overflow-x-hidden"
         style={{
           ['--sidebar-width' as string]: '0rem',
           ['--app-header-height' as string]: '3rem',

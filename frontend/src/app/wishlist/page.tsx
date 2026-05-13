@@ -5,7 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import { API_URL, fetchJson, listCharacterProfiles } from '../lib/api';
-import { buildGearItemUid, slotCandidatesFromWishlistSlot, slotFromInventoryType } from '../lib/gear-utils';
+import {
+  buildGearItemUid,
+  slotCandidatesFromWishlistSlot,
+  slotFromInventoryType,
+} from '../lib/gear-utils';
 import { getWowheadData, QUALITY_COLORS, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
@@ -216,7 +220,9 @@ export default function WishlistPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetchJson<{ characters?: BnetCharacter[] } | BnetCharacter[]>(`${API_URL}/api/bnet/user/characters`)
+    fetchJson<{ characters?: BnetCharacter[] } | BnetCharacter[]>(
+      `${API_URL}/api/bnet/user/characters`
+    )
       .then((response) => {
         if (cancelled) return;
         const list = Array.isArray(response) ? response : response?.characters || [];
@@ -322,11 +328,7 @@ export default function WishlistPage() {
       if (slots.length === 0) continue;
       const bonusIds = Array.isArray(wish.bonus_ids) ? wish.bonus_ids : [];
       const finalBonusIds =
-        bonusIds.length > 0
-          ? bonusIds
-          : wish.wishlist_bonus_id
-            ? [wish.wishlist_bonus_id]
-            : [];
+        bonusIds.length > 0 ? bonusIds : wish.wishlist_bonus_id ? [wish.wishlist_bonus_id] : [];
       const simcString =
         finalBonusIds.length > 0
           ? `,id=${wish.item_id},bonus_id=${finalBonusIds.join('/')},ilevel=${wish.wishlist_ilvl || wish.ilevel}`
@@ -336,8 +338,7 @@ export default function WishlistPage() {
         const uid = makeUid(wish.item_id, finalBonusIds, 'bags', slot);
         const slotRes = nextResolved.slots[slot];
         const exists =
-          slotRes?.equipped?.uid === uid ||
-          slotRes?.alternatives?.some((item) => item.uid === uid);
+          slotRes?.equipped?.uid === uid || slotRes?.alternatives?.some((item) => item.uid === uid);
         if (!exists) {
           const itemInfo = itemInfoMap[wish.item_id];
           const resolvedIcon = itemInfoMap[wish.item_id]?.icon || wish.icon || '';
@@ -533,53 +534,66 @@ export default function WishlistPage() {
             <div key={group} className="card p-4">
               <h3 className="mb-3 text-sm font-semibold text-zinc-200">{group}</h3>
               <div className="space-y-2">
-                {items.map((item) => (
-                  <div
-                    key={item.item_id}
-                    className="flex items-center justify-between rounded border border-border bg-surface-2 px-3 py-2"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <WishlistItemIcon
-                        icon={itemInfoMap[item.item_id]?.icon || item.icon}
-                        name={itemInfoMap[item.item_id]?.name || item.name}
-                      />
-                      <div className="min-w-0">
-                        <a
-                          href={`https://www.wowhead.com/item=${item.item_id}`}
-                          data-wowhead={`item=${item.item_id}${
-                            (() => {
-                              const extra = getWowheadData(
-                                item.bonus_ids ||
-                                  (item.wishlist_bonus_id ? [item.wishlist_bonus_id] : undefined),
-                                item.wishlist_ilvl || item.ilevel
-                              );
-                              return extra ? `&${extra}` : '';
-                            })()
-                          }`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="truncate text-sm font-medium text-zinc-100 hover:text-gold"
-                        >
-                          {itemInfoMap[item.item_id]?.name || item.name}
-                        </a>
-                        <p className="text-xs text-zinc-400">
-                          {item.encounter || 'Unknown Encounter'} - ilvl{' '}
-                          {item.wishlist_ilvl || item.ilevel}
-                          {item.wishlist_upgrade_label ? ` - ${item.wishlist_upgrade_label}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        removeFromWishlist(item.item_id, selectedOwnerKey);
-                        refreshWishlist();
-                      }}
-                      className="rounded border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/15"
+                {items.map((item) => {
+                  const itemName = itemInfoMap[item.item_id]?.name || item.name;
+                  const itemIcon = itemInfoMap[item.item_id]?.icon || item.icon;
+                  const itemIlvl = item.wishlist_ilvl || item.ilevel;
+                  const itemBonusIds =
+                    item.bonus_ids ||
+                    (item.wishlist_bonus_id ? [item.wishlist_bonus_id] : undefined);
+                  const wowheadExtra = getWowheadData(itemBonusIds, itemIlvl);
+                  const sourceTags = [
+                    item.instance_name || '',
+                    item.source_type || '',
+                    item.encounter || 'Unknown Encounter',
+                  ].filter((tag) => tag.trim().length > 0);
+
+                  return (
+                    <div
+                      key={`${item.item_id}:${itemIlvl || 0}`}
+                      className="flex items-center justify-between rounded border border-border bg-surface-2 px-3 py-2"
                     >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex min-w-0 items-center gap-3">
+                        <WishlistItemIcon icon={itemIcon} name={itemName} />
+                        <div className="min-w-0">
+                          <a
+                            href={`https://www.wowhead.com/item=${item.item_id}`}
+                            data-wowhead={`item=${item.item_id}${wowheadExtra ? `&${wowheadExtra}` : ''}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate text-sm font-medium text-zinc-100 hover:text-gold"
+                          >
+                            {itemName}
+                          </a>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {itemIlvl ? (
+                              <span className="inline-flex shrink-0 items-center rounded border border-emerald-400/45 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-emerald-200">
+                                {itemIlvl} ilvl
+                              </span>
+                            ) : null}
+                            {sourceTags.map((tag, index) => (
+                              <span
+                                key={`${item.item_id}:${itemIlvl || 0}:src:${index}`}
+                                className="inline-flex shrink-0 items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          removeFromWishlist(item.item_id, selectedOwnerKey, itemIlvl);
+                          refreshWishlist();
+                        }}
+                        className="rounded border border-red-500/20 px-2 py-1 text-xs text-red-300 hover:bg-red-500/15"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

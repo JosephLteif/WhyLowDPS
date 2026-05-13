@@ -87,15 +87,27 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
           localStorage.setItem('whylowdps_data_ready', 'true');
         } catch {}
       } else if (data.status === 'needs_credentials') {
+        setIsReady(false);
+        try {
+          localStorage.removeItem('whylowdps_data_ready');
+        } catch {}
         setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
         fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' }).catch(() => {});
       } else {
+        setIsReady(false);
+        try {
+          localStorage.removeItem('whylowdps_data_ready');
+        } catch {}
         setDataStatus(data);
       }
     } catch (err) {
       if (!isNetworkUnavailableError(err)) {
         console.error('Failed to fetch data status:', err);
       }
+      setIsReady(false);
+      try {
+        localStorage.removeItem('whylowdps_data_ready');
+      } catch {}
       setDataStatus({ status: 'syncing', progress: 'Waiting for backend to start...' });
     }
   }, []);
@@ -109,13 +121,11 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
       });
 
     const interval = setInterval(() => {
-      if (!isReady) {
-        checkStatus();
-      }
+      checkStatus();
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [isReady, checkStatus]);
+  }, [checkStatus]);
 
   const handleRetry = () => {
     fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })

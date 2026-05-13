@@ -44,6 +44,7 @@ export interface GearItem {
   is_kept?: boolean;
   upgrade_levels?: number;
   origin?: string;
+  upgrade?: string;
   source_type?: string;
   encounter?: string;
   instance_name?: string;
@@ -115,6 +116,37 @@ function normalizeEmbellishmentName(value?: string | null): string {
     .replace(/\s*\((quality|rank|q)\s*\d+\)\s*$/i, '')
     .replace(/\s*\(\d+\)\s*$/i, '')
     .replace(/[^a-z0-9]/g, '');
+}
+
+function normalizeUpgradeLabel(value?: string | null): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function upgradeTierClass(label: string): string {
+  const targetTier = label.split('->').pop()?.trim().toLowerCase() || label.toLowerCase();
+
+  if (targetTier.includes('myth')) {
+    return 'border-orange-400/55 bg-orange-500/15 text-orange-200';
+  }
+  if (targetTier.includes('hero')) {
+    return 'border-teal-400/45 bg-teal-500/12 text-teal-200';
+  }
+  if (targetTier.includes('champion')) {
+    return 'border-emerald-400/45 bg-emerald-500/12 text-emerald-200';
+  }
+  if (targetTier.includes('veteran')) {
+    return 'border-sky-400/45 bg-sky-500/12 text-sky-200';
+  }
+  if (targetTier.includes('adventurer')) {
+    return 'border-lime-400/45 bg-lime-500/12 text-lime-200';
+  }
+  if (targetTier.includes('explorer')) {
+    return 'border-zinc-400/45 bg-zinc-500/12 text-zinc-200';
+  }
+
+  return 'border-teal-400/40 bg-teal-500/10 text-teal-200';
 }
 
 interface GearOverviewProps {
@@ -475,6 +507,20 @@ export function GearSlotRow({
   const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
   const name = info?.name || item.name || `Item ${item.item_id}`;
   const icon = info?.icon || 'inv_misc_questionmark';
+  const upgradeLabel = normalizeUpgradeLabel(item.upgrade || info?.upgrade);
+  const equippedInfo = equippedItem?.item_id ? itemInfoMap[equippedItem.item_id] : undefined;
+  const equippedUpgradeLabel = normalizeUpgradeLabel(
+    equippedItem?.upgrade || equippedInfo?.upgrade
+  );
+  const upgradeLabelChanged =
+    upgradeLabel &&
+    equippedUpgradeLabel &&
+    upgradeLabel.toLowerCase() !== equippedUpgradeLabel.toLowerCase();
+  const displayedUpgradeLabel = upgradeLabel
+    ? upgradeLabelChanged
+      ? `${equippedUpgradeLabel} -> ${upgradeLabel}`
+      : upgradeLabel
+    : '';
   const whData =
     item.item_id > 0
       ? getWowheadData(item.bonus_ids, item.ilevel, item.enchant_id, gemIds)
@@ -680,6 +726,15 @@ export function GearSlotRow({
             >
               iLvl {item.ilevel || 0}
             </span>
+            {displayedUpgradeLabel ? (
+              <span
+                className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${upgradeTierClass(
+                  displayedUpgradeLabel
+                )}`}
+              >
+                {displayedUpgradeLabel}
+              </span>
+            ) : null}
           </>
         }
         name={name}

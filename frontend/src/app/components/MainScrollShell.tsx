@@ -5,10 +5,9 @@ import type { ReactNode } from 'react';
 export default function MainScrollShell({ children }: { children: ReactNode }) {
   return (
     <main
-      className="ml-[var(--sidebar-width)] px-3 pb-6 pt-6 transition-[margin-left] duration-200 md:px-4 lg:pb-8 lg:pt-8 xl:px-10 2xl:px-16"
+      className="ml-[var(--sidebar-width)] px-3 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16"
       style={{
-        marginTop: 'var(--app-header-height)',
-        minHeight: 'calc(100vh - var(--app-header-height))',
+        paddingTop: 'calc(var(--app-header-height) + var(--main-scroll-top-offset, 1.5rem))',
       }}
     >
       <div

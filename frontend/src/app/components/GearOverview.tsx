@@ -26,6 +26,7 @@ import { API_URL, fetchJson } from '../lib/api';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { Instance } from '../drop-finder/types';
 import { buildSourceTagLinks } from '../lib/source-navigation';
+import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect';
 import GearItemRow from './GearItemRow';
 import {
   ASCENDANT_VOIDCORE_BADGE_CLASS,
@@ -213,6 +214,7 @@ export default function GearOverview({
   }, [gear]);
 
   const itemInfoMap = useItemInfo(allItemQueries);
+  const extraEffectsByKey = useItemExtraEffects(allItemQueries);
 
   const allEnchantIds = useMemo(() => {
     const ids = new Set<number>();
@@ -347,6 +349,7 @@ export default function GearOverview({
               characterClassName={characterClassName}
               enchantAvailabilityBySlot={enchantAvailabilityBySlot}
               embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+              extraEffectsByKey={extraEffectsByKey}
               sourceInstances={effectiveSourceInstances}
             />
           ))}
@@ -372,6 +375,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 sourceInstances={effectiveSourceInstances}
               />
             ))}
@@ -394,6 +398,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 reverse
                 sourceInstances={effectiveSourceInstances}
               />
@@ -418,6 +423,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 reverse
                 sourceInstances={effectiveSourceInstances}
               />
@@ -437,6 +443,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 sourceInstances={effectiveSourceInstances}
               />
             </div>
@@ -461,6 +468,7 @@ export function GearSlotRow({
   characterClassName,
   enchantAvailabilityBySlot,
   embellishmentOptionsByItemId,
+  extraEffectsByKey,
   reverse = false,
   sourceInstances = [],
 }: {
@@ -477,6 +485,7 @@ export function GearSlotRow({
   characterClassName?: string | null;
   enchantAvailabilityBySlot: Record<string, boolean>;
   embellishmentOptionsByItemId: Record<number, EmbellishmentOption[]>;
+  extraEffectsByKey: Record<string, Array<'Leech' | 'Speed' | 'Avoidance' | 'Indestructible'>>;
   reverse?: boolean;
   sourceInstances?: Instance[];
 }) {
@@ -659,6 +668,21 @@ export function GearSlotRow({
       wowheadData: embellishmentItemId > 0 ? `item=${embellishmentItemId}` : undefined,
       tooltip: embellishmentName,
       color: EMBELLISHMENT_BADGE_CLASS,
+    });
+  }
+  for (const effect of getItemExtraEffects(
+    {
+      item_id: item.item_id,
+      bonus_ids: item.bonus_ids || [],
+      source_type: item.source_type || '',
+      extra_effects: info?.extra_effects,
+    },
+    extraEffectsByKey
+  )) {
+    details.push({
+      text: effect,
+      badgeVariant: 'mod',
+      color: 'text-cyan-200 border-cyan-300/40 bg-cyan-500/10',
     });
   }
   const hasAscendantVoidcore =

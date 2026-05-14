@@ -292,7 +292,7 @@ export default function GearItemRow({
                   key={i}
                   text={p.text}
                   title={p.tooltip || p.text}
-                  variant="neutral"
+                  variant={p.badgeVariant || 'neutral'}
                   className={p.color || ''}
                 />
               )

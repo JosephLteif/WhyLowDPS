@@ -15,12 +15,18 @@ export interface BadgeDescriptor {
 }
 
 const SOURCE_TAG_OVERRIDES: Record<string, string> = {
-  wishlist: 'text-rose-300 bg-rose-500/15 border-rose-400/40',
-  vault: 'text-violet-200 bg-violet-500/18 border-violet-400/45',
-  search: 'text-sky-200 bg-sky-500/15 border-sky-400/40',
-  crafter: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
-  crafted: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
-  catalyst: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
+  wishlist: '!text-rose-100 !border-rose-300/80',
+  vault: '!text-violet-100 !border-violet-300/80',
+  search: '!text-sky-100 !border-sky-300/80',
+  crafter: '!text-cyan-100 !border-cyan-300/80',
+  crafted: '!text-cyan-100 !border-cyan-300/80',
+  catalyst: '!text-purple-100 !border-purple-300/80',
+  'mythic+': '!text-orange-100 !border-orange-300/80',
+  'mythic': '!text-orange-100 !border-orange-300/80',
+  heroic: '!text-teal-100 !border-teal-300/80',
+  champion: '!text-emerald-100 !border-emerald-300/80',
+  veteran: '!text-sky-100 !border-sky-300/80',
+  adventurer: '!text-lime-100 !border-lime-300/80',
 };
 
 const KNOWN_SOURCE_TAGS = new Set([
@@ -32,6 +38,7 @@ const KNOWN_SOURCE_TAGS = new Set([
   'catalyst',
   'ascendant',
   'mythic+',
+  'mythic',
   'heroic',
   'veteran',
   'champion',

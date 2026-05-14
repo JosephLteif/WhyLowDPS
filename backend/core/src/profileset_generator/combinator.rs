@@ -24,14 +24,9 @@ pub fn build_slot_candidates(
             .collect();
         let mut selected_identities: HashSet<String> =
             selected_uids.iter().map(|uid| uid_identity(uid)).collect();
-        let mut selected_core_keys: HashSet<String> = selected_uids
-            .iter()
-            .filter_map(|uid| uid_core_key(uid))
-            .collect();
         if let Some(paired) = class_data::paired_slot(&slot_str) {
             if let Some(p_uids) = selected_items.get(paired) {
                 selected_identities.extend(p_uids.iter().map(|uid| uid_identity(uid)));
-                selected_core_keys.extend(p_uids.iter().filter_map(|uid| uid_core_key(uid)));
             }
         }
 
@@ -39,11 +34,7 @@ pub fn build_slot_candidates(
         for item in slot_items {
             let uid = &item.uid;
             let identity = uid_identity(uid);
-            let core_key = item_core_key(item);
-            if selected_uids.contains(uid)
-                || selected_identities.contains(&identity)
-                || selected_core_keys.contains(&core_key)
-            {
+            if selected_uids.contains(uid) || selected_identities.contains(&identity) {
                 candidates.push(item.clone());
             }
         }
@@ -230,20 +221,6 @@ pub fn uid_identity(uid: &str) -> String {
     uid.rsplit_once(':')
         .map(|(prefix, _)| prefix.to_string())
         .unwrap_or_else(|| uid.to_string())
-}
-
-fn uid_core_key(uid: &str) -> Option<String> {
-    let parts: Vec<&str> = uid.split(':').collect();
-    let item_id = parts.first()?.parse::<u64>().ok()?;
-    let origin = parts
-        .iter()
-        .copied()
-        .find(|part| matches!(*part, "equipped" | "bags" | "vault"))?;
-    Some(format!("{}:{}", item_id, origin))
-}
-
-fn item_core_key(item: &ResolvedItem) -> String {
-    format!("{}:{}", item.item_id, item.origin.as_str())
 }
 
 pub struct UpgradeCombo {

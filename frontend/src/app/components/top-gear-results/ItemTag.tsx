@@ -3,6 +3,7 @@ import { getIconUrl, getWowheadData, getWowheadUrl, QUALITY_COLORS } from '../..
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import type { ResultItem } from '../../lib/types';
 import { SLOT_LABELS } from '../../lib/types';
+import { getItemExtraEffects, useItemExtraEffects } from '../../lib/itemExtraEffect';
 import ItemBadge from '../shared/ItemBadge';
 import type { Instance } from '../../drop-finder/types';
 import { buildSourceTagLinks } from '../../lib/source-navigation';
@@ -69,6 +70,20 @@ export default function ItemTag({
   const gemId = gem?.gem_id || item.gem_id || 0;
   const gemTooltipData = gemId > 0 ? `item=${gemId}` : undefined;
   const gemHref = gemId > 0 ? getWowheadUrl(gemId) : undefined;
+  const extraEffectsByKey = useItemExtraEffects([
+    { item_id: item.item_id, bonus_ids: item.bonus_ids },
+  ]);
+  const extraEffects = getItemExtraEffects(
+    {
+      item_id: item.item_id,
+      bonus_ids: item.bonus_ids,
+      simc_string: item.simc_string,
+      source_type: item.source_type,
+      tag: item.tag,
+      extra_effects: info?.extra_effects || item.extra_effects,
+    },
+    extraEffectsByKey
+  );
 
   return (
     <div
@@ -191,6 +206,15 @@ export default function ItemTag({
             iconSize={14}
           />
         )}
+        {extraEffects.map((effect) => (
+          <ItemBadge
+            key={`extra:${item.uid}:${effect}`}
+            text={effect}
+            variant="mod"
+            className="border-cyan-300/45 bg-cyan-500/10 text-cyan-200/95"
+            iconSize={14}
+          />
+        ))}
       </div>
     </div>
   );

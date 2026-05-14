@@ -17,6 +17,7 @@ import {
   EMBELLISHMENT_BADGE_CLASS,
 } from './shared/itemBadgeClasses';
 import { useSimContext } from './SimContext';
+import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect';
 import TopGearItemContextMenu from './top-gear/TopGearItemContextMenu';
 import TopGearQuickSelect from './top-gear/TopGearQuickSelect';
 import TopGearSlotGroup from './top-gear/TopGearSlotGroup';
@@ -138,6 +139,17 @@ function normalizeEmbellishmentName(value?: string | null): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
+function upgradeTierTagColor(label: string): string {
+  const targetTier = label.split('->').pop()?.trim().toLowerCase() || label.toLowerCase();
+  if (targetTier.includes('myth')) return '!border-orange-300/80 !text-orange-100';
+  if (targetTier.includes('hero')) return '!border-teal-300/80 !text-teal-100';
+  if (targetTier.includes('champion')) return '!border-emerald-300/80 !text-emerald-100';
+  if (targetTier.includes('veteran')) return '!border-sky-300/80 !text-sky-100';
+  if (targetTier.includes('adventurer')) return '!border-lime-300/80 !text-lime-100';
+  if (targetTier.includes('explorer')) return '!border-zinc-300/80 !text-zinc-100';
+  return '!border-teal-300/80 !text-teal-100';
+}
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -222,6 +234,7 @@ export default function TopGearItemSelector({
   }, [resolved.slots]);
 
   const itemInfoMap = useItemInfo(allItemQueries);
+  const extraEffectsByKey = useItemExtraEffects(allItemQueries);
 
   useWowheadTooltips([resolved, gemInfoById, enchantInfoById, embellishmentOptionsByItem]);
 
@@ -1490,8 +1503,16 @@ export default function TopGearItemSelector({
       parts.push({
         text: item.upgrade,
         badgeVariant: 'source',
-        color: 'text-zinc-200 bg-white/[0.06] border-white/15',
+        color: upgradeTierTagColor(item.upgrade),
       });
+    const extraEffects = getItemExtraEffects(item, extraEffectsByKey);
+    for (const effect of extraEffects) {
+      parts.push({
+        text: effect,
+        badgeVariant: 'mod',
+        color: 'text-cyan-200 border-cyan-300/40 bg-cyan-500/10',
+      });
+    }
     if (hasGem) {
       for (const [index, gemInfo] of gemInfos.entries()) {
         const gemName = gemInfo?.name || (index === 0 ? item.gem_name : '') || 'Gem';

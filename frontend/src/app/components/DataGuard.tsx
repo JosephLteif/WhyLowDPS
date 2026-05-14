@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { API_URL, fetchJson, isNetworkUnavailableError } from '../lib/api';
 import SplashScreen from './SplashScreen';
 import { useAuth } from './AuthContext';
@@ -18,6 +18,8 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const { user, loading, checkCredentialsStatus } = useAuth();
   const [isGloballyConfigured, setIsGloballyConfigured] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
+  const statusFailureCountRef = useRef(0);
+  const statusFailureFirstAtRef = useRef<number | null>(null);
 
   const safeText = (value: unknown, fallback = ''): string => {
     if (typeof value === 'string') return value;
@@ -79,6 +81,8 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   const checkStatus = useCallback(async () => {
     try {
       const data = await fetchJson<any>(`${API_URL}/api/data/status`);
+      statusFailureCountRef.current = 0;
+      statusFailureFirstAtRef.current = null;
 
       if (data.status === 'ready') {
         setDataStatus(data);
@@ -104,11 +108,20 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
       if (!isNetworkUnavailableError(err)) {
         console.error('Failed to fetch data status:', err);
       }
-      setIsReady(false);
-      try {
-        localStorage.removeItem('whylowdps_data_ready');
-      } catch {}
-      setDataStatus({ status: 'syncing', progress: 'Waiting for backend to start...' });
+      // Avoid random splash/reload-like UX on brief idle/network hiccups.
+      statusFailureCountRef.current += 1;
+      if (statusFailureFirstAtRef.current == null) {
+        statusFailureFirstAtRef.current = Date.now();
+      }
+      const failedForMs = Date.now() - (statusFailureFirstAtRef.current || Date.now());
+      const shouldDropReady = statusFailureCountRef.current >= 3 && failedForMs >= 6000;
+      if (shouldDropReady) {
+        setIsReady(false);
+        try {
+          localStorage.removeItem('whylowdps_data_ready');
+        } catch {}
+        setDataStatus({ status: 'syncing', progress: 'Waiting for backend to start...' });
+      }
     }
   }, []);
 

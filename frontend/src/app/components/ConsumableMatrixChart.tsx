@@ -197,6 +197,7 @@ export default function ConsumableMatrixChart({
                   : raidBuff?.spellId != null
                     ? `spell=${raidBuff.spellId}`
                     : undefined;
+              const wowheadHref = wowhead ? `https://www.wowhead.com/${wowhead}` : undefined;
               const resolvedIcon =
                 (opt?.itemId && itemIcons.get(opt.itemId)) ||
                 (raidBuff?.spellId && spellIcons.get(raidBuff.spellId)) ||
@@ -210,8 +211,9 @@ export default function ConsumableMatrixChart({
                 >
                   <div className="min-w-0">
                     <a
-                      href="#"
-                      onClick={(e) => e.preventDefault()}
+                      href={wowheadHref}
+                      target="_blank"
+                      rel="noreferrer noopener"
                       data-wowhead={wowhead}
                       className="flex min-w-0 items-center gap-2 text-sm text-zinc-200"
                     >

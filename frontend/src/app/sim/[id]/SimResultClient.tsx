@@ -1354,6 +1354,10 @@ export default function SimResultClient() {
                       </h3>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {items.map((buff: any, idx) => {
+                          const wowheadHref =
+                            buff.spellId || buff.itemId
+                              ? `https://www.wowhead.com/${buff.spellId ? 'spell' : 'item'}=${buff.spellId || buff.itemId}`
+                              : null;
                           const iconKey = buff.spellId
                             ? `spell:${buff.spellId}`
                             : buff.itemId
@@ -1374,11 +1378,14 @@ export default function SimResultClient() {
                               <div className="shrink-0">
                                 {buff.spellId || buff.itemId ? (
                                   <a
-                                    href={`https://www.wowhead.com/${buff.spellId ? 'spell' : 'item'}=${buff.spellId || buff.itemId}`}
+                                    href={wowheadHref || undefined}
                                     data-wowhead={`${buff.spellId ? 'spell' : 'item'}=${buff.spellId || buff.itemId}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    onClick={(e) => e.preventDefault()}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      if (wowheadHref) window.open(wowheadHref, '_blank', 'noopener,noreferrer');
+                                    }}
                                   >
                                     {iconUrl ? (
                                       <img
@@ -1406,14 +1413,35 @@ export default function SimResultClient() {
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
-                                  <p className="truncate text-[14px] font-bold capitalize leading-tight">
-                                    {(() => {
-                                      const rawName = buff.name.replace(/_/g, ' ');
-                                      return rawName
-                                        .replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '')
-                                        .replace(/\s+\d+\s*$/i, '');
-                                    })()}
-                                  </p>
+                                  {buff.spellId || buff.itemId ? (
+                                    <a
+                                      href={wowheadHref || undefined}
+                                      data-wowhead={`${buff.spellId ? 'spell' : 'item'}=${buff.spellId || buff.itemId}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="truncate text-[14px] font-bold capitalize leading-tight hover:underline"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        if (wowheadHref) window.open(wowheadHref, '_blank', 'noopener,noreferrer');
+                                      }}
+                                    >
+                                      {(() => {
+                                        const rawName = buff.name.replace(/_/g, ' ');
+                                        return rawName
+                                          .replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '')
+                                          .replace(/\s+\d+\s*$/i, '');
+                                      })()}
+                                    </a>
+                                  ) : (
+                                    <p className="truncate text-[14px] font-bold capitalize leading-tight">
+                                      {(() => {
+                                        const rawName = buff.name.replace(/_/g, ' ');
+                                        return rawName
+                                          .replace(/\s*\((Gold|Silver|Bronze|Tier \d+)\)\s*$/i, '')
+                                          .replace(/\s+\d+\s*$/i, '');
+                                      })()}
+                                    </p>
+                                  )}
                                   {(() => {
                                     const match =
                                       buff.name.match(

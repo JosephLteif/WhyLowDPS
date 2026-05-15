@@ -23,7 +23,6 @@ mod sim_handlers;
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
-mod wow_data_map;
 
 #[cfg(feature = "web")]
 use actix_cors::Cors;

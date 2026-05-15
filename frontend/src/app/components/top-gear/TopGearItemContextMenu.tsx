@@ -17,6 +17,7 @@ interface TopGearItemContextMenuProps {
   y: number;
   canAddEnchant: boolean;
   canAddGem: boolean;
+  globalAffixesEnabled?: boolean;
   otherTierOptions: UpgradeOption[];
   loadingOtherTierOptions: boolean;
   upgradeOptions: UpgradeOption[];
@@ -91,6 +92,7 @@ export default function TopGearItemContextMenu({
   y,
   canAddEnchant,
   canAddGem,
+  globalAffixesEnabled = false,
   otherTierOptions,
   loadingOtherTierOptions,
   upgradeOptions,
@@ -360,8 +362,8 @@ export default function TopGearItemContextMenu({
           disabled={!canUpgrade}
         />
         <ParentAction label="Set Tier / iLvl" submenu="tier" onOpen={openTierSubmenu} />
-        {canAddEnchant && <ParentAction label="Add Enchant" submenu="enchant" />}
-        {canAddGem && <ParentAction label="Add Gem" submenu="gem" />}
+        {!globalAffixesEnabled && canAddEnchant && <ParentAction label="Add Enchant" submenu="enchant" />}
+        {!globalAffixesEnabled && canAddGem && <ParentAction label="Add Gem" submenu="gem" />}
         <ParentAction label="Source & Tags" submenu="tags" />
 
         {canCatalyst && (

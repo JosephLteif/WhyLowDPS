@@ -50,6 +50,9 @@ interface TopGearSlotGroupProps {
   onCatalystConvert: (item: ResolvedItem) => void;
   onOptimize: (item: ResolvedItem) => void;
   canOptimizeItem: (item: ResolvedItem) => boolean;
+  shouldShowOptimizeButton?: (item: ResolvedItem) => boolean;
+  optimizeDisabledReason?: (item: ResolvedItem) => string | undefined;
+  optimizeTitle?: string;
   onItemContextMenu: (item: ResolvedItem, event: React.MouseEvent) => void;
   itemDetails: (item: ResolvedItem) => {
     text: string;
@@ -64,6 +67,13 @@ interface TopGearSlotGroupProps {
   isItemSelected: (item: ResolvedItem) => boolean;
   hasLimitWarning?: (item: ResolvedItem) => boolean;
   onToggleAll?: () => void;
+  globalSelectionSummary?: {
+    text: string;
+    tooltip: string;
+  } | null;
+  hiddenAlternativeCount?: number;
+  showingAllAlternatives?: boolean;
+  onToggleHiddenAlternatives?: () => void;
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
 }
@@ -85,11 +95,18 @@ export default function TopGearSlotGroup({
   onCatalystConvert,
   onOptimize,
   canOptimizeItem,
+  shouldShowOptimizeButton,
+  optimizeDisabledReason,
+  optimizeTitle,
   onItemContextMenu,
   itemDetails,
   isItemSelected,
   hasLimitWarning,
   onToggleAll,
+  globalSelectionSummary,
+  hiddenAlternativeCount = 0,
+  showingAllAlternatives = false,
+  onToggleHiddenAlternatives,
   getWowheadUrl,
   getWowheadData,
 }: TopGearSlotGroupProps) {
@@ -119,6 +136,14 @@ export default function TopGearSlotGroup({
             >
               All
             </button>
+          )}
+          {globalSelectionSummary && (
+            <span
+              className="cursor-help text-[12px] font-semibold text-gold"
+              title={globalSelectionSummary.tooltip}
+            >
+              {globalSelectionSummary.text}
+            </span>
           )}
         </div>
         <button
@@ -169,6 +194,10 @@ export default function TopGearSlotGroup({
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
               onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
+              showOptimizeButton={shouldShowOptimizeButton?.(item) || canOptimizeItem(item)}
+              optimizeDisabled={Boolean(shouldShowOptimizeButton?.(item) && !canOptimizeItem(item))}
+              optimizeDisabledReason={optimizeDisabledReason?.(item)}
+              optimizeTitle={optimizeTitle}
             />
           </GearItemRow>
             );
@@ -221,11 +250,39 @@ export default function TopGearSlotGroup({
               onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
               onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
               onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
+              showOptimizeButton={shouldShowOptimizeButton?.(item) || canOptimizeItem(item)}
+              optimizeDisabled={Boolean(shouldShowOptimizeButton?.(item) && !canOptimizeItem(item))}
+              optimizeDisabledReason={optimizeDisabledReason?.(item)}
+              optimizeTitle={optimizeTitle}
             />
           </GearItemRow>
             );
           })()
         ))}
+        {hiddenAlternativeCount > 0 && onToggleHiddenAlternatives ? (
+          <div className="pt-1 text-center text-[12px] text-zinc-500">
+            {showingAllAlternatives ? (
+              <button
+                type="button"
+                onClick={onToggleHiddenAlternatives}
+                className="font-semibold text-gold hover:text-gold/80"
+              >
+                Hide low level items
+              </button>
+            ) : (
+              <>
+                {hiddenAlternativeCount} low level item{hiddenAlternativeCount === 1 ? '' : 's'} hidden.{' '}
+                <button
+                  type="button"
+                  onClick={onToggleHiddenAlternatives}
+                  className="font-semibold text-gold hover:text-gold/80"
+                >
+                  Show all items
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

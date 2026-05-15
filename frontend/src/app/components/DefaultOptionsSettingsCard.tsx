@@ -158,6 +158,7 @@ export default function DefaultOptionsSettingsCard() {
       isInherited(key) ? `${baseTitle} (Inheriting Global)` : baseTitle,
     [isInherited]
   );
+  const topGearGlobalAffixesEnabled = Boolean(defaults['topgear.globalAffixes']);
 
   const fightStyleRules = getFightStyleParamRules(defaults['fight.fightStyle']);
   const qualityMaxByFamily = useMemo(
@@ -290,40 +291,114 @@ export default function DefaultOptionsSettingsCard() {
         </div>
 
         <div className="card flex flex-col gap-4 p-5 sm:flex-row">
-          {(
-            [
-              ['topgear.copyEnchants', 'Copy Enchants/Gems', "Apply equipped enchants and gems to items that don't have one"],
-              ['topgear.maxUpgrade', 'Sim Highest Upgrade', 'Treat all selected gear as their maximum upgrade level'],
-              ['topgear.catalyst', 'Revival Catalyst', 'Convert highest item per slot'],
-            ] as const
-          ).map(([key, title, desc]) => (
-            <ToggleOptionCard
-              key={key}
-              checked={defaults[key]}
-              onToggle={() => updateDefault(key, !defaults[key])}
-              title={optionTitle(key, title)}
-              description={desc}
-              note={
-                scope === 'character' ? (
-                  isInherited(key) ? (
-                    <span className="text-zinc-500">Inheriting from global defaults</span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        clearCharacterOverride(key);
-                      }}
-                      className="text-[12px] font-semibold text-gold hover:text-gold/80"
-                    >
-                      Use Global
-                    </button>
-                  )
-                ) : null
-              }
-            />
-          ))}
+          <ToggleOptionCard
+            checked={defaults['topgear.globalAffixes']}
+            onToggle={() => updateDefault('topgear.globalAffixes', !defaults['topgear.globalAffixes'])}
+            title={optionTitle('topgear.globalAffixes', 'Global Enchants & Gems')}
+            description="Manage enchants and gems centrally with Enchant & Gem Rules by default"
+            note={
+              scope === 'character' ? (
+                isInherited('topgear.globalAffixes') ? (
+                  <span className="text-zinc-500">Inheriting from global defaults</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearCharacterOverride('topgear.globalAffixes');
+                    }}
+                    className="text-[12px] font-semibold text-gold hover:text-gold/80"
+                  >
+                    Use Global
+                  </button>
+                )
+              ) : null
+            }
+          />
+          <ToggleOptionCard
+            checked={topGearGlobalAffixesEnabled ? false : defaults['topgear.copyEnchants']}
+            onToggle={() => {
+              if (topGearGlobalAffixesEnabled) return;
+              updateDefault('topgear.copyEnchants', !defaults['topgear.copyEnchants']);
+            }}
+            disabled={topGearGlobalAffixesEnabled}
+            title={optionTitle('topgear.copyEnchants', 'Copy Enchants/Gems')}
+            description={
+              topGearGlobalAffixesEnabled
+                ? 'Disabled while Global Enchants & Gems is enabled because central rules override affixes'
+                : "Apply equipped enchants and gems to items that don't have one"
+            }
+            note={
+              scope === 'character' ? (
+                isInherited('topgear.copyEnchants') ? (
+                  <span className="text-zinc-500">Inheriting from global defaults</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearCharacterOverride('topgear.copyEnchants');
+                    }}
+                    className="text-[12px] font-semibold text-gold hover:text-gold/80"
+                  >
+                    Use Global
+                  </button>
+                )
+              ) : null
+            }
+          />
+          <ToggleOptionCard
+            checked={defaults['topgear.maxUpgrade']}
+            onToggle={() => updateDefault('topgear.maxUpgrade', !defaults['topgear.maxUpgrade'])}
+            title={optionTitle('topgear.maxUpgrade', 'Sim Highest Upgrade')}
+            description="Treat all selected gear as their maximum upgrade level"
+            note={
+              scope === 'character' ? (
+                isInherited('topgear.maxUpgrade') ? (
+                  <span className="text-zinc-500">Inheriting from global defaults</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearCharacterOverride('topgear.maxUpgrade');
+                    }}
+                    className="text-[12px] font-semibold text-gold hover:text-gold/80"
+                  >
+                    Use Global
+                  </button>
+                )
+              ) : null
+            }
+          />
+          <ToggleOptionCard
+            checked={defaults['topgear.catalyst']}
+            onToggle={() => updateDefault('topgear.catalyst', !defaults['topgear.catalyst'])}
+            title={optionTitle('topgear.catalyst', 'Revival Catalyst')}
+            description="Convert highest item per slot"
+            note={
+              scope === 'character' ? (
+                isInherited('topgear.catalyst') ? (
+                  <span className="text-zinc-500">Inheriting from global defaults</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearCharacterOverride('topgear.catalyst');
+                    }}
+                    className="text-[12px] font-semibold text-gold hover:text-gold/80"
+                  >
+                    Use Global
+                  </button>
+                )
+              ) : null
+            }
+          />
         </div>
 
         <div className="card space-y-4 p-5">

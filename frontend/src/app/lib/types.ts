@@ -24,6 +24,11 @@ export interface ResolvedItem {
   enchant_name: string;
   gem_name: string;
   gem_icon: string;
+  prevent_copy_enchant?: boolean;
+  prevent_copy_gem?: boolean;
+  exact_selection_only?: boolean;
+  global_affix_bundle_id?: string;
+  force_clear_enchant?: boolean;
   encounter?: string;
   encounter_id?: number;
   instance_name?: string;

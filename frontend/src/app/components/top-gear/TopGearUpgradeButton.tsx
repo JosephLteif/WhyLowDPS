@@ -22,6 +22,10 @@ interface TopGearUpgradeButtonProps {
   onUpgradeSelect: (opt: UpgradeOption) => void;
   onCatalystConvert?: () => void;
   onOptimize?: () => void;
+  showOptimizeButton?: boolean;
+  optimizeDisabled?: boolean;
+  optimizeDisabledReason?: string;
+  optimizeTitle?: string;
 }
 
 export default function TopGearUpgradeButton({
@@ -34,6 +38,10 @@ export default function TopGearUpgradeButton({
   onUpgradeSelect,
   onCatalystConvert,
   onOptimize,
+  showOptimizeButton = false,
+  optimizeDisabled = false,
+  optimizeDisabledReason,
+  optimizeTitle = 'Optimize Enchants and Sockets',
 }: TopGearUpgradeButtonProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const upgradeMatch = item.upgrade.match(/(\d+)\s*\/\s*(\d+)/);
@@ -45,7 +53,8 @@ export default function TopGearUpgradeButton({
       : false;
   const hasTrackUpgrade = !!upgradeMatch && !isTrackMaxed && hasUpgradePath;
   const showActionMenuButton = hasTrackUpgrade || !!onCatalystConvert;
-  const canRender = showActionMenuButton || !!onOptimize;
+  const showOptimizeAction = showOptimizeButton || !!onOptimize || optimizeDisabled;
+  const canRender = showActionMenuButton || showOptimizeAction;
   const isMenuOpen = upgradeMenuFor === item.uid;
   useDismissOnOutside(rootRef, isMenuOpen, () => {
     onUpgradeClick();
@@ -76,42 +85,64 @@ export default function TopGearUpgradeButton({
         ? 'border-purple-400/40 bg-purple-500/10'
         : track === 'Heroic'
           ? 'border-sky-400/40 bg-sky-500/10'
-          : 'border-white/10 bg-white/[0.03]';
+          : 'border-border bg-surface-2/80';
+
+  const optimizeButton = showOptimizeAction ? (
+    <button
+      type="button"
+      disabled={optimizeDisabled || !onOptimize}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (optimizeDisabled || !onOptimize) return;
+        onOptimize();
+      }}
+      className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
+        optimizeDisabled || !onOptimize
+          ? 'cursor-not-allowed border-border bg-surface-2/70 text-zinc-500'
+          : 'border-border bg-gradient-to-br from-emerald-500/25 via-amber-400/25 to-fuchsia-500/25 text-amber-100 hover:from-emerald-500/35 hover:via-amber-400/35 hover:to-fuchsia-500/35'
+      }`}
+      title={optimizeDisabled ? optimizeDisabledReason || optimizeTitle : optimizeTitle}
+    >
+      <Sparkles className="h-4 w-4" strokeWidth={2} />
+    </button>
+  ) : (
+    <span aria-hidden="true" className="h-6 w-6 shrink-0 opacity-0" />
+  );
+
+  const actionMenuButton = showActionMenuButton ? (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        onUpgradeClick();
+      }}
+      className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
+        isMenuOpen
+          ? 'border-gold/50 bg-gold/20 text-gold'
+          : `${trackBgClass} ${trackColorClass} hover:brightness-110`
+      }`}
+      title={hasTrackUpgrade ? `Upgrade Track: ${track}` : 'Item Actions'}
+    >
+      <ArrowUp className="h-3 w-3" strokeWidth={2} />
+    </button>
+  ) : (
+    <span aria-hidden="true" className="h-6 w-6 shrink-0 opacity-0" />
+  );
 
   return (
-    <div ref={rootRef} className="relative flex shrink-0 items-center gap-1">
-      {onOptimize && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onOptimize();
-          }}
-          className="flex h-6 w-6 items-center justify-center rounded-md border border-white/10 bg-gradient-to-br from-emerald-500/30 via-amber-400/30 to-fuchsia-500/30 text-amber-100 transition-colors hover:from-emerald-500/40 hover:via-amber-400/40 hover:to-fuchsia-500/40"
-          title="Optimize Enchants and Sockets"
-        >
-          <Sparkles className="h-4 w-4" strokeWidth={2} />
-        </button>
-      )}
-
-      {showActionMenuButton && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onUpgradeClick();
-          }}
-          className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
-            isMenuOpen
-              ? 'border-gold/50 bg-gold/20 text-gold'
-              : `${trackBgClass} ${trackColorClass} hover:brightness-110`
-          }`}
-          title={hasTrackUpgrade ? `Upgrade Track: ${track}` : 'Item Actions'}
-        >
-          <ArrowUp className="h-3 w-3" strokeWidth={2} />
-        </button>
+    <div ref={rootRef} className="relative flex min-w-[3.5rem] shrink-0 items-center justify-end gap-1">
+      {showActionMenuButton ? (
+        <>
+          {optimizeButton}
+          {actionMenuButton}
+        </>
+      ) : (
+        <>
+          <span aria-hidden="true" className="h-6 w-6 shrink-0 opacity-0" />
+          {optimizeButton}
+        </>
       )}
 
       {isMenuOpen && (

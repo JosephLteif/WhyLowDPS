@@ -391,6 +391,94 @@ async fn download_github_release_asset(
     ))
 }
 
+async fn download_github_release_asset_with_progress(
+    client: &reqwest::Client,
+    version: &str,
+    file_name: &str,
+    destination: &Path,
+    state: &Arc<DataSyncState>,
+    index: usize,
+    total_files: usize,
+) -> Result<(), String> {
+    let version = version.trim();
+    if version.is_empty() {
+        return Err("App version is unavailable; cannot resolve release asset URL".to_string());
+    }
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create directory for {}: {}",
+                destination.display(),
+                e
+            )
+        })?;
+    }
+
+    let mut tag_candidates: Vec<String> = Vec::new();
+    let prefixed = if version.starts_with('v') {
+        version.to_string()
+    } else {
+        format!("v{}", version)
+    };
+    tag_candidates.push(prefixed);
+    tag_candidates.push(version.to_string());
+    tag_candidates.retain(|tag| !tag.is_empty());
+    tag_candidates.dedup();
+
+    let mut errors = Vec::new();
+    for tag in tag_candidates {
+        let asset_url = format!("{}/{}/{}", ZONES_INDEX_RELEASE_BASE_URL, tag, file_name);
+        let response = match client
+            .get(&asset_url)
+            .header("User-Agent", "WhyLowDps/desktop-data-refresh")
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) => {
+                errors.push(format!("{} (request failed: {})", asset_url, err));
+                continue;
+            }
+        };
+        if !response.status().is_success() {
+            errors.push(format!("{} (HTTP {})", asset_url, response.status()));
+            continue;
+        }
+
+        let total_bytes = response.content_length();
+        let started_at = Instant::now();
+        let mut downloaded_bytes = 0_u64;
+        let mut content = Vec::with_capacity(total_bytes.unwrap_or(0).min(10_000_000) as usize);
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| format!("Failed to read {}: {}", file_name, e))?;
+            downloaded_bytes += chunk.len() as u64;
+            content.extend_from_slice(&chunk);
+            let mut p = state.progress.lock().await;
+            *p = raidbots_file_progress(
+                index,
+                total_files,
+                file_name,
+                downloaded_bytes,
+                total_bytes,
+                started_at.elapsed(),
+            );
+        }
+
+        std::fs::write(destination, content)
+            .map_err(|e| format!("Failed to save {}: {}", destination.display(), e))?;
+        return Ok(());
+    }
+
+    Err(format!(
+        "Failed to download {} from GitHub release assets for version {}: {}",
+        file_name,
+        version,
+        errors.join(" ; ")
+    ))
+}
+
 fn path_variants_with_json_alias(path: &Path) -> Vec<PathBuf> {
     let mut out = vec![path.to_path_buf()];
     match path.extension().and_then(|ext| ext.to_str()) {
@@ -1915,6 +2003,19 @@ async fn perform_sync(
     force_refresh: bool,
 ) -> Result<(), String> {
     let request_timeout = Duration::from_secs(15);
+    if let Some(ref dir) = data_dir {
+        let destination = dir.join(ZONES_INDEX_FILE_NAME);
+        download_github_release_asset_with_progress(
+            &blizzard.client,
+            env!("CARGO_PKG_VERSION"),
+            ZONES_INDEX_FILE_NAME,
+            &destination,
+            &state,
+            1,
+            1,
+        )
+        .await?;
+    }
 
     // 1. Fetch from Raidbots
     let base_url = "https://www.raidbots.com/static/data/live";

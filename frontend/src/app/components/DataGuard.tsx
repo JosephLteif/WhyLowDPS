@@ -290,17 +290,29 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
 
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibilityChange);
+    const onCacheStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string }>).detail;
+      if (String(detail?.status || '').toLowerCase() === 'ready') {
+        void checkMissingFiles();
+      }
+    };
+
+    window.addEventListener('whylowdps-cache-refresh-status', onCacheStatus as EventListener);
     const interval = window.setInterval(() => {
       void checkMissingFiles();
-    }, 30000);
+    }, showMissingFilesPopup ? 2000 : 10000);
 
     return () => {
       cancelled = true;
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener(
+        'whylowdps-cache-refresh-status',
+        onCacheStatus as EventListener
+      );
       window.clearInterval(interval);
     };
-  }, []);
+  }, [showMissingFilesPopup]);
 
   const pathname = usePathname();
   const normalizedPath =

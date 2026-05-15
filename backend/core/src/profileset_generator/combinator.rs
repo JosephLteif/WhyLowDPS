@@ -10,6 +10,7 @@ pub fn build_slot_candidates(
     selected_items: &HashMap<String, Vec<String>>,
 ) -> HashMap<String, Vec<ResolvedItem>> {
     let mut slot_item_lists = HashMap::new();
+    let bundle_anchor_slots = global_affix_bundle_anchor_slots(items_by_slot);
     for slot in GEAR_SLOTS {
         let slot_str = slot.to_string();
         let slot_items = match items_by_slot.get(&slot_str) {
@@ -22,16 +23,35 @@ pub fn build_slot_candidates(
             .unwrap_or_default()
             .into_iter()
             .collect();
+        let exact_selection_uids: HashSet<String> = slot_items
+            .iter()
+            .filter(|item| item.exact_selection_only && selected_uids.contains(&item.uid))
+            .map(|item| item.uid.clone())
+            .collect();
         let mut selected_identities: HashSet<String> =
             selected_uids.iter().map(|uid| uid_identity(uid)).collect();
         let mut selected_core_keys: HashSet<String> = selected_uids
             .iter()
-            .filter_map(|uid| uid_core_key(uid))
+            .filter(|uid| !exact_selection_uids.contains(*uid)).filter_map(|uid| uid_core_key(uid))
             .collect();
         if let Some(paired) = class_data::paired_slot(&slot_str) {
             if let Some(p_uids) = selected_items.get(paired) {
                 selected_identities.extend(p_uids.iter().map(|uid| uid_identity(uid)));
-                selected_core_keys.extend(p_uids.iter().filter_map(|uid| uid_core_key(uid)));
+                if let Some(paired_items) = items_by_slot.get(paired) {
+                    let paired_exact_selection_uids: HashSet<String> = paired_items
+                        .iter()
+                        .filter(|item| item.exact_selection_only && p_uids.contains(&item.uid))
+                        .map(|item| item.uid.clone())
+                        .collect();
+                    selected_core_keys.extend(
+                        p_uids
+                            .iter()
+                            .filter(|uid| !paired_exact_selection_uids.contains(*uid))
+                            .filter_map(|uid| uid_core_key(uid)),
+                    );
+                } else {
+                    selected_core_keys.extend(p_uids.iter().filter_map(|uid| uid_core_key(uid)));
+                }
             }
         }
 
@@ -40,6 +60,14 @@ pub fn build_slot_candidates(
             let uid = &item.uid;
             let identity = uid_identity(uid);
             let core_key = item_core_key(item);
+            let bundle_id = item.global_affix_bundle_id.trim();
+            if !bundle_id.is_empty()
+                && bundle_anchor_slots
+                    .get(bundle_id)
+                    .is_some_and(|anchor| anchor != &slot_str)
+            {
+                continue;
+            }
             if selected_uids.contains(uid)
                 || selected_identities.contains(&identity)
                 || selected_core_keys.contains(&core_key)
@@ -128,6 +156,27 @@ pub fn build_gear_set_from_combo(
     for (i, slot) in varying_slots.iter().enumerate() {
         gear_set.insert(slot.clone(), option_lists[i][indices[i]].clone());
     }
+    if let Some(bundle_id) = active_global_affix_bundle_id(&gear_set).map(str::to_string) {
+        for slot in GEAR_SLOTS {
+            let s_str = slot.to_string();
+            let Some(items) = slot_item_lists.get(&s_str) else {
+                continue;
+            };
+            let Some(current_item) = gear_set.get(&s_str) else {
+                continue;
+            };
+            let current_identity = bundle_item_identity(current_item);
+            if let Some(bundle_item) = items
+                .iter()
+                .find(|item| {
+                    item.global_affix_bundle_id.trim() == bundle_id.as_str()
+                        && bundle_item_identity(item) == current_identity
+                })
+            {
+                gear_set.insert(s_str, bundle_item.clone());
+            }
+        }
+    }
     if validation::main_hand_is_two_hand(&gear_set, spec) {
         gear_set.remove("off_hand");
     }
@@ -143,7 +192,58 @@ pub fn is_valid_gear_set(
         && validation::validate_vault_constraint(gs)
         && validation::validate_weapon_constraint(gs, spec)
         && validation::validate_item_limits(gs)
+        && validate_global_affix_bundle(gs)
         && catalyst.is_none_or(|c| validation::validate_catalyst_constraint(gs, c))
+}
+
+fn validate_global_affix_bundle(gs: &HashMap<String, ResolvedItem>) -> bool {
+    let mut seen_bundle: Option<&str> = None;
+    for item in gs.values() {
+        let bundle_id = item.global_affix_bundle_id.trim();
+        if bundle_id.is_empty() {
+            continue;
+        }
+        match seen_bundle {
+            Some(existing) if existing != bundle_id => return false,
+            Some(_) => {}
+            None => seen_bundle = Some(bundle_id),
+        }
+    }
+    true
+}
+
+fn global_affix_bundle_anchor_slots(
+    items_by_slot: &HashMap<String, Vec<ResolvedItem>>,
+) -> HashMap<String, String> {
+    let mut anchors = HashMap::new();
+    for slot in GEAR_SLOTS {
+        let slot_str = slot.to_string();
+        let Some(items) = items_by_slot.get(&slot_str) else {
+            continue;
+        };
+        for item in items {
+            let bundle_id = item.global_affix_bundle_id.trim();
+            if bundle_id.is_empty() {
+                continue;
+            }
+            anchors
+                .entry(bundle_id.to_string())
+                .or_insert_with(|| slot_str.clone());
+        }
+    }
+    anchors
+}
+
+fn active_global_affix_bundle_id(gs: &HashMap<String, ResolvedItem>) -> Option<&str> {
+    gs.values()
+        .find_map(|item| {
+            let bundle_id = item.global_affix_bundle_id.trim();
+            if bundle_id.is_empty() {
+                None
+            } else {
+                Some(bundle_id)
+            }
+        })
 }
 
 pub fn is_baseline_gear_set(gs: &HashMap<String, ResolvedItem>) -> bool {
@@ -169,12 +269,10 @@ pub fn gear_set_identity_key(gs: &HashMap<String, ResolvedItem>) -> String {
                 .map(|b| b.to_string())
                 .collect::<Vec<_>>()
                 .join(":");
-            // Include origin so source-tagged variants do not collapse to one identity.
             let item_key = format!(
-                "{}:{}:{}:i{}:e{}:g{}",
+                "{}:{}:i{}:e{}:g{}",
                 i.item_id,
                 b_key,
-                i.origin.as_str(),
                 i.ilevel,
                 i.enchant_id,
                 i.gem_id
@@ -244,6 +342,100 @@ fn uid_core_key(uid: &str) -> Option<String> {
 
 fn item_core_key(item: &ResolvedItem) -> String {
     format!("{}:{}", item.item_id, item.origin.as_str())
+}
+
+fn bundle_item_identity(item: &ResolvedItem) -> String {
+    let mut bonus_ids = item.bonus_ids.clone();
+    bonus_ids.sort();
+    let bonus_key = bonus_ids
+        .iter()
+        .map(|bonus_id| bonus_id.to_string())
+        .collect::<Vec<_>>()
+        .join(":");
+    format!("{}:{}:{}", item.item_id, bonus_key, item.ilevel)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_item(
+        uid: &str,
+        slot: &str,
+        item_id: u64,
+        origin: ItemOrigin,
+        enchant_id: u64,
+        gem_id: u64,
+        bundle_id: &str,
+    ) -> ResolvedItem {
+        ResolvedItem {
+            uid: uid.to_string(),
+            slot: slot.to_string(),
+            item_id,
+            origin,
+            enchant_id,
+            gem_id,
+            global_affix_bundle_id: bundle_id.to_string(),
+            quality: 4,
+            sockets: if gem_id > 0 { 1 } else { 0 },
+            ..ResolvedItem::default()
+        }
+    }
+
+    #[test]
+    fn global_affix_bundles_keep_distinct_ring_pairings() {
+        let platinum = make_item("plat-eq", "finger1", 1001, ItemOrigin::Equipped, 501, 701, "");
+        let loa = make_item("loa-eq", "finger2", 1002, ItemOrigin::Equipped, 502, 702, "");
+
+        let mut finger1_items = vec![
+            platinum.clone(),
+            make_item("loa-alt", "finger2", 1002, ItemOrigin::Bags, 502, 702, ""),
+        ];
+        let mut finger2_items = vec![
+            loa.clone(),
+            make_item("plat-alt", "finger1", 1001, ItemOrigin::Bags, 501, 701, ""),
+        ];
+
+        let mut bundle_index = 1;
+        for enchant_id in [601_u64, 602, 603] {
+            for gem_id in [801_u64, 802, 803] {
+                let bundle_id = bundle_index.to_string();
+                let purloined_variant = make_item(
+                    &format!("purloined-{bundle_id}"),
+                    "finger2",
+                    1003,
+                    ItemOrigin::Bags,
+                    enchant_id,
+                    gem_id,
+                    &bundle_id,
+                );
+                finger2_items.push(purloined_variant.clone());
+                finger1_items.push(purloined_variant);
+                bundle_index += 1;
+            }
+        }
+
+        let slot_item_lists = HashMap::from([
+            ("finger1".to_string(), finger1_items),
+            ("finger2".to_string(), finger2_items),
+        ]);
+        let varying_slots = vec!["finger1".to_string(), "finger2".to_string()];
+        let option_lists = vec![
+            slot_item_lists.get("finger1").unwrap(),
+            slot_item_lists.get("finger2").unwrap(),
+        ];
+        let all_combos = generate_cartesian_product(&option_lists);
+        let valid = filter_valid_combos(
+            &all_combos,
+            &varying_slots,
+            &option_lists,
+            &slot_item_lists,
+            "arcane",
+            None,
+        );
+
+        assert_eq!(valid.len(), 19);
+    }
 }
 
 pub struct UpgradeCombo {

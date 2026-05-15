@@ -184,19 +184,23 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
-    fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
-      .catch(() => {})
-      .finally(() => {
-        checkStatus();
-      });
+    if (!isReady) {
+      setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
+      fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
+        .catch(() => {})
+        .finally(() => {
+          checkStatus();
+        });
+    }
+  }, [checkStatus, isReady]);
 
+  useEffect(() => {
+    if (isReady && !missingDataDownloadBusy) return;
     const interval = setInterval(() => {
       checkStatus();
     }, 2000);
-
     return () => clearInterval(interval);
-  }, [checkStatus]);
+  }, [checkStatus, isReady, missingDataDownloadBusy]);
 
   const handleRetry = () => {
     fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
@@ -298,9 +302,11 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     };
 
     window.addEventListener('whylowdps-cache-refresh-status', onCacheStatus as EventListener);
-    const interval = window.setInterval(() => {
-      void checkMissingFiles();
-    }, showMissingFilesPopup ? 2000 : 10000);
+    const interval = showMissingFilesPopup
+      ? window.setInterval(() => {
+          void checkMissingFiles();
+        }, 2000)
+      : null;
 
     return () => {
       cancelled = true;
@@ -310,7 +316,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
         'whylowdps-cache-refresh-status',
         onCacheStatus as EventListener
       );
-      window.clearInterval(interval);
+      if (interval) window.clearInterval(interval);
     };
   }, [showMissingFilesPopup]);
 

@@ -301,60 +301,9 @@ fn extend_unique_paths(paths: &mut Vec<PathBuf>, candidates: Vec<PathBuf>) {
 
 fn zones_index_candidate_paths(root: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-
-    #[cfg(windows)]
-    if !cfg!(debug_assertions) {
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            extend_unique_paths(
-                &mut candidates,
-                path_variants_with_json_alias(
-                    &PathBuf::from(local_app_data)
-                        .join("WhyLowDps")
-                        .join("data")
-                        .join(ZONES_INDEX_FILE_NAME),
-                ),
-            );
-        }
-    }
-
     extend_unique_paths(
         &mut candidates,
         path_variants_with_json_alias(&root.join(ZONES_INDEX_FILE_NAME)),
-    );
-
-    if let Ok(catalog) = data_file_catalog() {
-        if let Some(entry) = catalog.iter().find(|entry| entry.local_path == ZONES_INDEX_FILE_NAME)
-        {
-            extend_unique_paths(
-                &mut candidates,
-                path_variants_with_json_alias(&resolve_catalog_path(root, entry)),
-            );
-        }
-    }
-
-    if let Some(exe_dir) = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-    {
-        extend_unique_paths(
-            &mut candidates,
-            path_variants_with_json_alias(&exe_dir.join("resources").join(ZONES_INDEX_FILE_NAME)),
-        );
-        extend_unique_paths(
-            &mut candidates,
-            path_variants_with_json_alias(
-                &exe_dir.join("resources").join("data").join(ZONES_INDEX_FILE_NAME),
-            ),
-        );
-    }
-
-    extend_unique_paths(
-        &mut candidates,
-        path_variants_with_json_alias(
-            &Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../resources")
-                .join(ZONES_INDEX_FILE_NAME),
-        ),
     );
 
     candidates
@@ -1535,7 +1484,7 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
         .collect();
     if existing.is_empty() {
         return HttpResponse::NotFound().json(json!({
-            "detail": "zones-encounters-index file not found in runtime or bundled resources"
+            "detail": "zones-encounters-index file not found in runtime data directory"
         }));
     }
 

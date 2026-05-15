@@ -73,12 +73,18 @@ function getDungeonPlaceholder(name: string) {
 
 export function AffixCard({ affix }: { affix: DisplayAffix }) {
   const iconUrl = affix.icon || null;
+  const description = String(affix.description || '').trim();
   return (
     <div className="flex items-center gap-3 rounded-lg border border-white/15 bg-zinc-900/75 p-4">
       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-white/10 bg-zinc-800">
         {iconUrl ? <img src={iconUrl} alt="" className="h-10 w-10 rounded object-cover" loading="lazy" /> : <span className="text-xl font-bold text-gold">{affix.name[0]}</span>}
       </div>
-      <div className="min-w-0 flex-1"><p className="mb-1 text-lg font-bold text-zinc-100">{affix.name}</p></div>
+      <div className="min-w-0 flex-1">
+        <p className="mb-1 text-lg font-bold text-zinc-100">{affix.name}</p>
+        {description ? (
+          <p className="line-clamp-2 text-xs text-zinc-400">{description}</p>
+        ) : null}
+      </div>
     </div>
   );
 }

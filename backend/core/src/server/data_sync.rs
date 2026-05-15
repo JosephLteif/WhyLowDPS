@@ -18,6 +18,10 @@ use crate::storage::JobStorage;
 const IMAGE_CACHE_VERSION: &str = "bapi3";
 const EMBEDDED_DATA_MANIFEST: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../resources/data-manifest.json"));
+const ZONES_INDEX_ENTRY_KEY: &str = "runtime_wowhead_zones_index";
+const ZONES_INDEX_FILE_NAME: &str = "zones-encounters-index.json";
+const ZONES_INDEX_RELEASE_BASE_URL: &str =
+    "https://github.com/JosephLteif/simcraft/releases/download";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -281,6 +285,161 @@ fn restore_local_file_from_bundle(root: &Path, entry: &DataFileEntry) -> Result<
     Ok(())
 }
 
+fn push_unique_path(paths: &mut Vec<PathBuf>, candidate: PathBuf) {
+    if !paths.iter().any(|path| path == &candidate) {
+        paths.push(candidate);
+    }
+}
+
+fn extend_unique_paths(paths: &mut Vec<PathBuf>, candidates: Vec<PathBuf>) {
+    for candidate in candidates {
+        push_unique_path(paths, candidate);
+    }
+}
+
+fn zones_index_candidate_paths(root: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    #[cfg(windows)]
+    if !cfg!(debug_assertions) {
+        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+            extend_unique_paths(
+                &mut candidates,
+                path_variants_with_json_alias(
+                    &PathBuf::from(local_app_data)
+                        .join("WhyLowDps")
+                        .join("data")
+                        .join(ZONES_INDEX_FILE_NAME),
+                ),
+            );
+        }
+    }
+
+    extend_unique_paths(
+        &mut candidates,
+        path_variants_with_json_alias(&root.join(ZONES_INDEX_FILE_NAME)),
+    );
+
+    if let Ok(catalog) = data_file_catalog() {
+        if let Some(entry) = catalog.iter().find(|entry| entry.local_path == ZONES_INDEX_FILE_NAME)
+        {
+            extend_unique_paths(
+                &mut candidates,
+                path_variants_with_json_alias(&resolve_catalog_path(root, entry)),
+            );
+        }
+    }
+
+    if let Some(exe_dir) = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+    {
+        extend_unique_paths(
+            &mut candidates,
+            path_variants_with_json_alias(&exe_dir.join("resources").join(ZONES_INDEX_FILE_NAME)),
+        );
+        extend_unique_paths(
+            &mut candidates,
+            path_variants_with_json_alias(
+                &exe_dir.join("resources").join("data").join(ZONES_INDEX_FILE_NAME),
+            ),
+        );
+    }
+
+    extend_unique_paths(
+        &mut candidates,
+        path_variants_with_json_alias(
+            &Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../resources")
+                .join(ZONES_INDEX_FILE_NAME),
+        ),
+    );
+
+    candidates
+}
+
+fn resolve_zones_index_path(root: &Path) -> PathBuf {
+    zones_index_candidate_paths(root)
+        .into_iter()
+        .find(|path| path.exists())
+        .unwrap_or_else(|| root.join(ZONES_INDEX_FILE_NAME))
+}
+
+fn resolve_data_file_read_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
+    if entry.key == ZONES_INDEX_ENTRY_KEY {
+        return resolve_zones_index_path(root);
+    }
+    resolve_catalog_path(root, entry)
+}
+
+async fn download_github_release_asset(
+    client: &reqwest::Client,
+    version: &str,
+    file_name: &str,
+    destination: &Path,
+) -> Result<(), String> {
+    let version = version.trim();
+    if version.is_empty() {
+        return Err("App version is unavailable; cannot resolve release asset URL".to_string());
+    }
+
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            format!(
+                "Failed to create directory for {}: {}",
+                destination.display(),
+                e
+            )
+        })?;
+    }
+
+    let mut tag_candidates: Vec<String> = Vec::new();
+    let prefixed = if version.starts_with('v') {
+        version.to_string()
+    } else {
+        format!("v{}", version)
+    };
+    tag_candidates.push(prefixed);
+    tag_candidates.push(version.to_string());
+    tag_candidates.retain(|tag| !tag.is_empty());
+    tag_candidates.dedup();
+
+    let mut errors = Vec::new();
+    for tag in tag_candidates {
+        let asset_url = format!("{}/{}/{}", ZONES_INDEX_RELEASE_BASE_URL, tag, file_name);
+        let response = match client
+            .get(&asset_url)
+            .header("User-Agent", "WhyLowDps/desktop-data-refresh")
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) => {
+                errors.push(format!("{} (request failed: {})", asset_url, err));
+                continue;
+            }
+        };
+        if !response.status().is_success() {
+            errors.push(format!("{} (HTTP {})", asset_url, response.status()));
+            continue;
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read response for {}: {}", asset_url, e))?;
+        std::fs::write(destination, bytes)
+            .map_err(|e| format!("Failed to save {}: {}", destination.display(), e))?;
+        return Ok(());
+    }
+
+    Err(format!(
+        "Failed to download {} from GitHub release assets for version {}: {}",
+        file_name,
+        version,
+        errors.join(" ; ")
+    ))
+}
+
 fn path_variants_with_json_alias(path: &Path) -> Vec<PathBuf> {
     let mut out = vec![path.to_path_buf()];
     match path.extension().and_then(|ext| ext.to_str()) {
@@ -422,7 +581,12 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
     let files: Vec<DataFileState> = catalog
         .iter()
         .map(|entry| {
-            let metadata = std::fs::metadata(resolve_runtime_path(&root, entry)).ok();
+            let path = if entry.entry_type == DataFileEntryType::Directory {
+                resolve_runtime_path(&root, entry)
+            } else {
+                resolve_data_file_read_path(&root, entry)
+            };
+            let metadata = std::fs::metadata(path).ok();
             let is_dir = entry.entry_type == DataFileEntryType::Directory
                 || metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size_bytes = if is_dir {
@@ -1118,7 +1282,7 @@ pub async fn get_data_file_content(
             .json(json!({"detail": "This file type is not previewable"}));
     }
 
-    let path = resolve_catalog_path(&root, entry);
+    let path = resolve_data_file_read_path(&root, entry);
 
     let metadata = match std::fs::metadata(&path) {
         Ok(metadata) => metadata,
@@ -1361,49 +1525,10 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let file_name = "zones-encounters-index.json";
-    let mut candidates = Vec::new();
-
-    #[cfg(windows)]
-    if !cfg!(debug_assertions) {
-        if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
-            candidates.extend(path_variants_with_json_alias(
-                &PathBuf::from(local_app_data)
-                    .join("WhyLowDps")
-                    .join("data")
-                    .join(file_name),
-            ));
-        }
-    }
-
-    let runtime_base = root.join(file_name);
-    candidates.extend(path_variants_with_json_alias(&runtime_base));
-
-    if let Ok(catalog) = data_file_catalog() {
-        if let Some(entry) = catalog.iter().find(|entry| entry.local_path == file_name) {
-            candidates.extend(path_variants_with_json_alias(&resolve_catalog_path(
-                &root, entry,
-            )));
-        }
-    }
-    if let Some(exe_dir) = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-    {
-        candidates.extend(path_variants_with_json_alias(
-            &exe_dir.join("resources").join(file_name),
-        ));
-        candidates.extend(path_variants_with_json_alias(
-            &exe_dir.join("resources").join("data").join(file_name),
-        ));
-    }
-    candidates.extend(path_variants_with_json_alias(
-        &Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../resources")
-            .join(file_name),
-    ));
-
-    let existing: Vec<PathBuf> = candidates.into_iter().filter(|p| p.exists()).collect();
+    let existing: Vec<PathBuf> = zones_index_candidate_paths(&root)
+        .into_iter()
+        .filter(|p| p.exists())
+        .collect();
     if existing.is_empty() {
         return HttpResponse::NotFound().json(json!({
             "detail": "zones-encounters-index file not found in runtime or bundled resources"
@@ -1533,6 +1658,37 @@ pub async fn download_data_file(
     };
 
     if entry.source == DataFileSource::Local {
+        if entry.key == ZONES_INDEX_ENTRY_KEY {
+            let destination = resolve_zones_index_path(&root);
+            let version = env!("CARGO_PKG_VERSION");
+            match download_github_release_asset(
+                &blizzard.client,
+                version,
+                ZONES_INDEX_FILE_NAME,
+                &destination,
+            )
+            .await
+            {
+                Ok(()) => {
+                    crate::item_db::load(&root);
+                    let runtime_file = root.join("blizzard-runtime-data.json");
+                    if runtime_file.exists() {
+                        crate::item_db::hydrate_runtime_metadata(&runtime_file);
+                    }
+                    return HttpResponse::Ok().json(json!({
+                        "status": "ok",
+                        "key": entry.key,
+                        "relative_path": entry.local_path,
+                        "downloaded_from_release": true,
+                        "version": version,
+                    }));
+                }
+                Err(e) => {
+                    return HttpResponse::InternalServerError().json(json!({"detail": e}));
+                }
+            }
+        }
+
         match restore_local_file_from_bundle(&root, entry) {
             Ok(()) => {
                 crate::item_db::load(&root);
@@ -1607,12 +1763,35 @@ pub async fn download_missing_data_files(
                     || (e.source == DataFileSource::Local && e.bundled_path.is_some()))
         })
     {
-        let path = root.join(&entry.local_path);
+        let path = resolve_data_file_read_path(&root, entry);
         if path.exists() {
             continue;
         }
 
         if entry.source == DataFileSource::Local {
+            if entry.key == ZONES_INDEX_ENTRY_KEY {
+                let destination = resolve_zones_index_path(&root);
+                let version = env!("CARGO_PKG_VERSION");
+                match download_github_release_asset(
+                    &blizzard.client,
+                    version,
+                    ZONES_INDEX_FILE_NAME,
+                    &destination,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        downloaded.push(entry.key.clone());
+                    }
+                    Err(err) => failed.push(json!({
+                        "key": entry.key,
+                        "relative_path": entry.local_path,
+                        "error": err,
+                    })),
+                }
+                continue;
+            }
+
             match restore_local_file_from_bundle(&root, entry) {
                 Ok(()) => downloaded.push(entry.key.clone()),
                 Err(err) => failed.push(json!({

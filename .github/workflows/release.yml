@@ -282,3 +282,12 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-nightly.') || contains(github.ref_name, '-weekly.') }}
           args: ${{ matrix.args }}
+
+      - name: Upload zones encounters index asset
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" backend/resources/zones-encounters-index.json --clobber

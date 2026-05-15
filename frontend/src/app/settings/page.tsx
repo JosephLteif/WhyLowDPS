@@ -7,7 +7,6 @@ import { API_URL, fetchJson, isDesktop } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 import { isValidUpdateChannel } from '../lib/update-channel';
-import { chooseBestRefreshUnit, type RefreshUnit } from './refreshInterval';
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
 import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
@@ -81,9 +80,7 @@ export default function SettingsPage() {
     groupedDataFiles,
     sectionSummaries,
   } = useDataFileStateManager();
-  const initialRefresh = chooseBestRefreshUnit(dataCacheRefreshMinutes);
-  const [refreshEveryValue, setRefreshEveryValue] = useState(initialRefresh.value);
-  const [refreshEveryUnit, setRefreshEveryUnit] = useState<RefreshUnit>(initialRefresh.unit);
+  const [refreshPreset, setRefreshPreset] = useState<'disabled' | 'daily' | 'weekly'>('disabled');
   const [activeTab, setActiveTab] = useState<SettingsTab>('simulation');
   const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(true);
   const [closeBehaviorLoading, setCloseBehaviorLoading] = useState(false);
@@ -197,9 +194,15 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    const derived = chooseBestRefreshUnit(dataCacheRefreshMinutes);
-    setRefreshEveryValue(derived.value);
-    setRefreshEveryUnit(derived.unit);
+    if (dataCacheRefreshMinutes >= 7 * 24 * 60) {
+      setRefreshPreset('weekly');
+      return;
+    }
+    if (dataCacheRefreshMinutes >= 24 * 60) {
+      setRefreshPreset('daily');
+      return;
+    }
+    setRefreshPreset('disabled');
   }, [dataCacheRefreshMinutes]);
 
   const testBlizzardCredentials = async () => {
@@ -489,10 +492,8 @@ export default function SettingsPage() {
 
       {activeTab === 'data' && (
         <DataCacheSettingsSection
-          refreshEveryValue={refreshEveryValue}
-          setRefreshEveryValue={setRefreshEveryValue}
-          refreshEveryUnit={refreshEveryUnit}
-          setRefreshEveryUnit={setRefreshEveryUnit}
+          refreshPreset={refreshPreset}
+          setRefreshPreset={setRefreshPreset}
           setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
           cacheSyncing={cacheSyncing}
           refreshDataCache={refreshDataCache}

@@ -241,7 +241,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
                       <img
                         src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                         alt=""
-                        className="h-5 w-5 shrink-0 rounded-[4px]"
+                        className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
                       />
                       <span className="truncate text-[12px]">{group.label}</span>
                     </a>
@@ -254,7 +254,7 @@ export default function ConsumableMatrixSelector({ title, options, selected, onC
                       <img
                         src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                         alt=""
-                        className="h-5 w-5 shrink-0 rounded-[4px]"
+                        className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
                       />
                       <span className="truncate text-[12px]">{group.label}</span>
                     </span>

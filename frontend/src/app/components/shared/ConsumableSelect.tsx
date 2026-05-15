@@ -193,11 +193,11 @@ export default function ConsumableSelect({
                   (selected?.itemId && itemIcons.get(selected.itemId)) || selected?.icon
                 }.jpg`}
                 alt=""
-                className="h-5 w-5 shrink-0 rounded-[4px]"
+                className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
               />
             </a>
           ) : (
-            <span className="h-5 w-5 shrink-0 rounded-[4px] border border-border bg-surface-2" />
+            <span className="h-[22px] w-[22px] shrink-0 rounded-[4px] border border-border bg-surface-2" />
           )}
           <a
             href="#"
@@ -236,7 +236,7 @@ export default function ConsumableSelect({
               }}
               className="flex w-full cursor-pointer items-center gap-2 rounded px-2.5 py-2 text-left text-sm text-zinc-300 hover:bg-white/[0.04]"
             >
-              <span className="h-5 w-5 shrink-0 rounded-[4px] border border-border bg-surface-2" />
+              <span className="h-[22px] w-[22px] shrink-0 rounded-[4px] border border-border bg-surface-2" />
               <span className="truncate">None</span>
             </button>
             <div className="my-1 h-px bg-border/50" />
@@ -277,7 +277,7 @@ export default function ConsumableSelect({
                     <img
                       src={`https://wow.zamimg.com/images/wow/icons/small/${group.icon}.jpg`}
                       alt=""
-                      className="h-5 w-5 shrink-0 rounded-[4px]"
+                      className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
                     />
                     <span className="truncate">{group.label}</span>
                   </a>

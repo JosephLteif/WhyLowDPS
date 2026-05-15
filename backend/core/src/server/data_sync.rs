@@ -74,6 +74,7 @@ pub struct DataFileState {
     pub label: String,
     pub section: String,
     pub relative_path: String,
+    pub resolved_path: String,
     pub required: bool,
     pub downloadable: bool,
     pub exists: bool,
@@ -85,6 +86,7 @@ pub struct DataFilePreviewResponse {
     pub key: String,
     pub label: String,
     pub relative_path: String,
+    pub resolved_path: String,
     pub content: String,
     pub truncated: bool,
 }
@@ -586,7 +588,7 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
             } else {
                 resolve_data_file_read_path(&root, entry)
             };
-            let metadata = std::fs::metadata(path).ok();
+            let metadata = std::fs::metadata(&path).ok();
             let is_dir = entry.entry_type == DataFileEntryType::Directory
                 || metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
             let size_bytes = if is_dir {
@@ -599,6 +601,7 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
                 label: entry.label.clone(),
                 section: entry.section.clone(),
                 relative_path: entry.local_path.clone(),
+                resolved_path: path.display().to_string(),
                 required: entry.required,
                 downloadable: entry.entry_type == DataFileEntryType::File
                     && ((entry.source == DataFileSource::Raidbots
@@ -1315,6 +1318,7 @@ pub async fn get_data_file_content(
         key: entry.key.clone(),
         label: entry.label.clone(),
         relative_path: entry.local_path.clone(),
+        resolved_path: path.display().to_string(),
         content: preview,
         truncated,
     })

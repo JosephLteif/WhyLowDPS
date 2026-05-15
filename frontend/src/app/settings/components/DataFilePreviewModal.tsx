@@ -77,6 +77,11 @@ export default function DataFilePreviewModal({
             <p className="mt-0.5 text-xs text-zinc-500">
               {dataFilePreview?.relative_path || 'Loading...'}
             </p>
+            {dataFilePreview?.resolved_path && (
+              <p className="mt-0.5 truncate font-mono text-[11px] text-zinc-600">
+                {dataFilePreview.resolved_path}
+              </p>
+            )}
           </div>
           <button
             onClick={onClose}

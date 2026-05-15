@@ -165,6 +165,9 @@ export default function DataFileStateModal({
                           <p className="truncate font-mono text-[11px] text-zinc-500">
                             {file.relative_path}
                           </p>
+                          <p className="truncate font-mono text-[11px] text-zinc-600">
+                            {file.resolved_path}
+                          </p>
                         </div>
                         <span
                           className={`rounded-md px-2 py-1 text-[11px] font-semibold ${

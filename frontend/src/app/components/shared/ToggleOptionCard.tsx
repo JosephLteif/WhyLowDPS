@@ -7,6 +7,7 @@ interface ToggleOptionCardProps {
   onToggle: () => void;
   title: string;
   description: string;
+  disabled?: boolean;
   titleClassName?: string;
   descriptionClassName?: string;
   activeClassName?: string;
@@ -21,8 +22,9 @@ export default function ToggleOptionCard({
   onToggle,
   title,
   description,
-  titleClassName = 'text-[15px] font-medium text-gray-300 transition-colors group-hover:text-white',
-  descriptionClassName = 'text-[13px] text-gray-600',
+  disabled = false,
+  titleClassName = 'text-[15px] font-medium text-zinc-100 transition-colors group-hover:text-white',
+  descriptionClassName = 'text-[13px] text-zinc-300',
   activeClassName = 'bg-gold',
   activeKnobClassName = 'bg-black',
   inactiveClassName = 'border border-border bg-surface-2',
@@ -34,10 +36,12 @@ export default function ToggleOptionCard({
       <button
         type="button"
         aria-pressed={checked}
+        aria-disabled={disabled}
         onClick={onToggle}
+        disabled={disabled}
         className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
           checked ? activeClassName : inactiveClassName
-        }`}
+        } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
       >
         <div
           className={`absolute top-0.5 h-4 w-4 rounded-full transition-all ${

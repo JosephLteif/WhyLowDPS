@@ -6,9 +6,21 @@ import { API_URL } from '../lib/api';
 import type { ResolvedItem } from '../lib/types';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
+import {
+  deduplicateEnchants,
+  deduplicateGems,
+  enchantFitsSpec,
+  gemFitsSpec,
+  normalizeEnchantOptions,
+  sortGemOptions,
+  type EnchantDisplayOption,
+  type GemDisplayOption,
+  type RawEnchantOption,
+  type RawGemOption,
+} from './top-gear/affixOptionUtils';
 
 /** Raw enchant shape returned by the backend (straight from enchantments.json). */
-interface RawEnchant {
+interface RawEnchant extends RawEnchantOption {
   id?: number;
   enchant_id?: number;
   name?: string;
@@ -25,7 +37,7 @@ interface RawEnchant {
 }
 
 /** Raw gem shape returned by the backend (straight from enchantments.json, slot=socket). */
-interface RawGem {
+interface RawGem extends RawGemOption {
   id?: number;
   item_id?: number;
   name?: string;
@@ -40,23 +52,10 @@ interface RawGem {
 }
 
 /** Deduplicated enchant for display — highest crafting quality per base name. */
-interface EnchantDisplay {
-  enchantId: number;
-  name: string;
-  icon: string;
-  quality: number;
-  itemId: number;
-}
+type EnchantDisplay = EnchantDisplayOption;
 
 /** Deduplicated gem for display — highest crafting quality per base gem. */
-interface GemDisplay {
-  gemItemId: number;
-  enchantId: number;
-  name: string;
-  icon: string;
-  quality: number;
-  expansion: number;
-}
+type GemDisplay = GemDisplayOption;
 
 interface EmbellishmentOption {
   id: number;
@@ -72,6 +71,8 @@ interface OptimizeItemModalProps {
   onClose: () => void;
   item: ResolvedItem | null;
   className?: string | null;
+  specName?: string | null;
+  globalAffixesEnabled?: boolean;
   onApply: (
     enchantId: number,
     gemIds: number[],
@@ -79,10 +80,35 @@ interface OptimizeItemModalProps {
   ) => void;
 }
 
+interface LoadingSectionProps {
+  title: string;
+  rows?: number;
+  showToggle?: boolean;
+}
+
+const enchantOptionsCache = new Map<string, RawEnchant[]>();
+let gemOptionsCache: RawGem[] | null = null;
+const embellishmentOptionsCache = new Map<number, EmbellishmentOption[]>();
+
 function normalizeEnchantQuerySlot(slot: string): string {
   if (slot === 'finger1' || slot === 'finger2') return 'finger';
   if (slot === 'trinket1' || slot === 'trinket2') return 'trinket';
   return slot;
+}
+
+function getEnchantCacheKey(
+  item: ResolvedItem,
+  className?: string | null,
+  specName?: string | null
+): string {
+  return [
+    normalizeEnchantQuerySlot(item.slot),
+    className || '',
+    specName || '',
+    item.item_id || 0,
+    Number(item.season_id) || 0,
+    Array.isArray(item.bonus_ids) ? [...item.bonus_ids].sort((a, b) => a - b).join(',') : '',
+  ].join('|');
 }
 
 function parseGemIdsFromItem(item: ResolvedItem | null): number[] {
@@ -101,60 +127,107 @@ function parseGemIdsFromItem(item: ResolvedItem | null): number[] {
     .filter((value) => Number.isFinite(value) && value > 0);
 }
 
-/**
- * Pick the best (highest crafting quality) enchant per base name.
- * This avoids showing "Cursed Haste 1", "Cursed Haste 2", "Cursed Haste 3" separately.
- */
-function deduplicateEnchants(raw: RawEnchant[]): EnchantDisplay[] {
-  const byBase = new Map<string, RawEnchant>();
-  for (const e of raw) {
-    // Skip socket-type entries (those are gems)
-    if (e.slot === 'socket') continue;
-    const baseName =
-      e.baseDisplayName ||
-      e.itemName ||
-      e.displayName ||
-      e.name ||
-      `enchant-${e.enchant_id ?? e.id ?? 0}`;
-    const existing = byBase.get(baseName);
-    if (!existing || (e.craftingQuality ?? 0) > (existing.craftingQuality ?? 0)) {
-      byBase.set(baseName, e);
-    }
-  }
-  return Array.from(byBase.values())
-    .map((e) => ({
-      enchantId: e.enchant_id ?? e.id ?? 0,
-      name: e.itemName || e.displayName || e.name || 'Unknown',
-      icon: e.itemIcon || e.spellIcon || 'inv_misc_questionmark',
-      quality: e.quality ?? 3,
-      itemId: e.itemId ?? 0,
-    }))
-    .filter((e) => e.enchantId > 0);
+function getInitialEnchantSelection(item: ResolvedItem | null): number {
+  return item?.enchant_id || 0;
 }
 
-/**
- * Pick the best (highest crafting quality) gem per base item name.
- */
-function deduplicateGems(raw: RawGem[]): GemDisplay[] {
-  const byBase = new Map<string, RawGem>();
-  for (const g of raw) {
-    const baseName =
-      g.itemName || g.displayName || g.name || `gem-${g.item_id ?? g.itemId ?? g.id ?? 0}`;
-    const existing = byBase.get(baseName);
-    if (!existing || (g.craftingQuality ?? 0) > (existing.craftingQuality ?? 0)) {
-      byBase.set(baseName, g);
-    }
+function getInitialGemSelections(item: ResolvedItem | null): number[] {
+  const itemGemIds = parseGemIdsFromItem(item);
+  const socketCount = Math.max(Number(item?.sockets || 0), itemGemIds.length);
+  return Array.from({ length: socketCount }, (_, index) => itemGemIds[index] || 0);
+}
+
+function getInitialEmbellishmentSelection(item: ResolvedItem | null): number {
+  return item?.embellishment_item_id || 0;
+}
+
+function LoadingSection({ title, rows = 4, showToggle = false }: LoadingSectionProps) {
+  return (
+    <section>
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-muted">{title}</h3>
+        {showToggle ? (
+          <div className="h-7 w-32 rounded-md border border-border bg-surface-2/70" />
+        ) : null}
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {Array.from({ length: rows }, (_, index) => (
+          <div
+            key={`${title}-loading-${index}`}
+            className="flex animate-pulse items-center gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3"
+          >
+            <div className="h-8 w-8 rounded border border-white/5 bg-white/10" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 w-3/4 rounded bg-white/10" />
+              <div className="h-2 w-1/3 rounded bg-white/5" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LoadingOptionCard({
+  label,
+  sublabel,
+  icon,
+}: {
+  label: string;
+  sublabel?: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3 text-left text-gray-400">
+      <div className="flex h-8 w-8 items-center justify-center rounded border border-white/5 bg-black/20 text-muted">
+        {icon ?? <div className="h-4 w-4 rounded bg-white/10" />}
+      </div>
+      <div>
+        <div className="text-[13px] font-bold">{label}</div>
+        {sublabel ? <div className="mt-0.5 text-[10px] text-muted">{sublabel}</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function LoadingSkeletonOptionCards({ rows = 3 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }, (_, index) => (
+        <div
+          key={`loading-option-${index}`}
+          className="flex animate-pulse items-center gap-3 rounded-lg border border-white/5 bg-white/[0.02] p-3"
+        >
+          <div className="h-8 w-8 rounded border border-white/5 bg-white/10" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-3/4 rounded bg-white/10" />
+            <div className="h-2 w-1/3 rounded bg-white/5" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function getEnchantSectionMinHeight(slot: string): string {
+  if (slot === 'finger1' || slot === 'finger2' || slot === 'neck') {
+    return 'min-h-[260px]';
   }
-  return Array.from(byBase.values())
-    .map((g) => ({
-      gemItemId: g.item_id ?? g.itemId ?? g.id ?? 0,
-      enchantId: g.id ?? 0,
-      name: g.itemName || g.displayName || g.name || 'Unknown',
-      icon: g.itemIcon || g.icon || 'inv_misc_questionmark',
-      quality: g.quality ?? 3,
-      expansion: g.expansion ?? 0,
-    }))
-    .filter((g) => g.gemItemId > 0);
+  if (slot === 'main_hand' || slot === 'off_hand') {
+    return 'min-h-[320px]';
+  }
+  return 'min-h-[180px]';
+}
+
+function getSocketSectionMinHeight(socketCount: number, slot: string): string {
+  if (socketCount <= 0) return '';
+  if (slot === 'finger1' || slot === 'finger2' || slot === 'neck') {
+    return 'min-h-[430px]';
+  }
+  if (socketCount > 1) {
+    return 'min-h-[520px]';
+  }
+  return 'min-h-[360px]';
 }
 
 export default function OptimizeItemModal({
@@ -162,53 +235,85 @@ export default function OptimizeItemModal({
   onClose,
   item,
   className,
+  specName,
+  globalAffixesEnabled = false,
   onApply,
 }: OptimizeItemModalProps) {
   const [rawEnchants, setRawEnchants] = useState<RawEnchant[]>([]);
   const [rawGems, setRawGems] = useState<RawGem[]>([]);
   const [rawEmbellishments, setRawEmbellishments] = useState<EmbellishmentOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedEnchant, setSelectedEnchant] = useState<number>(0);
-  const [selectedGemIds, setSelectedGemIds] = useState<number[]>([]);
-  const [selectedEmbellishment, setSelectedEmbellishment] = useState<number>(0);
+  const [showAllEnchants, setShowAllEnchants] = useState(false);
+  const [showAllGems, setShowAllGems] = useState(false);
+  const [selectedEnchant, setSelectedEnchant] = useState<number>(() => getInitialEnchantSelection(item));
+  const [selectedGemIds, setSelectedGemIds] = useState<number[]>(() => getInitialGemSelections(item));
+  const [selectedEmbellishment, setSelectedEmbellishment] = useState<number>(() => getInitialEmbellishmentSelection(item));
   const [searchTerm, setSearchTerm] = useState('');
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const fetchRequestRef = useRef(0);
 
   // Derive display lists from raw data
-  const enchants = useMemo(() => deduplicateEnchants(rawEnchants), [rawEnchants]);
-  const gems = useMemo(() => deduplicateGems(rawGems), [rawGems]);
+  const enchants = useMemo(
+    () =>
+      deduplicateEnchants(normalizeEnchantOptions(rawEnchants), showAllEnchants).filter((enchant) =>
+        enchantFitsSpec(enchant, className, specName)
+      ),
+    [className, rawEnchants, showAllEnchants, specName]
+  );
+  const gems = useMemo(
+    () =>
+      deduplicateGems(rawGems, showAllGems)
+        .filter((gem) => !gem.isPvp)
+        .filter((gem) => gemFitsSpec(gem, specName))
+        .sort(sortGemOptions),
+    [rawGems, showAllGems, specName]
+  );
   const embellishments = useMemo(() => rawEmbellishments, [rawEmbellishments]);
   useWowheadTooltips([isOpen, enchants.length, gems.length, embellishments.length, searchTerm]);
 
   useEffect(() => {
     if (isOpen && item) {
-      fetchOptions();
-      setSelectedEnchant(item.enchant_id || 0);
-      const itemGemIds = parseGemIdsFromItem(item);
-      const socketCount = Math.max(Number(item.sockets || 0), itemGemIds.length);
-      setSelectedGemIds(
-        Array.from({ length: socketCount }, (_, index) => itemGemIds[index] || 0)
-      );
-      setSelectedEmbellishment(item.embellishment_item_id || 0);
+      const requestId = ++fetchRequestRef.current;
+      const enchantCacheKey = getEnchantCacheKey(item, className, specName);
+      const cachedEnchants = enchantOptionsCache.get(enchantCacheKey);
+      const cachedGems = gemOptionsCache;
+      const cachedEmbellishments = embellishmentOptionsCache.get(item.item_id);
+      const hasCachedOptions =
+        cachedEnchants !== undefined &&
+        cachedGems !== null &&
+        cachedEmbellishments !== undefined;
+
+      setLoading(!hasCachedOptions);
+      setRawEnchants(cachedEnchants || []);
+      setRawGems(cachedGems || []);
+      setRawEmbellishments(cachedEmbellishments || []);
+      setSelectedEnchant(getInitialEnchantSelection(item));
+      setSelectedGemIds(getInitialGemSelections(item));
+      setSelectedEmbellishment(getInitialEmbellishmentSelection(item));
+      setShowAllEnchants(false);
+      setShowAllGems(false);
       setSearchTerm('');
+      if (!hasCachedOptions) {
+        void fetchOptions(item, requestId);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, item, className]);
+  }, [isOpen, item, className, specName]);
   useDismissOnOutside(modalRef, isOpen, onClose);
 
-  async function fetchOptions() {
-    if (!item) return;
-    setLoading(true);
+  async function fetchOptions(currentItem: ResolvedItem, requestId: number) {
     try {
+      const enchantCacheKey = getEnchantCacheKey(currentItem, className, specName);
       const enchantParams = new URLSearchParams();
-      enchantParams.set('slot', normalizeEnchantQuerySlot(item.slot));
+      enchantParams.set('slot', normalizeEnchantQuerySlot(currentItem.slot));
       if (className) enchantParams.set('class_name', className);
-      if (item.item_id > 0) enchantParams.set('item_id', String(item.item_id));
-      if (Array.isArray(item.bonus_ids) && item.bonus_ids.length > 0) {
-        enchantParams.set('bonus_ids', item.bonus_ids.join(','));
+      if (specName) enchantParams.set('spec', specName);
+      if (currentItem.item_id > 0) enchantParams.set('item_id', String(currentItem.item_id));
+      if (Array.isArray(currentItem.bonus_ids) && currentItem.bonus_ids.length > 0) {
+        enchantParams.set('bonus_ids', currentItem.bonus_ids.join(','));
       }
-      if (Number.isFinite(item.season_id) && Number(item.season_id) > 0) {
-        enchantParams.set('season_id', String(Number(item.season_id)));
+      if (Number.isFinite(currentItem.season_id) && Number(currentItem.season_id) > 0) {
+        enchantParams.set('season_id', String(Number(currentItem.season_id)));
       }
       const [enchantsRes, gemsRes, embellishmentsRes] = await Promise.all([
         fetch(`${API_URL}/api/gear/enchant-options?${enchantParams.toString()}`, {
@@ -216,27 +321,37 @@ export default function OptimizeItemModal({
         }),
         fetch(`${API_URL}/api/gear/gem-options`, { credentials: 'include' }),
         fetch(
-          `${API_URL}/api/gear/embellishment-options?item_id=${encodeURIComponent(String(item.item_id))}`,
+          `${API_URL}/api/gear/embellishment-options?item_id=${encodeURIComponent(String(currentItem.item_id))}`,
           { credentials: 'include' }
         ),
       ]);
+      if (fetchRequestRef.current !== requestId) return;
       if (enchantsRes.ok) {
-        setRawEnchants(await enchantsRes.json());
+        const nextEnchants = (await enchantsRes.json()) as RawEnchant[];
+        enchantOptionsCache.set(enchantCacheKey, nextEnchants);
+        setRawEnchants(nextEnchants);
       }
       if (gemsRes.ok) {
-        setRawGems(await gemsRes.json());
+        const nextGems = (await gemsRes.json()) as RawGem[];
+        gemOptionsCache = nextGems;
+        setRawGems(nextGems);
       }
       if (embellishmentsRes.ok) {
         const options = (await embellishmentsRes.json()) as EmbellishmentOption[];
+        embellishmentOptionsCache.set(currentItem.item_id, options);
         setRawEmbellishments(options);
       } else {
+        embellishmentOptionsCache.set(currentItem.item_id, []);
         setRawEmbellishments([]);
       }
     } catch (e) {
+      if (fetchRequestRef.current !== requestId) return;
       console.error('Failed to fetch optimization options', e);
       setRawEmbellishments([]);
     }
-    setLoading(false);
+    if (fetchRequestRef.current === requestId) {
+      setLoading(false);
+    }
   }
 
   const currentGemExpansion = useMemo(
@@ -261,7 +376,11 @@ export default function OptimizeItemModal({
   const filteredGems = useMemo(
     () =>
       normalizedSearch
-        ? seasonalGems.filter((g) => g.name.toLowerCase().includes(normalizedSearch))
+        ? seasonalGems.filter(
+            (g) =>
+              g.name.toLowerCase().includes(normalizedSearch) ||
+              g.label.toLowerCase().includes(normalizedSearch)
+          )
         : seasonalGems,
     [seasonalGems, normalizedSearch]
   );
@@ -273,10 +392,18 @@ export default function OptimizeItemModal({
     [embellishments, normalizedSearch]
   );
   const socketCount = Math.max(Number(item?.sockets || 0), parseGemIdsFromItem(item).length);
-  const hasEnchantSection = enchants.length > 0;
-  const hasSocketSection = socketCount > 0;
+  const currentSlot = item?.slot || '';
+  const enchantSectionMinHeight = getEnchantSectionMinHeight(currentSlot);
+  const socketSectionMinHeight = getSocketSectionMinHeight(socketCount, currentSlot);
+  const hasEnchantSection = !globalAffixesEnabled && enchants.length > 0;
+  const hasSocketSection = !globalAffixesEnabled && socketCount > 0;
   const hasEmbellishmentSection = embellishments.length > 0;
   const showSearch = hasEnchantSection || hasSocketSection || hasEmbellishmentSection;
+  const showLoadingEnchantSection = loading && !globalAffixesEnabled;
+  const showLoadingSocketSection = loading && !globalAffixesEnabled && socketCount > 0;
+  const showLoadingEmbellishmentSection = loading;
+  const showLoadingSearch =
+    loading && (showLoadingEnchantSection || showLoadingSocketSection || showLoadingEmbellishmentSection);
 
   if (!isOpen || !item) return null;
 
@@ -305,7 +432,10 @@ export default function OptimizeItemModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
-      <div ref={modalRef} className="relative w-full max-w-2xl overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl">
+      <div
+        ref={modalRef}
+        className="relative flex h-[70vh] min-h-[540px] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-6 py-4">
           <div className="flex items-center gap-4">
@@ -328,7 +458,7 @@ export default function OptimizeItemModal({
                 {item.name}
               </h2>
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted">
-                Optimization
+                {globalAffixesEnabled ? 'Embellishment' : 'Optimization'}
               </p>
             </div>
           </div>
@@ -340,9 +470,16 @@ export default function OptimizeItemModal({
           </button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="space-y-8">
-            {showSearch && (
+            {globalAffixesEnabled && (
+              <section>
+                <div className="rounded-lg border border-border bg-surface-2/50 px-4 py-3 text-sm text-zinc-400">
+                  Enchants and gems are controlled by Enchant & Gem Rules while Global Enchants & Gems is enabled.
+                </div>
+              </section>
+            )}
+            {(showSearch || showLoadingSearch) && (
               <section>
                 <div className="relative">
                   <input
@@ -350,6 +487,7 @@ export default function OptimizeItemModal({
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     placeholder="Search enchants, gems, embellishments..."
+                    disabled={loading}
                     className="h-9 w-full rounded-md bg-white/5 pl-9 pr-3 text-sm text-white placeholder-gray-500 ring-1 ring-white/10 focus:bg-white/10 focus:outline-none focus:ring-gold/50"
                   />
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
@@ -357,13 +495,37 @@ export default function OptimizeItemModal({
               </section>
             )}
 
-            {/* Enchant Selection */}
-            {hasEnchantSection && (
-              <section>
-                <div className="mb-4">
+            {showLoadingEnchantSection && (
+              <section className={enchantSectionMinHeight}>
+                <div className="mb-4 flex items-center justify-between gap-4">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
                     Enchantment
                   </h3>
+                  <div className="h-7 w-32 rounded-md border border-border bg-surface-2/70" />
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <LoadingOptionCard label="No Enchant" icon={<CircleX className="h-4 w-4" />} />
+                  <LoadingSkeletonOptionCards rows={3} />
+                </div>
+              </section>
+            )}
+
+            {/* Enchant Selection */}
+            {!loading && hasEnchantSection && (
+              <section className={enchantSectionMinHeight}>
+                <div className="mb-4 flex items-center justify-between gap-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
+                    Enchantment
+                  </h3>
+                  <label className="inline-flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1 text-xs font-semibold text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={showAllEnchants}
+                      onChange={(event) => setShowAllEnchants(event.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-border bg-surface-2"
+                    />
+                    <span>Show all enchants</span>
+                  </label>
                 </div>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
@@ -417,8 +579,12 @@ export default function OptimizeItemModal({
               </section>
             )}
 
+            {showLoadingEmbellishmentSection && hasEmbellishmentSection && (
+              <LoadingSection title="Embellishment" rows={4} />
+            )}
+
             {/* Embellishment Selection (crafted-capable items only) */}
-            {hasEmbellishmentSection && (
+            {!loading && hasEmbellishmentSection && (
               <section>
                 <div className="mb-4">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
@@ -473,13 +639,50 @@ export default function OptimizeItemModal({
               </section>
             )}
 
-            {/* Gem Selection */}
-            {hasSocketSection && (
-              <section>
+            {showLoadingSocketSection && (
+              <section className={socketSectionMinHeight}>
                 <div className="mb-4 flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
                     Socket Optimization
                   </h3>
+                  <div className="h-7 w-28 rounded-md border border-border bg-surface-2/70" />
+                </div>
+                <div className="space-y-5">
+                  {Array.from({ length: socketCount }, (_, socketIndex) => (
+                    <div key={`socket-loading-${socketIndex}`} className="space-y-2.5">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                        {socketCount > 1 ? `Socket ${socketIndex + 1}` : 'Socket'}
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <LoadingOptionCard
+                          label="Empty Socket"
+                          sublabel="Gem"
+                          icon={<CircleX className="h-4 w-4" />}
+                        />
+                        <LoadingSkeletonOptionCards rows={3} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Gem Selection */}
+            {!loading && hasSocketSection && (
+              <section className={socketSectionMinHeight}>
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted">
+                    Socket Optimization
+                  </h3>
+                  <label className="inline-flex items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 py-1 text-xs font-semibold text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={showAllGems}
+                      onChange={(event) => setShowAllGems(event.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-border bg-surface-2"
+                    />
+                    <span>Show all gems</span>
+                  </label>
                 </div>
                 <div className="space-y-5">
                   {Array.from({ length: socketCount }, (_, socketIndex) => {

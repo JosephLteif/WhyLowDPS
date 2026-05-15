@@ -1038,10 +1038,26 @@ export function AdvancedOptions() {
             </span>
           )}
         </div>
-        <ChevronDown
-          className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-          strokeWidth={2}
-        />
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+          aria-expanded={open}
+          aria-label={open ? 'Collapse advanced options' : 'Expand advanced options'}
+          title={open ? 'Collapse' : 'Expand'}
+        >
+          <svg
+            viewBox="0 0 16 16"
+            className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M4 6l4 4 4-4" />
+          </svg>
+        </button>
       </div>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">

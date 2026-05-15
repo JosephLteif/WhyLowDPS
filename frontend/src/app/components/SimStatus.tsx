@@ -268,14 +268,14 @@ export default function SimStatus({
           <button
             onClick={handleCancel}
             disabled={cancelling}
-            className="rounded-lg px-3 py-1 text-sm text-zinc-300 transition-colors hover:bg-red-500/10 hover:text-red-400"
+            className="rounded-md border border-red-500/30 bg-red-500/[0.08] px-2.5 py-1 text-[12px] font-semibold text-red-200 transition-all hover:border-red-400/40 hover:bg-red-500/[0.14] hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {cancelling ? 'Cancelling...' : 'Cancel Sim'}
           </button>
           {onToggleLogs && (
             <button
               onClick={onToggleLogs}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-sm text-zinc-300 transition-colors hover:bg-white/5 hover:text-gray-300"
+              className="flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[12px] font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white"
             >
               <ScrollText className="h-3.5 w-3.5" strokeWidth={1.5} />
               {showLogs ? 'Hide Logs' : 'Show Logs'}

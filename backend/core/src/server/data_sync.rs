@@ -7,6 +7,7 @@ use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Mutex as StdMutex;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -22,6 +23,36 @@ const ZONES_INDEX_ENTRY_KEY: &str = "runtime_wowhead_zones_index";
 const ZONES_INDEX_FILE_NAME: &str = "zones-encounters-index.json";
 const ZONES_INDEX_RELEASE_BASE_URL: &str =
     "https://github.com/JosephLteif/simcraft/releases/download";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WowheadZoneNameId {
+    pub id: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WowheadRaidZoneSummary {
+    pub id: u32,
+    pub name: String,
+    pub expansion: Option<u32>,
+    pub encounters: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WowheadZonesIndexSummary {
+    pub zones: Vec<WowheadZoneNameId>,
+    pub raids: Vec<WowheadRaidZoneSummary>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedZonesIndex {
+    path: PathBuf,
+    modified_unix_secs: Option<u64>,
+    value: Value,
+    summary: WowheadZonesIndexSummary,
+}
+
+static ZONES_INDEX_CACHE: Lazy<StdMutex<Option<CachedZonesIndex>>> = Lazy::new(|| StdMutex::new(None));
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -94,6 +125,19 @@ pub struct DataFilePreviewResponse {
 #[derive(Debug, Deserialize)]
 pub struct DataImageQuery {
     pub source: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WowheadZoneMatchQuery {
+    pub instance_id: Option<String>,
+    pub wowhead_id: Option<String>,
+    pub name: Option<String>,
+    pub is_raid: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WowheadZonesSummaryQuery {
+    pub kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -321,6 +365,114 @@ fn resolve_data_file_read_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
         return resolve_zones_index_path(root);
     }
     resolve_catalog_path(root, entry)
+}
+
+fn zones_index_mtime_unix_secs(path: &Path) -> Option<u64> {
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    modified
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
+}
+
+fn build_zones_index_summary(zones_index: &Value) -> WowheadZonesIndexSummary {
+    let zones = zones_index
+        .get("zones")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut zone_ids = Vec::new();
+    let mut raids = Vec::new();
+    for zone in zones {
+        let id = zone.get("id").and_then(|v| v.as_u64()).map(|n| n as u32);
+        let name = zone
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default();
+        if let Some(zone_id) = id {
+            if !name.is_empty() {
+                zone_ids.push(WowheadZoneNameId {
+                    id: zone_id,
+                    name: name.clone(),
+                });
+            }
+            let is_raid = zone
+                .get("is_raid")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if is_raid && !name.is_empty() {
+                let expansion = zone
+                    .get("expansion")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                let encounters = zone
+                    .get("encounters")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|enc| enc.get("name").and_then(|n| n.as_str()))
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect::<Vec<String>>()
+                    })
+                    .unwrap_or_default();
+                raids.push(WowheadRaidZoneSummary {
+                    id: zone_id,
+                    name,
+                    expansion,
+                    encounters,
+                });
+            }
+        }
+    }
+    raids.sort_by(|a, b| a.name.cmp(&b.name));
+    WowheadZonesIndexSummary {
+        zones: zone_ids,
+        raids,
+    }
+}
+
+fn normalize_zone_name(name: &str) -> String {
+    name.to_ascii_lowercase()
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect()
+}
+
+fn load_cached_zones_index(root: &Path) -> Result<CachedZonesIndex, String> {
+    let path = resolve_zones_index_path(root);
+    if !path.exists() {
+        return Err("zones-encounters-index file not found in runtime data directory".to_string());
+    }
+    let modified_unix_secs = zones_index_mtime_unix_secs(&path);
+
+    if let Ok(cache_guard) = ZONES_INDEX_CACHE.lock() {
+        if let Some(cache) = cache_guard.as_ref() {
+            if cache.path == path && cache.modified_unix_secs == modified_unix_secs {
+                return Ok(cache.clone());
+            }
+        }
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
+    let value: Value = serde_json::from_str(&content)
+        .map_err(|err| format!("Failed to parse {}: {}", path.display(), err))?;
+    let summary = build_zones_index_summary(&value);
+    let fresh = CachedZonesIndex {
+        path,
+        modified_unix_secs,
+        value,
+        summary,
+    };
+
+    if let Ok(mut cache_guard) = ZONES_INDEX_CACHE.lock() {
+        *cache_guard = Some(fresh.clone());
+    }
+
+    Ok(fresh)
 }
 
 async fn download_github_release_asset(
@@ -1565,35 +1717,126 @@ pub async fn get_wowhead_zones_index(data_dir: web::Data<Option<PathBuf>>) -> Ht
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
-
-    let existing: Vec<PathBuf> = zones_index_candidate_paths(&root)
-        .into_iter()
-        .filter(|p| p.exists())
-        .collect();
-    if existing.is_empty() {
-        return HttpResponse::NotFound().json(json!({
-            "detail": "zones-encounters-index file not found in runtime data directory"
-        }));
+    match load_cached_zones_index(&root) {
+        Ok(cached) => HttpResponse::Ok().json(cached.value),
+        Err(err) if err.contains("not found") => {
+            HttpResponse::NotFound().json(json!({ "detail": err }))
+        }
+        Err(err) => HttpResponse::InternalServerError().json(json!({ "detail": err })),
     }
+}
 
-    let mut last_error: Option<String> = None;
-    for path in existing {
-        match std::fs::read_to_string(&path) {
-            Ok(content) => match serde_json::from_str::<Value>(&content) {
-                Ok(v) => return HttpResponse::Ok().json(v),
-                Err(err) => {
-                    last_error = Some(format!("Failed to parse {}: {}", path.display(), err));
-                }
-            },
-            Err(err) => {
-                last_error = Some(format!("Failed to read {}: {}", path.display(), err));
+pub async fn get_wowhead_zones_index_summary(
+    data_dir: web::Data<Option<PathBuf>>,
+    query: web::Query<WowheadZonesSummaryQuery>,
+) -> HttpResponse {
+    let Some(root) = data_dir.get_ref().clone() else {
+        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
+    };
+    let kind = query
+        .kind
+        .as_deref()
+        .unwrap_or("all")
+        .trim()
+        .to_ascii_lowercase();
+    match load_cached_zones_index(&root) {
+        Ok(cached) => {
+            let response = match kind.as_str() {
+                "raid" => WowheadZonesIndexSummary {
+                    zones: Vec::new(),
+                    raids: cached.summary.raids,
+                },
+                "dungeon" => WowheadZonesIndexSummary {
+                    zones: cached.summary.zones,
+                    raids: Vec::new(),
+                },
+                _ => cached.summary,
+            };
+            HttpResponse::Ok().json(response)
+        }
+        Err(err) if err.contains("not found") => {
+            HttpResponse::NotFound().json(json!({ "detail": err }))
+        }
+        Err(err) => HttpResponse::InternalServerError().json(json!({ "detail": err })),
+    }
+}
+
+pub async fn get_wowhead_zone_match(
+    data_dir: web::Data<Option<PathBuf>>,
+    query: web::Query<WowheadZoneMatchQuery>,
+) -> HttpResponse {
+    let Some(root) = data_dir.get_ref().clone() else {
+        return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
+    };
+    let cached = match load_cached_zones_index(&root) {
+        Ok(cached) => cached,
+        Err(err) if err.contains("not found") => {
+            return HttpResponse::NotFound().json(json!({ "detail": err }));
+        }
+        Err(err) => {
+            return HttpResponse::InternalServerError().json(json!({ "detail": err }));
+        }
+    };
+
+    let zones = cached
+        .value
+        .get("zones")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let parse_positive_u32 = |value: Option<&String>| -> Option<u32> {
+        value
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .and_then(|s| s.parse::<u32>().ok())
+            .filter(|id| *id > 0)
+    };
+    let wowhead_id = parse_positive_u32(query.wowhead_id.as_ref());
+    let instance_id = parse_positive_u32(query.instance_id.as_ref());
+    let normalized_name = query
+        .name
+        .as_ref()
+        .map(|s| normalize_zone_name(s))
+        .filter(|s| !s.is_empty());
+
+    let matched = zones.iter().find(|zone| {
+        if let Some(is_raid) = query.is_raid {
+            let zone_is_raid = zone
+                .get("is_raid")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if zone_is_raid != is_raid {
+                return false;
             }
         }
-    }
+        let zone_id = zone.get("id").and_then(|v| v.as_u64()).map(|n| n as u32);
+        if wowhead_id.is_some() && zone_id == wowhead_id {
+            return true;
+        }
+        if let Some(ref name_key) = normalized_name {
+            let zone_name_key = zone
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(normalize_zone_name)
+                .unwrap_or_default();
+            if !zone_name_key.is_empty() && &zone_name_key == name_key {
+                return true;
+            }
+        }
+        if let Some(inst_id) = instance_id {
+            if zone_id == Some(inst_id) {
+                return true;
+            }
+            if let Some(url) = zone.get("url").and_then(|v| v.as_str()) {
+                if url.contains(&format!("zone={}", inst_id)) {
+                    return true;
+                }
+            }
+        }
+        false
+    });
 
-    HttpResponse::InternalServerError().json(json!({
-        "detail": last_error.unwrap_or_else(|| "Failed to read zones-encounters-index".to_string())
-    }))
+    HttpResponse::Ok().json(json!({ "zone": matched.cloned() }))
 }
 
 async fn download_raidbots_file(

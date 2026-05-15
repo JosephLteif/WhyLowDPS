@@ -16,6 +16,10 @@ export type DisplayAffix = DungeonAffix & { wowhead_url?: string | null };
 export type WowheadZoneIndexEntry = {
   id?: number; name?: string; is_raid?: boolean; expansion?: number | null; encounters?: Array<{ name?: string }>;
 };
+export type WowheadZonesIndexSummary = {
+  zones?: Array<{ id?: number; name?: string }>;
+  raids?: Array<{ id?: number; name?: string; expansion?: number | null; encounters?: string[] }>;
+};
 
 export function normalizeDungeonName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');

@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { API_URL, DungeonInfo, fetchJson } from '../lib/api';
+import { API_URL, DungeonInfo, fetchJsonCached } from '../lib/api';
 import type { Instance } from '../drop-finder/types';
-import { DungeonCard, WowheadZoneIndexEntry, getLocalInstanceImageUrl, getRaidInstances, normalizeDungeonName, normalizeImageUrl } from '../dungeons/shared';
+import { DungeonCard, WowheadZonesIndexSummary, getLocalInstanceImageUrl, getRaidInstances, normalizeDungeonName, normalizeImageUrl } from '../dungeons/shared';
 
 export default function RaidsPage() {
   const [raids, setRaids] = useState<DungeonInfo[]>([]);
@@ -13,13 +13,18 @@ export default function RaidsPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [fallbackInstances, wowheadIndexResp] = await Promise.all([
-          fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
-          fetchJson<{ zones?: WowheadZoneIndexEntry[] }>(`${API_URL}/api/data/wowhead-zones-index`).catch(() => ({ zones: [] })),
+        const [fallbackInstances, zonesSummaryResp] = await Promise.all([
+          fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, { ttl: 60_000 }).catch(
+            () => [] as Instance[],
+          ),
+          fetchJsonCached<WowheadZonesIndexSummary>(
+            `${API_URL}/api/data/wowhead-zones-index/summary?kind=raid`,
+            { ttl: 60_000 },
+          ).catch(() => ({ zones: [], raids: [] })),
         ]);
-        const parsedZones: WowheadZoneIndexEntry[] = Array.isArray(wowheadIndexResp?.zones) ? wowheadIndexResp.zones : [];
-        const zonesByName = new Map<string, WowheadZoneIndexEntry>();
-        for (const zone of parsedZones) {
+        const parsedRaids = Array.isArray(zonesSummaryResp?.raids) ? zonesSummaryResp.raids : [];
+        const zonesByName = new Map<string, { id?: number; name?: string; expansion?: number | null; encounters?: string[] }>();
+        for (const zone of parsedRaids) {
           const n = typeof zone?.name === 'string' ? normalizeDungeonName(zone.name) : '';
           if (n && !zonesByName.has(n)) zonesByName.set(n, zone);
         }

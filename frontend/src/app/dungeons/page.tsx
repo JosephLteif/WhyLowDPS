@@ -8,6 +8,7 @@ import {
   DungeonInfo,
   DungeonSeasonData,
   fetchJson,
+  fetchJsonCached,
   GameDataState,
   getDungeonData,
   getDungeonDataCached,
@@ -23,7 +24,7 @@ import {
   AffixCard,
   DungeonCard,
   DisplayAffix,
-  WowheadZoneIndexEntry,
+  WowheadZonesIndexSummary,
   getCurrentMplusDungeonIds,
   getLocalInstanceImageUrl,
   getRaidInstances,
@@ -131,21 +132,23 @@ export default function DungeonsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [seasonData, gameDataState, fallbackInstances, wowheadIndexResp] = await Promise.all([
+        const [seasonData, gameDataState, fallbackInstances, zonesSummaryResp] = await Promise.all([
           preferCache ? getDungeonDataCached() : getDungeonData(),
           (preferCache ? getGameDataStateCached() : getGameDataState()).catch(
             () => null as GameDataState | null,
           ),
-          fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
-          fetchJson<{ zones?: WowheadZoneIndexEntry[] }>(
-            `${API_URL}/api/data/wowhead-zones-index`,
-          ).catch(() => ({ zones: [] })),
+          fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, { ttl: 60_000 }).catch(
+            () => [] as Instance[],
+          ),
+          fetchJsonCached<WowheadZonesIndexSummary>(
+            `${API_URL}/api/data/wowhead-zones-index/summary?kind=dungeon`,
+            { ttl: 60_000 },
+          ).catch(() => ({ zones: [], raids: [] })),
         ]);
         const wowheadZoneIdByName = new Map<string, number>();
-        const parsedZones: WowheadZoneIndexEntry[] = [];
+        const parsedRaids = Array.isArray(zonesSummaryResp?.raids) ? zonesSummaryResp.raids : [];
         {
-          const zones = Array.isArray(wowheadIndexResp?.zones) ? wowheadIndexResp.zones : [];
-          parsedZones.push(...zones);
+          const zones = Array.isArray(zonesSummaryResp?.zones) ? zonesSummaryResp.zones : [];
           for (const zone of zones) {
             const zid = Number(zone?.id ?? 0);
             const zname = typeof zone?.name === 'string' ? zone.name : '';
@@ -154,13 +157,12 @@ export default function DungeonsPage() {
             }
           }
         }
-        const zonesByName = new Map<string, WowheadZoneIndexEntry>();
-        for (const zone of parsedZones) {
+        const zonesByName = new Map<string, { id?: number; name?: string; expansion?: number | null; encounters?: string[] }>();
+        for (const zone of parsedRaids) {
           const n = typeof zone?.name === 'string' ? normalizeDungeonName(zone.name) : '';
           if (n && !zonesByName.has(n)) zonesByName.set(n, zone);
         }
-        const zoneRaidRows: DungeonInfo[] = parsedZones
-          .filter((zone) => zone?.is_raid === true)
+        const zoneRaidRows: DungeonInfo[] = parsedRaids
           .map((zone) => {
             const zid = Number(zone?.id ?? 0);
             const name = String(zone?.name || '').trim();
@@ -168,7 +170,7 @@ export default function DungeonsPage() {
               (inst) => normalizeDungeonName(inst.name) === normalizeDungeonName(name),
             );
             const encounters = Array.isArray(zone?.encounters)
-              ? zone.encounters.map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0)
+              ? zone.encounters.map((e) => String(e || '').trim()).filter((n) => n.length > 0)
               : (matchedInstance?.encounters || []).map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0);
             return ({
               id: matchedInstance?.id ?? zid,
@@ -201,7 +203,7 @@ export default function DungeonsPage() {
             const zid = Number(matchedZone?.id ?? 0);
             const encounters = Array.isArray(matchedZone?.encounters)
               ? matchedZone.encounters
-                  .map((e) => String(e?.name || '').trim())
+                  .map((e) => String(e || '').trim())
                   .filter((n) => n.length > 0)
               : (raid.encounters || [])
                   .map((e) => String(e?.name || '').trim())
@@ -360,24 +362,24 @@ export default function DungeonsPage() {
     try {
       await triggerDungeonDataRefresh(true);
       await waitForDungeonSyncCompletion();
-      const [seasonData, gameDataState, fallbackInstances, wowheadIndexResp] = await Promise.all([
+      const [seasonData, gameDataState, fallbackInstances, zonesSummaryResp] = await Promise.all([
         getDungeonData(),
         getGameDataState().catch(() => null as GameDataState | null),
-        fetchJson<Instance[]>(`${API_URL}/api/instances`).catch(() => [] as Instance[]),
-        fetchJson<{ zones?: WowheadZoneIndexEntry[] }>(
-          `${API_URL}/api/data/wowhead-zones-index`,
-        ).catch(() => ({ zones: [] })),
+        fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, { ttl: 60_000 }).catch(
+          () => [] as Instance[],
+        ),
+        fetchJsonCached<WowheadZonesIndexSummary>(
+          `${API_URL}/api/data/wowhead-zones-index/summary?kind=dungeon`,
+          { ttl: 60_000 },
+        ).catch(() => ({ zones: [], raids: [] })),
       ]);
-      const parsedZones: WowheadZoneIndexEntry[] = [];
-      const zones = Array.isArray(wowheadIndexResp?.zones) ? wowheadIndexResp.zones : [];
-      parsedZones.push(...zones);
-      const zonesByName = new Map<string, WowheadZoneIndexEntry>();
-      for (const zone of parsedZones) {
+      const parsedRaids = Array.isArray(zonesSummaryResp?.raids) ? zonesSummaryResp.raids : [];
+      const zonesByName = new Map<string, { id?: number; name?: string; expansion?: number | null; encounters?: string[] }>();
+      for (const zone of parsedRaids) {
         const n = typeof zone?.name === 'string' ? normalizeDungeonName(zone.name) : '';
         if (n && !zonesByName.has(n)) zonesByName.set(n, zone);
       }
-      const zoneRaidRows: DungeonInfo[] = parsedZones
-        .filter((zone) => zone?.is_raid === true)
+      const zoneRaidRows: DungeonInfo[] = parsedRaids
         .map((zone) => {
           const zid = Number(zone?.id ?? 0);
           const name = String(zone?.name || '').trim();
@@ -385,7 +387,7 @@ export default function DungeonsPage() {
             (inst) => normalizeDungeonName(inst.name) === normalizeDungeonName(name),
           );
           const encounters = Array.isArray(zone?.encounters)
-            ? zone.encounters.map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0)
+            ? zone.encounters.map((e) => String(e || '').trim()).filter((n) => n.length > 0)
             : (matchedInstance?.encounters || []).map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0);
           return ({
             id: matchedInstance?.id ?? zid,
@@ -418,7 +420,7 @@ export default function DungeonsPage() {
           const zid = Number(matchedZone?.id ?? 0);
           const encounters = Array.isArray(matchedZone?.encounters)
             ? matchedZone.encounters
-                .map((e) => String(e?.name || '').trim())
+                .map((e) => String(e || '').trim())
                 .filter((n) => n.length > 0)
             : (raid.encounters || [])
                 .map((e) => String(e?.name || '').trim())

@@ -399,58 +399,6 @@ export default function SettingsPage() {
             />
           </div>
 
-          {isDesktop && (
-            <div className="space-y-4 border-t border-border pt-4">
-              <div className="rounded-lg border border-border/70 bg-surface px-4 py-3">
-                <p className="text-sm font-medium text-zinc-200">SimulationCraft Engine</p>
-                <p className="mt-1 text-[12px] text-zinc-400">
-                  SimulationCraft is now bundled at build time with the app installer.
-                  Runtime/background SimC downloading is disabled.
-                </p>
-                <p className="mt-2 text-[12px] text-zinc-500">
-                  To get newer SimC binaries, switch update channel in App Updates
-                  (Stable, Weekly, Nightly) and install that release build.
-                </p>
-              </div>
-              <div className="space-y-3 rounded-lg border border-border/70 bg-surface px-4 py-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-zinc-200">Minimize to tray on close</p>
-                    <p className="text-[12px] text-zinc-500">
-                      If enabled, closing the main window hides the app to the system tray instead
-                      of exiting.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={closeBehaviorLoading}
-                    onClick={() => void updateCloseBehavior(!minimizeToTrayOnClose)}
-                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-                      minimizeToTrayOnClose ? 'bg-gold' : 'border border-border bg-surface'
-                    }`}
-                    aria-pressed={minimizeToTrayOnClose}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
-                        minimizeToTrayOnClose ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
-                      }`}
-                    />
-                  </button>
-                </div>
-                {closeBehaviorMessage && (
-                  <div
-                    className={`rounded-md border px-3 py-2 text-[12px] ${
-                      closeBehaviorMessage.type === 'success'
-                        ? 'border-emerald-700/40 bg-emerald-950/25 text-emerald-300'
-                        : 'border-red-700/40 bg-red-950/25 text-red-300'
-                    }`}
-                  >
-                    {closeBehaviorMessage.text}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </section>}
 

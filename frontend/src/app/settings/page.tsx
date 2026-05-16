@@ -438,6 +438,54 @@ export default function SettingsPage() {
         </div>
       </section>}
 
+      {activeTab === 'simulation' && isDesktop && (
+        <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <h2 className="mb-3 text-xl font-semibold text-white">Close Behavior</h2>
+          <p className="mb-5 text-sm text-zinc-400">
+            Choose what happens when you close the app window.
+          </p>
+
+          <div className="max-w-2xl space-y-4">
+            <div className="inline-flex rounded-lg border border-border bg-surface-2 p-1">
+              <button
+                type="button"
+                disabled={closeBehaviorLoading}
+                onClick={() => void updateCloseBehavior(false)}
+                className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                  !minimizeToTrayOnClose
+                    ? 'bg-white text-black'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+              >
+                Close App
+              </button>
+              <button
+                type="button"
+                disabled={closeBehaviorLoading}
+                onClick={() => void updateCloseBehavior(true)}
+                className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                  minimizeToTrayOnClose
+                    ? 'bg-gold/20 text-gold'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+              >
+                Minimize to Tray
+              </button>
+            </div>
+
+            {closeBehaviorMessage ? (
+              <p
+                className={`text-xs ${
+                  closeBehaviorMessage.type === 'success' ? 'text-emerald-300' : 'text-red-300'
+                }`}
+              >
+                {closeBehaviorMessage.text}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      )}
+
       {activeTab === 'data' && (
         <DataCacheSettingsSection
           refreshPreset={refreshPreset}

@@ -232,7 +232,13 @@ export default function SimTimelineAnalyzer({
     return {};
   }, [timeline.resource_series_map, timeline.resource_type, resourceSeries]);
   const resourceKeys = useMemo(() => Object.keys(resourceSeriesMap), [resourceSeriesMap]);
-  const buffUptimes = useMemo(() => timeline.buff_uptimes || [], [timeline.buff_uptimes]);
+  const buffUptimes = useMemo(
+    () =>
+      (timeline.buff_uptimes || []).filter(
+        (buff) => typeof buff?.name === 'string' && buff.name.trim().length > 0
+      ),
+    [timeline.buff_uptimes]
+  );
   const topActions = useMemo(() => aplAnalysis?.top_actions || [], [aplAnalysis?.top_actions]);
   const equippedItems = useMemo(
     () =>

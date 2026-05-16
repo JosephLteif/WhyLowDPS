@@ -274,11 +274,13 @@ function buildTimelineFromRaw(raw: any): { timeline: any | null; apl: any | null
         .map((buff: any) => {
           const uptime = typeof buff?.uptime === 'number' ? buff.uptime : 0;
           if (uptime <= 0) return null;
+          const normalizedName =
+            (typeof buff?.spell_name === 'string' ? buff.spell_name : '') ||
+            (typeof buff?.name === 'string' ? buff.name : '');
+          const name = normalizedName.trim();
+          if (!name) return null;
           return {
-            name:
-              (typeof buff?.spell_name === 'string' && buff.spell_name) ||
-              (typeof buff?.name === 'string' && buff.name) ||
-              'Unknown',
+            name,
             uptime_pct: uptime,
             ...(typeof buff?.spell === 'number' && buff.spell > 0 ? { spell_id: buff.spell } : {}),
             ...(buff?.cooldown ? { is_cooldown: true } : {}),

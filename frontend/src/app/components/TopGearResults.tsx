@@ -287,6 +287,7 @@ export default function TopGearResults({
 
   const [exactStatsCache, setExactStatsCache] = useState<Record<string, ExactStatsCacheEntry>>({});
   const [cachedExactJobIds, setCachedExactJobIds] = useState<Record<string, string>>({});
+  const [slotFilter, setSlotFilter] = useState<string>('all');
   const warmStartedRef = useRef(false);
 
   useEffect(() => {
@@ -655,6 +656,39 @@ export default function TopGearResults({
         }`
       : null;
 
+  const rankingSlotOptions = useMemo(() => {
+    const slots = new Set<string>();
+    for (const result of results) {
+      for (const item of result.items) {
+        if (item.is_kept) continue;
+        if (!item.slot) continue;
+        slots.add(String(item.slot));
+      }
+    }
+    return [...slots].sort((a, b) => a.localeCompare(b));
+  }, [results]);
+
+  const filteredResults = useMemo(() => {
+    if (slotFilter === 'all') return results;
+    return results.filter((result) =>
+      result.items.some((item) => !item.is_kept && String(item.slot) === slotFilter)
+    );
+  }, [results, slotFilter]);
+
+  const filteredGroupedResults = useMemo(() => {
+    if (!groupedResults) return null;
+    return groupedResults
+      .map(([instance, group]) => [
+        instance,
+        group.filter((result) =>
+          slotFilter === 'all'
+            ? true
+            : result.items.some((item) => !item.is_kept && String(item.slot) === slotFilter)
+        ),
+      ] as [string, TopGearResult[]])
+      .filter(([, group]) => group.length > 0);
+  }, [groupedResults, slotFilter]);
+
   return (
     <div className="space-y-6">
       <DpsHeroCard
@@ -804,11 +838,8 @@ export default function TopGearResults({
       )}
 
       <CollapsibleSection title="Rankings">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <p className="text-[13px] font-semibold uppercase tracking-[0.16em] text-zinc-300">
-            Rankings
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             {enableWishlistActions && (
               <div className="flex items-center gap-2">
                 <Link
@@ -820,8 +851,27 @@ export default function TopGearResults({
               </div>
             )}
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
-              {results.length} results
+              {filteredResults.length} results
             </span>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                Slot
+              </span>
+              <select
+                value={slotFilter}
+                onChange={(e) => setSlotFilter(e.target.value)}
+                className="rounded border border-border bg-surface-2 px-2.5 py-1.5 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
+              >
+                <option value="all">All Slots</option>
+                {rankingSlotOptions.map((slot) => (
+                  <option key={slot} value={slot}>
+                    {slot.replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-400">
                 Group by
@@ -855,7 +905,8 @@ export default function TopGearResults({
 
         {groupMode === 'instance' ? (
           <div className="space-y-6">
-            {(groupedResults ?? [[hasGroupingData ? 'Unknown' : 'All Results', results]]).map(
+            {(filteredGroupedResults ??
+              [[hasGroupingData ? 'Unknown' : 'All Results', filteredResults]]).map(
               ([instance, group]) => (
                 <div key={instance}>
                   {instance !== '__ungrouped__' && (
@@ -918,7 +969,7 @@ export default function TopGearResults({
           </div>
         ) : (
           <RankedResults
-            results={results}
+            results={filteredResults}
             maxDps={maxDps}
             baseDps={baseDps}
             equippedGear={equippedGear}

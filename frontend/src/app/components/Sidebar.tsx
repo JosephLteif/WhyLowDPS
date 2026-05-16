@@ -254,7 +254,9 @@ export default function Sidebar() {
   }, []);
 
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 1280px)');
+    // Keep JS breakpoint aligned with Tailwind `xl` (`min-width: 1280px`).
+    // Using `< 1280` avoids the 1280px dead zone where toggle and sidebar can both be hidden.
+    const media = window.matchMedia('(max-width: 1279px)');
     const syncNarrow = () => setIsNarrowViewport(media.matches);
     syncNarrow();
     media.addEventListener('change', syncNarrow);

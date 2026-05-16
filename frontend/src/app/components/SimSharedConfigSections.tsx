@@ -1028,7 +1028,11 @@ export function AdvancedOptions() {
 
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left"
+      >
         <div className="flex items-center gap-2.5">
           <SlidersHorizontal className="h-4 w-4 text-zinc-400" strokeWidth={1.5} />
           <span className="text-[15px] font-medium text-zinc-100">Advanced Options</span>
@@ -1042,7 +1046,7 @@ export function AdvancedOptions() {
           className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
           strokeWidth={2}
         />
-      </div>
+      </button>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
           <div className="pt-4" />

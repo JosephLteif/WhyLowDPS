@@ -467,7 +467,7 @@ export default function SettingsPage() {
         <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
         <p className="text-sm text-zinc-400">
           Your credentials are used solely to fetch character data directly from Blizzard. They are
-          stored in our secure database and are never shared with third parties.
+          stored in on your device and are never shared with third parties.
         </p>
       </section>}
 

@@ -1033,11 +1033,11 @@ export default function SimResultClient() {
         <div />
       )}
       {job.status === 'done' ? (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface-2/90 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
           <button
             type="button"
             onClick={handleSimAgain}
-            className="inline-flex items-center rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/25 hover:text-emerald-100"
+            className="inline-flex items-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white"
           >
             Sim Again
           </button>

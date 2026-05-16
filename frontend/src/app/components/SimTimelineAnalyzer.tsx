@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CartesianGrid,
   ComposedChart,
@@ -146,6 +146,11 @@ function resourceConfig(resourceType: string): { discrete: boolean; max?: number
   return { discrete: false };
 }
 
+function isUnknownAbilityLabel(label: string): boolean {
+  const value = (label || '').trim().toLowerCase();
+  return value === '' || value === 'unknown' || value === 'unknown spell';
+}
+
 function hashColor(name: string): string {
   const palette = [
     '#f43f5e',
@@ -218,6 +223,9 @@ export default function SimTimelineAnalyzer({
   const [showAllEvents, setShowAllEvents] = useState(false);
   const [sequenceView, setSequenceView] = useState<'lanes' | 'table'>('lanes');
   const [sequenceZoom, setSequenceZoom] = useState<1 | 2 | 4>(2);
+  const [hiddenAbilities, setHiddenAbilities] = useState<Set<string>>(new Set());
+  const [showAbilityFilters, setShowAbilityFilters] = useState(false);
+  const laneScrollRef = useRef<HTMLDivElement | null>(null);
   const events = useMemo(() => timeline.events || [], [timeline.events]);
   const cooldownEvents = useMemo(() => timeline.cooldown_events || [], [timeline.cooldown_events]);
   const dpsSeries = useMemo(() => timeline.dps_series || [], [timeline.dps_series]);
@@ -289,7 +297,8 @@ export default function SimTimelineAnalyzer({
 
   const resolveTimelineAction = useMemo(
     () => (actionName: string, spellId?: number) => {
-      const token = normalizeToken(actionName);
+      const safeActionName = (actionName || '').trim();
+      const token = normalizeToken(safeActionName);
       const item = token ? itemByToken.get(token) : undefined;
       if (item) {
         return {
@@ -299,15 +308,15 @@ export default function SimTimelineAnalyzer({
           spellId,
         };
       }
-      if (actionName.toLowerCase().startsWith('use_item_')) {
+      if (safeActionName.toLowerCase().startsWith('use_item_')) {
         return {
-          label: titleCaseUnderscore(token || actionName),
+          label: titleCaseUnderscore(token || safeActionName),
           kind: 'spell' as const,
           spellId,
         };
       }
       return {
-        label: actionName,
+        label: safeActionName || (spellId ? `Spell ${spellId}` : 'Unknown Spell'),
         kind: 'spell' as const,
         spellId,
       };
@@ -326,7 +335,9 @@ export default function SimTimelineAnalyzer({
       { spellName: string; spellId?: number; events: TimelineEvent[]; color: string }
     >();
     for (const event of laneEvents) {
-      const spell = event.spell_name || 'Unknown';
+      const spell =
+        (event.spell_name || '').trim() ||
+        (event.spell_id ? `spell:${event.spell_id}` : 'unknown');
       const existing = bySpell.get(spell);
       if (existing) {
         existing.events.push(event);
@@ -350,9 +361,31 @@ export default function SimTimelineAnalyzer({
         const bFirst = b.events[0]?.t ?? 0;
         if (aFirst !== bFirst) return aFirst - bFirst;
         return b.events.length - a.events.length;
-      });
+      })
+      .filter((group) => !isUnknownAbilityLabel(group.resolved.label))
+      .filter((group) => !hiddenAbilities.has(group.resolved.label));
     return showAllEvents ? grouped : grouped.slice(0, 26);
-  }, [laneEvents, showAllEvents, resolveTimelineAction]);
+  }, [laneEvents, showAllEvents, resolveTimelineAction, hiddenAbilities]);
+
+  const abilityFilterOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const event of events) {
+      const resolved = resolveTimelineAction(event.spell_name, event.spell_id);
+      if (isUnknownAbilityLabel(resolved.label)) continue;
+      labels.add(resolved.label);
+    }
+    return [...labels].sort((a, b) => a.localeCompare(b));
+  }, [events, resolveTimelineAction]);
+
+  const filteredVisibleEvents = useMemo(
+    () =>
+      visibleEvents.filter((event) => {
+        const resolved = resolveTimelineAction(event.spell_name, event.spell_id);
+        if (isUnknownAbilityLabel(resolved.label)) return false;
+        return !hiddenAbilities.has(resolved.label);
+      }),
+    [visibleEvents, resolveTimelineAction, hiddenAbilities]
+  );
 
   const laneTimeBounds = useMemo(() => {
     const source = laneEvents.length > 0 ? laneEvents : events;
@@ -423,6 +456,14 @@ export default function SimTimelineAnalyzer({
     return `${spells}|${items}`;
   }, [spellIds, equippedItemInfo]);
   useWowheadTooltips([tooltipDepKey]);
+
+  const handleLaneWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const el = laneScrollRef.current;
+    if (!el) return;
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    el.scrollLeft += event.deltaY;
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -758,6 +799,17 @@ export default function SimTimelineAnalyzer({
                 ))}
               </div>
             )}
+            <button
+              type="button"
+              onClick={() => setShowAbilityFilters((v) => !v)}
+              className={`rounded-md border px-2 py-1 text-[12px] transition-colors ${
+                showAbilityFilters
+                  ? 'border-gold/40 bg-gold/10 text-gold'
+                  : 'border-border text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+              }`}
+            >
+              Filters
+            </button>
             {events.length > 40 && (
               <button
                 type="button"
@@ -769,10 +821,56 @@ export default function SimTimelineAnalyzer({
             )}
           </div>
         </div>
+        {showAbilityFilters && (
+          <div className="mb-3 space-y-2 rounded-md border border-border/60 bg-surface/60 p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-400">Hide abilities</p>
+              {hiddenAbilities.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setHiddenAbilities(new Set())}
+                  className="text-[11px] text-zinc-300 hover:text-white"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+              {abilityFilterOptions.map((label) => {
+                const hidden = hiddenAbilities.has(label);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() =>
+                      setHiddenAbilities((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(label)) next.delete(label);
+                        else next.add(label);
+                        return next;
+                      })
+                    }
+                    className={`rounded border px-2 py-1 text-[11px] ${
+                      hidden
+                        ? 'border-red-400/40 bg-red-500/10 text-red-300'
+                        : 'border-border bg-surface-2 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {events.length === 0 ? (
           <p className="text-sm text-zinc-500">No action sequence data available.</p>
         ) : sequenceView === 'lanes' ? (
-          <div className="max-h-[32rem] overflow-auto rounded-md border border-border/60">
+          <div
+            ref={laneScrollRef}
+            onWheel={handleLaneWheel}
+            className="max-h-[32rem] overflow-auto rounded-md border border-border/60"
+          >
             <div style={{ width: `${220 + laneTimelineWidth}px` }}>
               <div className="sticky top-0 z-10 flex border-b border-border/60 bg-[#101013]">
                 <div className="sticky left-0 z-30 w-[220px] shrink-0 border-r border-border/60 bg-[#101013] px-2 py-2 text-[11px] uppercase tracking-wide text-zinc-500">
@@ -950,7 +1048,7 @@ export default function SimTimelineAnalyzer({
                 </tr>
               </thead>
               <tbody>
-                {visibleEvents.map((event, idx) => (
+                {filteredVisibleEvents.map((event, idx) => (
                   <tr
                     key={`${event.t}_${event.spell_name}_${idx}`}
                     className="border-t border-border/40"

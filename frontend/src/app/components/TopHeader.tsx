@@ -251,6 +251,53 @@ export default function TopHeader() {
               ))}
           </div>
         </div>
+        <form
+          data-tauri-drag-region="false"
+          onSubmit={handleCharacterSearch}
+          className="flex items-center gap-1.5 border-t border-white/5 px-3 py-2 xl:hidden md:px-5"
+        >
+          <input
+            type="text"
+            value={characterName}
+            onChange={(e) => setCharacterName(e.target.value)}
+            placeholder="Character"
+            className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+            aria-label="Character name"
+          />
+          <select
+            value={characterRegion}
+            onChange={(e) => setCharacterRegion(e.target.value)}
+            className="h-8 w-16 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
+            aria-label="Character region"
+          >
+            <option value="us">US</option>
+            <option value="eu">EU</option>
+            <option value="kr">KR</option>
+            <option value="tw">TW</option>
+          </select>
+          <select
+            value={characterRealm}
+            onChange={(e) => setCharacterRealm(e.target.value)}
+            className="h-8 w-28 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
+            aria-label="Character realm"
+          >
+            {realmOptions.length === 0 ? (
+              <option value="">Realm</option>
+            ) : (
+              realmOptions.map((realm) => (
+                <option key={realm.slug} value={realm.slug}>
+                  {realm.name}
+                </option>
+              ))
+            )}
+          </select>
+          <button
+            type="submit"
+            className="h-8 rounded-md border border-gold/25 bg-gold/15 px-3 text-[13px] font-semibold text-gold transition-colors hover:bg-gold/25"
+          >
+            Go
+          </button>
+        </form>
       </header>
 
       <LoginModal

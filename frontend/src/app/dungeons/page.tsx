@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import {
   API_URL,
-  DungeonAffix,
   DungeonInfo,
   DungeonSeasonData,
   fetchJson,
@@ -22,9 +21,8 @@ import {
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import {
   AffixCard,
-  DungeonCard,
   DisplayAffix,
-  WowheadZonesIndexSummary,
+  DungeonCard,
   getCurrentMplusDungeonIds,
   getLocalInstanceImageUrl,
   getRaidInstances,
@@ -33,6 +31,7 @@ import {
   normalizeDungeonName,
   normalizeImageUrl,
   normalizeMplusName,
+  WowheadZonesIndexSummary,
 } from './shared';
 import type { Instance } from '../drop-finder/types';
 
@@ -245,8 +244,7 @@ export default function DungeonsPage() {
         const enrichedDungeons = mergedWithFallback.map((dungeon) => {
           const localInstanceImage = getLocalInstanceImageUrl(dungeon.id);
           const matchedWowheadId =
-            wowheadZoneIdByName.get(normalizeDungeonName(dungeon.name)) ??
-            (dungeon.wowhead_id && dungeon.wowhead_id > 0 ? dungeon.wowhead_id : null);
+            wowheadZoneIdByName.get(normalizeDungeonName(dungeon.name)) ?? null;
 
           return {
             ...dungeon,

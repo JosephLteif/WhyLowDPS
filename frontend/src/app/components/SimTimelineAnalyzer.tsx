@@ -178,6 +178,29 @@ function laneTickStep(duration: number): number {
   if (duration <= 180) return 10;
   return 15;
 }
+
+function laneSegmentDurationSeconds(gapToNextSameSpell: number | null): number {
+  const defaultDuration = 0.7;
+  if (gapToNextSameSpell == null || !Number.isFinite(gapToNextSameSpell)) return defaultDuration;
+  if (gapToNextSameSpell <= 0) return defaultDuration;
+  return Math.max(0.35, Math.min(1.2, gapToNextSameSpell * 0.25));
+}
+
+const EFFECT_DURATION_BY_LABEL_SECONDS: Record<string, number> = {
+  'grimoire: imp lord': 20,
+  'call dreadstalkers': 12,
+  'summon demonic tyrant': 15,
+};
+
+function resolveEffectDurationSeconds(
+  label: string,
+  gapToNextSameSpell: number | null
+): number {
+  const key = label.trim().toLowerCase();
+  const explicit = EFFECT_DURATION_BY_LABEL_SECONDS[key];
+  if (explicit && Number.isFinite(explicit) && explicit > 0) return explicit;
+  return laneSegmentDurationSeconds(gapToNextSameSpell);
+}
 function MeasuredChartFrame({
   className,
   minHeight,
@@ -810,7 +833,7 @@ export default function SimTimelineAnalyzer({
             >
               Filters
             </button>
-            {events.length > 40 && (
+            {sequenceView === 'table' && events.length > 40 && (
               <button
                 type="button"
                 onClick={() => setShowAllEvents((v) => !v)}
@@ -942,10 +965,12 @@ export default function SimTimelineAnalyzer({
                       const leftPct =
                         ((event.t - laneTimeBounds.min) / laneTimeBounds.duration) * 100;
                       const nextT = lane.events[idx + 1]?.t;
+                      const segmentDurationSec = resolveEffectDurationSeconds(
+                        lane.resolved.label,
+                        nextT != null ? nextT - event.t : null
+                      );
                       const widthPct =
-                        nextT != null
-                          ? Math.max(0.35, ((nextT - event.t) / laneTimeBounds.duration) * 100)
-                          : 0.55;
+                        (segmentDurationSec / laneTimeBounds.duration) * 100;
                       return (
                         <div key={`${lane.spellName}_${event.t}_${idx}`}>
                           <div

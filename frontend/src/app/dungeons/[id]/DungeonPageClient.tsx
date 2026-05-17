@@ -158,7 +158,6 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
         target="_blank"
         rel="noopener noreferrer"
         className="mx-0.5 inline-flex items-center rounded border border-white/20 bg-black/35 px-1.5 py-0.5 text-xs text-gold hover:bg-black/55"
-        title={decodeHtmlEntities(matched?.description || token)}
       >
         {matched?.icon_url ? (
           <img src={matched.icon_url} alt="" className="mr-1 h-3.5 w-3.5 rounded-sm object-cover" />

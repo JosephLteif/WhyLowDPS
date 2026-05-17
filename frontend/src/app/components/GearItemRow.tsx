@@ -203,7 +203,9 @@ export default function GearItemRow({
       {/* Name + details */}
       <div className={`min-w-0 flex-1 ${textAlignClass}`}>
         {overline && (
-          <div className={`mb-1 flex min-w-0 items-center gap-1.5 ${reverse ? 'justify-end' : ''}`}>
+          <div
+            className={`mb-1 flex min-w-0 max-w-full flex-wrap items-start gap-1.5 ${reverse ? 'justify-end' : ''}`}
+          >
             {overline}
           </div>
         )}

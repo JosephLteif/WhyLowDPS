@@ -87,7 +87,7 @@ export default function ItemTag({
 
   return (
     <div
-      className={`grid min-w-0 max-w-full grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-1 px-0.5 py-1 ${kept ? 'opacity-40' : ''}`}
+      className={`grid w-full min-w-0 max-w-full grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-1 px-0.5 py-1 ${kept ? 'opacity-40' : ''}`}
     >
       <a
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
@@ -108,7 +108,7 @@ export default function ItemTag({
       </a>
 
       <div className="col-start-2 row-start-1 min-w-0">
-        <div className="mb-1 flex min-w-0 flex-wrap items-center gap-1.5">
+        <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5">
           {ilevelText && (
             <span
               title={ilevelTooltip}
@@ -131,9 +131,9 @@ export default function ItemTag({
                 event.stopPropagation();
                 router.push(tag.path);
               }}
-              className="inline-flex shrink-0 items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200 transition-colors hover:bg-amber-500/20"
+              className="inline-flex max-w-full items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200 transition-colors hover:bg-amber-500/20"
             >
-              {tag.text}
+              <span className="whitespace-normal break-words text-left leading-tight">{tag.text}</span>
             </button>
           ))}
           <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">

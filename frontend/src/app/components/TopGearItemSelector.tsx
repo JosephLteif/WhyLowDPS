@@ -293,6 +293,7 @@ export default function TopGearItemSelector({
     setOptimizeOpen,
     optimizeItem,
     openAddItem,
+    openUpgradeMenu,
     openOptimize,
     loadUpgradeOptions,
     deselectAll,
@@ -1928,6 +1929,17 @@ export default function TopGearItemSelector({
         (item.embellishment_item_id || 0) > 0 ||
         hasEmbellishmentByBonus ||
         /(?:^|,)enchant_id=/.test(item.simc_string);
+      return (
+        hasEnchantOptions ||
+        hasGemOptions ||
+        hasEmbellishmentOptions ||
+        craftedSource ||
+        hasExistingEnhancements
+      );
+    },
+    [resolved.character.class_name, enchantAvailabilityBySlot, embellishmentOptionsByItem, specName]
+  );
+
   const getDisplayIlevel = useCallback((item: ResolvedItem): number => {
     if (!isAscendantApplied(item)) return Number(item.ilevel || 0);
     const { maxIlevelDelta } = getAscendantModifierIlevelConfig();
@@ -1957,7 +1969,7 @@ export default function TopGearItemSelector({
         </>
       );
     },
-    [resolved.character.class_name, enchantAvailabilityBySlot, embellishmentOptionsByItem, specName]
+    [getDisplayIlevel]
   );
 
   const isEnchantAvailabilityPending = useCallback(

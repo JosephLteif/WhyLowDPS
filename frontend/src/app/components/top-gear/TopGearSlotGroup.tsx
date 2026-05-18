@@ -10,6 +10,15 @@ const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
 const EMBELLISHMENT_LIMIT_WARNING =
   'Too many embellished items are selected. Only 2 embellished items can be equipped.';
 
+interface UpgradeOption {
+  bonus_id: number;
+  level: number;
+  max: number;
+  name: string;
+  fullName: string;
+  itemLevel: number;
+}
+
 function isTierOrCatalystItem(item: ResolvedItem): boolean {
   if (item.is_catalyst || item.can_catalyst) return true;
   const sourceType = String(item.source_type || '').toLowerCase();

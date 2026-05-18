@@ -52,9 +52,6 @@ pub fn build_slot_candidates(
                 } else {
                     selected_core_keys.extend(p_uids.iter().filter_map(|uid| uid_core_key(uid)));
                 }
-        if let Some(paired) = class_data::paired_slot(&slot_str) {
-            if let Some(p_uids) = selected_items.get(paired) {
-                selected_identities.extend(p_uids.iter().map(|uid| uid_identity(uid)));
             }
         }
 

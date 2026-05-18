@@ -155,5 +155,9 @@ export function getItemExtraEffects(
   const key = itemBonusKey(item.item_id, item.bonus_ids);
   const fromMap = normalizeEffects(effectsByKey?.[key]);
   if (fromMap.length > 0) return fromMap;
-  return detectFromText(item);
+  return detectFromText({
+    simc_string: item.simc_string || '',
+    source_type: item.source_type || '',
+    tag: item.tag || '',
+  });
 }

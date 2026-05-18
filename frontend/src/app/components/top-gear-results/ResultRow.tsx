@@ -71,6 +71,28 @@ function shortTierFromItem(item?: {
   return null;
 }
 
+function parseTierLevelFromUpgrade(upgradeRaw?: string): { tier: string; level: number; max: number } | null {
+  const value = String(upgradeRaw || '').split(/\s*->\s*/).pop()?.trim() || '';
+  const match = value.match(/^([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (!match) return null;
+  return {
+    tier: match[1],
+    level: Number(match[2]),
+    max: Number(match[3]),
+  };
+}
+
+function trackTagClass(label?: string): string {
+  const tier = String(label || '').toLowerCase();
+  if (tier.includes('myth')) return 'border-orange-400/55 bg-orange-500/15 text-orange-200';
+  if (tier.includes('hero')) return 'border-teal-400/45 bg-teal-500/12 text-teal-200';
+  if (tier.includes('champ')) return 'border-emerald-400/45 bg-emerald-500/12 text-emerald-200';
+  if (tier.includes('vet')) return 'border-sky-400/45 bg-sky-500/12 text-sky-200';
+  if (tier.includes('adv')) return 'border-lime-400/45 bg-lime-500/12 text-lime-200';
+  if (tier.includes('exp')) return 'border-zinc-400/45 bg-zinc-500/12 text-zinc-200';
+  return 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90';
+}
+
 function dropBaselineKey(item: ResultItem): string {
   const slot = String(item.slot || '').toLowerCase();
   const itemId = Number(item.item_id || 0);
@@ -271,7 +293,9 @@ export default function ResultRow({
       string,
       {
         upgradeState: 'upgrade' | 'downgrade' | null;
-        ilevelText?: string;
+        ilevelTagText?: string;
+        tierText?: string;
+        tierClassName?: string;
         ilevelTooltip?: string;
         ilevelHighlightClass?: string;
         gemChanged: boolean;
@@ -307,16 +331,53 @@ export default function ResultRow({
             : 'downgrade'
           : null;
 
-      const ilevelText =
-        nextIlevel > 0
-          ? currentIlevel > 0
-            ? `${currentTier || 'Tier'} ${currentIlevel} -> ${nextTier || 'Tier'} ${nextIlevel}`
-            : `${nextTier || 'Tier'} ${nextIlevel}`
-          : undefined;
+      const nextTierLevel = parseTierLevelFromUpgrade(it.upgrade);
+      const currentTierLevel = parseTierLevelFromUpgrade(equipped?.upgrade);
+      const inferredFromUpgradeLevels =
+        nextTierLevel && Number(it.upgrade_levels || 0) > 0 && nextTierLevel.level > Number(it.upgrade_levels || 0)
+          ? {
+              tier: nextTierLevel.tier,
+              level: nextTierLevel.level - Number(it.upgrade_levels || 0),
+              max: nextTierLevel.max,
+            }
+          : null;
+      const inferredFromIlevel =
+        nextTierLevel && currentIlevel > 0 && nextIlevel > currentIlevel
+          ? {
+              tier: nextTierLevel.tier,
+              level: Math.max(
+                1,
+                nextTierLevel.level -
+                  Math.min(nextTierLevel.level - 1, Math.max(1, Math.round((nextIlevel - currentIlevel) / 3.5)))
+              ),
+              max: nextTierLevel.max,
+            }
+          : null;
+      const previousTierLevel =
+        currentTierLevel && nextTierLevel && currentTierLevel.tier.toLowerCase() === nextTierLevel.tier.toLowerCase()
+          ? currentTierLevel
+          : inferredFromUpgradeLevels || inferredFromIlevel;
+      const tierText =
+        nextTierLevel && nextTierLevel.max > 0
+          ? previousTierLevel && previousTierLevel.level !== nextTierLevel.level
+            ? `${previousTierLevel.tier} ${previousTierLevel.level}/${previousTierLevel.max} -> ${nextTierLevel.tier} ${nextTierLevel.level}/${nextTierLevel.max}`
+            : `${nextTierLevel.tier} ${nextTierLevel.level}/${nextTierLevel.max}`
+          : nextIlevel > 0
+            ? currentIlevel > 0
+              ? `${currentTier || 'Tier'} ${currentIlevel} -> ${nextTier || 'Tier'} ${nextIlevel}`
+              : `${nextTier || 'Tier'} ${nextIlevel}`
+            : undefined;
 
       bySlot[it.slot] = {
         upgradeState,
-        ilevelText,
+        ilevelTagText:
+          nextIlevel > 0
+            ? currentIlevel > 0
+              ? `iLvl ${currentIlevel} -> ${nextIlevel}`
+              : `iLvl ${nextIlevel}`
+            : undefined,
+        tierText,
+        tierClassName: trackTagClass((nextTierLevel?.tier || nextTier || '').toString()),
         ilevelTooltip:
           ilvlChanged || needsUpgradeAction
             ? inferredNeedsUpgrade && baselineDropIlevel > 0
@@ -540,7 +601,9 @@ export default function ResultRow({
                         enchant={it.enchant_id ? enchantInfoMap[it.enchant_id] : undefined}
                         gem={it.gem_id ? gemInfoMap[it.gem_id] : undefined}
                         upgradeState={state?.upgradeState}
-                        ilevelText={state?.ilevelText}
+                        ilevelTagText={state?.ilevelTagText}
+                        tierText={state?.tierText}
+                        tierClassName={state?.tierClassName}
                         ilevelTooltip={state?.ilevelTooltip}
                         ilevelHighlightClass={state?.ilevelHighlightClass}
                         gemChanged={state?.gemChanged}

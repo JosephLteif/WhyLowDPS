@@ -152,6 +152,59 @@ function collapseUpgradeLabelPath(
   return labelsEqual(equipped, target) ? target : `${equipped} -> ${target}`;
 }
 
+function parseTrackLevel(label: string): { track: string; level: number; max: number } | null {
+  const match = label.match(/\b([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)\b/);
+  if (!match) return null;
+  return {
+    track: match[1],
+    level: Number(match[2]),
+    max: Number(match[3]),
+  };
+}
+
+function formatUpgradePreviewLabel({
+  upgradeLabel,
+  equippedUpgradeLabel,
+  itemIlevel,
+  equippedIlevel,
+  upgradeLevels,
+  sourceType,
+}: {
+  upgradeLabel: string;
+  equippedUpgradeLabel?: string | null;
+  itemIlevel: number;
+  equippedIlevel: number;
+  upgradeLevels?: number;
+  sourceType?: string | null;
+}): string {
+  const collapsed = collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel);
+  if (collapsed.includes('->')) return collapsed;
+  if (equippedIlevel <= 0 || itemIlevel <= 0 || equippedIlevel === itemIlevel) return collapsed;
+
+  const target = parseTrackLevel(collapsed);
+  if (!target) return collapsed;
+
+  const levels = Number(upgradeLevels || 0);
+  if (levels > 0 && target.level > levels) {
+    return `${target.track} ${target.level - levels}/${target.max} -> ${target.track} ${target.level}/${target.max}`;
+  }
+
+  const ascendantDelta = /(?:^|\s)mod:268552(?:\s|$)|ascendant_voidcore/i.test(String(sourceType || ''))
+    ? 9
+    : 0;
+  const targetBaseIlevel = Math.max(equippedIlevel, itemIlevel - ascendantDelta);
+  const ilevelDelta = targetBaseIlevel - equippedIlevel;
+  const inferredLevelDelta = Math.min(
+    target.level - 1,
+    Math.max(1, Math.round(ilevelDelta / 3.5))
+  );
+  const previousLevel = target.level - inferredLevelDelta;
+
+  return previousLevel > 0 && previousLevel !== target.level
+    ? `${target.track} ${previousLevel}/${target.max} -> ${target.track} ${target.level}/${target.max}`
+    : collapsed;
+}
+
 function upgradeTierClass(label: string): string {
   const targetTier = label.split('->').pop()?.trim().toLowerCase() || label.toLowerCase();
 
@@ -549,7 +602,14 @@ export function GearSlotRow({
     equippedItem?.upgrade || equippedInfo?.upgrade
   );
   const displayedUpgradeLabel = upgradeLabel
-    ? collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel)
+    ? formatUpgradePreviewLabel({
+        upgradeLabel,
+        equippedUpgradeLabel,
+        itemIlevel: Number(item.ilevel || 0),
+        equippedIlevel: Number(equippedItem?.ilevel || 0),
+        upgradeLevels: Number(item.upgrade_levels || 0),
+        sourceType: item.source_type,
+      })
     : '';
   const whData =
     item.item_id > 0
@@ -563,6 +623,12 @@ export function GearSlotRow({
   const levelChanged =
     Number(equippedItem?.ilevel || 0) > 0 &&
     Number(equippedItem?.ilevel || 0) !== Number(item.ilevel || 0);
+  const ilevelTagText =
+    Number(item.ilevel || 0) > 0
+      ? levelChanged
+        ? `iLvl ${Number(equippedItem?.ilevel || 0)} -> ${Number(item.ilevel || 0)}`
+        : `iLvl ${Number(item.ilevel || 0)}`
+      : '';
   const comparisonState: 'upgrade' | 'downgrade' | null = isDowngrade
     ? 'downgrade'
     : isUpgrade
@@ -755,22 +821,24 @@ export function GearSlotRow({
                   </button>
                 ))
               : null}
-            <span
-              className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
-                upgradeState === 'upgrade'
-                  ? 'bg-emerald-500/12 border-emerald-400/45 text-emerald-200'
-                  : upgradeState === 'downgrade'
-                    ? 'bg-red-500/12 border-red-400/45 text-red-200'
-                    : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'
-              }`}
-              title={
-                levelChanged
-                  ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
-                  : undefined
-              }
-            >
-              iLvl {item.ilevel || 0}
-            </span>
+            {ilevelTagText ? (
+              <span
+                className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
+                  upgradeState === 'upgrade'
+                    ? 'bg-emerald-500/12 border-emerald-400/45 text-emerald-200'
+                    : upgradeState === 'downgrade'
+                      ? 'bg-red-500/12 border-red-400/45 text-red-200'
+                      : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'
+                }`}
+                title={
+                  levelChanged
+                    ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
+                    : undefined
+                }
+              >
+                {ilevelTagText}
+              </span>
+            ) : null}
             {displayedUpgradeLabel ? (
               <span
                 className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${upgradeTierClass(

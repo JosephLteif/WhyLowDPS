@@ -14,7 +14,9 @@ interface ItemTagProps {
   enchant?: EnchantInfo;
   gem?: GemInfo;
   upgradeState?: 'upgrade' | 'downgrade' | null;
-  ilevelText?: string;
+  ilevelTagText?: string;
+  tierText?: string;
+  tierClassName?: string;
   ilevelTooltip?: string;
   ilevelHighlightClass?: string;
   gemChanged?: boolean;
@@ -28,7 +30,9 @@ export default function ItemTag({
   enchant,
   gem,
   upgradeState = null,
-  ilevelText,
+  ilevelTagText,
+  tierText,
+  tierClassName = '',
   ilevelTooltip,
   ilevelHighlightClass = '',
   gemChanged = false,
@@ -109,7 +113,7 @@ export default function ItemTag({
 
       <div className="col-start-2 row-start-1 min-w-0">
         <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5">
-          {ilevelText && (
+          {ilevelTagText && (
             <span
               title={ilevelTooltip}
               className={`inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
@@ -120,7 +124,15 @@ export default function ItemTag({
                     : 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90'
               }`}
             >
-              {ilevelText}
+              {ilevelTagText}
+            </span>
+          )}
+          {tierText && (
+            <span
+              title={ilevelTooltip}
+              className={`inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${tierClassName || 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90'}`}
+            >
+              {tierText}
             </span>
           )}
           {sourceTags.map((tag) => (

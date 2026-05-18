@@ -9,6 +9,21 @@ interface UseTopGearResultsProps {
   baseDps: number;
 }
 
+function normalizeUpgradeLabel(value?: string | null): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function withUpgradeTransition(item: ResultItem, equipped?: ResultItem): ResultItem {
+  const current = normalizeUpgradeLabel(equipped?.upgrade);
+  const next = normalizeUpgradeLabel(item.upgrade);
+  if (!current || !next || current.toLowerCase() === next.toLowerCase() || next.includes('->')) {
+    return item;
+  }
+  return { ...item, upgrade: `${current} -> ${next}` };
+}
+
 export function useTopGearResults({ results, equippedGear, baseDps }: UseTopGearResultsProps) {
   const bestResult = results.length > 0 ? results[0] : null;
 
@@ -83,7 +98,7 @@ export function useTopGearResults({ results, equippedGear, baseDps }: UseTopGear
           continue;
         }
         if (!it.is_kept && it.item_id > 0) {
-          gearSet[it.slot] = { ...it };
+          gearSet[it.slot] = withUpgradeTransition({ ...it }, equippedGear[it.slot]);
         }
       }
     }

@@ -1549,20 +1549,12 @@ export default function TopGearItemSelector({
         color: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
       });
     if (item.upgrade) {
-      const hasAscendant =
-        hasModifierItemId(item.source_type, 268552) ||
-        String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
-      const displayUpgrade = formatCanonicalUpgradeLabel(
-        item.upgrade,
-        String(resolved.slots[item.slot]?.equipped?.upgrade || ''),
-        hasAscendant
-      );
+      const displayUpgrade = parseUpgradeLabel(item.upgrade).segments.at(-1) || '';
       if (displayUpgrade) {
-        const clampedUpgrade = clampUpgradeArrowChain(displayUpgrade);
         parts.push({
-          text: clampedUpgrade,
+          text: displayUpgrade,
           badgeVariant: 'source',
-          color: upgradeTierTagColor(clampedUpgrade),
+          color: upgradeTierTagColor(displayUpgrade),
         });
       }
     }
@@ -1677,6 +1669,15 @@ export default function TopGearItemSelector({
       return true;
     });
   };
+
+  const getDisplayIlevel = useCallback((item: ResolvedItem): number => {
+    const hasAscendantModifier =
+      hasModifierItemId(item.source_type, 268552) ||
+      String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
+    if (!hasAscendantModifier) return Number(item.ilevel || 0);
+    const { maxIlevelDelta } = getAscendantModifierIlevelConfig();
+    return Math.max(1, Number(item.ilevel || 0) - maxIlevelDelta);
+  }, []);
 
   const canOptimizeItem = useCallback(
     (item: ResolvedItem): boolean => {
@@ -1891,6 +1892,7 @@ export default function TopGearItemSelector({
             onItemContextMenu={openItemContextMenu}
             onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}
+            getDisplayIlevel={getDisplayIlevel}
             hasLimitWarning={hasEmbellishmentLimitWarning}
             isItemSelected={(item) => {
               const identity = makeIdentity(item);

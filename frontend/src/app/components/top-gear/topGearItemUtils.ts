@@ -164,7 +164,12 @@ const SEASONAL_ITEM_MODIFIERS = {
     maxIlevelCap: 298,
     isEligible: (item: ResolvedItem): boolean => {
       if (!isWeaponOrTrinket(item) || !item.upgrade) return false;
-      const low = item.upgrade.toLowerCase();
+      const low = item.upgrade
+        .split(/\s*->\s*/g)
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        .at(-1)
+        ?.toLowerCase() || '';
       const match = low.match(/(\d+)\s*\/\s*(\d+)/);
       const isAtMaxUpgrade = !!match && Number(match[1]) >= Number(match[2]);
       const isHeroOrMythTrack = low.includes('hero') || low.includes('myth');

@@ -143,8 +143,8 @@ function collapseUpgradeLabelPath(
   if (!target && !equipped) return '';
   if (!equipped) {
     if (segments.length > 1) {
-      const first = segments[0];
-      return labelsEqual(first, target) ? target : `${first} -> ${target}`;
+      const previous = segments[segments.length - 2] || '';
+      return labelsEqual(previous, target) ? target : `${previous} -> ${target}`;
     }
     return target;
   }

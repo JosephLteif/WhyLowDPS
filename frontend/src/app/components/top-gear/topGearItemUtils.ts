@@ -59,8 +59,10 @@ export function resolveSourceTags(item: ResolvedItem): BadgeDescriptor[] {
   const pushTag = (rawText: string) => {
     const text = toTitleCase(rawText || '');
     if (!text) return;
+    if (text.includes('->') || text.includes('â†’')) return;
     const key = text.toLowerCase();
     if (key === 'bags' || key === 'equipped') return;
+    if (/^mod:\d+$/.test(key) || key === 'ascendant_voidcore' || /^i?l?v?l[:\s]*\d+$/.test(key)) return;
     if (tags.some((t) => t.text.toLowerCase() === key)) return;
     if (!KNOWN_SOURCE_TAGS.has(key)) {
       tags.push({ text, badgeVariant: 'source' });

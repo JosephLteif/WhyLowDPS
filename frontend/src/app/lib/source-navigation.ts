@@ -66,13 +66,37 @@ export function buildSourceTagLinks(
   item: SourceNavigationItem,
   instances: Instance[]
 ): SourceTagLink[] {
+  const normalizeTagText = (raw: string): string => {
+    const text = String(raw || '').trim();
+    if (!text.includes('->') && !text.includes('â†’')) return text;
+    const segments = text
+      .split(/\s*(?:->|â†’)\s*/g)
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
+    if (segments.length < 3) return text;
+    const from = segments[segments.length - 2];
+    const to = segments[segments.length - 1];
+    return `${from} -> ${to}`;
+  };
+
+  const isSyntheticTag = (raw: string): boolean => {
+    const text = String(raw || '').trim().toLowerCase();
+    if (!text) return true;
+    if (/^mod:\d+$/.test(text)) return true;
+    if (/^i?l?v?l[:\s]*\d+$/.test(text)) return true;
+    if (text === 'ascendant_voidcore' || text === 'ascendant voidcore') return true;
+    return false;
+  };
+
   const detailsPath = sourceDetailsPath(item, instances);
   const listPath = sourceListPath(item);
   const tags = [
     { text: item.instance_name || '', path: detailsPath },
     { text: item.source_type || '', path: listPath },
     { text: item.encounter || '', path: detailsPath },
-  ].filter((tag) => tag.text.trim().length > 0);
+  ]
+    .map((tag) => ({ ...tag, text: normalizeTagText(tag.text) }))
+    .filter((tag) => tag.text.trim().length > 0 && !isSyntheticTag(tag.text));
 
   const seen = new Set<string>();
   return tags.filter((tag) => {

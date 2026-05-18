@@ -125,6 +125,33 @@ function normalizeUpgradeLabel(value?: string | null): string {
     .trim();
 }
 
+function labelsEqual(left?: string | null, right?: string | null): boolean {
+  return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
+}
+
+function collapseUpgradeLabelPath(
+  upgradeLabel: string,
+  equippedUpgradeLabel?: string | null
+): string {
+  const segments = upgradeLabel
+    .split('->')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const target = segments[segments.length - 1] || '';
+  const equipped = normalizeUpgradeLabel(equippedUpgradeLabel);
+
+  if (!target && !equipped) return '';
+  if (!equipped) {
+    if (segments.length > 1) {
+      const first = segments[0];
+      return labelsEqual(first, target) ? target : `${first} -> ${target}`;
+    }
+    return target;
+  }
+  if (!target) return equipped;
+  return labelsEqual(equipped, target) ? target : `${equipped} -> ${target}`;
+}
+
 function upgradeTierClass(label: string): string {
   const targetTier = label.split('->').pop()?.trim().toLowerCase() || label.toLowerCase();
 
@@ -521,14 +548,8 @@ export function GearSlotRow({
   const equippedUpgradeLabel = normalizeUpgradeLabel(
     equippedItem?.upgrade || equippedInfo?.upgrade
   );
-  const upgradeLabelChanged =
-    upgradeLabel &&
-    equippedUpgradeLabel &&
-    upgradeLabel.toLowerCase() !== equippedUpgradeLabel.toLowerCase();
   const displayedUpgradeLabel = upgradeLabel
-    ? upgradeLabelChanged
-      ? `${equippedUpgradeLabel} -> ${upgradeLabel}`
-      : upgradeLabel
+    ? collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel)
     : '';
   const whData =
     item.item_id > 0

@@ -151,6 +151,58 @@ function upgradeTierTagColor(label: string): string {
   return '!border-teal-300/80 !text-teal-100';
 }
 
+function parseUpgradeLabel(value: string): {
+  segments: string[];
+  hasAscendant: boolean;
+} {
+  const raw = String(value || '').trim();
+  if (!raw) return { segments: [], hasAscendant: false };
+
+  const hasAscendant = /\+\s*ascendant\b/i.test(raw);
+
+  const base = raw
+    .replace(/\s*\+\s*ascendant\b/gi, '')
+    .trim();
+
+  const segments = base
+    // supports both "->" and "→"
+    .split(/\s*(?:->|→)\s*/g)
+    .map((segment) =>
+      segment
+        .trim()
+        // "ilvl 298 Myth 6/6" -> "Myth 6/6"
+        .replace(/^ilvl\s+\d+\s+/i, '')
+        .trim()
+    )
+    .filter(Boolean);
+
+  return { segments, hasAscendant };
+}
+
+function clampUpgradeArrowChain(label: string): string {
+  const { segments } = parseUpgradeLabel(label);
+
+  if (segments.length === 0) return '';
+
+  const last = segments[segments.length - 1];
+  const previous = segments.length >= 2 ? segments[segments.length - 2] : '';
+
+  return previous && previous !== last ? `${previous} -> ${last}` : last;
+}
+
+function formatCanonicalUpgradeLabel(
+  selectedUpgradeRaw: string,
+  equippedUpgradeRaw: string,
+  _includeAscendant: boolean
+): string {
+  const selectedSegments = parseUpgradeLabel(selectedUpgradeRaw).segments;
+  const equippedSegments = parseUpgradeLabel(equippedUpgradeRaw).segments;
+  const selected = selectedSegments.length > 0 ? selectedSegments[selectedSegments.length - 1] : '';
+  if (!selected) return '';
+  const equipped = equippedSegments.length > 0 ? equippedSegments[0] : '';
+  return equipped && equipped !== selected ? `${equipped} -> ${selected}` : selected;
+}
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -1497,12 +1549,24 @@ export default function TopGearItemSelector({
         badgeVariant: 'source',
         color: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
       });
-    if (item.upgrade)
-      parts.push({
-        text: item.upgrade,
-        badgeVariant: 'source',
-        color: upgradeTierTagColor(item.upgrade),
-      });
+    if (item.upgrade) {
+      const hasAscendant =
+        hasModifierItemId(item.source_type, 268552) ||
+        String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
+      const displayUpgrade = formatCanonicalUpgradeLabel(
+        item.upgrade,
+        String(resolved.slots[item.slot]?.equipped?.upgrade || ''),
+        hasAscendant
+      );
+      if (displayUpgrade) {
+        const clampedUpgrade = clampUpgradeArrowChain(displayUpgrade);
+        parts.push({
+          text: clampedUpgrade,
+          badgeVariant: 'source',
+          color: upgradeTierTagColor(clampedUpgrade),
+        });
+      }
+    }
     const extraEffects = getItemExtraEffects(item, extraEffectsByKey);
     for (const effect of extraEffects) {
       parts.push({
@@ -1606,7 +1670,13 @@ export default function TopGearItemSelector({
         color: ASCENDANT_VOIDCORE_BADGE_CLASS,
       });
     }
-    return parts;
+    return parts.filter((part) => {
+      const text = String(part.text || '').trim().toLowerCase();
+      if (/^mod:\d+$/.test(text)) return false;
+      if (/^i?l?v?l[:\s]*\d+$/.test(text)) return false;
+      if (text === 'ascendant_voidcore') return false;
+      return true;
+    });
   };
 
   const canOptimizeItem = useCallback(
@@ -1730,9 +1800,13 @@ export default function TopGearItemSelector({
                 .replace(/\s+/g, ' ')
                 .trim();
           const nextTag = enabled ? 'Ascendant' : item.tag === 'Ascendant' ? 'Search' : item.tag;
-          const nextUpgrade = enabled
-            ? `${item.upgrade} + Ascendant`
-            : item.upgrade.replace(/\s*\+\s*Ascendant/i, '');
+          const nextUpgrade = clampUpgradeArrowChain(
+            formatCanonicalUpgradeLabel(
+            item.upgrade,
+            String(resolved.slots[item.slot]?.equipped?.upgrade || ''),
+            enabled
+            )
+          );
           const nextItem: ResolvedItem = {
             ...item,
             origin: 'bags',

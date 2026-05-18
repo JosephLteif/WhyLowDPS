@@ -8,16 +8,12 @@ import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import { CLASS_COLORS, specDisplayName } from '../lib/types';
 import type { PullInfo } from '@/lib/simc-parser';
-import { getFightStyleParamRules } from '../lib/fight-style';
 import { parseCharacterInfo } from '@/lib/simc-parser';
+import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
-import {
-  getAllAppDefaultOptions,
-  getCharacterDefaultsKeyFromSimcInput,
-} from '../lib/default-options';
-import ConsumableSelect, { buildQualityMaxByFamily } from './shared/ConsumableSelect';
+import { getAllAppDefaultOptions, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import RaidBuffGrid from './shared/RaidBuffGrid';
 import ToggleOptionCard from './shared/ToggleOptionCard';
 import ConsumablePicker from './shared/ConsumablePicker';
@@ -349,7 +345,6 @@ export function FightSetupOptions() {
   const {
     simcInput,
     simcFooter,
-    customApl,
     fightStyle,
     setFightStyle,
     targetCount,
@@ -519,10 +514,6 @@ export function ConsumablesAndRaidBuffsOptions() {
   } = useSimContext();
 
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
-  const qualityMaxByFamily = useMemo(
-    () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
-    [flasks, potions, augments, tempEnchants]
-  );
   const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
     bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
     arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },

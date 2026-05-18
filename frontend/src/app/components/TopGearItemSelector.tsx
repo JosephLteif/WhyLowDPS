@@ -3,19 +3,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL, fetchJsonCached } from '../lib/api';
 import type { ResolvedItem, ResolveGearResponse } from '../lib/types';
-import {
-  QUALITY_COLORS,
-  enchantAvailabilityItemKey,
-  useItemInfo,
-  type ItemQuery,
-} from '../lib/useItemInfo';
+import { enchantAvailabilityItemKey, type ItemQuery, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import AddItemModal from './AddItemModal';
 import OptimizeItemModal from './OptimizeItemModal';
-import {
-  ASCENDANT_VOIDCORE_BADGE_CLASS,
-  EMBELLISHMENT_BADGE_CLASS,
-} from './shared/itemBadgeClasses';
+import { ASCENDANT_VOIDCORE_BADGE_CLASS, EMBELLISHMENT_BADGE_CLASS } from './shared/itemBadgeClasses';
 import { useSimContext } from './SimContext';
 import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect';
 import TopGearItemContextMenu from './top-gear/TopGearItemContextMenu';
@@ -27,7 +19,6 @@ import {
   getAscendantModifierIlevelConfig,
   getWowheadData,
   getWowheadUrl,
-  hasModifierItemId,
   isAscendantApplied,
   isAscendantEligible,
   isCraftedSource,
@@ -1699,45 +1690,6 @@ export default function TopGearItemSelector({
       );
     },
     [getDisplayIlevel]
-  );
-
-  const canOptimizeItem = useCallback(
-    (item: ResolvedItem): boolean => {
-      const className = resolved.character.class_name || '';
-      const cacheKey = enchantAvailabilityItemKey(
-        item.slot,
-        className,
-        item.item_id,
-        item.bonus_ids,
-        item.season_id
-      );
-      const hasEnchantOptions = enchantAvailabilityBySlot[cacheKey];
-      const hasGemOptions = item.sockets > 0 || getResolvedGemIds(item).length > 0;
-      const hasEmbellishmentOptions =
-        (embellishmentOptionsByItem[item.item_id]?.length || 0) > 0;
-      const craftedSource = isCraftedSource(item);
-      const hasEmbellishmentByBonus =
-        (embellishmentOptionsByItem[item.item_id] || []).some(
-          (opt) =>
-            Array.isArray(opt.bonus_ids) &&
-            opt.bonus_ids.length > 0 &&
-            opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
-        );
-      const hasExistingEnhancements =
-        item.enchant_id > 0 ||
-        getResolvedGemIds(item).length > 0 ||
-        (item.embellishment_item_id || 0) > 0 ||
-        hasEmbellishmentByBonus ||
-        /(?:^|,)enchant_id=/.test(item.simc_string);
-      return (
-        hasEnchantOptions ||
-        hasGemOptions ||
-        hasEmbellishmentOptions ||
-        craftedSource ||
-        hasExistingEnhancements
-      );
-    },
-    [resolved.character.class_name, enchantAvailabilityBySlot, embellishmentOptionsByItem]
   );
 
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);

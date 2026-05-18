@@ -1,4 +1,5 @@
 import { useRouter } from 'next/navigation';
+import type { CSSProperties } from 'react';
 import { getIconUrl, getWowheadData, getWowheadUrl, QUALITY_COLORS } from '../../lib/useItemInfo';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import type { ResultItem } from '../../lib/types';
@@ -17,6 +18,7 @@ interface ItemTagProps {
   ilevelTagText?: string;
   tierText?: string;
   tierClassName?: string;
+  tierStyle?: CSSProperties;
   ilevelTooltip?: string;
   ilevelHighlightClass?: string;
   gemChanged?: boolean;
@@ -33,6 +35,7 @@ export default function ItemTag({
   ilevelTagText,
   tierText,
   tierClassName = '',
+  tierStyle,
   ilevelTooltip,
   ilevelHighlightClass = '',
   gemChanged = false,
@@ -131,6 +134,7 @@ export default function ItemTag({
             <span
               title={ilevelTooltip}
               className={`inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${tierClassName || 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90'}`}
+              style={tierStyle}
             >
               {tierText}
             </span>

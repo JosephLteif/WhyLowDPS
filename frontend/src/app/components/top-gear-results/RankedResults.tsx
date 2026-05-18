@@ -29,6 +29,7 @@ interface RankedResultsProps {
   onAddResultToWishlist?: (result: TopGearResult) => void;
   isResultWishlisted?: (result: TopGearResult) => boolean;
   sourceInstances?: Instance[];
+  baselineTierBySlot?: Record<string, string>;
 }
 
 export default function RankedResults({
@@ -49,6 +50,7 @@ export default function RankedResults({
   onAddResultToWishlist,
   isResultWishlisted,
   sourceInstances = [],
+  baselineTierBySlot = {},
 }: RankedResultsProps) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? results : results.slice(0, INITIAL_VISIBLE);
@@ -96,6 +98,7 @@ export default function RankedResults({
               }
               isWishlisted={isResultWishlisted ? isResultWishlisted(result) : false}
               sourceInstances={sourceInstances}
+              baselineTierBySlot={baselineTierBySlot}
             />
           );
         })()

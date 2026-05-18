@@ -230,6 +230,66 @@ function upgradeTierClass(label: string): string {
   return 'border-teal-400/40 bg-teal-500/10 text-teal-200';
 }
 
+function tierPalette(label: string): { border: string; bg: string; text: string } {
+  const tier = label.trim().toLowerCase();
+  if (tier.includes('myth')) return { border: 'border-orange-400/55', bg: 'bg-orange-500/15', text: 'text-orange-200' };
+  if (tier.includes('hero')) return { border: 'border-sky-400/45', bg: 'bg-sky-500/12', text: 'text-sky-200' };
+  if (tier.includes('champion')) return { border: 'border-emerald-400/45', bg: 'bg-emerald-500/12', text: 'text-emerald-200' };
+  if (tier.includes('veteran')) return { border: 'border-cyan-400/45', bg: 'bg-cyan-500/12', text: 'text-cyan-200' };
+  if (tier.includes('adventurer')) return { border: 'border-lime-400/45', bg: 'bg-lime-500/12', text: 'text-lime-200' };
+  if (tier.includes('explorer')) return { border: 'border-zinc-400/45', bg: 'bg-zinc-500/12', text: 'text-zinc-200' };
+  return { border: 'border-teal-400/40', bg: 'bg-teal-500/10', text: 'text-teal-200' };
+}
+
+function tierColorHex(label: string): string {
+  const tier = label.trim().toLowerCase();
+  if (tier.includes('myth')) return 'rgba(249, 115, 22, 0.35)';
+  if (tier.includes('hero')) return 'rgba(56, 189, 248, 0.32)';
+  if (tier.includes('champion')) return 'rgba(16, 185, 129, 0.32)';
+  if (tier.includes('veteran')) return 'rgba(34, 211, 238, 0.30)';
+  if (tier.includes('adventurer')) return 'rgba(132, 204, 22, 0.30)';
+  if (tier.includes('explorer')) return 'rgba(113, 113, 122, 0.30)';
+  return 'rgba(20, 184, 166, 0.28)';
+}
+
+function splitTierTransition(label: string): { from: string; to: string } | null {
+  const segments = label
+    .split('->')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const to = segments[segments.length - 1] || '';
+  const from = segments.length > 1 ? segments[segments.length - 2] : '';
+  if (!from || !to || labelsEqual(from, to)) return null;
+  return { from, to };
+}
+
+function tierTransitionClass(label: string): string {
+  const segments = label
+    .split('->')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const to = segments[segments.length - 1] || '';
+  const from = segments.length > 1 ? segments[segments.length - 2] : '';
+  if (!from || !to || labelsEqual(from, to)) return upgradeTierClass(label);
+  const fromPalette = tierPalette(from);
+  const toPalette = tierPalette(to);
+  const fromKey = from.toLowerCase();
+  const toKey = to.toLowerCase();
+  const gradientByPair: Array<[string, string, string]> = [
+    ['myth', 'hero', 'from-orange-500/15 to-sky-500/12'],
+    ['myth', 'champion', 'from-orange-500/15 to-emerald-500/12'],
+    ['hero', 'champion', 'from-sky-500/12 to-emerald-500/12'],
+    ['champion', 'hero', 'from-emerald-500/12 to-sky-500/12'],
+    ['hero', 'veteran', 'from-sky-500/12 to-cyan-500/12'],
+    ['champion', 'veteran', 'from-emerald-500/12 to-cyan-500/12'],
+    ['veteran', 'adventurer', 'from-cyan-500/12 to-lime-500/12'],
+    ['adventurer', 'explorer', 'from-lime-500/12 to-zinc-500/12'],
+  ];
+  const explicit = gradientByPair.find(([a, b]) => fromKey.includes(a) && toKey.includes(b))?.[2];
+  const fallback = `${fromPalette.bg.replace('bg-', 'from-')} ${toPalette.bg.replace('bg-', 'to-')}`;
+  return `${toPalette.border} ${toPalette.text} bg-gradient-to-r ${explicit || fallback}`;
+}
+
 interface GearOverviewProps {
   gear: Record<string, GearItem>;
   title?: string;
@@ -840,13 +900,28 @@ export function GearSlotRow({
               </span>
             ) : null}
             {displayedUpgradeLabel ? (
-              <span
-                className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${upgradeTierClass(
-                  displayedUpgradeLabel
-                )}`}
-              >
-                {displayedUpgradeLabel}
-              </span>
+              (() => {
+                const split = splitTierTransition(displayedUpgradeLabel);
+                if (!split) {
+                  return (
+                    <span
+                      className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${tierTransitionClass(displayedUpgradeLabel)}`}
+                    >
+                      {displayedUpgradeLabel}
+                    </span>
+                  );
+                }
+                return (
+                  <span
+                    className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${tierPalette(split.to).border} ${tierPalette(split.to).text}`}
+                    style={{
+                      backgroundImage: `linear-gradient(90deg, ${tierColorHex(split.from)} 0%, ${tierColorHex(split.from)} 50%, ${tierColorHex(split.to)} 50%, ${tierColorHex(split.to)} 100%)`,
+                    }}
+                  >
+                    {displayedUpgradeLabel}
+                  </span>
+                );
+              })()
             ) : null}
           </>
         }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { ChevronDown } from 'lucide-react';
-import { API_URL, fetchJson } from '../lib/api';
+import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import DpsHeroCard from './DpsHeroCard';
 import GearOverview from './GearOverview';
 import SimStatsComparisonCard from './SimStatsComparisonCard';
@@ -73,6 +73,24 @@ function dropBaselineKey(item: ResultItem): string {
     .toLowerCase()
     .trim();
   return `${slot}:${itemId}:${sourceType}:${instance}:${encounter}`;
+}
+
+function extractTierLevelLabel(item?: { upgrade?: string; tag?: string }): string {
+  if (!item) return '';
+  const candidates = [String(item.upgrade || ''), String(item.tag || '')];
+  for (const candidate of candidates) {
+    const segments = candidate
+      .split(/\s*->\s*/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    for (let i = segments.length - 1; i >= 0; i -= 1) {
+      const match = segments[i].match(/^([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)$/);
+      if (match) {
+        return `${match[1]} ${match[2]}/${match[3]}`;
+      }
+    }
+  }
+  return '';
 }
 
 function CollapsibleSection({
@@ -256,6 +274,68 @@ export default function TopGearResults({
 
   const gemInfoMap = useGemInfo(allGemIds);
   useWowheadTooltips([itemInfoMap]);
+  const equippedUpgradeQueries = useMemo(() => {
+    if (!equippedGear) return [];
+    return Object.values(equippedGear)
+      .filter((item) => Number(item.item_id || 0) > 0)
+      .map((item) => ({
+        slot: item.slot,
+        item_id: Number(item.item_id || 0),
+        bonus_ids: item.bonus_ids || [],
+      }));
+  }, [equippedGear]);
+  const [exactEquippedTierBySlot, setExactEquippedTierBySlot] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    if (equippedUpgradeQueries.length === 0) {
+      setExactEquippedTierBySlot({});
+      return;
+    }
+
+    Promise.all(
+      equippedUpgradeQueries.map(async (item) => {
+        const params = new URLSearchParams();
+        if (item.bonus_ids.length > 0) params.set('bonus_ids', item.bonus_ids.join(','));
+        const info = await fetchJsonCached<ItemInfo>(
+          `${API_URL}/api/item-info/${item.item_id}?${params}`,
+          { usePersistentCache: true, ttl: 86400000 }
+        );
+        return [item.slot, extractTierLevelLabel(info)] as const;
+      })
+    )
+      .then((entries) => {
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const [slot, tier] of entries) {
+          if (tier) next[slot] = tier;
+        }
+        setExactEquippedTierBySlot(next);
+      })
+      .catch(() => {
+        if (!cancelled) setExactEquippedTierBySlot({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [equippedUpgradeQueries]);
+  const baselineTierBySlot = useMemo(() => {
+    const bySlot: Record<string, string> = { ...exactEquippedTierBySlot };
+    if (equippedGear) {
+      for (const item of Object.values(equippedGear)) {
+        const tier = extractTierLevelLabel(item);
+        if (tier && !bySlot[item.slot]) bySlot[item.slot] = tier;
+      }
+    }
+    const equippedResult = results.find(
+      (r) => r.items.length === 0 || r.name.startsWith('Currently Equipped')
+    );
+    for (const item of equippedResult?.items || []) {
+      const tier = extractTierLevelLabel(item);
+      if (tier && !bySlot[item.slot]) bySlot[item.slot] = tier;
+    }
+    return bySlot;
+  }, [equippedGear, exactEquippedTierBySlot, results]);
   const dropBaselineIlevelByKey = useMemo(() => {
     const baseline: Record<string, number> = {};
     for (const r of results) {
@@ -960,6 +1040,7 @@ export default function TopGearResults({
                         }
                         isWishlisted={enableWishlistActions ? isResultWishlisted(result) : false}
                         sourceInstances={sourceInstances}
+                        baselineTierBySlot={baselineTierBySlot}
                       />
                     ))}
                   </div>
@@ -988,6 +1069,7 @@ export default function TopGearResults({
             onAddResultToWishlist={enableWishlistActions ? toggleResultWishlist : undefined}
             isResultWishlisted={enableWishlistActions ? isResultWishlisted : undefined}
             sourceInstances={sourceInstances}
+            baselineTierBySlot={baselineTierBySlot}
           />
         )}
       </CollapsibleSection>

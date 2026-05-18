@@ -533,6 +533,11 @@ export default function TopGearItemSelector({
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
+        const upgradeLabel = formatCanonicalUpgradeLabel(
+          option.fullName,
+          String(slotRes.equipped?.upgrade || item.upgrade || ''),
+          false
+        );
         const copy: ResolvedItem = {
           ...item,
           slot,
@@ -541,7 +546,7 @@ export default function TopGearItemSelector({
           bonus_ids: newBonusIds,
           simc_string: newSimcString,
           ilevel: option.itemLevel,
-          upgrade: option.fullName,
+          upgrade: upgradeLabel,
         };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }
@@ -625,6 +630,11 @@ export default function TopGearItemSelector({
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
+        const upgradeLabel = formatCanonicalUpgradeLabel(
+          option.fullName,
+          String(slotRes.equipped?.upgrade || item.upgrade || ''),
+          false
+        );
         const copy: ResolvedItem = {
           ...item,
           slot,
@@ -633,7 +643,7 @@ export default function TopGearItemSelector({
           bonus_ids: newBonusIds,
           simc_string: newSimcString,
           ilevel: option.itemLevel,
-          upgrade: option.fullName,
+          upgrade: upgradeLabel,
         };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }

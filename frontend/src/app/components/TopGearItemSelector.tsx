@@ -35,7 +35,6 @@ import {
   makeUid,
   parseFirstIdFromSimc,
   parseGemIdsFromSimc,
-  parseModifierItemIds,
   resolveSourceTags,
   sameStringSet,
 } from './top-gear/topGearItemUtils';
@@ -1827,25 +1826,30 @@ export default function TopGearItemSelector({
             gem_ids: nextItem.gem_ids,
             crafted_stats: nextItem.crafted_stats,
             embellishment_item_id: nextItem.embellishment_item_id,
-            modifier_item_ids: parseModifierItemIds(nextItem.source_type),
           });
           const nextVariant: ResolvedItem = { ...nextItem, uid: nextUid };
           const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+          const persistedSlots = new Set<string>();
           for (const [slotKey, slotRes] of Object.entries(nextResolved.slots)) {
             const nextSlot = { ...slotRes };
             if (nextSlot.equipped?.uid === item.uid) {
               // Keep equipped intact; append ascended copy as alternative.
               if (!nextSlot.alternatives.find((alt) => alt.uid === nextUid)) {
                 nextSlot.alternatives = [...nextSlot.alternatives, { ...nextVariant, slot: nextSlot.equipped.slot }];
+                persistedSlots.add(nextSlot.equipped.slot);
               }
             } else if (nextSlot.alternatives.some((alt) => alt.uid === item.uid)) {
               if (!nextSlot.alternatives.find((alt) => alt.uid === nextUid)) {
                 nextSlot.alternatives = [...nextSlot.alternatives, { ...nextVariant, slot: item.slot }];
+                persistedSlots.add(item.slot);
               }
             }
             nextResolved.slots[slotKey] = nextSlot;
           }
           onResolvedChange(nextResolved);
+          for (const slot of persistedSlots) {
+            onItemAdded(slot, nextVariant.simc_string, nextVariant.origin);
+          }
           const nextSelected: Record<string, Set<string>> = {
             ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
           };

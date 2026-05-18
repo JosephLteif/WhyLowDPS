@@ -660,9 +660,13 @@ export function SimProvider({ children }: { children: ReactNode }) {
     if (dataCacheRefreshMinutes <= 0) return;
     let cancelled = false;
     let timer: number | null = null;
+    const refreshKey = 'whylowdps_data_cache_last_auto_refresh_at';
 
     const triggerRefresh = async () => {
       try {
+        try {
+          localStorage.setItem(refreshKey, String(Date.now()));
+        } catch {}
         window.dispatchEvent(new CustomEvent('whylowdps-cache-refresh-start'));
         await fetchJson(`${API_URL}/api/data/sync?force=true`, { method: 'POST' });
       } catch (err: any) {
@@ -671,6 +675,18 @@ export function SimProvider({ children }: { children: ReactNode }) {
         }
       }
     };
+
+    try {
+      const rawLast = localStorage.getItem(refreshKey);
+      const lastMs = rawLast ? Number(rawLast) : 0;
+      const nowMs = Date.now();
+      const intervalMs = dataCacheRefreshMinutes * 60 * 1000;
+      if (!Number.isFinite(lastMs) || lastMs <= 0 || nowMs - lastMs >= intervalMs) {
+        void triggerRefresh();
+      }
+    } catch {
+      void triggerRefresh();
+    }
 
     timer = window.setInterval(
       () => {

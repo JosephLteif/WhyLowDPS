@@ -79,8 +79,11 @@ pub fn enrich(item: &RawParsedItem, slot: &str) -> ResolvedItem {
         )
     };
 
-    let ilevel = if !upgrade.is_empty() && db_ilevel > 0 {
-        db_ilevel
+    // Preserve explicit SimC ilevel overrides (e.g. seasonal modifiers like Ascendant Voidcore).
+    // For normal upgraded items, DB ilevel and parsed ilevel usually match; when they differ,
+    // prefer the higher explicit ilevel if present.
+    let ilevel = if item.ilevel > 0 && db_ilevel > 0 {
+        std::cmp::max(item.ilevel, db_ilevel)
     } else if item.ilevel > 0 {
         item.ilevel
     } else {

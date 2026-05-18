@@ -15,12 +15,18 @@ export interface BadgeDescriptor {
 }
 
 const SOURCE_TAG_OVERRIDES: Record<string, string> = {
-  wishlist: 'text-rose-300 bg-rose-500/15 border-rose-400/40',
-  vault: 'text-violet-200 bg-violet-500/18 border-violet-400/45',
-  search: 'text-sky-200 bg-sky-500/15 border-sky-400/40',
-  crafter: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
-  crafted: 'text-cyan-300 bg-cyan-500/15 border-cyan-400/40',
-  catalyst: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
+  wishlist: '!text-rose-100 !border-rose-300/80',
+  vault: '!text-violet-100 !border-violet-300/80',
+  search: '!text-sky-100 !border-sky-300/80',
+  crafter: '!text-cyan-100 !border-cyan-300/80',
+  crafted: '!text-cyan-100 !border-cyan-300/80',
+  catalyst: '!text-purple-100 !border-purple-300/80',
+  'mythic+': '!text-orange-100 !border-orange-300/80',
+  'mythic': '!text-orange-100 !border-orange-300/80',
+  heroic: '!text-teal-100 !border-teal-300/80',
+  champion: '!text-emerald-100 !border-emerald-300/80',
+  veteran: '!text-sky-100 !border-sky-300/80',
+  adventurer: '!text-lime-100 !border-lime-300/80',
 };
 
 const KNOWN_SOURCE_TAGS = new Set([
@@ -32,6 +38,7 @@ const KNOWN_SOURCE_TAGS = new Set([
   'catalyst',
   'ascendant',
   'mythic+',
+  'mythic',
   'heroic',
   'veteran',
   'champion',
@@ -52,8 +59,10 @@ export function resolveSourceTags(item: ResolvedItem): BadgeDescriptor[] {
   const pushTag = (rawText: string) => {
     const text = toTitleCase(rawText || '');
     if (!text) return;
+    if (text.includes('->') || text.includes('â†’')) return;
     const key = text.toLowerCase();
     if (key === 'bags' || key === 'equipped') return;
+    if (/^mod:\d+$/.test(key) || key === 'ascendant_voidcore' || /^i?l?v?l[:\s]*\d+$/.test(key)) return;
     if (tags.some((t) => t.text.toLowerCase() === key)) return;
     if (!KNOWN_SOURCE_TAGS.has(key)) {
       tags.push({ text, badgeVariant: 'source' });
@@ -143,14 +152,55 @@ export function isWeaponOrTrinket(item: { slot?: string }): boolean {
   return slot === 'main_hand' || slot === 'off_hand' || slot === 'trinket1' || slot === 'trinket2';
 }
 
+interface SeasonalItemModifierRule {
+  maxIlevelDelta: number;
+  maxIlevelCap: number;
+  isEligible: (item: ResolvedItem) => boolean;
+}
+
+const SEASONAL_ITEM_MODIFIERS = {
+  ascendantVoidcore: {
+    maxIlevelDelta: 9,
+    maxIlevelCap: 298,
+    isEligible: (item: ResolvedItem): boolean => {
+      if (!isWeaponOrTrinket(item) || !item.upgrade) return false;
+      const low = item.upgrade
+        .split(/\s*->\s*/g)
+        .map((segment) => segment.trim())
+        .filter(Boolean)
+        .at(-1)
+        ?.toLowerCase() || '';
+      const match = low.match(/(\d+)\s*\/\s*(\d+)/);
+      const isAtMaxUpgrade = !!match && Number(match[1]) >= Number(match[2]);
+      const isHeroOrMythTrack = low.includes('hero') || low.includes('myth');
+      return isAtMaxUpgrade && isHeroOrMythTrack;
+    },
+  },
+} satisfies Record<string, SeasonalItemModifierRule>;
+
+export function getAscendantModifierIlevelConfig(): Pick<SeasonalItemModifierRule, 'maxIlevelDelta' | 'maxIlevelCap'> {
+  const rule = SEASONAL_ITEM_MODIFIERS.ascendantVoidcore;
+  return {
+    maxIlevelDelta: rule.maxIlevelDelta,
+    maxIlevelCap: rule.maxIlevelCap,
+  };
+}
+
 export function isAscendantEligible(item: ResolvedItem): boolean {
-  if (!isWeaponOrTrinket(item) || !item.upgrade) return false;
-  const low = item.upgrade.toLowerCase();
-  const crafted = isCraftedSource(item);
-  if (crafted) return true;
-  const match = low.match(/(\d+)\s*\/\s*(\d+)/);
-  const full = !!match && Number(match[1]) >= Number(match[2]);
-  return full && (low.includes('hero') || low.includes('myth'));
+  return SEASONAL_ITEM_MODIFIERS.ascendantVoidcore.isEligible(item);
+}
+
+export function isAscendantApplied(item: ResolvedItem): boolean {
+  if (
+    hasModifierItemId(item.source_type, 268552) ||
+    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
+    String(item.tag || '').toLowerCase().includes('ascendant')
+  ) {
+    return true;
+  }
+  if (!isAscendantEligible(item)) return false;
+  const { maxIlevelCap } = getAscendantModifierIlevelConfig();
+  return Number(item.ilevel || 0) >= maxIlevelCap;
 }
 
 export function applyAscendantToSimc(simc: string, ilvl: number): string {

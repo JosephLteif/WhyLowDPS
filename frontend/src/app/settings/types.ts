@@ -3,6 +3,7 @@ export interface DataFileState {
   label: string;
   section: string;
   relative_path: string;
+  resolved_path: string;
   required: boolean;
   downloadable: boolean;
   exists: boolean;
@@ -19,6 +20,7 @@ export interface DataFilePreviewResponse {
   key: string;
   label: string;
   relative_path: string;
+  resolved_path: string;
   content: string;
   truncated: boolean;
 }

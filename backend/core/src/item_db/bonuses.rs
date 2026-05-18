@@ -1,5 +1,6 @@
 use super::state::*;
-use crate::types::{BonusData, BonusResolved};
+use crate::types::{BonusData, BonusResolved, ItemBonusDebug};
+use serde_json::Value;
 use std::collections::HashMap;
 
 pub fn track_rank(track: &str) -> Option<usize> {
@@ -82,6 +83,168 @@ pub fn resolve_bonuses(bonus_ids: &[u64], bonuses_map: &HashMap<u64, BonusData>)
     }
 
     result
+}
+
+fn map_raw_stat_to_effect_name(raw: &str) -> Option<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "runspeed" | "speed" => Some("Speed"),
+        "leech" => Some("Leech"),
+        "avoidance" => Some("Avoidance"),
+        "indestructible" => Some("Indestructible"),
+        _ => None,
+    }
+}
+
+fn map_bonus_id_to_effect_name(bid: u64) -> Option<&'static str> {
+    match bid {
+        42 => Some("Speed"),
+        43 => Some("Indestructible"),
+        // Common tertiary ids observed across datasets.
+        40 => Some("Leech"),
+        41 => Some("Avoidance"),
+        _ => None,
+    }
+}
+
+fn push_effect_if_any(raw: &str, effects: &mut Vec<String>) -> bool {
+    if let Some(name) = map_raw_stat_to_effect_name(raw) {
+        let label = name.to_string();
+        if !effects.contains(&label) {
+            effects.push(label);
+        }
+        return true;
+    }
+    false
+}
+
+fn collect_effects_from_raw_stats(raw_stats: Option<&Value>, effects: &mut Vec<String>) -> bool {
+    let Some(value) = raw_stats else {
+        return false;
+    };
+    let mut found = false;
+    match value {
+        Value::String(s) => {
+            found |= push_effect_if_any(s, effects);
+        }
+        Value::Array(arr) => {
+            for entry in arr {
+                match entry {
+                    Value::String(s) => {
+                        found |= push_effect_if_any(s, effects);
+                    }
+                    Value::Object(map) => {
+                        if let Some(stat) = map.get("stat").and_then(|v| v.as_str()) {
+                            found |= push_effect_if_any(stat, effects);
+                        }
+                        for key in map.keys() {
+                            found |= push_effect_if_any(key, effects);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Value::Object(map) => {
+            if let Some(stat) = map.get("stat").and_then(|v| v.as_str()) {
+                found |= push_effect_if_any(stat, effects);
+            }
+            for key in map.keys() {
+                found |= push_effect_if_any(key, effects);
+            }
+        }
+        _ => {}
+    }
+    found
+}
+
+pub fn resolve_extra_effects(
+    bonus_ids: &[u64],
+    bonuses_map: &HashMap<u64, BonusData>,
+) -> Vec<String> {
+    let mut effects: Vec<String> = Vec::new();
+
+    for bid in bonus_ids {
+        let Some(bonus) = bonuses_map.get(bid) else {
+            if let Some(name) = map_bonus_id_to_effect_name(*bid) {
+                let label = name.to_string();
+                if !effects.contains(&label) {
+                    effects.push(label);
+                }
+            }
+            continue;
+        };
+        if let Some(name) = map_bonus_id_to_effect_name(*bid) {
+            let label = name.to_string();
+            if !effects.contains(&label) {
+                effects.push(label);
+            }
+            continue;
+        }
+        let found_from_raw = collect_effects_from_raw_stats(bonus.raw_stats.as_ref(), &mut effects);
+        if found_from_raw {
+            continue;
+        }
+        let tag = bonus
+            .tag
+            .as_ref()
+            .map(|t| t.to_ascii_lowercase())
+            .unwrap_or_default();
+        for (needle, label) in [
+            ("leech", "Leech"),
+            ("speed", "Speed"),
+            ("avoidance", "Avoidance"),
+            ("indestructible", "Indestructible"),
+        ] {
+            if tag.contains(needle) {
+                let label = label.to_string();
+                if !effects.contains(&label) {
+                    effects.push(label);
+                }
+            }
+        }
+    }
+
+    effects
+}
+
+pub fn resolve_bonus_debug(
+    bonus_ids: &[u64],
+    bonuses_map: &HashMap<u64, BonusData>,
+) -> ItemBonusDebug {
+    let mut debug = ItemBonusDebug {
+        bonus_ids: bonus_ids.to_vec(),
+        ..ItemBonusDebug::default()
+    };
+
+    for bid in bonus_ids {
+        let Some(bonus) = bonuses_map.get(bid) else {
+            debug.unknown_bonus_ids.push(*bid);
+            continue;
+        };
+        let is_server_side = bonus.serverside.unwrap_or(false);
+        if is_server_side {
+            debug.server_side_bonus_ids.push(*bid);
+        }
+        let mut tmp = Vec::new();
+        let has_user_facing_raw =
+            collect_effects_from_raw_stats(bonus.raw_stats.as_ref(), &mut tmp);
+        let has_user_facing_tag = bonus
+            .tag
+            .as_ref()
+            .map(|t| {
+                let low = t.to_ascii_lowercase();
+                low.contains("speed")
+                    || low.contains("leech")
+                    || low.contains("avoidance")
+                    || low.contains("indestructible")
+            })
+            .unwrap_or(false);
+        if is_server_side && !has_user_facing_raw && !has_user_facing_tag {
+            debug.ignored_server_side_bonus_ids.push(*bid);
+        }
+    }
+
+    debug
 }
 
 pub fn squish_ilevel(item_id: u64, ilevel: u64) -> u64 {

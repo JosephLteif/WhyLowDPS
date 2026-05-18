@@ -377,6 +377,14 @@ pub async fn start_with_storage_bind(
                     web::get().to(data_sync::get_wowhead_zones_index),
                 )
                 .route(
+                    "/api/data/wowhead-zones-index/summary",
+                    web::get().to(data_sync::get_wowhead_zones_index_summary),
+                )
+                .route(
+                    "/api/data/wowhead-zones-index/match",
+                    web::get().to(data_sync::get_wowhead_zone_match),
+                )
+                .route(
                     "/api/data/images/{type}/{id}",
                     web::get().to(data_sync::get_data_image),
                 )

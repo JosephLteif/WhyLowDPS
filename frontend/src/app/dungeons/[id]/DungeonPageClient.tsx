@@ -6,14 +6,13 @@ import { AlertTriangle } from 'lucide-react';
 import {
   API_URL,
   DungeonInfo,
-  fetchJson,
-  getDungeonData,
-  getMythicKeystoneDungeonDetail,
-  getMythicKeystoneDungeonIndex,
+  fetchJsonCached,
+  getDungeonDataCached,
   type MythicKeystoneDungeonDetail,
 } from '../../lib/api';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { Instance } from '../../drop-finder/types';
+import { getRaidInstances } from '../shared';
 
 type WowheadSpell = {
   id: number;
@@ -42,6 +41,10 @@ type WowheadZone = {
   description?: string;
   image_url?: string;
   encounters?: WowheadEncounter[];
+};
+
+type WowheadZoneMatchResponse = {
+  zone?: WowheadZone | null;
 };
 
 function isHttpUrl(value?: string | null): value is string {
@@ -155,7 +158,6 @@ function renderEncounterDescription(text: string, abilities: WowheadSpell[]): Re
         target="_blank"
         rel="noopener noreferrer"
         className="mx-0.5 inline-flex items-center rounded border border-white/20 bg-black/35 px-1.5 py-0.5 text-xs text-gold hover:bg-black/55"
-        title={decodeHtmlEntities(matched?.description || token)}
       >
         {matched?.icon_url ? (
           <img src={matched.icon_url} alt="" className="mr-1 h-3.5 w-3.5 rounded-sm object-cover" />
@@ -221,7 +223,7 @@ function EncounterAvatar({
   );
 }
 
-export default function DungeonPageClient({ id }: { id: string }) {
+export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string; kind?: 'dungeon' | 'raid' }) {
   const [dungeon, setDungeon] = useState<DungeonInfo | null>(null);
   const [instanceDetails, setInstanceDetails] = useState<Instance | null>(null);
   const [loading, setLoading] = useState(true);
@@ -245,26 +247,30 @@ export default function DungeonPageClient({ id }: { id: string }) {
     }
 
     Promise.all([
-      getDungeonData(),
-      fetchJson<Instance[]>(`${API_URL}/api/instances`),
-      fetchJson<{ zones?: WowheadZone[] }>(`${API_URL}/api/data/wowhead-zones-index`).catch(
-        () => ({ zones: [] }),
-      ),
+      kind === 'dungeon'
+        ? getDungeonDataCached().catch(() => ({ rotation_dungeons: [] as DungeonInfo[] }))
+        : Promise.resolve({ rotation_dungeons: [] as DungeonInfo[] }),
+      fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, {
+        ttl: 60_000,
+      }).catch(() => [] as Instance[]),
     ])
-      .then(async ([seasonData, instances, wowheadFile]) => {
-        const found = seasonData.rotation_dungeons.find((d) => d.id === dungeonId);
+      .then(async ([seasonData, instances]) => {
+        const pool =
+          kind === 'raid'
+            ? getRaidInstances(instances).map((instance) => ({ id: instance.id }))
+            : seasonData.rotation_dungeons;
+        const found = (pool as Array<{ id: number }>).find((d) => d.id === dungeonId) as DungeonInfo | undefined;
         const inst = instances.find((i) => i.id === dungeonId) || null;
         if (inst) setInstanceDetails(inst);
 
-        const zoneRows: WowheadZone[] = Array.isArray(wowheadFile?.zones) ? wowheadFile.zones : [];
-        setWowheadZonesIndex(zoneRows);
-        const lookupName = (found?.name || inst?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const matched =
-          zoneRows.find((z) => Number(z?.id ?? 0) === Number(found?.wowhead_id ?? 0)) ||
-          zoneRows.find((z) => (z?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '') === lookupName) ||
-          zoneRows.find((z) => Number((z?.url || '').match(/zone=(\d+)/)?.[1] ?? 0) === dungeonId) ||
-          null;
+        const lookupName = found?.name || inst?.name || '';
+        const matchedResp = await fetchJsonCached<WowheadZoneMatchResponse>(
+          `${API_URL}/api/data/wowhead-zones-index/match?instance_id=${encodeURIComponent(String(dungeonId))}&wowhead_id=${encodeURIComponent(String(found?.wowhead_id ?? ''))}&name=${encodeURIComponent(lookupName)}&is_raid=${encodeURIComponent(String(kind === 'raid'))}`,
+          { ttl: 60_000 },
+        ).catch(() => ({ zone: null }));
+        const matched = matchedResp?.zone || null;
         setWowheadZone(matched);
+        setWowheadZonesIndex(matched ? [matched] : []);
 
         const resolvedDungeon: DungeonInfo =
           found ??
@@ -292,26 +298,34 @@ export default function DungeonPageClient({ id }: { id: string }) {
           } as DungeonInfo);
         setDungeon(resolvedDungeon);
 
-        try {
-          const index = await getMythicKeystoneDungeonIndex('us');
-          const normalizedFound = resolvedDungeon.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-          const detailId =
-            index?.dungeons?.find(
-              (d) =>
-                String(d?.name || '')
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]/g, '') === normalizedFound,
-            )?.id ?? resolvedDungeon.id;
-          if (Number(detailId) > 0) {
-            const detail = await getMythicKeystoneDungeonDetail(Number(detailId), 'us');
-            setMplusDetail(detail);
+        if (kind === 'dungeon') void (async () => {
+          try {
+            const index = await fetchJsonCached<{ dungeons?: Array<{ id?: number; name?: string }> }>(
+              `${API_URL}/api/blizzard/mythic-keystone/dungeon/index?region=us`,
+              { ttl: 60_000 },
+            );
+            const normalizedFound = resolvedDungeon.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const detailId =
+              index?.dungeons?.find(
+                (d) =>
+                  String(d?.name || '')
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]/g, '') === normalizedFound,
+              )?.id ?? resolvedDungeon.id;
+            if (Number(detailId) > 0) {
+              const detail = await fetchJsonCached<MythicKeystoneDungeonDetail>(
+                `${API_URL}/api/blizzard/mythic-keystone/dungeon/${encodeURIComponent(String(detailId))}?region=us`,
+                { ttl: 60_000 },
+              );
+              setMplusDetail(detail);
+            }
+          } catch {
           }
-        } catch {
-        }
+        })();
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, kind]);
 
   useWowheadTooltips([dungeon, instanceDetails]);
 

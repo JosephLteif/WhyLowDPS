@@ -1,36 +1,37 @@
-import { UNIT_TO_MINUTES, type RefreshUnit } from '../refreshInterval';
 import type { SettingsStatusMessage } from '../types';
 import type { DataCacheSyncProgress } from '../useDataCacheRefresh';
+import { formatBytesDecimal, formatElapsedCompact, formatTransferSpeed } from '../../lib/format';
+
+type RefreshPreset = 'disabled' | 'daily' | 'weekly';
 
 type DataCacheSettingsSectionProps = {
-  refreshEveryValue: number;
-  setRefreshEveryValue: (value: number) => void;
-  refreshEveryUnit: RefreshUnit;
-  setRefreshEveryUnit: (unit: RefreshUnit) => void;
+  refreshPreset: RefreshPreset;
+  setRefreshPreset: (preset: RefreshPreset) => void;
   setDataCacheRefreshMinutes: (minutes: number) => void;
   cacheSyncing: boolean;
   refreshDataCache: () => Promise<void>;
   viewDataStates: () => Promise<void>;
   syncProgress: DataCacheSyncProgress;
   syncProgressPct: number;
-  cacheSyncProgress: string;
   cacheMessage: SettingsStatusMessage | null;
 };
 
 export default function DataCacheSettingsSection({
-  refreshEveryValue,
-  setRefreshEveryValue,
-  refreshEveryUnit,
-  setRefreshEveryUnit,
+  refreshPreset,
+  setRefreshPreset,
   setDataCacheRefreshMinutes,
   cacheSyncing,
   refreshDataCache,
   viewDataStates,
   syncProgress,
   syncProgressPct,
-  cacheSyncProgress,
   cacheMessage,
 }: DataCacheSettingsSectionProps) {
+  const fileProgressPct =
+    syncProgress.totalBytes > 0
+      ? Math.min(100, Math.round((syncProgress.downloadedBytes / syncProgress.totalBytes) * 100))
+      : null;
+
   return (
     <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
       <h2 className="mb-3 text-xl font-semibold text-white">Game Data Cache</h2>
@@ -44,38 +45,29 @@ export default function DataCacheSettingsSection({
           <div className="space-y-1">
             <p className="text-sm font-medium text-zinc-200">Auto refresh interval</p>
             <p className="text-[13px] text-zinc-500">
-              Refresh the game data cache automatically while the app is open. Set value to 0 to
-              disable.
+              Refresh the game data cache automatically. If a refresh window was missed while the
+              app was closed, it runs on next open.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min={0}
-              max={999}
-              step={1}
-              value={refreshEveryValue}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                const nextValue = Number.isFinite(val) && val > 0 ? val : 0;
-                setRefreshEveryValue(nextValue);
-                setDataCacheRefreshMinutes(nextValue * UNIT_TO_MINUTES[refreshEveryUnit]);
-              }}
-              className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
             <select
-              value={refreshEveryUnit}
+              value={refreshPreset}
               onChange={(e) => {
-                const nextUnit = e.target.value as RefreshUnit;
-                setRefreshEveryUnit(nextUnit);
-                setDataCacheRefreshMinutes(refreshEveryValue * UNIT_TO_MINUTES[nextUnit]);
+                const nextPreset = e.target.value as RefreshPreset;
+                setRefreshPreset(nextPreset);
+                if (nextPreset === 'daily') {
+                  setDataCacheRefreshMinutes(24 * 60);
+                } else if (nextPreset === 'weekly') {
+                  setDataCacheRefreshMinutes(7 * 24 * 60);
+                } else {
+                  setDataCacheRefreshMinutes(0);
+                }
               }}
               className="rounded border border-border bg-surface-2 px-2 py-1 text-xs text-zinc-200 focus:border-gold/50 focus:outline-none"
             >
-              <option value="minutes">Minutes</option>
-              <option value="hours">Hours</option>
-              <option value="days">Days</option>
-              <option value="weeks">Weeks</option>
+              <option value="disabled">Disabled</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
             </select>
           </div>
         </div>
@@ -115,12 +107,27 @@ export default function DataCacheSettingsSection({
                 style={{ width: `${syncProgressPct}%` }}
               />
             </div>
-          </div>
-        )}
-
-        {!!cacheSyncProgress && (
-          <div className="rounded-lg border border-border bg-surface-2 p-3">
-            <p className="text-sm text-zinc-200">{syncProgress.details || cacheSyncProgress}</p>
+            {syncProgress.task === 'Files' && (
+              <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+                <span>File size</span>
+                <span className="text-right text-zinc-300">
+                  {formatBytesDecimal(syncProgress.totalBytes)}
+                </span>
+                <span>Downloaded</span>
+                <span className="text-right text-zinc-300">
+                  {formatBytesDecimal(syncProgress.downloadedBytes)}
+                  {fileProgressPct != null ? ` (${fileProgressPct}%)` : ''}
+                </span>
+                <span>Speed</span>
+                <span className="text-right text-zinc-300">
+                  {formatTransferSpeed(syncProgress.speedBytesPerSec)}
+                </span>
+                <span>Time spent</span>
+                <span className="text-right text-zinc-300">
+                  {formatElapsedCompact(syncProgress.elapsedSeconds)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 

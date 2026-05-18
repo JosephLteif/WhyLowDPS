@@ -237,7 +237,7 @@ pub fn temp_enchant_options_raw() -> Arc<Vec<Value>> {
 }
 
 // Re-exports from bonuses
-pub use bonuses::{is_minimum_track, resolve_bonuses, track_rank, upgrade_track_max};
+pub use bonuses::{is_minimum_track, resolve_bonuses, resolve_extra_effects, track_rank, upgrade_track_max};
 pub use upgrades::describe_upgrade_from_bonus_ids;
 
 pub use loader::hydrate_runtime_metadata;
@@ -283,8 +283,12 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
     let mut upgrade = String::new();
 
     let mut bonus_set_ilevel = false;
+    let mut extra_effects: Vec<String> = Vec::new();
+    let mut bonus_debug = None;
     if let Some(bids) = bonus_ids {
         let resolved = bonuses::resolve_bonuses(bids, &bonuses());
+        extra_effects = bonuses::resolve_extra_effects(bids, &bonuses());
+        bonus_debug = Some(bonuses::resolve_bonus_debug(bids, &bonuses()));
         if let Some(q) = resolved.quality {
             quality = q;
         }
@@ -328,6 +332,8 @@ pub fn get_item_info(item_id: u64, bonus_ids: Option<&[u64]>) -> Option<ItemInfo
         inventory_type: item.inventory_type.unwrap_or(0),
         item_class: item.class.unwrap_or(0),
         item_subclass: item.subclass.unwrap_or(0),
+        extra_effects,
+        bonus_debug,
     })
 }
 

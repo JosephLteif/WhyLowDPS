@@ -11,6 +11,7 @@ import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 
 interface RouteDetailsModalProps {
   route: SavedRoute;
+  dungeonDetailsId?: number | null;
   onClose: () => void;
   formatHealth?: (hp: number) => string;
   formatTime?: (s: number) => string;
@@ -18,6 +19,7 @@ interface RouteDetailsModalProps {
 
 export default function RouteDetailsModal({
   route,
+  dungeonDetailsId,
   onClose,
   formatHealth: propFormatHealth,
   formatTime: propFormatTime,
@@ -84,6 +86,21 @@ export default function RouteDetailsModal({
                 <span>{route.dungeon}</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-800" />
                 <span className="text-sky-400">+{route.level} Level</span>
+                {dungeonDetailsId ? (
+                  <>
+                    <span className="h-1 w-1 rounded-full bg-zinc-800" />
+                    <button
+                      onClick={() =>
+                        router.push(
+                          `/dungeons/details/?id=${encodeURIComponent(String(dungeonDetailsId))}`,
+                        )
+                      }
+                      className="text-xs font-semibold text-gold transition-colors hover:text-gold/80 hover:underline"
+                    >
+                      Open Dungeon
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>

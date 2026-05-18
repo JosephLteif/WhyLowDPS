@@ -7,6 +7,10 @@ export type DataCacheSyncProgress = {
   current: number;
   total: number;
   details: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  elapsedSeconds: number;
+  speedBytesPerSec: number;
 };
 
 function parseSyncStatus(status: any): string {
@@ -19,12 +23,31 @@ function parseSyncStatus(status: any): string {
 
 function parseProgress(progress: string): DataCacheSyncProgress {
   const parts = progress.split(':');
-  if (parts.length < 4) return { task: '', current: 0, total: 0, details: progress };
+  if (parts.length < 4) {
+    return {
+      task: '',
+      current: 0,
+      total: 0,
+      details: progress,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      elapsedSeconds: 0,
+      speedBytesPerSec: 0,
+    };
+  }
+  const downloadedBytes = Number(parts[4] || 0);
+  const totalBytes = Number(parts[5] || 0);
+  const elapsedMs = Number(parts[6] || 0);
+  const speedBytesPerSec = Number(parts[7] || 0);
   return {
     task: parts[0],
     current: parseInt(parts[1], 10),
     total: parseInt(parts[2], 10),
     details: parts[3],
+    downloadedBytes: Number.isFinite(downloadedBytes) ? downloadedBytes : 0,
+    totalBytes: Number.isFinite(totalBytes) ? totalBytes : 0,
+    elapsedSeconds: Number.isFinite(elapsedMs) ? elapsedMs / 1000 : 0,
+    speedBytesPerSec: Number.isFinite(speedBytesPerSec) ? speedBytesPerSec : 0,
   };
 }
 

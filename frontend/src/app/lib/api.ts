@@ -123,6 +123,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
 
 /** Cache for generic API requests */
 const memoryCache: Record<string, { data: any; expiry: number }> = {};
+const inflightCache: Record<string, Promise<any> | undefined> = {};
 
 /**
  * Fetches JSON and caches it in memory or localStorage.
@@ -168,16 +169,26 @@ export async function fetchJsonCached<T>(
   }
 
   // 3. Fetch Fresh
-  const data = await fetchJson<T>(url, init);
-
-  // 4. Update Caches
-  const cacheEntry = { data, expiry: now + ttl };
-  memoryCache[cacheKey] = cacheEntry;
-  if (usePersistentCache && typeof window !== 'undefined') {
-    localStorage.setItem(cacheKey, JSON.stringify(cacheEntry));
+  if (inflightCache[cacheKey]) {
+    return inflightCache[cacheKey] as Promise<T>;
   }
+  inflightCache[cacheKey] = (async () => {
+    try {
+      const data = await fetchJson<T>(url, init);
 
-  return data;
+      // 4. Update Caches
+      const cacheEntry = { data, expiry: now + ttl };
+      memoryCache[cacheKey] = cacheEntry;
+      if (usePersistentCache && typeof window !== 'undefined') {
+        localStorage.setItem(cacheKey, JSON.stringify(cacheEntry));
+      }
+      return data;
+    } finally {
+      delete inflightCache[cacheKey];
+    }
+  })();
+
+  return inflightCache[cacheKey] as Promise<T>;
 }
 
 export async function deleteSim(id: string): Promise<void> {

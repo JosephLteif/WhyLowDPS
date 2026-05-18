@@ -26,6 +26,7 @@ import { API_URL, fetchJson } from '../lib/api';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { Instance } from '../drop-finder/types';
 import { buildSourceTagLinks } from '../lib/source-navigation';
+import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect';
 import GearItemRow from './GearItemRow';
 import {
   ASCENDANT_VOIDCORE_BADGE_CLASS,
@@ -124,6 +125,86 @@ function normalizeUpgradeLabel(value?: string | null): string {
     .trim();
 }
 
+function labelsEqual(left?: string | null, right?: string | null): boolean {
+  return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
+}
+
+function collapseUpgradeLabelPath(
+  upgradeLabel: string,
+  equippedUpgradeLabel?: string | null
+): string {
+  const segments = upgradeLabel
+    .split('->')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const target = segments[segments.length - 1] || '';
+  const equipped = normalizeUpgradeLabel(equippedUpgradeLabel);
+
+  if (!target && !equipped) return '';
+  if (!equipped) {
+    if (segments.length > 1) {
+      const previous = segments[segments.length - 2] || '';
+      return labelsEqual(previous, target) ? target : `${previous} -> ${target}`;
+    }
+    return target;
+  }
+  if (!target) return equipped;
+  return labelsEqual(equipped, target) ? target : `${equipped} -> ${target}`;
+}
+
+function parseTrackLevel(label: string): { track: string; level: number; max: number } | null {
+  const match = label.match(/\b([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)\b/);
+  if (!match) return null;
+  return {
+    track: match[1],
+    level: Number(match[2]),
+    max: Number(match[3]),
+  };
+}
+
+function formatUpgradePreviewLabel({
+  upgradeLabel,
+  equippedUpgradeLabel,
+  itemIlevel,
+  equippedIlevel,
+  upgradeLevels,
+  sourceType,
+}: {
+  upgradeLabel: string;
+  equippedUpgradeLabel?: string | null;
+  itemIlevel: number;
+  equippedIlevel: number;
+  upgradeLevels?: number;
+  sourceType?: string | null;
+}): string {
+  const collapsed = collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel);
+  if (collapsed.includes('->')) return collapsed;
+  if (equippedIlevel <= 0 || itemIlevel <= 0 || equippedIlevel === itemIlevel) return collapsed;
+
+  const target = parseTrackLevel(collapsed);
+  if (!target) return collapsed;
+
+  const levels = Number(upgradeLevels || 0);
+  if (levels > 0 && target.level > levels) {
+    return `${target.track} ${target.level - levels}/${target.max} -> ${target.track} ${target.level}/${target.max}`;
+  }
+
+  const ascendantDelta = /(?:^|\s)mod:268552(?:\s|$)|ascendant_voidcore/i.test(String(sourceType || ''))
+    ? 9
+    : 0;
+  const targetBaseIlevel = Math.max(equippedIlevel, itemIlevel - ascendantDelta);
+  const ilevelDelta = targetBaseIlevel - equippedIlevel;
+  const inferredLevelDelta = Math.min(
+    target.level - 1,
+    Math.max(1, Math.round(ilevelDelta / 3.5))
+  );
+  const previousLevel = target.level - inferredLevelDelta;
+
+  return previousLevel > 0 && previousLevel !== target.level
+    ? `${target.track} ${previousLevel}/${target.max} -> ${target.track} ${target.level}/${target.max}`
+    : collapsed;
+}
+
 function upgradeTierClass(label: string): string {
   const targetTier = label.split('->').pop()?.trim().toLowerCase() || label.toLowerCase();
 
@@ -147,6 +228,66 @@ function upgradeTierClass(label: string): string {
   }
 
   return 'border-teal-400/40 bg-teal-500/10 text-teal-200';
+}
+
+function tierPalette(label: string): { border: string; bg: string; text: string } {
+  const tier = label.trim().toLowerCase();
+  if (tier.includes('myth')) return { border: 'border-orange-400/55', bg: 'bg-orange-500/15', text: 'text-orange-200' };
+  if (tier.includes('hero')) return { border: 'border-sky-400/45', bg: 'bg-sky-500/12', text: 'text-sky-200' };
+  if (tier.includes('champion')) return { border: 'border-emerald-400/45', bg: 'bg-emerald-500/12', text: 'text-emerald-200' };
+  if (tier.includes('veteran')) return { border: 'border-cyan-400/45', bg: 'bg-cyan-500/12', text: 'text-cyan-200' };
+  if (tier.includes('adventurer')) return { border: 'border-lime-400/45', bg: 'bg-lime-500/12', text: 'text-lime-200' };
+  if (tier.includes('explorer')) return { border: 'border-zinc-400/45', bg: 'bg-zinc-500/12', text: 'text-zinc-200' };
+  return { border: 'border-teal-400/40', bg: 'bg-teal-500/10', text: 'text-teal-200' };
+}
+
+function tierColorHex(label: string): string {
+  const tier = label.trim().toLowerCase();
+  if (tier.includes('myth')) return 'rgba(249, 115, 22, 0.35)';
+  if (tier.includes('hero')) return 'rgba(56, 189, 248, 0.32)';
+  if (tier.includes('champion')) return 'rgba(16, 185, 129, 0.32)';
+  if (tier.includes('veteran')) return 'rgba(34, 211, 238, 0.30)';
+  if (tier.includes('adventurer')) return 'rgba(132, 204, 22, 0.30)';
+  if (tier.includes('explorer')) return 'rgba(113, 113, 122, 0.30)';
+  return 'rgba(20, 184, 166, 0.28)';
+}
+
+function splitTierTransition(label: string): { from: string; to: string } | null {
+  const segments = label
+    .split('->')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const to = segments[segments.length - 1] || '';
+  const from = segments.length > 1 ? segments[segments.length - 2] : '';
+  if (!from || !to || labelsEqual(from, to)) return null;
+  return { from, to };
+}
+
+function tierTransitionClass(label: string): string {
+  const segments = label
+    .split('->')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const to = segments[segments.length - 1] || '';
+  const from = segments.length > 1 ? segments[segments.length - 2] : '';
+  if (!from || !to || labelsEqual(from, to)) return upgradeTierClass(label);
+  const fromPalette = tierPalette(from);
+  const toPalette = tierPalette(to);
+  const fromKey = from.toLowerCase();
+  const toKey = to.toLowerCase();
+  const gradientByPair: Array<[string, string, string]> = [
+    ['myth', 'hero', 'from-orange-500/15 to-sky-500/12'],
+    ['myth', 'champion', 'from-orange-500/15 to-emerald-500/12'],
+    ['hero', 'champion', 'from-sky-500/12 to-emerald-500/12'],
+    ['champion', 'hero', 'from-emerald-500/12 to-sky-500/12'],
+    ['hero', 'veteran', 'from-sky-500/12 to-cyan-500/12'],
+    ['champion', 'veteran', 'from-emerald-500/12 to-cyan-500/12'],
+    ['veteran', 'adventurer', 'from-cyan-500/12 to-lime-500/12'],
+    ['adventurer', 'explorer', 'from-lime-500/12 to-zinc-500/12'],
+  ];
+  const explicit = gradientByPair.find(([a, b]) => fromKey.includes(a) && toKey.includes(b))?.[2];
+  const fallback = `${fromPalette.bg.replace('bg-', 'from-')} ${toPalette.bg.replace('bg-', 'to-')}`;
+  return `${toPalette.border} ${toPalette.text} bg-gradient-to-r ${explicit || fallback}`;
 }
 
 interface GearOverviewProps {
@@ -213,6 +354,7 @@ export default function GearOverview({
   }, [gear]);
 
   const itemInfoMap = useItemInfo(allItemQueries);
+  const extraEffectsByKey = useItemExtraEffects(allItemQueries);
 
   const allEnchantIds = useMemo(() => {
     const ids = new Set<number>();
@@ -347,6 +489,7 @@ export default function GearOverview({
               characterClassName={characterClassName}
               enchantAvailabilityBySlot={enchantAvailabilityBySlot}
               embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+              extraEffectsByKey={extraEffectsByKey}
               sourceInstances={effectiveSourceInstances}
             />
           ))}
@@ -372,6 +515,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 sourceInstances={effectiveSourceInstances}
               />
             ))}
@@ -394,6 +538,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 reverse
                 sourceInstances={effectiveSourceInstances}
               />
@@ -418,6 +563,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 reverse
                 sourceInstances={effectiveSourceInstances}
               />
@@ -437,6 +583,7 @@ export default function GearOverview({
                 characterClassName={characterClassName}
                 enchantAvailabilityBySlot={enchantAvailabilityBySlot}
                 embellishmentOptionsByItemId={embellishmentOptionsByItemId}
+                extraEffectsByKey={extraEffectsByKey}
                 sourceInstances={effectiveSourceInstances}
               />
             </div>
@@ -461,6 +608,7 @@ export function GearSlotRow({
   characterClassName,
   enchantAvailabilityBySlot,
   embellishmentOptionsByItemId,
+  extraEffectsByKey,
   reverse = false,
   sourceInstances = [],
 }: {
@@ -477,6 +625,7 @@ export function GearSlotRow({
   characterClassName?: string | null;
   enchantAvailabilityBySlot: Record<string, boolean>;
   embellishmentOptionsByItemId: Record<number, EmbellishmentOption[]>;
+  extraEffectsByKey: Record<string, Array<'Leech' | 'Speed' | 'Avoidance' | 'Indestructible'>>;
   reverse?: boolean;
   sourceInstances?: Instance[];
 }) {
@@ -512,14 +661,15 @@ export function GearSlotRow({
   const equippedUpgradeLabel = normalizeUpgradeLabel(
     equippedItem?.upgrade || equippedInfo?.upgrade
   );
-  const upgradeLabelChanged =
-    upgradeLabel &&
-    equippedUpgradeLabel &&
-    upgradeLabel.toLowerCase() !== equippedUpgradeLabel.toLowerCase();
   const displayedUpgradeLabel = upgradeLabel
-    ? upgradeLabelChanged
-      ? `${equippedUpgradeLabel} -> ${upgradeLabel}`
-      : upgradeLabel
+    ? formatUpgradePreviewLabel({
+        upgradeLabel,
+        equippedUpgradeLabel,
+        itemIlevel: Number(item.ilevel || 0),
+        equippedIlevel: Number(equippedItem?.ilevel || 0),
+        upgradeLevels: Number(item.upgrade_levels || 0),
+        sourceType: item.source_type,
+      })
     : '';
   const whData =
     item.item_id > 0
@@ -533,6 +683,18 @@ export function GearSlotRow({
   const levelChanged =
     Number(equippedItem?.ilevel || 0) > 0 &&
     Number(equippedItem?.ilevel || 0) !== Number(item.ilevel || 0);
+  const ilevelTagText =
+    Number(item.ilevel || 0) > 0
+      ? levelChanged
+        ? `iLvl ${Number(equippedItem?.ilevel || 0)} -> ${Number(item.ilevel || 0)}`
+        : `iLvl ${Number(item.ilevel || 0)}`
+      : '';
+  const ilevelTagClass =
+    levelChanged && Number(item.ilevel || 0) < Number(equippedItem?.ilevel || 0)
+      ? 'bg-red-500/12 border-red-400/45 text-red-200'
+      : levelChanged && Number(item.ilevel || 0) > Number(equippedItem?.ilevel || 0)
+        ? 'bg-emerald-500/12 border-emerald-400/45 text-emerald-200'
+        : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200';
   const comparisonState: 'upgrade' | 'downgrade' | null = isDowngrade
     ? 'downgrade'
     : isUpgrade
@@ -661,6 +823,21 @@ export function GearSlotRow({
       color: EMBELLISHMENT_BADGE_CLASS,
     });
   }
+  for (const effect of getItemExtraEffects(
+    {
+      item_id: item.item_id,
+      bonus_ids: item.bonus_ids || [],
+      source_type: item.source_type || '',
+      extra_effects: info?.extra_effects,
+    },
+    extraEffectsByKey
+  )) {
+    details.push({
+      text: effect,
+      badgeVariant: 'mod',
+      color: 'text-cyan-200 border-cyan-300/40 bg-cyan-500/10',
+    });
+  }
   const hasAscendantVoidcore =
     /(?:^|\s)mod:268552(?:\s|$)/i.test(String(item.source_type || '')) ||
     String(item.source_type || '')
@@ -710,30 +887,41 @@ export function GearSlotRow({
                   </button>
                 ))
               : null}
-            <span
-              className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
-                upgradeState === 'upgrade'
-                  ? 'bg-emerald-500/12 border-emerald-400/45 text-emerald-200'
-                  : upgradeState === 'downgrade'
-                    ? 'bg-red-500/12 border-red-400/45 text-red-200'
-                    : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'
-              }`}
-              title={
-                levelChanged
-                  ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
-                  : undefined
-              }
-            >
-              iLvl {item.ilevel || 0}
-            </span>
-            {displayedUpgradeLabel ? (
+            {ilevelTagText ? (
               <span
-                className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${upgradeTierClass(
-                  displayedUpgradeLabel
-                )}`}
+                className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${ilevelTagClass}`}
+                title={
+                  levelChanged
+                    ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`
+                    : undefined
+                }
               >
-                {displayedUpgradeLabel}
+                {ilevelTagText}
               </span>
+            ) : null}
+            {displayedUpgradeLabel ? (
+              (() => {
+                const split = splitTierTransition(displayedUpgradeLabel);
+                if (!split) {
+                  return (
+                    <span
+                      className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${tierTransitionClass(displayedUpgradeLabel)}`}
+                    >
+                      {displayedUpgradeLabel}
+                    </span>
+                  );
+                }
+                return (
+                  <span
+                    className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${tierPalette(split.to).border} ${tierPalette(split.to).text}`}
+                    style={{
+                      backgroundImage: `linear-gradient(90deg, ${tierColorHex(split.from)} 0%, ${tierColorHex(split.from)} 50%, ${tierColorHex(split.to)} 50%, ${tierColorHex(split.to)} 100%)`,
+                    }}
+                  >
+                    {displayedUpgradeLabel}
+                  </span>
+                );
+              })()
             ) : null}
           </>
         }

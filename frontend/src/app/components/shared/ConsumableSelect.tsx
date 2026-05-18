@@ -110,6 +110,7 @@ export default function ConsumableSelect({
   qualityMaxByFamily,
   disabled = false,
 }: ConsumableSelectProps) {
+  const wowheadDataToHref = (wh?: string) => (wh ? `https://www.wowhead.com/${wh}` : undefined);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   useWowheadTooltips([open, value, options.length]);
@@ -177,8 +178,12 @@ export default function ConsumableSelect({
         >
           {selected?.icon || (selected?.itemId && itemIcons.get(selected.itemId)) ? (
             <a
-              href="#"
-              onClick={(e) => e.preventDefault()}
+              href={wowheadDataToHref(
+                selected?.itemId ? `item=${selected.itemId}` : selected?.spellId ? `spell=${selected.spellId}` : undefined
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               data-wowhead={
                 selected?.itemId
                   ? `item=${selected.itemId}`
@@ -200,8 +205,12 @@ export default function ConsumableSelect({
             <span className="h-5 w-5 shrink-0 rounded-[4px] border border-border bg-surface-2" />
           )}
           <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
+            href={wowheadDataToHref(
+              selected?.itemId ? `item=${selected.itemId}` : selected?.spellId ? `spell=${selected.spellId}` : undefined
+            )}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
             className="flex min-w-0 items-center gap-1.5"
             data-wowhead={
               selected?.itemId
@@ -259,12 +268,16 @@ export default function ConsumableSelect({
                   }}
                 >
                   <a
-                    href="#"
-                    onClick={(e) => {
-                      if (!hasQuality) {
-                        e.preventDefault();
-                      }
-                    }}
+                    href={wowheadDataToHref(
+                      group.itemId
+                        ? `item=${group.itemId}`
+                        : group.items[0]?.spellId
+                          ? `spell=${group.items[0].spellId}`
+                          : undefined
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
                     data-wowhead={
                       group.itemId
                         ? `item=${group.itemId}`
@@ -304,9 +317,9 @@ export default function ConsumableSelect({
                           const qName = q === 3 ? 'Gold' : q === 2 ? 'Silver' : 'Bronze';
 
                           return (
-                            <a
+                            <button
                               key={opt.key}
-                              href="#"
+                              type="button"
                               title={`Quality: ${qName}`}
                               onClick={(e) => {
                                 e.preventDefault();

@@ -6,12 +6,25 @@ import { API_URL, isDesktop } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { invoke } from '@tauri-apps/api/core';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { formatBytesDecimal, formatElapsedCompact, formatTransferSpeed } from '../lib/format';
+import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 
 interface SplashScreenProps {
   status: string;
   progress: string;
   onRetry?: () => void;
 }
+
+type SplashProgress = {
+  task: string;
+  current: number;
+  total: number;
+  details: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  elapsedSeconds: number;
+  speedBytesPerSec: number;
+};
 
 export default function SplashScreen({ status, progress, onRetry }: SplashScreenProps) {
   const { login, setSystemCredentials } = useAuth();
@@ -21,6 +34,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
   const [showDebug, setShowDebug] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [showDebugButton, setShowDebugButton] = useState(false);
+  const isDebugMode = process.env.NODE_ENV === 'development';
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -59,23 +73,48 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
     statusString === 'syncing' || (typeof status === 'string' && status === 'syncing');
 
   // Helper to parse: "TASK:CURRENT:TOTAL:DETAILS"
-  const parseProgress = (str: string) => {
+  const parseProgress = (str: string): SplashProgress => {
     const parts = str.split(':');
-    if (parts.length < 4) return { task: '', current: 0, total: 0, details: str };
+    if (parts.length < 4) {
+      return {
+        task: '',
+        current: 0,
+        total: 0,
+        details: str,
+        downloadedBytes: 0,
+        totalBytes: 0,
+        elapsedSeconds: 0,
+        speedBytesPerSec: 0,
+      };
+    }
+    const downloadedBytes = Number(parts[4] || 0);
+    const totalBytes = Number(parts[5] || 0);
+    const elapsedMs = Number(parts[6] || 0);
+    const speedBytesPerSec = Number(parts[7] || 0);
     return {
       task: parts[0],
       current: parseInt(parts[1], 10),
       total: parseInt(parts[2], 10),
       details: parts[3],
+      downloadedBytes: Number.isFinite(downloadedBytes) ? downloadedBytes : 0,
+      totalBytes: Number.isFinite(totalBytes) ? totalBytes : 0,
+      elapsedSeconds: Number.isFinite(elapsedMs) ? elapsedMs / 1000 : 0,
+      speedBytesPerSec: Number.isFinite(speedBytesPerSec) ? speedBytesPerSec : 0,
     };
   };
 
   const progressData = parseProgress(progress);
   const progressPercent =
     progressData.total > 0 ? Math.round((progressData.current / progressData.total) * 100) : 0;
+  const fileProgressPercent =
+    progressData.totalBytes > 0
+      ? Math.min(100, Math.round((progressData.downloadedBytes / progressData.totalBytes) * 100))
+      : null;
 
   return (
     <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden bg-zinc-950">
+      <DesktopWindowTitleBar overlay />
+
       {/* Background Glows */}
       <div className="absolute left-1/4 top-1/4 h-96 w-96 animate-pulse rounded-full bg-gold/10 blur-[120px]" />
       <div className="absolute bottom-1/4 right-1/4 h-96 w-96 animate-pulse rounded-full bg-gold-dark/10 blur-[120px] delay-1000" />
@@ -130,6 +169,27 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
                   </p>
                   {progressData.total > 0 && (
                     <p className="text-[10px] text-zinc-500">{progressPercent}% Complete</p>
+                  )}
+                  {progressData.task === 'Files' && (
+                    <div className="mt-2 grid w-full grid-cols-2 gap-x-4 gap-y-1 text-[10px] text-zinc-500">
+                      <span>File size</span>
+                      <span className="text-right text-zinc-300">
+                        {formatBytesDecimal(progressData.totalBytes)}
+                      </span>
+                      <span>Downloaded</span>
+                      <span className="text-right text-zinc-300">
+                        {formatBytesDecimal(progressData.downloadedBytes)}
+                        {fileProgressPercent != null ? ` (${fileProgressPercent}%)` : ''}
+                      </span>
+                      <span>Speed</span>
+                      <span className="text-right text-zinc-300">
+                        {formatTransferSpeed(progressData.speedBytesPerSec)}
+                      </span>
+                      <span>Time spent</span>
+                      <span className="text-right text-zinc-300">
+                        {formatElapsedCompact(progressData.elapsedSeconds)}
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
@@ -231,7 +291,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
             Version {APP_VERSION_WITH_PREFIX} • Production Ready
           </div>
 
-          {showDebugButton && isDesktop && (
+          {showDebugButton && isDesktop && isDebugMode && (
             <button
               onClick={fetchDebugInfo}
               className="text-[9px] font-bold uppercase tracking-widest text-zinc-700 transition-colors hover:text-gold"

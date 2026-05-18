@@ -193,11 +193,9 @@ export default function TopGearItemSelector({
   } | null>(null);
 
   const {
-    upgradeMenuFor,
     setUpgradeMenuFor,
     upgradeOptions,
     loadingUpgrades,
-    hasUpgradePathByUid,
     isAddItemOpen,
     setAddItemOpen,
     addItemSlot,
@@ -206,7 +204,6 @@ export default function TopGearItemSelector({
     optimizeItem,
     openAddItem,
     openOptimize,
-    openUpgradeMenu,
     loadUpgradeOptions,
     deselectAll,
     selectAll,
@@ -1811,18 +1808,8 @@ export default function TopGearItemSelector({
             equipped={equipped}
             alternatives={alternatives}
             itemInfoMap={itemInfoMap}
-            selectedUids={selectedUids}
-            upgradeMenuFor={upgradeMenuFor}
-            upgradeOptions={upgradeOptions}
-            loadingUpgrades={loadingUpgrades}
-            hasUpgradePathByUid={hasUpgradePathByUid}
             onToggle={(item) => handleToggleItem(item, group.slots)}
             onAddClick={openAddItem}
-            onUpgradeClick={openUpgradeMenu}
-            onUpgradeSelect={addUpgradedCopy}
-            onCatalystConvert={convertToCatalyst}
-            onOptimize={openOptimize}
-            canOptimizeItem={canOptimizeItem}
             onItemContextMenu={openItemContextMenu}
             onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}

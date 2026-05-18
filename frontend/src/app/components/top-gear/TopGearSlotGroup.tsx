@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
+import { Ellipsis } from 'lucide-react';
 import { Plus } from 'lucide-react';
 import { ResolvedItem } from '../../lib/types';
 import type { ItemInfo } from '../../lib/useItemInfo';
 import { QUALITY_COLORS } from '../../lib/useItemInfo';
 import GearItemRow from '../GearItemRow';
-import TopGearUpgradeButton from './TopGearUpgradeButton';
 
 const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
 const EMBELLISHMENT_LIMIT_WARNING =
@@ -23,33 +23,14 @@ function isTierOrCatalystItem(item: ResolvedItem): boolean {
 
 }
 
-interface UpgradeOption {
-  bonus_id: number;
-  level: number;
-  max: number;
-  name: string;
-  fullName: string;
-  itemLevel: number;
-}
-
 interface TopGearSlotGroupProps {
   label: string;
   slots: string[];
   equipped: ResolvedItem[];
   alternatives: ResolvedItem[];
   itemInfoMap: Record<number, ItemInfo>;
-  selectedUids: Record<string, Set<string>>;
-  upgradeMenuFor: string | null;
-  upgradeOptions: UpgradeOption[];
-  loadingUpgrades: boolean;
-  hasUpgradePathByUid: Record<string, boolean>;
   onToggle: (item: ResolvedItem) => void;
   onAddClick: (slot: string) => void;
-  onUpgradeClick: (item: ResolvedItem) => void;
-  onUpgradeSelect: (item: ResolvedItem, opt: UpgradeOption) => void;
-  onCatalystConvert: (item: ResolvedItem) => void;
-  onOptimize: (item: ResolvedItem) => void;
-  canOptimizeItem: (item: ResolvedItem) => boolean;
   onItemContextMenu: (item: ResolvedItem, event: React.MouseEvent) => void;
   itemDetails: (item: ResolvedItem) => {
     text: string;
@@ -74,17 +55,8 @@ export default function TopGearSlotGroup({
   equipped,
   alternatives,
   itemInfoMap,
-  upgradeMenuFor,
-  upgradeOptions,
-  loadingUpgrades,
-  hasUpgradePathByUid,
   onToggle,
   onAddClick,
-  onUpgradeClick,
-  onUpgradeSelect,
-  onCatalystConvert,
-  onOptimize,
-  canOptimizeItem,
   onItemContextMenu,
   itemDetails,
   isItemSelected,
@@ -159,17 +131,15 @@ export default function TopGearSlotGroup({
             }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
-            <TopGearUpgradeButton
-              item={item}
-              upgradeMenuFor={upgradeMenuFor}
-              upgradeOptions={upgradeOptions}
-              loadingUpgrades={loadingUpgrades}
-              hasUpgradePath={hasUpgradePathByUid[item.uid] !== false}
-              onUpgradeClick={() => onUpgradeClick(item)}
-              onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
-              onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
-            />
+            <button
+              type="button"
+              onClick={(event) => onItemContextMenu(item, event)}
+              onContextMenu={(event) => onItemContextMenu(item, event)}
+              className="mt-0.5 inline-flex h-6 items-center gap-1 rounded-md border border-white/15 bg-white/[0.03] px-2 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/[0.08]"
+              title="Open item actions"
+            >
+              <Ellipsis className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
           </GearItemRow>
             );
           })()
@@ -211,17 +181,15 @@ export default function TopGearSlotGroup({
             }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
-            <TopGearUpgradeButton
-              item={item}
-              upgradeMenuFor={upgradeMenuFor}
-              upgradeOptions={upgradeOptions}
-              loadingUpgrades={loadingUpgrades}
-              hasUpgradePath={hasUpgradePathByUid[item.uid] !== false}
-              onUpgradeClick={() => onUpgradeClick(item)}
-              onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
-              onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
-            />
+            <button
+              type="button"
+              onClick={(event) => onItemContextMenu(item, event)}
+              onContextMenu={(event) => onItemContextMenu(item, event)}
+              className="mt-0.5 inline-flex h-6 items-center gap-1 rounded-md border border-white/15 bg-white/[0.03] px-2 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/[0.08]"
+              title="Open item actions"
+            >
+              <Ellipsis className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
           </GearItemRow>
             );
           })()

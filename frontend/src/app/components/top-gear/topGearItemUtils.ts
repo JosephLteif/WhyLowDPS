@@ -150,14 +150,37 @@ export function isWeaponOrTrinket(item: { slot?: string }): boolean {
   return slot === 'main_hand' || slot === 'off_hand' || slot === 'trinket1' || slot === 'trinket2';
 }
 
+interface SeasonalItemModifierRule {
+  maxIlevelDelta: number;
+  maxIlevelCap: number;
+  isEligible: (item: ResolvedItem) => boolean;
+}
+
+const SEASONAL_ITEM_MODIFIERS = {
+  ascendantVoidcore: {
+    maxIlevelDelta: 9,
+    maxIlevelCap: 298,
+    isEligible: (item: ResolvedItem): boolean => {
+      if (!isWeaponOrTrinket(item) || !item.upgrade) return false;
+      const low = item.upgrade.toLowerCase();
+      const match = low.match(/(\d+)\s*\/\s*(\d+)/);
+      const isAtMaxUpgrade = !!match && Number(match[1]) >= Number(match[2]);
+      const isHeroOrMythTrack = low.includes('hero') || low.includes('myth');
+      return isAtMaxUpgrade && isHeroOrMythTrack;
+    },
+  },
+} satisfies Record<string, SeasonalItemModifierRule>;
+
+export function getAscendantModifierIlevelConfig(): Pick<SeasonalItemModifierRule, 'maxIlevelDelta' | 'maxIlevelCap'> {
+  const rule = SEASONAL_ITEM_MODIFIERS.ascendantVoidcore;
+  return {
+    maxIlevelDelta: rule.maxIlevelDelta,
+    maxIlevelCap: rule.maxIlevelCap,
+  };
+}
+
 export function isAscendantEligible(item: ResolvedItem): boolean {
-  if (!isWeaponOrTrinket(item) || !item.upgrade) return false;
-  const low = item.upgrade.toLowerCase();
-  const crafted = isCraftedSource(item);
-  if (crafted) return true;
-  const match = low.match(/(\d+)\s*\/\s*(\d+)/);
-  const full = !!match && Number(match[1]) >= Number(match[2]);
-  return full && (low.includes('hero') || low.includes('myth'));
+  return SEASONAL_ITEM_MODIFIERS.ascendantVoidcore.isEligible(item);
 }
 
 export function applyAscendantToSimc(simc: string, ilvl: number): string {

@@ -30,6 +30,7 @@ interface TopGearItemContextMenuProps {
   onOptimize: (item: ResolvedItem) => void;
   onSetOrigin: (item: ResolvedItem, origin: 'bags' | 'vault') => void;
   onSetWishlist: (item: ResolvedItem, enabled: boolean) => void;
+  canSetAscendant: boolean;
   onSetAscendant: (item: ResolvedItem, enabled: boolean) => void;
 }
 
@@ -104,6 +105,7 @@ export default function TopGearItemContextMenu({
   onOptimize,
   onSetOrigin,
   onSetWishlist,
+  canSetAscendant,
   onSetAscendant,
 }: TopGearItemContextMenuProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -379,19 +381,21 @@ export default function TopGearItemContextMenu({
             }}
           />
         )}
-        <Action
-          actionKey="ascendant"
-          label={isAscendantApplied ? 'Remove Ascendant Voidcore' : 'Apply Ascendant Voidcore'}
-          onHover={() => {
-            setActiveSubmenu(null);
-            setActiveNestedSubmenu(null);
-            setActiveTierGroup(null);
-          }}
-          onClick={() => {
-            onSetAscendant(item, !isAscendantApplied);
-            onClose();
-          }}
-        />
+        {canSetAscendant && (
+          <Action
+            actionKey="ascendant"
+            label={isAscendantApplied ? 'Remove Ascendant Voidcore' : 'Apply Ascendant Voidcore'}
+            onHover={() => {
+              setActiveSubmenu(null);
+              setActiveNestedSubmenu(null);
+              setActiveTierGroup(null);
+            }}
+            onClick={() => {
+              onSetAscendant(item, !isAscendantApplied);
+              onClose();
+            }}
+          />
+        )}
         <Action
           actionKey="close"
           label="Close"

@@ -24,6 +24,7 @@ import TopGearSlotGroup from './top-gear/TopGearSlotGroup';
 import type { BadgeDescriptor } from './top-gear/topGearItemUtils';
 import {
   applyAscendantToSimc,
+  getAscendantModifierIlevelConfig,
   getWowheadData,
   getWowheadUrl,
   hasModifierItemId,
@@ -1700,6 +1701,7 @@ export default function TopGearItemSelector({
         y={contextMenu?.y || 0}
         canAddEnchant={contextMenu?.availability.canAddEnchant || false}
         canAddGem={contextMenu?.availability.canAddGem || false}
+        canSetAscendant={Boolean(contextMenu?.item && isAscendantEligible(contextMenu.item))}
         otherTierOptions={otherTierOptions}
         loadingOtherTierOptions={loadingOtherTierOptions}
         upgradeOptions={upgradeOptions}
@@ -1715,16 +1717,14 @@ export default function TopGearItemSelector({
         onSetWishlist={setItemWishlist}
         onSetAscendant={(item, enabled) => {
           if (!isAscendantEligible(item)) return;
-          const crafted = isCraftedSource(item);
-          const delta = crafted ? 10 : 9;
-          const cap = crafted ? 295 : 298;
+          const { maxIlevelDelta, maxIlevelCap } = getAscendantModifierIlevelConfig();
           const currentApplied =
             hasModifierItemId(item.source_type, 268552) ||
             String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
           if (!enabled && !currentApplied) return;
           const nextIlevel = enabled
-            ? Math.min(cap, item.ilevel + (currentApplied ? 0 : delta))
-            : Math.max(1, item.ilevel - (currentApplied ? delta : 0));
+            ? Math.min(maxIlevelCap, item.ilevel + (currentApplied ? 0 : maxIlevelDelta))
+            : Math.max(1, item.ilevel - (currentApplied ? maxIlevelDelta : 0));
           const nextSourceType = enabled
             ? `${String(item.source_type || '').replace(/\bascendant_voidcore\b/gi, '').replace(/\s+/g, ' ').trim()} mod:268552`.trim()
             : String(item.source_type || '')

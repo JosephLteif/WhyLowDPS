@@ -41,3 +41,19 @@ Your Battle.net API credentials are stored locally on your machine only. They ar
 ## Platform support
 
 WhyLowDPS currently supports **Windows only**. There are no current plans to support additional platforms.
+
+## Pictures
+
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/ef8c994b-3992-4cf9-a35a-dd2b6d884271" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/b16bef29-d149-4552-959a-1382e07c8eb8" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/a90de413-ee94-473d-b539-88bb661aada3" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/bd359afc-fd91-43e1-a64f-19a15932d887" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/7e610187-a696-4dd2-a6f2-0f634f47d5e4" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/4d4b587f-becc-4b82-aadd-23e3e031feda" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/804487ef-5e99-4631-80d9-26b53fcfe192" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/5749043d-c4f3-4aeb-868b-1217e19183af" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/125b6972-13e2-43f2-b7bf-341ae9b42b80" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/e9fde72b-9200-4d2a-9743-e6f151bb0977" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/ea349157-50de-4643-838e-562c8dacd325" />
+<img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/a98cab3c-4efc-4893-b734-296eee98823a" />
+

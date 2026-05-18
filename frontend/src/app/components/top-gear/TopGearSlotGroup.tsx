@@ -48,6 +48,7 @@ interface TopGearSlotGroupProps {
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
   getDisplayIlevel?: (item: ResolvedItem) => number;
+  itemOverline?: (item: ResolvedItem) => React.ReactNode;
 }
 
 export default function TopGearSlotGroup({
@@ -66,6 +67,7 @@ export default function TopGearSlotGroup({
   getWowheadUrl,
   getWowheadData,
   getDisplayIlevel,
+  itemOverline,
 }: TopGearSlotGroupProps) {
   useMemo(() => {
     const totalItems = equipped.length + alternatives.length;
@@ -119,8 +121,8 @@ export default function TopGearSlotGroup({
             specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={showOffSpecWarning === true}
+            overline={itemOverline ? itemOverline(item) : undefined}
             details={itemDetails(item)}
-            ilevel={getDisplayIlevel ? getDisplayIlevel(item) : item.ilevel}
             equipped
             showCheckbox={false}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
@@ -165,8 +167,8 @@ export default function TopGearSlotGroup({
             specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={showOffSpecWarning === true}
+            overline={itemOverline ? itemOverline(item) : undefined}
             details={itemDetails(item)}
-            ilevel={getDisplayIlevel ? getDisplayIlevel(item) : item.ilevel}
             selectable
             showCheckbox={false}
             checked={isItemSelected(item)}

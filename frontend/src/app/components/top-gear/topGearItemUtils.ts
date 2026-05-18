@@ -190,6 +190,19 @@ export function isAscendantEligible(item: ResolvedItem): boolean {
   return SEASONAL_ITEM_MODIFIERS.ascendantVoidcore.isEligible(item);
 }
 
+export function isAscendantApplied(item: ResolvedItem): boolean {
+  if (
+    hasModifierItemId(item.source_type, 268552) ||
+    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
+    String(item.tag || '').toLowerCase().includes('ascendant')
+  ) {
+    return true;
+  }
+  if (!isAscendantEligible(item)) return false;
+  const { maxIlevelCap } = getAscendantModifierIlevelConfig();
+  return Number(item.ilevel || 0) >= maxIlevelCap;
+}
+
 export function applyAscendantToSimc(simc: string, ilvl: number): string {
   if (/(?:^|,)ilevel=\d+/.test(simc)) return simc.replace(/((?:^|,)ilevel=)\d+/, `$1${ilvl}`);
   return `${simc},ilevel=${ilvl}`;

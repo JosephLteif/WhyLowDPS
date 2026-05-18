@@ -28,6 +28,7 @@ import {
   getWowheadData,
   getWowheadUrl,
   hasModifierItemId,
+  isAscendantApplied,
   isAscendantEligible,
   isCraftedSource,
   itemHasEmbellishment,
@@ -35,7 +36,6 @@ import {
   makeUid,
   parseFirstIdFromSimc,
   parseGemIdsFromSimc,
-  resolveSourceTags,
   sameStringSet,
 } from './top-gear/topGearItemUtils';
 import { useTopGearLimitWarnings } from './top-gear/useTopGearLimitWarnings';
@@ -1541,23 +1541,12 @@ export default function TopGearItemSelector({
     const hasGem = effectiveGemIds.length > 0 || Boolean(item.gem_name);
     const parts: BadgeDescriptor[] = [];
 
-    parts.push(...resolveSourceTags(item));
     if (item.is_catalyst)
       parts.push({
         text: 'Catalyst',
         badgeVariant: 'source',
         color: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
       });
-    if (item.upgrade) {
-      const displayUpgrade = parseUpgradeLabel(item.upgrade).segments.at(-1) || '';
-      if (displayUpgrade) {
-        parts.push({
-          text: displayUpgrade,
-          badgeVariant: 'source',
-          color: upgradeTierTagColor(displayUpgrade),
-        });
-      }
-    }
     const extraEffects = getItemExtraEffects(item, extraEffectsByKey);
     for (const effect of extraEffects) {
       parts.push({
@@ -1571,7 +1560,7 @@ export default function TopGearItemSelector({
         const gemName = gemInfo?.name || (index === 0 ? item.gem_name : '') || 'Gem';
         parts.push({
           text: gemName,
-          kind: 'gemIcon',
+          kind: 'iconText',
           badgeVariant: 'gem',
           icon: gemInfo?.icon || (index === 0 ? item.gem_icon : '') || gemIconFallback,
           href: effectiveGemIds[index] > 0 ? `https://www.wowhead.com/item=${effectiveGemIds[index]}` : undefined,
@@ -1584,7 +1573,7 @@ export default function TopGearItemSelector({
         const gemName = item.gem_name || 'Gem';
         parts.push({
           text: gemName,
-          kind: 'gemIcon',
+          kind: 'iconText',
           badgeVariant: 'gem',
           icon: item.gem_icon || gemIconFallback,
           tooltip: gemName,
@@ -1649,7 +1638,7 @@ export default function TopGearItemSelector({
         color: EMBELLISHMENT_BADGE_CLASS,
       });
     }
-    if (hasModifierItemId(item.source_type, 268552) || String(item.source_type || '').toLowerCase().includes('ascendant_voidcore')) {
+    if (isAscendantApplied(item)) {
       parts.push({
         text: 'Ascendant Voidcore',
         kind: 'iconText',
@@ -1671,13 +1660,36 @@ export default function TopGearItemSelector({
   };
 
   const getDisplayIlevel = useCallback((item: ResolvedItem): number => {
-    const hasAscendantModifier =
-      hasModifierItemId(item.source_type, 268552) ||
-      String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
-    if (!hasAscendantModifier) return Number(item.ilevel || 0);
+    if (!isAscendantApplied(item)) return Number(item.ilevel || 0);
     const { maxIlevelDelta } = getAscendantModifierIlevelConfig();
     return Math.max(1, Number(item.ilevel || 0) - maxIlevelDelta);
   }, []);
+
+  const itemOverline = useCallback(
+    (item: ResolvedItem): React.ReactNode => {
+      const displayedIlevel = getDisplayIlevel(item);
+      const trackLabel = parseUpgradeLabel(item.upgrade || '').segments.at(-1) || '';
+      return (
+        <>
+          {displayedIlevel > 0 ? (
+            <span className="rounded border border-zinc-400/40 bg-zinc-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-zinc-200/90">
+              iLvl {displayedIlevel}
+            </span>
+          ) : null}
+          {trackLabel ? (
+            <span
+              className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${upgradeTierTagColor(
+                trackLabel
+              )}`}
+            >
+              {trackLabel}
+            </span>
+          ) : null}
+        </>
+      );
+    },
+    [getDisplayIlevel]
+  );
 
   const canOptimizeItem = useCallback(
     (item: ResolvedItem): boolean => {
@@ -1785,9 +1797,7 @@ export default function TopGearItemSelector({
         onSetAscendant={(item, enabled) => {
           if (!isAscendantEligible(item)) return;
           const { maxIlevelDelta, maxIlevelCap } = getAscendantModifierIlevelConfig();
-          const currentApplied =
-            hasModifierItemId(item.source_type, 268552) ||
-            String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
+          const currentApplied = isAscendantApplied(item);
           if (!enabled && !currentApplied) return;
           const nextIlevel = enabled
             ? Math.min(maxIlevelCap, item.ilevel + (currentApplied ? 0 : maxIlevelDelta))
@@ -1892,6 +1902,7 @@ export default function TopGearItemSelector({
             onItemContextMenu={openItemContextMenu}
             onToggleAll={() => toggleSlotAll(group.slots)}
             itemDetails={itemDetails}
+            itemOverline={itemOverline}
             getDisplayIlevel={getDisplayIlevel}
             hasLimitWarning={hasEmbellishmentLimitWarning}
             isItemSelected={(item) => {

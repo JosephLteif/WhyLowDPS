@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ResolvedItem } from '../../lib/types';
 import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
+import { isAscendantApplied } from './topGearItemUtils';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -41,12 +42,6 @@ function isWishlist(item: ResolvedItem): boolean {
   const sourceType = String(item.source_type || '').toLowerCase();
   const tag = String(item.tag || '').toLowerCase();
   return sourceType.includes('wishlist') || tag.includes('wishlist');
-}
-
-function hasModifierItemId(sourceType: string | undefined, itemId: number): boolean {
-  const src = String(sourceType || '');
-  const re = new RegExp(`(?:^|\\s)mod:${itemId}(?=\\s|$)`, 'i');
-  return re.test(src);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -167,10 +162,7 @@ export default function TopGearItemContextMenu({
   const canMarkOrigin = item.origin !== 'equipped';
   const canUpgrade = !!item.upgrade;
   const canCatalyst = !!item.can_catalyst;
-  const isAscendantApplied =
-    hasModifierItemId(item.source_type, 268552) ||
-    String(item.source_type || '').toLowerCase().includes('ascendant_voidcore') ||
-    String(item.tag || '').toLowerCase().includes('ascendant');
+  const isAscendantAppliedForItem = isAscendantApplied(item);
 
   const openUpgradeSubmenu = async () => {
     setActiveSubmenu('upgrade');
@@ -384,14 +376,14 @@ export default function TopGearItemContextMenu({
         {canSetAscendant && (
           <Action
             actionKey="ascendant"
-            label={isAscendantApplied ? 'Remove Ascendant Voidcore' : 'Apply Ascendant Voidcore'}
+            label={isAscendantAppliedForItem ? 'Remove Ascendant Voidcore' : 'Apply Ascendant Voidcore'}
             onHover={() => {
               setActiveSubmenu(null);
               setActiveNestedSubmenu(null);
               setActiveTierGroup(null);
             }}
             onClick={() => {
-              onSetAscendant(item, !isAscendantApplied);
+              onSetAscendant(item, !isAscendantAppliedForItem);
               onClose();
             }}
           />

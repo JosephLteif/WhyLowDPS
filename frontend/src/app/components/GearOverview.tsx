@@ -629,6 +629,12 @@ export function GearSlotRow({
         ? `iLvl ${Number(equippedItem?.ilevel || 0)} -> ${Number(item.ilevel || 0)}`
         : `iLvl ${Number(item.ilevel || 0)}`
       : '';
+  const ilevelTagClass =
+    levelChanged && Number(item.ilevel || 0) < Number(equippedItem?.ilevel || 0)
+      ? 'bg-red-500/12 border-red-400/45 text-red-200'
+      : levelChanged && Number(item.ilevel || 0) > Number(equippedItem?.ilevel || 0)
+        ? 'bg-emerald-500/12 border-emerald-400/45 text-emerald-200'
+        : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200';
   const comparisonState: 'upgrade' | 'downgrade' | null = isDowngrade
     ? 'downgrade'
     : isUpgrade
@@ -823,13 +829,7 @@ export function GearSlotRow({
               : null}
             {ilevelTagText ? (
               <span
-                className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
-                  upgradeState === 'upgrade'
-                    ? 'bg-emerald-500/12 border-emerald-400/45 text-emerald-200'
-                    : upgradeState === 'downgrade'
-                      ? 'bg-red-500/12 border-red-400/45 text-red-200'
-                      : 'border-zinc-500/40 bg-zinc-500/10 text-zinc-200'
-                }`}
+                className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${ilevelTagClass}`}
                 title={
                   levelChanged
                     ? `${slot}: ${Number(equippedItem?.ilevel || 0)} -> ${item.ilevel}`

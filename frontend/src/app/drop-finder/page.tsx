@@ -288,23 +288,18 @@ export default function DropFinderPage() {
 
   const selectedDungeonIds = useMemo(() => {
     if (!isDungeon) return new Set<string>();
-    if (selectedId === allKey) {
-      return new Set(dungeonInstances.map((inst) => String(inst.id)));
-    }
+    if (selectedId === allKey) return new Set<string>();
     return new Set(parseInstanceSelectionIds(selectedId));
   }, [isDungeon, selectedId, allKey, dungeonInstances]);
 
   const selectedRaidIds = useMemo(() => {
     if (!isRaid) return new Set<string>();
-    if (selectedId === allKey) {
-      return new Set(raids.map((inst) => String(inst.id)));
-    }
+    if (selectedId === allKey) return new Set<string>();
     return new Set(parseInstanceSelectionIds(selectedId));
   }, [isRaid, selectedId, allKey, raids]);
 
-  const allDungeonsSelected =
-    isDungeon && dungeonInstances.length > 0 && selectedDungeonIds.size === dungeonInstances.length;
-  const allRaidsSelected = isRaid && raids.length > 0 && selectedRaidIds.size === raids.length;
+  const allDungeonsSelected = isDungeon && selectedId === allKey;
+  const allRaidsSelected = isRaid && selectedId === allKey;
 
   const selectedInstance =
     selectedId &&
@@ -510,7 +505,8 @@ export default function DropFinderPage() {
   const toggleDungeonSelection = useCallback(
     (instanceId: string) => {
       if (!isDungeon) return;
-      const next = new Set(selectedDungeonIds);
+      const next =
+        selectedId === allKey ? new Set<string>() : new Set(selectedDungeonIds);
       if (next.has(instanceId)) next.delete(instanceId);
       else next.add(instanceId);
 
@@ -524,13 +520,13 @@ export default function DropFinderPage() {
       }
       setSelectedId(encodeInstanceSelectionIds([...next]));
     },
-    [isDungeon, selectedDungeonIds, dungeonInstances.length, allKey, setSelectedId]
+    [isDungeon, selectedId, selectedDungeonIds, dungeonInstances.length, allKey, setSelectedId]
   );
 
   const toggleRaidSelection = useCallback(
     (instanceId: string) => {
       if (!isRaid) return;
-      const next = new Set(selectedRaidIds);
+      const next = selectedId === allKey ? new Set<string>() : new Set(selectedRaidIds);
       if (next.has(instanceId)) next.delete(instanceId);
       else next.add(instanceId);
 
@@ -544,8 +540,58 @@ export default function DropFinderPage() {
       }
       setSelectedId(encodeInstanceSelectionIds([...next]));
     },
-    [isRaid, selectedRaidIds, raids.length, allKey, setSelectedId]
+    [isRaid, selectedId, selectedRaidIds, raids.length, allKey, setSelectedId]
   );
+
+  const selectionSummaryLabel = useMemo(() => {
+    if (isRaid) {
+      if (allRaidsSelected) return 'All Raids selected';
+      if (selectedRaidIds.size > 0) return `${selectedRaidIds.size} selected`;
+      return 'No raids selected';
+    }
+    if (isDungeon) {
+      const label = activeDungeonCat?.cat.label ?? 'Dungeons';
+      if (allDungeonsSelected) return `All ${label} selected`;
+      if (selectedDungeonIds.size > 0) return `${selectedDungeonIds.size} selected`;
+      return `No ${label.toLowerCase()} selected`;
+    }
+    return '';
+  }, [
+    isRaid,
+    allRaidsSelected,
+    selectedRaidIds.size,
+    isDungeon,
+    activeDungeonCat,
+    allDungeonsSelected,
+    selectedDungeonIds.size,
+  ]);
+
+  const selectionChips = useMemo(() => {
+    if (isRaid) {
+      if (allRaidsSelected) return ['All Raids'];
+      return raids
+        .filter((inst) => selectedRaidIds.has(String(inst.id)))
+        .map((inst) => inst.name);
+    }
+    if (isDungeon) {
+      const allLabel = `All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`;
+      if (allDungeonsSelected) return [allLabel];
+      return dungeonInstances
+        .filter((inst) => selectedDungeonIds.has(String(inst.id)))
+        .map((inst) => inst.name);
+    }
+    return [];
+  }, [
+    isRaid,
+    allRaidsSelected,
+    raids,
+    selectedRaidIds,
+    isDungeon,
+    activeDungeonCat,
+    allDungeonsSelected,
+    dungeonInstances,
+    selectedDungeonIds,
+  ]);
 
   const headerLabel = useMemo(() => {
     if (selectedInstance?.name) return selectedInstance.name;
@@ -736,18 +782,41 @@ export default function DropFinderPage() {
       />
 
       {category && hasImages ? (
-        <DungeonGrid
-          value={selectedId}
-          onChange={setSelectedId}
-          multi={isRaid || isDungeon}
-          selectedValues={isRaid ? selectedRaidIds : isDungeon ? selectedDungeonIds : undefined}
-          allSelected={isRaid ? allRaidsSelected : isDungeon ? allDungeonsSelected : undefined}
-          onToggleValue={isRaid ? toggleRaidSelection : isDungeon ? toggleDungeonSelection : undefined}
-          onToggleAll={isRaid ? toggleAllRaids : isDungeon ? toggleAllDungeons : undefined}
-          instances={activeInstances}
-          allKey={allKey}
-          allLabel={isRaid ? 'All Raids' : `All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`}
-        />
+        <>
+          <DungeonGrid
+            value={selectedId}
+            onChange={setSelectedId}
+            multi={isRaid || isDungeon}
+            selectedValues={isRaid ? selectedRaidIds : isDungeon ? selectedDungeonIds : undefined}
+            allSelected={isRaid ? allRaidsSelected : isDungeon ? allDungeonsSelected : undefined}
+            onToggleValue={
+              isRaid ? toggleRaidSelection : isDungeon ? toggleDungeonSelection : undefined
+            }
+            onToggleAll={isRaid ? toggleAllRaids : isDungeon ? toggleAllDungeons : undefined}
+            instances={activeInstances}
+            allKey={allKey}
+            allLabel={isRaid ? 'All Raids' : `All ${activeDungeonCat?.cat.label ?? 'Dungeons'}`}
+          />
+          {(isRaid || isDungeon) && (
+            <div className="card space-y-3 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                {selectionSummaryLabel}
+              </p>
+              {selectionChips.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {selectionChips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="rounded-md border border-gold/30 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       ) : category ? (
         <div className="card p-5">
           <label className="label-text">{isRaid ? 'Select Raids' : 'Select Dungeons'}</label>
@@ -808,6 +877,25 @@ export default function DropFinderPage() {
                   </button>
                 );
               })}
+            </div>
+          )}
+          {(isRaid || isDungeon) && (
+            <div className="mt-4 space-y-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+                {selectionSummaryLabel}
+              </p>
+              {selectionChips.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {selectionChips.map((chip) => (
+                    <span
+                      key={chip}
+                      className="rounded-md border border-gold/30 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold"
+                    >
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

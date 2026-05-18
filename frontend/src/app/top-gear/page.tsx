@@ -204,6 +204,7 @@ export default function TopGearPage() {
   const previousSimcInputRef = useRef(simcInput);
   const localItemsRef = useRef<LocalGearItem[]>(localItems);
   const comboRequestSeqRef = useRef(0);
+  const resolveRequestSeqRef = useRef(0);
   const [forceResolveSignal, setForceResolveSignal] = useState(0);
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
   const qualityMaxByFamily = useMemo(
@@ -438,6 +439,8 @@ export default function TopGearPage() {
 
     const timer = setTimeout(
       async () => {
+        const requestSeq = ++resolveRequestSeqRef.current;
+        const controller = new AbortController();
         prevInputRef.current = trimmed;
         prevUpgradeRef.current = maxUpgrade;
         prevCatalystRef.current = catalyst;
@@ -452,13 +455,16 @@ export default function TopGearPage() {
               max_upgrade: maxUpgrade,
               catalyst,
             }),
+            signal: controller.signal,
           });
+          if (requestSeq !== resolveRequestSeqRef.current) return;
           if (!res.ok) {
             setResolved(null);
             setSelectedUids({});
             return;
           }
           const data: ResolveGearResponse = await res.json();
+          if (requestSeq !== resolveRequestSeqRef.current) return;
 
           const hasAlternatives = Object.values(data.slots).some(
             (slot) => slot.alternatives.length > 0
@@ -489,17 +495,23 @@ export default function TopGearPage() {
             setSavedVariantRuleState(null);
           }
         } catch {
+          if (requestSeq !== resolveRequestSeqRef.current) return;
           setResolved(null);
           setSelectedUids({});
           setSavedVariantCopiesBySlot({});
           setSavedVariantRuleState(null);
         } finally {
+          if (requestSeq !== resolveRequestSeqRef.current) return;
           setResolving(false);
         }
       },
       inputChanged ? 300 : 0
     );
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      // Invalidate any in-flight resolve for previous dependencies.
+      resolveRequestSeqRef.current += 1;
+    };
   }, [simcInput, maxUpgrade, catalyst, forceResolveSignal]);
 
   const buildSubmitInput = useCallback((): string => {

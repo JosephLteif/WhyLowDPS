@@ -3,20 +3,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_URL, fetchJsonCached } from '../lib/api';
 import type { ResolvedItem, ResolveGearResponse } from '../lib/types';
-import {
-  QUALITY_COLORS,
-  enchantAvailabilityItemKey,
-  useItemInfo,
-  type ItemQuery,
-} from '../lib/useItemInfo';
+import { enchantAvailabilityItemKey, type ItemQuery, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import AddItemModal from './AddItemModal';
 import OptimizeItemModal from './OptimizeItemModal';
-import {
-  ASCENDANT_VOIDCORE_BADGE_CLASS,
-  EMBELLISHMENT_BADGE_CLASS,
-} from './shared/itemBadgeClasses';
+import { ASCENDANT_VOIDCORE_BADGE_CLASS, EMBELLISHMENT_BADGE_CLASS } from './shared/itemBadgeClasses';
 import { useSimContext } from './SimContext';
+import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect';
 import TopGearItemContextMenu from './top-gear/TopGearItemContextMenu';
 import TopGearQuickSelect from './top-gear/TopGearQuickSelect';
 import TopGearSlotGroup from './top-gear/TopGearSlotGroup';
@@ -24,9 +17,10 @@ import TopGearVariantStudio, { type SavedVariantStudioState } from './top-gear/T
 import type { BadgeDescriptor } from './top-gear/topGearItemUtils';
 import {
   applyAscendantToSimc,
+  getAscendantModifierIlevelConfig,
   getWowheadData,
   getWowheadUrl,
-  hasModifierItemId,
+  isAscendantApplied,
   isAscendantEligible,
   isCraftedSource,
   itemHasEmbellishment,
@@ -34,8 +28,6 @@ import {
   makeUid,
   parseFirstIdFromSimc,
   parseGemIdsFromSimc,
-  parseModifierItemIds,
-  resolveSourceTags,
   sameStringSet,
 } from './top-gear/topGearItemUtils';
 import { useTopGearLimitWarnings } from './top-gear/useTopGearLimitWarnings';
@@ -176,6 +168,69 @@ function normalizeEmbellishmentName(value?: string | null): string {
     .replace(/[^a-z0-9]/g, '');
 }
 
+function upgradeTierTagColor(label: string): string {
+  const targetTier = label.split('->').pop()?.trim().toLowerCase() || label.toLowerCase();
+  if (targetTier.includes('myth')) return '!border-orange-300/80 !text-orange-100';
+  if (targetTier.includes('hero')) return '!border-teal-300/80 !text-teal-100';
+  if (targetTier.includes('champion')) return '!border-emerald-300/80 !text-emerald-100';
+  if (targetTier.includes('veteran')) return '!border-sky-300/80 !text-sky-100';
+  if (targetTier.includes('adventurer')) return '!border-lime-300/80 !text-lime-100';
+  if (targetTier.includes('explorer')) return '!border-zinc-300/80 !text-zinc-100';
+  return '!border-teal-300/80 !text-teal-100';
+}
+
+function parseUpgradeLabel(value: string): {
+  segments: string[];
+  hasAscendant: boolean;
+} {
+  const raw = String(value || '').trim();
+  if (!raw) return { segments: [], hasAscendant: false };
+
+  const hasAscendant = /\+\s*ascendant\b/i.test(raw);
+
+  const base = raw
+    .replace(/\s*\+\s*ascendant\b/gi, '')
+    .trim();
+
+  const segments = base
+    // supports both "->" and "→"
+    .split(/\s*(?:->|→)\s*/g)
+    .map((segment) =>
+      segment
+        .trim()
+        // "ilvl 298 Myth 6/6" -> "Myth 6/6"
+        .replace(/^ilvl\s+\d+\s+/i, '')
+        .trim()
+    )
+    .filter(Boolean);
+
+  return { segments, hasAscendant };
+}
+
+function clampUpgradeArrowChain(label: string): string {
+  const { segments } = parseUpgradeLabel(label);
+
+  if (segments.length === 0) return '';
+
+  const last = segments[segments.length - 1];
+  const previous = segments.length >= 2 ? segments[segments.length - 2] : '';
+
+  return previous && previous !== last ? `${previous} -> ${last}` : last;
+}
+
+function formatCanonicalUpgradeLabel(
+  selectedUpgradeRaw: string,
+  equippedUpgradeRaw: string,
+  _includeAscendant: boolean
+): string {
+  const selectedSegments = parseUpgradeLabel(selectedUpgradeRaw).segments;
+  const equippedSegments = parseUpgradeLabel(equippedUpgradeRaw).segments;
+  const selected = selectedSegments.length > 0 ? selectedSegments[selectedSegments.length - 1] : '';
+  if (!selected) return '';
+  const equipped = equippedSegments.length > 0 ? equippedSegments[0] : '';
+  return equipped && equipped !== selected ? `${equipped} -> ${selected}` : selected;
+}
+
 export default function TopGearItemSelector({
   resolved,
   selectedUids,
@@ -228,11 +283,9 @@ export default function TopGearItemSelector({
   } | null>(null);
 
   const {
-    upgradeMenuFor,
     setUpgradeMenuFor,
     upgradeOptions,
     loadingUpgrades,
-    hasUpgradePathByUid,
     isAddItemOpen,
     setAddItemOpen,
     addItemSlot,
@@ -241,7 +294,6 @@ export default function TopGearItemSelector({
     optimizeItem,
     openAddItem,
     openOptimize,
-    openUpgradeMenu,
     loadUpgradeOptions,
     deselectAll,
     selectAll,
@@ -270,6 +322,7 @@ export default function TopGearItemSelector({
   }, [resolved.slots]);
 
   const itemInfoMap = useItemInfo(allItemQueries);
+  const extraEffectsByKey = useItemExtraEffects(allItemQueries);
 
   useWowheadTooltips([resolved, gemInfoById, enchantInfoById, embellishmentOptionsByItem]);
 
@@ -521,6 +574,11 @@ export default function TopGearItemSelector({
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
+        const upgradeLabel = formatCanonicalUpgradeLabel(
+          option.fullName,
+          String(slotRes.equipped?.upgrade || item.upgrade || ''),
+          false
+        );
         const copy: ResolvedItem = {
           ...item,
           slot,
@@ -529,7 +587,7 @@ export default function TopGearItemSelector({
           bonus_ids: newBonusIds,
           simc_string: newSimcString,
           ilevel: option.itemLevel,
-          upgrade: option.fullName,
+          upgrade: upgradeLabel,
         };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }
@@ -613,6 +671,11 @@ export default function TopGearItemSelector({
         });
         const slotRes = nextResolved.slots[slot];
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
+        const upgradeLabel = formatCanonicalUpgradeLabel(
+          option.fullName,
+          String(slotRes.equipped?.upgrade || item.upgrade || ''),
+          false
+        );
         const copy: ResolvedItem = {
           ...item,
           slot,
@@ -621,7 +684,7 @@ export default function TopGearItemSelector({
           bonus_ids: newBonusIds,
           simc_string: newSimcString,
           ilevel: option.itemLevel,
-          upgrade: option.fullName,
+          upgrade: upgradeLabel,
         };
         slotRes.alternatives = [...slotRes.alternatives, copy];
       }
@@ -1707,25 +1770,26 @@ export default function TopGearItemSelector({
     const hasGem = effectiveGemIds.length > 0 || Boolean(item.gem_name);
     const parts: BadgeDescriptor[] = [];
 
-    parts.push(...resolveSourceTags(item));
     if (item.is_catalyst)
       parts.push({
         text: 'Catalyst',
         badgeVariant: 'source',
         color: 'text-purple-300 bg-purple-500/15 border-purple-400/40',
       });
-    if (item.upgrade)
+    const extraEffects = getItemExtraEffects(item, extraEffectsByKey);
+    for (const effect of extraEffects) {
       parts.push({
-        text: item.upgrade,
-        badgeVariant: 'source',
-        color: 'text-zinc-200 bg-white/[0.06] border-white/15',
+        text: effect,
+        badgeVariant: 'mod',
+        color: 'text-cyan-200 border-cyan-300/40 bg-cyan-500/10',
       });
+    }
     if (hasGem) {
       for (const [index, gemInfo] of gemInfos.entries()) {
         const gemName = gemInfo?.name || (index === 0 ? item.gem_name : '') || 'Gem';
         parts.push({
           text: gemName,
-          kind: 'gemIcon',
+          kind: 'iconText',
           badgeVariant: 'gem',
           icon: gemInfo?.icon || (index === 0 ? item.gem_icon : '') || gemIconFallback,
           href: effectiveGemIds[index] > 0 ? `https://www.wowhead.com/item=${effectiveGemIds[index]}` : undefined,
@@ -1738,7 +1802,7 @@ export default function TopGearItemSelector({
         const gemName = item.gem_name || 'Gem';
         parts.push({
           text: gemName,
-          kind: 'gemIcon',
+          kind: 'iconText',
           badgeVariant: 'gem',
           icon: item.gem_icon || gemIconFallback,
           tooltip: gemName,
@@ -1814,7 +1878,7 @@ export default function TopGearItemSelector({
         color: EMBELLISHMENT_BADGE_CLASS,
       });
     }
-    if (hasModifierItemId(item.source_type, 268552) || String(item.source_type || '').toLowerCase().includes('ascendant_voidcore')) {
+    if (isAscendantApplied(item)) {
       parts.push({
         text: 'Ascendant Voidcore',
         kind: 'iconText',
@@ -1826,7 +1890,13 @@ export default function TopGearItemSelector({
         color: ASCENDANT_VOIDCORE_BADGE_CLASS,
       });
     }
-    return parts;
+    return parts.filter((part) => {
+      const text = String(part.text || '').trim().toLowerCase();
+      if (/^mod:\d+$/.test(text)) return false;
+      if (/^i?l?v?l[:\s]*\d+$/.test(text)) return false;
+      if (text === 'ascendant_voidcore') return false;
+      return true;
+    });
   };
 
   const canManageAffixesForItem = useCallback(
@@ -1858,12 +1928,33 @@ export default function TopGearItemSelector({
         (item.embellishment_item_id || 0) > 0 ||
         hasEmbellishmentByBonus ||
         /(?:^|,)enchant_id=/.test(item.simc_string);
+  const getDisplayIlevel = useCallback((item: ResolvedItem): number => {
+    if (!isAscendantApplied(item)) return Number(item.ilevel || 0);
+    const { maxIlevelDelta } = getAscendantModifierIlevelConfig();
+    return Math.max(1, Number(item.ilevel || 0) - maxIlevelDelta);
+  }, []);
+
+  const itemOverline = useCallback(
+    (item: ResolvedItem): React.ReactNode => {
+      const displayedIlevel = getDisplayIlevel(item);
+      const trackLabel = parseUpgradeLabel(item.upgrade || '').segments.at(-1) || '';
       return (
-        hasEnchantOptions ||
-        hasGemOptions ||
-        hasEmbellishmentOptions ||
-        craftedSource ||
-        hasExistingEnhancements
+        <>
+          {displayedIlevel > 0 ? (
+            <span className="rounded border border-zinc-400/40 bg-zinc-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-zinc-200/90">
+              iLvl {displayedIlevel}
+            </span>
+          ) : null}
+          {trackLabel ? (
+            <span
+              className={`rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${upgradeTierTagColor(
+                trackLabel
+              )}`}
+            >
+              {trackLabel}
+            </span>
+          ) : null}
+        </>
       );
     },
     [resolved.character.class_name, enchantAvailabilityBySlot, embellishmentOptionsByItem, specName]
@@ -2046,6 +2137,7 @@ export default function TopGearItemSelector({
         canAddEnchant={contextMenu?.availability.canAddEnchant || false}
         canAddGem={contextMenu?.availability.canAddGem || false}
         globalAffixesEnabled={globalAffixesEnabled}
+        canSetAscendant={Boolean(contextMenu?.item && isAscendantEligible(contextMenu.item))}
         otherTierOptions={otherTierOptions}
         loadingOtherTierOptions={loadingOtherTierOptions}
         upgradeOptions={upgradeOptions}
@@ -2061,16 +2153,12 @@ export default function TopGearItemSelector({
         onSetWishlist={setItemWishlist}
         onSetAscendant={(item, enabled) => {
           if (!isAscendantEligible(item)) return;
-          const crafted = isCraftedSource(item);
-          const delta = crafted ? 10 : 9;
-          const cap = crafted ? 295 : 298;
-          const currentApplied =
-            hasModifierItemId(item.source_type, 268552) ||
-            String(item.source_type || '').toLowerCase().includes('ascendant_voidcore');
+          const { maxIlevelDelta, maxIlevelCap } = getAscendantModifierIlevelConfig();
+          const currentApplied = isAscendantApplied(item);
           if (!enabled && !currentApplied) return;
           const nextIlevel = enabled
-            ? Math.min(cap, item.ilevel + (currentApplied ? 0 : delta))
-            : Math.max(1, item.ilevel - (currentApplied ? delta : 0));
+            ? Math.min(maxIlevelCap, item.ilevel + (currentApplied ? 0 : maxIlevelDelta))
+            : Math.max(1, item.ilevel - (currentApplied ? maxIlevelDelta : 0));
           const nextSourceType = enabled
             ? `${String(item.source_type || '').replace(/\bascendant_voidcore\b/gi, '').replace(/\s+/g, ' ').trim()} mod:268552`.trim()
             : String(item.source_type || '')
@@ -2079,9 +2167,13 @@ export default function TopGearItemSelector({
                 .replace(/\s+/g, ' ')
                 .trim();
           const nextTag = enabled ? 'Ascendant' : item.tag === 'Ascendant' ? 'Search' : item.tag;
-          const nextUpgrade = enabled
-            ? `${item.upgrade} + Ascendant`
-            : item.upgrade.replace(/\s*\+\s*Ascendant/i, '');
+          const nextUpgrade = clampUpgradeArrowChain(
+            formatCanonicalUpgradeLabel(
+            item.upgrade,
+            String(resolved.slots[item.slot]?.equipped?.upgrade || ''),
+            enabled
+            )
+          );
           const nextItem: ResolvedItem = {
             ...item,
             origin: 'bags',
@@ -2102,25 +2194,30 @@ export default function TopGearItemSelector({
             gem_ids: nextItem.gem_ids,
             crafted_stats: nextItem.crafted_stats,
             embellishment_item_id: nextItem.embellishment_item_id,
-            modifier_item_ids: parseModifierItemIds(nextItem.source_type),
           });
           const nextVariant: ResolvedItem = { ...nextItem, uid: nextUid };
           const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+          const persistedSlots = new Set<string>();
           for (const [slotKey, slotRes] of Object.entries(nextResolved.slots)) {
             const nextSlot = { ...slotRes };
             if (nextSlot.equipped?.uid === item.uid) {
               // Keep equipped intact; append ascended copy as alternative.
               if (!nextSlot.alternatives.find((alt) => alt.uid === nextUid)) {
                 nextSlot.alternatives = [...nextSlot.alternatives, { ...nextVariant, slot: nextSlot.equipped.slot }];
+                persistedSlots.add(nextSlot.equipped.slot);
               }
             } else if (nextSlot.alternatives.some((alt) => alt.uid === item.uid)) {
               if (!nextSlot.alternatives.find((alt) => alt.uid === nextUid)) {
                 nextSlot.alternatives = [...nextSlot.alternatives, { ...nextVariant, slot: item.slot }];
+                persistedSlots.add(item.slot);
               }
             }
             nextResolved.slots[slotKey] = nextSlot;
           }
           onResolvedChange(nextResolved);
+          for (const slot of persistedSlots) {
+            onItemAdded(slot, nextVariant.simc_string, nextVariant.origin);
+          }
           const nextSelected: Record<string, Set<string>> = {
             ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
           };
@@ -2176,11 +2273,6 @@ export default function TopGearItemSelector({
             equipped={equipped}
             alternatives={alternatives}
             itemInfoMap={itemInfoMap}
-            selectedUids={selectedUids}
-            upgradeMenuFor={upgradeMenuFor}
-            upgradeOptions={upgradeOptions}
-            loadingUpgrades={loadingUpgrades}
-            hasUpgradePathByUid={hasUpgradePathByUid}
             onToggle={(item) => handleToggleItem(item, group.slots)}
             onAddClick={openAddItem}
             onUpgradeClick={openUpgradeMenu}
@@ -2203,6 +2295,8 @@ export default function TopGearItemSelector({
               }))
             }
             itemDetails={itemDetails}
+            itemOverline={itemOverline}
+            getDisplayIlevel={getDisplayIlevel}
             hasLimitWarning={hasEmbellishmentLimitWarning}
             isItemSelected={(item) => {
               const identity = makeIdentity(item);

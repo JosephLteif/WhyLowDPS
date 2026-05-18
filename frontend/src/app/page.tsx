@@ -34,6 +34,7 @@ import {
   listSims,
 } from './lib/api';
 import { useSimContext } from './components/SimContext';
+import CharacterQuickLinks from './components/character/CharacterQuickLinks';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
 import { characterHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
@@ -1653,7 +1654,7 @@ export default function Home() {
                           </div>
                         )}
                         <div
-                          className={`text-zinc-200 ${trackedCompact ? 'text-[13px]' : 'text-sm'}`}
+                          className={`flex flex-wrap items-center gap-2 text-zinc-200 ${trackedCompact ? 'text-[13px]' : 'text-sm'}`}
                         >
                           <span className="font-semibold">
                             {
@@ -1676,6 +1677,11 @@ export default function Home() {
                             ]?.region.toUpperCase()}
                           </span>
                         </div>
+                        <CharacterQuickLinks
+                          armoryUrl={`https://${active.region.toLowerCase()}.battle.net/wow/en/character/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
+                          warcraftLogsUrl={`https://www.warcraftlogs.com/character/${active.region.toLowerCase()}/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
+                          raiderIoUrl={`https://raider.io/characters/${active.region.toLowerCase()}/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
+                        />
                         <div
                           className={`grid gap-2 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
                         >

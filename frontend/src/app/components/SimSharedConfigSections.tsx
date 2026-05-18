@@ -8,16 +8,12 @@ import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import { CLASS_COLORS, specDisplayName } from '../lib/types';
 import type { PullInfo } from '@/lib/simc-parser';
-import { getFightStyleParamRules } from '../lib/fight-style';
 import { parseCharacterInfo } from '@/lib/simc-parser';
+import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
-import {
-  getAllAppDefaultOptions,
-  getCharacterDefaultsKeyFromSimcInput,
-} from '../lib/default-options';
-import ConsumableSelect, { buildQualityMaxByFamily } from './shared/ConsumableSelect';
+import { getAllAppDefaultOptions, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import RaidBuffGrid from './shared/RaidBuffGrid';
 import ToggleOptionCard from './shared/ToggleOptionCard';
 import ConsumablePicker from './shared/ConsumablePicker';
@@ -349,7 +345,6 @@ export function FightSetupOptions() {
   const {
     simcInput,
     simcFooter,
-    customApl,
     fightStyle,
     setFightStyle,
     targetCount,
@@ -519,10 +514,6 @@ export function ConsumablesAndRaidBuffsOptions() {
   } = useSimContext();
 
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
-  const qualityMaxByFamily = useMemo(
-    () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
-    [flasks, potions, augments, tempEnchants]
-  );
   const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
     bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
     arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },
@@ -1028,7 +1019,11 @@ export function AdvancedOptions() {
 
   return (
     <div className="card overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-5 py-3.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left"
+      >
         <div className="flex items-center gap-2.5">
           <SlidersHorizontal className="h-4 w-4 text-zinc-400" strokeWidth={1.5} />
           <span className="text-[15px] font-medium text-zinc-100">Advanced Options</span>
@@ -1038,27 +1033,11 @@ export function AdvancedOptions() {
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen((prev) => !prev)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
-          aria-expanded={open}
-          aria-label={open ? 'Collapse advanced options' : 'Expand advanced options'}
-          title={open ? 'Collapse' : 'Expand'}
-        >
-          <svg
-            viewBox="0 0 16 16"
-            className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M4 6l4 4 4-4" />
-          </svg>
-        </button>
-      </div>
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-zinc-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          strokeWidth={2}
+        />
+      </button>
       {open && (
         <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
           <div className="pt-4" />

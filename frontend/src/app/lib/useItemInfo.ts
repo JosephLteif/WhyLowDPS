@@ -18,6 +18,7 @@ export interface ItemInfo {
   upgrade?: string;
   armor_subclass?: number; // 0=Misc, 1=Cloth, 2=Leather, 3=Mail, 4=Plate
   inventory_type?: number; // 13=One-hand, 14=Shield, 17=Two-hand, 21=Main-hand, 22=Off-hand, 23=Held
+  extra_effects?: string[];
 }
 
 // Module-level cache so it persists across renders/components

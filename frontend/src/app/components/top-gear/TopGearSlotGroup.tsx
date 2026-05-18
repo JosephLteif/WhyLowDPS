@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
+import { Ellipsis } from 'lucide-react';
 import { Plus } from 'lucide-react';
 import { ResolvedItem } from '../../lib/types';
 import type { ItemInfo } from '../../lib/useItemInfo';
 import { QUALITY_COLORS } from '../../lib/useItemInfo';
 import GearItemRow from '../GearItemRow';
-import TopGearUpgradeButton from './TopGearUpgradeButton';
 
 const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
 const EMBELLISHMENT_LIMIT_WARNING =
@@ -23,26 +23,12 @@ function isTierOrCatalystItem(item: ResolvedItem): boolean {
 
 }
 
-interface UpgradeOption {
-  bonus_id: number;
-  level: number;
-  max: number;
-  name: string;
-  fullName: string;
-  itemLevel: number;
-}
-
 interface TopGearSlotGroupProps {
   label: string;
   slots: string[];
   equipped: ResolvedItem[];
   alternatives: ResolvedItem[];
   itemInfoMap: Record<number, ItemInfo>;
-  selectedUids: Record<string, Set<string>>;
-  upgradeMenuFor: string | null;
-  upgradeOptions: UpgradeOption[];
-  loadingUpgrades: boolean;
-  hasUpgradePathByUid: Record<string, boolean>;
   onToggle: (item: ResolvedItem) => void;
   onAddClick: (slot: string) => void;
   onUpgradeClick: (item: ResolvedItem) => void;
@@ -76,6 +62,8 @@ interface TopGearSlotGroupProps {
   onToggleHiddenAlternatives?: () => void;
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
+  getDisplayIlevel?: (item: ResolvedItem) => number;
+  itemOverline?: (item: ResolvedItem) => React.ReactNode;
 }
 
 export default function TopGearSlotGroup({
@@ -84,10 +72,6 @@ export default function TopGearSlotGroup({
   equipped,
   alternatives,
   itemInfoMap,
-  upgradeMenuFor,
-  upgradeOptions,
-  loadingUpgrades,
-  hasUpgradePathByUid,
   onToggle,
   onAddClick,
   onUpgradeClick,
@@ -109,6 +93,8 @@ export default function TopGearSlotGroup({
   onToggleHiddenAlternatives,
   getWowheadUrl,
   getWowheadData,
+  getDisplayIlevel,
+  itemOverline,
 }: TopGearSlotGroupProps) {
   useMemo(() => {
     const totalItems = equipped.length + alternatives.length;
@@ -170,8 +156,8 @@ export default function TopGearSlotGroup({
             specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={showOffSpecWarning === true}
+            overline={itemOverline ? itemOverline(item) : undefined}
             details={itemDetails(item)}
-            ilevel={item.ilevel}
             equipped
             showCheckbox={false}
             href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
@@ -184,21 +170,15 @@ export default function TopGearSlotGroup({
             }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
-            <TopGearUpgradeButton
-              item={item}
-              upgradeMenuFor={upgradeMenuFor}
-              upgradeOptions={upgradeOptions}
-              loadingUpgrades={loadingUpgrades}
-              hasUpgradePath={hasUpgradePathByUid[item.uid] !== false}
-              onUpgradeClick={() => onUpgradeClick(item)}
-              onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
-              onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
-              showOptimizeButton={shouldShowOptimizeButton?.(item) || canOptimizeItem(item)}
-              optimizeDisabled={Boolean(shouldShowOptimizeButton?.(item) && !canOptimizeItem(item))}
-              optimizeDisabledReason={optimizeDisabledReason?.(item)}
-              optimizeTitle={optimizeTitle}
-            />
+            <button
+              type="button"
+              onClick={(event) => onItemContextMenu(item, event)}
+              onContextMenu={(event) => onItemContextMenu(item, event)}
+              className="mt-0.5 inline-flex h-6 items-center gap-1 rounded-md border border-white/15 bg-white/[0.03] px-2 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/[0.08]"
+              title="Open item actions"
+            >
+              <Ellipsis className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
           </GearItemRow>
             );
           })()
@@ -222,8 +202,8 @@ export default function TopGearSlotGroup({
             specWarning={showOffSpecWarning ? OFF_SPEC_WARNING : undefined}
             limitWarning={hasLimitWarning?.(item) ? EMBELLISHMENT_LIMIT_WARNING : undefined}
             dimmed={showOffSpecWarning === true}
+            overline={itemOverline ? itemOverline(item) : undefined}
             details={itemDetails(item)}
-            ilevel={item.ilevel}
             selectable
             showCheckbox={false}
             checked={isItemSelected(item)}
@@ -240,21 +220,15 @@ export default function TopGearSlotGroup({
             }
             onContextMenu={(event) => onItemContextMenu(item, event)}
           >
-            <TopGearUpgradeButton
-              item={item}
-              upgradeMenuFor={upgradeMenuFor}
-              upgradeOptions={upgradeOptions}
-              loadingUpgrades={loadingUpgrades}
-              hasUpgradePath={hasUpgradePathByUid[item.uid] !== false}
-              onUpgradeClick={() => onUpgradeClick(item)}
-              onUpgradeSelect={(opt) => onUpgradeSelect(item, opt)}
-              onCatalystConvert={item.can_catalyst ? () => onCatalystConvert(item) : undefined}
-              onOptimize={canOptimizeItem(item) ? () => onOptimize(item) : undefined}
-              showOptimizeButton={shouldShowOptimizeButton?.(item) || canOptimizeItem(item)}
-              optimizeDisabled={Boolean(shouldShowOptimizeButton?.(item) && !canOptimizeItem(item))}
-              optimizeDisabledReason={optimizeDisabledReason?.(item)}
-              optimizeTitle={optimizeTitle}
-            />
+            <button
+              type="button"
+              onClick={(event) => onItemContextMenu(item, event)}
+              onContextMenu={(event) => onItemContextMenu(item, event)}
+              className="mt-0.5 inline-flex h-6 items-center gap-1 rounded-md border border-white/15 bg-white/[0.03] px-2 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-white/25 hover:bg-white/[0.08]"
+              title="Open item actions"
+            >
+              <Ellipsis className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
           </GearItemRow>
             );
           })()

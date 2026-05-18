@@ -1,8 +1,10 @@
 import { useRouter } from 'next/navigation';
+import type { CSSProperties } from 'react';
 import { getIconUrl, getWowheadData, getWowheadUrl, QUALITY_COLORS } from '../../lib/useItemInfo';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import type { ResultItem } from '../../lib/types';
 import { SLOT_LABELS } from '../../lib/types';
+import { getItemExtraEffects, useItemExtraEffects } from '../../lib/itemExtraEffect';
 import ItemBadge from '../shared/ItemBadge';
 import type { Instance } from '../../drop-finder/types';
 import { buildSourceTagLinks } from '../../lib/source-navigation';
@@ -13,7 +15,10 @@ interface ItemTagProps {
   enchant?: EnchantInfo;
   gem?: GemInfo;
   upgradeState?: 'upgrade' | 'downgrade' | null;
-  ilevelText?: string;
+  ilevelTagText?: string;
+  tierText?: string;
+  tierClassName?: string;
+  tierStyle?: CSSProperties;
   ilevelTooltip?: string;
   ilevelHighlightClass?: string;
   gemChanged?: boolean;
@@ -27,7 +32,10 @@ export default function ItemTag({
   enchant,
   gem,
   upgradeState = null,
-  ilevelText,
+  ilevelTagText,
+  tierText,
+  tierClassName = '',
+  tierStyle,
   ilevelTooltip,
   ilevelHighlightClass = '',
   gemChanged = false,
@@ -69,10 +77,24 @@ export default function ItemTag({
   const gemId = gem?.gem_id || item.gem_id || 0;
   const gemTooltipData = gemId > 0 ? `item=${gemId}` : undefined;
   const gemHref = gemId > 0 ? getWowheadUrl(gemId) : undefined;
+  const extraEffectsByKey = useItemExtraEffects([
+    { item_id: item.item_id, bonus_ids: item.bonus_ids },
+  ]);
+  const extraEffects = getItemExtraEffects(
+    {
+      item_id: item.item_id,
+      bonus_ids: item.bonus_ids,
+      simc_string: item.simc_string,
+      source_type: item.source_type,
+      tag: item.tag,
+      extra_effects: info?.extra_effects || item.extra_effects,
+    },
+    extraEffectsByKey
+  );
 
   return (
     <div
-      className={`grid min-w-0 max-w-full grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-1 px-0.5 py-1 ${kept ? 'opacity-40' : ''}`}
+      className={`grid w-full min-w-0 max-w-full grid-cols-[32px_minmax(0,1fr)] gap-x-3 gap-y-1 px-0.5 py-1 ${kept ? 'opacity-40' : ''}`}
     >
       <a
         href={item.item_id > 0 ? getWowheadUrl(item.item_id) : undefined}
@@ -93,8 +115,8 @@ export default function ItemTag({
       </a>
 
       <div className="col-start-2 row-start-1 min-w-0">
-        <div className="mb-1 flex min-w-0 flex-wrap items-center gap-1.5">
-          {ilevelText && (
+        <div className="mb-1 flex min-w-0 flex-wrap items-start gap-1.5">
+          {ilevelTagText && (
             <span
               title={ilevelTooltip}
               className={`inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${
@@ -105,7 +127,16 @@ export default function ItemTag({
                     : 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90'
               }`}
             >
-              {ilevelText}
+              {ilevelTagText}
+            </span>
+          )}
+          {tierText && (
+            <span
+              title={ilevelTooltip}
+              className={`inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[11px] font-semibold leading-none ${tierClassName || 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90'}`}
+              style={tierStyle}
+            >
+              {tierText}
             </span>
           )}
           {sourceTags.map((tag) => (
@@ -116,9 +147,9 @@ export default function ItemTag({
                 event.stopPropagation();
                 router.push(tag.path);
               }}
-              className="inline-flex shrink-0 items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200 transition-colors hover:bg-amber-500/20"
+              className="inline-flex max-w-full items-center rounded border border-amber-400/45 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold leading-none text-amber-200 transition-colors hover:bg-amber-500/20"
             >
-              {tag.text}
+              <span className="whitespace-normal break-words text-left leading-tight">{tag.text}</span>
             </button>
           ))}
           <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
@@ -191,6 +222,15 @@ export default function ItemTag({
             iconSize={14}
           />
         )}
+        {extraEffects.map((effect) => (
+          <ItemBadge
+            key={`extra:${item.uid}:${effect}`}
+            text={effect}
+            variant="mod"
+            className="border-cyan-300/45 bg-cyan-500/10 text-cyan-200/95"
+            iconSize={14}
+          />
+        ))}
       </div>
     </div>
   );

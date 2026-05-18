@@ -7,7 +7,6 @@ import { API_URL, fetchJson, isDesktop } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 import { isValidUpdateChannel } from '../lib/update-channel';
-import { chooseBestRefreshUnit, type RefreshUnit } from './refreshInterval';
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
 import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
@@ -54,7 +53,6 @@ export default function SettingsPage() {
   const [performanceSaved, setPerformanceSaved] = useState(false);
   const {
     cacheSyncing,
-    cacheSyncProgress,
     cacheMessage,
     syncProgress,
     syncProgressPct,
@@ -82,9 +80,7 @@ export default function SettingsPage() {
     groupedDataFiles,
     sectionSummaries,
   } = useDataFileStateManager();
-  const initialRefresh = chooseBestRefreshUnit(dataCacheRefreshMinutes);
-  const [refreshEveryValue, setRefreshEveryValue] = useState(initialRefresh.value);
-  const [refreshEveryUnit, setRefreshEveryUnit] = useState<RefreshUnit>(initialRefresh.unit);
+  const [refreshPreset, setRefreshPreset] = useState<'disabled' | 'daily' | 'weekly'>('disabled');
   const [activeTab, setActiveTab] = useState<SettingsTab>('simulation');
   const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(true);
   const [closeBehaviorLoading, setCloseBehaviorLoading] = useState(false);
@@ -198,9 +194,15 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    const derived = chooseBestRefreshUnit(dataCacheRefreshMinutes);
-    setRefreshEveryValue(derived.value);
-    setRefreshEveryUnit(derived.unit);
+    if (dataCacheRefreshMinutes >= 7 * 24 * 60) {
+      setRefreshPreset('weekly');
+      return;
+    }
+    if (dataCacheRefreshMinutes >= 24 * 60) {
+      setRefreshPreset('daily');
+      return;
+    }
+    setRefreshPreset('disabled');
   }, [dataCacheRefreshMinutes]);
 
   const testBlizzardCredentials = async () => {
@@ -397,58 +399,6 @@ export default function SettingsPage() {
             />
           </div>
 
-          {isDesktop && (
-            <div className="space-y-4 border-t border-border pt-4">
-              <div className="rounded-lg border border-border/70 bg-surface px-4 py-3">
-                <p className="text-sm font-medium text-zinc-200">SimulationCraft Engine</p>
-                <p className="mt-1 text-[12px] text-zinc-400">
-                  SimulationCraft is now bundled at build time with the app installer.
-                  Runtime/background SimC downloading is disabled.
-                </p>
-                <p className="mt-2 text-[12px] text-zinc-500">
-                  To get newer SimC binaries, switch update channel in App Updates
-                  (Stable, Weekly, Nightly) and install that release build.
-                </p>
-              </div>
-              <div className="space-y-3 rounded-lg border border-border/70 bg-surface px-4 py-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-zinc-200">Minimize to tray on close</p>
-                    <p className="text-[12px] text-zinc-500">
-                      If enabled, closing the main window hides the app to the system tray instead
-                      of exiting.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={closeBehaviorLoading}
-                    onClick={() => void updateCloseBehavior(!minimizeToTrayOnClose)}
-                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${
-                      minimizeToTrayOnClose ? 'bg-gold' : 'border border-border bg-surface'
-                    }`}
-                    aria-pressed={minimizeToTrayOnClose}
-                  >
-                    <span
-                      className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
-                        minimizeToTrayOnClose ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
-                      }`}
-                    />
-                  </button>
-                </div>
-                {closeBehaviorMessage && (
-                  <div
-                    className={`rounded-md border px-3 py-2 text-[12px] ${
-                      closeBehaviorMessage.type === 'success'
-                        ? 'border-emerald-700/40 bg-emerald-950/25 text-emerald-300'
-                        : 'border-red-700/40 bg-red-950/25 text-red-300'
-                    }`}
-                  >
-                    {closeBehaviorMessage.text}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </section>}
 
@@ -488,19 +438,64 @@ export default function SettingsPage() {
         </div>
       </section>}
 
+      {activeTab === 'simulation' && isDesktop && (
+        <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <h2 className="mb-3 text-xl font-semibold text-white">Close Behavior</h2>
+          <p className="mb-5 text-sm text-zinc-400">
+            Choose what happens when you close the app window.
+          </p>
+
+          <div className="max-w-2xl space-y-4">
+            <div className="inline-flex rounded-lg border border-border bg-surface-2 p-1">
+              <button
+                type="button"
+                disabled={closeBehaviorLoading}
+                onClick={() => void updateCloseBehavior(false)}
+                className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                  !minimizeToTrayOnClose
+                    ? 'bg-white text-black'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+              >
+                Close App
+              </button>
+              <button
+                type="button"
+                disabled={closeBehaviorLoading}
+                onClick={() => void updateCloseBehavior(true)}
+                className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                  minimizeToTrayOnClose
+                    ? 'bg-gold/20 text-gold'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+              >
+                Minimize to Tray
+              </button>
+            </div>
+
+            {closeBehaviorMessage ? (
+              <p
+                className={`text-xs ${
+                  closeBehaviorMessage.type === 'success' ? 'text-emerald-300' : 'text-red-300'
+                }`}
+              >
+                {closeBehaviorMessage.text}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      )}
+
       {activeTab === 'data' && (
         <DataCacheSettingsSection
-          refreshEveryValue={refreshEveryValue}
-          setRefreshEveryValue={setRefreshEveryValue}
-          refreshEveryUnit={refreshEveryUnit}
-          setRefreshEveryUnit={setRefreshEveryUnit}
+          refreshPreset={refreshPreset}
+          setRefreshPreset={setRefreshPreset}
           setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
           cacheSyncing={cacheSyncing}
           refreshDataCache={refreshDataCache}
           viewDataStates={viewDataStates}
           syncProgress={syncProgress}
           syncProgressPct={syncProgressPct}
-          cacheSyncProgress={cacheSyncProgress}
           cacheMessage={cacheMessage}
         />
       )}
@@ -520,7 +515,7 @@ export default function SettingsPage() {
         <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
         <p className="text-sm text-zinc-400">
           Your credentials are used solely to fetch character data directly from Blizzard. They are
-          stored in our secure database and are never shared with third parties.
+          stored in on your device and are never shared with third parties.
         </p>
       </section>}
 
@@ -553,4 +548,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

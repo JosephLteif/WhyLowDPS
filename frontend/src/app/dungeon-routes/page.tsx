@@ -12,6 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
 import RouteDetailsModal from '../components/RouteDetailsModal';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
+import { normalizeDungeonName } from '../dungeons/shared';
 
 export default function DungeonRoutesPage() {
   const router = useRouter();
@@ -232,6 +233,34 @@ export default function DungeonRoutesPage() {
     return result;
   }, [routes, dungeonFilter, sortBy]);
 
+  const instanceIdByNormalizedName = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const instance of availableInstances) {
+      if (!instance.name) continue;
+      map.set(normalizeDungeonName(instance.name), instance.id);
+    }
+    return map;
+  }, [availableInstances]);
+
+  const findMatchedInstanceId = useCallback(
+    (dungeonName: string): number | null => {
+      const normalizedRouteName = normalizeDungeonName(dungeonName);
+      const direct = instanceIdByNormalizedName.get(normalizedRouteName);
+      if (direct) return direct;
+      for (const instance of availableInstances) {
+        const normalizedInstanceName = normalizeDungeonName(instance.name);
+        if (
+          normalizedInstanceName.includes(normalizedRouteName) ||
+          normalizedRouteName.includes(normalizedInstanceName)
+        ) {
+          return instance.id;
+        }
+      }
+      return null;
+    },
+    [availableInstances, instanceIdByNormalizedName],
+  );
+
   if (isLoading && routes.length === 0) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
@@ -323,7 +352,21 @@ export default function DungeonRoutesPage() {
                       className="truncate text-lg font-bold tracking-tight text-white transition-colors group-hover:text-gold">
                       {route.name}
                     </h3>
-                    <p className="text-sm font-medium text-zinc-500">{route.dungeon}</p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-medium text-zinc-500">{route.dungeon}</p>
+                      {(() => {
+                        const matchedInstanceId = findMatchedInstanceId(route.dungeon);
+                        if (!matchedInstanceId) return null;
+                        return (
+                          <Link
+                            href={`/dungeons/details/?id=${encodeURIComponent(String(matchedInstanceId))}`}
+                            className="text-xs font-semibold text-gold/90 transition-colors hover:text-gold hover:underline"
+                          >
+                            Open Dungeon
+                          </Link>
+                        );
+                      })()}
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <button
@@ -425,6 +468,7 @@ export default function DungeonRoutesPage() {
       {viewingRoute && (
         <RouteDetailsModal
           route={viewingRoute}
+          dungeonDetailsId={findMatchedInstanceId(viewingRoute.dungeon)}
           onClose={() => setViewingRoute(null)}
           formatHealth={formatHealth}
           formatTime={formatTime}

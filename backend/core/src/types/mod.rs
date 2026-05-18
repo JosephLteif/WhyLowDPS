@@ -118,6 +118,19 @@ pub struct ItemInfo {
     pub inventory_type: i64,
     pub item_class: i64,
     pub item_subclass: i64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_effects: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bonus_debug: Option<ItemBonusDebug>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ItemBonusDebug {
+    pub bonus_ids: Vec<u64>,
+    pub unknown_bonus_ids: Vec<u64>,
+    pub server_side_bonus_ids: Vec<u64>,
+    pub ignored_server_side_bonus_ids: Vec<u64>,
 }
 
 impl ItemInfo {
@@ -137,6 +150,8 @@ impl ItemInfo {
             inventory_type: 0,
             item_class: 0,
             item_subclass: 0,
+            extra_effects: Vec::new(),
+            bonus_debug: None,
         }
     }
 }
@@ -444,6 +459,9 @@ pub struct BonusData {
     pub item_limit_category: Option<u64>,
     #[serde(rename = "craftedStats")]
     pub crafted_stats: Vec<u64>,
+    #[serde(rename = "rawStats")]
+    pub raw_stats: Option<serde_json::Value>,
+    pub serverside: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { specDisplayName } from '../../lib/types';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
@@ -71,6 +72,140 @@ function shortTierFromItem(item?: {
   return null;
 }
 
+function parseTierLevelFromUpgrade(upgradeRaw?: string): { tier: string; level: number; max: number } | null {
+  const value = String(upgradeRaw || '').split(/\s*->\s*/).pop()?.trim() || '';
+  const match = value.match(/^([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (!match) return null;
+  return {
+    tier: match[1],
+    level: Number(match[2]),
+    max: Number(match[3]),
+  };
+}
+
+function extractTierLevelLabel(item?: {
+  upgrade?: string;
+  tag?: string;
+}): string {
+  if (!item) return '';
+  const candidates = [String(item.upgrade || ''), String(item.tag || '')];
+  for (const candidate of candidates) {
+    const segments = candidate
+      .split(/\s*->\s*/)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+    for (let i = segments.length - 1; i >= 0; i -= 1) {
+      const match = segments[i].match(/^([A-Za-z]+)\s+(\d+)\s*\/\s*(\d+)$/);
+      if (match) {
+        return `${match[1]} ${match[2]}/${match[3]}`;
+      }
+    }
+  }
+  return '';
+}
+
+function normalizeUpgradeLabel(value?: string | null): string {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function labelsEqual(left?: string | null, right?: string | null): boolean {
+  return String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase();
+}
+
+function collapseUpgradeLabelPath(upgradeLabel: string, equippedUpgradeLabel?: string | null): string {
+  const segments = upgradeLabel
+    .split('->')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const target = segments[segments.length - 1] || '';
+  const equipped = normalizeUpgradeLabel(equippedUpgradeLabel);
+  if (!target && !equipped) return '';
+  if (!equipped) {
+    if (segments.length > 1) {
+      const previous = segments[segments.length - 2] || '';
+      return labelsEqual(previous, target) ? target : `${previous} -> ${target}`;
+    }
+    return target;
+  }
+  if (!target) return equipped;
+  return labelsEqual(equipped, target) ? target : `${equipped} -> ${target}`;
+}
+
+function formatUpgradePreviewLabel(args: {
+  upgradeLabel: string;
+  equippedUpgradeLabel?: string | null;
+  equippedTierLevelLabel?: string | null;
+  itemTierLevelLabel?: string | null;
+  upgradeLevels?: number;
+}): string {
+  const {
+    upgradeLabel,
+    equippedUpgradeLabel,
+    equippedTierLevelLabel,
+    itemTierLevelLabel,
+    upgradeLevels,
+  } = args;
+  const collapsed = collapseUpgradeLabelPath(upgradeLabel, equippedUpgradeLabel);
+  const collapsedTarget = collapsed.split(/\s*->\s*/).pop()?.trim() || '';
+  const normalizedCollapsedTarget = normalizeUpgradeLabel(collapsedTarget);
+  const normalizedEquippedTier = normalizeUpgradeLabel(equippedTierLevelLabel);
+  const normalizedItemTier = normalizeUpgradeLabel(itemTierLevelLabel);
+  if (!collapsed.includes('->') && normalizedCollapsedTarget) {
+    if (normalizedEquippedTier && !labelsEqual(normalizedEquippedTier, normalizedCollapsedTarget)) {
+      return `${normalizedEquippedTier} -> ${normalizedCollapsedTarget}`;
+    }
+    if (normalizedItemTier && !labelsEqual(normalizedItemTier, normalizedCollapsedTarget)) {
+      return `${normalizedItemTier} -> ${normalizedCollapsedTarget}`;
+    }
+  }
+  if (collapsed.includes('->')) return collapsed;
+  const target = parseTierLevelFromUpgrade(collapsed);
+  if (!target) return collapsed;
+  const levels = Number(upgradeLevels || 0);
+  if (levels > 0 && target.level > levels) {
+    return `${target.tier} ${target.level - levels}/${target.max} -> ${target.tier} ${target.level}/${target.max}`;
+  }
+  return collapsed;
+}
+
+function trackTagClass(label?: string): string {
+  const tier = String(label || '').toLowerCase();
+  if (tier.includes('myth')) return 'border-orange-400/55 bg-orange-500/15 text-orange-200';
+  if (tier.includes('hero')) return 'border-teal-400/45 bg-teal-500/12 text-teal-200';
+  if (tier.includes('champ')) return 'border-emerald-400/45 bg-emerald-500/12 text-emerald-200';
+  if (tier.includes('vet')) return 'border-sky-400/45 bg-sky-500/12 text-sky-200';
+  if (tier.includes('adv')) return 'border-lime-400/45 bg-lime-500/12 text-lime-200';
+  if (tier.includes('exp')) return 'border-zinc-400/45 bg-zinc-500/12 text-zinc-200';
+  return 'border-zinc-400/40 bg-zinc-500/10 text-zinc-200/90';
+}
+
+function tierColor(label: string): string {
+  const tier = label.trim().toLowerCase();
+  if (tier.includes('myth')) return 'rgba(249, 115, 22, 0.35)';
+  if (tier.includes('hero')) return 'rgba(56, 189, 248, 0.32)';
+  if (tier.includes('champ')) return 'rgba(16, 185, 129, 0.32)';
+  if (tier.includes('vet')) return 'rgba(34, 211, 238, 0.30)';
+  if (tier.includes('adv')) return 'rgba(132, 204, 22, 0.30)';
+  if (tier.includes('exp')) return 'rgba(113, 113, 122, 0.30)';
+  return 'rgba(20, 184, 166, 0.28)';
+}
+
+function tierTransitionStyle(label: string): CSSProperties | undefined {
+  const segments = label
+    .split(/\s*->\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  if (segments.length < 2) return undefined;
+  const from = segments[segments.length - 2];
+  const to = segments[segments.length - 1];
+  if (labelsEqual(from, to)) return undefined;
+  return {
+    backgroundImage: `linear-gradient(90deg, ${tierColor(from)} 0%, ${tierColor(from)} 50%, ${tierColor(to)} 50%, ${tierColor(to)} 100%)`,
+  };
+}
+
 function dropBaselineKey(item: ResultItem): string {
   const slot = String(item.slot || '').toLowerCase();
   const itemId = Number(item.item_id || 0);
@@ -111,6 +246,7 @@ interface ResultRowProps {
   isWishlisted?: boolean;
   wishlistButtonDisabled?: boolean;
   sourceInstances?: Instance[];
+  baselineTierBySlot?: Record<string, string>;
 }
 
 const CONSUMABLE_OPTION_BY_TOKEN: Record<string, OptionEntry> = Object.fromEntries(
@@ -185,6 +321,7 @@ export default function ResultRow({
   isWishlisted = false,
   wishlistButtonDisabled = false,
   sourceInstances = [],
+  baselineTierBySlot = {},
 }: ResultRowProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -271,7 +408,10 @@ export default function ResultRow({
       string,
       {
         upgradeState: 'upgrade' | 'downgrade' | null;
-        ilevelText?: string;
+        ilevelTagText?: string;
+        tierText?: string;
+        tierClassName?: string;
+        tierStyle?: CSSProperties;
         ilevelTooltip?: string;
         ilevelHighlightClass?: string;
         gemChanged: boolean;
@@ -307,16 +447,26 @@ export default function ResultRow({
             : 'downgrade'
           : null;
 
-      const ilevelText =
-        nextIlevel > 0
-          ? currentIlevel > 0
-            ? `${currentTier || 'Tier'} ${currentIlevel} -> ${nextTier || 'Tier'} ${nextIlevel}`
-            : `${nextTier || 'Tier'} ${nextIlevel}`
-          : undefined;
+      const tierText = formatUpgradePreviewLabel({
+        upgradeLabel: String(it.upgrade || ''),
+        equippedUpgradeLabel: String(equipped?.upgrade || ''),
+        equippedTierLevelLabel: extractTierLevelLabel(equipped) || baselineTierBySlot[it.slot] || '',
+        itemTierLevelLabel: extractTierLevelLabel(it),
+        upgradeLevels: Number(it.upgrade_levels || 0),
+      });
+      const nextTierLevel = parseTierLevelFromUpgrade(tierText.split(/\s*->\s*/).pop() || '');
 
       bySlot[it.slot] = {
         upgradeState,
-        ilevelText,
+        ilevelTagText:
+          nextIlevel > 0
+            ? currentIlevel > 0
+              ? `iLvl ${currentIlevel} -> ${nextIlevel}`
+              : `iLvl ${nextIlevel}`
+            : undefined,
+        tierText,
+        tierClassName: trackTagClass((nextTierLevel?.tier || nextTier || '').toString()),
+        tierStyle: tierTransitionStyle(tierText),
         ilevelTooltip:
           ilvlChanged || needsUpgradeAction
             ? inferredNeedsUpgrade && baselineDropIlevel > 0
@@ -334,7 +484,7 @@ export default function ResultRow({
       };
     }
     return bySlot;
-  }, [changedItems, equippedGear, dropBaselineIlevelByKey]);
+  }, [changedItems, equippedGear, dropBaselineIlevelByKey, baselineTierBySlot]);
 
   const ilvlGain = useMemo(() => {
     if (!equippedGear || !baseAvgIlevel) return 0;
@@ -449,8 +599,8 @@ export default function ResultRow({
         className="absolute inset-y-0 left-0 bg-white/[0.03]"
         style={{ width: `${barWidth}%` }}
       />
-      <div className="relative flex flex-col gap-2 px-4 py-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
-        <div className="flex min-w-0 flex-1 items-start gap-2.5 lg:items-center">
+      <div className="relative flex flex-col gap-2 px-4 py-3 xl:flex-row xl:items-center xl:justify-between xl:gap-4">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5 xl:items-center">
           {rank != null && (
             <span className="w-6 shrink-0 text-right font-mono text-[14px] tabular-nums text-zinc-300">
               {rank}
@@ -540,7 +690,10 @@ export default function ResultRow({
                         enchant={it.enchant_id ? enchantInfoMap[it.enchant_id] : undefined}
                         gem={it.gem_id ? gemInfoMap[it.gem_id] : undefined}
                         upgradeState={state?.upgradeState}
-                        ilevelText={state?.ilevelText}
+                        ilevelTagText={state?.ilevelTagText}
+                        tierText={state?.tierText}
+                        tierClassName={state?.tierClassName}
+                        tierStyle={state?.tierStyle}
                         ilevelTooltip={state?.ilevelTooltip}
                         ilevelHighlightClass={state?.ilevelHighlightClass}
                         gemChanged={state?.gemChanged}
@@ -618,9 +771,9 @@ export default function ResultRow({
             </span>
           )}
         </div>
-        <div className="grid shrink-0 grid-cols-3 gap-3 lg:flex lg:items-center">
+        <div className="grid min-w-0 grid-cols-3 gap-3 xl:shrink-0 xl:flex xl:items-center">
           <span
-            className={`flex min-w-0 items-center justify-start gap-1.5 font-mono text-[14px] tabular-nums lg:w-32 lg:justify-end lg:text-[15px] ${
+            className={`flex min-w-0 items-center justify-start gap-1.5 font-mono text-[14px] tabular-nums xl:w-32 xl:justify-end xl:text-[15px] ${
               !isEquipped && result.delta > 0
                 ? 'text-emerald-400'
                 : !isEquipped && result.delta < 0
@@ -640,11 +793,11 @@ export default function ResultRow({
               </span>
             )}
           </span>
-          <span className="text-left font-mono text-[14px] tabular-nums text-zinc-200 lg:w-20 lg:text-right lg:text-[15px]">
+          <span className="text-left font-mono text-[14px] tabular-nums text-zinc-200 xl:w-20 xl:text-right xl:text-[15px]">
             {Math.round(result.dps).toLocaleString()}
           </span>
-          <div className="flex min-w-0 flex-col items-start gap-0.5 lg:w-28 lg:items-end">
-            <span className="text-[13px] tabular-nums text-zinc-200 lg:text-[14px]">
+          <div className="flex min-w-0 flex-col items-start gap-0.5 xl:w-28 xl:items-end">
+            <span className="text-[13px] tabular-nums text-zinc-200 xl:text-[14px]">
               {(baseAvgIlevel + ilvlGain).toFixed(2)}
               {ilvlGain !== 0 && (
                 <span
@@ -658,7 +811,7 @@ export default function ResultRow({
               )}
             </span>
           </div>
-          <div className="col-span-3 flex items-center justify-end gap-2 lg:col-auto lg:w-52">
+          <div className="col-span-3 flex items-center justify-end gap-2 xl:col-auto xl:w-52">
             {onAddToWishlist && !isEquipped && (
               <button
                 type="button"

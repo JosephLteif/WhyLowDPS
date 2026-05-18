@@ -205,9 +205,8 @@ pub fn build_baseline_meta(
     slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
     talents: &[(String, String)],
 ) -> Vec<Value> {
-    let paired_display_slots = ["finger1", "finger2", "trinket1", "trinket2"];
     let mut meta = Vec::new();
-    for slot in &paired_display_slots {
+    for slot in GEAR_SLOTS {
         if let Some(items) = slot_item_lists.get(*slot) {
             if !items.is_empty() {
                 meta.push(item_meta(&items[0], slot));
@@ -242,7 +241,7 @@ pub fn build_combo_meta(
     let mut meta = Vec::new();
 
     if is_baseline {
-        for slot in &paired_display_slots {
+        for slot in GEAR_SLOTS {
             if let Some(items) = slot_item_lists.get(*slot) {
                 if !items.is_empty() {
                     let mut m = item_meta(&items[0], slot);

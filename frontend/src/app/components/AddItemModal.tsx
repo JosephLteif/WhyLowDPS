@@ -158,12 +158,9 @@ function isWeaponOrTrinketInventoryType(inventoryType: number): boolean {
   return [12, 13, 14, 17, 21, 22, 23].includes(Number(inventoryType));
 }
 
-function isAscendantEligible(item: ExternalItem, tier: any, category: string): boolean {
+function isAscendantEligible(item: ExternalItem, tier: any, _category: string): boolean {
   if (!tier || !isWeaponOrTrinketInventoryType(item.inventory_type)) return false;
   const track = String(tier.track || '').toLowerCase();
-  const fullyUpgraded = Number(tier.level || 0) >= Number(tier.maxLevel || 0) && Number(tier.maxLevel || 0) > 0;
-  if (!fullyUpgraded) return false;
-  if (category === 'crafted') return track.includes('crafted') || track.includes('radiance');
   return track.includes('hero') || track.includes('myth');
 }
 
@@ -431,7 +428,6 @@ export default function AddItemModal({
   >({});
   const [rawGems, setRawGems] = useState<RawGem[]>([]);
   const [itemGems, setItemGems] = useState<Record<number, GemDisplay | null>>({});
-  const [itemAscendant, setItemAscendant] = useState<Record<number, boolean>>({});
   const [craftedFilterSlot, setCraftedFilterSlot] = useState<string | null>(null);
 
   const inventoryTypeToSlot = INVENTORY_TYPE_TO_SLOT;
@@ -534,7 +530,6 @@ export default function AddItemModal({
     setItemMissives({});
     setItemEmbellishments({});
     setItemGems({});
-    setItemAscendant({});
   }, [
     category,
     selectedDifficulty,
@@ -542,7 +537,6 @@ export default function AddItemModal({
     setItemTiers,
     setItemMissives,
     setItemEmbellishments,
-    setItemAscendant,
   ]);
 
   useEffect(() => {
@@ -646,9 +640,16 @@ export default function AddItemModal({
       upgradeTracks,
       category
     );
-    const ascendantApplied = Boolean(itemAscendant[item.item_id]) && isAscendantEligible(item, resolvedTier, category);
-    const ascendantBonusIlvl = ascendantApplied ? (category === 'crafted' ? 10 : 9) : 0;
-    const selectedLevel = resolvedTier?.level || itemTiers[item.item_id] || 1;
+    const selectedRawLevel = itemTiers[item.item_id] || resolvedTier?.level || 1;
+    const ascendantLevel = resolvedTier ? resolvedTier.maxLevel + 1 : 0;
+    const ascendantApplied =
+      Boolean(resolvedTier) &&
+      isAscendantEligible(item, resolvedTier, category) &&
+      selectedRawLevel === ascendantLevel;
+    const ascendantBonusIlvl = ascendantApplied ? 9 : 0;
+    const selectedLevel = resolvedTier
+      ? Math.max(resolvedTier.baseLevel || 1, Math.min(resolvedTier.maxLevel, selectedRawLevel))
+      : selectedRawLevel;
     const selectedEmbellishment = itemEmbellishments[item.item_id] || null;
     const selectedGem = itemGems[item.item_id] || null;
     const availableMissives = missivesForItem(item, missives);
@@ -996,7 +997,11 @@ export default function AddItemModal({
                           upgradeTracks,
                           category
                         );
-                        const currentIlvl = tier?.ilvl || item.ilevel;
+                        const ascendantEligible = Boolean(tier) && isAscendantEligible(item, tier, category);
+                        const ascendantLevel = tier ? tier.maxLevel + 1 : 0;
+                        const rawSliderLevel = tier ? (itemTiers[item.item_id] || tier.level) : 0;
+                        const ascendantApplied = Boolean(tier) && ascendantEligible && rawSliderLevel === ascendantLevel;
+                        const currentIlvl = (tier?.ilvl || item.ilevel) + (ascendantApplied ? 9 : 0);
                         const trackName = tier?.track || '';
                         const tc = trackName ? TRACK_COLORS[trackName] : null;
                         const badgeClass = tc?.badge || DEFAULT_BADGE;
@@ -1193,89 +1198,69 @@ export default function AddItemModal({
                                 </div>
                               </div>
                             )}
-                            {(() => {
-                              const eligible = isAscendantEligible(item, tier, category);
-                              if (!eligible) return null;
-                              return (
-                                <div
-                                  className="mt-2 space-y-2 border-t border-white/5 pt-2"
-                                  data-stop-add="true"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <label className="flex items-center gap-2 text-xs text-zinc-200">
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(itemAscendant[item.item_id])}
-                                      onChange={(e) =>
-                                        setItemAscendant((prev) => ({
-                                          ...prev,
-                                          [item.item_id]: e.target.checked,
-                                        }))
-                                      }
-                                    />
-                                    <span>Apply Ascendant Voidcore</span>
-                                    <a
-                                      href="https://www.wowhead.com/search?q=Ascendant%20Voidcore"
-                                      data-wowhead="search=Ascendant Voidcore"
-                                      className="text-[11px] text-sky-300 underline"
-                                      onClick={(e) => e.preventDefault()}
-                                    >
-                                      (Wowhead)
-                                    </a>
-                                  </label>
-                                </div>
-                              );
-                            })()}
                             {tier && tier.maxLevel > 1 && (
                               <div className="mt-2 space-y-1">
-                                <div className="flex items-center justify-between text-[11px] font-semibold text-white">
-                                  <span>
-                                    {tier.track === 'Crafted'
+                                {(() => {
+                                  const sliderMin = tier.baseLevel || 1;
+                                  const sliderMax = ascendantEligible ? tier.maxLevel + 1 : tier.maxLevel;
+                                  const rawSliderValue = itemTiers[item.item_id] || tier.level;
+                                  const sliderValue = Math.max(sliderMin, Math.min(sliderMax, rawSliderValue));
+                                  const displayIlvl = tier.ilvl + (ascendantApplied ? 9 : 0);
+                                  const trackText =
+                                    tier.track === 'Crafted'
                                       ? `Quality ${tier.level}/${tier.maxLevel}`
-                                      : `${tier.track} ${tier.level}/${tier.maxLevel}`}
-                                  </span>
-                                  <span className="font-mono">
-                                    {tier.ilvl} ilvl
-                                  </span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={tier.baseLevel || 1}
-                                  max={tier.maxLevel}
-                                  step={1}
-                                  value={tier.level}
-                                  onChange={(e) => {
-                                    const nextLevel = Number(e.target.value);
-                                    const boundedLevel = Math.max(
-                                      tier.baseLevel || 1,
-                                      Math.min(tier.maxLevel, nextLevel)
-                                    );
-                                    setItemTiers((prev) => ({
-                                      ...prev,
-                                      [item.item_id]: boundedLevel,
-                                    }));
-                                  }}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-full"
-                                />
-                                <div className="flex items-center justify-between px-1 pt-0.5">
-                                  {Array.from(
-                                    { length: Math.max(0, tier.maxLevel - (tier.baseLevel || 1) + 1) },
-                                    (_, index) => {
-                                      const level = (tier.baseLevel || 1) + index;
-                                      const active = level <= tier.level;
-                                      return (
-                                        <span
-                                          key={`${item.item_id}-tier-dot-${level}`}
-                                          className={`h-1.5 w-1.5 rounded-full ${
-                                            active ? 'bg-gold/90' : 'bg-zinc-600/70'
-                                          }`}
-                                        />
-                                      );
-                                    }
-                                  )}
-                                </div>
+                                      : ascendantApplied
+                                        ? `${tier.track} ${tier.maxLevel}/${tier.maxLevel} + Ascendant Voidcore`
+                                        : `${tier.track} ${sliderValue}/${tier.maxLevel}`;
+                                  return (
+                                    <>
+                                      <div className="flex items-center justify-between text-[11px] font-semibold text-white">
+                                        <span>{trackText}</span>
+                                        <span className="font-mono">
+                                          {displayIlvl} ilvl
+                                        </span>
+                                      </div>
+                                      <input
+                                        type="range"
+                                        min={sliderMin}
+                                        max={sliderMax}
+                                        step={1}
+                                        value={sliderValue}
+                                        onChange={(e) => {
+                                          const nextLevel = Number(e.target.value);
+                                          const boundedLevel = Math.max(
+                                            sliderMin,
+                                            Math.min(sliderMax, nextLevel)
+                                          );
+                                          setItemTiers((prev) => ({
+                                            ...prev,
+                                            [item.item_id]: boundedLevel,
+                                          }));
+                                        }}
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-full"
+                                      />
+                                      <div className="flex items-center justify-between px-1 pt-0.5">
+                                        {Array.from(
+                                          { length: Math.max(0, sliderMax - sliderMin + 1) },
+                                          (_, index) => {
+                                            const level = sliderMin + index;
+                                            const active = level <= sliderValue;
+                                            return (
+                                              <span
+                                                key={`${item.item_id}-tier-dot-${level}`}
+                                                className={`h-1.5 w-1.5 rounded-full ${
+                                                  active ? 'bg-gold/90' : 'bg-zinc-600/70'
+                                                }`}
+                                              />
+                                            );
+                                          }
+                                        )}
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             )}
                           </div>

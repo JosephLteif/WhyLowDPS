@@ -100,6 +100,7 @@ interface SkeletonGroup {
 interface SelectableOptionRowProps {
   isSelected: boolean;
   label: string;
+  sublabel?: string;
   icon: string;
   leadingIcon?: React.ReactNode;
   quality?: number;
@@ -467,6 +468,7 @@ function sortGemOptions(a: GemDisplay, b: GemDisplay): number {
 function SelectableOptionRow({
   isSelected,
   label,
+  sublabel,
   icon,
   leadingIcon,
   quality = 3,
@@ -514,13 +516,14 @@ function SelectableOptionRow({
             />
           </a>
         )}
-        <span
-          className="min-w-0 max-w-full select-text truncate pr-2"
+        <div
+          className="min-w-0 max-w-full pr-2"
           onClick={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          {label}
-        </span>
+          <div className="truncate">{label}</div>
+          {sublabel ? <div className="truncate text-[11px] font-medium text-zinc-500">{sublabel}</div> : null}
+        </div>
       </div>
       {equipped ? (
         <span
@@ -1623,7 +1626,8 @@ export default function TopGearVariantStudio({
                               <SelectableOptionRow
                                 key={`global-gem-${option.gemItemId}`}
                                 isSelected={effectiveGlobalGemIds.includes(option.gemItemId)}
-                                label={option.label}
+                                label={option.name}
+                                sublabel={option.label}
                                 icon={option.icon}
                                 quality={option.quality}
                                 wowheadHref={`https://www.wowhead.com/item=${option.gemItemId}`}

@@ -10,6 +10,15 @@ const OFF_SPEC_WARNING = 'This item may not be intended for your spec.';
 const EMBELLISHMENT_LIMIT_WARNING =
   'Too many embellished items are selected. Only 2 embellished items can be equipped.';
 
+interface UpgradeOption {
+  bonus_id: number;
+  level: number;
+  max: number;
+  name: string;
+  fullName: string;
+  itemLevel: number;
+}
+
 function isTierOrCatalystItem(item: ResolvedItem): boolean {
   if (item.is_catalyst || item.can_catalyst) return true;
   const sourceType = String(item.source_type || '').toLowerCase();
@@ -31,6 +40,14 @@ interface TopGearSlotGroupProps {
   itemInfoMap: Record<number, ItemInfo>;
   onToggle: (item: ResolvedItem) => void;
   onAddClick: (slot: string) => void;
+  onUpgradeClick: (item: ResolvedItem) => void;
+  onUpgradeSelect: (item: ResolvedItem, opt: UpgradeOption) => void;
+  onCatalystConvert: (item: ResolvedItem) => void;
+  onOptimize: (item: ResolvedItem) => void;
+  canOptimizeItem: (item: ResolvedItem) => boolean;
+  shouldShowOptimizeButton?: (item: ResolvedItem) => boolean;
+  optimizeDisabledReason?: (item: ResolvedItem) => string | undefined;
+  optimizeTitle?: string;
   onItemContextMenu: (item: ResolvedItem, event: React.MouseEvent) => void;
   itemDetails: (item: ResolvedItem) => {
     text: string;
@@ -45,6 +62,13 @@ interface TopGearSlotGroupProps {
   isItemSelected: (item: ResolvedItem) => boolean;
   hasLimitWarning?: (item: ResolvedItem) => boolean;
   onToggleAll?: () => void;
+  globalSelectionSummary?: {
+    text: string;
+    tooltip: string;
+  } | null;
+  hiddenAlternativeCount?: number;
+  showingAllAlternatives?: boolean;
+  onToggleHiddenAlternatives?: () => void;
   getWowheadUrl: (itemId: number) => string;
   getWowheadData: (item: ResolvedItem) => string;
   getDisplayIlevel?: (item: ResolvedItem) => number;
@@ -59,11 +83,23 @@ export default function TopGearSlotGroup({
   itemInfoMap,
   onToggle,
   onAddClick,
+  onUpgradeClick,
+  onUpgradeSelect,
+  onCatalystConvert,
+  onOptimize,
+  canOptimizeItem,
+  shouldShowOptimizeButton,
+  optimizeDisabledReason,
+  optimizeTitle,
   onItemContextMenu,
   itemDetails,
   isItemSelected,
   hasLimitWarning,
   onToggleAll,
+  globalSelectionSummary,
+  hiddenAlternativeCount = 0,
+  showingAllAlternatives = false,
+  onToggleHiddenAlternatives,
   getWowheadUrl,
   getWowheadData,
   getDisplayIlevel,
@@ -95,6 +131,14 @@ export default function TopGearSlotGroup({
             >
               All
             </button>
+          )}
+          {globalSelectionSummary && (
+            <span
+              className="cursor-help text-[12px] font-semibold text-gold"
+              title={globalSelectionSummary.tooltip}
+            >
+              {globalSelectionSummary.text}
+            </span>
           )}
         </div>
         <button
@@ -198,6 +242,30 @@ export default function TopGearSlotGroup({
             );
           })()
         ))}
+        {hiddenAlternativeCount > 0 && onToggleHiddenAlternatives ? (
+          <div className="pt-1 text-center text-[12px] text-zinc-500">
+            {showingAllAlternatives ? (
+              <button
+                type="button"
+                onClick={onToggleHiddenAlternatives}
+                className="font-semibold text-gold hover:text-gold/80"
+              >
+                Hide low level items
+              </button>
+            ) : (
+              <>
+                {hiddenAlternativeCount} low level item{hiddenAlternativeCount === 1 ? '' : 's'} hidden.{' '}
+                <button
+                  type="button"
+                  onClick={onToggleHiddenAlternatives}
+                  className="font-semibold text-gold hover:text-gold/80"
+                >
+                  Show all items
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

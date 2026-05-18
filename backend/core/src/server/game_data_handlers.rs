@@ -325,19 +325,96 @@ fn query_item_season_id(query: &EnchantOptionsQuery) -> i64 {
 fn slot_has_active_expansion_enchants(query: &EnchantOptionsQuery) -> bool {
     let normalized = query.slot.trim().to_ascii_lowercase();
     let season_label = current_season_label().to_ascii_lowercase();
-    let current_season_id = crate::item_db::current_season_id() as i64;
-    let item_season_id = query_item_season_id(query);
 
-    // Midnight current-season gear no longer supports the old TWW cloak/bracer enchants.
-    if season_label.contains("midnight")
-        && current_season_id > 0
-        && item_season_id == current_season_id
-        && matches!(normalized.as_str(), "back" | "wrist")
-    {
+    // Midnight no longer has active cloak/bracer permanent enchants in the current app dataset.
+    if season_label.contains("midnight") && matches!(normalized.as_str(), "back" | "wrist") {
         return false;
     }
 
     true
+}
+
+fn is_ranged_inventory_type(inv_type: u64) -> bool {
+    matches!(inv_type, 15 | 21 | 26)
+}
+
+fn normalized_spec_name(raw: &str) -> String {
+    raw.trim().to_ascii_lowercase().replace([' ', '-'], "_")
+}
+
+fn is_healer_spec(spec: &str) -> bool {
+    matches!(
+        normalized_spec_name(spec).as_str(),
+        "restoration"
+            | "holy"
+            | "discipline"
+            | "mistweaver"
+            | "preservation"
+    )
+}
+
+fn is_tank_spec(spec: &str) -> bool {
+    matches!(
+        normalized_spec_name(spec).as_str(),
+        "blood"
+            | "protection"
+            | "guardian"
+            | "vengeance"
+            | "brewmaster"
+    )
+}
+
+fn spec_primary_stats(class_name: &str, spec: &str) -> Vec<u64> {
+    crate::types::class_data::spec_weapon_profile(class_name, spec)
+        .map(|profile| profile.primary_stats)
+        .unwrap_or_default()
+}
+
+fn filter_spec_incompatible_enchants(
+    options: &mut Vec<Value>,
+    item_inventory_type: Option<u64>,
+    class_name: &str,
+    spec: &str,
+) {
+    let is_ranged_weapon = item_inventory_type.is_some_and(is_ranged_inventory_type);
+    let healer_spec = is_healer_spec(spec);
+    let tank_spec = is_tank_spec(spec);
+    let primary_stats = spec_primary_stats(class_name, spec);
+    let uses_intellect = primary_stats.contains(&5);
+    let uses_agi_or_str = primary_stats.contains(&3) || primary_stats.contains(&4);
+
+    options.retain(|opt| {
+        let name = opt
+            .get("itemName")
+            .and_then(|v| v.as_str())
+            .or_else(|| opt.get("name").and_then(|v| v.as_str()))
+            .unwrap_or_default();
+
+        if matches!(name, "Farstrider's Hawkeye" | "Smuggler's Lynxeye") {
+            return is_ranged_weapon;
+        }
+        if name == "Worldsoul Cradle" {
+            return healer_spec;
+        }
+        if name == "Worldsoul Aegis" {
+            return tank_spec;
+        }
+
+        let effect_key = opt
+            .get("effectKey")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        if effect_key.contains("agility or strength") {
+            return uses_agi_or_str;
+        }
+        if effect_key.contains("intellect") {
+            return uses_intellect;
+        }
+
+        true
+    });
 }
 
 pub(super) async fn get_item_info(
@@ -474,14 +551,24 @@ pub(super) async fn list_enchant_options(
                 .is_none_or(|category| !category.eq_ignore_ascii_case("runes"))
         });
     }
+    let item_inventory_type = if query.item_id > 0 {
+        game_data::get_item_info(query.item_id, None).map(|info| info.inventory_type as u64)
+    } else {
+        None
+    };
+    let options = crate::item_db::enrich_enchants_with_effects(options).await;
+    let mut options = options;
+    filter_spec_incompatible_enchants(
+        &mut options,
+        item_inventory_type,
+        &query.class_name,
+        &query.spec,
+    );
     HttpResponse::Ok().json(options)
 }
 
-pub(super) async fn list_gem_options(
-    data_dir: web::Data<Option<std::path::PathBuf>>,
-) -> HttpResponse {
-    let root = data_dir.get_ref().as_deref();
-    let options = list_gems_from_files(root).unwrap_or_else(crate::item_db::list_gems);
+pub(super) async fn list_gem_options() -> HttpResponse {
+    let options = crate::item_db::list_gems_with_effects().await;
     HttpResponse::Ok().json(options)
 }
 

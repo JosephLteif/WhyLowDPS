@@ -13,6 +13,7 @@ import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect
 import TopGearItemContextMenu from './top-gear/TopGearItemContextMenu';
 import TopGearQuickSelect from './top-gear/TopGearQuickSelect';
 import TopGearSlotGroup from './top-gear/TopGearSlotGroup';
+import TopGearVariantStudio, { type SavedVariantStudioState } from './top-gear/TopGearVariantStudio';
 import type { BadgeDescriptor } from './top-gear/topGearItemUtils';
 import {
   applyAscendantToSimc,
@@ -39,7 +40,15 @@ interface TopGearItemSelectorProps {
   onSelectionChange: (selected: Record<string, Set<string>>) => void;
   onResolvedChange: (resolved: ResolveGearResponse) => void;
   onItemAdded: (slot: string, simcString: string, origin: string) => void;
+  onVariantCopiesChange: (variantsBySlot: Record<string, ResolvedItem[]>) => void;
+  onVariantRuleStateChange?: (state: SavedVariantStudioState | null) => void;
+  savedVariantCopiesBySlot?: Record<string, ResolvedItem[]>;
+  savedVariantRuleState?: SavedVariantStudioState | null;
+  savedVariantCount?: number;
+  globalAffixesEnabled?: boolean;
   comboCount: number;
+  copyEnchants?: boolean;
+  specName?: string | null;
   maxUpgrade?: boolean;
   comboError?: string;
 }
@@ -71,6 +80,15 @@ interface EmbellishmentOption {
   icon: string;
   quality: number;
   bonus_ids: number[];
+}
+
+interface VariantRequest {
+  item: ResolvedItem;
+  enchantId: number;
+  gemIds: number[];
+  embellishment: EmbellishmentOption | null;
+  forceClearEnchant?: boolean;
+  bundleId?: string;
 }
 
 interface ItemActionAvailability {
@@ -105,6 +123,26 @@ const DISPLAY_GROUPS: DisplayGroup[] = [
 ];
 
 const UPGRADE_TRACK_MAX_LEVEL = 6;
+const KNOWN_ENCHANTABLE_SLOTS = new Set([
+  'head',
+  'neck',
+  'shoulder',
+  'back',
+  'chest',
+  'wrist',
+  'legs',
+  'feet',
+  'finger1',
+  'finger2',
+  'main_hand',
+  'off_hand',
+]);
+
+function affixGroupKeyFromSlots(slots: string[]): string | null {
+  if (slots.includes('finger1') || slots.includes('finger2')) return 'rings';
+  if (slots.includes('trinket1') || slots.includes('trinket2')) return 'trinkets';
+  return slots[0] || null;
+}
 
 function normalizeEnchantQuerySlot(slot: string): string {
   if (slot === 'finger1' || slot === 'finger2') return 'finger';
@@ -199,7 +237,15 @@ export default function TopGearItemSelector({
   onSelectionChange,
   onResolvedChange,
   onItemAdded,
+  onVariantCopiesChange,
+  onVariantRuleStateChange,
+  savedVariantCopiesBySlot = {},
+  savedVariantRuleState = null,
+  savedVariantCount = 0,
+  globalAffixesEnabled = false,
   comboCount,
+  copyEnchants = false,
+  specName = null,
   comboError,
 }: TopGearItemSelectorProps) {
   const { maxCombinations } = useSimContext();
@@ -227,6 +273,8 @@ export default function TopGearItemSelector({
   const selectedUidSignatureRef = useRef('');
   const [otherTierOptions, setOtherTierOptions] = useState<UpgradeOption[]>([]);
   const [loadingOtherTierOptions, setLoadingOtherTierOptions] = useState(false);
+  const [isVariantStudioOpen, setVariantStudioOpen] = useState(false);
+  const [showAllLowLevelByGroup, setShowAllLowLevelByGroup] = useState<Record<string, boolean>>({});
   const [contextMenu, setContextMenu] = useState<{
     item: ResolvedItem;
     x: number;
@@ -245,6 +293,7 @@ export default function TopGearItemSelector({
     setOptimizeOpen,
     optimizeItem,
     openAddItem,
+    openUpgradeMenu,
     openOptimize,
     loadUpgradeOptions,
     deselectAll,
@@ -431,7 +480,8 @@ export default function TopGearItemSelector({
           className,
           target.item_id,
           target.bonus_ids,
-          target.season_id
+          target.season_id,
+          specName
         );
         if (Object.prototype.hasOwnProperty.call(enchantAvailabilityBySlot, cacheKey)) {
           return enchantAvailabilityBySlot[cacheKey];
@@ -440,6 +490,7 @@ export default function TopGearItemSelector({
           const params = new URLSearchParams();
           params.set('slot', normalizeEnchantQuerySlot(target.slot));
           if (className) params.set('class_name', className);
+          if (specName) params.set('spec', specName);
           if (target.item_id > 0) params.set('item_id', String(target.item_id));
           if (Array.isArray(target.bonus_ids) && target.bonus_ids.length > 0) {
             params.set('bonus_ids', target.bonus_ids.join(','));
@@ -462,8 +513,8 @@ export default function TopGearItemSelector({
       };
 
       const openAsync = async () => {
-        const canAddGem = getGemAvailability(item);
-        const canAddEnchant = await getEnchantAvailability(item);
+        const canAddGem = globalAffixesEnabled ? false : getGemAvailability(item);
+        const canAddEnchant = globalAffixesEnabled ? false : await getEnchantAvailability(item);
         setContextMenu({
           item,
           x: event.clientX,
@@ -479,7 +530,7 @@ export default function TopGearItemSelector({
       event.stopPropagation();
       void openAsync();
     },
-    [resolved.character.class_name, enchantAvailabilityBySlot]
+    [resolved.character.class_name, enchantAvailabilityBySlot, globalAffixesEnabled, specName]
   );
 
   const addUpgradedCopy = useCallback(
@@ -712,14 +763,8 @@ export default function TopGearItemSelector({
     setLoadingOtherTierOptions(false);
   }, [otherTierOptions.length, loadingOtherTierOptions]);
 
-  const handleOptimize = useCallback(
-    (
-      enchantId: number,
-      gemIds: number[],
-      embellishment: EmbellishmentOption | null
-    ) => {
-      if (!optimizeItem) return;
-      const item = optimizeItem;
+  const buildOptimizedCopy = useCallback(
+    ({ item, enchantId, gemIds, embellishment, forceClearEnchant, bundleId }: VariantRequest) => {
       const normalizedGemIds = gemIds.filter((id) => id > 0);
       const firstGemId = normalizedGemIds[0] || 0;
       const inferredCurrentEmbellishment =
@@ -763,7 +808,7 @@ export default function TopGearItemSelector({
         nextSimc = nextSimc.replace(/,bonus_id=[0-9/:]+/, '');
       }
 
-      const uid = makeUid({
+      const baseUid = makeUid({
         item_id: item.item_id,
         bonus_ids: nextBonusIds,
         origin: 'bags',
@@ -775,6 +820,7 @@ export default function TopGearItemSelector({
         crafted_stats: item.crafted_stats,
         embellishment_item_id: embellishment?.item_id,
       });
+      const uid = bundleId ? `${baseUid}:ga${bundleId}` : baseUid;
       const copy: ResolvedItem = {
         ...item,
         origin: 'bags',
@@ -786,6 +832,11 @@ export default function TopGearItemSelector({
         enchant_name: enchantId > 0 ? enchantInfoById[enchantId]?.name || '' : '',
         gem_name: firstGemId > 0 ? gemInfoById[firstGemId]?.name || '' : '',
         gem_icon: firstGemId > 0 ? gemInfoById[firstGemId]?.icon || '' : '',
+        prevent_copy_enchant: enchantId === 0,
+        prevent_copy_gem: normalizedGemIds.length === 0,
+        exact_selection_only: true,
+        global_affix_bundle_id: bundleId,
+        force_clear_enchant: Boolean(forceClearEnchant && enchantId === 0),
         embellishment_item_id: embellishment?.item_id,
         embellishment_name: embellishment?.name,
         embellishment_icon: embellishment?.icon,
@@ -793,32 +844,114 @@ export default function TopGearItemSelector({
         simc_string: nextSimc,
       };
 
-      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
-      const slotRes = nextResolved.slots[item.slot];
-      if (slotRes && !slotRes.alternatives.find((a) => a.uid === uid)) {
-        slotRes.alternatives = [...slotRes.alternatives, copy];
+      return {
+        item,
+        uid,
+        nextSimc,
+        copy,
+        hasEmbellishment: Boolean(embellishment),
+      };
+    },
+    [
+      enchantInfoById,
+      gemInfoById,
+      embellishmentOptionsByItem,
+    ]
+  );
+
+  const saveOptimizedVariants = useCallback(
+    (requests: VariantRequest[]) => {
+      if (requests.length === 0) {
+        onVariantCopiesChange({});
+        return 0;
       }
+
+      const nextVariantsBySlot: Record<string, ResolvedItem[]> = {};
+      const seenBySlot = new Map<string, Set<string>>();
+
+      for (const request of requests) {
+        const built = buildOptimizedCopy(request);
+        const slot = built.item.slot;
+        if (!nextVariantsBySlot[slot]) nextVariantsBySlot[slot] = [];
+        if (!seenBySlot.has(slot)) seenBySlot.set(slot, new Set());
+        const seen = seenBySlot.get(slot)!;
+        if (seen.has(built.uid)) continue;
+        seen.add(built.uid);
+        nextVariantsBySlot[slot].push(built.copy);
+      }
+
+      onVariantCopiesChange(nextVariantsBySlot);
+      return Object.values(nextVariantsBySlot).reduce((sum, list) => sum + list.length, 0);
+    },
+    [
+      buildOptimizedCopy,
+      onVariantCopiesChange,
+    ]
+  );
+
+  const applyOptimizedVariants = useCallback(
+    (requests: VariantRequest[]) => {
+      if (requests.length === 0) return 0;
+
+      const nextResolved = { ...resolved, slots: { ...resolved.slots } };
+      const nextSelected = {
+        ...Object.fromEntries(Object.entries(selectedUids).map(([k, v]) => [k, new Set(v)])),
+      };
+      const created: { uid: string; slot: string; simc: string; hasEmbellishment: boolean }[] = [];
+
+      for (const request of requests) {
+        const built = buildOptimizedCopy(request);
+        const slotRes = nextResolved.slots[built.item.slot];
+        if (!slotRes) continue;
+        if (slotRes.alternatives.some((alt) => alt.uid === built.uid)) continue;
+
+        slotRes.alternatives = [...slotRes.alternatives, built.copy];
+        if (!nextSelected[built.item.slot]) nextSelected[built.item.slot] = new Set();
+        nextSelected[built.item.slot].add(built.uid);
+        created.push({
+          uid: built.uid,
+          slot: built.item.slot,
+          simc: built.nextSimc,
+          hasEmbellishment: built.hasEmbellishment,
+        });
+      }
+
+      if (created.length === 0) return 0;
+
       onResolvedChange(nextResolved);
-      onItemAdded(item.slot, nextSimc, 'bags');
-      const nextSelected = { ...selectedUids };
-      if (!nextSelected[item.slot]) nextSelected[item.slot] = new Set();
-      nextSelected[item.slot].add(uid);
       onSelectionChange(nextSelected);
-      rememberLimitWarningCandidate(uid, Boolean(embellishment));
+      for (const entry of created) {
+        onItemAdded(entry.slot, entry.simc, 'bags');
+        rememberLimitWarningCandidate(entry.uid, entry.hasEmbellishment);
+      }
+
+      return created.length;
+    },
+    [
+      buildOptimizedCopy,
+      resolved,
+      selectedUids,
+      onResolvedChange,
+      onSelectionChange,
+      onItemAdded,
+      rememberLimitWarningCandidate,
+    ]
+  );
+
+  const handleOptimize = useCallback(
+    (
+      enchantId: number,
+      gemIds: number[],
+      embellishment: EmbellishmentOption | null
+    ) => {
+      if (!optimizeItem) return;
+      applyOptimizedVariants([{ item: optimizeItem, enchantId, gemIds, embellishment }]);
       setOptimizeOpen(false);
     },
     [
       optimizeItem,
-      resolved,
-      onResolvedChange,
-      onItemAdded,
-      selectedUids,
-      onSelectionChange,
+      applyOptimizedVariants,
       setOptimizeOpen,
-      enchantInfoById,
-      gemInfoById,
-      embellishmentOptionsByItem,
-      rememberLimitWarningCandidate,
     ]
   );
 
@@ -1052,9 +1185,35 @@ export default function TopGearItemSelector({
           }
         });
       });
-      return { group, equipped, alternatives };
-    }).filter((g) => g.equipped.length > 0 || g.alternatives.length > 0);
-  }, [resolved]);
+      const maxGroupIlevel = Math.max(
+        0,
+        ...equipped.map((item) => Number(item.ilevel || 0)),
+        ...alternatives.map((item) => Number(item.ilevel || 0))
+      );
+      const hasSeasonalItems = [...equipped, ...alternatives].some(
+        (item) => Number(item.season_id || 0) > 0
+      );
+      const shouldHideAlternative = (item: ResolvedItem) => {
+        const selected = selectedUids[item.slot]?.has(item.uid) || false;
+        if (selected) return false;
+        const itemSeason = Number(item.season_id || 0);
+        const itemIlevel = Number(item.ilevel || 0);
+        return hasSeasonalItems && itemSeason <= 0 && itemIlevel <= maxGroupIlevel - 50;
+      };
+      const hiddenAlternatives = alternatives.filter(shouldHideAlternative);
+      const visibleAlternatives =
+        showAllLowLevelByGroup[group.label]
+          ? alternatives
+          : alternatives.filter((item) => !shouldHideAlternative(item));
+      return {
+        group,
+        equipped,
+        alternatives: visibleAlternatives,
+        hiddenAlternativeCount: hiddenAlternatives.length,
+        showingAllAlternatives: Boolean(showAllLowLevelByGroup[group.label]),
+      };
+    }).filter((g) => g.equipped.length > 0 || g.alternatives.length > 0 || g.hiddenAlternativeCount > 0);
+  }, [resolved, selectedUids, showAllLowLevelByGroup]);
 
   const { vaultUids, catalystUids } = useMemo(() => {
     const vault: { uid: string; slot: string }[] = [];
@@ -1090,8 +1249,76 @@ export default function TopGearItemSelector({
       });
     });
 
+    if (savedVariantRuleState) {
+      for (const gemId of savedVariantRuleState.globalGemIds || []) {
+        if (Number.isFinite(gemId) && gemId > 0) gems.add(gemId);
+      }
+      for (const selection of Object.values(savedVariantRuleState.groupSelections || {})) {
+        for (const enchantId of selection.enchantIds || []) {
+          if (Number.isFinite(enchantId) && enchantId > 0) enchants.add(enchantId);
+        }
+      }
+    }
+
     return { gemIds: Array.from(gems), enchantIds: Array.from(enchants) };
-  }, [resolved]);
+  }, [resolved, savedVariantRuleState]);
+
+  const getGlobalSelectionSummary = useCallback(
+    (slots: string[], items: ResolvedItem[]) => {
+      if (!globalAffixesEnabled) return null;
+
+      const groupKey = affixGroupKeyFromSlots(slots);
+      if (!groupKey) return null;
+
+      const selectedEnchantIds = Array.from(
+        new Set(
+          (savedVariantRuleState?.groupSelections?.[groupKey]?.enchantIds || []).filter(
+            (id) => Number.isFinite(id) && id > 0
+          )
+        )
+      );
+      const hasSocketableItem = items.some(
+        (item) => Math.max(Number(item.sockets || 0), getResolvedGemIds(item).length) > 0
+      );
+      const selectedGemIds = hasSocketableItem
+        ? Array.from(
+            new Set(
+              (savedVariantRuleState?.globalGemIds || []).filter(
+                (id) => Number.isFinite(id) && id > 0
+              )
+            )
+          )
+        : [];
+
+      if (selectedEnchantIds.length === 0 && selectedGemIds.length === 0) return null;
+
+      const textParts: string[] = [];
+      if (selectedEnchantIds.length > 0) {
+        textParts.push(`${selectedEnchantIds.length} enchant(s)`);
+      }
+      if (selectedGemIds.length > 0) {
+        textParts.push(`${selectedGemIds.length} gem(s)`);
+      }
+
+      const tooltipLines = ['Selected global rules'];
+      if (selectedEnchantIds.length > 0) {
+        tooltipLines.push(
+          `Enchants: ${selectedEnchantIds.map((id) => enchantInfoById[id]?.name || `Enchant #${id}`).join(', ')}`
+        );
+      }
+      if (selectedGemIds.length > 0) {
+        tooltipLines.push(
+          `Gems: ${selectedGemIds.map((id) => gemInfoById[id]?.name || `Gem #${id}`).join(', ')}`
+        );
+      }
+
+      return {
+        text: `${textParts.join(' and ')} are selected`,
+        tooltip: tooltipLines.join('\n'),
+      };
+    },
+    [enchantInfoById, gemInfoById, globalAffixesEnabled, savedVariantRuleState]
+  );
 
   useEffect(() => {
     const missingGemIds = gemIds.filter((id) => !gemInfoById[id]);
@@ -1180,7 +1407,8 @@ export default function TopGearItemSelector({
         className,
         item.item_id,
         item.bonus_ids,
-        item.season_id
+        item.season_id,
+        specName
       );
       if (!unique.has(key)) unique.set(key, item);
     }
@@ -1197,6 +1425,7 @@ export default function TopGearItemSelector({
             const params = new URLSearchParams();
             params.set('slot', normalizeEnchantQuerySlot(item.slot));
             if (className) params.set('class_name', className);
+            if (specName) params.set('spec', specName);
             if (item.item_id > 0) params.set('item_id', String(item.item_id));
             if (Array.isArray(item.bonus_ids) && item.bonus_ids.length > 0) {
               params.set('bonus_ids', item.bonus_ids.join(','));
@@ -1230,7 +1459,7 @@ export default function TopGearItemSelector({
     return () => {
       cancelled = true;
     };
-  }, [resolved, enchantAvailabilityBySlot]);
+  }, [resolved, enchantAvailabilityBySlot, specName]);
 
   useEffect(() => {
     const itemIds = new Set<number>();
@@ -1519,7 +1748,7 @@ export default function TopGearItemSelector({
     const effectiveEnchantId =
       item.enchant_id > 0 ? item.enchant_id : parseFirstIdFromSimc(item.simc_string, 'enchant_id');
 
-    const gemInfos = effectiveGemIds.map((id) => gemInfoById[id]).filter(Boolean);
+    const gemInfos = effectiveGemIds.map((id) => gemInfoById[id]);
     const enchantInfo = effectiveEnchantId > 0 ? enchantInfoById[effectiveEnchantId] : undefined;
     const embellishmentOptions = embellishmentOptionsByItem[item.item_id] || [];
     const normalizedEmbellishmentName = normalizeEmbellishmentName(item.embellishment_name);
@@ -1570,7 +1799,7 @@ export default function TopGearItemSelector({
           color: 'border-sky-400/40 bg-sky-500/10',
         });
       }
-      if (gemInfos.length === 0 && item.gem_name) {
+      if (effectiveGemIds.length === 0 && item.gem_name) {
         const gemName = item.gem_name || 'Gem';
         parts.push({
           text: gemName,
@@ -1623,6 +1852,17 @@ export default function TopGearItemSelector({
         tooltip: enchantName,
         color: 'text-emerald-400/80',
       });
+    } else if (effectiveEnchantId > 0) {
+      parts.push({
+        text: 'Enchant',
+        kind: 'iconText',
+        icon: 'inv_misc_questionmark',
+        badgeVariant: 'enchant',
+        href: `https://www.wowhead.com/spell=${effectiveEnchantId}`,
+        wowheadData: `spell=${effectiveEnchantId}`,
+        tooltip: 'Enchant',
+        color: 'text-emerald-400/80',
+      });
     }
     if (embellishmentName) {
       parts.push({
@@ -1660,6 +1900,46 @@ export default function TopGearItemSelector({
     });
   };
 
+  const canManageAffixesForItem = useCallback(
+    (item: ResolvedItem): boolean => {
+      const className = resolved.character.class_name || '';
+      const cacheKey = enchantAvailabilityItemKey(
+        item.slot,
+        className,
+        item.item_id,
+        item.bonus_ids,
+        item.season_id,
+        specName
+      );
+      const hasEnchantOptions = enchantAvailabilityBySlot[cacheKey];
+      const hasGemOptions = item.sockets > 0 || getResolvedGemIds(item).length > 0;
+      const hasEmbellishmentOptions =
+        (embellishmentOptionsByItem[item.item_id]?.length || 0) > 0;
+      const craftedSource = isCraftedSource(item);
+      const hasEmbellishmentByBonus =
+        (embellishmentOptionsByItem[item.item_id] || []).some(
+          (opt) =>
+            Array.isArray(opt.bonus_ids) &&
+            opt.bonus_ids.length > 0 &&
+            opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
+        );
+      const hasExistingEnhancements =
+        item.enchant_id > 0 ||
+        getResolvedGemIds(item).length > 0 ||
+        (item.embellishment_item_id || 0) > 0 ||
+        hasEmbellishmentByBonus ||
+        /(?:^|,)enchant_id=/.test(item.simc_string);
+      return (
+        hasEnchantOptions ||
+        hasGemOptions ||
+        hasEmbellishmentOptions ||
+        craftedSource ||
+        hasExistingEnhancements
+      );
+    },
+    [resolved.character.class_name, enchantAvailabilityBySlot, embellishmentOptionsByItem, specName]
+  );
+
   const getDisplayIlevel = useCallback((item: ResolvedItem): number => {
     if (!isAscendantApplied(item)) return Number(item.ilevel || 0);
     const { maxIlevelDelta } = getAscendantModifierIlevelConfig();
@@ -1692,10 +1972,119 @@ export default function TopGearItemSelector({
     [getDisplayIlevel]
   );
 
+  const isEnchantAvailabilityPending = useCallback(
+    (item: ResolvedItem): boolean => {
+      const className = resolved.character.class_name || '';
+      const cacheKey = enchantAvailabilityItemKey(
+        item.slot,
+        className,
+        item.item_id,
+        item.bonus_ids,
+        item.season_id,
+        specName
+      );
+      const hasKnownAvailability = Object.prototype.hasOwnProperty.call(
+        enchantAvailabilityBySlot,
+        cacheKey
+      );
+      if (hasKnownAvailability) return false;
+      return (
+        KNOWN_ENCHANTABLE_SLOTS.has(item.slot) ||
+        item.enchant_id > 0 ||
+        /(?:^|,)enchant_id=/.test(item.simc_string)
+      );
+    },
+    [enchantAvailabilityBySlot, resolved.character.class_name, specName]
+  );
+
+  const canOptimizeItem = useCallback(
+    (item: ResolvedItem): boolean => {
+      const hasEmbellishmentOptions =
+        (embellishmentOptionsByItem[item.item_id]?.length || 0) > 0;
+      const craftedSource = isCraftedSource(item);
+      const hasEmbellishmentByBonus =
+        (embellishmentOptionsByItem[item.item_id] || []).some(
+          (opt) =>
+            Array.isArray(opt.bonus_ids) &&
+            opt.bonus_ids.length > 0 &&
+            opt.bonus_ids.every((bid) => item.bonus_ids.includes(bid))
+        );
+
+      if (globalAffixesEnabled) {
+        return (
+          hasEmbellishmentOptions ||
+          craftedSource ||
+          (item.embellishment_item_id || 0) > 0 ||
+          hasEmbellishmentByBonus
+        );
+      }
+
+      return canManageAffixesForItem(item);
+    },
+    [canManageAffixesForItem, embellishmentOptionsByItem, globalAffixesEnabled]
+  );
+
+  const shouldShowOptimizeButton = useCallback(
+    (item: ResolvedItem): boolean => {
+      if (canOptimizeItem(item)) return true;
+      if (isEnchantAvailabilityPending(item)) return true;
+      return globalAffixesEnabled && canManageAffixesForItem(item);
+    },
+    [canManageAffixesForItem, canOptimizeItem, globalAffixesEnabled, isEnchantAvailabilityPending]
+  );
+
+  const getOptimizeDisabledReason = useCallback(
+    (item: ResolvedItem): string | undefined => {
+      if (isEnchantAvailabilityPending(item)) {
+        return 'Loading optimization options for this item.';
+      }
+      if (!globalAffixesEnabled || canOptimizeItem(item) || !canManageAffixesForItem(item)) {
+        return undefined;
+      }
+      return 'Enchants and gems are controlled by Enchant & Gem Rules while Global Enchants & Gems is enabled.';
+    },
+    [canManageAffixesForItem, canOptimizeItem, globalAffixesEnabled, isEnchantAvailabilityPending]
+  );
+
   const hasSelection = Object.values(selectedUids).some((s) => s.size > 0);
+  const variantStudioItems = useMemo(() => {
+    const byIdentity = new Map<string, ResolvedItem>();
+
+    for (const [slot, slotRes] of Object.entries(resolved.slots)) {
+      if (slotRes.equipped && canManageAffixesForItem(slotRes.equipped)) {
+        const identity = makeIdentity(slotRes.equipped);
+        if (!byIdentity.has(identity)) {
+          byIdentity.set(identity, slotRes.equipped);
+        }
+      }
+
+      const selectedForSlot = selectedUids[slot] || new Set<string>();
+      for (const item of slotRes.alternatives) {
+        if (!selectedForSlot.has(item.uid) || !canManageAffixesForItem(item)) continue;
+        const identity = makeIdentity(item);
+        if (!byIdentity.has(identity)) {
+          byIdentity.set(identity, item);
+        }
+      }
+    }
+
+    return Array.from(byIdentity.values()).sort((a, b) => {
+      const slotCompare = a.slot.localeCompare(b.slot);
+      if (slotCompare !== 0) return slotCompare;
+      return a.name.localeCompare(b.name);
+    });
+  }, [selectedUids, resolved.slots, canManageAffixesForItem]);
+  const variantStudioEquippedItems = useMemo(
+    () =>
+      Object.values(resolved.slots)
+        .map((slotRes) => slotRes.equipped)
+        .filter((item): item is ResolvedItem => item != null)
+        .filter((item) => canManageAffixesForItem(item)),
+    [resolved.slots, canManageAffixesForItem]
+  );
   const comboBreakdown =
     comboCount > 0
-      ? `${comboCount.toLocaleString()} normal combo(s) | +1 Currently Equipped`
+      ? `${Math.max(comboCount - 1, 0).toLocaleString()} normal combo(s) | +1 Currently Equipped`
       : null;
   const quickSelect = (
     <TopGearQuickSelect
@@ -1730,11 +2119,28 @@ export default function TopGearItemSelector({
           preferredSlot={addItemSlot}
         />
       <OptimizeItemModal
+        key={optimizeItem ? `${optimizeItem.uid}:${optimizeItem.slot}:${optimizeItem.item_id}` : 'optimize-none'}
         isOpen={isOptimizeOpen}
         onClose={() => setOptimizeOpen(false)}
         item={optimizeItem}
         className={resolved.character.class_name}
+        specName={specName}
+        globalAffixesEnabled={globalAffixesEnabled}
         onApply={handleOptimize}
+      />
+      <TopGearVariantStudio
+        isOpen={isVariantStudioOpen}
+        onClose={() => setVariantStudioOpen(false)}
+        items={variantStudioItems}
+        equippedItems={variantStudioEquippedItems}
+        savedVariantsBySlot={savedVariantCopiesBySlot}
+        savedRuleState={savedVariantRuleState}
+        globalAffixesEnabled={globalAffixesEnabled}
+        className={resolved.character.class_name}
+        specName={specName}
+        copyEnchants={copyEnchants}
+        onApplyBatch={saveOptimizedVariants}
+        onStateChange={onVariantRuleStateChange}
       />
       <TopGearItemContextMenu
         item={contextMenu?.item || null}
@@ -1742,6 +2148,7 @@ export default function TopGearItemSelector({
         y={contextMenu?.y || 0}
         canAddEnchant={contextMenu?.availability.canAddEnchant || false}
         canAddGem={contextMenu?.availability.canAddGem || false}
+        globalAffixesEnabled={globalAffixesEnabled}
         canSetAscendant={Boolean(contextMenu?.item && isAscendantEligible(contextMenu.item))}
         otherTierOptions={otherTierOptions}
         loadingOtherTierOptions={loadingOtherTierOptions}
@@ -1845,13 +2252,32 @@ export default function TopGearItemSelector({
             >
               Add Item
             </button>
+            <button
+              onClick={() => setVariantStudioOpen(true)}
+              disabled={!globalAffixesEnabled || variantStudioItems.length === 0}
+              title={
+                !globalAffixesEnabled
+                  ? 'Enable Global Enchants & Gems to use Enchant & Gem Rules.'
+                  : variantStudioItems.length === 0
+                    ? 'No compatible equipped or selected items are available for Enchant & Gem Rules.'
+                    : 'Open Enchant & Gem Rules'
+              }
+              className="flex items-center gap-1.5 rounded-md border border-white/12 bg-white/[0.04] px-2.5 py-1 text-[12px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Enchant & Gem Rules
+              {savedVariantCount > 0 ? (
+                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[11px]">
+                  {savedVariantCount}
+                </span>
+              ) : null}
+            </button>
           </div>
         }
         right={quickSelect}
       />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
-        {visibleGroups.map(({ group, equipped, alternatives }) => (
+        {visibleGroups.map(({ group, equipped, alternatives, hiddenAlternativeCount, showingAllAlternatives }) => (
           <TopGearSlotGroup
             key={group.label}
             label={group.label}
@@ -1861,8 +2287,25 @@ export default function TopGearItemSelector({
             itemInfoMap={itemInfoMap}
             onToggle={(item) => handleToggleItem(item, group.slots)}
             onAddClick={openAddItem}
+            onUpgradeClick={openUpgradeMenu}
+            onUpgradeSelect={addUpgradedCopy}
+            onCatalystConvert={convertToCatalyst}
+            onOptimize={openOptimize}
+            canOptimizeItem={canOptimizeItem}
+            shouldShowOptimizeButton={shouldShowOptimizeButton}
+            optimizeDisabledReason={getOptimizeDisabledReason}
+            optimizeTitle={globalAffixesEnabled ? 'Edit Embellishment' : 'Optimize Enchants and Sockets'}
             onItemContextMenu={openItemContextMenu}
             onToggleAll={() => toggleSlotAll(group.slots)}
+            globalSelectionSummary={getGlobalSelectionSummary(group.slots, [...equipped, ...alternatives])}
+            hiddenAlternativeCount={hiddenAlternativeCount}
+            showingAllAlternatives={showingAllAlternatives}
+            onToggleHiddenAlternatives={() =>
+              setShowAllLowLevelByGroup((current) => ({
+                ...current,
+                [group.label]: !current[group.label],
+              }))
+            }
             itemDetails={itemDetails}
             itemOverline={itemOverline}
             getDisplayIlevel={getDisplayIlevel}

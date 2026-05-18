@@ -204,6 +204,18 @@ pub struct ResolvedItem {
     /// Gem icon (empty if none).
     #[serde(default)]
     pub gem_icon: String,
+    /// Explicitly preserve an unenchanted state even when copy_enchants is enabled.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub prevent_copy_enchant: bool,
+    /// Explicitly preserve an empty gem state even when copy_enchants is enabled.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub prevent_copy_gem: bool,
+    /// Restrict selection expansion to this exact uid instead of sibling item variants.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exact_selection_only: bool,
+    /// Correlate virtual affix variants so only one global affix loadout is used per combo.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub global_affix_bundle_id: String,
     #[serde(default)]
     pub encounter: String,
     #[serde(default)]

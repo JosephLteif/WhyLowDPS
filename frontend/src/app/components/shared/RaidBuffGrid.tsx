@@ -109,7 +109,7 @@ export default function RaidBuffGrid({ entries, onSelectAll, onClear }: RaidBuff
                   img.src = `https://wow.zamimg.com/images/wow/icons/small/${entry.icon}.jpg`;
                 }}
                 alt=""
-                className="h-4 w-4 shrink-0 rounded-[3px]"
+                className="h-[22px] w-[22px] shrink-0 rounded-[4px]"
               />
               <span className="truncate text-[14px]">{entry.label}</span>
               {entry.sourceLabel && (

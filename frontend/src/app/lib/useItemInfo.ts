@@ -147,14 +147,16 @@ export function enchantAvailabilityItemKey(
   className?: string | null,
   itemId?: number,
   bonusIds?: number[],
-  seasonId?: number
+  seasonId?: number,
+  specName?: string | null
 ): string {
   const normalizedBonusIds = Array.isArray(bonusIds)
     ? [...bonusIds].filter((id) => id > 0).sort((a, b) => a - b).join(':')
     : '';
   const resolvedSeasonId = Number.isFinite(seasonId) ? Number(seasonId) : 0;
   const resolvedItemId = Number.isFinite(itemId) ? Number(itemId) : 0;
-  return `${enchantAvailabilityKey(slot, className)}|${resolvedItemId}|${normalizedBonusIds}|${resolvedSeasonId}`;
+  const normalizedSpecName = String(specName || '').trim().toLowerCase();
+  return `${enchantAvailabilityKey(slot, className)}|${resolvedItemId}|${normalizedBonusIds}|${resolvedSeasonId}|${normalizedSpecName}`;
 }
 
 export function useEnchantInfo(enchantIds: number[]): Record<number, EnchantInfo> {
@@ -218,13 +220,14 @@ export function useEnchantAvailability(
     itemId?: number;
     bonusIds?: number[];
     seasonId?: number;
+    specName?: string | null;
   }>
 ): Record<string, boolean> {
   const [availability, setAvailability] = useState<Record<string, boolean>>({});
 
   const depKey = queries
-    .map(({ slot, className, itemId, bonusIds, seasonId }) =>
-      enchantAvailabilityItemKey(slot, className, itemId, bonusIds, seasonId)
+    .map(({ slot, className, itemId, bonusIds, seasonId, specName }) =>
+      enchantAvailabilityItemKey(slot, className, itemId, bonusIds, seasonId, specName)
     )
     .filter((key) => key.split('|')[0].length > 0)
     .sort()
@@ -239,6 +242,7 @@ export function useEnchantAvailability(
         itemId?: number;
         bonusIds?: number[];
         seasonId?: number;
+        specName?: string | null;
       }
     >();
     for (const query of queries) {
@@ -249,7 +253,8 @@ export function useEnchantAvailability(
         query.className,
         query.itemId,
         query.bonusIds,
-        query.seasonId
+        query.seasonId,
+        query.specName
       );
       if (!unique.has(key))
         unique.set(key, {
@@ -258,6 +263,7 @@ export function useEnchantAvailability(
           itemId: query.itemId,
           bonusIds: query.bonusIds,
           seasonId: query.seasonId,
+          specName: query.specName,
         });
     }
     if (unique.size === 0) return;
@@ -270,6 +276,7 @@ export function useEnchantAvailability(
       itemId?: number;
       bonusIds?: number[];
       seasonId?: number;
+      specName?: string | null;
     }> = [];
     for (const [key, query] of unique) {
       if (Object.prototype.hasOwnProperty.call(enchantAvailabilityCache, key)) {
@@ -282,6 +289,7 @@ export function useEnchantAvailability(
           itemId: query.itemId,
           bonusIds: query.bonusIds,
           seasonId: query.seasonId,
+          specName: query.specName,
         });
       }
     }
@@ -294,13 +302,14 @@ export function useEnchantAvailability(
 
     let cancelled = false;
 
-    for (const { key, slot, className, itemId, bonusIds, seasonId } of toFetch) {
+    for (const { key, slot, className, itemId, bonusIds, seasonId, specName } of toFetch) {
       (async () => {
         try {
           const params = new URLSearchParams();
           params.set('slot', normalizeEnchantQuerySlot(slot));
           const normalizedClass = normalizeClassName(className);
           if (normalizedClass) params.set('class_name', normalizedClass);
+          if (specName) params.set('spec', specName);
           if (Number.isFinite(itemId) && Number(itemId) > 0) {
             params.set('item_id', String(Number(itemId)));
           }

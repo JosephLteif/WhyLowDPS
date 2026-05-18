@@ -43,6 +43,14 @@ const FIGHT_STYLE_CHOICES: DefaultChoice[] = [
 ];
 
 export const APP_DEFAULTS_REGISTRY = {
+  'topgear.globalAffixes': {
+    key: 'topgear.globalAffixes',
+    label: 'Global Enchants & Gems',
+    description: 'Manage Top Gear enchants and gems centrally with Enchant & Gem Rules by default.',
+    group: 'Top Gear',
+    type: 'boolean',
+    defaultValue: false,
+  },
   'topgear.copyEnchants': {
     key: 'topgear.copyEnchants',
     label: 'Copy Enchants/Gems',

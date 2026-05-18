@@ -5,11 +5,13 @@ import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import TopGearItemSelector from '../components/TopGearItemSelector';
+import type { SavedVariantStudioState } from '../components/top-gear/TopGearVariantStudio';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
 import ConsumableSelect, { buildQualityMaxByFamily } from '../components/shared/ConsumableSelect';
 import { API_URL } from '../lib/api';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
+import { buildGearItemIdentity } from '../lib/gear-utils';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useSimSubmit } from '../lib/useSimSubmit';
 import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
@@ -56,6 +58,55 @@ function arraysEqual(a: string[], b: string[]) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
+function pairedTopGearSlot(slot: string): string | null {
+  if (slot === 'finger1') return 'finger2';
+  if (slot === 'finger2') return 'finger1';
+  if (slot === 'trinket1') return 'trinket2';
+  if (slot === 'trinket2') return 'trinket1';
+  return null;
+}
+
+function buildVariantRuleBaseKey(item: ResolvedItem): string {
+  return buildGearItemIdentity({
+    item_id: item.item_id,
+    bonus_ids: item.bonus_ids,
+    origin: 'variant-rules',
+    ilevel: item.ilevel,
+    enchant_id: 0,
+    gem_id: 0,
+    gem_ids: [],
+    crafted_stats: item.crafted_stats,
+    embellishment_item_id: item.embellishment_item_id,
+  });
+}
+
+function stripEnchantForPayload(item: ResolvedItem): ResolvedItem {
+  return {
+    ...item,
+    enchant_id: 0,
+    enchant_name: '',
+    prevent_copy_enchant: true,
+    simc_string: item.simc_string.replace(/,enchant_id=[0-9]+/, ''),
+  };
+}
+
+function stripAffixesForPayload(item: ResolvedItem): ResolvedItem {
+  return {
+    ...item,
+    enchant_id: 0,
+    enchant_name: '',
+    gem_id: 0,
+    gem_ids: [],
+    gem_name: '',
+    gem_icon: '',
+    prevent_copy_enchant: true,
+    prevent_copy_gem: true,
+    simc_string: item.simc_string
+      .replace(/,enchant_id=[0-9]+/, '')
+      .replace(/,gem_id=[0-9/:]+/, ''),
+  };
+}
+
 function MultiPick({
   title,
   options,
@@ -96,6 +147,9 @@ interface TopGearSimAgainState {
   simcInput?: string;
   selectedUids?: Record<string, string[]>;
   localItems?: LocalGearItem[];
+  savedVariantCopiesBySlot?: Record<string, ResolvedItem[]>;
+  savedVariantRuleState?: SavedVariantStudioState | null;
+  globalAffixesEnabled?: boolean;
   maxUpgrade?: boolean;
   copyEnchants?: boolean;
   catalyst?: boolean;
@@ -114,6 +168,13 @@ export default function TopGearPage() {
   const [resolved, setResolved] = useState<ResolveGearResponse | null>(null);
   const [selectedUids, setSelectedUids] = useState<Record<string, Set<string>>>({});
   const [localItems, setLocalItems] = useState<LocalGearItem[]>([]);
+  const [savedVariantCopiesBySlot, setSavedVariantCopiesBySlot] = useState<
+    Record<string, ResolvedItem[]>
+  >({});
+  const [savedVariantRuleState, setSavedVariantRuleState] = useState<SavedVariantStudioState | null>(null);
+  const [globalAffixesEnabled, setGlobalAffixesEnabled] = useState(() =>
+    getAppDefaultOption('topgear.globalAffixes', { characterKey: characterDefaultsKey })
+  );
   const [maxUpgrade, setMaxUpgrade] = useState(() =>
     getAppDefaultOption('topgear.maxUpgrade', { characterKey: characterDefaultsKey })
   );
@@ -253,6 +314,28 @@ export default function TopGearPage() {
         )
       );
     }
+    if (restored.savedVariantCopiesBySlot && typeof restored.savedVariantCopiesBySlot === 'object') {
+      const next: Record<string, ResolvedItem[]> = {};
+      for (const [slot, values] of Object.entries(restored.savedVariantCopiesBySlot)) {
+        next[slot] = Array.isArray(values)
+          ? values.filter(
+              (item): item is ResolvedItem =>
+                !!item &&
+                typeof item === 'object' &&
+                typeof item.uid === 'string' &&
+                typeof item.slot === 'string' &&
+                typeof item.simc_string === 'string'
+            )
+          : [];
+      }
+      setSavedVariantCopiesBySlot(next);
+    }
+    if (restored.savedVariantRuleState && typeof restored.savedVariantRuleState === 'object') {
+      setSavedVariantRuleState(restored.savedVariantRuleState);
+    }
+    if (typeof restored.globalAffixesEnabled === 'boolean') {
+      setGlobalAffixesEnabled(restored.globalAffixesEnabled);
+    }
 
     if (typeof restored.maxUpgrade === 'boolean') setMaxUpgrade(restored.maxUpgrade);
     if (typeof restored.copyEnchants === 'boolean') setCopyEnchants(restored.copyEnchants);
@@ -317,6 +400,9 @@ export default function TopGearPage() {
     previousSimcInputRef.current = simcInput;
     setCopyEnchants(
       getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
+    );
+    setGlobalAffixesEnabled(
+      getAppDefaultOption('topgear.globalAffixes', { characterKey: characterDefaultsKey })
     );
     setMaxUpgrade(
       getAppDefaultOption('topgear.maxUpgrade', { characterKey: characterDefaultsKey })
@@ -387,6 +473,8 @@ export default function TopGearPage() {
             setResolved(null);
             setSelectedUids({});
             setLocalItems([]);
+            setSavedVariantCopiesBySlot({});
+            setSavedVariantRuleState(null);
             return;
           }
 
@@ -403,11 +491,15 @@ export default function TopGearPage() {
             }
             setSelectedUids({});
             setLocalItems([]);
+            setSavedVariantCopiesBySlot({});
+            setSavedVariantRuleState(null);
           }
         } catch {
           if (requestSeq !== resolveRequestSeqRef.current) return;
           setResolved(null);
           setSelectedUids({});
+          setSavedVariantCopiesBySlot({});
+          setSavedVariantRuleState(null);
         } finally {
           if (requestSeq !== resolveRequestSeqRef.current) return;
           setResolving(false);
@@ -429,39 +521,138 @@ export default function TopGearPage() {
   const buildSelectedUidsJson = useCallback((): Record<string, string[]> => {
     if (!resolved) return {};
     const result: Record<string, string[]> = {};
-    for (const [slot, uids] of Object.entries(selectedUids)) {
+    const slots = new Set([
+      ...Object.keys(selectedUids),
+      ...Object.keys(savedVariantCopiesBySlot),
+    ]);
+    for (const slot of slots) {
+      const uids = selectedUids[slot] || new Set<string>();
       const slotRes = resolved.slots[slot];
       const slotItems: ResolvedItem[] = slotRes
         ? [slotRes.equipped, ...slotRes.alternatives].filter(
             (item): item is ResolvedItem => Boolean(item)
           )
         : [];
+      const virtualItems = savedVariantCopiesBySlot[slot] || [];
+      const replacedBaseKeys = new Set(virtualItems.map(buildVariantRuleBaseKey));
+      const allSlotItems = [...slotItems, ...virtualItems];
       const included = new Set<string>();
       for (const uid of uids) {
-        const item = slotItems.find((candidate) => candidate.uid === uid);
+        const item = allSlotItems.find((candidate) => candidate.uid === uid);
         if (!item) continue;
+        if (
+          globalAffixesEnabled &&
+          replacedBaseKeys.size > 0 &&
+          !virtualItems.some((virtualItem) => virtualItem.uid === item.uid) &&
+          replacedBaseKeys.has(buildVariantRuleBaseKey(item))
+        ) {
+          continue;
+        }
         included.add(item.uid);
+      }
+      if (globalAffixesEnabled) {
+        for (const item of virtualItems) {
+          included.add(item.uid);
+        }
       }
       if (included.size > 0) {
         result[slot] = [...included];
       }
     }
+    for (const slot of ['finger1', 'finger2', 'trinket1', 'trinket2']) {
+      const paired = pairedTopGearSlot(slot);
+      if (!paired) continue;
+      const union = new Set<string>([...(result[slot] || []), ...(result[paired] || [])]);
+      if (union.size > 0) {
+        if (globalAffixesEnabled) {
+          const slotEquipped = resolved.slots[slot]?.equipped;
+          const pairedEquipped = resolved.slots[paired]?.equipped;
+          if (slotEquipped) union.add(slotEquipped.uid);
+          if (pairedEquipped) union.add(pairedEquipped.uid);
+        }
+        const values = [...union];
+        result[slot] = values;
+        result[paired] = values;
+      }
+    }
     return result;
-  }, [resolved, selectedUids]);
+  }, [globalAffixesEnabled, resolved, savedVariantCopiesBySlot, selectedUids]);
 
   const buildItemsBySlotJson = useCallback((): Record<string, any[]> | null => {
     if (!resolved) return null;
     const result: Record<string, any[]> = {};
     for (const [slot, slotRes] of Object.entries(resolved.slots)) {
+      const paired = pairedTopGearSlot(slot);
+      const pairedSlotRes = paired ? resolved.slots[paired] : null;
+      const selectedForSlot = new Set<string>([
+        ...(selectedUids[slot] || []),
+        ...(paired ? selectedUids[paired] || [] : []),
+      ]);
+      const virtualItems = savedVariantCopiesBySlot[slot] || [];
+      const pairedVirtualItems = paired ? savedVariantCopiesBySlot[paired] || [] : [];
+      const groupedVirtualItems = [...virtualItems, ...pairedVirtualItems];
+      const replacedBaseKeys = new Set(groupedVirtualItems.map(buildVariantRuleBaseKey));
+      const hasForceClearEnchantRule = groupedVirtualItems.some((item) => item.force_clear_enchant);
       const items = [];
-      if (slotRes.equipped) items.push({ ...slotRes.equipped, is_equipped: true });
-      if (slotRes.alternatives) {
-        items.push(...slotRes.alternatives.map((alt) => ({ ...alt, is_equipped: false })));
+      if (
+        slotRes.equipped &&
+        (!globalAffixesEnabled || !replacedBaseKeys.has(buildVariantRuleBaseKey(slotRes.equipped)))
+      ) {
+        items.push({ ...slotRes.equipped, is_equipped: true });
       }
-      if (items.length > 0) result[slot] = items;
+      if (
+        pairedSlotRes?.equipped &&
+        (selectedForSlot.has(pairedSlotRes.equipped.uid) || globalAffixesEnabled) &&
+        !items.some((item) => String(item.uid) === String(pairedSlotRes.equipped?.uid)) &&
+        (!globalAffixesEnabled ||
+          !replacedBaseKeys.has(buildVariantRuleBaseKey(pairedSlotRes.equipped)))
+      ) {
+        const shouldStripEnchant =
+          hasForceClearEnchantRule &&
+          selectedForSlot.has(pairedSlotRes.equipped.uid);
+        const payloadItem =
+          globalAffixesEnabled && selectedForSlot.has(pairedSlotRes.equipped.uid)
+            ? stripAffixesForPayload(pairedSlotRes.equipped)
+            : shouldStripEnchant
+              ? stripEnchantForPayload(pairedSlotRes.equipped)
+              : pairedSlotRes.equipped;
+        items.push({ ...payloadItem, is_equipped: false });
+      }
+      const alternativeSources = [slotRes, pairedSlotRes].filter(Boolean) as typeof slotRes[];
+      for (const source of alternativeSources) {
+        if (!source.alternatives) continue;
+        items.push(
+          ...source.alternatives
+            .filter(
+              (alt) =>
+                !globalAffixesEnabled ||
+                replacedBaseKeys.size === 0 ||
+                !replacedBaseKeys.has(buildVariantRuleBaseKey(alt))
+            )
+            .map((alt) => {
+              const isSelected = selectedForSlot.has(alt.uid);
+              const shouldStripEnchant =
+                hasForceClearEnchantRule &&
+                isSelected;
+              const payloadItem = globalAffixesEnabled && isSelected
+                ? stripAffixesForPayload(alt)
+                : shouldStripEnchant
+                  ? stripEnchantForPayload(alt)
+                  : alt;
+              return { ...payloadItem, is_equipped: false };
+            })
+        );
+      }
+      if (globalAffixesEnabled) {
+        items.push(...groupedVirtualItems.map((item) => ({ ...item, is_equipped: false })));
+      }
+      const deduped = Array.from(
+        new Map(items.map((item) => [String(item.uid), item] as const)).values()
+      );
+      if (deduped.length > 0) result[slot] = deduped;
     }
     return result;
-  }, [resolved]);
+  }, [globalAffixesEnabled, resolved, savedVariantCopiesBySlot, selectedUids]);
 
   // Fetch combo count whenever selection changes
   useEffect(() => {
@@ -514,7 +705,7 @@ export default function TopGearPage() {
             selected_items: selectedItemsForSubmit,
             items_by_slot: buildItemsBySlotJson(),
             max_upgrade: maxUpgrade,
-            copy_enchants: copyEnchants,
+            copy_enchants: globalAffixesEnabled ? false : copyEnchants,
             ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
             ...(talentBuilds.length > 1
               ? {
@@ -566,6 +757,7 @@ export default function TopGearPage() {
     localItems,
     maxUpgrade,
     copyEnchants,
+    globalAffixesEnabled,
     maxCombinations,
     talentBuilds,
     catalyst,
@@ -620,7 +812,7 @@ export default function TopGearPage() {
         selected_items: buildSelectedUidsJson(),
         items_by_slot: buildItemsBySlotJson(),
         max_upgrade: maxUpgrade,
-        copy_enchants: copyEnchants,
+        copy_enchants: globalAffixesEnabled ? false : copyEnchants,
         ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
         ...(talentBuilds.length > 1
           ? {
@@ -648,6 +840,7 @@ export default function TopGearPage() {
       buildSelectedUidsJson,
       maxUpgrade,
       copyEnchants,
+      globalAffixesEnabled,
       maxCombinations,
       talentBuilds,
       catalyst,
@@ -689,6 +882,9 @@ export default function TopGearPage() {
           Object.entries(selectedUids).map(([slot, values]) => [slot, [...values]])
         ),
         localItems,
+        savedVariantCopiesBySlot,
+        savedVariantRuleState,
+        globalAffixesEnabled,
         maxUpgrade,
         copyEnchants,
         catalyst,
@@ -726,6 +922,9 @@ export default function TopGearPage() {
               setCopyEnchants(
                 getAppDefaultOption('topgear.copyEnchants', { characterKey: characterDefaultsKey })
               );
+              setGlobalAffixesEnabled(
+                getAppDefaultOption('topgear.globalAffixes', { characterKey: characterDefaultsKey })
+              );
               setMaxUpgrade(
                 getAppDefaultOption('topgear.maxUpgrade', { characterKey: characterDefaultsKey })
               );
@@ -740,10 +939,24 @@ export default function TopGearPage() {
         </div>
         <div className="flex flex-col gap-4 sm:flex-row">
         <ToggleOptionCard
-          checked={copyEnchants}
-          onToggle={() => setCopyEnchants(!copyEnchants)}
+          checked={globalAffixesEnabled}
+          onToggle={() => setGlobalAffixesEnabled(!globalAffixesEnabled)}
+          title="Global Enchants & Gems"
+          description="Manage enchants and gems centrally with Enchant & Gem Rules"
+        />
+        <ToggleOptionCard
+          checked={globalAffixesEnabled ? false : copyEnchants}
+          onToggle={() => {
+            if (globalAffixesEnabled) return;
+            setCopyEnchants(!copyEnchants);
+          }}
+          disabled={globalAffixesEnabled}
           title="Copy Enchants/Gems"
-          description="Apply equipped enchants and gems to items that don't have one"
+          description={
+            globalAffixesEnabled
+              ? 'Disabled while Global Enchants & Gems is enabled because central rules override affixes'
+              : "Apply equipped enchants and gems to items that don't have one"
+          }
         />
         <ToggleOptionCard
           checked={maxUpgrade}
@@ -789,7 +1002,18 @@ export default function TopGearPage() {
           onItemAdded={(slot, simcString, origin) =>
             setLocalItems((prev) => [...prev, { slot, simc_string: simcString, origin }])
           }
-          maxUpgrade={maxUpgrade}
+          onVariantCopiesChange={setSavedVariantCopiesBySlot}
+        onVariantRuleStateChange={setSavedVariantRuleState}
+        savedVariantCopiesBySlot={savedVariantCopiesBySlot}
+        savedVariantRuleState={savedVariantRuleState}
+        savedVariantCount={Object.values(savedVariantCopiesBySlot).reduce(
+          (sum, list) => sum + list.length,
+          0
+        )}
+        globalAffixesEnabled={globalAffixesEnabled}
+        maxUpgrade={maxUpgrade}
+        copyEnchants={copyEnchants}
+        specName={resolved.character.spec}
           comboCount={comboCount}
           comboError={comboError}
         />

@@ -808,12 +808,6 @@ pub async fn get_user_configs(
     let has_secret = store
         .get_user_config(&claims.sub, "blizzard_client_secret")
         .is_some();
-    let warcraftlogs_client_id = store
-        .get_user_config(&claims.sub, "warcraftlogs_client_id")
-        .unwrap_or_default();
-    let has_warcraftlogs_secret = store
-        .get_user_config(&claims.sub, "warcraftlogs_client_secret")
-        .is_some();
     let sim_threads = store
         .get_user_config(&claims.sub, "sim_threads")
         .unwrap_or_default();
@@ -836,8 +830,6 @@ pub async fn get_user_configs(
     HttpResponse::Ok().json(json!({
         "blizzard_client_id": client_id,
         "has_blizzard_client_secret": has_secret,
-        "warcraftlogs_client_id": warcraftlogs_client_id,
-        "has_warcraftlogs_client_secret": has_warcraftlogs_secret,
         "sim_threads": sim_threads,
         "max_gear_combinations": max_gear_combinations,
         "simc_download_channel": simc_download_channel,
@@ -860,8 +852,6 @@ pub async fn set_user_config(
 
     if body.key != "blizzard_client_id"
         && body.key != "blizzard_client_secret"
-        && body.key != "warcraftlogs_client_id"
-        && body.key != "warcraftlogs_client_secret"
         && body.key != "sim_threads"
         && body.key != "max_gear_combinations"
         && body.key != "simc_download_channel"
@@ -960,5 +950,260 @@ pub async fn test_blizzard_creds(
     } else {
         HttpResponse::BadRequest()
             .json(json!({"status": "error", "message": "Failed to authenticate with Blizzard"}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{JobStorage, MemoryStorage};
+    use actix_web::body::to_bytes;
+    use actix_web::http::header::HeaderValue;
+    use actix_web::test::TestRequest;
+    use serde_json::Value;
+
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn auth_state() -> web::Data<Arc<BlizzardAuthState>> {
+        web::Data::new(Arc::new(BlizzardAuthState::new(
+            None,
+            None,
+            "http://localhost:3000/api/auth/bnet/callback".to_string(),
+            "test-secret".to_string(),
+        )))
+    }
+
+    fn make_jwt(sub: &str, access_token: &str, secret: &str) -> String {
+        let claims = Claims {
+            sub: sub.to_string(),
+            access_token: access_token.to_string(),
+            exp: (SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_secs()
+                + 3600) as usize,
+        };
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("jwt encode")
+    }
+
+    async fn body_json(resp: HttpResponse) -> Value {
+        let bytes = to_bytes(resp.into_body()).await.expect("response body");
+        serde_json::from_slice(&bytes).expect("json response")
+    }
+
+    #[test]
+    fn get_effective_creds_uses_expected_precedence() {
+        let state = BlizzardAuthState::new(
+            Some("env-id".to_string()),
+            Some("env-secret".to_string()),
+            "http://localhost/callback".to_string(),
+            "jwt".to_string(),
+        );
+        let store = MemoryStorage::new();
+        store.set_user_config("system", "blizzard_client_id", "sys-id");
+        store.set_user_config("system", "blizzard_client_secret", "sys-secret");
+
+        let query_id = Some("query-id".to_string());
+        let query_secret = Some("query-secret".to_string());
+        assert_eq!(
+            get_effective_creds(&state, &store, query_id.as_ref(), query_secret.as_ref()),
+            Some(("query-id".to_string(), "query-secret".to_string()))
+        );
+
+        assert_eq!(
+            get_effective_creds(&state, &store, None, None),
+            Some(("env-id".to_string(), "env-secret".to_string()))
+        );
+
+        let no_env_state = BlizzardAuthState::new(
+            None,
+            None,
+            "http://localhost/callback".to_string(),
+            "jwt".to_string(),
+        );
+        assert_eq!(
+            get_effective_creds(&no_env_state, &store, None, None),
+            Some(("sys-id".to_string(), "sys-secret".to_string()))
+        );
+    }
+
+    #[actix_web::test]
+    async fn bnet_login_requires_configured_credentials() {
+        let req = TestRequest::default().to_http_request();
+        let state = auth_state();
+        let store = test_store();
+
+        let resp = bnet_login(
+            req,
+            state,
+            store,
+            web::Query(LoginQuery {
+                client_id: None,
+                client_secret: None,
+                flow_id: None,
+            }),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 400);
+        let payload = body_json(resp).await;
+        assert_eq!(
+            payload.get("error").and_then(Value::as_str),
+            Some("Blizzard API Client ID not configured globally and not provided in request.")
+        );
+    }
+
+    #[actix_web::test]
+    async fn bnet_login_with_query_creds_sets_flow_cache_and_redirect() {
+        let req = TestRequest::default().to_http_request();
+        let state = auth_state();
+        let store = test_store();
+        let flow_id = "flow-123".to_string();
+
+        let resp = bnet_login(
+            req,
+            state,
+            store.clone(),
+            web::Query(LoginQuery {
+                client_id: Some("query-id".to_string()),
+                client_secret: Some("query-secret".to_string()),
+                flow_id: Some(flow_id.clone()),
+            }),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 302);
+        let location = resp
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(location.contains("https://oauth.battle.net/authorize"));
+        assert!(location.contains("client_id=query-id"));
+        assert!(location.contains("state=flow-123"));
+
+        assert_eq!(
+            store.get_cache("login_flow_status_flow-123"),
+            Some("started".to_string())
+        );
+        assert_eq!(
+            store.get_cache("login_flow_client_id_flow-123"),
+            Some("query-id".to_string())
+        );
+        assert_eq!(
+            store.get_cache("login_flow_client_secret_flow-123"),
+            Some("query-secret".to_string())
+        );
+    }
+
+    #[actix_web::test]
+    async fn poll_login_returns_token_once_and_clears_flow_keys() {
+        let store = test_store();
+        store.set_cache("login_flow_abc", "jwt-token".to_string());
+        store.set_cache("login_flow_error_abc", "old-error".to_string());
+        store.set_cache("login_flow_status_abc", "started".to_string());
+
+        let success = poll_login(
+            web::Query(PollQuery {
+                flow_id: "abc".to_string(),
+            }),
+            store.clone(),
+        )
+        .await;
+        assert_eq!(success.status(), 200);
+        let body = body_json(success).await;
+        assert_eq!(body.get("token").and_then(Value::as_str), Some("jwt-token"));
+        assert!(store.get_cache("login_flow_abc").is_none());
+        assert!(store.get_cache("login_flow_error_abc").is_none());
+        assert!(store.get_cache("login_flow_status_abc").is_none());
+
+        store.set_cache("login_flow_error_abc", "oauth denied".to_string());
+        let failed = poll_login(
+            web::Query(PollQuery {
+                flow_id: "abc".to_string(),
+            }),
+            store.clone(),
+        )
+        .await;
+        assert_eq!(failed.status(), 400);
+        let failed_body = body_json(failed).await;
+        assert_eq!(failed_body.get("status").and_then(Value::as_str), Some("failed"));
+        assert_eq!(
+            failed_body.get("error").and_then(Value::as_str),
+            Some("oauth denied")
+        );
+    }
+
+    #[test]
+    fn verify_jwt_reads_cookie_then_bearer_header() {
+        let cookie_token = make_jwt("CookieUser#1111", "cookie-token", "test-secret");
+        let bearer_token = make_jwt("HeaderUser#2222", "header-token", "test-secret");
+        let req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", cookie_token))
+            .insert_header((
+                header::AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {bearer_token}"))
+                    .expect("header value"),
+            ))
+            .to_http_request();
+
+        let claims = verify_jwt(&req, "test-secret").expect("valid claims");
+        assert_eq!(claims.sub, "CookieUser#1111");
+
+        let header_only = TestRequest::default()
+            .insert_header((
+                header::AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {bearer_token}"))
+                    .expect("header value"),
+            ))
+            .to_http_request();
+        let header_claims = verify_jwt(&header_only, "test-secret").expect("header claims");
+        assert_eq!(header_claims.sub, "HeaderUser#2222");
+    }
+
+    #[actix_web::test]
+    async fn set_user_config_validates_keys_and_persists_for_authenticated_user() {
+        let state = auth_state();
+        let store = test_store();
+        let token = make_jwt("Tester#9999", "access", "test-secret");
+        let req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token))
+            .to_http_request();
+
+        let invalid = set_user_config(
+            req.clone(),
+            state.clone(),
+            store.clone(),
+            web::Json(UserConfigUpdate {
+                key: "invalid_key".to_string(),
+                value: "x".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(invalid.status(), 400);
+
+        let valid = set_user_config(
+            req,
+            state,
+            store.clone(),
+            web::Json(UserConfigUpdate {
+                key: "sim_threads".to_string(),
+                value: "8".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(valid.status(), 200);
+        assert_eq!(
+            store.get_user_config("Tester#9999", "sim_threads"),
+            Some("8".to_string())
+        );
     }
 }

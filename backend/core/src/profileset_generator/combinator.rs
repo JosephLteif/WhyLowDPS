@@ -355,9 +355,86 @@ fn bundle_item_identity(item: &ResolvedItem) -> String {
     format!("{}:{}:{}", item.item_id, bonus_key, item.ilevel)
 }
 
+pub struct UpgradeCombo {
+    pub choices: Vec<(String, usize)>,
+}
+pub struct UpgradeDfsCtx<'a> {
+    pub slots: &'a [String],
+    pub options: &'a HashMap<String, Vec<Value>>,
+    pub budget: &'a HashMap<u64, u64>,
+    pub limit: usize,
+    pub best_spend: u64,
+    pub retained: Vec<UpgradeCombo>,
+    pub spent: HashMap<u64, u64>,
+    pub current: Vec<(String, usize)>,
+    pub retain_all: bool,
+}
+
+impl UpgradeDfsCtx<'_> {
+    fn within_budget(&self, cost: &HashMap<u64, u64>) -> bool {
+        cost.iter().all(|(cid, amount)| {
+            self.spent.get(cid).copied().unwrap_or(0) + amount
+                <= self.budget.get(cid).copied().unwrap_or(0)
+        })
+    }
+
+    pub fn dfs(&mut self, idx: usize) {
+        if idx == self.slots.len() {
+            if self.retain_all {
+                self.retained.push(UpgradeCombo {
+                    choices: self.current.clone(),
+                });
+            } else {
+                let total: u64 = self.spent.values().sum();
+                if total > self.best_spend {
+                    self.best_spend = total;
+                    self.retained.clear();
+                }
+                if total >= self.best_spend {
+                    self.retained.push(UpgradeCombo {
+                        choices: self.current.clone(),
+                    });
+                }
+            }
+            return;
+        }
+
+        let slot = self.slots[idx].clone();
+        let slot_opts = self.options.get(&slot).unwrap();
+
+        self.current.push((slot.clone(), 0));
+        self.dfs(idx + 1);
+        self.current.pop();
+
+        for (i, opt) in slot_opts.iter().enumerate() {
+            let costs: HashMap<u64, u64> = opt
+                .get("upgrade_costs")
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+            if !self.within_budget(&costs) {
+                continue;
+            }
+            for (cid, amount) in &costs {
+                *self.spent.entry(*cid).or_insert(0) += amount;
+            }
+            self.current.push((slot.clone(), i + 1));
+            self.dfs(idx + 1);
+            self.current.pop();
+            for (cid, amount) in &costs {
+                let e = self.spent.entry(*cid).or_insert(0);
+                *e = e.saturating_sub(*amount);
+            }
+            if self.retained.len() > self.limit * 2 {
+                return;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn make_item(
         uid: &str,
@@ -436,80 +513,301 @@ mod tests {
 
         assert_eq!(valid.len(), 19);
     }
-}
 
-pub struct UpgradeCombo {
-    pub choices: Vec<(String, usize)>,
-}
-pub struct UpgradeDfsCtx<'a> {
-    pub slots: &'a [String],
-    pub options: &'a HashMap<String, Vec<Value>>,
-    pub budget: &'a HashMap<u64, u64>,
-    pub limit: usize,
-    pub best_spend: u64,
-    pub retained: Vec<UpgradeCombo>,
-    pub spent: HashMap<u64, u64>,
-    pub current: Vec<(String, usize)>,
-    pub retain_all: bool,
-}
-
-impl UpgradeDfsCtx<'_> {
-    fn within_budget(&self, cost: &HashMap<u64, u64>) -> bool {
-        cost.iter().all(|(cid, amount)| {
-            self.spent.get(cid).copied().unwrap_or(0) + amount
-                <= self.budget.get(cid).copied().unwrap_or(0)
-        })
+    #[test]
+    fn cartesian_product_generates_expected_shape() {
+        let head = vec![
+            make_item("h-eq", "head", 1, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("h-alt", "head", 2, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let neck = vec![
+            make_item("n-eq", "neck", 10, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("n-alt", "neck", 11, ItemOrigin::Bags, 0, 0, ""),
+            make_item("n-alt2", "neck", 12, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let options = vec![&head, &neck];
+        let product = generate_cartesian_product(&options);
+        assert_eq!(product.len(), 6);
+        assert!(product.iter().all(|combo| combo.len() == 2));
     }
 
-    pub fn dfs(&mut self, idx: usize) {
-        if idx == self.slots.len() {
-            if self.retain_all {
-                self.retained.push(UpgradeCombo {
-                    choices: self.current.clone(),
-                });
-            } else {
-                let total: u64 = self.spent.values().sum();
-                if total > self.best_spend {
-                    self.best_spend = total;
-                    self.retained.clear();
-                }
-                if total >= self.best_spend {
-                    self.retained.push(UpgradeCombo {
-                        choices: self.current.clone(),
-                    });
-                }
-            }
+    #[test]
+    fn baseline_gear_set_detection_works() {
+        let mut gs = HashMap::new();
+        gs.insert(
+            "head".to_string(),
+            make_item("h-eq", "head", 1, ItemOrigin::Equipped, 0, 0, ""),
+        );
+        assert!(is_baseline_gear_set(&gs));
+
+        gs.insert(
+            "neck".to_string(),
+            make_item("n-bag", "neck", 2, ItemOrigin::Bags, 0, 0, ""),
+        );
+        assert!(!is_baseline_gear_set(&gs));
+    }
+
+    #[test]
+    fn gear_set_identity_is_position_independent_for_rings_and_trinkets() {
+        let ring_a = make_item("r1", "finger1", 101, ItemOrigin::Bags, 0, 0, "");
+        let ring_b = make_item("r2", "finger2", 102, ItemOrigin::Bags, 0, 0, "");
+        let trinket_a = make_item("t1", "trinket1", 201, ItemOrigin::Bags, 0, 0, "");
+        let trinket_b = make_item("t2", "trinket2", 202, ItemOrigin::Bags, 0, 0, "");
+
+        let mut left = HashMap::new();
+        left.insert("finger1".to_string(), ring_a.clone());
+        left.insert("finger2".to_string(), ring_b.clone());
+        left.insert("trinket1".to_string(), trinket_a.clone());
+        left.insert("trinket2".to_string(), trinket_b.clone());
+
+        let mut right = HashMap::new();
+        right.insert("finger1".to_string(), ring_b);
+        right.insert("finger2".to_string(), ring_a);
+        right.insert("trinket1".to_string(), trinket_b);
+        right.insert("trinket2".to_string(), trinket_a);
+
+        assert_eq!(gear_set_identity_key(&left), gear_set_identity_key(&right));
+    }
+
+    #[test]
+    fn global_affix_bundle_validation_rejects_mixed_bundle_ids() {
+        let mut gs = HashMap::new();
+        gs.insert(
+            "head".to_string(),
+            make_item("a", "head", 1, ItemOrigin::Bags, 0, 0, "bundle-a"),
+        );
+        gs.insert(
+            "neck".to_string(),
+            make_item("b", "neck", 2, ItemOrigin::Bags, 0, 0, "bundle-b"),
+        );
+        assert!(!validate_global_affix_bundle(&gs));
+
+        gs.insert(
+            "neck".to_string(),
+            make_item("b2", "neck", 2, ItemOrigin::Bags, 0, 0, "bundle-a"),
+        );
+        assert!(validate_global_affix_bundle(&gs));
+    }
+
+    fn find_two_hand_item_id() -> Option<u64> {
+        (1_u64..=450_000_u64)
+            .find(|&item_id| game_data::get_inventory_type(item_id) == Some(17))
+    }
+
+    #[test]
+    fn build_gear_set_removes_offhand_for_two_hand_main_hand() {
+        let Some(two_hand_id) = find_two_hand_item_id() else {
+            // Test environments without loaded item-db weapon inventory metadata
+            // cannot validate this path deterministically.
             return;
-        }
+        };
+        let off_hand_id = 1_u64;
 
-        let slot = self.slots[idx].clone();
-        let slot_opts = self.options.get(&slot).unwrap();
+        let slot_item_lists = HashMap::from([
+            (
+                "main_hand".to_string(),
+                vec![make_item(
+                    "mh-eq",
+                    "main_hand",
+                    two_hand_id,
+                    ItemOrigin::Equipped,
+                    0,
+                    0,
+                    "",
+                )],
+            ),
+            (
+                "off_hand".to_string(),
+                vec![make_item(
+                    "oh-eq",
+                    "off_hand",
+                    off_hand_id,
+                    ItemOrigin::Equipped,
+                    0,
+                    0,
+                    "",
+                )],
+            ),
+        ]);
+        let varying_slots: Vec<String> = Vec::new();
+        let option_lists: Vec<&Vec<ResolvedItem>> = Vec::new();
+        let combo: Vec<usize> = Vec::new();
 
-        self.current.push((slot.clone(), 0));
-        self.dfs(idx + 1);
-        self.current.pop();
+        let built = build_gear_set_from_combo(
+            &combo,
+            &varying_slots,
+            &option_lists,
+            &slot_item_lists,
+            "arcane",
+        );
+        assert!(!built.contains_key("off_hand"));
 
-        for (i, opt) in slot_opts.iter().enumerate() {
-            let costs: HashMap<u64, u64> = opt
-                .get("upgrade_costs")
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .unwrap_or_default();
-            if !self.within_budget(&costs) {
+        let mut invalid = HashMap::new();
+        invalid.insert(
+            "main_hand".to_string(),
+            make_item(
+                "mh-eq",
+                "main_hand",
+                two_hand_id,
+                ItemOrigin::Equipped,
+                0,
+                0,
+                "",
+            ),
+        );
+        invalid.insert(
+            "off_hand".to_string(),
+            make_item("oh", "off_hand", off_hand_id, ItemOrigin::Bags, 0, 0, ""),
+        );
+        assert!(!validation::validate_weapon_constraint(&invalid, "arcane"));
+    }
+
+    fn run_upgrade_dfs<'a>(
+        slots: &'a [String],
+        options: &'a HashMap<String, Vec<Value>>,
+        budget: &'a HashMap<u64, u64>,
+        limit: usize,
+        retain_all: bool,
+    ) -> UpgradeDfsCtx<'a> {
+        let mut ctx = UpgradeDfsCtx {
+            slots,
+            options,
+            budget,
+            limit,
+            best_spend: 0,
+            retained: Vec::new(),
+            spent: HashMap::new(),
+            current: Vec::new(),
+            retain_all,
+        };
+        ctx.dfs(0);
+        ctx
+    }
+
+    fn total_spent_for_choice(
+        choice: &[(String, usize)],
+        options: &HashMap<String, Vec<Value>>,
+    ) -> HashMap<u64, u64> {
+        let mut totals = HashMap::new();
+        for (slot, idx) in choice {
+            if *idx == 0 {
                 continue;
             }
-            for (cid, amount) in &costs {
-                *self.spent.entry(*cid).or_insert(0) += amount;
-            }
-            self.current.push((slot.clone(), i + 1));
-            self.dfs(idx + 1);
-            self.current.pop();
-            for (cid, amount) in &costs {
-                let e = self.spent.entry(*cid).or_insert(0);
-                *e = e.saturating_sub(*amount);
-            }
-            if self.retained.len() > self.limit * 2 {
-                return;
+            if let Some(opt) = options.get(slot).and_then(|opts| opts.get(*idx - 1)) {
+                let costs: HashMap<u64, u64> = opt
+                    .get("upgrade_costs")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                for (currency_id, amount) in costs {
+                    *totals.entry(currency_id).or_insert(0) += amount;
+                }
             }
         }
+        totals
+    }
+
+    #[test]
+    fn upgrade_dfs_respects_multi_currency_budget() {
+        let slots = vec!["head".to_string()];
+        let options = HashMap::from([(
+            "head".to_string(),
+            vec![
+                json!({"upgrade_costs": {"3008": 8, "3009": 1}}),
+                json!({"upgrade_costs": {"3008": 4, "3009": 2}}),
+            ],
+        )]);
+        let budget = HashMap::from([(3008_u64, 5_u64), (3009_u64, 3_u64)]);
+        let ctx = run_upgrade_dfs(&slots, &options, &budget, 20, true);
+
+        assert!(ctx
+            .retained
+            .iter()
+            .any(|combo| combo.choices.iter().any(|(slot, idx)| slot == "head" && *idx == 2)));
+        assert!(!ctx
+            .retained
+            .iter()
+            .any(|combo| combo.choices.iter().any(|(slot, idx)| slot == "head" && *idx == 1)));
+    }
+
+    #[test]
+    fn upgrade_dfs_keeps_only_best_spend_when_retain_all_disabled() {
+        let slots = vec!["head".to_string(), "chest".to_string()];
+        let options = HashMap::from([
+            (
+                "head".to_string(),
+                vec![
+                    json!({"upgrade_costs": {"3008": 2}}),
+                    json!({"upgrade_costs": {"3008": 5}}),
+                ],
+            ),
+            ("chest".to_string(), vec![json!({"upgrade_costs": {"3008": 3}})]),
+        ]);
+        let budget = HashMap::from([(3008_u64, 5_u64)]);
+
+        let ctx = run_upgrade_dfs(&slots, &options, &budget, 40, false);
+        assert_eq!(ctx.best_spend, 5);
+        assert!(!ctx.retained.is_empty());
+
+        for retained in &ctx.retained {
+            let total: u64 = total_spent_for_choice(&retained.choices, &options)
+                .values()
+                .copied()
+                .sum();
+            assert_eq!(total, 5);
+        }
+    }
+
+    #[test]
+    fn upgrade_dfs_retain_all_includes_all_budget_valid_paths() {
+        let slots = vec!["head".to_string()];
+        let options = HashMap::from([(
+            "head".to_string(),
+            vec![
+                json!({"upgrade_costs": {"3008": 1}}),
+                json!({"upgrade_costs": {"3008": 2}}),
+            ],
+        )]);
+        let budget = HashMap::from([(3008_u64, 10_u64)]);
+
+        let ctx = run_upgrade_dfs(&slots, &options, &budget, 20, true);
+        assert_eq!(ctx.retained.len(), 3);
+    }
+
+    #[test]
+    fn upgrade_dfs_stops_early_when_limit_guard_is_hit() {
+        let slots = vec!["head".to_string(), "chest".to_string(), "legs".to_string()];
+        let options = HashMap::from([
+            (
+                "head".to_string(),
+                vec![
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                ],
+            ),
+            (
+                "chest".to_string(),
+                vec![
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                ],
+            ),
+            (
+                "legs".to_string(),
+                vec![
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                    json!({"upgrade_costs": {"3008": 1}}),
+                ],
+            ),
+        ]);
+        let budget = HashMap::from([(3008_u64, 99_u64)]);
+
+        let ctx = run_upgrade_dfs(&slots, &options, &budget, 1, true);
+        assert!(ctx.retained.len() < 125);
     }
 }

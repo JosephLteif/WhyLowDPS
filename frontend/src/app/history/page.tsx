@@ -1,25 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Trash2, ChevronDown, Search, Pin } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, Pin, Search, Trash2 } from 'lucide-react';
 import {
   API_URL,
-  deleteSim,
-  setSimPinned,
   clearHistory,
-  getHistoryStats,
-  getConfig,
-  updateConfig,
-  type HistoryStats,
+  deleteSim,
   fetchJson,
+  getConfig,
+  getHistoryStats,
+  type HistoryStats,
+  setSimPinned,
+  updateConfig,
 } from '../lib/api';
 import { simResultHref } from '../lib/routes';
-import {
-  clearScenarioSiblings,
-  storeScenarioSiblings,
-  type ScenarioSibling,
-} from '../lib/scenario-siblings';
+import { clearScenarioSiblings, type ScenarioSibling, storeScenarioSiblings } from '../lib/scenario-siblings';
 
 interface JobSummary {
   id: string;
@@ -506,6 +502,7 @@ export default function HistoryPage() {
       setStats(statsData);
       setSelectedIds(new Set());
     } catch (err) {
+      console.log(err);
       setSims([]);
     }
   }, [character, showPinnedOnly]);

@@ -1,7 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { API_URL, isDesktop, fetchJson, isNetworkUnavailableError, TOKEN_KEY } from '../lib/api';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { API_URL, fetchJson, isDesktop, isNetworkUnavailableError, TOKEN_KEY } from '../lib/api';
 
 interface AuthContextType {
   user: { battletag: string } | null;
@@ -16,7 +16,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   login: () => {},
-  logout: (switchAccount?: boolean) => {},
+  logout: () => {
+  },
   checkCredentialsStatus: async () => ({ globally_configured: false }),
   setSystemCredentials: async () => false,
 });
@@ -162,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => clearInterval(interval), 5 * 60 * 1000);
   };
 
-  const logout = useCallback((switchAccount?: boolean) => {
+  const logout = useCallback(() => {
     const performLocalLogout = () => {
       localStorage.removeItem(TOKEN_KEY);
       setUser(null);

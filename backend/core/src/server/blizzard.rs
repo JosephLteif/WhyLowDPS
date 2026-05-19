@@ -212,6 +212,64 @@ fn enrich_mythic_profile_member_links(value: &mut Value) {
     }
 }
 
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tests {
+    use super::{parse_character_path_from_url, BlizzardState};
+    use crate::server::auth_handlers::BlizzardAuthState;
+    use crate::storage::{JobStorage, MemoryStorage};
+    use actix_web::test::TestRequest;
+
+    #[test]
+    fn parse_character_path_from_url_extracts_region_realm_name() {
+        let url = "https://worldofwarcraft.blizzard.com/en-us/character/us/illidan/tester?foo=bar";
+        let parsed = parse_character_path_from_url(url);
+        assert_eq!(
+            parsed,
+            Some(("us".to_string(), "illidan".to_string(), "tester".to_string()))
+        );
+    }
+
+    #[test]
+    fn get_effective_credentials_prefers_system_over_global() {
+        let req = TestRequest::default().to_http_request();
+        let store = MemoryStorage::new();
+        store.set_user_config("system", "blizzard_client_id", "system-id");
+        store.set_user_config("system", "blizzard_client_secret", "system-secret");
+
+        let auth = BlizzardAuthState::new(
+            Some("global-id".to_string()),
+            Some("global-secret".to_string()),
+            "http://localhost/callback".to_string(),
+            "jwt-secret".to_string(),
+        );
+
+        let creds = BlizzardState::get_effective_credentials(&req, Some(&auth), &store);
+        assert_eq!(
+            creds,
+            Some(("system-id".to_string(), "system-secret".to_string()))
+        );
+    }
+
+    #[test]
+    fn get_effective_credentials_falls_back_to_global_when_no_system() {
+        let req = TestRequest::default().to_http_request();
+        let store = MemoryStorage::new();
+        let auth = BlizzardAuthState::new(
+            Some("global-id".to_string()),
+            Some("global-secret".to_string()),
+            "http://localhost/callback".to_string(),
+            "jwt-secret".to_string(),
+        );
+
+        let creds = BlizzardState::get_effective_credentials(&req, Some(&auth), &store);
+        assert_eq!(
+            creds,
+            Some(("global-id".to_string(), "global-secret".to_string()))
+        );
+    }
+}
+
 async fn proxy_blizzard_data_url(
     req: &actix_web::HttpRequest,
     state: &web::Data<Arc<BlizzardState>>,

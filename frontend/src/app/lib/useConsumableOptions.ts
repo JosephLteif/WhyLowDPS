@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   AUGMENT_RUNE_OPTIONS,
   FLASK_OPTIONS,
@@ -48,14 +48,14 @@ function normalizeQuality(options: OptionEntry[]): OptionEntry[] {
 }
 
 export function useConsumableOptions(expansion = 11) {
-  const filterByExpansion = (options: OptionEntry[]): OptionEntry[] => {
+  const filterByExpansion = useCallback((options: OptionEntry[]): OptionEntry[] => {
     if (!Number.isFinite(expansion) || expansion <= 0) return options;
     return options.filter((opt) => {
       const optionExpansion = opt.expansion;
       if (typeof optionExpansion !== 'number' || !Number.isFinite(optionExpansion)) return false;
       return optionExpansion === expansion;
     });
-  };
+  }, [expansion]);
 
   const [flasks, setFlasks] = useState<OptionEntry[]>(filterByExpansion(normalizeQuality(FLASK_OPTIONS)));
   const [foods, setFoods] = useState<OptionEntry[]>(filterByExpansion(normalizeQuality(FOOD_OPTIONS)));
@@ -102,7 +102,7 @@ export function useConsumableOptions(expansion = 11) {
     return () => {
       canceled = true;
     };
-  }, [expansion]);
+  }, [expansion, filterByExpansion]);
 
   return { flasks, foods, potions, augments, tempEnchants };
 }

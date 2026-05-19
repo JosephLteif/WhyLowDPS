@@ -50,39 +50,17 @@ async fn main() {
     println!("Starting WhyLowDps server on {}:{}", bind_host, port);
 
     let storage: Arc<dyn JobStorage> = {
-        #[cfg(feature = "postgres")]
-        if _db_url.starts_with("postgres://") || _db_url.starts_with("postgresql://") {
-            println!("Using PostgreSQL storage");
-            Arc::new(whylowdps_core::storage::postgres::PostgresStorage::new(&_db_url).await)
-        } else {
-            #[cfg(feature = "web")]
-            {
-                println!("Using SQLite storage: {}", _db_url);
-                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(
-                    &_db_url,
-                ))
-            }
-            #[cfg(not(feature = "web"))]
-            {
-                println!("Using In-Memory storage (SQLite not enabled)");
-                Arc::new(whylowdps_core::storage::memory::MemoryStorage::new())
-            }
-        }
-
-        #[cfg(not(feature = "postgres"))]
+        #[cfg(feature = "web")]
         {
-            #[cfg(feature = "web")]
-            {
-                println!("Using SQLite storage: {}", _db_url);
-                Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(
-                    &_db_url,
-                ))
-            }
-            #[cfg(not(feature = "web"))]
-            {
-                println!("Using In-Memory storage (SQLite not enabled)");
-                Arc::new(whylowdps_core::storage::memory::MemoryStorage::new())
-            }
+            println!("Using SQLite storage: {}", _db_url);
+            Arc::new(whylowdps_core::storage::sqlite::SqliteStorage::new(
+                &_db_url,
+            ))
+        }
+        #[cfg(not(feature = "web"))]
+        {
+            println!("Using In-Memory storage (SQLite not enabled)");
+            Arc::new(whylowdps_core::storage::memory::MemoryStorage::new())
         }
     };
 

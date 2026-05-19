@@ -252,7 +252,7 @@ async fn download_and_install_release(app: tauri::AppHandle, url: String) -> Res
     let parsed_url = url::Url::parse(&url).map_err(|e| format!("Invalid update URL: {e}"))?;
     let filename = parsed_url
         .path_segments()
-        .and_then(|segments| segments.last())
+        .and_then(|mut segments| segments.next_back())
         .filter(|name| !name.trim().is_empty())
         .unwrap_or("whylowdps-update-installer.exe")
         .to_string();
@@ -459,20 +459,17 @@ async fn run_sim_notification_watcher(
             .send()
             .await
             .and_then(|resp| resp.error_for_status());
-        match scan {
-            Ok(resp) => {
-                if let Ok(sims) = resp.json::<Vec<SimNotificationSummary>>().await {
-                    for sim in sims {
-                        if is_active_status(&sim.status) {
-                            tracked_active.insert(sim.id.clone(), SimWatcherMeta::from_summary(&sim));
-                        } else if is_terminal_status(&sim.status) {
-                            notified_sims.insert(sim.id);
-                        }
+        if let Ok(resp) = scan {
+            if let Ok(sims) = resp.json::<Vec<SimNotificationSummary>>().await {
+                for sim in sims {
+                    if is_active_status(&sim.status) {
+                        tracked_active.insert(sim.id.clone(), SimWatcherMeta::from_summary(&sim));
+                    } else if is_terminal_status(&sim.status) {
+                        notified_sims.insert(sim.id);
                     }
-                    break;
                 }
+                break;
             }
-            Err(_) => {}
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     }

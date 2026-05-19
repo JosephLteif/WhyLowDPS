@@ -94,7 +94,6 @@ export default function GearItemRow({
   catalyst,
   href,
   wowheadData,
-  optimized: _optimized,
   children,
   headerExtras,
   overline,

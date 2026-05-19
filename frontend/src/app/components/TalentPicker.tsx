@@ -4,58 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Check, LayoutGrid } from 'lucide-react';
 import { useSimContext } from './SimContext';
-import {
-  parseTalentLoadouts,
-  SPEC_ID_TO_NAME,
-  specDisplayName,
-  classColorForSpec,
-} from '../lib/types';
 import type { TalentLoadoutParsed } from '../lib/types';
-import { decodeHeader, decodeNodes } from '../lib/talentDecode';
+import { classColorForSpec, parseTalentLoadouts, SPEC_ID_TO_NAME, specDisplayName } from '../lib/types';
+import { decodeHeader } from '../lib/talentDecode';
 import { encodeTalentString } from '../lib/talentEncode';
-import { getPointsSpent, CLASS_POINTS, SPEC_POINTS } from '../lib/talentRules';
 import { useTalentTree } from '../lib/useTalentTree';
-import type { TalentTreeData } from '../lib/useTalentTree';
 import TalentTree from './TalentTree';
-
-/** Check if a talent build has all points allocated. */
-function getBuildStatus(
-  talentString: string,
-  tree: TalentTreeData | null
-): { complete: boolean; classSpent: number; specSpent: number } | null {
-  if (!tree || !talentString) return null;
-  try {
-    const header = decodeHeader(talentString);
-    const orderedIds = tree.fullNodeOrder;
-    if (!orderedIds) return null;
-    const allNodes = [
-      ...tree.classNodes,
-      ...tree.specNodes,
-      ...tree.heroNodes,
-      ...(tree.subTreeNodes ?? []),
-    ];
-    const localMap = new Map(allNodes.map((n) => [n.id, n.maxRanks ?? 1]));
-    const maxRanks = new Map(
-      orderedIds.map((id) => [id, tree.fullNodeMaxRanks?.[id] ?? localMap.get(id) ?? 1])
-    );
-    const decoded = decodeNodes(header.bits, header.offset, orderedIds, maxRanks);
-    // Auto-grant free nodes for accurate counting
-    for (const node of [...tree.classNodes, ...tree.specNodes, ...tree.heroNodes]) {
-      if (node.freeNode && !decoded.has(node.id)) {
-        decoded.set(node.id, { ranks: node.maxRanks, choiceIndex: -1 });
-      }
-    }
-    const classSpent = getPointsSpent(decoded, tree.classNodes);
-    const specSpent = getPointsSpent(decoded, tree.specNodes);
-    return {
-      complete: classSpent >= CLASS_POINTS && specSpent >= SPEC_POINTS,
-      classSpent,
-      specSpent,
-    };
-  } catch {
-    return null;
-  }
-}
 
 type ViewMode = 'collapsed' | 'view' | 'edit';
 
@@ -374,7 +328,6 @@ export default function TalentPicker() {
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {allLoadouts.map((l, i) => {
               const checked = compareIndices.has(i);
-              const status = getBuildStatus(l.talentString, tree);
               // const incomplete = status && !status.complete;
               let loadoutSpecId: number | undefined;
               let loadoutSpecName: string | undefined;

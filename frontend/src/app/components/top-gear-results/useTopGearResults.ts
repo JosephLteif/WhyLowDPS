@@ -24,7 +24,7 @@ function withUpgradeTransition(item: ResultItem, equipped?: ResultItem): ResultI
   return { ...item, upgrade: `${current} -> ${next}` };
 }
 
-export function useTopGearResults({ results, equippedGear, baseDps }: UseTopGearResultsProps) {
+export function useTopGearResults({ results, equippedGear }: UseTopGearResultsProps) {
   const bestResult = results.length > 0 ? results[0] : null;
 
   const hasGroupingData = useMemo(

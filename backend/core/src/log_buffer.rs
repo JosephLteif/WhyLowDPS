@@ -75,3 +75,48 @@ impl LogBuffer {
         self.inner.lock().unwrap().remove(job_id);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::LogBuffer;
+
+    #[test]
+    fn append_and_incremental_read_returns_new_lines_and_cursor() {
+        let logs = LogBuffer::new();
+        logs.push_line("job-1", "line-a".to_string());
+        logs.push_line("job-1", "line-b".to_string());
+
+        let (first_batch, cursor) = logs.get_lines_after("job-1", 0);
+        assert_eq!(first_batch, vec!["line-a".to_string(), "line-b".to_string()]);
+        assert_eq!(cursor, 2);
+
+        let (second_batch, next_cursor) = logs.get_lines_after("job-1", cursor);
+        assert!(second_batch.is_empty());
+        assert_eq!(next_cursor, 2);
+    }
+
+    #[test]
+    fn ring_buffer_discards_oldest_lines_when_capacity_exceeded() {
+        let logs = LogBuffer::new();
+        for idx in 0..520 {
+            logs.push_line("job-2", format!("line-{idx}"));
+        }
+
+        let (all, cursor) = logs.get_lines_after("job-2", 0);
+        assert_eq!(cursor, 520);
+        assert_eq!(all.len(), 500);
+        assert_eq!(all.first().map(String::as_str), Some("line-20"));
+        assert_eq!(all.last().map(String::as_str), Some("line-519"));
+    }
+
+    #[test]
+    fn remove_clears_job_logs() {
+        let logs = LogBuffer::new();
+        logs.push_line("job-3", "line".to_string());
+        logs.remove("job-3");
+
+        let (lines, cursor) = logs.get_lines_after("job-3", 0);
+        assert!(lines.is_empty());
+        assert_eq!(cursor, 0);
+    }
+}

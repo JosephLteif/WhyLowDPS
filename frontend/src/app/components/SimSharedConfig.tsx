@@ -6,14 +6,7 @@ import { usePathname } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { useSimContext } from './SimContext';
 import TalentPicker from './TalentPicker';
-import {
-  API_URL,
-  deleteSavedRoute,
-  fetchJson,
-  listSavedRoutes,
-  saveCharacterProfile,
-  saveRoute,
-} from '../lib/api';
+import { API_URL, deleteSavedRoute, fetchJson, listSavedRoutes, saveCharacterProfile, saveRoute } from '../lib/api';
 import { SavedRoute } from '../lib/types';
 import { parseCharacterInfo, SimcClipboardInfo } from '@/lib/simc-parser';
 import { convertMdtToSimc, isMdtString, parseMdtString } from '@/lib/mdt-parser';
@@ -31,11 +24,7 @@ import {
   FightSetupOptions,
 } from './SimSharedConfigSections';
 import { useSimcProfileSelector } from './useSimcProfileSelector';
-import {
-  normalizeClipboardTextPayload,
-  splitSimcProfiles,
-  validateChecksum,
-} from '../lib/simc-input-utils';
+import { normalizeClipboardTextPayload, splitSimcProfiles, validateChecksum } from '../lib/simc-input-utils';
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return await Promise.race([
@@ -80,7 +69,6 @@ export default function SimSharedConfig() {
     deleteTargetProfile,
     historyDropdownRef,
     selectedProfileMeta,
-    addToHistory,
     addToHistoryWithSelection,
     setSelectedHistoryIdx,
     handleSetSimcInput,
@@ -315,13 +303,7 @@ export default function SimSharedConfig() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [
-    autoClipboardPasteSimc,
-    readClipboardText,
-    setSimcFooter,
-    setSimcInput,
-    addToHistoryWithSelection,
-  ]);
+  }, [autoClipboardPasteSimc, readClipboardText, setSimcFooter, setSimcInput, addToHistoryWithSelection, setSelectedHistoryIdx]);
 
   useEffect(() => {
     if (!banner) return;

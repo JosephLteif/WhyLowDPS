@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 import { API_URL } from '../lib/api';
 import type { Instance } from './types';
 

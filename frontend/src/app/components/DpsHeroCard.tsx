@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { API_URL, fetchJson } from '../lib/api';
-import { useSimContext } from './SimContext';
 import { characterHref } from '../lib/routes';
 import { CLASS_COLORS } from '../lib/types';
 

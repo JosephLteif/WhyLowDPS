@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
@@ -8,14 +8,17 @@ import TopGearItemSelector from '../components/TopGearItemSelector';
 import type { SavedVariantStudioState } from '../components/top-gear/TopGearVariantStudio';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
-import ConsumableSelect, { buildQualityMaxByFamily } from '../components/shared/ConsumableSelect';
 import { API_URL } from '../lib/api';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import { buildGearItemIdentity } from '../lib/gear-utils';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useSimSubmit } from '../lib/useSimSubmit';
-import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
-import type { ResolveGearResponse, ResolvedItem } from '../lib/types';
+import {
+  consumeSimAgainState,
+  consumeSimReturnNotice,
+  type SimReturnNotice as SimReturnNoticeType,
+} from '../lib/sim-return';
+import type { ResolvedItem, ResolveGearResponse } from '../lib/types';
 
 const TOP_GEAR_SIM_AGAIN_KEY = 'top-gear';
 
@@ -47,13 +50,6 @@ function appendLocalItemsToSimcInput(baseInput: string, localItems: LocalGearIte
   }
   return result;
 }
-
-function toggleToken(list: string[], token: string): string[] {
-  const t = token.trim();
-  if (!t) return list;
-  return list.includes(t) ? list.filter((v) => v !== t) : [...list, t];
-}
-
 function arraysEqual(a: string[], b: string[]) {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
@@ -106,43 +102,6 @@ function stripAffixesForPayload(item: ResolvedItem): ResolvedItem {
       .replace(/,gem_id=[0-9/:]+/, ''),
   };
 }
-
-function MultiPick({
-  title,
-  options,
-  selected,
-  onToggle,
-}: {
-  title: string;
-  options: { key: string; token?: string; label: string }[];
-  selected: string[];
-  onToggle: (token: string) => void;
-}) {
-  return (
-    <div className="space-y-2 rounded-md border border-border/70 bg-surface p-2.5">
-      <p className="text-[13px] font-semibold uppercase tracking-wider text-zinc-300">{title}</p>
-      <div className="max-h-40 space-y-1 overflow-auto pr-1">
-        {options.map((opt) => {
-          const token = opt.token || '';
-          const active = token !== '' && selected.includes(token);
-          return (
-            <button
-              key={opt.key}
-              type="button"
-              onClick={() => token && onToggle(token)}
-              className={`w-full rounded px-2 py-1.5 text-left text-xs ${
-                active ? 'bg-gold/20 text-gold' : 'bg-surface-2 text-zinc-300 hover:bg-white/5'
-              }`}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 interface TopGearSimAgainState {
   simcInput?: string;
   selectedUids?: Record<string, string[]>;
@@ -163,7 +122,7 @@ interface TopGearSimAgainState {
 }
 
 export default function TopGearPage() {
-  const { simcInput, setSimcInput, maxCombinations, scenarios, talentBuilds } = useSimContext();
+  const { simcInput, setSimcInput, maxCombinations, talentBuilds } = useSimContext();
   const characterDefaultsKey = getCharacterDefaultsKeyFromSimcInput(simcInput);
   const [resolved, setResolved] = useState<ResolveGearResponse | null>(null);
   const [selectedUids, setSelectedUids] = useState<Record<string, Set<string>>>({});
@@ -207,10 +166,6 @@ export default function TopGearPage() {
   const resolveRequestSeqRef = useRef(0);
   const [forceResolveSignal, setForceResolveSignal] = useState(0);
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
-  const qualityMaxByFamily = useMemo(
-    () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
-    [flasks, potions, augments, tempEnchants]
-  );
   const hasConsumableMatrix = compareConsumables
     && (matrixFlasks.length > 0
       || matrixFoods.length > 0
@@ -835,29 +790,7 @@ export default function TopGearPage() {
           : {}),
       };
     },
-    [
-      buildSubmitInput,
-      buildSelectedUidsJson,
-      maxUpgrade,
-      copyEnchants,
-      globalAffixesEnabled,
-      maxCombinations,
-      talentBuilds,
-      catalyst,
-      catalystCharges,
-      hasConsumableMatrix,
-      matrixFlasks,
-      matrixFoods,
-      matrixPotions,
-      matrixAugments,
-      matrixTempEnchants,
-      flasks,
-      foods,
-      potions,
-      augments,
-      tempEnchants,
-      buildItemsBySlotJson,
-    ]
+    [buildSubmitInput, buildSelectedUidsJson, maxUpgrade, copyEnchants, globalAffixesEnabled, maxCombinations, talentBuilds, catalyst, catalystCharges, flasks, foods, potions, augments, tempEnchants, buildItemsBySlotJson],
   );
 
   const isEmbellishmentComboError =

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { type MouseEvent, useEffect, useMemo, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { API_URL } from '../lib/api';
 import { INVENTORY_TYPE_TO_SLOT } from '../lib/gear-utils';
@@ -8,12 +8,11 @@ import { DEFAULT_TRACK_BADGE_CLASS, RAID_TRACK_BY_DIFFICULTY, TRACK_COLORS } fro
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { getWowheadData, QUALITY_COLORS } from '../lib/useItemInfo';
 import {
-  CRAFTED_PVP_FILTER,
-  SLOT_FILTER_OPTIONS,
   type GemDisplay,
-  type RawGem,
   isPvpCraftedItem,
   normalizeSlotFilter,
+  type RawGem,
+  SLOT_FILTER_OPTIONS,
 } from './add-item/addItemDomain';
 import {
   type EmbellishmentOption,
@@ -158,7 +157,7 @@ function isWeaponOrTrinketInventoryType(inventoryType: number): boolean {
   return [12, 13, 14, 17, 21, 22, 23].includes(Number(inventoryType));
 }
 
-function isAscendantEligible(item: ExternalItem, tier: any, _category: string): boolean {
+function isAscendantEligible(item: ExternalItem, tier: any): boolean {
   if (!tier || !isWeaponOrTrinketInventoryType(item.inventory_type)) return false;
   const track = String(tier.track || '').toLowerCase();
   return track.includes('hero') || track.includes('myth');
@@ -438,7 +437,6 @@ export default function AddItemModal({
     setSelectedInstance,
     drops,
     loading,
-    allPossibleDrops,
     isGlobalLoading,
     globalSearch,
     setGlobalSearch,
@@ -487,7 +485,6 @@ export default function AddItemModal({
     filteredDrops,
     orderedFilteredDropEntries,
     difficulties,
-    gems,
     seasonalGems,
   } = useAddItemDerivedState({
     category,
@@ -521,7 +518,6 @@ export default function AddItemModal({
 
   const effectiveDifficulty = (category === 'world_bosses' || category === 'pvp' || category === 'crafted') ? 'normal' : selectedDifficulty;
   const isSearchingAcrossCategory = globalSearch.trim().length > 0;
-  const sourceData = isSearchingAcrossCategory ? allPossibleDrops : drops;
   const isDropListLoading = loading || (isSearchingAcrossCategory && isGlobalLoading);
 
   // Reset per-item ilvl slider selections when top filters change.
@@ -644,7 +640,7 @@ export default function AddItemModal({
     const ascendantLevel = resolvedTier ? resolvedTier.maxLevel + 1 : 0;
     const ascendantApplied =
       Boolean(resolvedTier) &&
-      isAscendantEligible(item, resolvedTier, category) &&
+      isAscendantEligible(item, resolvedTier) &&
       selectedRawLevel === ascendantLevel;
     const ascendantBonusIlvl = ascendantApplied ? 9 : 0;
     const selectedLevel = resolvedTier
@@ -997,7 +993,7 @@ export default function AddItemModal({
                           upgradeTracks,
                           category
                         );
-                        const ascendantEligible = Boolean(tier) && isAscendantEligible(item, tier, category);
+                        const ascendantEligible = Boolean(tier) && isAscendantEligible(item, tier);
                         const ascendantLevel = tier ? tier.maxLevel + 1 : 0;
                         const rawSliderLevel = tier ? (itemTiers[item.item_id] || tier.level) : 0;
                         const ascendantApplied = Boolean(tier) && ascendantEligible && rawSliderLevel === ascendantLevel;

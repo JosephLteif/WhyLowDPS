@@ -7,6 +7,7 @@
     "dev:turbo": "next dev --turbo",
     "build": "next build",
     "start": "next start",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
@@ -27,7 +28,7 @@
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.5.0",
     "cross-env": "^10.1.0",
-    "eslint": "^10.2.1",
+    "eslint": "^9.0.0",
     "eslint-config-next": "^16.2.4",
     "npm-check-updates": "^22.0.1",
     "postcss": "^8.5.13",
@@ -42,3 +43,4 @@
     }
   }
 }
+

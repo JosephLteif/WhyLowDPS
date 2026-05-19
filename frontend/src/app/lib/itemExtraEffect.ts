@@ -56,7 +56,7 @@ function detectFromText(item: Pick<ResolvedItem, 'simc_string' | 'source_type' |
 
 export function useItemExtraEffects(queries: EffectQuery[]): Record<string, ExtraEffect[]> {
   const [effectsByKey, setEffectsByKey] = useState<Record<string, ExtraEffect[]>>({});
-  const depKey = useMemo(
+  useMemo(
     () =>
       queries
         .filter((q) => q.item_id > 0)
@@ -73,7 +73,7 @@ export function useItemExtraEffects(queries: EffectQuery[]): Record<string, Extr
       if (!unique.has(key)) unique.set(key, q);
     }
     return Array.from(unique.entries()).map(([key, query]) => ({ key, query }));
-  }, [depKey]);
+  }, [queries]);
 
   useEffect(() => {
     if (stableQueries.length === 0) return;

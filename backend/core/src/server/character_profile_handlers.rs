@@ -69,3 +69,71 @@ pub async fn delete_character_profile(
     store.delete_character_profile(&id);
     HttpResponse::Ok().json(serde_json::json!({ "status": "deleted" }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{JobStorage, MemoryStorage};
+    use actix_web::body::to_bytes;
+    use serde_json::Value;
+
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    #[actix_web::test]
+    async fn save_profile_generates_stable_id_and_round_trips_through_list_and_delete() {
+        let store = test_store();
+        let req = SaveProfileRequest {
+            name: "Thrall".to_string(),
+            realm: "Area 52".to_string(),
+            region: "US".to_string(),
+            class: Some("shaman".to_string()),
+            spec: Some("enhancement".to_string()),
+            simc_input: "shaman=Thrall".to_string(),
+        };
+
+        let resp = save_character_profile(web::Json(req), store.clone()).await;
+        assert_eq!(resp.status(), 200);
+        let bytes = to_bytes(resp.into_body()).await.expect("save body");
+        let saved: Value = serde_json::from_slice(&bytes).expect("saved json");
+        assert_eq!(saved.get("id").and_then(Value::as_str), Some("us-area-52-thrall"));
+
+        let listed = list_character_profiles(
+            web::Query(ListProfilesQuery {
+                name: Some("thrall".to_string()),
+                realm: Some("area 52".to_string()),
+                region: Some("us".to_string()),
+            }),
+            store.clone(),
+        )
+        .await;
+        let listed_bytes = to_bytes(listed.into_body()).await.expect("list body");
+        let rows: Vec<Value> = serde_json::from_slice(&listed_bytes).expect("list json");
+        assert_eq!(rows.len(), 1);
+        let id = rows[0]
+            .get("id")
+            .and_then(Value::as_str)
+            .expect("saved id")
+            .to_string();
+
+        let deleted = delete_character_profile(web::Path::from(id), store.clone()).await;
+        assert_eq!(deleted.status(), 200);
+
+        let listed_after = list_character_profiles(
+            web::Query(ListProfilesQuery {
+                name: None,
+                realm: None,
+                region: None,
+            }),
+            store,
+        )
+        .await;
+        let listed_after_bytes = to_bytes(listed_after.into_body())
+            .await
+            .expect("list body after delete");
+        let rows_after: Vec<Value> =
+            serde_json::from_slice(&listed_after_bytes).expect("list json after delete");
+        assert!(rows_after.is_empty());
+    }
+}

@@ -34,17 +34,9 @@ import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '@/lib/simc-parser'
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 
 import { API_URL, fetchJson } from '../../lib/api';
-import {
-  formatScenarioLabel,
-  getScenarioSiblings,
-  type ScenarioSibling,
-} from '../../lib/scenario-siblings';
+import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
-import {
-  getSimReturnTarget,
-  resolveSimAgainNavigation,
-  setSimReturnNotice,
-} from '../../lib/sim-return';
+import { getSimReturnTarget, resolveSimAgainNavigation, setSimReturnNotice } from '../../lib/sim-return';
 
 interface JobData {
   id: string;
@@ -624,7 +616,7 @@ export default function SimResultClient() {
     return () => {
       active = false;
     };
-  }, [activeScenarioId, job?.id, job?.batch_id, siblings]);
+  }, [activeScenarioId, job?.id, job?.batch_id, siblings, liveRelatedScenarios]);
 
   const toolbarScenarios = useMemo(() => {
     const base = siblings || [];
@@ -736,8 +728,7 @@ export default function SimResultClient() {
 
       // Avoid idle background disk/network churn: only continuously poll while
       // the currently viewed sim is active.
-      const shouldContinue = currentIsActive;
-      if (shouldContinue) timer = setTimeout(pollSiblingStatuses, 2000);
+      if (currentIsActive) timer = setTimeout(pollSiblingStatuses, 2000);
     }
 
     pollSiblingStatuses();

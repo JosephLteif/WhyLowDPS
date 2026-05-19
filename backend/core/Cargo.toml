@@ -4,10 +4,9 @@ version.workspace = true
 edition = "2021"
 
 [features]
-default = ["postgres", "web"]
+default = ["web"]
 desktop = ["dep:rusqlite"]
 web = ["dep:rusqlite", "dep:actix-web", "dep:actix-cors", "dep:actix-files"]
-postgres = ["dep:tokio-postgres"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -34,8 +33,4 @@ actix-files = { version = "0.6", optional = true }
 [dependencies.rusqlite]
 version = "0.31"
 features = ["bundled"]
-optional = true
-
-[dependencies.tokio-postgres]
-version = "0.7"
 optional = true

@@ -278,7 +278,7 @@ jobs:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
           releaseName: "WhyLowDps ${{ github.ref_name }}"
-          releaseBody: "See the assets below for the installers."
+          releaseBody: "Release assets uploaded. Checksums will be added automatically."
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-nightly.') || contains(github.ref_name, '-weekly.') }}
           args: ${{ matrix.args }}
@@ -291,3 +291,42 @@ jobs:
         run: |
           set -euo pipefail
           gh release upload "${GITHUB_REF_NAME}" backend/resources/zones-encounters-index.json --clobber
+
+      - name: Generate release checksums and notes
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          TMP_DIR="$(mktemp -d)"
+          NOTES_FILE="${TMP_DIR}/release-notes.md"
+          CHECKSUM_FILE="${TMP_DIR}/checksums.txt"
+          ASSET_LIST_FILE="${TMP_DIR}/assets.txt"
+
+          gh release download "${TAG}" --dir "${TMP_DIR}"
+
+          mapfile -t ASSET_FILES < <(find "${TMP_DIR}" -maxdepth 1 -type f -printf '%f\n' | sort)
+          if [[ "${#ASSET_FILES[@]}" -eq 0 ]]; then
+            echo "No release assets found for ${TAG}"
+            exit 1
+          fi
+
+          : > "${CHECKSUM_FILE}"
+          : > "${ASSET_LIST_FILE}"
+          for FILE in "${ASSET_FILES[@]}"; do
+            HASH="$(sha256sum "${TMP_DIR}/${FILE}" | awk '{print $1}')"
+            printf '%s  %s\n' "${FILE}" "${HASH}" >> "${CHECKSUM_FILE}"
+            printf '%s\n' "${FILE}" >> "${ASSET_LIST_FILE}"
+          done
+
+          node scripts/release-notes.js \
+            --version "${VERSION}" \
+            --assets-file "${ASSET_LIST_FILE}" \
+            --checksums-file "${CHECKSUM_FILE}" \
+            --output "${NOTES_FILE}"
+
+          gh release edit "${TAG}" --notes-file "${NOTES_FILE}"

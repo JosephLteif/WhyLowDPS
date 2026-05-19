@@ -369,16 +369,12 @@ impl GameItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct GameItemStat {
     pub id: u64,
     pub alloc: Option<u64>,
 }
 
-impl Default for GameItemStat {
-    fn default() -> Self {
-        Self { id: 0, alloc: None }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]

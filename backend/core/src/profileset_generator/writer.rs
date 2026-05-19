@@ -334,3 +334,203 @@ pub fn item_meta(item: &ResolvedItem, slot: &str) -> Value {
     }
     meta
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::ItemOrigin;
+
+    fn make_item(
+        slot: &str,
+        item_id: u64,
+        origin: ItemOrigin,
+        simc_string: &str,
+        ilevel: i64,
+    ) -> ResolvedItem {
+        ResolvedItem {
+            uid: format!("{slot}-{item_id}"),
+            slot: slot.to_string(),
+            item_id,
+            origin,
+            simc_string: simc_string.to_string(),
+            ilevel,
+            name: format!("Item {item_id}"),
+            quality: 4,
+            quality_color: "#a335ee".to_string(),
+            ..ResolvedItem::default()
+        }
+    }
+
+    #[test]
+    fn write_base_actor_outputs_base_combo_and_metadata() {
+        let mut lines = Vec::new();
+        let mut metadata = HashMap::new();
+        let base_lines = vec!["mage=Test".to_string(), "spec=arcane".to_string()];
+        let equipped = HashMap::from([
+            ("head".to_string(), "id=111".to_string()),
+            ("main_hand".to_string(), "id=222".to_string()),
+        ]);
+        let talents = vec![("Default".to_string(), "AAAA".to_string())];
+        let slot_items = HashMap::from([(
+            "head".to_string(),
+            vec![make_item("head", 111, ItemOrigin::Equipped, ",id=111", 620)],
+        )]);
+
+        let base_spec = write_base_actor(
+            &mut lines,
+            &mut metadata,
+            &base_lines,
+            &equipped,
+            &talents,
+            "arcane",
+            &slot_items,
+        );
+
+        assert_eq!(base_spec, "arcane");
+        assert!(lines.iter().any(|l| l == "# Base Actor"));
+        assert!(lines.iter().any(|l| l == "### Combo 1"));
+        assert!(lines.iter().any(|l| l == "head=id=111"));
+        assert!(lines.iter().any(|l| l == "off_hand=,"));
+        assert!(lines.iter().any(|l| l == "talents=AAAA"));
+        assert!(metadata.contains_key("Currently Equipped"));
+    }
+
+    #[test]
+    fn append_consumable_metadata_skips_empty_and_appends_values() {
+        let mut metadata: HashMap<String, Vec<Value>> = HashMap::new();
+        append_consumable_metadata(
+            &mut metadata,
+            "Combo 2",
+            "",
+            "",
+            "",
+            "",
+            "",
+        );
+        assert!(!metadata.contains_key("Combo 2"));
+
+        append_consumable_metadata(
+            &mut metadata,
+            "Combo 2",
+            "Flask of Alchemical Chaos",
+            "Feast",
+            "Potion of Power",
+            "",
+            "",
+        );
+
+        let entries = metadata.get("Combo 2").expect("combo metadata exists");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].get("consumable_set").and_then(Value::as_str),
+            Some("Flask: Flask of Alchemical Chaos | Food: Feast | Potion: Potion of Power")
+        );
+    }
+
+    #[test]
+    fn write_combo_for_baseline_gear_uses_equipped_values() {
+        let mut lines = Vec::new();
+        let mut metadata = HashMap::new();
+        let mut ctx = ProfilesetWriterContext {
+            lines: &mut lines,
+            combo_metadata: &mut metadata,
+            talents: &[("Default".to_string(), "AAAA".to_string())],
+            equipped_gear: &HashMap::from([
+                ("head".to_string(), "id=111".to_string()),
+                ("main_hand".to_string(), "id=222".to_string()),
+            ]),
+            slot_item_lists: &HashMap::new(),
+            original_spec: "arcane",
+            base_actor_spec: "arcane",
+        };
+
+        write_combo(
+            &mut ctx,
+            2,
+            "Default",
+            "AAAA",
+            &HashMap::new(),
+            true,
+        );
+
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "profileset.\"Combo 2\"+=head=id=111")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "profileset.\"Combo 2\"+=off_hand=,")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "profileset.\"Combo 2\"+=talents=AAAA")
+        );
+        assert!(metadata.contains_key("Combo 2"));
+    }
+
+    #[test]
+    fn write_combo_for_alternative_gear_writes_item_lines_and_empty_off_hand() {
+        let mut lines = Vec::new();
+        let mut metadata = HashMap::new();
+        let mut ctx = ProfilesetWriterContext {
+            lines: &mut lines,
+            combo_metadata: &mut metadata,
+            talents: &[("Alt".to_string(), String::new())],
+            equipped_gear: &HashMap::new(),
+            slot_item_lists: &HashMap::new(),
+            original_spec: "arcane",
+            base_actor_spec: "arcane",
+        };
+
+        let gear_set = HashMap::from([(
+            "main_hand".to_string(),
+            make_item("main_hand", 9001, ItemOrigin::Bags, "id=9001,bonus_id=1", 626),
+        )]);
+
+        write_combo(&mut ctx, 3, "Alt", "", &gear_set, false);
+
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "profileset.\"Combo 3\"+=main_hand=id=9001,bonus_id=1")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "profileset.\"Combo 3\"+=off_hand=,")
+        );
+        assert!(metadata.contains_key("Combo 3"));
+    }
+
+    #[test]
+    fn build_combo_meta_non_baseline_adds_missing_off_hand_marker() {
+        let gear_set = HashMap::from([
+            (
+                "finger1".to_string(),
+                make_item("finger1", 1001, ItemOrigin::Equipped, ",id=1001", 620),
+            ),
+            (
+                "finger2".to_string(),
+                make_item("finger2", 1002, ItemOrigin::Bags, ",id=1002", 623),
+            ),
+            (
+                "head".to_string(),
+                make_item("head", 2001, ItemOrigin::Bags, ",id=2001", 626),
+            ),
+        ]);
+
+        let meta = build_combo_meta(&gear_set, "Raid", "AAAA", &HashMap::new(), false);
+
+        assert!(meta.iter().any(|entry| {
+            entry.get("slot").and_then(Value::as_str) == Some("off_hand")
+                && entry.get("origin").and_then(Value::as_str) == Some("system")
+        }));
+        assert!(meta
+            .iter()
+            .filter(|entry| entry.get("slot").and_then(Value::as_str) != Some("off_hand"))
+            .all(|entry| entry.get("talent_build").and_then(Value::as_str) == Some("Raid")));
+    }
+}

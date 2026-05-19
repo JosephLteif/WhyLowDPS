@@ -818,3 +818,125 @@ pub async fn get_dungeon_data() -> HttpResponse {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item_db::state;
+    use actix_web::body::to_bytes;
+    use serde_json::Value;
+
+    #[test]
+    fn enchant_name_and_icon_use_expected_fallbacks() {
+        let primary = json!({
+            "itemName": "Authority of Radiant Power",
+            "itemIcon": "inv_enchant_01"
+        });
+        assert_eq!(enchant_name(&primary), "Authority of Radiant Power");
+        assert_eq!(enchant_icon(&primary), "inv_enchant_01");
+
+        let fallback = json!({
+            "displayName": "Legacy Enchant",
+            "spellIcon": "spell_legacy"
+        });
+        assert_eq!(enchant_name(&fallback), "Legacy Enchant");
+        assert_eq!(enchant_icon(&fallback), "spell_legacy");
+    }
+
+    #[test]
+    fn role_and_spec_filters_detect_expected_variants() {
+        assert_eq!(normalized_spec_name("Restoration Shaman"), "restoration_shaman");
+        assert!(is_healer_spec("restoration"));
+        assert!(is_healer_spec("Holy"));
+        assert!(is_tank_spec("protection"));
+        assert!(!is_tank_spec("fury"));
+        assert!(is_ranged_inventory_type(15));
+        assert!(!is_ranged_inventory_type(13));
+    }
+
+    #[test]
+    fn midnight_season_disables_back_and_wrist_enchants_only() {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_cfg = state::SEASON_CONFIG.read().unwrap().clone();
+        let prev_runtime = state::RUNTIME_DATA.read().unwrap().clone();
+
+        *state::SEASON_CONFIG.write().unwrap() = json!({"season": "Midnight Season 1"});
+        *state::RUNTIME_DATA.write().unwrap() = json!({});
+
+        assert!(!slot_has_active_expansion_enchants(&EnchantOptionsQuery {
+            slot: "back".to_string(),
+            class_name: String::new(),
+            spec: String::new(),
+            item_id: 0,
+        }));
+        assert!(!slot_has_active_expansion_enchants(&EnchantOptionsQuery {
+            slot: "wrist".to_string(),
+            class_name: String::new(),
+            spec: String::new(),
+            item_id: 0,
+        }));
+        assert!(slot_has_active_expansion_enchants(&EnchantOptionsQuery {
+            slot: "main_hand".to_string(),
+            class_name: String::new(),
+            spec: String::new(),
+            item_id: 0,
+        }));
+
+        *state::SEASON_CONFIG.write().unwrap() = prev_cfg;
+        *state::RUNTIME_DATA.write().unwrap() = prev_runtime;
+    }
+
+    #[test]
+    fn filter_spec_incompatible_enchants_keeps_only_matching_profile_options() {
+        let mut options = vec![
+            json!({"name":"Farstrider's Hawkeye"}),
+            json!({"name":"Smuggler's Lynxeye"}),
+            json!({"name":"Worldsoul Cradle"}),
+            json!({"name":"Worldsoul Aegis"}),
+            json!({"name":"Radiant Intellect", "effectKey":"intellect"}),
+            json!({"name":"Brutal Finesse", "effectKey":"agility or strength"}),
+        ];
+
+        filter_spec_incompatible_enchants(&mut options, Some(15), "mage", "holy");
+        let names: Vec<String> = options
+            .iter()
+            .filter_map(|v| v.get("name").and_then(Value::as_str).map(ToOwned::to_owned))
+            .collect();
+        assert!(names.contains(&"Farstrider's Hawkeye".to_string()));
+        assert!(names.contains(&"Smuggler's Lynxeye".to_string()));
+        assert!(names.contains(&"Worldsoul Cradle".to_string()));
+        assert!(!names.contains(&"Worldsoul Aegis".to_string()));
+    }
+
+    #[actix_web::test]
+    async fn get_item_info_batch_rejects_invalid_counts_and_accepts_deduped_items() {
+        let bad_empty = get_item_info_batch(web::Json(ItemInfoBatchRequest {
+            items: vec![],
+            item_ids: vec![],
+        }))
+        .await;
+        assert_eq!(bad_empty.status(), 400);
+
+        let too_many = get_item_info_batch(web::Json(ItemInfoBatchRequest {
+            items: (0..101).map(|i| json!({"item_id": i})).collect(),
+            item_ids: vec![],
+        }))
+        .await;
+        assert_eq!(too_many.status(), 400);
+
+        let ok = get_item_info_batch(web::Json(ItemInfoBatchRequest {
+            items: vec![
+                json!({"item_id": 999001, "bonus_ids":[2,1]}),
+                json!({"item_id": 999001, "bonus_ids":[1,2]}),
+            ],
+            item_ids: vec![],
+        }))
+        .await;
+        assert_eq!(ok.status(), 200);
+        let bytes = to_bytes(ok.into_body()).await.expect("batch body");
+        let payload: Value = serde_json::from_slice(&bytes).expect("batch json");
+        let obj = payload.as_object().expect("batch object");
+        assert_eq!(obj.len(), 1);
+        assert!(obj.contains_key("999001"));
+    }
+}

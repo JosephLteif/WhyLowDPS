@@ -6,7 +6,6 @@ edition = "2021"
 [features]
 default = []
 desktop = ["whylowdps-core/desktop"]
-postgres = ["whylowdps-core/postgres"]
 web = ["whylowdps-core/web"]
 
 [dependencies]

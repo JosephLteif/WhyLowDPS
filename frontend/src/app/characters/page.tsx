@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Star } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
@@ -42,11 +41,6 @@ function normalizeRegion(value: string): string {
 function characterId(char: Character): string {
   return `${normalizeRegion(char.region)}|${char.realm.toLowerCase()}|${char.name.toLowerCase()}`;
 }
-
-function StarIcon({ filled }: { filled?: boolean }) {
-  return <Star className="h-4 w-4" strokeWidth={2} fill={filled ? 'currentColor' : 'none'} />;
-}
-
 function wishlistHrefForCharacter(char: Character): string {
   return buildWishlistHref({
     name: char.name,

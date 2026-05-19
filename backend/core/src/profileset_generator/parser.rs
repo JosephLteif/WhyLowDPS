@@ -69,3 +69,64 @@ pub fn parse_base_profile(
     }
     (non_gear_lines, equipped_gear, talents, spec)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn encode_talent_header_with_spec_id(spec_id: u64) -> String {
+        let mut bits = [0u8; 24];
+        for i in 0..16 {
+            if ((spec_id >> i) & 1) == 1 {
+                bits[8 + i] = 1;
+            }
+        }
+
+        let mut out = String::new();
+        for chunk in 0..4 {
+            let mut value = 0u8;
+            for bit in 0..6 {
+                value |= bits[chunk * 6 + bit] << bit;
+            }
+            out.push(BASE64[value as usize] as char);
+        }
+        out
+    }
+
+    #[test]
+    fn extract_spec_id_from_talent_string_decodes_header_bits() {
+        let talent = encode_talent_header_with_spec_id(577);
+        assert_eq!(extract_spec_id_from_talent_string(&talent), Some(577));
+    }
+
+    #[test]
+    fn extract_spec_id_from_talent_string_rejects_invalid_base64_chars() {
+        assert_eq!(extract_spec_id_from_talent_string("!bad"), None);
+        assert_eq!(extract_spec_id_from_talent_string("A"), None);
+    }
+
+    #[test]
+    fn parse_base_profile_separates_gear_talents_and_other_lines() {
+        let profile = r#"
+mage="Testmage"
+spec=arcane
+talents=ABCD
+head=id=1111,bonus_id=1/2
+finger1=id=2222
+off_hand=id=3333
+race=night_elf
+"#;
+
+        let (non_gear, equipped, talents, spec) = parse_base_profile(profile);
+
+        assert_eq!(talents, "ABCD");
+        assert_eq!(spec, "arcane");
+        assert_eq!(equipped.get("head"), Some(&"id=1111,bonus_id=1/2".to_string()));
+        assert_eq!(equipped.get("finger1"), Some(&"id=2222".to_string()));
+        assert_eq!(equipped.get("off_hand"), Some(&"id=3333".to_string()));
+        assert!(non_gear.contains(&"mage=\"Testmage\"".to_string()));
+        assert!(non_gear.contains(&"spec=arcane".to_string()));
+        assert!(non_gear.contains(&"race=night_elf".to_string()));
+        assert!(!non_gear.iter().any(|line| line.starts_with("head=")));
+    }
+}

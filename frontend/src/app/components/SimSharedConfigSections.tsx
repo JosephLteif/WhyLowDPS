@@ -514,25 +514,51 @@ export function ConsumablesAndRaidBuffsOptions() {
   } = useSimContext();
 
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
-  const raidBuffBindings: Record<string, { checked: boolean; setChecked: (v: boolean) => void }> = {
-    bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
-    arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },
-    power_word_fortitude: {
-      checked: raidBuffPowerWordFortitude,
-      setChecked: setRaidBuffPowerWordFortitude,
-    },
-    mark_of_the_wild: { checked: raidBuffMarkOfTheWild, setChecked: setRaidBuffMarkOfTheWild },
-    battle_shout: { checked: raidBuffBattleShout, setChecked: setRaidBuffBattleShout },
-    hunters_mark: { checked: raidBuffHuntersMark, setChecked: setRaidBuffHuntersMark },
-    bleeding: { checked: raidBuffBleeding, setChecked: setRaidBuffBleeding },
-    mystic_touch: { checked: externalBuffMysticTouch, setChecked: setExternalBuffMysticTouch },
-    chaos_brand: { checked: externalBuffChaosBrand, setChecked: setExternalBuffChaosBrand },
-    skyfury: { checked: externalBuffSkyfury, setChecked: setExternalBuffSkyfury },
-    power_infusion: {
-      checked: externalBuffPowerInfusion,
-      setChecked: setExternalBuffPowerInfusion,
-    },
-  };
+  const raidBuffBindings = useMemo(
+    (): Record<string, { checked: boolean; setChecked: (v: boolean) => void }> => ({
+      bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
+      arcane_intellect: { checked: raidBuffArcaneIntellect, setChecked: setRaidBuffArcaneIntellect },
+      power_word_fortitude: {
+        checked: raidBuffPowerWordFortitude,
+        setChecked: setRaidBuffPowerWordFortitude,
+      },
+      mark_of_the_wild: { checked: raidBuffMarkOfTheWild, setChecked: setRaidBuffMarkOfTheWild },
+      battle_shout: { checked: raidBuffBattleShout, setChecked: setRaidBuffBattleShout },
+      hunters_mark: { checked: raidBuffHuntersMark, setChecked: setRaidBuffHuntersMark },
+      bleeding: { checked: raidBuffBleeding, setChecked: setRaidBuffBleeding },
+      mystic_touch: { checked: externalBuffMysticTouch, setChecked: setExternalBuffMysticTouch },
+      chaos_brand: { checked: externalBuffChaosBrand, setChecked: setExternalBuffChaosBrand },
+      skyfury: { checked: externalBuffSkyfury, setChecked: setExternalBuffSkyfury },
+      power_infusion: {
+        checked: externalBuffPowerInfusion,
+        setChecked: setExternalBuffPowerInfusion,
+      },
+    }),
+    [
+      raidBuffBloodlust,
+      setRaidBuffBloodlust,
+      raidBuffArcaneIntellect,
+      setRaidBuffArcaneIntellect,
+      raidBuffPowerWordFortitude,
+      setRaidBuffPowerWordFortitude,
+      raidBuffMarkOfTheWild,
+      setRaidBuffMarkOfTheWild,
+      raidBuffBattleShout,
+      setRaidBuffBattleShout,
+      raidBuffHuntersMark,
+      setRaidBuffHuntersMark,
+      raidBuffBleeding,
+      setRaidBuffBleeding,
+      externalBuffMysticTouch,
+      setExternalBuffMysticTouch,
+      externalBuffChaosBrand,
+      setExternalBuffChaosBrand,
+      externalBuffSkyfury,
+      setExternalBuffSkyfury,
+      externalBuffPowerInfusion,
+      setExternalBuffPowerInfusion,
+    ],
+  );
   const [buffSource, setBuffSource] = useState<Record<string, 'default' | 'manual' | 'override'>>({});
   const arraysEqual = (a: string[], b: string[]) =>
     a.length === b.length && a.every((v, i) => v === b[i]);
@@ -716,7 +742,7 @@ export function ConsumablesAndRaidBuffsOptions() {
       }
       return next;
     });
-  }, [simcInput, simcFooter, customApl]);
+  }, [simcInput, simcFooter, customApl, raidBuffBindings]);
 
   useWowheadTooltips([
     externalBuffChaosBrand,
@@ -934,7 +960,8 @@ export function ConsumablesAndRaidBuffsOptions() {
                 entries={RAID_BUFF_MATRIX_OPTIONS.map((buff) => {
                   const binding = raidBuffBindings[buff.key] || {
                     checked: false,
-                    setChecked: (_: boolean) => {},
+                    setChecked: () => {
+                    },
                   };
                   return {
                     id: buff.key,

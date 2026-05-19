@@ -218,7 +218,7 @@ export function useAddItemState(
       setDrops({});
       try {
         const queryString = buildQueryString();
-        let data: Record<string, ExternalItem[]> = {};
+        let data: Record<string, ExternalItem[]>;
         if (category === 'crafted') {
           const res = await fetch(`${API_URL}/api/instances/type/profession/drops?${queryString}`, {
             credentials: 'include',
@@ -258,6 +258,7 @@ export function useAddItemState(
         }
         if (!cancelled) setDrops(data);
       } catch (e) {
+        console.log(e);
         if (!cancelled) setDrops({});
       } finally {
         if (!cancelled) setLoading(false);
@@ -324,6 +325,7 @@ export function useAddItemState(
 
         if (!cancelled) setAllPossibleDrops(dedupeDropMapForSearch(data));
       } catch (e) {
+        console.log(e);
         if (!cancelled) setAllPossibleDrops({});
       } finally {
         if (!cancelled) setIsGlobalLoading(false);

@@ -135,7 +135,7 @@ export default function SettingsPage() {
       .finally(() => {
         setPageLoading(false);
       });
-  }, [authLoading, user, router, setMaxCombinations, setThreads]);
+  }, [authLoading, user, router, setMaxCombinations, setThreads, setSelectedUpdateChannel]);
 
   useEffect(() => {
     fetch(`${API_URL}/health`, { credentials: 'include' })

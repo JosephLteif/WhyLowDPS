@@ -1148,7 +1148,7 @@ pub fn derive_class_profiles_from_items() {
             .map(|stats| {
                 let mut out = HashSet::<u64>::new();
                 for stat in stats {
-                    if matches!(stat.id, 3 | 4 | 5) {
+                    if matches!(stat.id, 3..=5) {
                         out.insert(stat.id);
                     }
                 }

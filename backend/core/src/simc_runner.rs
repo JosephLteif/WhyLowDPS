@@ -164,6 +164,139 @@ struct Stage {
     min_keep: usize,
 }
 
+fn should_apply_default_overrides(sim_type: &str, raid_buff_customized: bool) -> bool {
+    sim_type != "external_buff_matrix" && sim_type != "consumable_matrix" && !raid_buff_customized
+}
+
+fn is_dungeon_route_input(simc_input: &str) -> bool {
+    simc_input.lines().any(|line| {
+        line.trim() == "fight_style=DungeonRoute"
+            || line.trim() == "fight_style=\"DungeonRoute\""
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_simc_cli_args(
+    input_file: &Path,
+    output_file: &Path,
+    html_file: Option<&Path>,
+    fight_style: &str,
+    target_error: f64,
+    iterations: u32,
+    threads: u32,
+    desired_targets: u32,
+    max_time: u32,
+    calculate_scale_factors: bool,
+    dps_plot: Option<(String, u32, u32, u32)>,
+    single_actor_batch: bool,
+    apply_default_overrides: bool,
+    is_dungeon_route: bool,
+) -> Vec<String> {
+    let mut args = Vec::new();
+    args.push(input_file.to_string_lossy().to_string());
+    args.push(format!("json2={}", output_file.display()));
+    if let Some(html) = html_file {
+        args.push(format!("html={}", html.display()));
+    }
+
+    args.push(format!("iterations={}", iterations));
+    args.push(format!("target_error={}", target_error));
+    args.push(format!("threads={}", threads));
+    args.push(format!(
+        "calculate_scale_factors={}",
+        if calculate_scale_factors { "1" } else { "0" }
+    ));
+
+    if let Some((stat, points, step, plot_iterations)) = dps_plot {
+        args.push(format!("dps_plot_stat={}", stat));
+        args.push(format!("dps_plot_points={}", points));
+        args.push(format!("dps_plot_step={}", step));
+        args.push(format!("dps_plot_iterations={}", plot_iterations));
+    }
+
+    if is_dungeon_route {
+        args.push(format!("desired_targets={}", desired_targets));
+    } else {
+        args.push(format!("fight_style={}", fight_style));
+        args.push(format!("desired_targets={}", desired_targets));
+        args.push(format!("max_time={}", max_time));
+        if apply_default_overrides {
+            for opt in OVERRIDES {
+                args.push((*opt).to_string());
+            }
+        }
+    }
+
+    for opt in SIM_OPTIONS {
+        if opt.starts_with("single_actor_batch=") && !single_actor_batch {
+            continue;
+        }
+        args.push((*opt).to_string());
+    }
+
+    args
+}
+
+fn stage_keep_count(total: usize, keep_top: f64, min_keep: usize) -> usize {
+    std::cmp::max(min_keep, (total as f64 * keep_top) as usize)
+}
+
+fn sort_profilesets_descending(results: &[Value]) -> Vec<Value> {
+    let mut sorted = results.to_vec();
+    sorted.sort_by(|a, b| {
+        let mean_cmp = b
+            .get("mean")
+            .and_then(|v| v.as_f64())
+            .partial_cmp(&a.get("mean").and_then(|v| v.as_f64()))
+            .unwrap_or(std::cmp::Ordering::Equal);
+        if mean_cmp != std::cmp::Ordering::Equal {
+            return mean_cmp;
+        }
+        let left = a.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let right = b.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        left.cmp(right)
+    });
+    sorted
+}
+
+fn compute_stage_keep_and_eliminated(
+    profilesets: &[Value],
+    keep_count: usize,
+) -> (HashSet<String>, HashMap<String, Value>) {
+    let sorted = sort_profilesets_descending(profilesets);
+    let keep_set: HashSet<String> = sorted
+        .iter()
+        .take(keep_count)
+        .filter_map(|ps| ps.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+        .collect();
+
+    let mut eliminated = HashMap::new();
+    for ps in &sorted {
+        let name = ps.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        if !name.is_empty() && !keep_set.contains(name) {
+            eliminated.insert(name.to_string(), ps.clone());
+        }
+    }
+
+    (keep_set, eliminated)
+}
+
+fn merge_eliminated_profilesets(final_json: &mut Value, eliminated: HashMap<String, Value>) {
+    if eliminated.is_empty() {
+        return;
+    }
+    if let Some(results) = final_json
+        .get_mut("sim")
+        .and_then(|s| s.get_mut("profilesets"))
+        .and_then(|p| p.get_mut("results"))
+        .and_then(|r| r.as_array_mut())
+    {
+        for (_, val) in eliminated {
+            results.push(val);
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_simc_subprocess(
     simc_path: &Path,
@@ -210,46 +343,23 @@ async fn run_simc_subprocess(
     #[cfg(windows)]
     cmd.creation_flags(0x08000000 | 0x00004000);
 
-    let is_dungeon = simc_input.lines().any(|l| {
-        l.trim() == "fight_style=DungeonRoute" || l.trim() == "fight_style=\"DungeonRoute\""
-    });
-    cmd.arg(input_file.to_str().unwrap_or(""))
-        .arg(format!("json2={}", output_file.display()));
-    if generate_html {
-        cmd.arg(format!("html={}", html_file.display()));
-    }
-    cmd.arg(format!("iterations={}", iterations))
-        .arg(format!("target_error={}", target_error))
-        .arg(format!("threads={}", threads));
-    cmd.arg(format!(
-        "calculate_scale_factors={}",
-        if calculate_scale_factors { "1" } else { "0" }
-    ));
-    if let Some((stat, points, step, plot_iterations)) = dps_plot {
-        cmd.arg(format!("dps_plot_stat={}", stat))
-            .arg(format!("dps_plot_points={}", points))
-            .arg(format!("dps_plot_step={}", step))
-            .arg(format!("dps_plot_iterations={}", plot_iterations));
-    }
-
-    if is_dungeon {
-        cmd.arg(format!("desired_targets={}", desired_targets));
-    } else {
-        cmd.arg(format!("fight_style={}", fight_style))
-            .arg(format!("desired_targets={}", desired_targets))
-            .arg(format!("max_time={}", max_time));
-        if apply_default_overrides {
-            for opt in OVERRIDES {
-                cmd.arg(*opt);
-            }
-        }
-    }
-    for opt in SIM_OPTIONS {
-        if opt.starts_with("single_actor_batch=") && !single_actor_batch {
-            continue;
-        }
-        cmd.arg(*opt);
-    }
+    let args = build_simc_cli_args(
+        &input_file,
+        &output_file,
+        if generate_html { Some(&html_file) } else { None },
+        fight_style,
+        target_error,
+        iterations,
+        threads,
+        desired_targets,
+        max_time,
+        calculate_scale_factors,
+        dps_plot,
+        single_actor_batch,
+        apply_default_overrides,
+        is_dungeon_route_input(simc_input),
+    );
+    cmd.args(args);
 
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -450,9 +560,7 @@ pub async fn run_simc(
         .get("raid_buff_customized")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let apply_default_overrides = sim_type != "external_buff_matrix"
-        && sim_type != "consumable_matrix"
-        && !raid_buff_customized;
+    let apply_default_overrides = should_apply_default_overrides(sim_type, raid_buff_customized);
     let t = resolve_threads(options);
     let d = options
         .get("desired_targets")
@@ -557,9 +665,7 @@ pub async fn run_simc_staged(
         .get("raid_buff_customized")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let apply_default_overrides = sim_type != "external_buff_matrix"
-        && sim_type != "consumable_matrix"
-        && !raid_buff_customized;
+    let apply_default_overrides = should_apply_default_overrides(sim_type, raid_buff_customized);
 
     if combo_count < 10 {
         on_p(5, "Simulating", &format!("{} combos", combo_count));
@@ -653,55 +759,175 @@ pub async fn run_simc_staged(
             break;
         }
 
-        let keep = std::cmp::max(
-            stage.min_keep,
-            (profilesets.len() as f64 * stage.keep_top) as usize,
-        );
+        let keep = stage_keep_count(profilesets.len(), stage.keep_top, stage.min_keep);
         if keep >= profilesets.len() {
             continue;
         }
 
-        let mut sorted = profilesets.clone();
-        sorted.sort_by(|a, b| {
-            b.get("mean")
-                .and_then(|v| v.as_f64())
-                .partial_cmp(&a.get("mean").and_then(|v| v.as_f64()))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        let keep_set: HashSet<String> = sorted
-            .iter()
-            .take(keep)
-            .filter_map(|ps| {
-                ps.get("name")
-                    .and_then(|n| n.as_str())
-                    .map(|s| s.to_string())
-            })
-            .collect();
-        for ps in &sorted {
-            let name = ps.get("name").and_then(|n| n.as_str()).unwrap_or("");
-            if !name.is_empty() && !keep_set.contains(name) {
-                eliminated.insert(name.to_string(), ps.clone());
-            }
-        }
+        let (keep_set, stage_eliminated) = compute_stage_keep_and_eliminated(&profilesets, keep);
+        eliminated.extend(stage_eliminated);
         current_input = filter_simc_input(&current_input, &keep_set);
         remaining = keep_set.len();
         on_sc(&format!("{} · kept {}", stage.name, remaining));
     }
 
     let mut final_res = result.unwrap();
-    if !eliminated.is_empty() {
-        if let Some(results) = final_res
-            .json
-            .get_mut("sim")
-            .and_then(|s| s.get_mut("profilesets"))
-            .and_then(|p| p.get_mut("results"))
-            .and_then(|r| r.as_array_mut())
-        {
-            for (_, val) in eliminated {
-                results.push(val);
-            }
-        }
-    }
+    merge_eliminated_profilesets(&mut final_res.json, eliminated);
     Ok(final_res)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::path::Path;
+
+    #[test]
+    fn filter_simc_input_keeps_only_selected_profilesets() {
+        let input = r#"
+mage="Tester"
+### Combo 1
+profileset."Combo 1"+=head=id=1
+# keep comment
+### Combo 2
+profileset."Combo 2"+=head=id=2
+# drop comment
+fight_style=Patchwerk
+"#;
+        let keep = HashSet::from(["Combo 1".to_string()]);
+        let filtered = filter_simc_input(input, &keep);
+        assert!(filtered.contains("profileset.\"Combo 1\""));
+        assert!(!filtered.contains("profileset.\"Combo 2\""));
+        assert!(filtered.contains("fight_style=Patchwerk"));
+    }
+
+    #[test]
+    fn should_apply_default_overrides_follows_sim_type_and_customization() {
+        assert!(should_apply_default_overrides("quick", false));
+        assert!(!should_apply_default_overrides("quick", true));
+        assert!(!should_apply_default_overrides("consumable_matrix", false));
+        assert!(!should_apply_default_overrides("external_buff_matrix", false));
+    }
+
+    #[test]
+    fn resolve_threads_is_clamped() {
+        let max_threads = std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(4);
+
+        let options_default = json!({});
+        assert_eq!(resolve_threads(&options_default), max_threads);
+
+        let options_huge = json!({"threads": 999999});
+        assert_eq!(resolve_threads(&options_huge), max_threads);
+
+        let options_small = json!({"threads": 1});
+        assert_eq!(resolve_threads(&options_small), 1);
+    }
+
+    #[test]
+    fn dungeon_route_detection_supports_both_forms() {
+        assert!(is_dungeon_route_input("fight_style=DungeonRoute\n"));
+        assert!(is_dungeon_route_input("fight_style=\"DungeonRoute\"\n"));
+        assert!(!is_dungeon_route_input("fight_style=Patchwerk\n"));
+    }
+
+    #[test]
+    fn build_simc_cli_args_non_dungeon_includes_overrides_and_max_time() {
+        let args = build_simc_cli_args(
+            Path::new("input.simc"),
+            Path::new("output.json"),
+            Some(Path::new("report.html")),
+            "Patchwerk",
+            0.2,
+            1000,
+            8,
+            1,
+            300,
+            false,
+            None,
+            true,
+            true,
+            false,
+        );
+
+        assert!(args.iter().any(|arg| arg == "fight_style=Patchwerk"));
+        assert!(args.iter().any(|arg| arg == "max_time=300"));
+        assert!(args.iter().any(|arg| arg == "override.bloodlust=1"));
+        assert!(args.iter().any(|arg| arg == "single_actor_batch=1"));
+    }
+
+    #[test]
+    fn build_simc_cli_args_dungeon_omits_fight_style_max_time_and_overrides() {
+        let args = build_simc_cli_args(
+            Path::new("input.simc"),
+            Path::new("output.json"),
+            None,
+            "Patchwerk",
+            0.2,
+            1000,
+            8,
+            3,
+            400,
+            false,
+            None,
+            false,
+            true,
+            true,
+        );
+
+        assert!(args.iter().any(|arg| arg == "desired_targets=3"));
+        assert!(!args.iter().any(|arg| arg.starts_with("fight_style=")));
+        assert!(!args.iter().any(|arg| arg.starts_with("max_time=")));
+        assert!(!args.iter().any(|arg| arg.starts_with("override.")));
+        assert!(!args.iter().any(|arg| arg == "single_actor_batch=1"));
+    }
+
+    #[test]
+    fn stage_keep_count_respects_min_and_fraction() {
+        assert_eq!(stage_keep_count(100, 0.3, 5), 30);
+        assert_eq!(stage_keep_count(6, 0.3, 5), 5);
+    }
+
+    #[test]
+    fn stage_keep_and_eliminated_is_deterministic_for_ties() {
+        let profilesets = vec![
+            json!({"name":"Combo B","mean":100.0}),
+            json!({"name":"Combo A","mean":100.0}),
+            json!({"name":"Combo C","mean":95.0}),
+        ];
+        let (keep_set, eliminated) = compute_stage_keep_and_eliminated(&profilesets, 2);
+        assert!(keep_set.contains("Combo A"));
+        assert!(keep_set.contains("Combo B"));
+        assert_eq!(eliminated.len(), 1);
+        assert!(eliminated.contains_key("Combo C"));
+    }
+
+    #[test]
+    fn merge_eliminated_profilesets_appends_to_results() {
+        let mut json = json!({
+            "sim": {
+                "profilesets": {
+                    "results": [
+                        {"name":"Combo 1","mean":100.0}
+                    ]
+                }
+            }
+        });
+        let eliminated = HashMap::from([(
+            "Combo 2".to_string(),
+            json!({"name":"Combo 2","mean":90.0}),
+        )]);
+
+        merge_eliminated_profilesets(&mut json, eliminated);
+        let results = json["sim"]["profilesets"]["results"]
+            .as_array()
+            .expect("results should be an array");
+        assert_eq!(results.len(), 2);
+        assert!(results
+            .iter()
+            .any(|entry| entry.get("name").and_then(|n| n.as_str()) == Some("Combo 2")));
+    }
+}
+
+

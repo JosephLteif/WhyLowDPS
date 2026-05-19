@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { specDisplayName } from '../../lib/types';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ResultItem, TopGearResult } from '../../lib/types';
+import { specDisplayName } from '../../lib/types';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
 import { getIconUrl } from '../../lib/useItemInfo';
 import type { Instance } from '../../drop-finder/types';
@@ -11,9 +11,9 @@ import {
   AUGMENT_RUNE_OPTIONS,
   FLASK_OPTIONS,
   FOOD_OPTIONS,
+  type OptionEntry,
   POTION_OPTIONS,
   TEMP_ENCHANT_OPTIONS,
-  type OptionEntry,
 } from '../../lib/sim-options-catalog';
 
 function normalizeTierToken(input?: string): string | null {
@@ -273,7 +273,7 @@ function consumableCheckClass(): string {
   return 'border-zinc-300/70 bg-zinc-300';
 }
 
-function consumableTierFromOption(token: string, opt?: OptionEntry): number {
+function consumableTierFromOption(token: string): number {
   const m = token.match(/_(\d)$/);
   if (!m) return 0;
   const q = Number(m[1]);
@@ -399,8 +399,8 @@ export default function ResultRow({
   const displayItems = result.items.filter((it) => {
     if (!it.is_kept) return it.item_id > 0;
     if (showBothRings && (it.slot === 'finger1' || it.slot === 'finger2')) return true;
-    if (showBothTrinkets && (it.slot === 'trinket1' || it.slot === 'trinket2')) return true;
-    return false;
+    return showBothTrinkets && (it.slot === 'trinket1' || it.slot === 'trinket2');
+
   });
 
   const itemReasonState = useMemo(() => {
@@ -423,7 +423,6 @@ export default function ResultRow({
       const currentIlevel = Number(equipped?.ilevel || 0);
       const nextIlevel = Number(it.ilevel || 0);
       const nextTier = shortTierFromItem(it);
-      const currentTier = shortTierFromItem(equipped) || nextTier;
       const currentGem = Number(equipped?.gem_id || 0);
       const nextGem = Number(it.gem_id || 0);
       const currentEnchant = Number(equipped?.enchant_id || 0);
@@ -629,7 +628,7 @@ export default function ResultRow({
                             : '';
                           const itemId = Number(opt?.itemId || 0);
                           const tier =
-                            consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
+                            consumableTierFromLabel(label) || consumableTierFromOption(token);
                           const tierLabel =
                             tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
                           const showTierSquare = tier > 0;
@@ -717,7 +716,7 @@ export default function ResultRow({
                           : '';
                         const itemId = Number(opt?.itemId || 0);
                         const tier =
-                          consumableTierFromLabel(label) || consumableTierFromOption(token, opt);
+                          consumableTierFromLabel(label) || consumableTierFromOption(token);
                         const tierLabel =
                           tier >= 3 ? 'Gold' : tier === 2 ? 'Silver' : tier === 1 ? 'Bronze' : '';
                         const showTierSquare = tier > 0;

@@ -452,3 +452,58 @@ pub(super) async fn get_upgrade_options_handler(
     let options = game_data::get_upgrade_options(&bonus_ids);
     HttpResponse::Ok().json(json!({ "options": options }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix_web::body::to_bytes;
+
+    fn parse_upgrade_compare_req(value: Value) -> UpgradeCompareRequest {
+        serde_json::from_value(value).expect("valid UpgradeCompareRequest")
+    }
+
+    #[actix_web::test]
+    async fn prepare_requires_minimum_simc_input_length() {
+        let resp = get_upgrade_compare_prepare(web::Json(json!({"simc_input": "short"}))).await;
+        assert_eq!(resp.status(), 400);
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert_eq!(
+            payload.get("detail").and_then(Value::as_str),
+            Some("SimC input too short.")
+        );
+    }
+
+    #[actix_web::test]
+    async fn combo_count_requires_upgrade_currency_block_in_simc_input() {
+        let req = parse_upgrade_compare_req(json!({
+            "simc_input": "warrior=\"Tester\"\nspec=fury\n",
+            "selected_slots": ["head"],
+            "upgrade_depth": "highest_only",
+            "budget_mode": "max_affordability",
+            "upgrade_budget_override": {}
+        }));
+        let resp = get_upgrade_compare_combo_count(web::Json(req)).await;
+        assert_eq!(resp.status(), 400);
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert_eq!(
+            payload.get("detail").and_then(Value::as_str),
+            Some("No upgrade_currencies found in SimC addon export.")
+        );
+    }
+
+    #[actix_web::test]
+    async fn upgrade_options_handler_always_returns_options_array_shape() {
+        let resp = get_upgrade_options_handler(web::Query(HashMap::from([(
+            "bonus_ids".to_string(),
+            "1,2,3".to_string(),
+        )])))
+        .await;
+        assert_eq!(resp.status(), 200);
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert!(payload.get("options").is_some());
+        assert!(payload.get("options").unwrap().is_array());
+    }
+}

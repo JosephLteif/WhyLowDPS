@@ -429,3 +429,161 @@ pub fn list_enchants_for_slot(inv_type: u64) -> Vec<Value> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    struct StateSnapshot {
+        items: Arc<HashMap<u64, GameItem>>,
+        enchants: Arc<HashMap<u64, EnchantData>>,
+        enchants_by_item_id: Arc<HashMap<u64, EnchantData>>,
+        bonuses: Arc<HashMap<u64, BonusData>>,
+        item_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
+        instances: Vec<Value>,
+    }
+
+    impl StateSnapshot {
+        fn capture() -> Self {
+            Self {
+                items: state::ITEMS.read().unwrap().clone(),
+                enchants: state::ENCHANTS.read().unwrap().clone(),
+                enchants_by_item_id: state::ENCHANTS_BY_ITEM_ID.read().unwrap().clone(),
+                bonuses: state::BONUSES.read().unwrap().clone(),
+                item_limit_cats: state::ITEM_LIMIT_CATS.read().unwrap().clone(),
+                instances: state::INSTANCES.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *state::ITEMS.write().unwrap() = self.items;
+            *state::ENCHANTS.write().unwrap() = self.enchants;
+            *state::ENCHANTS_BY_ITEM_ID.write().unwrap() = self.enchants_by_item_id;
+            *state::BONUSES.write().unwrap() = self.bonuses;
+            *state::ITEM_LIMIT_CATS.write().unwrap() = self.item_limit_cats;
+            *state::INSTANCES.write().unwrap() = self.instances;
+        }
+    }
+
+    fn game_item_with_inventory(id: u64, inventory_type: i64) -> GameItem {
+        GameItem {
+            id,
+            name: "Item".to_string(),
+            icon: "inv_misc_questionmark".to_string(),
+            quality: 4,
+            base_ilevel: Some(600),
+            class: Some(2),
+            subclass: Some(0),
+            inventory_type: Some(inventory_type),
+            set_id: None,
+            has_sockets: false,
+            socket_info: None,
+            classes: None,
+            specs: None,
+            stats: None,
+            bonus_lists: Vec::new(),
+            sources: None,
+            profession: None,
+        }
+    }
+
+    #[test]
+    fn instances_and_mplus_filters_reflect_runtime_instance_flags() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *state::INSTANCES.write().unwrap() = vec![
+            serde_json::json!({
+                "id": 1, "name": "Dungeon A", "type": "dungeon", "expansion": 1, "active_rotation": true
+            }),
+            serde_json::json!({
+                "id": 2, "name": "Dungeon B", "type": "dungeon", "expansion": 1, "active_rotation": false
+            }),
+            serde_json::json!({
+                "id": 3, "name": "M+ C", "type": "mythic_plus", "expansion": 1
+            }),
+        ];
+
+        let all = list_instances();
+        assert_eq!(all.len(), 3);
+        let mplus = get_mplus_dungeons();
+        let ids: Vec<i64> = mplus.iter().map(|d| d.id).collect();
+        assert!(ids.contains(&1));
+        assert!(ids.contains(&3));
+        assert!(!ids.contains(&2));
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn bonus_filters_and_item_limit_categories_use_current_maps() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *state::BONUSES.write().unwrap() = Arc::new(HashMap::from([
+            (
+                7001_u64,
+                BonusData {
+                    ilevel: Some(crate::types::BonusIlevel {
+                        amount: Some(10),
+                        priority: Some(0),
+                    }),
+                    ..BonusData::default()
+                },
+            ),
+            (7002_u64, BonusData::default()),
+        ]));
+        *state::ITEM_LIMIT_CATS.write().unwrap() =
+            Arc::new(HashMap::from([(7001_u64, (11_u64, 2_u64)), (7002_u64, (11_u64, 2_u64))]));
+
+        assert_eq!(filter_ilevel_bonus_ids(&[7001, 7002, 9999]), vec![7001]);
+        let cats = get_item_limit_categories(&[7001, 9999]);
+        assert_eq!(cats.get(&11), Some(&2));
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn inventory_and_enchant_info_lookups_support_primary_and_fallback_maps() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([(9001_u64, game_item_with_inventory(9001, 13))]));
+        assert_eq!(get_inventory_type(9001), Some(13));
+        assert_eq!(get_inventory_type(9999), None);
+
+        *state::ENCHANTS.write().unwrap() = Arc::new(HashMap::from([(
+            501_u64,
+            EnchantData {
+                id: 501,
+                item_name: Some("Authority".to_string()),
+                item_icon: Some("inv_sword".to_string()),
+                quality: Some(4),
+                ..EnchantData::default()
+            },
+        )]));
+        let direct = get_enchant_info(501).expect("enchant lookup should work");
+        assert_eq!(direct["name"], "Authority");
+        assert_eq!(direct["icon"], "inv_sword");
+
+        *state::ENCHANTS.write().unwrap() = Arc::new(HashMap::new());
+        *state::ENCHANTS_BY_ITEM_ID.write().unwrap() = Arc::new(HashMap::from([(
+            9002_u64,
+            EnchantData {
+                id: 777,
+                display_name: Some("Fallback Enchant".to_string()),
+                spell_icon: Some("spell_nature".to_string()),
+                quality: Some(3),
+                ..EnchantData::default()
+            },
+        )]));
+        let fallback = get_enchant_info(9002).expect("item-id fallback lookup should work");
+        assert_eq!(fallback["name"], "Fallback Enchant");
+        assert_eq!(fallback["icon"], "spell_nature");
+
+        snapshot.restore();
+    }
+}

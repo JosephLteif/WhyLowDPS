@@ -5,20 +5,25 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
-  BarChart3,
-  Play,
   ArrowUp,
-  ScrollText,
-  Map as MapIcon,
-  LineChart,
-  Users,
-  Settings as SettingsIcon,
-  Pencil,
+  BarChart3,
+  Globe,
   GripVertical,
+  LineChart,
+  Map as MapIcon,
+  MessageCircle,
+  Pencil,
+  Play,
+  ScrollText,
+  Settings as SettingsIcon,
+  Users,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
+
+const DISCORD_INVITE_URL = 'https://discord.gg/ZjxQv5kFxe';
+const APP_WEBSITE_URL = 'https://josephlteif.github.io/WhyLowDPS/';
 
 interface NavItem {
   href: string;
@@ -665,6 +670,28 @@ export default function Sidebar() {
         <div className="mt-auto flex flex-col gap-2 border-t border-border/50 px-4 pt-4">
           <div className="mt-2 px-2 text-center text-xs text-zinc-400">
             {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
+          </div>
+          <div className="mx-auto flex items-center gap-2">
+            <a
+              href={DISCORD_INVITE_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Join Discord"
+              title="Join Discord"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-[#5865F2]/20 hover:text-[#cfd4ff]"
+            >
+              <MessageCircle className="h-4 w-4" />
+            </a>
+            <a
+              href={APP_WEBSITE_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open WhyLowDPS website"
+              title="Open WhyLowDPS website"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/15 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+            >
+              <Globe className="h-4 w-4" />
+            </a>
           </div>
         </div>
       </aside>

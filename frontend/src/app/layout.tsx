@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import TopHeader from './components/TopHeader';
 import UpdatePrompt from './components/UpdatePrompt';
 import CloseBehaviorPrompt from './components/CloseBehaviorPrompt';
+import DiscordInvitePrompt from './components/DiscordInvitePrompt';
 import ScrollToTopOnRouteChange from './components/ScrollToTopOnRouteChange';
 import InitialSidebarRoute from './components/InitialSidebarRoute';
 import MainScrollShell from './components/MainScrollShell';
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <TopHeader />
               <UpdatePrompt />
               <CloseBehaviorPrompt />
+              <DiscordInvitePrompt />
               <ScrollToTopOnRouteChange />
               <InitialSidebarRoute />
 

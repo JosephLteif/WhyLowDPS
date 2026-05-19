@@ -1141,3 +1141,136 @@ fn round3(v: f64) -> f64 {
 fn round4(v: f64) -> f64 {
     (v * 10000.0).round() / 10000.0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    #[test]
+    fn user_quick_sim_result_includes_core_summary_and_equipped_gear() {
+        let raw = json!({
+            "version": "simc-1100",
+            "git_revision": "abc123",
+            "sim": {
+                "players": [{
+                    "name": "Alice",
+                    "specialization": "Arcane",
+                    "collected_data": {
+                        "dps": {
+                            "mean": 12345.67,
+                            "mean_std_dev": 45.678,
+                            "count": 8000
+                        }
+                    },
+                    "gear": {
+                        "head": {
+                            "encoded_item": "id=210100,ilevel=678,bonus_id=111/222,enchant_id=333,gem_id=444",
+                            "name": "mystic_hood"
+                        }
+                    }
+                }],
+                "statistics": {
+                    "simulation_length": { "mean": 299.9 },
+                    "elapsed_time_seconds": 4.56
+                },
+                "options": {
+                    "target_error": 0.1,
+                    "desired_targets": 2
+                }
+            }
+        });
+
+        let parsed = parse_simc_result(&raw, false);
+        assert_eq!(parsed["player_name"], "Alice");
+        assert_eq!(parsed["player_class"], "Arcane");
+        assert_eq!(parsed["dps"], 12345.7);
+        assert_eq!(parsed["iterations"], 8000);
+        assert_eq!(parsed["desired_targets"], 2);
+
+        let equipped = &parsed["equipped_gear"]["head"];
+        assert_eq!(equipped["item_id"], 210100);
+        assert_eq!(equipped["ilevel"], 678);
+        assert_eq!(equipped["enchant_id"], 333);
+        assert_eq!(equipped["gem_id"], 444);
+        assert_eq!(equipped["name"], "Mystic Hood");
+    }
+
+    #[test]
+    fn user_topgear_result_orders_baseline_first_and_keeps_combo_metadata() {
+        let raw = json!({
+            "version": "simc-1100",
+            "sim": {
+                "players": [{
+                    "name": "Alice",
+                    "type": "mage",
+                    "collected_data": {
+                        "dps": {
+                            "mean": 10000.0,
+                            "mean_std_dev": 100.0,
+                            "count": 5000
+                        }
+                    },
+                    "gear": {
+                        "finger1": {
+                            "encoded_item": "id=1,ilevel=700",
+                            "name": "alpha_ring"
+                        },
+                        "finger2": {
+                            "encoded_item": "id=2,ilevel=700",
+                            "name": "beta_ring"
+                        },
+                        "trinket1": {
+                            "encoded_item": "id=3,ilevel=700",
+                            "name": "alpha_trinket"
+                        },
+                        "trinket2": {
+                            "encoded_item": "id=4,ilevel=700",
+                            "name": "beta_trinket"
+                        }
+                    }
+                }],
+                "profilesets": {
+                    "results": [
+                        { "name": "Combo Upgrade", "mean": 10250.4 },
+                        { "name": "Combo Downgrade", "mean": 9800.0 }
+                    ]
+                },
+                "statistics": {
+                    "simulation_length": { "mean": 300.0 },
+                    "elapsed_time_seconds": 8.0
+                },
+                "options": {
+                    "target_error": 0.2,
+                    "desired_targets": 1,
+                    "max_time": 300
+                }
+            }
+        });
+
+        let mut combo_metadata: HashMap<String, Vec<Value>> = HashMap::new();
+        combo_metadata.insert(
+            "Currently Equipped".to_string(),
+            vec![json!({"slot": "finger1", "item_id": 1, "talent_build": "ST"})],
+        );
+        combo_metadata.insert(
+            "Combo Upgrade".to_string(),
+            vec![json!({"slot": "finger1", "item_id": 10, "talent_build": "AoE"})],
+        );
+
+        let parsed = parse_top_gear_result(&raw, Some(&combo_metadata));
+        let results = parsed["results"]
+            .as_array()
+            .expect("top gear results should be array");
+
+        assert_eq!(parsed["type"], "top_gear");
+        assert_eq!(parsed["base_dps"], 10000.0);
+        assert_eq!(results[0]["name"], "Currently Equipped");
+        assert_eq!(results[0]["delta"], 0);
+        assert_eq!(results[1]["name"], "Combo Upgrade");
+        assert_eq!(results[1]["talent_build"], "AoE");
+        assert_eq!(results[2]["name"], "Combo Downgrade");
+        assert_eq!(results[2]["delta"], -200.0);
+    }
+}

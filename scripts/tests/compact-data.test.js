@@ -20,9 +20,24 @@ test("buildCompactManifest maps supported compact modes", () => {
   assert.deepEqual(manifest["d.json"], { custom: true, handler: "instances" });
 });
 
+test("buildCompactManifest skips unknown modes", () => {
+  const manifest = buildCompactManifest([
+    { local_path: "known.json", compact_mode: "copy" },
+    { local_path: "unknown.json", compact_mode: "mystery-mode" },
+  ]);
+  assert.deepEqual(Object.keys(manifest), ["known.json"]);
+});
+
 test("readJson throws descriptive error for HTML responses", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "compact-data-test-"));
   const filePath = path.join(dir, "bad.json");
   fs.writeFileSync(filePath, "<html><body>404</body></html>");
   assert.throws(() => readJson(filePath), /XML\/HTML, not JSON/);
+});
+
+test("readJson throws descriptive error for malformed JSON", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "compact-data-test-"));
+  const filePath = path.join(dir, "bad.json");
+  fs.writeFileSync(filePath, "{not-json");
+  assert.throws(() => readJson(filePath), /Failed to parse/);
 });

@@ -322,3 +322,165 @@ pub fn upgrade_items_by_slot(
     }
     items
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{BonusData, BonusUpgrade};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    struct StateSnapshot {
+        upgrade_max: Arc<HashMap<u64, u64>>,
+        bonuses: Arc<HashMap<u64, BonusData>>,
+        tracks: Arc<HashMap<UpgradeTrackKey, UpgradeTrackValue>>,
+        step_costs: Arc<UpgradeCostMap>,
+        season_config: Value,
+    }
+
+    impl StateSnapshot {
+        fn capture() -> Self {
+            Self {
+                upgrade_max: UPGRADE_MAX.read().unwrap().clone(),
+                bonuses: BONUSES.read().unwrap().clone(),
+                tracks: UPGRADE_TRACKS.read().unwrap().clone(),
+                step_costs: UPGRADE_STEP_COSTS.read().unwrap().clone(),
+                season_config: SEASON_CONFIG.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *UPGRADE_MAX.write().unwrap() = self.upgrade_max;
+            *BONUSES.write().unwrap() = self.bonuses;
+            *UPGRADE_TRACKS.write().unwrap() = self.tracks;
+            *UPGRADE_STEP_COSTS.write().unwrap() = self.step_costs;
+            *SEASON_CONFIG.write().unwrap() = self.season_config;
+        }
+    }
+
+    #[test]
+    fn user_upgrade_all_items_in_simc_profile_rewrites_bonus_ids_to_max() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *UPGRADE_MAX.write().unwrap() = Arc::new(HashMap::from([(1001_u64, 2001_u64)]));
+
+        let input = r#"
+mage="Tester"
+head=item=212345,bonus_id=1001/8888,enchant_id=123
+trinket1=item=299999,bonus_id=7777
+"#;
+        let upgraded = upgrade_simc_input(input);
+
+        assert!(upgraded.contains("bonus_id=2001/8888"));
+        assert!(upgraded.contains("bonus_id=7777"));
+        snapshot.restore();
+    }
+
+    #[test]
+    fn user_upgrade_options_show_progressive_costs_for_selected_item_track() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        let mut bonuses = HashMap::new();
+        bonuses.insert(
+            101_u64,
+            BonusData {
+                upgrade: Some(BonusUpgrade {
+                    full_name: Some("Hero 1/4".to_string()),
+                    group: Some(77),
+                    level: Some(1),
+                    ..BonusUpgrade::default()
+                }),
+                ..BonusData::default()
+            },
+        );
+        bonuses.insert(
+            102_u64,
+            BonusData {
+                upgrade: Some(BonusUpgrade {
+                    full_name: Some("Hero 2/4".to_string()),
+                    group: Some(77),
+                    level: Some(2),
+                    ..BonusUpgrade::default()
+                }),
+                ..BonusData::default()
+            },
+        );
+        bonuses.insert(
+            103_u64,
+            BonusData {
+                upgrade: Some(BonusUpgrade {
+                    full_name: Some("Hero 3/4".to_string()),
+                    group: Some(77),
+                    level: Some(3),
+                    ..BonusUpgrade::default()
+                }),
+                ..BonusData::default()
+            },
+        );
+        *BONUSES.write().unwrap() = Arc::new(bonuses);
+
+        *UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
+            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
+            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
+            (("Hero".to_string(), 3_u64, 4_u64), (629_u64, 103_u64, 4_u64)),
+        ]));
+
+        *UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([
+            (102_u64, HashMap::from([(3008_u64, 15_u64)])),
+            (103_u64, HashMap::from([(3008_u64, 15_u64), (3009_u64, 5_u64)])),
+        ]));
+
+        let options = get_upgrade_options(&[101_u64]);
+        assert_eq!(options.len(), 3);
+        assert_eq!(options[0].name, "Hero 1/4");
+        assert!(options[0].cumulative_costs.is_empty());
+
+        assert_eq!(options[1].name, "Hero 2/4");
+        assert_eq!(options[1].cumulative_costs.get(&3008), Some(&15));
+
+        assert_eq!(options[2].name, "Hero 3/4");
+        assert_eq!(options[2].cumulative_costs.get(&3008), Some(&30));
+        assert_eq!(options[2].cumulative_costs.get(&3009), Some(&5));
+
+        let between = get_upgrade_cost_between(101, 103);
+        assert_eq!(between.get(&3008), Some(&30));
+        assert_eq!(between.get(&3009), Some(&5));
+        snapshot.restore();
+    }
+
+    #[test]
+    fn user_upgrade_config_reads_current_and_legacy_season_shapes() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *SEASON_CONFIG.write().unwrap() = json!({
+            "encounterUpgradeLevel": { "3200": 4 },
+            "raidDifficulties": [
+                { "key": "heroic", "name": "Heroic", "track": "Hero" }
+            ],
+            "dungeonNormal": { "ilvl": 603, "quality": 4 }
+        });
+
+        assert_eq!(encounter_upgrade_level(3200), Some(4));
+        assert_eq!(difficulty_track_name("heroic").as_deref(), Some("Hero"));
+        assert_eq!(dungeon_normal_ilvl(), 603);
+        assert_eq!(dungeon_normal_quality(), 4);
+
+        *SEASON_CONFIG.write().unwrap() = json!({
+            "raidDifficulties": [
+                { "name": "Mythic", "track": "Myth", "upgradeLevel": 6, "encounters": [4101, 4102] }
+            ],
+            "dungeonNormalIlvl": 597,
+            "dungeonNormalQuality": 3
+        });
+
+        assert_eq!(encounter_upgrade_level(4102), Some(6));
+        assert_eq!(difficulty_track_name("Mythic").as_deref(), Some("Myth"));
+        assert_eq!(dungeon_normal_ilvl(), 597);
+        assert_eq!(dungeon_normal_quality(), 3);
+
+        snapshot.restore();
+    }
+}

@@ -287,3 +287,74 @@ pub async fn get_game_data_state(
 
     HttpResponse::Ok().json(fresh)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item_db::state;
+    use serde_json::json;
+
+    #[test]
+    fn localized_name_prefers_en_us_then_any_value() {
+        assert_eq!(localized_name(Some(&json!("Season 3"))), Some("Season 3".to_string()));
+        assert_eq!(
+            localized_name(Some(&json!({"en_US":"Season Three","fr_FR":"Saison Trois"}))),
+            Some("Season Three".to_string())
+        );
+        assert_eq!(
+            localized_name(Some(&json!({"fr_FR":"Saison Trois"}))),
+            Some("Saison Trois".to_string())
+        );
+        assert_eq!(localized_name(Some(&json!({"x": 1}))), None);
+        assert_eq!(localized_name(None), None);
+    }
+
+    #[test]
+    fn extract_dungeon_id_supports_numeric_id_and_href_key() {
+        assert_eq!(extract_dungeon_id(&json!({"id": 507})), Some(507));
+        assert_eq!(
+            extract_dungeon_id(&json!({
+                "key": {
+                    "href": "https://us.api.blizzard.com/data/wow/mythic-keystone/dungeon/525?namespace=dynamic-us"
+                }
+            })),
+            Some(525)
+        );
+        assert_eq!(extract_dungeon_id(&json!({"key":{"href":"https://example.com/invalid"}})), None);
+    }
+
+    #[test]
+    fn runtime_fallback_state_prefers_runtime_payload_and_defaults_when_missing() {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_runtime = state::RUNTIME_DATA.read().unwrap().clone();
+        let prev_season = *state::CURRENT_SEASON_ID.read().unwrap();
+
+        *state::RUNTIME_DATA.write().unwrap() = json!({
+            "current_season_id": 14,
+            "season_name": "Season of Midnight",
+            "current_affixes": [{"name":"Tyrannical"},{"name":"Entangled"}],
+            "mplus_rotation": [505, 506, 507],
+            "last_sync": "2026-05-19T10:00:00Z"
+        });
+        *state::CURRENT_SEASON_ID.write().unwrap() = 13;
+
+        let with_runtime = runtime_fallback_state();
+        assert_eq!(with_runtime.season_id, 14);
+        assert_eq!(with_runtime.season_name, "Season of Midnight");
+        assert_eq!(with_runtime.active_affixes, vec!["Tyrannical", "Entangled"]);
+        assert_eq!(with_runtime.mplus_rotation, vec![505, 506, 507]);
+        assert_eq!(with_runtime.last_sync, "2026-05-19T10:00:00Z");
+
+        *state::RUNTIME_DATA.write().unwrap() = json!({});
+        *state::CURRENT_SEASON_ID.write().unwrap() = 22;
+        let fallback_only = runtime_fallback_state();
+        assert_eq!(fallback_only.season_id, 22);
+        assert_eq!(fallback_only.season_name, "Season 22");
+        assert!(fallback_only.active_affixes.is_empty());
+        assert!(fallback_only.mplus_rotation.is_empty());
+        assert!(!fallback_only.last_sync.is_empty());
+
+        *state::RUNTIME_DATA.write().unwrap() = prev_runtime;
+        *state::CURRENT_SEASON_ID.write().unwrap() = prev_season;
+    }
+}

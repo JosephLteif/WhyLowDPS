@@ -1,6 +1,8 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+#[cfg(test)]
+use std::sync::Mutex;
 
 // ---- Gear Slots ----
 
@@ -130,6 +132,8 @@ pub static CLASS_WOW_IDS: Lazy<RwLock<HashMap<String, u64>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 pub static SPEC_TO_WOW_CLASS: Lazy<RwLock<HashMap<u64, u64>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
+#[cfg(test)]
+pub static TEST_CLASS_DATA_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub fn set_class_trait_spec_ids(map: HashMap<String, Vec<u64>>) {
     *CLASS_TRAIT_SPEC_IDS.write().unwrap() = map;
@@ -462,4 +466,138 @@ pub fn title_case(s: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct ClassDataSnapshot {
+        classes: Arc<Vec<ClassDef>>,
+        trait_spec_ids: HashMap<String, Vec<u64>>,
+        class_wow_ids: HashMap<String, u64>,
+        spec_to_class: HashMap<u64, u64>,
+    }
+
+    impl ClassDataSnapshot {
+        fn capture() -> Self {
+            Self {
+                classes: CLASSES.read().unwrap().clone(),
+                trait_spec_ids: CLASS_TRAIT_SPEC_IDS.read().unwrap().clone(),
+                class_wow_ids: CLASS_WOW_IDS.read().unwrap().clone(),
+                spec_to_class: SPEC_TO_WOW_CLASS.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *CLASSES.write().unwrap() = self.classes;
+            *CLASS_TRAIT_SPEC_IDS.write().unwrap() = self.trait_spec_ids;
+            *CLASS_WOW_IDS.write().unwrap() = self.class_wow_ids;
+            *SPEC_TO_WOW_CLASS.write().unwrap() = self.spec_to_class;
+        }
+    }
+
+    fn install_fixture_data() {
+        *CLASSES.write().unwrap() = Arc::new(vec![
+            ClassDef {
+                name: "demon_hunter".to_string(),
+                aliases: vec!["dh".to_string()],
+                max_armor: 2,
+                weapons: vec![0, 4, 7, 9, 13],
+                specs: vec![
+                    SpecDef {
+                        name: "havoc".to_string(),
+                        id: 577,
+                        weapon_subclasses: vec![0, 4, 7, 9, 13],
+                        primary_stats: vec![3],
+                        can_dual_wield: true,
+                        can_use_shield: false,
+                        can_use_offhand: true,
+                    },
+                    SpecDef {
+                        name: "vengeance".to_string(),
+                        id: 581,
+                        weapon_subclasses: vec![0, 4, 7, 9, 13],
+                        primary_stats: vec![3],
+                        can_dual_wield: true,
+                        can_use_shield: false,
+                        can_use_offhand: true,
+                    },
+                ],
+            },
+            ClassDef {
+                name: "mage".to_string(),
+                aliases: vec![],
+                max_armor: 1,
+                weapons: vec![7, 10, 19],
+                specs: vec![SpecDef {
+                    name: "arcane".to_string(),
+                    id: 62,
+                    weapon_subclasses: vec![7, 10, 19],
+                    primary_stats: vec![5],
+                    can_dual_wield: false,
+                    can_use_shield: false,
+                    can_use_offhand: true,
+                }],
+            },
+        ]);
+        set_class_trait_spec_ids(HashMap::from([
+            ("demon_hunter".to_string(), vec![577, 581]),
+            ("mage".to_string(), vec![62]),
+        ]));
+        set_class_wow_ids(HashMap::from([
+            ("demon_hunter".to_string(), 12),
+            ("mage".to_string(), 8),
+        ]));
+        set_spec_to_wow_class(HashMap::from([(577, 12), (581, 12), (62, 8)]));
+    }
+
+    #[test]
+    fn slot_and_quality_utility_mappings_are_stable() {
+        assert_eq!(paired_slot("finger1"), Some("finger2"));
+        assert_eq!(paired_slot("finger2"), Some("finger1"));
+        assert_eq!(paired_slot("head"), None);
+        assert_eq!(inventory_type_display_slot(17), "Main Hand");
+        assert_eq!(inventory_type_display_slot(23), "Off Hand");
+        assert_eq!(inventory_type_display_slot(999), "Other");
+        assert_eq!(quality_name(4), "epic");
+        assert_eq!(quality_name(999), "common");
+        assert_eq!(quality_color(4), "#a335ee");
+    }
+
+    #[test]
+    fn class_and_spec_detection_behaves_like_user_simc_input() {
+        let _guard = TEST_CLASS_DATA_LOCK.lock().unwrap();
+        let snapshot = ClassDataSnapshot::capture();
+        install_fixture_data();
+
+        assert!(can_dual_wield("havoc"));
+        assert_eq!(class_max_armor("dh"), Some(2));
+        assert_eq!(class_allowed_weapons("demon_hunter"), Some(vec![0, 4, 7, 9, 13]));
+        assert_eq!(class_spec_ids("demon_hunter", Some("havoc")), vec![577]);
+        assert_eq!(class_spec_ids("demon_hunter", None), vec![577, 581]);
+        assert_eq!(class_primary_stats("mage"), Some(vec![5]));
+        assert_eq!(inv_type_to_slots(13, "havoc"), vec!["main_hand", "off_hand"]);
+        assert_eq!(inv_type_to_slots(13, "arcane"), vec!["main_hand"]);
+        assert_eq!(spec_id_to_name(577), Some("havoc".to_string()));
+        assert_eq!(class_wow_id("demon_hunter"), Some(12));
+        assert_eq!(spec_id_to_wow_class_id(62), Some(8));
+        assert_eq!(detect_class("\u{feff}dh=Player\nspec=havoc"), Some("dh".to_string()));
+        assert_eq!(detect_spec("dh=Player\nspec=havoc"), Some("havoc".to_string()));
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn class_spec_ids_falls_back_to_trait_map_when_class_table_missing() {
+        let _guard = TEST_CLASS_DATA_LOCK.lock().unwrap();
+        let snapshot = ClassDataSnapshot::capture();
+        *CLASSES.write().unwrap() = Arc::new(Vec::new());
+        set_class_trait_spec_ids(HashMap::from([("monk".to_string(), vec![268, 269, 270])]));
+
+        assert_eq!(class_spec_ids("monk", None), vec![268, 269, 270]);
+        assert!(class_spec_ids("monk", Some("windwalker")).is_empty());
+
+        snapshot.restore();
+    }
 }

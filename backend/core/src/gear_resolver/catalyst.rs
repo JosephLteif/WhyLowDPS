@@ -250,3 +250,194 @@ pub fn generate_catalyst_alternatives(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item_db::state;
+    use crate::types::{BonusData, BonusIlevel, GameItem};
+    use std::sync::Arc;
+
+    fn make_item(item_id: u64, ilevel: i64, upgrade: &str, origin: ItemOrigin) -> ResolvedItem {
+        ResolvedItem {
+            uid: format!("head-{item_id}-{ilevel}"),
+            slot: "head".to_string(),
+            item_id,
+            ilevel,
+            simc_string: format!("id={item_id}"),
+            origin,
+            bonus_ids: vec![7001, 7002],
+            upgrade: upgrade.to_string(),
+            season_id: 13,
+            inventory_type: 1,
+            ..ResolvedItem::default()
+        }
+    }
+
+    fn with_catalyst_state<T>(f: impl FnOnce() -> T) -> T {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_bonuses = state::BONUSES.read().unwrap().clone();
+        let prev_catalyst = state::CATALYST.read().unwrap().clone();
+        let prev_season = *state::CURRENT_SEASON_ID.read().unwrap();
+        let prev_cfg = state::SEASON_CONFIG.read().unwrap().clone();
+        let prev_items = state::ITEMS.read().unwrap().clone();
+
+        let mut bonuses = HashMap::new();
+        bonuses.insert(
+            7001,
+            BonusData {
+                ilevel: Some(BonusIlevel {
+                    amount: Some(10),
+                    priority: Some(1),
+                }),
+                ..BonusData::default()
+            },
+        );
+        bonuses.insert(7002, BonusData::default());
+        *state::BONUSES.write().unwrap() = Arc::new(bonuses);
+
+        let mut catalyst = state::CatalystData::default();
+        catalyst.tier_items.insert(
+            (8, 1),
+            state::CatalystTierItem {
+                item_id: 99001,
+                name: "Tier Helm".to_string(),
+                icon: "inv_helm_plate_raidwarrior_p_01".to_string(),
+                has_set: true,
+                bonus_ids: vec![8888],
+            },
+        );
+        catalyst.tier_item_ids.insert(99001);
+        *state::CATALYST.write().unwrap() = Arc::new(catalyst);
+        *state::CURRENT_SEASON_ID.write().unwrap() = 13;
+        *state::SEASON_CONFIG.write().unwrap() = serde_json::json!({"tierSetBonusId": 2468});
+        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([(
+            99001,
+            GameItem {
+                id: 99001,
+                name: "Tier Helm".to_string(),
+                icon: "inv_helm_plate_raidwarrior_p_01".to_string(),
+                quality: 4,
+                base_ilevel: Some(610),
+                class: Some(4),
+                subclass: Some(4),
+                inventory_type: Some(1),
+                set_id: None,
+                has_sockets: false,
+                socket_info: None,
+                classes: None,
+                specs: None,
+                stats: None,
+                bonus_lists: Vec::new(),
+                sources: None,
+                profession: None,
+            },
+        )]));
+
+        let result = f();
+
+        *state::BONUSES.write().unwrap() = prev_bonuses;
+        *state::CATALYST.write().unwrap() = prev_catalyst;
+        *state::CURRENT_SEASON_ID.write().unwrap() = prev_season;
+        *state::SEASON_CONFIG.write().unwrap() = prev_cfg;
+        *state::ITEMS.write().unwrap() = prev_items;
+        result
+    }
+
+    #[test]
+    fn slot_to_inv_type_maps_expected_slots() {
+        assert_eq!(slot_to_inv_type("head"), Some(1));
+        assert_eq!(slot_to_inv_type("finger2"), Some(11));
+        assert_eq!(slot_to_inv_type("trinket1"), Some(12));
+        assert_eq!(slot_to_inv_type("unknown"), None);
+    }
+
+    #[test]
+    fn build_catalyst_item_keeps_ilevel_and_adds_tier_set_bonuses() {
+        with_catalyst_state(|| {
+            let source = ResolvedItem {
+                item_id: 70000,
+                ilevel: 626,
+                origin: ItemOrigin::Equipped,
+                bonus_ids: vec![7002, 7001],
+                enchant_id: 44,
+                gem_id: 55,
+                enchant_name: "Authority".to_string(),
+                gem_name: "Masterful Ruby".to_string(),
+                gem_icon: "inv_gem".to_string(),
+                season_id: 13,
+                ..ResolvedItem::default()
+            };
+            let tier = item_db::catalyst_tier_item(8, 1).expect("tier item");
+            let catalyst_item = build_catalyst_item(&source, &tier, "head");
+
+            assert_eq!(catalyst_item.item_id, 99001);
+            assert_eq!(catalyst_item.ilevel, 626);
+            assert_eq!(catalyst_item.origin, ItemOrigin::Bags);
+            assert_eq!(catalyst_item.bonus_ids, vec![2468, 7001, 8888]);
+            assert!(catalyst_item.simc_string.contains(",id=99001"));
+            assert!(catalyst_item.simc_string.contains(",bonus_id=2468/7001/8888"));
+            assert!(catalyst_item.simc_string.contains(",enchant_id=44"));
+            assert!(catalyst_item.simc_string.contains(",gem_id=55"));
+            assert!(catalyst_item.is_catalyst);
+        });
+    }
+
+    #[test]
+    fn mark_catalyst_eligible_only_marks_valid_current_season_items() {
+        with_catalyst_state(|| {
+            let mut slots = HashMap::from([(
+                "head".to_string(),
+                SlotResolution {
+                    equipped: Some(make_item(70010, 620, "Veteran 3/8", ItemOrigin::Equipped)),
+                    alternatives: vec![
+                        make_item(70011, 620, "Adventurer 8/8", ItemOrigin::Bags),
+                        make_item(70012, 620, "Champion 1/8", ItemOrigin::Bags),
+                        make_item(99001, 620, "Hero 1/6", ItemOrigin::Bags),
+                    ],
+                },
+            )]);
+
+            if let Some(slot) = slots.get_mut("head") {
+                if let Some(item) = slot.alternatives.get_mut(1) {
+                    item.season_id = 12;
+                }
+            }
+
+            mark_catalyst_eligible(&mut slots, 8);
+
+            let slot = slots.get("head").expect("head slot");
+            assert!(slot.equipped.as_ref().expect("equipped").can_catalyst);
+            assert!(!slot.alternatives[0].can_catalyst);
+            assert!(!slot.alternatives[1].can_catalyst);
+            assert!(!slot.alternatives[2].can_catalyst);
+        });
+    }
+
+    #[test]
+    fn generate_catalyst_alternatives_adds_best_source_variant() {
+        with_catalyst_state(|| {
+            let mut slots = HashMap::from([(
+                "head".to_string(),
+                SlotResolution {
+                    equipped: Some(make_item(70010, 620, "Veteran 3/8", ItemOrigin::Equipped)),
+                    alternatives: vec![
+                        make_item(70020, 628, "Champion 4/8", ItemOrigin::Bags),
+                        make_item(70030, 624, "Veteran 8/8", ItemOrigin::Vault),
+                    ],
+                },
+            )]);
+
+            generate_catalyst_alternatives(&mut slots, 8);
+            let slot = slots.get("head").expect("head slot");
+            let added = slot
+                .alternatives
+                .iter()
+                .find(|item| item.item_id == 99001)
+                .expect("generated catalyst");
+
+            assert_eq!(added.ilevel, 628);
+            assert!(added.is_catalyst);
+        });
+    }
+}

@@ -344,4 +344,105 @@ head=id=229308,bonus_id=11965/6652,ilevel=684,gem_id=213461
         assert_eq!(parse_catalyst_charges(simc, 3378), Some(5));
         assert_eq!(parse_catalyst_charges(simc, 9999), None);
     }
+
+    #[test]
+    fn parse_simc_input_handles_comment_labels_loadouts_and_name_fallbacks() {
+        let simc = r#"
+# Mythic ST
+warrior="Tester"
+spec=fury
+talents=ACTIVE-TALENTS
+# Cleave Build
+# talents=CLEAVE-TALENTS
+main_hand=forged_blade,id=9001,bonus_id=11:22,enchant=333,gem=444
+# Weekly Reward Choices
+# Head Piece (684)
+# head=id=9002,bonus_id=77/88
+# End of Weekly Reward Choices
+# neck=id=9003,ilvl=675,bonus_id=12/13,name=jeweled_guardian_torque
+"#;
+
+        let parsed = parse_simc_input(simc);
+        assert_eq!(parsed.character.class_name.as_deref(), Some("warrior"));
+        assert_eq!(parsed.character.spec.as_deref(), Some("fury"));
+        assert_eq!(parsed.talent_loadouts.len(), 2);
+        assert!(parsed.talent_loadouts[0].is_active);
+        assert_eq!(parsed.talent_loadouts[0].name, "Active");
+        assert_eq!(parsed.talent_loadouts[1].name, "Cleave Build");
+        assert_eq!(parsed.talent_loadouts[1].talent_string, "CLEAVE-TALENTS");
+
+        let equipped = parsed
+            .items
+            .iter()
+            .find(|item| item.origin == ItemOrigin::Equipped && item.raw_slot == "main_hand")
+            .expect("equipped main hand");
+        assert_eq!(equipped.name, "Forged Blade");
+        assert_eq!(equipped.bonus_ids, vec![11, 22]);
+        assert_eq!(equipped.enchant_id, 333);
+        assert_eq!(equipped.gem_id, 444);
+
+        let vault = parsed
+            .items
+            .iter()
+            .find(|item| item.origin == ItemOrigin::Vault && item.raw_slot == "head")
+            .expect("vault head");
+        assert_eq!(vault.name, "Head Piece");
+        assert_eq!(vault.ilevel, 684);
+
+        let bag = parsed
+            .items
+            .iter()
+            .find(|item| item.origin == ItemOrigin::Bags && item.raw_slot == "neck")
+            .expect("bag neck");
+        assert_eq!(bag.name, "Jeweled Guardian Torque");
+        assert_eq!(bag.ilevel, 675);
+    }
+
+    #[test]
+    fn parse_upgrade_currencies_is_case_insensitive_and_uses_first_match() {
+        let simc = r#"
+UPGRADE_CURRENCIES = c:111:2/c:222:4
+# upgrade_currencies = c:333:9
+"#;
+        let parsed = parse_upgrade_currencies(simc);
+        assert_eq!(parsed.get(&111), Some(&2));
+        assert_eq!(parsed.get(&222), Some(&4));
+        assert!(!parsed.contains_key(&333));
+    }
+
+    #[test]
+    fn parse_catalyst_charges_ignores_malformed_entries() {
+        let simc = r#"
+# catalyst_currencies=bad/3378:notanumber/2813:8/3378:7
+"#;
+        assert_eq!(parse_catalyst_charges(simc, 3378), Some(0));
+        assert_eq!(parse_catalyst_charges(simc, 2813), Some(8));
+    }
+
+    #[test]
+    fn parse_simc_input_supports_gem1_and_enchant_id_aliases_and_bag_origin() {
+        let simc = r#"
+mage="AliasTester"
+talents=ALIAS
+# shoulder=id=7777,enchant_id=999,gem1=888,bonus_id=1/2,name=arcane_mantle
+"#;
+        let parsed = parse_simc_input(simc);
+        let bag = parsed
+            .items
+            .iter()
+            .find(|item| item.origin == ItemOrigin::Bags && item.raw_slot == "shoulder")
+            .expect("bag shoulder item");
+        assert_eq!(bag.item_id, 7777);
+        assert_eq!(bag.enchant_id, 999);
+        assert_eq!(bag.gem_id, 888);
+        assert_eq!(bag.name, "Arcane Mantle");
+        assert_eq!(bag.bonus_ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn parse_currency_helpers_return_empty_when_lines_missing() {
+        let simc = "warrior=\"NoCurrencies\"";
+        assert!(parse_upgrade_currencies(simc).is_empty());
+        assert_eq!(parse_catalyst_charges(simc, 3378), None);
+    }
 }

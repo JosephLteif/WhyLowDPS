@@ -238,3 +238,46 @@ impl Job {
         total
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::extract_result_summary;
+
+    #[test]
+    fn user_history_summary_counts_upgrades_and_downgrades_for_topgear_results() {
+        let result_json = Some(
+            serde_json::json!({
+                "type": "top_gear",
+                "player_name": "Alice",
+                "player_class": "Mage",
+                "base_dps": 1000.0,
+                "results": [
+                    { "name": "Currently Equipped", "delta": 0.0, "dps": 1000.0 },
+                    { "name": "Combo Upgrade", "delta": 120.0, "dps": 1120.0 },
+                    { "name": "Combo Downgrade", "delta": -80.0, "dps": 920.0 }
+                ]
+            })
+            .to_string(),
+        );
+
+        let summary = extract_result_summary(&result_json, "mage=\"Alice\"\nserver=illidan\n");
+        assert_eq!(summary.player_name.as_deref(), Some("Alice"));
+        assert_eq!(summary.player_class.as_deref(), Some("Mage"));
+        assert_eq!(summary.realm.as_deref(), Some("illidan"));
+        assert_eq!(summary.upgrades, Some(1));
+        assert_eq!(summary.downgrades, Some(1));
+    }
+
+    #[test]
+    fn user_history_summary_falls_back_to_simc_input_name_and_armory() {
+        let empty_result = None;
+
+        let from_name_line = extract_result_summary(&empty_result, "evoker=\"Scalefriend\"\nserver=tichondrius\n");
+        assert_eq!(from_name_line.player_name.as_deref(), Some("Scalefriend"));
+        assert_eq!(from_name_line.realm.as_deref(), Some("tichondrius"));
+
+        let from_armory = extract_result_summary(&empty_result, "armory=us,illidan,Arcanefox\n");
+        assert_eq!(from_armory.player_name.as_deref(), Some("Arcanefox"));
+        assert_eq!(from_armory.realm, None);
+    }
+}

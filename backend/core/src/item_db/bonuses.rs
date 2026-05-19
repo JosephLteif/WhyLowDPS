@@ -276,3 +276,101 @@ pub fn squish_ilevel(item_id: u64, ilevel: u64) -> u64 {
     }
     points.last().map(|p| p.1).unwrap_or(ilevel)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{BonusIlevel, BonusOffset, BonusUpgrade};
+
+    #[test]
+    fn track_rank_and_minimum_track_follow_expected_ordering() {
+        assert_eq!(track_rank("Explorer 1/8"), Some(0));
+        assert_eq!(track_rank("Hero 4/6"), Some(4));
+        assert_eq!(track_rank("Unknown"), None);
+
+        assert!(is_minimum_track("Hero 1/6", "Veteran"));
+        assert!(!is_minimum_track("Adventurer 8/8", "Champion"));
+        assert!(!is_minimum_track("Unknown", "Champion"));
+    }
+
+    #[test]
+    fn resolve_bonuses_prefers_upgrade_ilevel_applies_offsets_and_collects_metadata() {
+        let bonus_map = HashMap::from([
+            (
+                1001_u64,
+                BonusData {
+                    quality: Some(4),
+                    ilevel: Some(BonusIlevel {
+                        amount: Some(610),
+                        priority: Some(0),
+                    }),
+                    socket: Some(1),
+                    tag: Some("leech".to_string()),
+                    ..BonusData::default()
+                },
+            ),
+            (
+                1002_u64,
+                BonusData {
+                    offset: Some(BonusOffset { amount: Some(6) }),
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 2/6".to_string()),
+                        ilevel: Some(623),
+                        season_id: Some(3),
+                        ..BonusUpgrade::default()
+                    }),
+                    ..BonusData::default()
+                },
+            ),
+        ]);
+
+        let resolved = resolve_bonuses(&[1001, 1002], &bonus_map);
+        assert_eq!(resolved.quality, Some(4));
+        assert_eq!(resolved.upgrade.as_deref(), Some("Hero 2/6"));
+        assert_eq!(resolved.season_id, Some(3));
+        assert_eq!(resolved.sockets, Some(1));
+        assert_eq!(resolved.tag.as_deref(), Some("leech"));
+        assert_eq!(resolved.ilevel, Some(629));
+    }
+
+    #[test]
+    fn resolve_extra_effects_and_debug_handle_known_unknown_and_serverside_bonus_ids() {
+        let bonus_map = HashMap::from([
+            (
+                2001_u64,
+                BonusData {
+                    raw_stats: Some(Value::String("runspeed".to_string())),
+                    ..BonusData::default()
+                },
+            ),
+            (
+                2002_u64,
+                BonusData {
+                    tag: Some("indestructible proc".to_string()),
+                    ..BonusData::default()
+                },
+            ),
+            (
+                2003_u64,
+                BonusData {
+                    serverside: Some(true),
+                    raw_stats: Some(Value::String("irrelevant".to_string())),
+                    ..BonusData::default()
+                },
+            ),
+        ]);
+
+        let effects = resolve_extra_effects(&[42, 2001, 2002], &bonus_map);
+        assert_eq!(effects, vec!["Speed", "Indestructible"]);
+
+        let debug = resolve_bonus_debug(&[9999, 2001, 2003], &bonus_map);
+        assert_eq!(debug.unknown_bonus_ids, vec![9999]);
+        assert_eq!(debug.server_side_bonus_ids, vec![2003]);
+        assert_eq!(debug.ignored_server_side_bonus_ids, vec![2003]);
+    }
+
+    #[test]
+    fn squish_ilevel_returns_original_when_item_has_no_curve() {
+        assert_eq!(squish_ilevel(u64::MAX, 619), 619);
+    }
+}

@@ -101,3 +101,55 @@ pub fn main_hand_is_two_hand(gear_set: &HashMap<String, ResolvedItem>, spec: &st
         .unwrap_or(0);
     inv_type == 17
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn item(item_id: u64, origin: ItemOrigin, is_catalyst: bool) -> ResolvedItem {
+        ResolvedItem {
+            item_id,
+            origin,
+            is_catalyst,
+            ..ResolvedItem::default()
+        }
+    }
+
+    #[test]
+    fn vault_constraint_allows_single_vault_item_but_rejects_multiple() {
+        let mut gear = HashMap::new();
+        gear.insert("head".to_string(), item(1001, ItemOrigin::Vault, false));
+        gear.insert("chest".to_string(), item(1001, ItemOrigin::Vault, false));
+        assert!(validate_vault_constraint(&gear));
+
+        gear.insert("legs".to_string(), item(1002, ItemOrigin::Vault, false));
+        assert!(!validate_vault_constraint(&gear));
+    }
+
+    #[test]
+    fn catalyst_constraint_respects_max_charges() {
+        let gear = HashMap::from([
+            ("head".to_string(), item(2001, ItemOrigin::Equipped, true)),
+            ("chest".to_string(), item(2002, ItemOrigin::Equipped, true)),
+            ("legs".to_string(), item(2003, ItemOrigin::Equipped, false)),
+        ]);
+
+        assert!(validate_catalyst_constraint(&gear, 2));
+        assert!(!validate_catalyst_constraint(&gear, 1));
+    }
+
+    #[test]
+    fn unique_equipped_constraint_rejects_duplicate_ring_or_trinket_ids() {
+        let invalid = HashMap::from([
+            ("finger1".to_string(), item(3001, ItemOrigin::Equipped, false)),
+            ("finger2".to_string(), item(3001, ItemOrigin::Equipped, false)),
+        ]);
+        assert!(!validate_unique_equipped(&invalid));
+
+        let valid = HashMap::from([
+            ("finger1".to_string(), item(3001, ItemOrigin::Equipped, false)),
+            ("finger2".to_string(), item(3002, ItemOrigin::Equipped, false)),
+        ]);
+        assert!(validate_unique_equipped(&valid));
+    }
+}

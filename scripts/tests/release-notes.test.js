@@ -19,6 +19,18 @@ test("chooseRecommendedAsset prefers exact versioned setup", () => {
   assert.equal(picked, "WhyLowDPS_3.0.1_x64-setup.exe");
 });
 
+test("chooseRecommendedAsset falls back to setup exe then any exe", () => {
+  const version = "3.0.1";
+  assert.equal(
+    chooseRecommendedAsset(version, ["WhyLowDPS_custom-setup.exe", "WhyLowDPS_custom.msi"]),
+    "WhyLowDPS_custom-setup.exe"
+  );
+  assert.equal(
+    chooseRecommendedAsset(version, ["portable.exe", "archive.zip"]),
+    "portable.exe"
+  );
+});
+
 test("parseChecksumsFile accepts sha256sum style lines", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "release-notes-test-"));
   const checksumPath = path.join(dir, "checksums.txt");
@@ -30,6 +42,19 @@ test("parseChecksumsFile accepts sha256sum style lines", () => {
   assert.equal(entries.length, 1);
   assert.equal(entries[0].file, "WhyLowDPS_3.0.1_x64-setup.exe");
   assert.equal(entries[0].hash, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+});
+
+test("parseChecksumsFile accepts file-first format", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "release-notes-test-"));
+  const checksumPath = path.join(dir, "checksums.txt");
+  fs.writeFileSync(
+    checksumPath,
+    "WhyLowDPS_3.0.1_x64-setup.exe  cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\n"
+  );
+  const entries = parseChecksumsFile(checksumPath);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].file, "WhyLowDPS_3.0.1_x64-setup.exe");
+  assert.equal(entries[0].hash, "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc");
 });
 
 test("buildReleaseNotes renders required sections", () => {

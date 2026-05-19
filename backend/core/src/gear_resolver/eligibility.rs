@@ -163,3 +163,101 @@ pub fn eligible_slots(item: &RawParsedItem, spec: &str) -> Vec<String> {
     }
     slots
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item_db::state;
+    use crate::types::{GameItem, ItemOrigin};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    fn raw_item(item_id: u64, raw_slot: &str) -> RawParsedItem {
+        RawParsedItem {
+            raw_slot: raw_slot.to_string(),
+            simc_string: format!("{raw_slot}=id={item_id}"),
+            item_id,
+            ilevel: 0,
+            name: String::new(),
+            bonus_ids: vec![200, 100],
+            enchant_id: 15,
+            gem_id: 23,
+            origin: ItemOrigin::Bags,
+        }
+    }
+
+    fn with_items_state<T>(items: HashMap<u64, GameItem>, f: impl FnOnce() -> T) -> T {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_items = state::ITEMS.read().unwrap().clone();
+        *state::ITEMS.write().unwrap() = Arc::new(items);
+        let result = f();
+        *state::ITEMS.write().unwrap() = prev_items;
+        result
+    }
+
+    #[test]
+    fn make_uid_sorts_bonus_ids_and_keeps_slot() {
+        let item = raw_item(12345, "finger1");
+        let uid = make_uid(&item, "finger2");
+        assert_eq!(uid, "12345:100:200:bags:i0:e15:g23:finger2");
+    }
+
+    #[test]
+    fn dedup_key_is_slot_independent_but_origin_sensitive() {
+        let bag_item = raw_item(12345, "finger1");
+        let mut equipped_item = raw_item(12345, "finger1");
+        equipped_item.origin = ItemOrigin::Equipped;
+
+        let bag_key = dedup_key(&bag_item);
+        let equipped_key = dedup_key(&equipped_item);
+        assert_eq!(bag_key, "12345:100:200:bags:i0:e15:g23");
+        assert_eq!(equipped_key, "12345:100:200:equipped:i0:e15:g23");
+        assert_ne!(bag_key, equipped_key);
+    }
+
+    #[test]
+    fn enrich_uses_item_db_info_and_preserves_higher_explicit_ilevel() {
+        let mut item = raw_item(9001, "head");
+        item.ilevel = 626;
+        item.bonus_ids = Vec::new();
+        item.enchant_id = 0;
+        item.gem_id = 0;
+
+        let db_item = GameItem {
+            id: 9001,
+            name: "Tier Helm".to_string(),
+            icon: "inv_helm_plate_raidwarrior_p_01".to_string(),
+            quality: 4,
+            base_ilevel: Some(619),
+            class: Some(4),
+            subclass: Some(4),
+            inventory_type: Some(1),
+            set_id: None,
+            has_sockets: false,
+            socket_info: None,
+            classes: None,
+            specs: None,
+            stats: None,
+            bonus_lists: Vec::new(),
+            sources: None,
+            profession: None,
+        };
+
+        with_items_state(HashMap::from([(9001, db_item)]), || {
+            let enriched = enrich(&item, "head");
+            assert_eq!(enriched.item_id, 9001);
+            assert_eq!(enriched.name, "Tier Helm");
+            assert_eq!(enriched.icon, "inv_helm_plate_raidwarrior_p_01");
+            assert_eq!(enriched.inventory_type, 1);
+            assert_eq!(enriched.ilevel, 626);
+            assert_eq!(enriched.uid, "9001::bags:i626:e0:g0:head");
+        });
+    }
+
+    #[test]
+    fn eligible_slots_falls_back_to_raw_slot_and_pairing_when_db_missing() {
+        let item = raw_item(999_999_999, "finger1");
+        let slots = eligible_slots(&item, "arcane");
+        assert_eq!(slots, vec!["finger1".to_string(), "finger2".to_string()]);
+    }
+}

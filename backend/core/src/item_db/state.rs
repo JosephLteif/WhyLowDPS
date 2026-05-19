@@ -17,6 +17,8 @@ pub const TRACK_RANKS: &[&str] = &[
 ];
 
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::Mutex;
 
 // ---- Static Data Stores ----
 
@@ -151,3 +153,7 @@ pub static RUNTIME_DATA: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_js
 
 pub static EMPTY_SEASON_CONFIG: once_cell::sync::Lazy<Value> =
     once_cell::sync::Lazy::new(|| serde_json::json!({}));
+
+#[cfg(test)]
+pub static TEST_STATE_LOCK: once_cell::sync::Lazy<Mutex<()>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(()));

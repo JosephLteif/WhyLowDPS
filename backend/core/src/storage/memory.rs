@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::JobStorage;
-use super::WarcraftLogsStoredParse;
 use crate::models::{
     extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
 };
@@ -14,7 +13,6 @@ pub struct MemoryStorage {
     user_configs: Mutex<HashMap<(String, String), String>>,
     routes: Mutex<HashMap<String, SavedRoute>>,
     character_profiles: Mutex<HashMap<String, SavedCharacterProfile>>,
-    wcl_parses: Mutex<HashMap<String, Vec<WarcraftLogsStoredParse>>>,
 }
 
 impl Default for MemoryStorage {
@@ -32,7 +30,6 @@ impl MemoryStorage {
             user_configs: Mutex::new(HashMap::new()),
             routes: Mutex::new(HashMap::new()),
             character_profiles: Mutex::new(HashMap::new()),
-            wcl_parses: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -345,61 +342,216 @@ impl JobStorage for MemoryStorage {
         let mut profiles = self.character_profiles.lock().unwrap();
         profiles.remove(id);
     }
+}
 
-    fn upsert_wcl_parses(
-        &self,
-        user_id: &str,
-        region: &str,
-        realm: &str,
-        name: &str,
-        mode: &str,
-        rows: &[WarcraftLogsStoredParse],
-    ) {
-        let key = format!(
-            "{}::{}::{}::{}::{}",
-            user_id,
-            region.to_lowercase(),
-            realm.to_lowercase(),
-            name.to_lowercase(),
-            mode.to_lowercase()
-        );
-        let mut map = self.wcl_parses.lock().unwrap();
-        let bucket = map.entry(key).or_default();
-        let mut seen: HashMap<String, usize> = bucket
-            .iter()
-            .enumerate()
-            .map(|(idx, row)| (row.dedupe_key.clone(), idx))
-            .collect();
-        for row in rows {
-            if seen.contains_key(&row.dedupe_key) {
-                continue;
-            }
-            seen.insert(row.dedupe_key.clone(), bucket.len());
-            bucket.push(row.clone());
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Job, JobStatus, SavedCharacterProfile, SavedRoute};
+    use crate::storage::JobStorage;
+
+    fn make_job(
+        id: &str,
+        created_at: &str,
+        simc_input: &str,
+        result_json: Option<&str>,
+        pinned: bool,
+        linked: Option<(&str, &str, &str)>,
+    ) -> Job {
+        let (linked_region, linked_realm, linked_name) = match linked {
+            Some((region, realm, name)) => (
+                Some(region.to_string()),
+                Some(realm.to_string()),
+                Some(name.to_string()),
+            ),
+            None => (None, None, None),
+        };
+
+        Job {
+            id: id.to_string(),
+            status: JobStatus::Done,
+            sim_type: "quick".to_string(),
+            simc_input: simc_input.to_string(),
+            options: None,
+            result_json: result_json.map(str::to_string),
+            raw_json: None,
+            combo_metadata_json: None,
+            error_message: None,
+            progress_pct: 100,
+            progress_stage: None,
+            progress_detail: None,
+            stages_completed: Vec::new(),
+            iterations: 10000,
+            fight_style: "Patchwerk".to_string(),
+            target_error: 0.1,
+            created_at: created_at.to_string(),
+            html_report: None,
+            text_output: None,
+            batch_id: None,
+            linked_region,
+            linked_realm,
+            linked_name,
+            pinned,
         }
     }
 
-    fn get_wcl_parses(
-        &self,
-        user_id: &str,
-        region: &str,
-        realm: &str,
-        name: &str,
-        mode: &str,
-    ) -> Vec<WarcraftLogsStoredParse> {
-        let key = format!(
-            "{}::{}::{}::{}::{}",
-            user_id,
-            region.to_lowercase(),
-            realm.to_lowercase(),
-            name.to_lowercase(),
-            mode.to_lowercase()
+    #[test]
+    fn user_can_filter_history_for_linked_and_unlinked_character_views() {
+        let storage = MemoryStorage::new();
+        let linked_result = r#"{"player_name":"Alice","player_class":"Mage","dps":154321.0}"#;
+        let unlinked_result = r#"{"player_name":"Bob","player_class":"Warrior","dps":123456.0}"#;
+
+        storage.insert(make_job(
+            "job-linked",
+            "2026-01-03T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            Some(linked_result),
+            false,
+            Some(("us", "illidan", "Alice")),
+        ));
+        storage.insert(make_job(
+            "job-unlinked",
+            "2026-01-02T00:00:00Z",
+            "warrior=\"Bob\"\nserver=stormrage\n",
+            Some(unlinked_result),
+            false,
+            None,
+        ));
+
+        let linked = storage.list_recent(
+            10,
+            Some("Alice"),
+            Some("illidan"),
+            true,
+            false,
+            false,
         );
-        self.wcl_parses
-            .lock()
-            .unwrap()
-            .get(&key)
-            .cloned()
-            .unwrap_or_default()
+        assert_eq!(linked.len(), 1);
+        assert_eq!(linked[0].id, "job-linked");
+        assert_eq!(linked[0].linked_name.as_deref(), Some("Alice"));
+        assert_eq!(linked[0].player_name.as_deref(), Some("Alice"));
+
+        let unlinked = storage.list_recent(10, None, None, false, true, false);
+        assert_eq!(unlinked.len(), 1);
+        assert_eq!(unlinked[0].id, "job-unlinked");
+        assert!(unlinked[0].linked_name.is_none());
+        assert_eq!(unlinked[0].player_name.as_deref(), Some("Bob"));
+    }
+
+    #[test]
+    fn pinned_jobs_survive_retention_as_user_adds_more_runs() {
+        let storage = MemoryStorage::new();
+        storage.set_max_jobs(2);
+
+        storage.insert(make_job(
+            "job-pinned",
+            "2026-01-01T00:00:00Z",
+            "mage=\"Pinned\"\nserver=illidan\n",
+            None,
+            true,
+            None,
+        ));
+        storage.insert(make_job(
+            "job-old-unpinned",
+            "2026-01-02T00:00:00Z",
+            "mage=\"Old\"\nserver=illidan\n",
+            None,
+            false,
+            None,
+        ));
+        storage.insert(make_job(
+            "job-mid-unpinned",
+            "2026-01-03T00:00:00Z",
+            "mage=\"Mid\"\nserver=illidan\n",
+            None,
+            false,
+            None,
+        ));
+        storage.insert(make_job(
+            "job-new-unpinned",
+            "2026-01-04T00:00:00Z",
+            "mage=\"New\"\nserver=illidan\n",
+            None,
+            false,
+            None,
+        ));
+
+        assert!(storage.get("job-pinned").is_some());
+        assert!(storage.get("job-old-unpinned").is_none());
+        assert!(storage.get("job-mid-unpinned").is_some());
+        assert!(storage.get("job-new-unpinned").is_some());
+    }
+
+    #[test]
+    fn user_can_filter_saved_profiles_case_insensitively() {
+        let storage = MemoryStorage::new();
+        storage.save_character_profile(SavedCharacterProfile {
+            id: "p1".to_string(),
+            name: "MyMain".to_string(),
+            realm: "Illidan".to_string(),
+            region: "US".to_string(),
+            class: Some("Mage".to_string()),
+            spec: Some("Arcane".to_string()),
+            simc_input: "mage=\"MyMain\"".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        });
+
+        let results = storage.list_character_profiles(Some("mymain"), Some("illidan"), Some("us"));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "p1");
+    }
+
+    #[test]
+    fn user_can_save_and_remove_local_settings() {
+        let storage = MemoryStorage::new();
+        storage.set_user_config("user-1", "discord_link_hidden", "true");
+        assert_eq!(
+            storage.get_user_config("user-1", "discord_link_hidden").as_deref(),
+            Some("true")
+        );
+
+        storage.remove_user_config("user-1", "discord_link_hidden");
+        assert!(
+            storage
+                .get_user_config("user-1", "discord_link_hidden")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn user_can_save_list_and_delete_dungeon_routes() {
+        let storage = MemoryStorage::new();
+        storage.save_route(SavedRoute {
+            id: "route-old".to_string(),
+            name: "Old Route".to_string(),
+            dungeon: "Ara-Kara".to_string(),
+            level: Some(10),
+            pull_count: Some(12),
+            timer_seconds: Some(1800),
+            affixes: Some("Fortified".to_string()),
+            route_data: "ROUTE_DATA_OLD".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        });
+        storage.save_route(SavedRoute {
+            id: "route-new".to_string(),
+            name: "New Route".to_string(),
+            dungeon: "Ara-Kara".to_string(),
+            level: Some(12),
+            pull_count: Some(14),
+            timer_seconds: Some(1780),
+            affixes: Some("Tyrannical".to_string()),
+            route_data: "ROUTE_DATA_NEW".to_string(),
+            created_at: "2026-01-02T00:00:00Z".to_string(),
+        });
+
+        let listed = storage.list_routes();
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].id, "route-new");
+        assert_eq!(listed[1].id, "route-old");
+
+        storage.delete_route("route-old");
+        let listed_after_delete = storage.list_routes();
+        assert_eq!(listed_after_delete.len(), 1);
+        assert_eq!(listed_after_delete[0].id, "route-new");
     }
 }

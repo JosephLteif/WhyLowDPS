@@ -2251,3 +2251,109 @@ pub(super) async fn create_droptimizer_sim(
         created_at,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{JobStorage, MemoryStorage};
+    use actix_web::body::to_bytes;
+
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn test_log_buffer() -> web::Data<Arc<LogBuffer>> {
+        web::Data::new(Arc::new(LogBuffer::new()))
+    }
+
+    fn test_simc_path() -> web::Data<PathBuf> {
+        web::Data::new(PathBuf::from("C:/nonexistent/simc.exe"))
+    }
+
+    fn parse_sim_req(value: Value) -> SimRequest {
+        serde_json::from_value(value).expect("valid SimRequest")
+    }
+
+    fn parse_top_gear_req(value: Value) -> TopGearRequest {
+        serde_json::from_value(value).expect("valid TopGearRequest")
+    }
+
+    fn parse_droptimizer_req(value: Value) -> DroptimizerRequest {
+        serde_json::from_value(value).expect("valid DroptimizerRequest")
+    }
+
+    #[actix_web::test]
+    async fn create_sim_rejects_input_without_detectable_class() {
+        let req = parse_sim_req(json!({
+            "simc_input": "this is not a simc export",
+            "sim_type": "quick",
+            "max_upgrade": false
+        }));
+        let resp = create_sim(
+            web::Json(req),
+            test_store(),
+            test_simc_path(),
+            test_log_buffer(),
+        )
+        .await;
+        assert_eq!(resp.status(), 400);
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert!(
+            payload
+                .get("detail")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("Could not detect character class")
+        );
+    }
+
+    #[actix_web::test]
+    async fn create_top_gear_rejects_input_without_detectable_class() {
+        let req = parse_top_gear_req(json!({
+            "simc_input": "not simc",
+            "selected_items": {},
+            "talent_builds": []
+        }));
+        let resp = create_top_gear_sim(
+            web::Json(req),
+            test_store(),
+            test_simc_path(),
+            test_log_buffer(),
+        )
+        .await;
+        assert_eq!(resp.status(), 400);
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert!(
+            payload
+                .get("detail")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("Could not detect character class")
+        );
+    }
+
+    #[actix_web::test]
+    async fn create_droptimizer_requires_at_least_one_selected_item() {
+        let req = parse_droptimizer_req(json!({
+            "simc_input": "warrior=\"Tester\"\nspec=fury\n",
+            "drop_items": [],
+            "copy_enchants": true
+        }));
+        let resp = create_droptimizer_sim(
+            web::Json(req),
+            test_store(),
+            test_simc_path(),
+            test_log_buffer(),
+        )
+        .await;
+        assert_eq!(resp.status(), 400);
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert_eq!(
+            payload.get("detail").and_then(Value::as_str),
+            Some("No items selected. Select at least one drop item.")
+        );
+    }
+}

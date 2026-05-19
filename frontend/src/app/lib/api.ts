@@ -43,9 +43,8 @@ function withTimeout(init: RequestInit | undefined, timeoutMs: number): RequestI
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const nextInit = { ...(init || {}), signal: controller.signal };
-  const clear = () => clearTimeout(timer);
   // Clear timeout once caller awaits fetch resolution.
-  (nextInit as any).__clearTimeout = clear;
+  (nextInit as any).__clearTimeout = () => clearTimeout(timer);
   return nextInit;
 }
 
@@ -94,7 +93,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
       lastErr = err;
       if (attempt < retries) {
         await sleep(GET_RETRY_DELAY_MS * (attempt + 1));
-        continue;
+
       }
     }
   }
@@ -163,6 +162,7 @@ export async function fetchJsonCached<T>(
           return parsed.data as T;
         }
       } catch (e) {
+        console.log(e);
         localStorage.removeItem(cacheKey);
       }
     }

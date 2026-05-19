@@ -231,7 +231,7 @@ export default function DungeonsPage() {
             } as unknown as DungeonInfo);
           })
           .sort((a, b) => a.name.localeCompare(b.name));
-        const raidRows: DungeonInfo[] = (zoneRaidRows.length > 0 ? zoneRaidRows : fallbackRaidRows).sort(
+        (zoneRaidRows.length > 0 ? zoneRaidRows : fallbackRaidRows).sort(
           (a, b) => a.name.localeCompare(b.name),
         );
         const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
@@ -447,7 +447,7 @@ export default function DungeonsPage() {
           } as unknown as DungeonInfo);
         })
         .sort((a, b) => a.name.localeCompare(b.name));
-      const raidRows: DungeonInfo[] = (zoneRaidRows.length > 0 ? zoneRaidRows : fallbackRaidRows).sort(
+      (zoneRaidRows.length > 0 ? zoneRaidRows : fallbackRaidRows).sort(
         (a, b) => a.name.localeCompare(b.name),
       );
       const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);

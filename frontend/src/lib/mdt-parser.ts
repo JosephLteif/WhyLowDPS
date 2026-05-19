@@ -159,7 +159,7 @@ export function parseMdtString(input: string): SimcClipboardInfo | null {
     let decompressedBytes: Uint8Array;
     try {
       decompressedBytes = pako.inflate(decoded);
-    } catch (e) {
+    } catch {
       decompressedBytes = pako.inflateRaw(decoded);
     }
 

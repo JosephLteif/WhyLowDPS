@@ -127,7 +127,7 @@ export function useDataCacheRefresh() {
       cacheSyncing && syncProgress.total > 0
         ? Math.max(0, Math.min(100, Math.round((syncProgress.current / syncProgress.total) * 100)))
         : 0,
-    [cacheSyncing, syncProgress.current, syncProgress.total]
+    [cacheSyncing, syncProgress],
   );
 
   return {

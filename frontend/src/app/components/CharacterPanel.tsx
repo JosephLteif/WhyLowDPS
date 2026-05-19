@@ -1,27 +1,26 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { BlizzardItem } from '../lib/simc-generator';
 import TalentTree from './TalentTree';
-import { useTalentTree, type TalentTreeData } from '../lib/useTalentTree';
+import { type TalentTreeData, useTalentTree } from '../lib/useTalentTree';
 import CharacterQuickLinks from './character/CharacterQuickLinks';
 import CharacterPageTabs, { type CharacterPageTab } from './character/CharacterPageTabs';
 import RaidProgressionGrid from './RaidProgressionGrid';
 import GearOverview, { type GearItem as OverviewGearItem } from './GearOverview';
-import { API_URL, fetchJson, type MythicKeystoneDungeonDetail } from '../lib/api';
+import { type MythicKeystoneDungeonDetail } from '../lib/api';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
 import SectionCard from './shared/SectionCard';
 import ProgressSlotCard from './shared/ProgressSlotCard';
 import { buildCharacterTalentString } from '../lib/character-panel-talent';
 import type {
   CharacterPanelEquipment,
+  CharacterRunMember,
   CharacterSpecialization,
   CharacterSpecializationsPayload,
   CharacterStatisticsPayload,
   CharacterTalentLoadout,
   CharacterTalentSelection,
-  CharacterRunMember,
   MythicPlusPayload,
   MythicRun,
   RaidEncountersPayload,
@@ -31,14 +30,13 @@ import {
   computeMythicVaultProgress,
   computeWeeklyRaidBossKills,
   getMemberProfileHref,
-  getWeeklyResetStartMs,
   isCurrentExpansionPlaceholder,
   isLikelyCurrentExpansionLabel,
-  normalizeRealmSlug,
   parseVaultRewardsFromSimcInput,
 } from '../lib/character-panel-utils';
 import { parseTalentLoadouts, type TalentLoadoutParsed } from '../lib/types';
 import { useMythicDungeonDetails } from '../lib/useMythicDungeonDetails';
+
 const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
 
 function getUpgradeLabel(item: Record<string, any>): string {
@@ -124,7 +122,7 @@ export default function CharacterPanel({
     for (const it of equipment.equipped_items || []) {
       const rawSlot = String(it.slot?.type || '').toUpperCase();
       if (!rawSlot) continue;
-      const slot = rawSlot.toLowerCase().replace(/_(1|2)$/i, '$1');
+      const slot = rawSlot.toLowerCase().replace(/_([12])$/i, '$1');
       normalized[slot] = {
         slot,
         item_id: Number(it.item?.id || 0),
@@ -222,11 +220,10 @@ function VaultOverviewCard({
   latestSimcInput?: string | null;
   region?: string;
 }) {
-  const mythicRunsThisWeek = useMemo(
+  useMemo(
     () => computeMythicVaultProgress(mythicPlus, region).runsForVault,
     [mythicPlus, region]
   );
-
   const raidBossesThisWeek = useMemo(() => {
     return computeWeeklyRaidBossKills(raidEncounters, region);
   }, [raidEncounters, region]);
@@ -317,8 +314,6 @@ function VaultOverviewCard({
 function MythicPlusCard({
   mythicPlus,
   region,
-  realm,
-  name,
 }: {
   mythicPlus: MythicPlusPayload;
   region?: string;
@@ -490,15 +485,7 @@ function MythicPlusCard({
     const depletedRuns = recentRuns.filter((run) => getRunTimed(run) === false).length;
     const timedStatusKnownCount = recentRuns.filter((run) => getRunTimed(run) !== null).length;
 
-    const weekStart = getWeeklyResetStartMs(region);
-    const recentWeekCount = recentRuns.filter((run) => {
-      const ts = getRunTimestamp(run);
-      const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
-      return tsMs > 0 && tsMs >= weekStart;
-    }).length;
-
-    const currentPeriodCandidates = collectRuns(mythicPlusObj.current_period || {});
-    const currentPeriodCount = currentPeriodCandidates.length;
+    collectRuns(mythicPlusObj.current_period || {});
     const vaultProgress = computeMythicVaultProgress(mythicPlus, region);
     const runsForVault = vaultProgress.runsForVault;
     const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
@@ -560,8 +547,7 @@ function MythicPlusCard({
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
   };
-
-  const mythicDungeonTimers = useMemo(() => {
+  useMemo(() => {
     const out: Record<string, number> = {};
     for (const detail of Object.values(mplusDungeonDetailsByName || {})) {
       const name = String(detail?.name || '')
@@ -577,7 +563,6 @@ function MythicPlusCard({
     }
     return out;
   }, [mplusDungeonDetailsByName]);
-
   return (
     <div className="card p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -675,7 +660,7 @@ function MythicPlusCard({
                       {run.timed !== null ? (
                         <span
                           className={`h-7 w-1.5 shrink-0 rounded-full ${
-                            run.timed === true
+                            run.timed
                               ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.6)]'
                               : 'bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.6)]'
                           }`}
@@ -791,8 +776,6 @@ function MythicPlusCard({
 function RaidSectionCard({
   raidEncounters,
   region,
-  realm,
-  name,
 }: {
   raidEncounters: RaidEncountersPayload;
   region: string;

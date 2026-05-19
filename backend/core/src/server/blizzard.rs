@@ -213,6 +213,7 @@ fn enrich_mythic_profile_member_links(value: &mut Value) {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::{parse_character_path_from_url, BlizzardState};
     use crate::server::auth_handlers::BlizzardAuthState;

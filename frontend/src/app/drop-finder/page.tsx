@@ -11,7 +11,11 @@ import { API_URL, fetchJson } from '../lib/api';
 import { slotFromInventoryType, slotLabelToSimSlot } from '../lib/gear-utils';
 import { TRACK_COLORS } from '../lib/loot-track';
 import { useSimSubmit } from '../lib/useSimSubmit';
-import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
+import {
+  consumeSimAgainState,
+  consumeSimReturnNotice,
+  type SimReturnNotice as SimReturnNoticeType,
+} from '../lib/sim-return';
 import { getAppDefaultOption, getCharacterDefaultsKeyFromSimcInput } from '../lib/default-options';
 import type { DifficultyDef } from '../lib/types';
 import CategorySelector from './CategorySelector';
@@ -33,19 +37,17 @@ import {
 } from './utils';
 import {
   detectClass,
-  getClassId,
   detectSpec,
+  type DropItem,
   formatSpecName,
+  getClassId,
   getClassSpecs,
-  itemMatchesActiveLootSpec,
   getSpecId,
   getTrackInfo,
+  itemMatchesActiveLootSpec,
   resolveUpgrade,
-  type DropItem,
-  type Instance,
-  type UpgradeTracks,
 } from './types';
-import { parseCharacterInfo } from '../../lib/simc-parser';
+import { parseCharacterInfo } from '@/lib/simc-parser';
 import { buildWishlistOwnerKey, loadWishlist, toggleWishlistEntry } from '../lib/wishlist';
 
 type Category = 'raids' | string;
@@ -154,7 +156,6 @@ export default function DropFinderPage() {
     raids,
     dungeonCats,
     className,
-    specName,
   } = useDropFinderData(simcInput, activeSpecs);
 
   const hasCharacter = simcInput.trim().length >= 10;
@@ -290,13 +291,13 @@ export default function DropFinderPage() {
     if (!isDungeon) return new Set<string>();
     if (selectedId === allKey) return new Set<string>();
     return new Set(parseInstanceSelectionIds(selectedId));
-  }, [isDungeon, selectedId, allKey, dungeonInstances]);
+  }, [isDungeon, selectedId, allKey]);
 
   const selectedRaidIds = useMemo(() => {
     if (!isRaid) return new Set<string>();
     if (selectedId === allKey) return new Set<string>();
     return new Set(parseInstanceSelectionIds(selectedId));
-  }, [isRaid, selectedId, allKey, raids]);
+  }, [isRaid, selectedId, allKey]);
 
   const allDungeonsSelected = isDungeon && selectedId === allKey;
   const allRaidsSelected = isRaid && selectedId === allKey;
@@ -907,8 +908,7 @@ export default function DropFinderPage() {
             <label className="label-text">Difficulty</label>
             <div className="flex flex-wrap gap-2">
               {activeDifficulties.map((d) => {
-                const currentDiff = currentDiffKey;
-                const isActive = currentDiff === d.key;
+                const isActive = currentDiffKey === d.key;
                 const trackLevels = d.track ? getTrackLevels(d.track, upgradeTracks) : null;
                 const displayLevel = isRaid ? getRaidDifficultyDisplayLevel(d.key) : d.level;
                 const trackMax =

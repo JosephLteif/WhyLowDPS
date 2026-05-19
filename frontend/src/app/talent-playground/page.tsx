@@ -330,7 +330,7 @@ export default function TalentPlaygroundPage() {
       }
       lastLoadedBuildIdRef.current = activeBuild.id;
     }
-  }, [activeBuild?.id, activeBuild?.talentString, editorTalentString]);
+  }, [activeBuild, activeBuild?.id, activeBuild?.talentString, editorTalentString]);
 
   const activeSpec = useMemo(() => {
     if (!editorTalentString) return null;

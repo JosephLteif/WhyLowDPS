@@ -1,23 +1,23 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { decodeHeader, decodeNodeSelections, decodeNodes } from '../lib/talentDecode';
 import type { NodeSelection } from '../lib/talentDecode';
+import { decodeHeader, decodeNodes, decodeNodeSelections } from '../lib/talentDecode';
 import { encodeTalentString } from '../lib/talentEncode';
 import {
-  canSelectNode,
   canDeselectNode,
-  toggleNode,
-  decrementNode,
-  cycleChoice,
-  getPointsSpent,
-  getActiveSubTreeId,
+  canSelectNode,
   CLASS_POINTS,
+  cycleChoice,
+  decrementNode,
+  getActiveSubTreeId,
+  getPointsSpent,
   HERO_POINTS,
   SPEC_POINTS,
+  toggleNode,
 } from '../lib/talentRules';
-import { useTalentTree } from '../lib/useTalentTree';
 import type { TalentNode, TalentTreeData } from '../lib/useTalentTree';
+import { useTalentTree } from '../lib/useTalentTree';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useSpellIcons } from '../lib/useWowheadIcons';
 
@@ -760,10 +760,8 @@ function TalentNodeSvg({
   selection,
   editable,
   selectable,
-  deselectable,
   onClick,
   onRightClick,
-  onChoiceCycle,
   onChoiceOpen,
 }: {
   node: TalentNode;

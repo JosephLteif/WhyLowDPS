@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -11,9 +10,13 @@ import { useSimContext } from '../components/SimContext';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import { API_URL } from '../lib/api';
 import { SLOT_LABELS } from '../lib/types';
-import { QUALITY_COLORS, getIconUrl, useItemInfo, type ItemQuery } from '../lib/useItemInfo';
+import { getIconUrl, type ItemQuery, QUALITY_COLORS, useItemInfo } from '../lib/useItemInfo';
 import { useSimSubmit } from '../lib/useSimSubmit';
-import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../lib/sim-return';
+import {
+  consumeSimAgainState,
+  consumeSimReturnNotice,
+  type SimReturnNotice as SimReturnNoticeType,
+} from '../lib/sim-return';
 
 const UPGRADE_COMPARE_SIM_AGAIN_KEY = 'upgrade-compare';
 

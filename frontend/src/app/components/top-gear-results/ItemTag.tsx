@@ -1,7 +1,7 @@
 import { useRouter } from 'next/navigation';
 import type { CSSProperties } from 'react';
-import { getIconUrl, getWowheadData, getWowheadUrl, QUALITY_COLORS } from '../../lib/useItemInfo';
 import type { EnchantInfo, GemInfo, ItemInfo } from '../../lib/useItemInfo';
+import { getIconUrl, getWowheadData, getWowheadUrl, QUALITY_COLORS } from '../../lib/useItemInfo';
 import type { ResultItem } from '../../lib/types';
 import { SLOT_LABELS } from '../../lib/types';
 import { getItemExtraEffects, useItemExtraEffects } from '../../lib/itemExtraEffect';
@@ -31,7 +31,6 @@ export default function ItemTag({
   info,
   enchant,
   gem,
-  upgradeState = null,
   ilevelTagText,
   tierText,
   tierClassName = '',

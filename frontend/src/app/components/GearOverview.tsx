@@ -2,15 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type {
-  EmbellishmentOption,
-  EnchantInfo,
-  GemInfo,
-  ItemInfo,
-  ItemQuery,
-} from '../lib/useItemInfo';
+import type { EmbellishmentOption, EnchantInfo, GemInfo, ItemInfo, ItemQuery } from '../lib/useItemInfo';
 import {
-  enchantAvailabilityKey,
   enchantAvailabilityItemKey,
   getIconUrl,
   getWowheadData,
@@ -28,10 +21,7 @@ import type { Instance } from '../drop-finder/types';
 import { buildSourceTagLinks } from '../lib/source-navigation';
 import { getItemExtraEffects, useItemExtraEffects } from '../lib/itemExtraEffect';
 import GearItemRow from './GearItemRow';
-import {
-  ASCENDANT_VOIDCORE_BADGE_CLASS,
-  EMBELLISHMENT_BADGE_CLASS,
-} from './shared/itemBadgeClasses';
+import { ASCENDANT_VOIDCORE_BADGE_CLASS, EMBELLISHMENT_BADGE_CLASS } from './shared/itemBadgeClasses';
 
 export interface GearItem {
   slot: string;

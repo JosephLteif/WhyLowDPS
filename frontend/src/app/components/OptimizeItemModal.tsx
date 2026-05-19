@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CircleX, Search, X } from 'lucide-react';
 import { API_URL } from '../lib/api';
 import type { ResolvedItem } from '../lib/types';
@@ -12,11 +12,9 @@ import {
   enchantFitsSpec,
   gemFitsSpec,
   normalizeEnchantOptions,
-  sortGemOptions,
-  type EnchantDisplayOption,
-  type GemDisplayOption,
   type RawEnchantOption,
   type RawGemOption,
+  sortGemOptions,
 } from './top-gear/affixOptionUtils';
 
 /** Raw enchant shape returned by the backend (straight from enchantments.json). */
@@ -50,12 +48,6 @@ interface RawGem extends RawGemOption {
   expansion?: number;
   craftingQuality?: number;
 }
-
-/** Deduplicated enchant for display — highest crafting quality per base name. */
-type EnchantDisplay = EnchantDisplayOption;
-
-/** Deduplicated gem for display — highest crafting quality per base gem. */
-type GemDisplay = GemDisplayOption;
 
 interface EmbellishmentOption {
   id: number;

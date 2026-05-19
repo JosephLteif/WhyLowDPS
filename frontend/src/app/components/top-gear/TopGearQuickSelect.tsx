@@ -18,9 +18,7 @@ interface TopGearQuickSelectProps {
 export default function TopGearQuickSelect({
   comboCount,
   maxCombinations,
-  hasSelection,
   vaultCount,
-  allVaultSelected,
   catalystCount,
   allCatalystSelected,
   onToggleVault,

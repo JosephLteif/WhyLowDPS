@@ -221,7 +221,6 @@ function clampUpgradeArrowChain(label: string): string {
 function formatCanonicalUpgradeLabel(
   selectedUpgradeRaw: string,
   equippedUpgradeRaw: string,
-  _includeAscendant: boolean
 ): string {
   const selectedSegments = parseUpgradeLabel(selectedUpgradeRaw).segments;
   const equippedSegments = parseUpgradeLabel(equippedUpgradeRaw).segments;
@@ -577,9 +576,7 @@ export default function TopGearItemSelector({
         if (!slotRes || slotRes.alternatives.some((a) => a.uid === uid)) continue;
         const upgradeLabel = formatCanonicalUpgradeLabel(
           option.fullName,
-          String(slotRes.equipped?.upgrade || item.upgrade || ''),
-          false
-        );
+          String(slotRes.equipped?.upgrade || item.upgrade || ''));
         const copy: ResolvedItem = {
           ...item,
           slot,
@@ -675,7 +672,6 @@ export default function TopGearItemSelector({
         const upgradeLabel = formatCanonicalUpgradeLabel(
           option.fullName,
           String(slotRes.equipped?.upgrade || item.upgrade || ''),
-          false
         );
         const copy: ResolvedItem = {
           ...item,
@@ -1627,7 +1623,7 @@ export default function TopGearItemSelector({
       }
       return sameStringSet(prev, next) ? prev : next;
     });
-  }, [selectedUidSet]);
+  }, [selectedUidSet, setImmediateLimitWarningUids, setKnownEmbellishedUids, setLimitWarningOrder]);
 
   useEffect(() => {
     const selectionChanged = selectedUidSignatureRef.current !== selectedUidSignature;
@@ -1648,13 +1644,7 @@ export default function TopGearItemSelector({
       }
       return sameStringSet(prev, next) ? prev : next;
     });
-  }, [
-    backendFallbackLimitWarningUid,
-    hasBackendEmbellishmentLimitWarning,
-    localLimitWarningUids,
-    selectedUidSignature,
-    selectedUidSet,
-  ]);
+  }, [backendFallbackLimitWarningUid, hasBackendEmbellishmentLimitWarning, localLimitWarningUids, selectedUidSignature, selectedUidSet, setConfirmedLimitWarningUids]);
 
   const activeLimitWarningUids = useMemo(() => {
     const next = new Set<string>();
@@ -1729,17 +1719,7 @@ export default function TopGearItemSelector({
         );
       }
     },
-    [
-      selectedUids,
-      resolved.slots,
-      toggleItem,
-      forgetLimitWarningCandidate,
-      rememberLimitWarningCandidate,
-      embellishmentOptionsByItem,
-      knownEmbellishedUids,
-      limitWarningOrder,
-      getEmbellishmentLimitWarnings,
-    ]
+    [selectedUids, knownEmbellishedUids, limitWarningOrder, setImmediateLimitWarningUids, getEmbellishmentLimitWarnings, toggleItem, embellishmentOptionsByItem, resolved.slots, forgetLimitWarningCandidate, rememberLimitWarningCandidate],
   );
 
   const itemDetails = (item: ResolvedItem) => {
@@ -1895,8 +1875,8 @@ export default function TopGearItemSelector({
       const text = String(part.text || '').trim().toLowerCase();
       if (/^mod:\d+$/.test(text)) return false;
       if (/^i?l?v?l[:\s]*\d+$/.test(text)) return false;
-      if (text === 'ascendant_voidcore') return false;
-      return true;
+      return text !== 'ascendant_voidcore';
+
     });
   };
 
@@ -2182,9 +2162,7 @@ export default function TopGearItemSelector({
           const nextUpgrade = clampUpgradeArrowChain(
             formatCanonicalUpgradeLabel(
             item.upgrade,
-            String(resolved.slots[item.slot]?.equipped?.upgrade || ''),
-            enabled
-            )
+              String(resolved.slots[item.slot]?.equipped?.upgrade || ''))
           );
           const nextItem: ResolvedItem = {
             ...item,

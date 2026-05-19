@@ -294,13 +294,9 @@ fn resolve_bundled_path(entry: &DataFileEntry) -> Option<PathBuf> {
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))?;
     let file_name = Path::new(bundled_path).file_name()?;
     let exe_bundled = exe_dir.join("resources").join(file_name);
-    for candidate in path_variants_with_json_alias(&exe_bundled) {
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
-    None
+    path_variants_with_json_alias(&exe_bundled)
+        .into_iter()
+        .find(|candidate| candidate.exists())
 }
 
 fn restore_local_file_from_bundle(root: &Path, entry: &DataFileEntry) -> Result<(), String> {
@@ -1302,7 +1298,7 @@ async fn fetch_blizzard_mythic_dungeon_image_url_with_token(
         .and_then(|k| k.get("href"))
         .and_then(|h| h.as_str())
     {
-        if let Some(url) = media_url_from_media_href(client, &token, media_href).await {
+        if let Some(url) = media_url_from_media_href(client, token, media_href).await {
             return Some(url);
         }
     }

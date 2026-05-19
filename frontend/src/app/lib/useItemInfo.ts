@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { API_URL, fetchJson, fetchJsonCached } from './api';
+import { API_URL, fetchJsonCached } from './api';
 
 export interface ItemQuery {
   item_id: number;

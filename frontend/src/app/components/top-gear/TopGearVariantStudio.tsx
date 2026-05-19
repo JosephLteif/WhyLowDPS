@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CircleX } from 'lucide-react';
 import type { ResolvedItem } from '../../lib/types';
 import { API_URL } from '../../lib/api';
@@ -12,9 +12,9 @@ import {
   enchantFitsSpec as sharedEnchantFitsSpec,
   gemFitsSpec as sharedGemFitsSpec,
   normalizeEnchantOptions as sharedNormalizeEnchantOptions,
-  sortGemOptions as sharedSortGemOptions,
   type RawEnchantOption,
   type RawGemOption,
+  sortGemOptions as sharedSortGemOptions,
 } from './affixOptionUtils';
 
 interface RawEnchant {
@@ -174,7 +174,6 @@ export interface SavedVariantStudioState {
   gemScope: GemScope;
 }
 
-const MIN_VISIBLE_OPTION_QUALITY = 3;
 
 const SLOT_SCOPE: Record<string, { key: string; label: string }> = {
   head: { key: 'head', label: 'Head' },
@@ -222,59 +221,12 @@ function parseEnchantIdFromItem(item: ResolvedItem): number {
 function uniqueNumberValues(values: number[]): number[] {
   return Array.from(new Set(values.filter((value) => Number.isFinite(value) && value > 0)));
 }
-
-function toEnchantDisplay(enchant: RawEnchant): EnchantDisplay {
-  const name = enchant.itemName || enchant.displayName || enchant.name || 'Unknown';
-  return {
-    enchantId: enchant.enchant_id ?? enchant.id ?? 0,
-    name,
-    icon: enchant.itemIcon || enchant.spellIcon || 'inv_misc_questionmark',
-    quality: enchant.quality ?? 3,
-    itemId: enchant.itemId ?? 0,
-    baseKey:
-      enchant.baseDisplayName ||
-      enchant.itemName ||
-      enchant.displayName ||
-      enchant.name ||
-      `enchant-${enchant.enchant_id ?? enchant.id ?? 0}`,
-    effectKey: enchant.effectKey?.trim() || null,
-    effectAmounts: Array.isArray(enchant.effectAmounts)
-      ? enchant.effectAmounts.filter((value) => Number.isFinite(value))
-      : [],
-    craftingQuality: enchant.craftingQuality ?? 0,
-  };
-}
-
 function normalizeEnchantOptions(raw: RawEnchant[]): EnchantDisplay[] {
   return sharedNormalizeEnchantOptions(raw as RawEnchantOption[]) as EnchantDisplay[];
 }
-
-function compareEnchantStrength(current: EnchantDisplay, existing: EnchantDisplay): number {
-  const maxLength = Math.max(current.effectAmounts.length, existing.effectAmounts.length);
-  for (let index = 0; index < maxLength; index += 1) {
-    const currentAmount = current.effectAmounts[index] ?? -1;
-    const existingAmount = existing.effectAmounts[index] ?? -1;
-    if (currentAmount !== existingAmount) {
-      return currentAmount - existingAmount;
-    }
-  }
-
-  if (current.craftingQuality !== existing.craftingQuality) {
-    return current.craftingQuality - existing.craftingQuality;
-  }
-
-  if (current.quality !== existing.quality) {
-    return current.quality - existing.quality;
-  }
-
-  return 0;
-}
-
 function deduplicateEnchants(
   options: EnchantDisplay[],
-  showAll: boolean,
-  _pinnedEnchantIds: number[] = []
-): EnchantDisplay[] {
+  showAll: boolean): EnchantDisplay[] {
   return sharedDeduplicateEnchants(options, showAll) as EnchantDisplay[];
 }
 
@@ -295,36 +247,6 @@ function toGemDisplay(gem: RawGem): GemDisplay {
     isPvp: gem.isPvp ?? false,
   };
 }
-
-function gemStrength(gem: RawGem): [number, number, number] {
-  return [gem.primaryAmount ?? 0, gem.secondaryAmount ?? 0, gem.craftingQuality ?? 0];
-}
-
-function compareGemStrength(current: RawGem, existing: RawGem): number {
-  const [currentPrimary, currentSecondary, currentQuality] = gemStrength(current);
-  const [existingPrimary, existingSecondary, existingQuality] = gemStrength(existing);
-
-  if (currentPrimary !== existingPrimary) {
-    return currentPrimary - existingPrimary;
-  }
-  if (currentSecondary !== existingSecondary) {
-    return currentSecondary - existingSecondary;
-  }
-  return currentQuality - existingQuality;
-}
-
-function gemEffectKey(gem: RawGem): string {
-  const category = gem.category || 'special';
-  const primaryStat = gem.primaryStat || 'none';
-  const secondaryStat = gem.secondaryStat || 'none';
-
-  if (category === 'special') {
-    return `special:${gem.itemName || gem.displayName || gem.name || gem.item_id || gem.id || 0}`;
-  }
-
-  return `${category}:${primaryStat}:${secondaryStat}`;
-}
-
 function deduplicateGems(raw: RawGem[], showAll: boolean, pinnedGemIds: number[] = []): GemDisplay[] {
   const kept = sharedDeduplicateGems(raw as RawGemOption[], showAll) as GemDisplay[];
   const pinnedSet = new Set(pinnedGemIds);
@@ -426,23 +348,6 @@ function groupOrderWeight(groupKey: string): number {
   if (orderedIndex >= 0) return orderedIndex;
   return 500;
 }
-
-function normalizedSpecName(raw?: string | null): string {
-  return (raw || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-}
-
-function isHealerSpec(spec?: string | null): boolean {
-  return ['restoration', 'holy', 'discipline', 'mistweaver', 'preservation'].includes(
-    normalizedSpecName(spec)
-  );
-}
-
-function isTankSpec(spec?: string | null): boolean {
-  return ['blood', 'protection', 'guardian', 'vengeance', 'brewmaster'].includes(
-    normalizedSpecName(spec)
-  );
-}
-
 function gemFitsSpec(gem: GemDisplay, specName?: string | null): boolean {
   return sharedGemFitsSpec(gem, specName);
 }
@@ -798,7 +703,7 @@ export default function TopGearVariantStudio({
     return () => {
       cancelled = true;
     };
-  }, [className, itemsSignature, specName]);
+  }, [className, items, itemsSignature, specName]);
 
   const groups = useMemo(() => {
     const byGroup = new Map<string, RuleGroup>();
@@ -1726,7 +1631,7 @@ export default function TopGearVariantStudio({
                   <div className="grid grid-cols-1 gap-x-6 gap-y-6 xl:grid-cols-4 2xl:grid-cols-5">
                     {groups.map((group) => {
                       const selection = getEffectiveGroupSelection(group.key);
-                      const pinnedEnchantIds = uniqueNumberValues([
+                      uniqueNumberValues([
                         ...group.items.map(parseEnchantIdFromItem),
                         ...(equippedEnchantIdsByGroup[group.key] || []),
                         ...selection.enchantIds,
@@ -1734,7 +1639,6 @@ export default function TopGearVariantStudio({
                       const visibleEnchants = deduplicateEnchants(
                         group.enchantOptions,
                         showAllEnchants,
-                        pinnedEnchantIds
                       ).filter((option) => enchantFitsSpec(option, className, specName));
                       const filteredEnchants = normalizedSearch
                         ? visibleEnchants.filter((option) =>

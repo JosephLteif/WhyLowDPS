@@ -1,7 +1,7 @@
-import { useCallback, useState, useMemo } from 'react';
+import { useCallback, useState } from 'react';
 import { API_URL } from '../../lib/api';
 import { buildResolvedItemIdentity } from '../../lib/gear-utils';
-import type { ResolveGearResponse, ResolvedItem } from '../../lib/types';
+import type { ResolvedItem, ResolveGearResponse } from '../../lib/types';
 
 interface UpgradeOption {
   bonus_id: number;
@@ -35,8 +35,6 @@ export function useTopGearState({
   resolved,
   selectedUids,
   onSelectionChange,
-  onResolvedChange,
-  onItemAdded,
 }: TopGearStateProps) {
   const [upgradeMenuFor, setUpgradeMenuFor] = useState<string | null>(null);
   const [upgradeOptions, setUpgradeOptions] = useState<UpgradeOption[]>([]);

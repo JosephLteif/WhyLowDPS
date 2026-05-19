@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
-import { Ellipsis } from 'lucide-react';
-import { Plus } from 'lucide-react';
+import { Ellipsis, Plus } from 'lucide-react';
 import { ResolvedItem } from '../../lib/types';
 import type { ItemInfo } from '../../lib/useItemInfo';
 import { QUALITY_COLORS } from '../../lib/useItemInfo';
@@ -83,14 +82,6 @@ export default function TopGearSlotGroup({
   itemInfoMap,
   onToggle,
   onAddClick,
-  onUpgradeClick,
-  onUpgradeSelect,
-  onCatalystConvert,
-  onOptimize,
-  canOptimizeItem,
-  shouldShowOptimizeButton,
-  optimizeDisabledReason,
-  optimizeTitle,
   onItemContextMenu,
   itemDetails,
   isItemSelected,
@@ -102,7 +93,6 @@ export default function TopGearSlotGroup({
   onToggleHiddenAlternatives,
   getWowheadUrl,
   getWowheadData,
-  getDisplayIlevel,
   itemOverline,
 }: TopGearSlotGroupProps) {
   useMemo(() => {

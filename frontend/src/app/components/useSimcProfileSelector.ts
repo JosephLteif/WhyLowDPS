@@ -1,11 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  deleteCharacterProfile,
-  listCharacterProfiles,
-  type SavedCharacterProfile,
-} from '../lib/api';
+import { deleteCharacterProfile, listCharacterProfiles, type SavedCharacterProfile } from '../lib/api';
 import { parseCharacterInfo } from '@/lib/simc-parser';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import { formatRealmName, resolveClassColor } from '../lib/profile-format';
@@ -36,7 +32,6 @@ type UseSimcProfileSelectorArgs = {
 };
 
 export function useSimcProfileSelector({
-  simcInput,
   setSimcInput,
 }: UseSimcProfileSelectorArgs) {
   const [simcInputHistory, setSimcInputHistory] = useState<string[]>([]);

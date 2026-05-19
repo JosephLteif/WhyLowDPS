@@ -8,23 +8,18 @@ import GearOverview from './GearOverview';
 import SimStatsComparisonCard from './SimStatsComparisonCard';
 import type { StatSnapshot } from '../lib/stat-snapshot';
 import { buildExactTopGearSimInput, getTopGearProfilesetName } from '../lib/top-gear-exact-stats';
-import { useItemInfo, useEnchantInfo, useGemInfo } from '../lib/useItemInfo';
-import type { ItemInfo, EnchantInfo, GemInfo, ItemQuery } from '../lib/useItemInfo';
+import type { ItemInfo, ItemQuery } from '../lib/useItemInfo';
+import { useEnchantInfo, useGemInfo, useItemInfo } from '../lib/useItemInfo';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { TopGearResult, ResultItem } from '../lib/types';
+import type { ResultItem, TopGearResult } from '../lib/types';
 import { useTopGearResults } from './top-gear-results/useTopGearResults';
 import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
 import SimResultTalentsCard from './SimResultTalentsCard';
-import {
-  addItemsToWishlist,
-  buildWishlistOwnerKey,
-  isWishlisted,
-  removeFromWishlist,
-} from '../lib/wishlist';
+import { addItemsToWishlist, buildWishlistOwnerKey, isWishlisted, removeFromWishlist } from '../lib/wishlist';
 import type { DropItem, Instance } from '../drop-finder/types';
 
 interface TopGearResultsProps {
@@ -193,7 +188,6 @@ export default function TopGearResults({
   talentString,
   currencies,
   enableWishlistActions = false,
-  baselineLiveStats,
   simulatedStats,
   generatedInput,
   simOptions,
@@ -488,7 +482,7 @@ export default function TopGearResults({
         }));
       }
     },
-    [generatedInput, simOptions, exactStatsStorageKey, parentSimId]
+    [generatedInput, exactStatsStorageKey, simOptions, parentSimId, playerName, playerRealm, playerRegion],
   );
 
   const openOrStartExactStats = useCallback(

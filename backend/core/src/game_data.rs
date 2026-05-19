@@ -788,15 +788,14 @@ pub fn get_instance_drops(
                     let mut main_can_use = true;
 
                     // Check spec restrictions (if item has a specs list)
-                    if !item_specs.is_empty() {
-                        if !restrictions_match_active_specs(
+                    if !item_specs.is_empty()
+                        && !restrictions_match_active_specs(
                             &item_specs,
                             &main_spec_ids,
                             allowed_class_id,
                         ) {
                             main_can_use = false;
                         }
-                    }
 
                     // Check weapon/shield/offhand eligibility
                     if main_can_use && (item_class == 2 || inv_type == 14 || inv_type == 23) {
@@ -897,7 +896,7 @@ fn get_catalyst_drops(
         }
     }
 
-    raid_drops.retain(|_, v| v.as_array().map_or(false, |arr| !arr.is_empty()));
+    raid_drops.retain(|_, v| v.as_array().is_some_and(|arr| !arr.is_empty()));
 
     if raid_drops.is_empty() {
         None

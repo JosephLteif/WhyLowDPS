@@ -285,3 +285,63 @@ pub fn parse_catalyst_charges(simc_input: &str, currency_id: u64) -> Option<u32>
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_catalyst_charges, parse_simc_input, parse_upgrade_currencies};
+    use crate::types::ItemOrigin;
+
+    #[test]
+    fn parse_simc_input_extracts_bonus_ids_and_item_origins() {
+        let simc = r#"
+warrior="Tester"
+talents=active-talent-string
+head=id=229308,bonus_id=11965/6652,ilevel=684,gem_id=213461
+# Weekly Reward Choices
+# shoulder=id=228816,bonus_id=11964:10394,ilvl=681,name=algari_champions_pauldron
+# End of Weekly Reward Choices
+"#;
+
+        let parsed = parse_simc_input(simc);
+        assert_eq!(parsed.items.len(), 2);
+
+        let equipped = parsed
+            .items
+            .iter()
+            .find(|item| item.origin == ItemOrigin::Equipped)
+            .expect("equipped item should exist");
+        assert_eq!(equipped.item_id, 229308);
+        assert_eq!(equipped.bonus_ids, vec![11965, 6652]);
+        assert_eq!(equipped.gem_id, 213461);
+
+        let vault = parsed
+            .items
+            .iter()
+            .find(|item| item.origin == ItemOrigin::Vault)
+            .expect("vault item should exist");
+        assert_eq!(vault.item_id, 228816);
+        assert_eq!(vault.bonus_ids, vec![11964, 10394]);
+        assert_eq!(vault.name, "Algari Champions Pauldron");
+    }
+
+    #[test]
+    fn parse_upgrade_currencies_keeps_only_currency_entries() {
+        let simc = r#"
+# upgrade_currencies = c:3008:12/i:224073:3/c:3009:45
+"#;
+
+        let parsed = parse_upgrade_currencies(simc);
+        assert_eq!(parsed.get(&3008), Some(&12));
+        assert_eq!(parsed.get(&3009), Some(&45));
+        assert!(!parsed.contains_key(&224073));
+    }
+
+    #[test]
+    fn parse_catalyst_charges_extracts_requested_currency() {
+        let simc = r#"
+# catalyst_currencies=3269:8/3378:5/2813:8
+"#;
+        assert_eq!(parse_catalyst_charges(simc, 3378), Some(5));
+        assert_eq!(parse_catalyst_charges(simc, 9999), None);
+    }
+}

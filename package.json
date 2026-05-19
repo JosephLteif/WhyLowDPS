@@ -9,6 +9,18 @@
     "npm-check-updates": "^22.0.1"
   },
   "scripts": {
+    "check": "npm run typecheck && npm run lint && npm run test",
+    "typecheck": "npm run typecheck:frontend && npm run typecheck:rust",
+    "typecheck:frontend": "npm run typecheck --prefix frontend",
+    "typecheck:rust": "cargo check --workspace",
+    "lint": "npm run lint:frontend && npm run lint:rust",
+    "lint:frontend": "npm run lint --prefix frontend",
+    "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
+    "test": "npm run test:rust && npm run test:scripts",
+    "test:rust": "cargo test --workspace",
+    "test:scripts": "node --test scripts/tests/*.test.js",
+    "build:frontend": "npm run build --prefix frontend",
+    "tauri:build:check": "cargo check --manifest-path desktop/src-tauri/Cargo.toml",
     "tauri": "tauri",
     "web": "docker compose up --build",
     "clean:caches": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$paths=@('target\\\\debug\\\\incremental','backend\\\\target\\\\debug\\\\incremental','desktop\\\\src-tauri\\\\target_desktop\\\\debug\\\\incremental'); foreach($p in $paths){ if(Test-Path $p){ Remove-Item -LiteralPath $p -Recurse -Force } }; Write-Host 'Incremental caches cleaned.'\"",

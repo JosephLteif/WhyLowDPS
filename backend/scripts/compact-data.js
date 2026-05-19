@@ -390,4 +390,14 @@ function fmt(bytes) {
   return (bytes / 1024 / 1024).toFixed(1) + "MB";
 }
 
-main().catch((err) => { console.error(err); process.exit(1); });
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  buildCompactManifest,
+  readJson,
+};

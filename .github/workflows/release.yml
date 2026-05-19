@@ -305,6 +305,7 @@ jobs:
           TMP_DIR="$(mktemp -d)"
           NOTES_FILE="${TMP_DIR}/release-notes.md"
           CHECKSUM_FILE="${TMP_DIR}/checksums.txt"
+          ASSET_LIST_FILE="${TMP_DIR}/assets.txt"
 
           gh release download "${TAG}" --dir "${TMP_DIR}"
 
@@ -314,38 +315,18 @@ jobs:
             exit 1
           fi
 
-          RECOMMENDED="WhyLowDPS_${VERSION}_x64-setup.exe"
-          if [[ ! -f "${TMP_DIR}/${RECOMMENDED}" ]]; then
-            RECOMMENDED="$(find "${TMP_DIR}" -maxdepth 1 -type f -name '*setup.exe' -printf '%f\n' | sort | head -n 1 || true)"
-          fi
-          if [[ -z "${RECOMMENDED}" ]]; then
-            RECOMMENDED="$(find "${TMP_DIR}" -maxdepth 1 -type f -name '*.exe' -printf '%f\n' | sort | head -n 1 || true)"
-          fi
-          if [[ -z "${RECOMMENDED}" ]]; then
-            RECOMMENDED="${ASSET_FILES[0]}"
-          fi
-
           : > "${CHECKSUM_FILE}"
+          : > "${ASSET_LIST_FILE}"
           for FILE in "${ASSET_FILES[@]}"; do
             HASH="$(sha256sum "${TMP_DIR}/${FILE}" | awk '{print $1}')"
             printf '%s  %s\n' "${FILE}" "${HASH}" >> "${CHECKSUM_FILE}"
+            printf '%s\n' "${FILE}" >> "${ASSET_LIST_FILE}"
           done
 
-          {
-            echo "## Download"
-            echo
-            echo "Recommended: ${RECOMMENDED}"
-            echo
-            echo "## Checksums"
-            echo
-            echo "SHA256:"
-            cat "${CHECKSUM_FILE}"
-            echo
-            echo "## Notes"
-            echo
-            echo "- Windows only"
-            echo "- Unsigned build may show SmartScreen warning"
-            echo "- Requires user-provided Battle.net API credentials"
-          } > "${NOTES_FILE}"
+          node scripts/release-notes.js \
+            --version "${VERSION}" \
+            --assets-file "${ASSET_LIST_FILE}" \
+            --checksums-file "${CHECKSUM_FILE}" \
+            --output "${NOTES_FILE}"
 
           gh release edit "${TAG}" --notes-file "${NOTES_FILE}"

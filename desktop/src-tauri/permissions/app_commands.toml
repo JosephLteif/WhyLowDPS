@@ -1,0 +1,16 @@
+[[permission]]
+identifier = "allow-app-commands"
+description = "Allows invoking app-level commands unrelated to clipboard access"
+commands.allow = [
+    "get_system_info",
+    "open_auth_window",
+    "open_external_url",
+    "open_data_dir",
+    "get_close_behavior_preference",
+    "set_close_behavior_preference",
+    "clear_close_behavior_preference",
+    "apply_close_behavior_choice",
+    "restart_app",
+    "quit_app_now",
+    "download_and_install_release"
+]

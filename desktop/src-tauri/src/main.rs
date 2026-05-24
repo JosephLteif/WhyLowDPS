@@ -232,6 +232,12 @@ fn set_close_behavior_preference_internal(
     save_close_preferences(&state.path, &prefs)
 }
 
+fn clear_close_behavior_preference_internal(state: &AppClosePreferencesState) -> Result<(), String> {
+    let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+    prefs.minimize_to_tray_on_close = None;
+    save_close_preferences(&state.path, &prefs)
+}
+
 #[tauri::command]
 fn get_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
@@ -252,6 +258,13 @@ fn set_close_behavior_preference(
     minimize_to_tray_on_close: bool,
 ) -> Result<(), String> {
     set_close_behavior_preference_internal(&state, minimize_to_tray_on_close)
+}
+
+#[tauri::command]
+fn clear_close_behavior_preference(
+    state: tauri::State<'_, AppClosePreferencesState>,
+) -> Result<(), String> {
+    clear_close_behavior_preference_internal(&state)
 }
 
 #[tauri::command]
@@ -677,6 +690,7 @@ fn main() {
             get_system_info,
             get_close_behavior_preference,
             set_close_behavior_preference,
+            clear_close_behavior_preference,
             apply_close_behavior_choice,
             restart_app,
             quit_app_now,

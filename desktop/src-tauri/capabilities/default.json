@@ -17,6 +17,7 @@
     "updater:default",
     "notification:default",
     "allow-clipboard-commands",
+    "allow-app-commands",
     {
       "identifier": "shell:allow-open",
 

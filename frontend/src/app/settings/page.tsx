@@ -25,6 +25,7 @@ const PRESETS = [
 type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
 };
+type CloseBehaviorMode = 'ask' | 'close' | 'tray';
 
 type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
 
@@ -82,7 +83,7 @@ export default function SettingsPage() {
   } = useDataFileStateManager();
   const [refreshPreset, setRefreshPreset] = useState<'disabled' | 'daily' | 'weekly'>('disabled');
   const [activeTab, setActiveTab] = useState<SettingsTab>('simulation');
-  const [minimizeToTrayOnClose, setMinimizeToTrayOnClose] = useState(true);
+  const [closeBehaviorMode, setCloseBehaviorMode] = useState<CloseBehaviorMode>('ask');
   const [closeBehaviorLoading, setCloseBehaviorLoading] = useState(false);
   const [closeBehaviorMessage, setCloseBehaviorMessage] = useState<{
     type: 'success' | 'error';
@@ -182,7 +183,9 @@ export default function SettingsPage() {
         const pref = await invoke<CloseBehaviorPreferenceResponse>('get_close_behavior_preference');
         if (cancelled) return;
         const savedValue = pref?.minimize_to_tray_on_close;
-        setMinimizeToTrayOnClose(savedValue !== false);
+        setCloseBehaviorMode(
+          savedValue == null ? 'ask' : savedValue ? 'tray' : 'close'
+        );
       } catch {
       } finally {
         if (!cancelled) setCloseBehaviorLoading(false);
@@ -256,31 +259,45 @@ export default function SettingsPage() {
     }
   };
 
-  const updateCloseBehavior = async (nextValue: boolean) => {
+  const updateCloseBehavior = async (nextMode: CloseBehaviorMode) => {
     if (!isDesktop) return;
     setCloseBehaviorMessage(null);
-    setMinimizeToTrayOnClose(nextValue);
+    const previous = closeBehaviorMode;
+    setCloseBehaviorMode(nextMode);
     setCloseBehaviorLoading(true);
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      try {
-        await invoke('set_close_behavior_preference', {
-          minimizeToTrayOnClose: nextValue,
-        });
-      } catch {
-        await invoke('set_close_behavior_preference', {
-          minimize_to_tray_on_close: nextValue,
-        });
+      if (nextMode === 'ask') {
+        await invoke('clear_close_behavior_preference');
+      } else {
+        const nextValue = nextMode === 'tray';
+        try {
+          await invoke('set_close_behavior_preference', {
+            minimizeToTrayOnClose: nextValue,
+          });
+        } catch {
+          await invoke('set_close_behavior_preference', {
+            minimize_to_tray_on_close: nextValue,
+          });
+        }
       }
       setCloseBehaviorMessage({
         type: 'success',
-        text: `Close action updated: ${nextValue ? 'minimize to tray' : 'close app'}.`,
+        text:
+          nextMode === 'ask'
+            ? 'Close action updated: ask every time.'
+            : `Close action updated: ${nextMode === 'tray' ? 'minimize to tray' : 'close app'}.`,
       });
     } catch (err: any) {
-      setMinimizeToTrayOnClose(!nextValue);
+      const detail =
+        err?.message || err?.toString?.() || (typeof err === 'string' ? err : '') || '';
+      setCloseBehaviorMode(previous);
       setCloseBehaviorMessage({
         type: 'error',
-        text: err?.message || 'Failed to update close behavior.',
+        text:
+          nextMode === 'ask' && /command not found|not allowed/i.test(detail)
+            ? 'Ask Every Time requires the latest desktop runtime. Restart the app and try again.'
+            : detail || 'Failed to update close behavior.',
       });
     } finally {
       setCloseBehaviorLoading(false);
@@ -450,9 +467,21 @@ export default function SettingsPage() {
               <button
                 type="button"
                 disabled={closeBehaviorLoading}
-                onClick={() => void updateCloseBehavior(false)}
+                onClick={() => void updateCloseBehavior('ask')}
                 className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
-                  !minimizeToTrayOnClose
+                  closeBehaviorMode === 'ask'
+                    ? 'bg-white text-black'
+                    : 'text-zinc-300 hover:text-white'
+                }`}
+              >
+                Ask Every Time
+              </button>
+              <button
+                type="button"
+                disabled={closeBehaviorLoading}
+                onClick={() => void updateCloseBehavior('close')}
+                className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
+                  closeBehaviorMode === 'close'
                     ? 'bg-white text-black'
                     : 'text-zinc-300 hover:text-white'
                 }`}
@@ -462,9 +491,9 @@ export default function SettingsPage() {
               <button
                 type="button"
                 disabled={closeBehaviorLoading}
-                onClick={() => void updateCloseBehavior(true)}
+                onClick={() => void updateCloseBehavior('tray')}
                 className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${
-                  minimizeToTrayOnClose
+                  closeBehaviorMode === 'tray'
                     ? 'bg-gold/20 text-gold'
                     : 'text-zinc-300 hover:text-white'
                 }`}

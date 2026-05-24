@@ -714,9 +714,29 @@ fn main() {
             let app_handle = app.handle().clone();
             let notifier_handle = app_handle.clone();
             let show_item = MenuItemBuilder::with_id("show_app", "Show WhyLowDps").build(app)?;
+            let dashboard_item = MenuItemBuilder::with_id("open_dashboard", "Dashboard").build(app)?;
+            let quick_sim_item = MenuItemBuilder::with_id("quick_sim", "Quick Sim").build(app)?;
+            let top_gear_item = MenuItemBuilder::with_id("top_gear", "Top Gear").build(app)?;
+            let drop_finder_item =
+                MenuItemBuilder::with_id("drop_finder", "Drop Finder").build(app)?;
+            let dungeons_item = MenuItemBuilder::with_id("dungeons", "Dungeons").build(app)?;
+            let history_item = MenuItemBuilder::with_id("history", "Simulation History").build(app)?;
+            let settings_item = MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+            let check_updates_item =
+                MenuItemBuilder::with_id("check_updates", "Check for Updates").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit_app", "Quit WhyLowDps").build(app)?;
             let tray_menu = MenuBuilder::new(app)
                 .item(&show_item)
+                .separator()
+                .item(&dashboard_item)
+                .item(&quick_sim_item)
+                .item(&top_gear_item)
+                .item(&drop_finder_item)
+                .item(&dungeons_item)
+                .item(&history_item)
+                .item(&settings_item)
+                .separator()
+                .item(&check_updates_item)
                 .separator()
                 .item(&quit_item)
                 .build()?;
@@ -726,12 +746,58 @@ fn main() {
                 .tooltip("WhyLowDps")
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app: &tauri::AppHandle, event: tauri::menu::MenuEvent| {
+                    let focus_main_window = |app: &tauri::AppHandle| -> Option<tauri::WebviewWindow> {
+                        let window = app.get_webview_window("main")?;
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                        Some(window)
+                    };
+
                     match event.id().as_ref() {
                         "show_app" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.unminimize();
-                                let _ = window.set_focus();
+                            let _ = focus_main_window(app);
+                        }
+                        "open_dashboard" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval("window.location.href='/';");
+                            }
+                        }
+                        "quick_sim" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval("window.location.href='/quick-sim';");
+                            }
+                        }
+                        "top_gear" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval("window.location.href='/top-gear';");
+                            }
+                        }
+                        "drop_finder" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval("window.location.href='/drop-finder';");
+                            }
+                        }
+                        "dungeons" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval("window.location.href='/dungeons';");
+                            }
+                        }
+                        "history" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval("window.location.href='/history';");
+                            }
+                        }
+                        "settings" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval("window.location.href='/settings';");
+                            }
+                        }
+                        "check_updates" => {
+                            if let Some(window) = focus_main_window(app) {
+                                let _ = window.eval(
+                                    "window.dispatchEvent(new CustomEvent('whylowdps-updater-check', { detail: { background: false } }));",
+                                );
                             }
                         }
                         "quit_app" => {

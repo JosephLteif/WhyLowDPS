@@ -13,6 +13,9 @@ interface SplashScreenProps {
   status: string;
   progress: string;
   onRetry?: () => void;
+  retriesRemaining?: number;
+  retriesDone?: number;
+  retriesTotal?: number;
 }
 
 type SplashProgress = {
@@ -26,7 +29,14 @@ type SplashProgress = {
   speedBytesPerSec: number;
 };
 
-export default function SplashScreen({ status, progress, onRetry }: SplashScreenProps) {
+export default function SplashScreen({
+  status,
+  progress,
+  onRetry,
+  retriesRemaining = 0,
+  retriesDone = 0,
+  retriesTotal = 0,
+}: SplashScreenProps) {
   const { login, setSystemCredentials } = useAuth();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -55,6 +65,24 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
     }
   };
 
+  const openDataFolder = async () => {
+    if (!isDesktop) return;
+    try {
+      await invoke('open_data_dir');
+    } catch (err) {
+      try {
+        const info = (await invoke('get_system_info')) as { data_dir?: string };
+        const raw = String(info?.data_dir || '').trim();
+        if (!raw) throw new Error('Missing data directory path');
+        const normalized = raw.replace(/\\/g, '/');
+        const prefixed = normalized.match(/^[A-Za-z]:\//) ? `/${normalized}` : normalized;
+        await invoke('open_external_url', { url: `file://${prefixed}` });
+      } catch (fallbackErr) {
+        console.error('Failed to open data directory:', fallbackErr);
+      }
+    }
+  };
+
   const handleSaveAndLogin = async () => {
     setIsSaving(true);
     const success = await setSystemCredentials(clientId, clientSecret);
@@ -69,6 +97,7 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
 
   const statusString = typeof status === 'string' ? status : JSON.stringify(status);
   const isError = statusString.toLowerCase().includes('error');
+  const isAutoRetrying = isError && retriesRemaining > 0;
   const isSyncing =
     statusString === 'syncing' || (typeof status === 'string' && status === 'syncing');
 
@@ -104,6 +133,15 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
   };
 
   const progressData = parseProgress(progress);
+  const extractedUrls = Array.from(statusString.matchAll(/https?:\/\/[^\s)]+/g)).map((m) => m[0]);
+  const primaryFailedUrl = extractedUrls[0] || '';
+  const primaryFailedFile = primaryFailedUrl
+    ? primaryFailedUrl.split('/').pop() || 'required file'
+    : 'required file';
+  const needsMetadataFallback = primaryFailedFile.toLowerCase() === 'metadata.json';
+  const manualDownloadUrl = needsMetadataFallback
+    ? 'https://www.raidbots.com/static/data/live/metadata.json'
+    : primaryFailedUrl;
   const progressPercent =
     progressData.total > 0 ? Math.round((progressData.current / progressData.total) * 100) : 0;
   const fileProgressPercent =
@@ -267,14 +305,59 @@ export default function SplashScreen({ status, progress, onRetry }: SplashScreen
                 </button>
               </div>
             ) : isError ? (
-              <div className="text-center">
-                <p className="mb-6 text-sm text-red-400">{status}</p>
-                <button
-                  onClick={onRetry}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10 active:scale-95"
-                >
-                  Try Again
-                </button>
+              <div className="w-full text-left">
+                <div className="space-y-3 p-1">
+                  <p className="text-xs leading-relaxed text-zinc-300">
+                    {isAutoRetrying
+                      ? `Automatic retry in progress (${retriesDone}/${retriesTotal} attempts done, ${retriesRemaining} remaining).`
+                      : `Automatic retries were exhausted (${retriesDone}/${retriesTotal} attempts done).`}
+                  </p>
+
+                  {!isAutoRetrying && (
+                    <>
+                      <div className="max-h-16 overflow-auto rounded-lg border border-red-500/20 bg-red-500/5 p-2">
+                        <p className="break-all text-[11px] leading-tight text-red-300">{status}</p>
+                      </div>
+                      <div className="space-y-1 text-xs text-zinc-300">
+                        <p className="font-semibold text-zinc-200">Manual recovery</p>
+                        {manualDownloadUrl ? (
+                          <>
+                            <p>
+                              1. Download:{' '}
+                              <a
+                                href={manualDownloadUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-gold underline"
+                              >
+                                {primaryFailedFile}
+                              </a>
+                            </p>
+                            <p>2. Save it as {primaryFailedFile} (not {primaryFailedFile}.txt).</p>
+                          </>
+                        ) : (
+                          <p>1. Check your internet/firewall/proxy and keep the app open.</p>
+                        )}
+                        <p>3. Press Open Data Folder next to this message, then put the file there.</p>
+                        <p>4. Click Try Again.</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={onRetry}
+                          className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10 active:scale-95"
+                        >
+                          Try Again
+                        </button>
+                        <button
+                          onClick={openDataFolder}
+                          className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                        >
+                          Open Data Folder
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-sm text-zinc-300">Preparing workspace...</p>

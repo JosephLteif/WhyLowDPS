@@ -75,6 +75,43 @@ fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to open external URL: {e}"))
 }
 
+#[tauri::command]
+fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    let data_dir = app_data_dir.join("data");
+    std::fs::create_dir_all(&data_dir).map_err(|e| format!("Failed to create data dir: {e}"))?;
+
+    let status = if cfg!(target_os = "windows") {
+        std::process::Command::new("explorer")
+            .arg(data_dir.as_os_str())
+            .status()
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+            .arg(data_dir.as_os_str())
+            .status()
+    } else {
+        std::process::Command::new("xdg-open")
+            .arg(data_dir.as_os_str())
+            .status()
+    }
+    .map_err(|e| format!("Failed to launch file explorer: {e}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "File explorer exited with status: {}",
+            status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        ))
+    }
+}
+
 #[derive(serde::Serialize)]
 struct SystemInfo {
     os: String,
@@ -631,6 +668,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_auth_window,
             open_external_url,
+            open_data_dir,
             get_system_info,
             get_close_behavior_preference,
             set_close_behavior_preference,

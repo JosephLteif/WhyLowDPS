@@ -2244,16 +2244,22 @@ async fn perform_sync(
     let request_timeout = Duration::from_secs(15);
     if let Some(ref dir) = data_dir {
         let destination = dir.join(ZONES_INDEX_FILE_NAME);
-        download_github_release_asset_with_progress(
-            &blizzard.client,
-            env!("CARGO_PKG_VERSION"),
-            ZONES_INDEX_FILE_NAME,
-            &destination,
-            &state,
-            1,
-            1,
-        )
-        .await?;
+        if !destination.exists() {
+            // Local-first fallback chain for zones index:
+            // 1) Use local file when present
+            // 2) Otherwise try release download
+            // 3) Error only if neither is available
+            download_github_release_asset_with_progress(
+                &blizzard.client,
+                env!("CARGO_PKG_VERSION"),
+                ZONES_INDEX_FILE_NAME,
+                &destination,
+                &state,
+                1,
+                1,
+            )
+            .await?;
+        }
     }
 
     // 1. Fetch from Raidbots

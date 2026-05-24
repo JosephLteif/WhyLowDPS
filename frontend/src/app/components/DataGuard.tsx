@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { API_URL, fetchJson, isNetworkUnavailableError } from '../lib/api';
+import { API_URL, fetchJson, isDesktop, isNetworkUnavailableError } from '../lib/api';
 import SplashScreen from './SplashScreen';
 import { useAuth } from './AuthContext';
 import { usePathname } from 'next/navigation';
+import { invoke } from '@tauri-apps/api/core';
 
 export default function DataGuard({ children }: { children: React.ReactNode }) {
+  const AUTO_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
   const [dataStatus, setDataStatus] = useState<any>({ status: 'syncing', progress: '' });
   const [isReady, setIsReady] = useState<boolean>(() => {
     try {
@@ -39,8 +41,11 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     speedBytesPerSec: 0,
   });
   const [missingDataError, setMissingDataError] = useState('');
+  const [autoRetryAttempt, setAutoRetryAttempt] = useState(0);
   const statusFailureCountRef = useRef(0);
   const statusFailureFirstAtRef = useRef<number | null>(null);
+  const autoRetryAttemptRef = useRef(0);
+  const autoRetryTimerRef = useRef<number | null>(null);
 
   const safeText = (value: unknown, fallback = ''): string => {
     if (typeof value === 'string') return value;
@@ -143,12 +148,24 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
       statusFailureFirstAtRef.current = null;
 
       if (data.status === 'ready') {
+        if (autoRetryTimerRef.current != null) {
+          window.clearTimeout(autoRetryTimerRef.current);
+          autoRetryTimerRef.current = null;
+        }
+        autoRetryAttemptRef.current = 0;
+        setAutoRetryAttempt(0);
         setDataStatus(data);
         setIsReady(true);
         try {
           localStorage.setItem('whylowdps_data_ready', 'true');
         } catch {}
       } else if (data.status === 'needs_credentials') {
+        if (autoRetryTimerRef.current != null) {
+          window.clearTimeout(autoRetryTimerRef.current);
+          autoRetryTimerRef.current = null;
+        }
+        autoRetryAttemptRef.current = 0;
+        setAutoRetryAttempt(0);
         setIsReady(false);
         try {
           localStorage.removeItem('whylowdps_data_ready');
@@ -161,6 +178,25 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
           localStorage.removeItem('whylowdps_data_ready');
         } catch {}
         setDataStatus(data);
+
+        const statusText = safeText(data?.status, '').toLowerCase();
+        const isSyncError = statusText.includes('error') || statusText.includes('failed');
+        if (isSyncError && autoRetryTimerRef.current == null) {
+          const attempt = autoRetryAttemptRef.current;
+          if (attempt < AUTO_RETRY_DELAYS_MS.length) {
+            const delayMs = AUTO_RETRY_DELAYS_MS[attempt];
+            autoRetryTimerRef.current = window.setTimeout(() => {
+              autoRetryTimerRef.current = null;
+              autoRetryAttemptRef.current += 1;
+              setAutoRetryAttempt(autoRetryAttemptRef.current);
+              fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
+                .catch(() => {})
+                .finally(() => {
+                  void checkStatus();
+                });
+            }, delayMs);
+          }
+        }
       }
     } catch (err) {
       if (!isNetworkUnavailableError(err)) {
@@ -203,10 +239,42 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
   }, [checkStatus, isReady, missingDataDownloadBusy]);
 
   const handleRetry = () => {
+    if (autoRetryTimerRef.current != null) {
+      window.clearTimeout(autoRetryTimerRef.current);
+      autoRetryTimerRef.current = null;
+    }
+    autoRetryAttemptRef.current = 0;
+    setAutoRetryAttempt(0);
     fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
       .catch(() => {})
       .finally(() => checkStatus());
   };
+
+  const openDataFolder = useCallback(async () => {
+    if (!isDesktop) return;
+    try {
+      await invoke('open_data_dir');
+    } catch (err) {
+      try {
+        const info = (await invoke('get_system_info')) as { data_dir?: string };
+        const raw = String(info?.data_dir || '').trim();
+        if (!raw) throw new Error('Missing data directory path');
+        const normalized = raw.replace(/\\/g, '/');
+        const prefixed = normalized.match(/^[A-Za-z]:\//) ? `/${normalized}` : normalized;
+        await invoke('open_external_url', { url: `file://${prefixed}` });
+      } catch (fallbackErr) {
+        console.error('Failed to open data directory:', fallbackErr);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (autoRetryTimerRef.current != null) {
+        window.clearTimeout(autoRetryTimerRef.current);
+      }
+    };
+  }, []);
   const pollMissingDataSyncStatus = useCallback(async (): Promise<void> => {
     const data = await fetchJson<any>(`${API_URL}/api/data/status`);
     const status = safeText(data?.status, '').toLowerCase();
@@ -334,6 +402,9 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
         status={toSplashStatus(dataStatus?.status)}
         progress={toSplashProgress(dataStatus?.progress)}
         onRetry={handleRetry}
+        retriesRemaining={Math.max(0, AUTO_RETRY_DELAYS_MS.length - autoRetryAttempt)}
+        retriesDone={autoRetryAttempt}
+        retriesTotal={AUTO_RETRY_DELAYS_MS.length}
       />
     );
   } else if (isGloballyConfigured === false && !isSettingsPage) {
@@ -346,6 +417,9 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
         status={toSplashStatus(dataStatus?.status)}
         progress={toSplashProgress(dataStatus?.progress)}
         onRetry={handleRetry}
+        retriesRemaining={Math.max(0, AUTO_RETRY_DELAYS_MS.length - autoRetryAttempt)}
+        retriesDone={autoRetryAttempt}
+        retriesTotal={AUTO_RETRY_DELAYS_MS.length}
       />
     );
   }
@@ -402,6 +476,23 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
             {missingDataError && (
               <p className="mt-3 text-xs text-red-300">{missingDataError}</p>
             )}
+            <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-zinc-200">
+              <p className="font-semibold text-zinc-100">Manual Recovery</p>
+              <p className="mt-1">
+                1. Download{' '}
+                <a
+                  href="https://www.raidbots.com/static/data/live/metadata.json"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-amber-200 underline"
+                >
+                  metadata.json
+                </a>
+              </p>
+              <p>2. Save it as metadata.json (not metadata.json.txt).</p>
+              <p>3. Put it in %APPDATA%/com.whylowdps/data.</p>
+              <p>4. Click Retry Sync or Download Missing Data.</p>
+            </div>
             <div className="mt-4 flex items-center gap-2">
               <button
                 type="button"
@@ -409,7 +500,14 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
                 disabled={missingDataDownloadBusy}
                 className="rounded-md border border-amber-400/40 bg-amber-400/15 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-400/25 disabled:opacity-60"
               >
-                {missingDataDownloadBusy ? 'Downloading...' : 'Download Missing Data'}
+                {missingDataDownloadBusy ? 'Syncing...' : 'Retry Sync'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void openDataFolder()}
+                className="rounded-md border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-zinc-100 hover:bg-white/10"
+              >
+                Open Data Folder
               </button>
             </div>
           </div>

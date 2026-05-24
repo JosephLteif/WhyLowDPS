@@ -11,6 +11,7 @@ export default function CloseBehaviorPrompt() {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [rememberChoice, setRememberChoice] = useState(false);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -23,6 +24,7 @@ export default function CloseBehaviorPrompt() {
         if (cancelled) return;
         unlisten = await listen('whylowdps-close-choice-requested', () => {
           setError('');
+          setRememberChoice(false);
           setOpen(true);
         });
       } catch {}
@@ -39,21 +41,39 @@ export default function CloseBehaviorPrompt() {
     setError('');
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      try {
-        await invoke<CloseBehaviorPreferenceResponse>('set_close_behavior_preference', {
-          minimizeToTrayOnClose: minimizeToTray,
-        });
-      } catch {
-        await invoke<CloseBehaviorPreferenceResponse>('set_close_behavior_preference', {
-          minimize_to_tray_on_close: minimizeToTray,
-        });
-      }
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const currentWindow = getCurrentWindow();
-      if (minimizeToTray) {
-        await currentWindow.hide();
+      if (rememberChoice) {
+        try {
+          await invoke<CloseBehaviorPreferenceResponse>('set_close_behavior_preference', {
+            minimizeToTrayOnClose: minimizeToTray,
+          });
+        } catch {
+          await invoke<CloseBehaviorPreferenceResponse>('set_close_behavior_preference', {
+            minimize_to_tray_on_close: minimizeToTray,
+          });
+        }
+
+        if (minimizeToTray) {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          await getCurrentWindow().hide();
+        } else {
+          try {
+            await invoke('quit_app_now');
+          } catch {
+            await invoke('apply_close_behavior_choice', { minimizeToTrayOnClose: false });
+          }
+        }
       } else {
-        await currentWindow.close();
+        if (minimizeToTray) {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          await getCurrentWindow().hide();
+        } else {
+          try {
+            await invoke('quit_app_now');
+          } catch {
+            await invoke('apply_close_behavior_choice', { minimizeToTrayOnClose: false });
+            await invoke('clear_close_behavior_preference');
+          }
+        }
       }
       setOpen(false);
     } catch (err: any) {
@@ -85,6 +105,16 @@ export default function CloseBehaviorPrompt() {
             {error}
           </p>
         ) : null}
+
+        <label className="mt-4 flex items-center gap-2 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={rememberChoice}
+            onChange={(e) => setRememberChoice(e.target.checked)}
+            className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-gold focus:ring-gold/60"
+          />
+          Do not show again
+        </label>
 
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button

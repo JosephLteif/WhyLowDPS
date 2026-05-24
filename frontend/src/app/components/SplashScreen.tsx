@@ -69,7 +69,7 @@ export default function SplashScreen({
     if (!isDesktop) return;
     try {
       await invoke('open_data_dir');
-    } catch (err) {
+    } catch {
       try {
         const info = (await invoke('get_system_info')) as { data_dir?: string };
         const raw = String(info?.data_dir || '').trim();
@@ -138,6 +138,18 @@ export default function SplashScreen({
   const primaryFailedFile = primaryFailedUrl
     ? primaryFailedUrl.split('/').pop() || 'required file'
     : 'required file';
+  const lowerStatus = statusString.toLowerCase();
+  const isBlizzardAuthOrApiIssue =
+    lowerStatus.includes('blizzard')
+    && (lowerStatus.includes('auth')
+      || lowerStatus.includes('oauth')
+      || lowerStatus.includes('token')
+      || lowerStatus.includes('authenticate')
+      || lowerStatus.includes('unauthorized')
+      || lowerStatus.includes('forbidden')
+      || lowerStatus.includes('service unavailable')
+      || lowerStatus.includes('timed out')
+      || lowerStatus.includes('timeout'));
   const needsMetadataFallback = primaryFailedFile.toLowerCase() === 'metadata.json';
   const manualDownloadUrl = needsMetadataFallback
     ? 'https://www.raidbots.com/static/data/live/metadata.json'
@@ -320,7 +332,12 @@ export default function SplashScreen({
                       </div>
                       <div className="space-y-1 text-xs text-zinc-300">
                         <p className="font-semibold text-zinc-200">Manual recovery</p>
-                        {manualDownloadUrl ? (
+                        {isBlizzardAuthOrApiIssue ? (
+                          <>
+                            <p>1. Blizzard API may be temporarily unavailable.</p>
+                            <p>2. Wait a few minutes, then click Try Again.</p>
+                          </>
+                        ) : manualDownloadUrl ? (
                           <>
                             <p>
                               1. Download:{' '}
@@ -338,8 +355,12 @@ export default function SplashScreen({
                         ) : (
                           <p>1. Check your internet/firewall/proxy and keep the app open.</p>
                         )}
-                        <p>3. Press Open Data Folder next to this message, then put the file there.</p>
-                        <p>4. Click Try Again.</p>
+                        {!isBlizzardAuthOrApiIssue && (
+                          <>
+                            <p>3. Press Open Data Folder next to this message, then put the file there.</p>
+                            <p>4. Click Try Again.</p>
+                          </>
+                        )}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -493,9 +514,6 @@ export default function SplashScreen({
             transform: translateX(400%);
             width: 30%;
           }
-        }
-        .animate-progress-indefinite {
-          animation: progress-indefinite 2s infinite ease-in-out;
         }
       `}</style>
     </div>

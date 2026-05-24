@@ -83,6 +83,19 @@ export default function SplashScreen({
     }
   };
 
+  const quitAppNow = async () => {
+    if (!isDesktop) return;
+    try {
+      await invoke('quit_app_now');
+    } catch (err) {
+      try {
+        await invoke('apply_close_behavior_choice', { minimizeToTrayOnClose: false });
+      } catch (fallbackErr) {
+        console.error('Failed to quit app immediately:', fallbackErr);
+      }
+    }
+  };
+
   const handleSaveAndLogin = async () => {
     setIsSaving(true);
     const success = await setSystemCredentials(clientId, clientSecret);
@@ -376,6 +389,12 @@ export default function SplashScreen({
                           Open Data Folder
                         </button>
                       </div>
+                      <button
+                        onClick={quitAppNow}
+                        className="w-full rounded-xl border border-red-400/35 bg-red-500/10 px-4 py-2.5 text-sm font-semibold text-red-100 transition-all hover:bg-red-500/20 active:scale-95"
+                      >
+                        Quit App
+                      </button>
                     </>
                   )}
                 </div>

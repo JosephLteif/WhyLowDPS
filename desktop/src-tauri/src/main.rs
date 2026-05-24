@@ -276,6 +276,11 @@ fn restart_app(app: tauri::AppHandle) {
     app.restart();
 }
 
+#[tauri::command]
+fn quit_app_now(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[derive(Clone, serde::Serialize)]
 struct DirectInstallProgressEvent {
     status: String,
@@ -674,6 +679,7 @@ fn main() {
             set_close_behavior_preference,
             apply_close_behavior_choice,
             restart_app,
+            quit_app_now,
             download_and_install_release
         ])
         .setup(|app| {

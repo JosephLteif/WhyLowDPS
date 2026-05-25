@@ -330,3 +330,68 @@ jobs:
             --output "${NOTES_FILE}"
 
           gh release edit "${TAG}" --notes-file "${NOTES_FILE}"
+
+      - name: Notify Discord release channel
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.release_channel.outputs.channel }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          NIGHTLY_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_NIGHTLY }}
+          WEEKLY_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_WEEKLY }}
+          STABLE_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_STABLE }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${TAG#v}"
+          case "$CHANNEL" in
+            nightly)
+              WEBHOOK_URL="${NIGHTLY_WEBHOOK}"
+              TITLE="Nightly Release: v${VERSION}"
+              COLOR="3447003"
+              ;;
+            weekly)
+              WEBHOOK_URL="${WEEKLY_WEBHOOK}"
+              TITLE="Weekly Release: v${VERSION}"
+              COLOR="15844367"
+              ;;
+            stable)
+              WEBHOOK_URL="${STABLE_WEBHOOK}"
+              TITLE="Stable Release: v${VERSION}"
+              COLOR="3066993"
+              ;;
+            *)
+              echo "Unsupported channel: ${CHANNEL}"
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "${WEBHOOK_URL}" ]]; then
+            echo "Missing Discord webhook secret for channel: ${CHANNEL}"
+            exit 1
+          fi
+
+          PAYLOAD="$(cat <<EOF
+          {
+            "content": "",
+            "embeds": [
+              {
+                "title": "${TITLE}",
+                "description": "A new **${CHANNEL}** build is available.",
+                "color": ${COLOR},
+                "fields": [
+                  { "name": "Version", "value": "`${VERSION}`", "inline": true },
+                  { "name": "Channel", "value": "`${CHANNEL}`", "inline": true },
+                  { "name": "Downloads", "value": "[Open GitHub Release](${RELEASE_URL})", "inline": false }
+                ]
+              }
+            ]
+          }
+          EOF
+          )"
+
+          curl -sS -X POST \
+            -H "Content-Type: application/json" \
+            -d "${PAYLOAD}" \
+            "${WEBHOOK_URL}"

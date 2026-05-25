@@ -330,3 +330,17 @@ jobs:
             --output "${NOTES_FILE}"
 
           gh release edit "${TAG}" --notes-file "${NOTES_FILE}"
+
+      - name: Notify Discord release channel
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.release_channel.outputs.channel }}
+          TAG: ${{ github.ref_name }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          NIGHTLY_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_NIGHTLY }}
+          WEEKLY_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_WEEKLY }}
+          STABLE_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_STABLE }}
+        run: |
+          set -euo pipefail
+          node scripts/notify-discord-release.js

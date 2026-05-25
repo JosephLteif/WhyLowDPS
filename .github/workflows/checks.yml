@@ -7,9 +7,44 @@ on:
       - master
       - main
 
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  quality:
-    name: Typecheck, Lint, Test, Frontend Build
+  changes:
+    name: Detect Changed Areas
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/checks.yml'
+              - 'package.json'
+              - 'package-lock.json'
+            backend:
+              - 'backend/**'
+              - 'scripts/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.github/workflows/checks.yml'
+              - 'package.json'
+              - 'package-lock.json'
+
+  frontend_quality:
+    name: Frontend Quality
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -24,47 +59,43 @@ jobs:
             package-lock.json
             frontend/package-lock.json
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Ensure Tauri resource paths exist
-        shell: bash
-        run: |
-          mkdir -p backend/resources/data
-          mkdir -p backend/resources/simc
-          echo "{}" > backend/resources/zones-encounters-index.json
-          touch backend/resources/data/.keep
-          touch backend/resources/simc/.keep
-
-      - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            curl \
-            wget \
-            file \
-            pkg-config \
-            libgtk-3-dev \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libssl-dev \
-            libdbus-1-dev \
-            libglib2.0-dev \
-            libjavascriptcoregtk-4.1-dev
-
       - name: Install dependencies
         run: npm ci && npm ci --prefix frontend
 
-      - name: Run check suite
-        run: npm run check
+      - name: Frontend checks
+        run: npm run typecheck:frontend && npm run lint:frontend
 
       - name: Build frontend
         run: npm run build:frontend
 
+  backend_quality:
+    name: Backend Quality
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Backend checks
+        run: cargo clippy -p whylowdps-core -p whylowdps-server --all-targets
+
+      - name: Backend and script tests
+        run: cargo test -p whylowdps-core -p whylowdps-server && node --test scripts/tests/*.test.js
+
   tauri_build_check:
+    if: github.event_name == 'push'
     name: Tauri Build Check
     runs-on: windows-latest
     steps:

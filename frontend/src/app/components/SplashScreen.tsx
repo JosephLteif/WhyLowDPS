@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LogIn, X } from 'lucide-react';
 import { API_URL, isDesktop } from '../lib/api';
 import { useAuth } from './AuthContext';
@@ -87,7 +87,7 @@ export default function SplashScreen({
     if (!isDesktop) return;
     try {
       await invoke('quit_app_now');
-    } catch (err) {
+    } catch {
       try {
         await invoke('apply_close_behavior_choice', { minimizeToTrayOnClose: false });
       } catch (fallbackErr) {

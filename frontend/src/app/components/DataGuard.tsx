@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { API_URL, fetchJson, isDesktop, isNetworkUnavailableError } from '../lib/api';
 import SplashScreen from './SplashScreen';
 import { useAuth } from './AuthContext';
 import { usePathname } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 
-export default function DataGuard({ children }: { children: React.ReactNode }) {
+export default function DataGuard({ children }: { children: ReactNode }) {
   const AUTO_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
   const [dataStatus, setDataStatus] = useState<any>({ status: 'syncing', progress: '' });
   const [isReady, setIsReady] = useState<boolean>(() => {
@@ -254,7 +255,7 @@ export default function DataGuard({ children }: { children: React.ReactNode }) {
     if (!isDesktop) return;
     try {
       await invoke('open_data_dir');
-    } catch (err) {
+    } catch {
       try {
         const info = (await invoke('get_system_info')) as { data_dir?: string };
         const raw = String(info?.data_dir || '').trim();

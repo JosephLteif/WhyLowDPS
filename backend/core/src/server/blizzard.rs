@@ -215,10 +215,44 @@ fn enrich_mythic_profile_member_links(value: &mut Value) {
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod tests {
-    use super::{parse_character_path_from_url, BlizzardState};
-    use crate::server::auth_handlers::BlizzardAuthState;
+    use super::*;
+    use crate::server::auth_handlers::{BlizzardAuthState, Claims};
     use crate::storage::{JobStorage, MemoryStorage};
-    use actix_web::test::TestRequest;
+    use actix_web::cookie::Cookie;
+    use actix_web::{test::TestRequest, web};
+    use jsonwebtoken::{encode, EncodingKey, Header};
+    use std::sync::Arc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn test_state() -> web::Data<Arc<BlizzardState>> {
+        web::Data::new(Arc::new(BlizzardState::new()))
+    }
+
+    fn no_auth_state() -> web::Data<Option<Arc<BlizzardAuthState>>> {
+        web::Data::new(None)
+    }
+
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn make_jwt(sub: &str, access_token: &str, secret: &str) -> String {
+        let claims = Claims {
+            sub: sub.to_string(),
+            access_token: access_token.to_string(),
+            exp: (SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_secs()
+                + 3600) as usize,
+        };
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("jwt encode")
+    }
 
     #[test]
     fn parse_character_path_from_url_extracts_region_realm_name() {
@@ -226,7 +260,11 @@ mod tests {
         let parsed = parse_character_path_from_url(url);
         assert_eq!(
             parsed,
-            Some(("us".to_string(), "illidan".to_string(), "tester".to_string()))
+            Some((
+                "us".to_string(),
+                "illidan".to_string(),
+                "tester".to_string()
+            ))
         );
     }
 
@@ -267,6 +305,96 @@ mod tests {
             creds,
             Some(("global-id".to_string(), "global-secret".to_string()))
         );
+    }
+
+    #[test]
+    fn get_effective_credentials_uses_logged_in_user_before_global_config() {
+        let token = make_jwt("Tester#9999", "access-token", "jwt-secret");
+        let req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token))
+            .to_http_request();
+        let store = MemoryStorage::new();
+        store.set_user_config("Tester#9999", "blizzard_client_id", "user-id");
+        store.set_user_config("Tester#9999", "blizzard_client_secret", "user-secret");
+
+        let auth = BlizzardAuthState::new(
+            Some("global-id".to_string()),
+            Some("global-secret".to_string()),
+            "http://localhost/callback".to_string(),
+            "jwt-secret".to_string(),
+        );
+
+        let creds = BlizzardState::get_effective_credentials(&req, Some(&auth), &store);
+        assert_eq!(
+            creds,
+            Some(("user-id".to_string(), "user-secret".to_string()))
+        );
+    }
+
+    #[test]
+    fn get_effective_credentials_prefers_system_over_logged_in_user() {
+        let token = make_jwt("Tester#9999", "access-token", "jwt-secret");
+        let req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token))
+            .to_http_request();
+        let store = MemoryStorage::new();
+        store.set_user_config("system", "blizzard_client_id", "system-id");
+        store.set_user_config("system", "blizzard_client_secret", "system-secret");
+        store.set_user_config("Tester#9999", "blizzard_client_id", "user-id");
+        store.set_user_config("Tester#9999", "blizzard_client_secret", "user-secret");
+
+        let auth = BlizzardAuthState::new(
+            Some("global-id".to_string()),
+            Some("global-secret".to_string()),
+            "http://localhost/callback".to_string(),
+            "jwt-secret".to_string(),
+        );
+
+        let creds = BlizzardState::get_effective_credentials(&req, Some(&auth), &store);
+        assert_eq!(
+            creds,
+            Some(("system-id".to_string(), "system-secret".to_string()))
+        );
+    }
+
+    #[actix_web::test]
+    async fn character_profile_proxy_rejects_requests_without_token_or_credentials() {
+        let resp = proxy_character_profile(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(("Area 52".to_string(), "Thrall".to_string())),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 401);
+    }
+
+    #[actix_web::test]
+    async fn character_media_proxy_rejects_requests_without_token_or_credentials() {
+        let resp = proxy_character_media(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from((
+                "Area 52".to_string(),
+                "Thrall".to_string(),
+                "main".to_string(),
+            )),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 401);
     }
 }
 

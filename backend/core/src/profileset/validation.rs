@@ -105,6 +105,28 @@ pub fn main_hand_is_two_hand(gear_set: &HashMap<String, ResolvedItem>, spec: &st
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item_db::state;
+    use crate::types::GameItem;
+    use std::sync::Arc;
+
+    struct ItemDataSnapshot {
+        items: Arc<HashMap<u64, GameItem>>,
+        item_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
+    }
+
+    impl ItemDataSnapshot {
+        fn capture() -> Self {
+            Self {
+                items: state::ITEMS.read().unwrap().clone(),
+                item_limit_cats: state::ITEM_LIMIT_CATS.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *state::ITEMS.write().unwrap() = self.items;
+            *state::ITEM_LIMIT_CATS.write().unwrap() = self.item_limit_cats;
+        }
+    }
 
     fn item(item_id: u64, origin: ItemOrigin, is_catalyst: bool) -> ResolvedItem {
         ResolvedItem {
@@ -112,6 +134,28 @@ mod tests {
             origin,
             is_catalyst,
             ..ResolvedItem::default()
+        }
+    }
+
+    fn game_item(item_id: u64, inventory_type: i64) -> GameItem {
+        GameItem {
+            id: item_id,
+            name: String::new(),
+            icon: String::new(),
+            quality: 0,
+            base_ilevel: None,
+            class: None,
+            subclass: None,
+            inventory_type: Some(inventory_type),
+            set_id: None,
+            has_sockets: false,
+            socket_info: None,
+            classes: None,
+            specs: None,
+            stats: None,
+            bonus_lists: Vec::new(),
+            sources: None,
+            profession: None,
         }
     }
 
@@ -141,15 +185,73 @@ mod tests {
     #[test]
     fn unique_equipped_constraint_rejects_duplicate_ring_or_trinket_ids() {
         let invalid = HashMap::from([
-            ("finger1".to_string(), item(3001, ItemOrigin::Equipped, false)),
-            ("finger2".to_string(), item(3001, ItemOrigin::Equipped, false)),
+            (
+                "finger1".to_string(),
+                item(3001, ItemOrigin::Equipped, false),
+            ),
+            (
+                "finger2".to_string(),
+                item(3001, ItemOrigin::Equipped, false),
+            ),
         ]);
         assert!(!validate_unique_equipped(&invalid));
 
         let valid = HashMap::from([
-            ("finger1".to_string(), item(3001, ItemOrigin::Equipped, false)),
-            ("finger2".to_string(), item(3002, ItemOrigin::Equipped, false)),
+            (
+                "finger1".to_string(),
+                item(3001, ItemOrigin::Equipped, false),
+            ),
+            (
+                "finger2".to_string(),
+                item(3002, ItemOrigin::Equipped, false),
+            ),
         ]);
         assert!(validate_unique_equipped(&valid));
+    }
+
+    #[test]
+    fn weapon_constraint_rejects_two_hander_with_offhand_except_for_fury() {
+        let _guard = state::TEST_STATE_LOCK.lock().expect("test state lock");
+        let snapshot = ItemDataSnapshot::capture();
+        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([(4001, game_item(4001, 17))]));
+
+        let gear = HashMap::from([
+            (
+                "main_hand".to_string(),
+                item(4001, ItemOrigin::Equipped, false),
+            ),
+            (
+                "off_hand".to_string(),
+                item(4002, ItemOrigin::Equipped, false),
+            ),
+        ]);
+
+        assert!(!validate_weapon_constraint(&gear, "arms"));
+        assert!(validate_weapon_constraint(&gear, "fury"));
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn item_limit_constraint_rejects_over_limit_bonus_categories() {
+        let _guard = state::TEST_STATE_LOCK.lock().expect("test state lock");
+        let snapshot = ItemDataSnapshot::capture();
+        *state::ITEM_LIMIT_CATS.write().unwrap() = Arc::new(HashMap::from([(7001, (9, 1))]));
+
+        let mut first = item(5001, ItemOrigin::Equipped, false);
+        first.bonus_ids = vec![7001];
+        let mut second = item(5002, ItemOrigin::Equipped, false);
+        second.bonus_ids = vec![7001];
+
+        let over_limit = HashMap::from([
+            ("head".to_string(), first.clone()),
+            ("chest".to_string(), second),
+        ]);
+        assert!(!validate_item_limits(&over_limit));
+
+        let within_limit = HashMap::from([("head".to_string(), first)]);
+        assert!(validate_item_limits(&within_limit));
+
+        snapshot.restore();
     }
 }

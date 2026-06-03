@@ -1,7 +1,10 @@
 const { spawnSync } = require("node:child_process");
 
 function run(args) {
-  return spawnSync("cargo", args, { stdio: "inherit", shell: process.platform === "win32" });
+  return spawnSync("cargo", args, {
+    stdio: "inherit",
+    shell: process.platform === "win32",
+  });
 }
 
 const versionCheck = run(["llvm-cov", "--version"]);
@@ -12,5 +15,15 @@ if (versionCheck.status !== 0) {
   process.exit(versionCheck.status || 1);
 }
 
-const coverageRun = run(["llvm-cov", "--workspace", "--all-features", "--summary-only"]);
+const ignoreMainRegex = String.raw`desktop[\\/]+src-tauri[\\/]+src[\\/]+main\.rs`;
+
+const coverageRun = run([
+  "llvm-cov",
+  "--workspace",
+  "--all-features",
+  "--summary-only",
+  "--ignore-filename-regex",
+  ignoreMainRegex,
+]);
+
 process.exit(coverageRun.status || 0);

@@ -241,7 +241,7 @@ impl Job {
 
 #[cfg(test)]
 mod tests {
-    use super::extract_result_summary;
+    use super::{extract_result_summary, Job, JobStatus};
 
     #[test]
     fn user_history_summary_counts_upgrades_and_downgrades_for_topgear_results() {
@@ -272,12 +272,281 @@ mod tests {
     fn user_history_summary_falls_back_to_simc_input_name_and_armory() {
         let empty_result = None;
 
-        let from_name_line = extract_result_summary(&empty_result, "evoker=\"Scalefriend\"\nserver=tichondrius\n");
+        let from_name_line = extract_result_summary(
+            &empty_result,
+            "evoker=\"Scalefriend\"\nserver=tichondrius\n",
+        );
         assert_eq!(from_name_line.player_name.as_deref(), Some("Scalefriend"));
         assert_eq!(from_name_line.realm.as_deref(), Some("tichondrius"));
 
         let from_armory = extract_result_summary(&empty_result, "armory=us,illidan,Arcanefox\n");
         assert_eq!(from_armory.player_name.as_deref(), Some("Arcanefox"));
         assert_eq!(from_armory.realm, None);
+    }
+
+    #[test]
+    fn user_history_summary_falls_back_when_result_json_is_invalid() {
+        let invalid_result = Some("{not valid json".to_string());
+
+        let summary =
+            extract_result_summary(&invalid_result, "priest=\"Fallback\"\nserver=area52\n");
+
+        assert_eq!(summary.player_name.as_deref(), Some("Fallback"));
+        assert_eq!(summary.realm.as_deref(), Some("area52"));
+        assert_eq!(summary.player_class, None);
+        assert_eq!(summary.dps, None);
+        assert_eq!(summary.upgrades, None);
+        assert_eq!(summary.downgrades, None);
+    }
+
+    #[test]
+    fn user_history_summary_ignores_zero_delta_baselines_and_missing_dps_results() {
+        let result_json = Some(
+            serde_json::json!({
+                "type": "droptimizer",
+                "player_name": "Alice",
+                "base_dps": 1000.0,
+                "results": [
+                    { "name": "Base", "delta": 0.0, "dps": 1000.0 },
+                    { "name": "Currently Equipped 1", "delta": 0.0, "dps": 1000.0 },
+                    { "name": "No Dps Result", "delta": 50.0 },
+                    { "name": "Upgrade", "delta": 120.0, "dps": 1120.0 },
+                    { "name": "Downgrade", "delta": -80.0, "dps": 920.0 }
+                ]
+            })
+            .to_string(),
+        );
+
+        let summary = extract_result_summary(&result_json, "mage=\"Alice\"\nserver=illidan\n");
+        assert_eq!(summary.upgrades, Some(1));
+        assert_eq!(summary.downgrades, Some(1));
+    }
+
+    #[test]
+    fn user_history_summary_prefers_result_player_name_over_simc_input_fallback() {
+        let result_json = Some(
+            serde_json::json!({
+                "player_name": "FromResult",
+                "player_class": "Mage",
+                "dps": 12345.0
+            })
+            .to_string(),
+        );
+
+        let summary = extract_result_summary(
+            &result_json,
+            "mage=\"FromInput\"\nserver=illidan\narmory=us,illidan,FromArmory\n",
+        );
+
+        assert_eq!(summary.player_name.as_deref(), Some("FromResult"));
+        assert_eq!(summary.player_class.as_deref(), Some("Mage"));
+        assert_eq!(summary.realm.as_deref(), Some("illidan"));
+    }
+
+    #[test]
+    fn user_history_summary_uses_last_server_line_when_multiple_are_present() {
+        let empty_result = None;
+
+        let summary = extract_result_summary(
+            &empty_result,
+            "server=illidan\nregion=us\nserver=stormrage\nmage=\"Alice\"\n",
+        );
+
+        assert_eq!(summary.player_name.as_deref(), Some("Alice"));
+        assert_eq!(summary.realm.as_deref(), Some("stormrage"));
+    }
+
+    #[test]
+    fn job_status_serializes_and_deserializes_as_lowercase_strings() {
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Pending).expect("serialize pending"),
+            "\"pending\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Running).expect("serialize running"),
+            "\"running\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Done).expect("serialize done"),
+            "\"done\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Failed).expect("serialize failed"),
+            "\"failed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&JobStatus::Cancelled).expect("serialize cancelled"),
+            "\"cancelled\""
+        );
+
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"pending\"").expect("deserialize pending"),
+            JobStatus::Pending
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"running\"").expect("deserialize running"),
+            JobStatus::Running
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"done\"").expect("deserialize done"),
+            JobStatus::Done
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"failed\"").expect("deserialize failed"),
+            JobStatus::Failed
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"cancelled\"").expect("deserialize cancelled"),
+            JobStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn job_status_rejects_unknown_and_wrong_case_values() {
+        assert!(serde_json::from_str::<JobStatus>("\"unknown\"").is_err());
+        assert!(serde_json::from_str::<JobStatus>("\"Pending\"").is_err());
+        assert!(serde_json::from_str::<JobStatus>("\"DONE\"").is_err());
+    }
+
+    #[test]
+    fn user_history_summary_does_not_compute_upgrade_counts_for_other_result_types() {
+        let result_json = Some(
+            serde_json::json!({
+                "type": "quick",
+                "player_name": "Alice",
+                "player_class": "Mage",
+                "dps": 12345.0,
+                "base_dps": 1000.0,
+                "results": [
+                    { "name": "Upgrade", "delta": 120.0, "dps": 1120.0 },
+                    { "name": "Downgrade", "delta": -80.0, "dps": 920.0 }
+                ]
+            })
+            .to_string(),
+        );
+
+        let summary = extract_result_summary(&result_json, "mage=\"Alice\"\nserver=illidan\n");
+        assert_eq!(summary.player_name.as_deref(), Some("Alice"));
+        assert_eq!(summary.player_class.as_deref(), Some("Mage"));
+        assert_eq!(summary.dps, Some(12345.0));
+        assert_eq!(summary.realm.as_deref(), Some("illidan"));
+        assert_eq!(summary.upgrades, None);
+        assert_eq!(summary.downgrades, None);
+    }
+
+    #[test]
+    fn user_history_summary_supports_player_and_name_fallback_keys() {
+        let empty_result = None;
+
+        let from_player = extract_result_summary(
+            &empty_result,
+            "  player = \"PlayerAlias\"  \nserver=illidan\n",
+        );
+        assert_eq!(from_player.player_name.as_deref(), Some("PlayerAlias"));
+        assert_eq!(from_player.realm.as_deref(), Some("illidan"));
+
+        let from_name = extract_result_summary(&empty_result, "name=NameAlias\n");
+        assert_eq!(from_name.player_name.as_deref(), Some("NameAlias"));
+        assert_eq!(from_name.realm, None);
+    }
+
+    #[test]
+    fn user_history_summary_supports_death_knight_and_demon_hunter_alias_keys() {
+        let empty_result = None;
+
+        let from_death_knight = extract_result_summary(
+            &empty_result,
+            "death_knight=\"Runeblade\"\nserver=illidan\n",
+        );
+        assert_eq!(from_death_knight.player_name.as_deref(), Some("Runeblade"));
+        assert_eq!(from_death_knight.realm.as_deref(), Some("illidan"));
+
+        let from_demon_hunter = extract_result_summary(&empty_result, "demon_hunter=\"Felrush\"\n");
+        assert_eq!(from_demon_hunter.player_name.as_deref(), Some("Felrush"));
+        assert_eq!(from_demon_hunter.realm, None);
+    }
+
+    #[test]
+    fn user_history_summary_supports_compact_class_alias_keys() {
+        let empty_result = None;
+
+        let from_deathknight =
+            extract_result_summary(&empty_result, "deathknight=\"RunebladeAlt\"\n");
+        assert_eq!(
+            from_deathknight.player_name.as_deref(),
+            Some("RunebladeAlt")
+        );
+        assert_eq!(from_deathknight.realm, None);
+
+        let from_demonhunter = extract_result_summary(
+            &empty_result,
+            "demonhunter=\"FelrushAlt\"\nserver=tichondrius\n",
+        );
+        assert_eq!(from_demonhunter.player_name.as_deref(), Some("FelrushAlt"));
+        assert_eq!(from_demonhunter.realm.as_deref(), Some("tichondrius"));
+    }
+
+    #[test]
+    fn new_job_starts_with_expected_defaults() {
+        let job = Job::new(
+            "mage=\"Alice\"\nserver=illidan\n".to_string(),
+            "quick".to_string(),
+            2000,
+            "Patchwerk".to_string(),
+            0.1,
+        );
+
+        assert!(!job.id.is_empty());
+        assert_eq!(job.status, JobStatus::Pending);
+        assert_eq!(job.sim_type, "quick");
+        assert_eq!(job.iterations, 2000);
+        assert_eq!(job.fight_style, "Patchwerk");
+        assert_eq!(job.target_error, 0.1);
+        assert!(job.options.is_none());
+        assert!(job.result_json.is_none());
+        assert!(job.raw_json.is_none());
+        assert!(job.combo_metadata_json.is_none());
+        assert!(job.error_message.is_none());
+        assert_eq!(job.progress_pct, 0);
+        assert!(job.progress_stage.is_none());
+        assert!(job.progress_detail.is_none());
+        assert!(job.stages_completed.is_empty());
+        assert!(job.html_report.is_none());
+        assert!(job.text_output.is_none());
+        assert!(job.batch_id.is_none());
+        assert!(job.linked_region.is_none());
+        assert!(job.linked_realm.is_none());
+        assert!(job.linked_name.is_none());
+        assert!(!job.pinned);
+        assert!(!job.created_at.is_empty());
+    }
+
+    #[test]
+    fn estimate_size_counts_all_optional_payload_fields() {
+        let mut job = Job::new(
+            "mage=\"Alice\"\nserver=illidan\n".to_string(),
+            "quick".to_string(),
+            2000,
+            "Patchwerk".to_string(),
+            0.1,
+        );
+        job.result_json = Some("{\"dps\":12345}".to_string());
+        job.raw_json = Some("{\"raw\":true}".to_string());
+        job.combo_metadata_json = Some("{\"_combo_count\":2}".to_string());
+        job.html_report = Some("<html>report</html>".to_string());
+        job.text_output = Some("text output".to_string());
+
+        let expected = job.simc_input.len()
+            + job.result_json.as_ref().map(|s| s.len()).unwrap_or(0)
+            + job.raw_json.as_ref().map(|s| s.len()).unwrap_or(0)
+            + job
+                .combo_metadata_json
+                .as_ref()
+                .map(|s| s.len())
+                .unwrap_or(0)
+            + job.html_report.as_ref().map(|s| s.len()).unwrap_or(0)
+            + job.text_output.as_ref().map(|s| s.len()).unwrap_or(0);
+
+        assert_eq!(job.estimate_size(), expected as u64);
     }
 }

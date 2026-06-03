@@ -157,3 +157,283 @@ pub static EMPTY_SEASON_CONFIG: once_cell::sync::Lazy<Value> =
 #[cfg(test)]
 pub static TEST_STATE_LOCK: once_cell::sync::Lazy<Mutex<()>> =
     once_cell::sync::Lazy::new(|| Mutex::new(()));
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::Arc;
+
+    #[test]
+    fn track_ranks_are_ordered_from_lowest_to_highest() {
+        assert_eq!(
+            TRACK_RANKS,
+            &[
+                "Explorer",
+                "Adventurer",
+                "Veteran",
+                "Champion",
+                "Hero",
+                "Myth",
+            ]
+        );
+    }
+
+    #[test]
+    fn crafting_slot_data_deserializes_camel_case_fields() {
+        let slot: CraftingSlotData = serde_json::from_value(json!({
+            "reagentSlotId": 123,
+            "name": "Embellishment",
+            "reagentIds": [1, 2, 3]
+        }))
+        .expect("slot json");
+
+        assert_eq!(slot.reagent_slot_id, 123);
+        assert_eq!(slot.name, "Embellishment");
+        assert_eq!(slot.reagent_ids, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn crafting_slot_data_defaults_missing_fields() {
+        let slot: CraftingSlotData = serde_json::from_value(json!({})).expect("slot json");
+
+        assert_eq!(slot.reagent_slot_id, 0);
+        assert_eq!(slot.name, "");
+        assert!(slot.reagent_ids.is_empty());
+    }
+
+    #[test]
+    fn crafting_reagent_data_deserializes_full_shape() {
+        let reagent: CraftingReagentData = serde_json::from_value(json!({
+            "id": 42,
+            "name": "Spark",
+            "icon": "spell_fire",
+            "quality": 3,
+            "itemId": 9001,
+            "craftingBonusIds": [100, 200],
+            "itemLimit": {
+                "category": 7,
+                "quantity": 1
+            },
+            "reagentType": "spark",
+            "expansion": 10
+        }))
+        .expect("reagent json");
+
+        assert_eq!(reagent.id, 42);
+        assert_eq!(reagent.name, "Spark");
+        assert_eq!(reagent.icon, "spell_fire");
+        assert_eq!(reagent.quality, 3);
+        assert_eq!(reagent.item_id, Some(9001));
+        assert_eq!(reagent.crafting_bonus_ids, vec![100, 200]);
+        assert_eq!(reagent.reagent_type, "spark");
+        assert_eq!(reagent.expansion, Some(10));
+
+        let limit = reagent.item_limit.expect("item limit");
+        assert_eq!(limit.category, 7);
+        assert_eq!(limit.quantity, 1);
+    }
+
+    #[test]
+    fn crafting_reagent_data_defaults_missing_optional_fields() {
+        let reagent: CraftingReagentData = serde_json::from_value(json!({
+            "id": 42,
+            "name": "Spark",
+            "icon": "spell_fire",
+            "quality": 3,
+            "reagentType": "spark"
+        }))
+        .expect("reagent json");
+
+        assert_eq!(reagent.item_id, None);
+        assert!(reagent.crafting_bonus_ids.is_empty());
+        assert!(reagent.item_limit.is_none());
+        assert_eq!(reagent.expansion, None);
+    }
+
+    #[test]
+    fn crafting_reagent_data_defaults_entire_missing_shape() {
+        let reagent: CraftingReagentData = serde_json::from_value(json!({})).expect("reagent json");
+
+        assert_eq!(reagent.id, 0);
+        assert_eq!(reagent.name, "");
+        assert_eq!(reagent.icon, "");
+        assert_eq!(reagent.quality, 0);
+        assert_eq!(reagent.item_id, None);
+        assert!(reagent.crafting_bonus_ids.is_empty());
+        assert!(reagent.item_limit.is_none());
+        assert_eq!(reagent.reagent_type, "");
+        assert_eq!(reagent.expansion, None);
+    }
+
+    #[test]
+    fn catalyst_tier_item_defaults_bonus_ids() {
+        let item: CatalystTierItem = serde_json::from_value(json!({
+            "item_id": 1,
+            "name": "Tier Helm",
+            "icon": "helm",
+            "has_set": true
+        }))
+        .expect("tier item json");
+
+        assert_eq!(item.item_id, 1);
+        assert_eq!(item.name, "Tier Helm");
+        assert_eq!(item.icon, "helm");
+        assert!(item.has_set);
+        assert!(item.bonus_ids.is_empty());
+    }
+
+    #[test]
+    fn catalyst_data_default_is_empty_and_currency_zero() {
+        let catalyst = CatalystData::default();
+
+        assert!(catalyst.tier_items.is_empty());
+        assert!(catalyst.tier_item_ids.is_empty());
+        assert_eq!(catalyst.catalyst_currency_id, 0);
+    }
+
+    #[test]
+    fn static_maps_are_empty_by_default() {
+        let _guard = TEST_STATE_LOCK.lock().expect("test state lock");
+
+        assert!(ITEMS.read().expect("items").is_empty());
+        assert!(ENCHANTS.read().expect("enchants").is_empty());
+        assert!(ENCHANTS_BY_ITEM_ID
+            .read()
+            .expect("enchants by item id")
+            .is_empty());
+        assert!(BONUSES.read().expect("bonuses").is_empty());
+        assert!(UPGRADE_MAX.read().expect("upgrade max").is_empty());
+        assert!(DROPS_BY_ENCOUNTER.read().expect("drops").is_empty());
+        assert!(UPGRADE_TRACKS.read().expect("upgrade tracks").is_empty());
+        assert!(UPGRADE_STEP_COSTS
+            .read()
+            .expect("upgrade step costs")
+            .is_empty());
+        assert!(SQUISH_ERAS.read().expect("squish eras").is_empty());
+        assert!(ITEM_CURVES.read().expect("item curves").is_empty());
+        assert!(CURRENCY_INFO.read().expect("currency info").is_empty());
+        assert!(ITEM_LIMIT_CATS.read().expect("item limit cats").is_empty());
+        assert!(CRAFTING_SLOTS.read().expect("crafting slots").is_empty());
+        assert!(CRAFTING_REAGENTS
+            .read()
+            .expect("crafting reagents")
+            .is_empty());
+        assert!(CRAFTING_LIMIT_CATS
+            .read()
+            .expect("crafting limit cats")
+            .is_empty());
+        assert!(TALENT_TREES.read().expect("talent trees").is_empty());
+        assert!(FLASK_OPTIONS_RAW.read().expect("flasks").is_empty());
+        assert!(FOOD_OPTIONS_RAW.read().expect("food").is_empty());
+        assert!(POTION_OPTIONS_RAW.read().expect("potions").is_empty());
+        assert!(AUGMENT_OPTIONS_RAW.read().expect("augments").is_empty());
+        assert!(TEMP_ENCHANT_OPTIONS_RAW
+            .read()
+            .expect("temp enchants")
+            .is_empty());
+    }
+
+    #[test]
+    fn static_values_are_empty_by_default() {
+        let _guard = TEST_STATE_LOCK.lock().expect("test state lock");
+
+        assert!(INSTANCES.read().expect("instances").is_empty());
+        assert_eq!(*CURRENT_SEASON_ID.read().expect("season id"), 0);
+        assert_eq!(*SEASON_CONFIG.read().expect("season config"), json!({}));
+        assert_eq!(*RUNTIME_DATA.read().expect("runtime data"), json!({}));
+        assert_eq!(*EMPTY_SEASON_CONFIG, json!({}));
+    }
+
+    #[test]
+    fn catalyst_static_can_be_replaced_and_restored() {
+        let _guard = TEST_STATE_LOCK.lock().expect("test state lock");
+
+        let original = CATALYST.read().expect("catalyst").clone();
+
+        let mut data = CatalystData::default();
+        data.catalyst_currency_id = 3378;
+        data.tier_item_ids.insert(111);
+
+        data.tier_items.insert(
+            (7, 1),
+            CatalystTierItem {
+                item_id: 111,
+                name: "Tier Helm".to_string(),
+                icon: "helm".to_string(),
+                has_set: true,
+                bonus_ids: vec![1, 2],
+            },
+        );
+
+        {
+            let mut catalyst = CATALYST.write().expect("catalyst write");
+            *catalyst = Arc::new(data);
+        }
+
+        let catalyst = CATALYST.read().expect("catalyst");
+
+        assert_eq!(catalyst.catalyst_currency_id, 3378);
+        assert!(catalyst.tier_item_ids.contains(&111));
+        assert_eq!(
+            catalyst.tier_items.get(&(7, 1)).map(|item| item.item_id),
+            Some(111)
+        );
+
+        drop(catalyst);
+
+        {
+            let mut catalyst = CATALYST.write().expect("catalyst restore");
+            *catalyst = original;
+        }
+    }
+
+    #[test]
+    fn option_raw_vectors_can_be_replaced_and_restored() {
+        let _guard = TEST_STATE_LOCK.lock().expect("test state lock");
+
+        let original = FLASK_OPTIONS_RAW.read().expect("flasks").clone();
+
+        {
+            let mut flasks = FLASK_OPTIONS_RAW.write().expect("flasks write");
+            *flasks = Arc::new(vec![json!({ "id": 1, "name": "Flask" })]);
+        }
+
+        assert_eq!(
+            FLASK_OPTIONS_RAW.read().expect("flasks")[0]["name"].as_str(),
+            Some("Flask")
+        );
+
+        {
+            let mut flasks = FLASK_OPTIONS_RAW.write().expect("flasks restore");
+            *flasks = original;
+        }
+    }
+
+    #[test]
+    fn season_and_runtime_json_can_be_updated_and_restored() {
+        let _guard = TEST_STATE_LOCK.lock().expect("test state lock");
+
+        let original_season = SEASON_CONFIG.read().expect("season config").clone();
+        let original_runtime = RUNTIME_DATA.read().expect("runtime data").clone();
+
+        {
+            *SEASON_CONFIG.write().expect("season config write") = json!({ "season": 15 });
+            *RUNTIME_DATA.write().expect("runtime data write") = json!({ "generated_at": "test" });
+        }
+
+        assert_eq!(
+            SEASON_CONFIG.read().expect("season config")["season"].as_u64(),
+            Some(15)
+        );
+        assert_eq!(
+            RUNTIME_DATA.read().expect("runtime data")["generated_at"].as_str(),
+            Some("test")
+        );
+
+        {
+            *SEASON_CONFIG.write().expect("season config restore") = original_season;
+            *RUNTIME_DATA.write().expect("runtime data restore") = original_runtime;
+        }
+    }
+}

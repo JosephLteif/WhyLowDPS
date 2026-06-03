@@ -292,13 +292,45 @@ pub async fn get_game_data_state(
 mod tests {
     use super::*;
     use crate::item_db::state;
+    use crate::server::auth_handlers::BlizzardAuthState;
+    use crate::server::blizzard::BlizzardState;
+    use crate::storage::{JobStorage, MemoryStorage};
+    use actix_web::body::to_bytes;
+    use actix_web::test::TestRequest;
+    use once_cell::sync::Lazy;
     use serde_json::json;
+    use std::sync::Arc;
+
+    static TEST_GAME_DATA_CACHE_LOCK: Lazy<tokio::sync::Mutex<()>> =
+        Lazy::new(|| tokio::sync::Mutex::new(()));
+
+    fn auth_state() -> web::Data<Arc<BlizzardAuthState>> {
+        web::Data::new(Arc::new(BlizzardAuthState::new(
+            None,
+            None,
+            "http://localhost/callback".to_string(),
+            "jwt-secret".to_string(),
+        )))
+    }
+
+    fn blizzard_state() -> web::Data<Arc<BlizzardState>> {
+        web::Data::new(Arc::new(BlizzardState::new()))
+    }
+
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
 
     #[test]
     fn localized_name_prefers_en_us_then_any_value() {
-        assert_eq!(localized_name(Some(&json!("Season 3"))), Some("Season 3".to_string()));
         assert_eq!(
-            localized_name(Some(&json!({"en_US":"Season Three","fr_FR":"Saison Trois"}))),
+            localized_name(Some(&json!("Season 3"))),
+            Some("Season 3".to_string())
+        );
+        assert_eq!(
+            localized_name(Some(
+                &json!({"en_US":"Season Three","fr_FR":"Saison Trois"})
+            )),
             Some("Season Three".to_string())
         );
         assert_eq!(
@@ -320,7 +352,10 @@ mod tests {
             })),
             Some(525)
         );
-        assert_eq!(extract_dungeon_id(&json!({"key":{"href":"https://example.com/invalid"}})), None);
+        assert_eq!(
+            extract_dungeon_id(&json!({"key":{"href":"https://example.com/invalid"}})),
+            None
+        );
     }
 
     #[test]
@@ -356,5 +391,93 @@ mod tests {
 
         *state::RUNTIME_DATA.write().unwrap() = prev_runtime;
         *state::CURRENT_SEASON_ID.write().unwrap() = prev_season;
+    }
+
+    #[actix_web::test]
+    async fn get_game_data_state_returns_runtime_fallback_while_refresh_is_in_progress() {
+        let _test_guard = TEST_GAME_DATA_CACHE_LOCK.lock().await;
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_runtime = state::RUNTIME_DATA.read().unwrap().clone();
+        let prev_season = *state::CURRENT_SEASON_ID.read().unwrap();
+        let mut cache = GAME_DATA_CACHE.lock().await;
+        let prev_latest = cache.latest.clone();
+        let prev_refreshing = cache.refreshing;
+
+        *state::RUNTIME_DATA.write().unwrap() = json!({
+            "current_season_id": 33,
+            "season_name": "Fallback Season",
+            "current_affixes": [{"name": "Ascendant"}],
+            "mplus_rotation": [701, 702],
+            "last_sync": "2026-06-01T12:00:00Z"
+        });
+        *state::CURRENT_SEASON_ID.write().unwrap() = 32;
+        cache.latest = None;
+        cache.refreshing = true;
+        drop(cache);
+
+        let resp = get_game_data_state(
+            TestRequest::default().to_http_request(),
+            blizzard_state(),
+            auth_state(),
+            test_store(),
+        )
+        .await;
+        assert_eq!(resp.status(), 200);
+
+        let body = to_bytes(resp.into_body()).await.expect("fallback body");
+        let payload: Value = serde_json::from_slice(&body).expect("fallback json");
+        assert_eq!(payload["season_id"].as_u64(), Some(33));
+        assert_eq!(payload["season_name"].as_str(), Some("Fallback Season"));
+        assert_eq!(
+            payload["active_affixes"]
+                .as_array()
+                .and_then(|items| items.first())
+                .and_then(Value::as_str),
+            Some("Ascendant")
+        );
+
+        let mut cache = GAME_DATA_CACHE.lock().await;
+        cache.latest = prev_latest;
+        cache.refreshing = prev_refreshing;
+        *state::RUNTIME_DATA.write().unwrap() = prev_runtime;
+        *state::CURRENT_SEASON_ID.write().unwrap() = prev_season;
+    }
+
+    #[actix_web::test]
+    async fn get_game_data_state_serves_cached_data_without_refreshing_branch() {
+        let _test_guard = TEST_GAME_DATA_CACHE_LOCK.lock().await;
+        let mut cache = GAME_DATA_CACHE.lock().await;
+        let prev_latest = cache.latest.clone();
+        let prev_refreshing = cache.refreshing;
+        cache.latest = Some(CachedGameState {
+            data: GameDataState {
+                season_id: 44,
+                season_name: "Cached Season".to_string(),
+                active_affixes: vec!["Bursting".to_string()],
+                mplus_rotation: vec![801],
+                last_sync: "2026-06-01T10:00:00Z".to_string(),
+            },
+            fetched_at: Utc::now(),
+        });
+        cache.refreshing = false;
+        drop(cache);
+
+        let resp = get_game_data_state(
+            TestRequest::default().to_http_request(),
+            blizzard_state(),
+            auth_state(),
+            test_store(),
+        )
+        .await;
+        assert_eq!(resp.status(), 200);
+
+        let body = to_bytes(resp.into_body()).await.expect("cached body");
+        let payload: Value = serde_json::from_slice(&body).expect("cached json");
+        assert_eq!(payload["season_id"].as_u64(), Some(44));
+        assert_eq!(payload["season_name"].as_str(), Some("Cached Season"));
+
+        let mut cache = GAME_DATA_CACHE.lock().await;
+        cache.latest = prev_latest;
+        cache.refreshing = prev_refreshing;
     }
 }

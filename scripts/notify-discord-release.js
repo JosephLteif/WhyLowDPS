@@ -115,4 +115,6 @@ module.exports = {
   getChannelConfig,
   normalizeChannel,
   selectWebhookUrl,
+  postJson,
+  main,
 };

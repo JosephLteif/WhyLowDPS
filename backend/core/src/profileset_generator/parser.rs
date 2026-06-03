@@ -121,12 +121,37 @@ race=night_elf
 
         assert_eq!(talents, "ABCD");
         assert_eq!(spec, "arcane");
-        assert_eq!(equipped.get("head"), Some(&"id=1111,bonus_id=1/2".to_string()));
+        assert_eq!(
+            equipped.get("head"),
+            Some(&"id=1111,bonus_id=1/2".to_string())
+        );
         assert_eq!(equipped.get("finger1"), Some(&"id=2222".to_string()));
         assert_eq!(equipped.get("off_hand"), Some(&"id=3333".to_string()));
         assert!(non_gear.contains(&"mage=\"Testmage\"".to_string()));
         assert!(non_gear.contains(&"spec=arcane".to_string()));
         assert!(non_gear.contains(&"race=night_elf".to_string()));
         assert!(!non_gear.iter().any(|line| line.starts_with("head=")));
+    }
+
+    #[test]
+    fn parse_base_profile_uses_last_spec_and_talent_lines() {
+        let profile = r#"
+  mage="Testmage"
+  spec=frost
+  talents=OLD
+  spec=arcane
+  talents=NEW
+  head=id=1111
+"#;
+
+        let (non_gear, equipped, talents, spec) = parse_base_profile(profile);
+
+        assert_eq!(talents, "NEW");
+        assert_eq!(spec, "arcane");
+        assert_eq!(equipped.get("head"), Some(&"id=1111".to_string()));
+        assert!(non_gear.contains(&"mage=\"Testmage\"".to_string()));
+        assert!(non_gear.contains(&"spec=frost".to_string()));
+        assert!(non_gear.contains(&"spec=arcane".to_string()));
+        assert!(!non_gear.iter().any(|line| line.starts_with("talents=")));
     }
 }

@@ -18,6 +18,7 @@ describe('api helpers', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   afterEach(() => {
@@ -79,14 +80,28 @@ describe('api helpers', () => {
     expect(isDesktopRuntime()).toBe(true);
   });
 
-  it('dedupes cached GET requests and uses persistent cache when fresh', async () => {
+  it('dedupes cached GET requests and uses persistent cache storage when fresh', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ value: 1 }));
     vi.stubGlobal('fetch', fetchMock);
+    const cacheStore = new Map<string, Response>();
+    vi.stubGlobal('caches', {
+      open: vi.fn().mockResolvedValue({
+        match: vi.fn((key: string) => Promise.resolve(cacheStore.get(key))),
+        put: vi.fn((key: string, response: Response) => {
+          cacheStore.set(key, response);
+          return Promise.resolve();
+        }),
+        delete: vi.fn((key: string) => Promise.resolve(cacheStore.delete(key))),
+      }),
+    });
+    localStorage.setItem('api_cache_legacy', '{}');
 
     const first = fetchJsonCached('/api/cache', { ttl: 1000, usePersistentCache: true });
     const second = fetchJsonCached('/api/cache', { ttl: 1000, usePersistentCache: true });
     await expect(Promise.all([first, second])).resolves.toEqual([{ value: 1 }, { value: 1 }]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem('api_cache_legacy')).toBeNull();
+    expect(localStorage.getItem('api_cache_/api/cache')).toBeNull();
 
     await expect(
       fetchJsonCached('/api/cache', { ttl: 1000, usePersistentCache: true })

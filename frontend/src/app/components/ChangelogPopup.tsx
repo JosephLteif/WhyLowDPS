@@ -24,6 +24,11 @@ const releaseNotes = [
     body:
       'Credential setup now offers a clear path to continue in Light mode when Blizzard API access is unavailable.',
   },
+  {
+    title: 'Better local caching',
+    body:
+      'Persistent API cache entries now use browser Cache Storage instead of filling localStorage with item, talent, enchant, and gem records.',
+  },
 ];
 
 export default function ChangelogPopup() {

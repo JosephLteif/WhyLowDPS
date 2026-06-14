@@ -170,8 +170,7 @@ fn should_apply_default_overrides(sim_type: &str, raid_buff_customized: bool) ->
 
 fn is_dungeon_route_input(simc_input: &str) -> bool {
     simc_input.lines().any(|line| {
-        line.trim() == "fight_style=DungeonRoute"
-            || line.trim() == "fight_style=\"DungeonRoute\""
+        line.trim() == "fight_style=DungeonRoute" || line.trim() == "fight_style=\"DungeonRoute\""
     })
 }
 
@@ -267,7 +266,11 @@ fn compute_stage_keep_and_eliminated(
     let keep_set: HashSet<String> = sorted
         .iter()
         .take(keep_count)
-        .filter_map(|ps| ps.get("name").and_then(|n| n.as_str()).map(|s| s.to_string()))
+        .filter_map(|ps| {
+            ps.get("name")
+                .and_then(|n| n.as_str())
+                .map(|s| s.to_string())
+        })
         .collect();
 
     let mut eliminated = HashMap::new();
@@ -346,7 +349,11 @@ async fn run_simc_subprocess(
     let args = build_simc_cli_args(
         &input_file,
         &output_file,
-        if generate_html { Some(&html_file) } else { None },
+        if generate_html {
+            Some(&html_file)
+        } else {
+            None
+        },
         fight_style,
         target_error,
         iterations,
@@ -780,60 +787,45 @@ pub async fn run_simc_staged(
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::path::Path;
-
-    #[test]
-    fn filter_simc_input_keeps_only_selected_profilesets() {
-        let input = r#"
-mage="Tester"
-### Combo 1
-profileset."Combo 1"+=head=id=1
-# keep comment
-### Combo 2
-profileset."Combo 2"+=head=id=2
-# drop comment
-fight_style=Patchwerk
-"#;
-        let keep = HashSet::from(["Combo 1".to_string()]);
-        let filtered = filter_simc_input(input, &keep);
-        assert!(filtered.contains("profileset.\"Combo 1\""));
-        assert!(!filtered.contains("profileset.\"Combo 2\""));
-        assert!(filtered.contains("fight_style=Patchwerk"));
-    }
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn should_apply_default_overrides_follows_sim_type_and_customization() {
         assert!(should_apply_default_overrides("quick", false));
         assert!(!should_apply_default_overrides("quick", true));
         assert!(!should_apply_default_overrides("consumable_matrix", false));
-        assert!(!should_apply_default_overrides("external_buff_matrix", false));
+        assert!(!should_apply_default_overrides(
+            "external_buff_matrix",
+            false
+        ));
+        assert!(should_apply_default_overrides("top_gear", false));
     }
 
     #[test]
-    fn resolve_threads_is_clamped() {
+    fn resolve_threads_defaults_and_clamps() {
         let max_threads = std::thread::available_parallelism()
             .map(|n| n.get() as u32)
             .unwrap_or(4);
 
-        let options_default = json!({});
-        assert_eq!(resolve_threads(&options_default), max_threads);
-
-        let options_huge = json!({"threads": 999999});
-        assert_eq!(resolve_threads(&options_huge), max_threads);
-
-        let options_small = json!({"threads": 1});
-        assert_eq!(resolve_threads(&options_small), 1);
+        assert_eq!(resolve_threads(&json!({})), max_threads);
+        assert_eq!(resolve_threads(&json!({"threads": 0})), max_threads);
+        assert_eq!(resolve_threads(&json!({"threads": 1})), 1);
+        assert_eq!(resolve_threads(&json!({"threads": 999999})), max_threads);
+        assert_eq!(resolve_threads(&json!({"threads": "bad"})), max_threads);
     }
 
     #[test]
-    fn dungeon_route_detection_supports_both_forms() {
+    fn dungeon_route_detection_supports_exact_trimmed_forms_only() {
         assert!(is_dungeon_route_input("fight_style=DungeonRoute\n"));
+        assert!(is_dungeon_route_input("  fight_style=DungeonRoute  \n"));
         assert!(is_dungeon_route_input("fight_style=\"DungeonRoute\"\n"));
         assert!(!is_dungeon_route_input("fight_style=Patchwerk\n"));
+        assert!(!is_dungeon_route_input("fight_style = DungeonRoute\n"));
     }
 
     #[test]
-    fn build_simc_cli_args_non_dungeon_includes_overrides_and_max_time() {
+    fn build_simc_cli_args_non_dungeon_includes_expected_options() {
         let args = build_simc_cli_args(
             Path::new("input.simc"),
             Path::new("output.json"),
@@ -844,21 +836,59 @@ fight_style=Patchwerk
             8,
             1,
             300,
-            false,
-            None,
+            true,
+            Some(("haste_rating".to_string(), 10, 100, 500)),
             true,
             true,
             false,
         );
 
+        assert!(args.contains(&"input.simc".to_string()));
+        assert!(args.iter().any(|arg| arg == "json2=output.json"));
+        assert!(args.iter().any(|arg| arg == "html=report.html"));
+        assert!(args.iter().any(|arg| arg == "iterations=1000"));
+        assert!(args.iter().any(|arg| arg == "target_error=0.2"));
+        assert!(args.iter().any(|arg| arg == "threads=8"));
+        assert!(args.iter().any(|arg| arg == "calculate_scale_factors=1"));
+        assert!(args.iter().any(|arg| arg == "dps_plot_stat=haste_rating"));
+        assert!(args.iter().any(|arg| arg == "dps_plot_points=10"));
+        assert!(args.iter().any(|arg| arg == "dps_plot_step=100"));
+        assert!(args.iter().any(|arg| arg == "dps_plot_iterations=500"));
         assert!(args.iter().any(|arg| arg == "fight_style=Patchwerk"));
+        assert!(args.iter().any(|arg| arg == "desired_targets=1"));
         assert!(args.iter().any(|arg| arg == "max_time=300"));
         assert!(args.iter().any(|arg| arg == "override.bloodlust=1"));
         assert!(args.iter().any(|arg| arg == "single_actor_batch=1"));
+        assert!(args.iter().any(|arg| arg == "report_details=1"));
     }
 
     #[test]
-    fn build_simc_cli_args_dungeon_omits_fight_style_max_time_and_overrides() {
+    fn build_simc_cli_args_non_dungeon_can_skip_default_overrides_and_batch_flag() {
+        let args = build_simc_cli_args(
+            Path::new("input.simc"),
+            Path::new("output.json"),
+            None,
+            "Patchwerk",
+            0.2,
+            1000,
+            8,
+            1,
+            300,
+            false,
+            None,
+            false,
+            false,
+            false,
+        );
+
+        assert!(!args.iter().any(|arg| arg.starts_with("html=")));
+        assert!(args.iter().any(|arg| arg == "calculate_scale_factors=0"));
+        assert!(!args.iter().any(|arg| arg.starts_with("override.")));
+        assert!(!args.iter().any(|arg| arg == "single_actor_batch=1"));
+    }
+
+    #[test]
+    fn build_simc_cli_args_dungeon_route_omits_fight_style_max_time_and_overrides() {
         let args = build_simc_cli_args(
             Path::new("input.simc"),
             Path::new("output.json"),
@@ -884,50 +914,661 @@ fight_style=Patchwerk
     }
 
     #[test]
-    fn stage_keep_count_respects_min_and_fraction() {
+    fn stage_keep_count_respects_minimum_and_fraction() {
         assert_eq!(stage_keep_count(100, 0.3, 5), 30);
         assert_eq!(stage_keep_count(6, 0.3, 5), 5);
+        assert_eq!(stage_keep_count(1, 1.0, 1), 1);
+        assert_eq!(stage_keep_count(0, 0.5, 10), 10);
     }
 
     #[test]
-    fn stage_keep_and_eliminated_is_deterministic_for_ties() {
+    fn sort_profilesets_descending_orders_by_mean_then_name() {
+        let sorted = sort_profilesets_descending(&[
+            json!({"name": "Combo B", "mean": 100.0}),
+            json!({"name": "Combo A", "mean": 100.0}),
+            json!({"name": "Combo C", "mean": 95.0}),
+            json!({"name": "Combo D"}),
+        ]);
+
+        let names = sorted
+            .iter()
+            .map(|v| v["name"].as_str().unwrap_or(""))
+            .collect::<Vec<_>>();
+
+        assert_eq!(names, vec!["Combo A", "Combo B", "Combo C", "Combo D"]);
+    }
+
+    #[test]
+    fn compute_stage_keep_and_eliminated_is_deterministic_for_ties() {
         let profilesets = vec![
-            json!({"name":"Combo B","mean":100.0}),
-            json!({"name":"Combo A","mean":100.0}),
-            json!({"name":"Combo C","mean":95.0}),
+            json!({"name": "Combo B", "mean": 100.0}),
+            json!({"name": "Combo A", "mean": 100.0}),
+            json!({"name": "Combo C", "mean": 95.0}),
         ];
+
         let (keep_set, eliminated) = compute_stage_keep_and_eliminated(&profilesets, 2);
-        assert!(keep_set.contains("Combo A"));
-        assert!(keep_set.contains("Combo B"));
+
+        assert_eq!(
+            keep_set,
+            HashSet::from(["Combo A".to_string(), "Combo B".to_string()])
+        );
         assert_eq!(eliminated.len(), 1);
         assert!(eliminated.contains_key("Combo C"));
     }
 
     #[test]
-    fn merge_eliminated_profilesets_appends_to_results() {
-        let mut json = json!({
+    fn compute_stage_keep_and_eliminated_ignores_entries_without_names_for_sets() {
+        let profilesets = vec![
+            json!({"name": "Combo A", "mean": 100.0}),
+            json!({"mean": 90.0}),
+            json!({"name": "", "mean": 80.0}),
+        ];
+
+        let (keep_set, eliminated) = compute_stage_keep_and_eliminated(&profilesets, 1);
+
+        assert_eq!(keep_set, HashSet::from(["Combo A".to_string()]));
+        assert!(eliminated.is_empty());
+    }
+
+    #[test]
+    fn merge_eliminated_profilesets_appends_to_existing_results() {
+        let mut raw = json!({
             "sim": {
                 "profilesets": {
                     "results": [
-                        {"name":"Combo 1","mean":100.0}
+                        {"name": "Combo 1", "mean": 100.0}
                     ]
                 }
             }
         });
-        let eliminated = HashMap::from([(
-            "Combo 2".to_string(),
-            json!({"name":"Combo 2","mean":90.0}),
-        )]);
 
-        merge_eliminated_profilesets(&mut json, eliminated);
-        let results = json["sim"]["profilesets"]["results"]
-            .as_array()
-            .expect("results should be an array");
+        merge_eliminated_profilesets(
+            &mut raw,
+            HashMap::from([(
+                "Combo 2".to_string(),
+                json!({"name": "Combo 2", "mean": 90.0}),
+            )]),
+        );
+
+        let results = raw["sim"]["profilesets"]["results"].as_array().unwrap();
+
         assert_eq!(results.len(), 2);
         assert!(results
             .iter()
-            .any(|entry| entry.get("name").and_then(|n| n.as_str()) == Some("Combo 2")));
+            .any(|entry| entry["name"] == json!("Combo 2")));
+    }
+
+    #[test]
+    fn merge_eliminated_profilesets_noops_when_map_or_result_path_is_empty() {
+        let mut raw = json!({});
+        merge_eliminated_profilesets(&mut raw, HashMap::new());
+        assert_eq!(raw, json!({}));
+
+        merge_eliminated_profilesets(
+            &mut raw,
+            HashMap::from([("Combo 1".to_string(), json!({"name": "Combo 1"}))]),
+        );
+        assert_eq!(raw, json!({}));
+    }
+
+    #[test]
+    fn get_profileset_results_returns_results_or_empty_vec() {
+        let raw = json!({
+            "sim": {
+                "profilesets": {
+                    "results": [
+                        {"name": "Combo 1"},
+                        {"name": "Combo 2"}
+                    ]
+                }
+            }
+        });
+
+        assert_eq!(get_profileset_results(&raw).len(), 2);
+        assert!(get_profileset_results(&json!({})).is_empty());
+        assert!(
+            get_profileset_results(&json!({"sim": {"profilesets": {"results": "bad"}}})).is_empty()
+        );
+    }
+
+    #[test]
+    fn filter_simc_input_keeps_only_selected_profilesets() {
+        let input = r#"
+mage="Tester"
+### Combo 1
+profileset."Combo 1"+=head=id=1
+# keep comment
+### Combo 2
+profileset."Combo 2"+=head=id=2
+# drop comment
+fight_style=Patchwerk
+"#;
+
+        let keep = HashSet::from(["Combo 1".to_string()]);
+        let filtered = filter_simc_input(input, &keep);
+
+        assert!(filtered.contains("profileset.\"Combo 1\""));
+        assert!(filtered.contains("# keep comment"));
+        assert!(!filtered.contains("profileset.\"Combo 2\""));
+        assert!(!filtered.contains("# drop comment"));
+        assert!(filtered.contains("fight_style=Patchwerk"));
+    }
+
+    #[test]
+    fn filter_simc_input_keeps_base_lines_and_resets_after_dropped_profileset() {
+        let input = r#"
+warrior="Tester"
+### Combo 1
+profileset."Combo 1"+=head=id=1
+### Combo 2
+profileset."Combo 2"+=head=id=2
+iterations=1000
+profileset."not attached to combo"+=bad=1
+"#;
+
+        let keep = HashSet::from(["Combo 1".to_string()]);
+        let filtered = filter_simc_input(input, &keep);
+
+        assert!(filtered.contains("warrior=\"Tester\""));
+        assert!(filtered.contains("profileset.\"Combo 1\""));
+        assert!(!filtered.contains("profileset.\"Combo 2\""));
+        assert!(filtered.contains("iterations=1000"));
+        assert!(filtered.contains("profileset.\"not attached to combo\"+=bad=1"));
+    }
+
+    #[test]
+    fn filter_simc_input_with_empty_keep_removes_all_combo_blocks() {
+        let input = r#"
+mage="Tester"
+### Combo 1
+profileset."Combo 1"+=head=id=1
+# comment
+### Combo 2
+profileset."Combo 2"+=head=id=2
+fight_style=Patchwerk
+"#;
+
+        let filtered = filter_simc_input(input, &HashSet::new());
+
+        assert!(filtered.contains("mage=\"Tester\""));
+        assert!(!filtered.contains("### Combo 1"));
+        assert!(!filtered.contains("profileset.\"Combo 1\""));
+        assert!(!filtered.contains("### Combo 2"));
+        assert!(!filtered.contains("profileset.\"Combo 2\""));
+        assert!(filtered.contains("fight_style=Patchwerk"));
+    }
+
+    #[tokio::test]
+    async fn spawn_reader_emits_trimmed_non_empty_stdout_lines() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+
+        spawn_reader(
+            tokio::io::BufReader::new(" one \n\n two\rthree".as_bytes()),
+            false,
+            tx,
+        );
+
+        let first = rx.recv().await.expect("first line");
+        let second = rx.recv().await.expect("second line");
+        let third = rx.recv().await.expect("third line");
+
+        assert_eq!(first, (false, "one".to_string()));
+        assert_eq!(second, (false, "two".to_string()));
+        assert_eq!(third, (false, "three".to_string()));
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn spawn_reader_marks_stderr_lines() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+
+        spawn_reader(tokio::io::BufReader::new("err line\n".as_bytes()), true, tx);
+
+        assert_eq!(
+            rx.recv().await.expect("stderr line"),
+            (true, "err line".to_string())
+        );
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[test]
+    fn kill_job_without_registered_process_marks_job_cancelled_and_returns_false() {
+        let job_id = "test-kill-missing";
+        cleanup_cancelled_job(job_id);
+
+        assert!(!kill_job(job_id));
+
+        assert!(CANCELLED_JOBS.lock().unwrap().contains(job_id));
+        cleanup_cancelled_job(job_id);
+        assert!(!CANCELLED_JOBS.lock().unwrap().contains(job_id));
+    }
+
+    #[test]
+    fn get_process_stats_returns_none_for_unknown_job() {
+        assert_eq!(get_process_stats("missing-job"), None);
+    }
+
+    #[tokio::test]
+    async fn run_simc_returns_error_when_binary_is_missing() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let missing = dir.path().join("missing-simc");
+
+        let err = run_simc(
+            &missing,
+            "missing-binary-job",
+            "warrior=\"Tester\"\n",
+            &json!({}),
+            |_, _| {},
+            |_| {},
+        )
+        .await
+        .expect_err("missing binary should fail");
+
+        assert!(err.to_string().contains("simc binary not found"));
+    }
+
+    #[tokio::test]
+    async fn run_simc_subprocess_errors_when_json_output_is_missing_or_invalid() {
+        let script = fake_simc_script("bad-json", "bad-json");
+
+        let err = run_simc_subprocess(
+            &script,
+            "no-json-job",
+            "warrior=\"Tester\"\n",
+            "Patchwerk",
+            0.2,
+            100,
+            1,
+            1,
+            300,
+            false,
+            None,
+            true,
+            true,
+            "",
+            false,
+            |_, _| {},
+            |_| {},
+        )
+        .await
+        .expect_err("missing json should fail");
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("simc produced no JSON output")
+                || msg.contains("expected ident")
+                || msg.contains("EOF while parsing")
+                || msg.contains("JSON"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_simc_subprocess_returns_error_for_invalid_json_output() {
+        let script = fake_simc_script("bad-json", "bad-json");
+
+        let err = run_simc_subprocess(
+            &script,
+            "bad-json-job",
+            "warrior=\"Tester\"\n",
+            "Patchwerk",
+            0.2,
+            100,
+            1,
+            1,
+            300,
+            false,
+            None,
+            true,
+            true,
+            "",
+            false,
+            |_, _| {},
+            |_| {},
+        )
+        .await
+        .expect_err("bad json should fail");
+
+        assert!(err.to_string().contains("expected ident") || err.to_string().contains("JSON"));
+    }
+
+    #[tokio::test]
+    async fn run_simc_subprocess_returns_error_for_nonzero_exit_and_prefers_stderr() {
+        let script = fake_simc_script("nonzero", "nonzero");
+
+        let err = run_simc_subprocess(
+            &script,
+            "nonzero-job",
+            "warrior=\"Tester\"\n",
+            "Patchwerk",
+            0.2,
+            100,
+            1,
+            1,
+            300,
+            false,
+            None,
+            true,
+            true,
+            "",
+            false,
+            |_, _| {},
+            |_| {},
+        )
+        .await
+        .expect_err("nonzero should fail");
+
+        let msg = err.to_string();
+        assert!(msg.contains("simc failed"));
+        assert!(msg.contains("stderr failure"));
+    }
+
+    #[tokio::test]
+    async fn run_simc_subprocess_success_reads_json_html_text_and_progress() {
+        let script = fake_simc_script("success", "success");
+
+        let progress = Arc::new(Mutex::new(Vec::<(usize, usize)>::new()));
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+
+        let p = progress.clone();
+        let l = logs.clone();
+
+        let output = run_simc_subprocess(
+            &script,
+            "success-job",
+            "warrior=\"Tester\"\n",
+            "Patchwerk",
+            0.2,
+            100,
+            1,
+            1,
+            300,
+            false,
+            None,
+            true,
+            true,
+            "",
+            true,
+            move |current, total| {
+                p.lock().unwrap().push((current, total));
+            },
+            move |line| {
+                l.lock().unwrap().push(line.to_string());
+            },
+        )
+        .await
+        .expect("successful fake simc");
+
+        assert_eq!(
+            output.json["sim"]["profilesets"]["results"][0]["name"],
+            json!("Combo 1")
+        );
+        assert_eq!(
+            output
+                .html_report
+                .as_deref()
+                .map(|s| s.replace("\r\n", "\n")),
+            Some("<html>report</html>\n".to_string())
+        );
+        assert!(output.text_output.as_deref().unwrap_or("").contains("done"));
+        assert_eq!(*progress.lock().unwrap(), vec![(1, 4), (2, 4)]);
+        assert!(logs.lock().unwrap().iter().any(|line| line == "done"));
+    }
+
+    #[tokio::test]
+    async fn run_simc_wrapper_builds_stat_plot_options_and_succeeds() {
+        let script = fake_simc_script("wrapper-stat-plot", "wrapper-stat-plot");
+
+        let output = run_simc(
+            &script,
+            "wrapper-stat-plot-job",
+            "warrior=\"Tester\"\n",
+            &json!({
+                "sim_type": "stat_plot",
+                "dps_plot_stat": " haste_rating ",
+                "dps_plot_points": 0,
+                "dps_plot_step": 0,
+                "dps_plot_iterations": 0,
+                "iterations": 100,
+                "threads": 1
+            }),
+            |_, _| {},
+            |_| {},
+        )
+        .await
+        .expect("stat plot wrapper should succeed");
+
+        assert_eq!(output.json["ok"], json!(true));
+    }
+
+    #[tokio::test]
+    async fn run_simc_staged_direct_path_is_used_for_small_combo_counts() {
+        let script = fake_simc_script("staged-direct", "staged-direct");
+
+        let progress = Arc::new(Mutex::new(Vec::<String>::new()));
+        let p = progress.clone();
+
+        let output = run_simc_staged(
+            &script,
+            "staged-direct-job",
+            "warrior=\"Tester\"\n### Combo 1\nprofileset.\"Combo 1\"+=head=id=1\n",
+            &json!({
+                "iterations": 100,
+                "threads": 1
+            }),
+            2,
+            move |_, phase, detail| {
+                p.lock().unwrap().push(format!("{phase}:{detail}"));
+            },
+            |_| {},
+            |_| {},
+        )
+        .await
+        .expect("direct staged run");
+
+        assert_eq!(
+            output.json["sim"]["profilesets"]["results"][0]["name"],
+            json!("Combo 1")
+        );
+        assert!(progress
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|line| line.contains("2 combos")));
+    }
+
+    fn fake_simc_script(name: &str, mode: &str) -> PathBuf {
+        let dir = tempfile::tempdir().expect("fake simc dir").into_path();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let path = dir.join(name);
+
+            let body = match mode {
+                "no-json" => {
+                    r#"#!/usr/bin/env bash
+                echo "1/2"
+                exit 0
+                "#
+                }
+                "bad-json" => {
+                    r#"#!/usr/bin/env bash
+                for arg in "$@"; do
+                  case "$arg" in
+                    json2=*) out="${arg#json2=}" ;;
+                  esac
+                done
+                echo "not-json" > "$out"
+                exit 0
+                "#
+                }
+                "nonzero" => {
+                    r#"#!/usr/bin/env bash
+                echo "stdout failure"
+                echo "stderr failure" >&2
+                exit 42
+                "#
+                }
+                "success" => {
+                    r#"#!/usr/bin/env bash
+                for arg in "$@"; do
+                  case "$arg" in
+                    json2=*) out="${arg#json2=}" ;;
+                    html=*) html="${arg#html=}" ;;
+                  esac
+                done
+                echo "1/4"
+                echo "2/4"
+                echo '{"sim":{"profilesets":{"results":[{"name":"Combo 1","mean":100.0}]}}}' > "$out"
+                if [ -n "$html" ]; then
+                  echo "<html>report</html>" > "$html"
+                fi
+                echo "done"
+                exit 0
+                "#
+                }
+                "wrapper-stat-plot" => {
+                    r#"#!/usr/bin/env bash
+                for arg in "$@"; do
+                  case "$arg" in
+                    json2=*) out="${arg#json2=}" ;;
+                    dps_plot_stat=*) saw_stat=1 ;;
+                    dps_plot_points=1) saw_points=1 ;;
+                    dps_plot_step=1) saw_step=1 ;;
+                    dps_plot_iterations=1) saw_iterations=1 ;;
+                  esac
+                done
+                if [ -z "$saw_stat" ] || [ -z "$saw_points" ] || [ -z "$saw_step" ] || [ -z "$saw_iterations" ]; then
+                  echo "missing stat plot args" >&2
+                  exit 9
+                fi
+                echo '{"ok":true}' > "$out"
+                exit 0
+                "#
+                }
+                "staged-direct" => {
+                    r#"#!/usr/bin/env bash
+                for arg in "$@"; do
+                  case "$arg" in
+                    json2=*) out="${arg#json2=}" ;;
+                  esac
+                done
+                echo '{"sim":{"profilesets":{"results":[{"name":"Combo 1","mean":100.0}]}}}' > "$out"
+                exit 0
+                "#
+                }
+                other => panic!("unknown fake simc mode: {other}"),
+            };
+
+            std::fs::write(&path, body).expect("write fake simc");
+            let mut permissions = std::fs::metadata(&path)
+                .expect("fake simc metadata")
+                .permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(&path, permissions).expect("chmod fake simc");
+
+            path
+        }
+
+        #[cfg(windows)]
+        {
+            let path = dir.join(format!("{name}.cmd"));
+
+            let body = match mode {
+                "no-json" => {
+                    r#"@echo off
+                echo 1/2
+                exit /b 0
+                "#
+                }
+                "bad-json" => {
+                    r#"@echo off
+                set "out="
+                :loop
+                if "%~1"=="" goto done
+                set "arg=%~1"
+                if "%arg:~0,6%"=="json2=" set "out=%arg:~6%"
+                shift
+                goto loop
+                :done
+                echo not-json>"%out%"
+                exit /b 0
+                "#
+                }
+                "nonzero" => {
+                    r#"@echo off
+                echo stdout failure
+                echo stderr failure 1>&2
+                exit /b 42
+                "#
+                }
+                "success" => {
+                    r#"@echo off
+                set "out="
+                set "html="
+                :loop
+                if "%~1"=="" goto done
+                set "arg=%~1"
+                if "%arg:~0,6%"=="json2=" set "out=%arg:~6%"
+                if "%arg:~0,5%"=="html=" set "html=%arg:~5%"
+                shift
+                goto loop
+                :done
+                echo 1/4
+                echo 2/4
+                echo {"sim":{"profilesets":{"results":[{"name":"Combo 1","mean":100.0}]}}}>"%out%"
+                if not "%html%"=="" echo ^<html^>report^</html^>>"%html%"
+                echo done
+                exit /b 0
+                "#
+                }
+                "wrapper-stat-plot" => {
+                    r#"@echo off
+                set "out="
+                set "saw_stat="
+                set "saw_points="
+                set "saw_step="
+                set "saw_iterations="
+                :loop
+                if "%~1"=="" goto done
+                set "arg=%~1"
+                if "%arg:~0,6%"=="json2=" set "out=%arg:~6%"
+                if "%arg:~0,14%"=="dps_plot_stat=" set "saw_stat=1"
+                if "%arg%"=="dps_plot_points=1" set "saw_points=1"
+                if "%arg%"=="dps_plot_step=1" set "saw_step=1"
+                if "%arg%"=="dps_plot_iterations=1" set "saw_iterations=1"
+                shift
+                goto loop
+                :done
+                if "%saw_stat%"=="" exit /b 9
+                if "%saw_points%"=="" exit /b 9
+                if "%saw_step%"=="" exit /b 9
+                if "%saw_iterations%"=="" exit /b 9
+                echo {"ok":true}>"%out%"
+                exit /b 0
+                "#
+                }
+                "staged-direct" => {
+                    r#"@echo off
+                set "out="
+                :loop
+                if "%~1"=="" goto done
+                set "arg=%~1"
+                if "%arg:~0,6%"=="json2=" set "out=%arg:~6%"
+                shift
+                goto loop
+                :done
+                echo {"sim":{"profilesets":{"results":[{"name":"Combo 1","mean":100.0}]}}}>"%out%"
+                exit /b 0
+                "#
+                }
+                other => panic!("unknown fake simc mode: {other}"),
+            };
+
+            std::fs::write(&path, body).expect("write fake simc");
+            path
+        }
     }
 }
-
-

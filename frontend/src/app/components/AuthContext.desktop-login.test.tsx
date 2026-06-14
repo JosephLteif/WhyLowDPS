@@ -1,0 +1,61 @@
+import { renderHook, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  fetchJson: vi.fn(),
+  invoke: vi.fn(),
+  randomUUID: vi.fn(),
+}));
+
+vi.mock('../lib/api', () => ({
+  API_URL: 'http://localhost:17384',
+  fetchJson: mocks.fetchJson,
+  isDesktop: true,
+  isNetworkUnavailableError: vi.fn(() => false),
+  TOKEN_KEY: 'whylowdps_token',
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: mocks.invoke,
+}));
+
+import { AuthProvider, useAuth } from './AuthContext';
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <AuthProvider>{children}</AuthProvider>;
+}
+
+describe('AuthContext desktop login', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+    mocks.fetchJson.mockRejectedValue(new Error('unauthorized'));
+    mocks.invoke.mockReturnValue(new Promise(() => {}));
+    mocks.randomUUID.mockReturnValue('flow-123');
+    vi.stubGlobal('fetch', vi.fn());
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: { ...globalThis.crypto, randomUUID: mocks.randomUUID },
+    });
+  });
+
+  it('does not wait for the desktop auth window command to resolve', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const loginPromise = result.current.login('client-id', 'client-secret');
+    const outcome = await Promise.race([
+      loginPromise.then(() => 'resolved'),
+      new Promise((resolve) => setTimeout(() => resolve('pending'), 50)),
+    ]);
+
+    expect(outcome).toBe('resolved');
+    await waitFor(() => {
+      expect(mocks.invoke).toHaveBeenCalledWith('open_auth_window', {
+        url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&client_id=client-id&client_secret=client-secret',
+      });
+    });
+  });
+});

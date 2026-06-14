@@ -20,6 +20,8 @@ mod route_handlers;
 #[cfg(feature = "web")]
 mod sim_handlers;
 #[cfg(feature = "web")]
+mod system_handlers;
+#[cfg(feature = "web")]
 mod types;
 #[cfg(feature = "web")]
 mod upgrade_compare;
@@ -27,13 +29,7 @@ mod upgrade_compare;
 #[cfg(feature = "web")]
 use actix_cors::Cors;
 #[cfg(feature = "web")]
-use actix_files::NamedFile;
-#[cfg(feature = "web")]
-use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer};
-#[cfg(feature = "web")]
-use serde::Deserialize;
-#[cfg(feature = "web")]
-use serde_json::json;
+use actix_web::{web, App, HttpResponse, HttpServer};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 #[cfg(all(feature = "desktop", feature = "web"))]
@@ -41,132 +37,132 @@ use std::sync::Mutex;
 
 #[cfg(feature = "web")]
 use crate::log_buffer::LogBuffer;
-use crate::storage::{self, JobStorage};
+use crate::storage::JobStorage;
+#[cfg(feature = "web")]
+use system_handlers::*;
 #[cfg(feature = "web")]
 use types::FrontendDir;
 
-// ---------- System handlers ----------
-
-#[cfg(all(feature = "desktop", feature = "web"))]
-/// Shared system info state, refreshed in background for live CPU readings.
-struct SystemStats {
-    sys: sysinfo::System,
-}
-
-#[cfg(all(feature = "desktop", feature = "web"))]
-impl SystemStats {
-    fn new() -> Self {
-        let mut sys = sysinfo::System::new();
-        sys.refresh_cpu_all();
-        Self { sys }
-    }
-
-    fn refresh(&mut self) {
-        self.sys.refresh_cpu_all();
-    }
-
-    fn cpu_usage(&self) -> f32 {
-        let cpus = self.sys.cpus();
-        if cpus.is_empty() {
-            return 0.0;
-        }
-        cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32
-    }
-}
-
+#[cfg(test)]
 #[cfg(feature = "web")]
-async fn get_config(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    HttpResponse::Ok().json(json!({
-        "max_scenarios": *storage::MAX_SCENARIOS,
-        "max_jobs": store.get_max_jobs(),
-    }))
-}
+mod tests {
+    use super::*;
+    use actix_web::body::to_bytes;
+    use actix_web::test::TestRequest;
+    use serde_json::Value;
 
-#[cfg(feature = "web")]
-#[derive(Deserialize)]
-struct UpdateConfig {
-    max_jobs: Option<usize>,
-}
-
-#[cfg(feature = "web")]
-async fn update_config(
-    body: web::Json<UpdateConfig>,
-    store: web::Data<Arc<dyn JobStorage>>,
-) -> HttpResponse {
-    if let Some(limit) = body.max_jobs {
-        store.set_max_jobs(limit);
-    }
-    HttpResponse::Ok().json(json!({"status": "updated"}))
-}
-
-#[cfg(feature = "web")]
-async fn health_check() -> HttpResponse {
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
-    HttpResponse::Ok().json(json!({
-        "status": "ok",
-        "threads": threads,
-        "mode": "desktop",
-    }))
-}
-
-#[cfg(all(feature = "desktop", feature = "web"))]
-async fn system_stats(stats: web::Data<Arc<Mutex<SystemStats>>>) -> HttpResponse {
-    let mut s = stats.lock().unwrap();
-    s.refresh();
-    let cpu = s.cpu_usage();
-    HttpResponse::Ok().json(json!({
-        "cpu_usage": (cpu * 10.0).round() / 10.0,
-    }))
-}
-
-#[cfg(feature = "web")]
-/// SPA fallback: serve the appropriate HTML file for client-side routes
-async fn spa_fallback(
-    req: HttpRequest,
-    frontend_dir: web::Data<FrontendDir>,
-) -> actix_web::Result<NamedFile> {
-    let path = req.path();
-    let trimmed = path.trim_start_matches('/').trim_end_matches('/');
-
-    // Try static-export folder routes first (e.g., /quick-sim -> quick-sim/index.html).
-    if !trimmed.is_empty() {
-        let folder_index = frontend_dir.0.join(trimmed).join("index.html");
-        if folder_index.exists() {
-            return Ok(NamedFile::open(folder_index)?);
-        }
-
-        // Support non-folder exports when present.
-        let flat_html = frontend_dir.0.join(format!("{}.html", trimmed));
-        if flat_html.exists() {
-            return Ok(NamedFile::open(flat_html)?);
-        }
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(crate::storage::MemoryStorage::new()) as Arc<dyn JobStorage>)
     }
 
-    // Map dynamic exported pages to their static placeholders.
-    if path.starts_with("/sim/") || path == "/sim" || path == "/sim/" {
-        let sim_placeholder = frontend_dir.0.join("sim").join("_").join("index.html");
-        if sim_placeholder.exists() {
-            return Ok(NamedFile::open(sim_placeholder)?);
-        }
+    #[actix_web::test]
+    async fn health_check_reports_ok_with_parallelism() {
+        let resp = health_check().await;
+        assert_eq!(resp.status(), 200);
+
+        let body = to_bytes(resp.into_body()).await.expect("health body");
+        let payload: Value = serde_json::from_slice(&body).expect("health json");
+        assert_eq!(payload.get("status").and_then(Value::as_str), Some("ok"));
+        assert_eq!(payload.get("mode").and_then(Value::as_str), Some("desktop"));
+        assert!(payload
+            .get("threads")
+            .and_then(Value::as_u64)
+            .is_some_and(|threads| threads > 0));
     }
 
-    if path.starts_with("/character/") || path == "/character" || path == "/character/" {
-        let character_placeholder = frontend_dir
-            .0
-            .join("character")
-            .join("us")
-            .join("realm")
-            .join("name")
-            .join("index.html");
-        if character_placeholder.exists() {
-            return Ok(NamedFile::open(character_placeholder)?);
-        }
+    #[actix_web::test]
+    async fn config_handlers_read_and_update_max_jobs() {
+        let store = test_store();
+
+        let update =
+            update_config(web::Json(UpdateConfig { max_jobs: Some(7) }), store.clone()).await;
+        assert_eq!(update.status(), 200);
+
+        let config = get_config(store).await;
+        assert_eq!(config.status(), 200);
+        let body = to_bytes(config.into_body()).await.expect("config body");
+        let payload: Value = serde_json::from_slice(&body).expect("config json");
+        assert_eq!(payload.get("max_jobs").and_then(Value::as_u64), Some(7));
+        assert!(payload
+            .get("max_scenarios")
+            .and_then(Value::as_u64)
+            .is_some());
     }
 
-    // Final fallback for unknown routes.
-    Ok(NamedFile::open(frontend_dir.0.join("index.html"))?)
+    #[actix_web::test]
+    async fn spa_fallback_serves_route_specific_and_dynamic_placeholder_files() {
+        let dir = tempfile::tempdir().expect("frontend temp dir");
+        std::fs::write(dir.path().join("index.html"), "root").expect("root index");
+        std::fs::create_dir_all(dir.path().join("settings")).expect("settings dir");
+        std::fs::write(dir.path().join("settings").join("index.html"), "settings")
+            .expect("settings index");
+        std::fs::create_dir_all(dir.path().join("sim").join("_")).expect("sim dir");
+        std::fs::write(dir.path().join("sim").join("_").join("index.html"), "sim")
+            .expect("sim placeholder");
+        std::fs::create_dir_all(
+            dir.path()
+                .join("character")
+                .join("us")
+                .join("realm")
+                .join("name"),
+        )
+        .expect("character dir");
+        std::fs::write(
+            dir.path()
+                .join("character")
+                .join("us")
+                .join("realm")
+                .join("name")
+                .join("index.html"),
+            "character",
+        )
+        .expect("character placeholder");
+
+        let frontend = web::Data::new(FrontendDir(dir.path().to_path_buf()));
+        let settings = spa_fallback(
+            TestRequest::with_uri("/settings").to_http_request(),
+            frontend.clone(),
+        )
+        .await
+        .expect("settings fallback");
+        assert_eq!(
+            std::fs::read_to_string(settings.path()).expect("settings body"),
+            "settings"
+        );
+
+        let sim = spa_fallback(
+            TestRequest::with_uri("/sim/abc123").to_http_request(),
+            frontend.clone(),
+        )
+        .await
+        .expect("sim fallback");
+        assert_eq!(
+            std::fs::read_to_string(sim.path()).expect("sim body"),
+            "sim"
+        );
+
+        let character = spa_fallback(
+            TestRequest::with_uri("/character/us/area-52/tester").to_http_request(),
+            frontend.clone(),
+        )
+        .await
+        .expect("character fallback");
+        assert_eq!(
+            std::fs::read_to_string(character.path()).expect("character body"),
+            "character"
+        );
+
+        let root = spa_fallback(
+            TestRequest::with_uri("/missing").to_http_request(),
+            frontend,
+        )
+        .await
+        .expect("root fallback");
+        assert_eq!(
+            std::fs::read_to_string(root.path()).expect("root body"),
+            "root"
+        );
+    }
 }
 
 // ---------- Server startup ----------

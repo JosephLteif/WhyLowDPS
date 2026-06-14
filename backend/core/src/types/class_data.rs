@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
 #[cfg(test)]
 use std::sync::Mutex;
+use std::sync::{Arc, RwLock};
 
 // ---- Gear Slots ----
 
@@ -560,6 +560,9 @@ mod tests {
         assert_eq!(inventory_type_display_slot(17), "Main Hand");
         assert_eq!(inventory_type_display_slot(23), "Off Hand");
         assert_eq!(inventory_type_display_slot(999), "Other");
+        assert_eq!(expand_primary_stat(71), &[3, 4, 5]);
+        assert_eq!(expand_primary_stat(72), &[3, 4]);
+        assert!(expand_primary_stat(999).is_empty());
         assert_eq!(quality_name(4), "epic");
         assert_eq!(quality_name(999), "common");
         assert_eq!(quality_color(4), "#a335ee");
@@ -573,17 +576,33 @@ mod tests {
 
         assert!(can_dual_wield("havoc"));
         assert_eq!(class_max_armor("dh"), Some(2));
-        assert_eq!(class_allowed_weapons("demon_hunter"), Some(vec![0, 4, 7, 9, 13]));
+        assert_eq!(
+            class_allowed_weapons("demon_hunter"),
+            Some(vec![0, 4, 7, 9, 13])
+        );
+        let profile = spec_weapon_profile("demon_hunter", "havoc").expect("havoc profile");
+        assert_eq!(profile.weapon_subclasses, vec![0, 4, 7, 9, 13]);
+        assert!(profile.can_dual_wield);
+        assert!(profile.can_use_offhand);
         assert_eq!(class_spec_ids("demon_hunter", Some("havoc")), vec![577]);
         assert_eq!(class_spec_ids("demon_hunter", None), vec![577, 581]);
         assert_eq!(class_primary_stats("mage"), Some(vec![5]));
-        assert_eq!(inv_type_to_slots(13, "havoc"), vec!["main_hand", "off_hand"]);
+        assert_eq!(
+            inv_type_to_slots(13, "havoc"),
+            vec!["main_hand", "off_hand"]
+        );
         assert_eq!(inv_type_to_slots(13, "arcane"), vec!["main_hand"]);
         assert_eq!(spec_id_to_name(577), Some("havoc".to_string()));
         assert_eq!(class_wow_id("demon_hunter"), Some(12));
         assert_eq!(spec_id_to_wow_class_id(62), Some(8));
-        assert_eq!(detect_class("\u{feff}dh=Player\nspec=havoc"), Some("dh".to_string()));
-        assert_eq!(detect_spec("dh=Player\nspec=havoc"), Some("havoc".to_string()));
+        assert_eq!(
+            detect_class("\u{feff}dh=Player\nspec=havoc"),
+            Some("dh".to_string())
+        );
+        assert_eq!(
+            detect_spec("dh=Player\nspec=havoc"),
+            Some("havoc".to_string())
+        );
 
         snapshot.restore();
     }

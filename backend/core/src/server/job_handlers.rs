@@ -466,3 +466,408 @@ pub(super) async fn get_history_characters(store: web::Data<Arc<dyn JobStorage>>
 
     HttpResponse::Ok().json(chars)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{Job, JobStatus};
+    use crate::storage::MemoryStorage;
+    use actix_web::body::to_bytes;
+
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn make_job(id: &str, status: JobStatus, created_at: &str) -> Job {
+        let mut job = Job::new(
+            "mage=\"Alice\"\nserver=illidan\nthreads=8\n".to_string(),
+            "quick".to_string(),
+            1000,
+            "Patchwerk".to_string(),
+            0.1,
+        );
+        job.id = id.to_string();
+        job.status = status;
+        job.created_at = created_at.to_string();
+        job
+    }
+
+    async fn json_body(resp: HttpResponse) -> Value {
+        let body = to_bytes(resp.into_body()).await.expect("body bytes");
+        serde_json::from_slice(&body).expect("json body")
+    }
+
+    async fn text_body(resp: HttpResponse) -> String {
+        let body = to_bytes(resp.into_body()).await.expect("body bytes");
+        String::from_utf8(body.to_vec()).expect("utf8 body")
+    }
+
+    #[actix_web::test]
+    async fn status_handler_shapes_done_and_running_progress() {
+        let store = test_store();
+        let mut done = make_job("done", JobStatus::Done, "2026-01-02T00:00:00Z");
+        done.progress_pct = 17;
+        done.result_json = Some(json!({"player_name":"Alice","dps":1234.5}).to_string());
+        store.insert(done);
+
+        let done_resp = get_sim_status(web::Path::from("done".to_string()), store.clone()).await;
+        assert_eq!(done_resp.status(), 200);
+        let done_payload = json_body(done_resp).await;
+        assert_eq!(
+            done_payload.get("status").and_then(Value::as_str),
+            Some("done")
+        );
+        assert_eq!(
+            done_payload.get("progress").and_then(Value::as_i64),
+            Some(100)
+        );
+        assert_eq!(
+            done_payload
+                .get("result")
+                .and_then(|v| v.get("player_name"))
+                .and_then(Value::as_str),
+            Some("Alice")
+        );
+        assert_eq!(
+            done_payload.get("cpu_cores").and_then(Value::as_u64),
+            Some(8)
+        );
+
+        let mut running = make_job("running", JobStatus::Running, "2026-01-03T00:00:00Z");
+        running.progress_detail = Some("12/30 profilesets".to_string());
+        store.insert(running);
+
+        let running_resp =
+            get_sim_status(web::Path::from("running".to_string()), store.clone()).await;
+        let running_payload = json_body(running_resp).await;
+        assert_eq!(
+            running_payload
+                .get("profilesets_completed")
+                .and_then(Value::as_u64),
+            Some(12)
+        );
+        assert_eq!(
+            running_payload
+                .get("profilesets_total")
+                .and_then(Value::as_u64),
+            Some(30)
+        );
+
+        let missing = get_sim_status(web::Path::from("missing".to_string()), store).await;
+        assert_eq!(missing.status(), 404);
+    }
+
+    #[actix_web::test]
+    async fn status_handler_parses_iteration_and_combo_progress_details() {
+        let store = test_store();
+
+        let mut iterations = make_job("iterations", JobStatus::Running, "2026-01-04T00:00:00Z");
+        iterations.progress_detail = Some("345/1000 iterations".to_string());
+        store.insert(iterations);
+
+        let iterations_resp =
+            get_sim_status(web::Path::from("iterations".to_string()), store.clone()).await;
+        let iterations_payload = json_body(iterations_resp).await;
+        assert_eq!(
+            iterations_payload
+                .get("iterations_completed")
+                .and_then(Value::as_u64),
+            Some(345)
+        );
+        assert_eq!(
+            iterations_payload
+                .get("profilesets_total")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+
+        let mut combos = make_job("combos", JobStatus::Running, "2026-01-05T00:00:00Z");
+        combos.progress_detail = Some("17 combos".to_string());
+        store.insert(combos);
+
+        let combos_resp =
+            get_sim_status(web::Path::from("combos".to_string()), store.clone()).await;
+        let combos_payload = json_body(combos_resp).await;
+        assert_eq!(
+            combos_payload
+                .get("profilesets_total")
+                .and_then(Value::as_u64),
+            Some(17)
+        );
+        assert_eq!(
+            combos_payload
+                .get("profilesets_completed")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+    }
+
+    #[actix_web::test]
+    async fn list_sims_ignores_empty_filters_and_applies_linked_and_pinned_flags() {
+        let store = test_store();
+
+        let mut linked = make_job("linked", JobStatus::Done, "2026-01-06T00:00:00Z");
+        linked.linked_region = Some("us".to_string());
+        linked.linked_realm = Some("illidan".to_string());
+        linked.linked_name = Some("Alice".to_string());
+        linked.pinned = true;
+        store.insert(linked);
+
+        let unlinked = make_job("unlinked", JobStatus::Done, "2026-01-05T00:00:00Z");
+        store.insert(unlinked);
+
+        let all_resp = list_sims(
+            web::Query(ListSimsQuery {
+                player: String::new(),
+                realm: String::new(),
+                linked_only: false,
+                unlinked_only: false,
+                pinned_only: false,
+            }),
+            store.clone(),
+        )
+        .await;
+        let all_payload = json_body(all_resp).await;
+        assert_eq!(all_payload.as_array().map(Vec::len), Some(2));
+
+        let linked_resp = list_sims(
+            web::Query(ListSimsQuery {
+                player: "Alice".to_string(),
+                realm: "illidan".to_string(),
+                linked_only: true,
+                unlinked_only: false,
+                pinned_only: false,
+            }),
+            store.clone(),
+        )
+        .await;
+        let linked_payload = json_body(linked_resp).await;
+        let linked_ids: Vec<&str> = linked_payload
+            .as_array()
+            .expect("linked array")
+            .iter()
+            .filter_map(|v| v.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(linked_ids, vec!["linked"]);
+
+        let pinned_resp = list_sims(
+            web::Query(ListSimsQuery {
+                player: String::new(),
+                realm: String::new(),
+                linked_only: false,
+                unlinked_only: false,
+                pinned_only: true,
+            }),
+            store.clone(),
+        )
+        .await;
+        let pinned_payload = json_body(pinned_resp).await;
+        let pinned_ids: Vec<&str> = pinned_payload
+            .as_array()
+            .expect("pinned array")
+            .iter()
+            .filter_map(|v| v.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(pinned_ids, vec!["linked"]);
+
+        let unlinked_resp = list_sims(
+            web::Query(ListSimsQuery {
+                player: String::new(),
+                realm: String::new(),
+                linked_only: false,
+                unlinked_only: true,
+                pinned_only: false,
+            }),
+            store.clone(),
+        )
+        .await;
+        let unlinked_payload = json_body(unlinked_resp).await;
+        let unlinked_ids: Vec<&str> = unlinked_payload
+            .as_array()
+            .expect("unlinked array")
+            .iter()
+            .filter_map(|v| v.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(unlinked_ids, vec!["unlinked"]);
+
+        let linked_without_identity_resp = list_sims(
+            web::Query(ListSimsQuery {
+                player: String::new(),
+                realm: String::new(),
+                linked_only: true,
+                unlinked_only: false,
+                pinned_only: false,
+            }),
+            store.clone(),
+        )
+        .await;
+        let linked_without_identity_payload = json_body(linked_without_identity_resp).await;
+        let linked_without_identity_ids: Vec<&str> = linked_without_identity_payload
+            .as_array()
+            .expect("linked fallback array")
+            .iter()
+            .filter_map(|v| v.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(linked_without_identity_ids, vec!["linked", "unlinked"]);
+    }
+
+    #[actix_web::test]
+    async fn related_sims_follow_parent_batch_and_missing_jobs_404() {
+        let store = test_store();
+        let parent = make_job("batch-root", JobStatus::Done, "2026-01-01T00:00:00Z");
+        let mut child = make_job("batch-child", JobStatus::Done, "2026-01-02T00:00:00Z");
+        child.batch_id = Some("batch-root".to_string());
+        let unrelated = make_job("other", JobStatus::Done, "2026-01-03T00:00:00Z");
+        store.insert(parent);
+        store.insert(child);
+        store.insert(unrelated);
+
+        let resp =
+            list_related_sims(web::Path::from("batch-child".to_string()), store.clone()).await;
+        let payload = json_body(resp).await;
+        let ids: Vec<&str> = payload
+            .as_array()
+            .expect("related array")
+            .iter()
+            .filter_map(|v| v.get("id").and_then(Value::as_str))
+            .collect();
+        assert_eq!(ids, vec!["batch-child", "batch-root"]);
+
+        let missing = list_related_sims(web::Path::from("missing".to_string()), store).await;
+        assert_eq!(missing.status(), 404);
+    }
+
+    #[actix_web::test]
+    async fn raw_html_text_csv_and_input_handlers_return_expected_fallbacks() {
+        let store = test_store();
+        let mut job = make_job("job", JobStatus::Done, "2026-01-01T00:00:00Z");
+        job.result_json =
+            Some(json!({"player_name":"Alice","dps":1000.0,"dps_error":1.5}).to_string());
+        job.html_report = Some("<html>report</html>".to_string());
+        job.text_output = Some("plain output".to_string());
+        store.insert(job);
+
+        assert_eq!(
+            text_body(get_sim_input(web::Path::from("job".to_string()), store.clone()).await).await,
+            "mage=\"Alice\"\nserver=illidan\nthreads=8\n"
+        );
+        assert_eq!(
+            json_body(get_sim_raw(web::Path::from("job".to_string()), store.clone()).await)
+                .await
+                .get("player_name")
+                .and_then(Value::as_str),
+            Some("Alice")
+        );
+        assert_eq!(
+            text_body(get_sim_html(web::Path::from("job".to_string()), store.clone()).await).await,
+            "<html>report</html>"
+        );
+        assert_eq!(
+            text_body(get_sim_text_output(web::Path::from("job".to_string()), store.clone()).await)
+                .await,
+            "plain output"
+        );
+        let csv =
+            text_body(get_sim_csv(web::Path::from("job".to_string()), store.clone()).await).await;
+        assert!(csv.contains("actor,dps,dps_error"));
+        assert!(csv.contains("Alice,1000.0,1.5"));
+
+        let mut no_result = make_job("empty", JobStatus::Pending, "2026-01-02T00:00:00Z");
+        no_result.result_json = None;
+        store.insert(no_result);
+        assert_eq!(
+            get_sim_raw(web::Path::from("empty".to_string()), store.clone())
+                .await
+                .status(),
+            404
+        );
+        assert_eq!(
+            get_sim_csv(web::Path::from("empty".to_string()), store)
+                .await
+                .status(),
+            404
+        );
+    }
+
+    #[actix_web::test]
+    async fn list_logs_cancel_link_pin_history_and_clear_paths() {
+        let store = test_store();
+        let mut pending = make_job("pending", JobStatus::Pending, "2026-01-02T00:00:00Z");
+        pending.result_json = Some(json!({"player_name":"Alice","dps":1000.0}).to_string());
+        store.insert(pending);
+        let done = make_job("done", JobStatus::Done, "2026-01-01T00:00:00Z");
+        store.insert(done);
+
+        let cancel_done = cancel_sim(web::Path::from("done".to_string()), store.clone()).await;
+        assert_eq!(cancel_done.status(), 400);
+        let cancel_pending =
+            cancel_sim(web::Path::from("pending".to_string()), store.clone()).await;
+        assert_eq!(cancel_pending.status(), 200);
+        assert_eq!(
+            store.get_ref().get("pending").expect("pending job").status,
+            JobStatus::Cancelled
+        );
+
+        let link = link_sim(
+            web::Path::from("pending".to_string()),
+            web::Json(LinkSimRequest {
+                region: Some("us".to_string()),
+                realm: Some("illidan".to_string()),
+                name: Some("Alice".to_string()),
+            }),
+            store.clone(),
+        )
+        .await;
+        assert_eq!(link.status(), 200);
+
+        let pin = pin_sim(
+            web::Path::from("pending".to_string()),
+            web::Json(PinSimRequest { pinned: true }),
+            store.clone(),
+        )
+        .await;
+        assert_eq!(
+            json_body(pin).await.get("pinned").and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let chars = json_body(get_history_characters(store.clone()).await).await;
+        assert_eq!(
+            chars
+                .as_array()
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.get("name"))
+                .and_then(Value::as_str),
+            Some("Alice")
+        );
+
+        let logs = Arc::new(LogBuffer::new());
+        logs.push_line("pending", "line one".to_string());
+        let log_resp = get_sim_logs(
+            web::Path::from("pending".to_string()),
+            web::Query(LogsQuery { after: 0 }),
+            web::Data::new(logs),
+        )
+        .await;
+        assert_eq!(
+            json_body(log_resp)
+                .await
+                .get("lines")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(1)
+        );
+
+        let stats = json_body(get_history_stats(store.clone()).await).await;
+        assert_eq!(stats.get("count").and_then(Value::as_u64), Some(2));
+
+        assert_eq!(clear_history(store.clone()).await.status(), 200);
+        assert_eq!(
+            json_body(get_history_stats(store).await)
+                .await
+                .get("count")
+                .and_then(Value::as_u64),
+            Some(0)
+        );
+    }
+}

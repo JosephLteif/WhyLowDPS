@@ -418,14 +418,7 @@ mod tests {
             None,
         ));
 
-        let linked = storage.list_recent(
-            10,
-            Some("Alice"),
-            Some("illidan"),
-            true,
-            false,
-            false,
-        );
+        let linked = storage.list_recent(10, Some("Alice"), Some("illidan"), true, false, false);
         assert_eq!(linked.len(), 1);
         assert_eq!(linked[0].id, "job-linked");
         assert_eq!(linked[0].linked_name.as_deref(), Some("Alice"));
@@ -483,6 +476,48 @@ mod tests {
     }
 
     #[test]
+    fn job_state_updates_cover_progress_result_errors_and_reports() {
+        let storage = MemoryStorage::new();
+        storage.insert(make_job(
+            "job-1",
+            "2026-02-01T00:00:00Z",
+            "evoker=\"Scaler\"\nserver=tichondrius\n",
+            None,
+            false,
+            None,
+        ));
+
+        storage.update_status("job-1", JobStatus::Running);
+        storage.update_progress("job-1", 55, "simulating", "stage-2");
+        storage.complete_stage("job-1", "parsed profile");
+        storage.set_result(
+            "job-1",
+            r#"{"player_name":"Scaler","dps":7777.7}"#.to_string(),
+            Some(r#"{"raw":"ok"}"#.to_string()),
+        );
+        storage.set_report_files(
+            "job-1",
+            Some("<html>report</html>".to_string()),
+            Some("text output".to_string()),
+        );
+
+        let job = storage.get("job-1").expect("job should exist");
+        assert_eq!(job.status, JobStatus::Done);
+        assert_eq!(job.progress_pct, 55);
+        assert_eq!(job.progress_stage.as_deref(), Some("simulating"));
+        assert_eq!(job.progress_detail.as_deref(), Some("stage-2"));
+        assert_eq!(job.stages_completed, vec!["parsed profile".to_string()]);
+        assert_eq!(job.raw_json.as_deref(), Some(r#"{"raw":"ok"}"#));
+        assert_eq!(job.html_report.as_deref(), Some("<html>report</html>"));
+        assert_eq!(job.text_output.as_deref(), Some("text output"));
+
+        storage.set_error("job-1", "sim crashed".to_string());
+        let failed = storage.get("job-1").expect("job should exist");
+        assert_eq!(failed.status, JobStatus::Failed);
+        assert_eq!(failed.error_message.as_deref(), Some("sim crashed"));
+    }
+
+    #[test]
     fn user_can_filter_saved_profiles_case_insensitively() {
         let storage = MemoryStorage::new();
         storage.save_character_profile(SavedCharacterProfile {
@@ -506,16 +541,158 @@ mod tests {
         let storage = MemoryStorage::new();
         storage.set_user_config("user-1", "discord_link_hidden", "true");
         assert_eq!(
-            storage.get_user_config("user-1", "discord_link_hidden").as_deref(),
+            storage
+                .get_user_config("user-1", "discord_link_hidden")
+                .as_deref(),
             Some("true")
         );
 
         storage.remove_user_config("user-1", "discord_link_hidden");
-        assert!(
-            storage
-                .get_user_config("user-1", "discord_link_hidden")
-                .is_none()
+        assert!(storage
+            .get_user_config("user-1", "discord_link_hidden")
+            .is_none());
+    }
+
+    #[test]
+    fn cache_batch_and_delete_operations_update_storage_state() {
+        let storage = MemoryStorage::new();
+        storage.set_cache(
+            "characters:us:illidan:alice",
+            "{\"name\":\"Alice\"}".to_string(),
         );
+        assert_eq!(
+            storage.get_cache("characters:us:illidan:alice").as_deref(),
+            Some("{\"name\":\"Alice\"}")
+        );
+
+        let mut batch_a = make_job(
+            "job-batch-a",
+            "2026-01-01T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            None,
+            false,
+            None,
+        );
+        batch_a.batch_id = Some("batch-a".to_string());
+        storage.insert(batch_a);
+
+        let mut batch_b = make_job(
+            "job-batch-b",
+            "2026-01-02T00:00:00Z",
+            "warrior=\"Bob\"\nserver=stormrage\n",
+            None,
+            false,
+            None,
+        );
+        batch_b.batch_id = Some("batch-a".to_string());
+        storage.insert(batch_b);
+
+        assert_eq!(storage.count_batch("batch-a"), 2);
+        assert!(storage.get_storage_size() > 0);
+
+        storage.delete("job-batch-a");
+        assert!(storage.get("job-batch-a").is_none());
+        assert_eq!(storage.count_batch("batch-a"), 1);
+
+        storage.remove_cache("characters:us:illidan:alice");
+        assert!(storage.get_cache("characters:us:illidan:alice").is_none());
+    }
+
+    #[test]
+    fn clear_history_removes_jobs_and_resets_storage_size() {
+        let storage = MemoryStorage::new();
+        storage.insert(make_job(
+            "job-1",
+            "2026-01-01T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            Some(r#"{"player_name":"Alice","dps":12345.0}"#),
+            false,
+            None,
+        ));
+        storage.insert(make_job(
+            "job-2",
+            "2026-01-02T00:00:00Z",
+            "warrior=\"Bob\"\nserver=stormrage\n",
+            Some(r#"{"player_name":"Bob","dps":23456.0}"#),
+            false,
+            None,
+        ));
+
+        assert_eq!(
+            storage
+                .list_recent(10, None, None, false, false, false)
+                .len(),
+            2
+        );
+        assert!(storage.get_storage_size() > 0);
+
+        storage.clear_history();
+
+        assert!(storage
+            .list_recent(10, None, None, false, false, false)
+            .is_empty());
+        assert_eq!(storage.get_storage_size(), 0);
+    }
+
+    #[test]
+    fn explicit_linking_and_pinning_update_existing_jobs() {
+        let storage = MemoryStorage::new();
+        storage.insert(make_job(
+            "job-1",
+            "2026-01-01T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            None,
+            false,
+            None,
+        ));
+
+        storage.link_character(
+            "job-1",
+            Some("us".to_string()),
+            Some("illidan".to_string()),
+            Some("Alice".to_string()),
+        );
+        storage.set_pinned("job-1", true);
+
+        let job = storage.get("job-1").expect("job should exist");
+        assert_eq!(job.linked_region.as_deref(), Some("us"));
+        assert_eq!(job.linked_realm.as_deref(), Some("illidan"));
+        assert_eq!(job.linked_name.as_deref(), Some("Alice"));
+        assert!(job.pinned);
+    }
+
+    #[test]
+    fn missing_job_mutators_do_not_create_state() {
+        let storage = MemoryStorage::new();
+
+        storage.update_status("missing", JobStatus::Running);
+        storage.update_progress("missing", 50, "simulating", "step-1");
+        storage.complete_stage("missing", "parsed profile");
+        storage.set_result(
+            "missing",
+            r#"{"player_name":"Ghost","dps":1.0}"#.to_string(),
+            Some(r#"{"raw":"ghost"}"#.to_string()),
+        );
+        storage.set_error("missing", "ghost failure".to_string());
+        storage.set_report_files(
+            "missing",
+            Some("<html>ghost</html>".to_string()),
+            Some("ghost text".to_string()),
+        );
+        storage.link_character(
+            "missing",
+            Some("us".to_string()),
+            Some("illidan".to_string()),
+            Some("Ghost".to_string()),
+        );
+        storage.set_pinned("missing", true);
+        storage.delete("missing");
+
+        assert!(storage.get("missing").is_none());
+        assert!(storage
+            .list_recent(10, None, None, false, false, false)
+            .is_empty());
+        assert_eq!(storage.get_storage_size(), 0);
     }
 
     #[test]

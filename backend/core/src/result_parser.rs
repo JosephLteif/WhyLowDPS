@@ -1198,6 +1198,81 @@ mod tests {
     }
 
     #[test]
+    fn quick_sim_result_includes_stat_weights_and_timeline_analysis() {
+        let raw = json!({
+            "sim": {
+                "players": [{
+                    "name": "Alice",
+                    "specialization": "Fire",
+                    "scale_factors": {
+                        "haste": 1.23456,
+                        "crit": 0.5,
+                        "mastery": 0.0
+                    },
+                    "buffs": [{
+                        "name": "Combustion",
+                        "spell": 190319,
+                        "uptime": 0.25,
+                        "cooldown": 120
+                    }],
+                    "collected_data": {
+                        "dps": {
+                            "mean": 20000.0,
+                            "mean_std_dev": 100.0,
+                            "count": 1000
+                        },
+                        "action_sequence": {
+                            "time": [0.0, 1.5, 3.0],
+                            "spell_name": ["Fireball", "Combustion", "Fireball"],
+                            "id": [133, 190319, 133],
+                            "target": ["boss", "self", "boss"],
+                            "queue_failed": [false, true, false],
+                            "resources": [
+                                {"mana": 100.0},
+                                {"mana": 90.0},
+                                {"mana": 80.0}
+                            ],
+                            "resources_max": [
+                                {"mana": 100.0},
+                                {"mana": 100.0},
+                                {"mana": 100.0}
+                            ]
+                        },
+                        "resource_timelines": {
+                            "mana": {
+                                "data": [
+                                    {"time": 0.0, "value": 100.0},
+                                    {"time": 1.5, "value": 90.0}
+                                ]
+                            }
+                        },
+                        "timeline_dmg": {
+                            "data": [
+                                {"time": 0.0, "dps": 0.0},
+                                {"time": 1.5, "dps": 20000.0}
+                            ]
+                        }
+                    }
+                }]
+            }
+        });
+
+        let parsed = parse_simc_result(&raw, true);
+
+        assert_eq!(parsed["stat_weights"]["haste"], 1.2346);
+        assert_eq!(parsed["stat_weights"]["crit"], 0.5);
+        assert!(parsed["stat_weights"].get("mastery").is_none());
+        assert_eq!(parsed["timeline"]["event_count"], 3);
+        assert_eq!(parsed["timeline"]["resource_type"], "mana");
+        assert_eq!(parsed["timeline"]["cooldown_events"][0]["spell_id"], 190319);
+        assert_eq!(parsed["timeline"]["events"][1]["queue_failed"], true);
+        assert_eq!(parsed["timeline"]["events"][1]["resource"]["value"], 90.0);
+        assert_eq!(parsed["apl_analysis"]["queue_failures"], 1);
+        assert_eq!(parsed["apl_analysis"]["top_actions"][0]["name"], "Fireball");
+        assert_eq!(parsed["apl_analysis"]["gcd_spacing"]["avg"], 1.5);
+    }
+
+    #[test]
     fn user_topgear_result_orders_baseline_first_and_keeps_combo_metadata() {
         let raw = json!({
             "version": "simc-1100",

@@ -87,7 +87,10 @@ mod tests {
         logs.push_line("job-1", "line-b".to_string());
 
         let (first_batch, cursor) = logs.get_lines_after("job-1", 0);
-        assert_eq!(first_batch, vec!["line-a".to_string(), "line-b".to_string()]);
+        assert_eq!(
+            first_batch,
+            vec!["line-a".to_string(), "line-b".to_string()]
+        );
         assert_eq!(cursor, 2);
 
         let (second_batch, next_cursor) = logs.get_lines_after("job-1", cursor);
@@ -107,6 +110,21 @@ mod tests {
         assert_eq!(all.len(), 500);
         assert_eq!(all.first().map(String::as_str), Some("line-20"));
         assert_eq!(all.last().map(String::as_str), Some("line-519"));
+    }
+
+    #[test]
+    fn reads_from_stale_cursor_return_retained_window() {
+        let logs = LogBuffer::new();
+        for idx in 0..505 {
+            logs.push_line("job-stale", format!("line-{idx}"));
+        }
+
+        let (lines, cursor) = logs.get_lines_after("job-stale", 2);
+
+        assert_eq!(cursor, 505);
+        assert_eq!(lines.len(), 500);
+        assert_eq!(lines.first().map(String::as_str), Some("line-5"));
+        assert_eq!(lines.last().map(String::as_str), Some("line-504"));
     }
 
     #[test]

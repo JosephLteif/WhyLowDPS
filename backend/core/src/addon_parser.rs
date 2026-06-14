@@ -23,7 +23,7 @@ fn parse_item_props(item_str: &str) -> ItemProps {
         gem_id: 0,
     };
 
-    if let Some(caps) = Regex::new(r"id=(\d+)").unwrap().captures(item_str) {
+    if let Some(caps) = Regex::new(r"(?:^|,)id=(\d+)").unwrap().captures(item_str) {
         props.item_id = caps[1].parse().unwrap_or(0);
     }
     if let Some(caps) = Regex::new(r"(?:ilevel|ilvl)=(\d+)")
@@ -437,6 +437,24 @@ talents=ALIAS
         assert_eq!(bag.gem_id, 888);
         assert_eq!(bag.name, "Arcane Mantle");
         assert_eq!(bag.bonus_ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn parse_simc_input_does_not_treat_bonus_id_as_item_id() {
+        let simc = r#"
+mage="MalformedItemTester"
+head=bonus_id=11965/6652,name=missing_real_id
+"#;
+        let parsed = parse_simc_input(simc);
+        let item = parsed
+            .items
+            .iter()
+            .find(|item| item.raw_slot == "head")
+            .expect("head item");
+
+        assert_eq!(item.item_id, 0);
+        assert_eq!(item.bonus_ids, vec![11965, 6652]);
+        assert_eq!(item.name, "Missing Real Id");
     }
 
     #[test]

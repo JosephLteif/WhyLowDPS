@@ -19,6 +19,9 @@ zip = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
 
+[dev-dependencies]
+tempfile = "3"
+
 [build-dependencies]
 tauri-build = { version = "2.6.1", features = [] }
 

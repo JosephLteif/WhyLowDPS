@@ -166,11 +166,11 @@ export default function Sidebar() {
   const dragOverRef = useRef<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const dragOverPosRef = useRef<'before' | 'after'>('before');
-  const { user } = useAuth();
+  const { user, lightMode } = useAuth();
 
   const navItems = useMemo(() => {
     const items = [...baseNavItems];
-    if (user) {
+    if (user && !lightMode) {
       items.push({
         href: '/characters',
         label: 'My Characters',
@@ -197,7 +197,7 @@ export default function Sidebar() {
       });
     }
     return items;
-  }, [user]);
+  }, [lightMode, user]);
 
   const orderedNavItems = useMemo(() => {
     if (!navOrder || navOrder.length === 0) return navItems;

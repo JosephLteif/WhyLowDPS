@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { LogIn, X } from 'lucide-react';
 import { API_URL, isDesktop } from '../lib/api';
 import { useAuth } from './AuthContext';
@@ -37,7 +37,7 @@ export default function SplashScreen({
   retriesDone = 0,
   retriesTotal = 0,
 }: SplashScreenProps) {
-  const { login, setSystemCredentials } = useAuth();
+  const { login, setSystemCredentials, enableLightMode } = useAuth();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -87,7 +87,7 @@ export default function SplashScreen({
     if (!isDesktop) return;
     try {
       await invoke('quit_app_now');
-    } catch (err) {
+    } catch {
       try {
         await invoke('apply_close_behavior_choice', { minimizeToTrayOnClose: false });
       } catch (fallbackErr) {
@@ -98,13 +98,15 @@ export default function SplashScreen({
 
   const handleSaveAndLogin = async () => {
     setIsSaving(true);
-    const success = await setSystemCredentials(clientId, clientSecret);
-    if (success) {
-      // Immediately initiate login using these keys
-      login(clientId, clientSecret);
-    } else {
+    try {
+      const success = await setSystemCredentials(clientId, clientSecret);
+      if (success) {
+        await login(clientId, clientSecret);
+      } else {
+        alert('Failed to save Blizzard API credentials. Please check your inputs.');
+      }
+    } finally {
       setIsSaving(false);
-      alert('Failed to save Blizzard API credentials. Please check your inputs.');
     }
   };
 
@@ -266,6 +268,12 @@ export default function SplashScreen({
                   <LogIn className="h-5 w-5" strokeWidth={2.25} />
                   Login with Battle.net
                 </button>
+                <button
+                  onClick={enableLightMode}
+                  className="mt-3 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                >
+                  Continue in Light mode
+                </button>
               </div>
             ) : status === 'unauthenticated_needs_keys' ? (
               <div className="w-full space-y-4 text-center">
@@ -327,6 +335,12 @@ export default function SplashScreen({
                       Save & Login with Battle.net
                     </>
                   )}
+                </button>
+                <button
+                  onClick={enableLightMode}
+                  className="flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                >
+                  Continue in Light mode
                 </button>
               </div>
             ) : isError ? (

@@ -686,7 +686,6 @@ impl JobStorage for SqliteStorage {
         conn.execute("DELETE FROM character_profiles WHERE id = ?1", params![id])
             .ok();
     }
-
 }
 
 #[cfg(test)]
@@ -739,6 +738,59 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_status_string_conversion_covers_all_known_and_unknown_values() {
+        assert_eq!(SqliteStorage::status_to_str(&JobStatus::Pending), "pending");
+        assert_eq!(SqliteStorage::status_to_str(&JobStatus::Running), "running");
+        assert_eq!(SqliteStorage::status_to_str(&JobStatus::Done), "done");
+        assert_eq!(SqliteStorage::status_to_str(&JobStatus::Failed), "failed");
+        assert_eq!(
+            SqliteStorage::status_to_str(&JobStatus::Cancelled),
+            "cancelled"
+        );
+
+        assert_eq!(SqliteStorage::str_to_status("pending"), JobStatus::Pending);
+        assert_eq!(SqliteStorage::str_to_status("running"), JobStatus::Running);
+        assert_eq!(SqliteStorage::str_to_status("done"), JobStatus::Done);
+        assert_eq!(SqliteStorage::str_to_status("failed"), JobStatus::Failed);
+        assert_eq!(
+            SqliteStorage::str_to_status("cancelled"),
+            JobStatus::Cancelled
+        );
+        assert_eq!(SqliteStorage::str_to_status("unknown"), JobStatus::Pending);
+        assert_eq!(SqliteStorage::str_to_status(""), JobStatus::Pending);
+    }
+
+    #[test]
+    fn sqlite_row_to_job_falls_back_for_invalid_status_stages_and_options() {
+        let (_dir, storage) = create_storage();
+        storage.insert(make_job(
+            "job-invalid-row",
+            "2026-02-01T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            None,
+            false,
+        ));
+
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE jobs
+                 SET status = 'mystery',
+                     options = '{invalid json',
+                     stages_completed = 'not-json'
+                 WHERE id = ?1",
+                params!["job-invalid-row"],
+            )
+            .expect("update invalid row fields");
+        }
+
+        let job = storage.get("job-invalid-row").expect("job should exist");
+        assert_eq!(job.status, JobStatus::Pending);
+        assert_eq!(job.options, None);
+        assert!(job.stages_completed.is_empty());
+    }
+
+    #[test]
     fn sqlite_history_filters_support_linked_unlinked_and_pinned_views() {
         let (_dir, storage) = create_storage();
         storage.insert(make_job(
@@ -763,7 +815,8 @@ mod tests {
         );
         storage.set_pinned("linked", true);
 
-        let linked_only = storage.list_recent(10, Some("Alice"), Some("illidan"), true, false, false);
+        let linked_only =
+            storage.list_recent(10, Some("Alice"), Some("illidan"), true, false, false);
         assert_eq!(linked_only.len(), 1);
         assert_eq!(linked_only[0].id, "linked");
         assert_eq!(linked_only[0].linked_name.as_deref(), Some("Alice"));
@@ -775,6 +828,30 @@ mod tests {
         let pinned_only = storage.list_recent(10, None, None, false, false, true);
         assert_eq!(pinned_only.len(), 1);
         assert_eq!(pinned_only[0].id, "linked");
+    }
+
+    #[test]
+    fn sqlite_player_filter_searches_beyond_requested_limit() {
+        let (_dir, storage) = create_storage();
+        storage.insert(make_job(
+            "target",
+            "2026-02-01T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            Some(r#"{"player_name":"Alice","player_class":"Mage","dps":1234.0}"#),
+            false,
+        ));
+        storage.insert(make_job(
+            "newer-nonmatch",
+            "2026-02-02T00:00:00Z",
+            "warrior=\"Bob\"\nserver=stormrage\n",
+            Some(r#"{"player_name":"Bob","player_class":"Warrior","dps":999.0}"#),
+            false,
+        ));
+
+        let filtered = storage.list_recent(1, Some("Alice"), None, false, false, false);
+
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "target");
     }
 
     #[test]
@@ -850,6 +927,42 @@ mod tests {
     }
 
     #[test]
+    fn sqlite_history_summary_size_counts_all_payload_fields() {
+        let (_dir, storage) = create_storage();
+        let mut job = make_job(
+            "job-size",
+            "2026-02-01T00:00:00Z",
+            "mage=\"Sizer\"\nserver=illidan\n",
+            Some(r#"{"player_name":"Sizer","dps":1000.0}"#),
+            false,
+        );
+        job.raw_json = Some(r#"{"raw":true}"#.to_string());
+        job.combo_metadata_json = Some(r#"{"_combo_count":2}"#.to_string());
+        job.html_report = Some("<html>report</html>".to_string());
+        job.text_output = Some("text output".to_string());
+
+        let expected_size = job.simc_input.len()
+            + job.result_json.as_ref().map(|s| s.len()).unwrap_or(0)
+            + job.raw_json.as_ref().map(|s| s.len()).unwrap_or(0)
+            + job
+                .combo_metadata_json
+                .as_ref()
+                .map(|s| s.len())
+                .unwrap_or(0)
+            + job.html_report.as_ref().map(|s| s.len()).unwrap_or(0)
+            + job.text_output.as_ref().map(|s| s.len()).unwrap_or(0);
+
+        storage.insert(job);
+
+        let summary = storage
+            .list_recent(1, None, None, false, false, false)
+            .pop()
+            .expect("summary");
+        assert_eq!(summary.id, "job-size");
+        assert_eq!(summary.size_bytes, expected_size as u64);
+    }
+
+    #[test]
     fn sqlite_cache_and_user_config_round_trip_and_delete() {
         let (_dir, storage) = create_storage();
         storage.set_cache("api:foo", "cached".to_string());
@@ -859,11 +972,239 @@ mod tests {
 
         storage.set_user_config("u1", "discord_link_hidden", "true");
         assert_eq!(
-            storage.get_user_config("u1", "discord_link_hidden").as_deref(),
+            storage
+                .get_user_config("u1", "discord_link_hidden")
+                .as_deref(),
             Some("true")
         );
         storage.remove_user_config("u1", "discord_link_hidden");
-        assert!(storage.get_user_config("u1", "discord_link_hidden").is_none());
+        assert!(storage
+            .get_user_config("u1", "discord_link_hidden")
+            .is_none());
+    }
+
+    #[test]
+    fn sqlite_cache_and_user_config_writes_replace_existing_values() {
+        let (_dir, storage) = create_storage();
+
+        storage.set_cache("api:foo", "cached-old".to_string());
+        storage.set_cache("api:foo", "cached-new".to_string());
+        assert_eq!(storage.get_cache("api:foo").as_deref(), Some("cached-new"));
+
+        storage.set_user_config("u1", "discord_link_hidden", "true");
+        storage.set_user_config("u1", "discord_link_hidden", "false");
+        assert_eq!(
+            storage
+                .get_user_config("u1", "discord_link_hidden")
+                .as_deref(),
+            Some("false")
+        );
+    }
+
+    #[test]
+    fn sqlite_batch_delete_and_clear_history_update_storage_state() {
+        let (_dir, storage) = create_storage();
+
+        let mut batch_a = make_job(
+            "job-a",
+            "2026-02-01T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            Some(r#"{"player_name":"Alice","dps":12345.0}"#),
+            false,
+        );
+        batch_a.batch_id = Some("batch-a".to_string());
+        batch_a.combo_metadata_json = Some(r#"{"_combo_count":1}"#.to_string());
+        storage.insert(batch_a);
+
+        let mut batch_b = make_job(
+            "job-b",
+            "2026-02-02T00:00:00Z",
+            "warrior=\"Bob\"\nserver=stormrage\n",
+            Some(r#"{"player_name":"Bob","dps":23456.0}"#),
+            false,
+        );
+        batch_b.batch_id = Some("batch-a".to_string());
+        storage.insert(batch_b);
+
+        assert_eq!(storage.count_batch("batch-a"), 2);
+        assert!(storage.get_storage_size() > 0);
+
+        storage.delete("job-a");
+        assert!(storage.get("job-a").is_none());
+        assert_eq!(storage.count_batch("batch-a"), 1);
+
+        storage.clear_history();
+        assert!(storage
+            .list_recent(10, None, None, false, false, false)
+            .is_empty());
+        assert_eq!(storage.get_storage_size(), 0);
+    }
+
+    #[test]
+    fn sqlite_explicit_linking_and_pinning_update_existing_jobs() {
+        let (_dir, storage) = create_storage();
+        storage.insert(make_job(
+            "job-1",
+            "2026-02-01T00:00:00Z",
+            "mage=\"Alice\"\nserver=illidan\n",
+            None,
+            false,
+        ));
+
+        storage.link_character(
+            "job-1",
+            Some("us".to_string()),
+            Some("illidan".to_string()),
+            Some("Alice".to_string()),
+        );
+        storage.set_pinned("job-1", true);
+
+        let job = storage.get("job-1").expect("job should exist");
+        assert_eq!(job.linked_region.as_deref(), Some("us"));
+        assert_eq!(job.linked_realm.as_deref(), Some("illidan"));
+        assert_eq!(job.linked_name.as_deref(), Some("Alice"));
+        assert!(job.pinned);
+    }
+
+    #[test]
+    fn sqlite_missing_job_mutators_do_not_create_state() {
+        let (_dir, storage) = create_storage();
+
+        storage.update_status("missing", JobStatus::Running);
+        storage.update_progress("missing", 50, "simulating", "step-1");
+        storage.complete_stage("missing", "parsed profile");
+        storage.set_result(
+            "missing",
+            r#"{"player_name":"Ghost","dps":1.0}"#.to_string(),
+            Some(r#"{"raw":"ghost"}"#.to_string()),
+        );
+        storage.set_error("missing", "ghost failure".to_string());
+        storage.set_report_files(
+            "missing",
+            Some("<html>ghost</html>".to_string()),
+            Some("ghost text".to_string()),
+        );
+        storage.link_character(
+            "missing",
+            Some("us".to_string()),
+            Some("illidan".to_string()),
+            Some("Ghost".to_string()),
+        );
+        storage.set_pinned("missing", true);
+        storage.delete("missing");
+
+        assert!(storage.get("missing").is_none());
+        assert!(storage
+            .list_recent(10, None, None, false, false, false)
+            .is_empty());
+        assert_eq!(storage.get_storage_size(), 0);
+    }
+
+    #[test]
+    fn sqlite_persists_max_jobs_setting_across_reopen() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("whylowdps-tests.db");
+        let db_path = path.to_string_lossy().to_string();
+
+        let storage = SqliteStorage::new(&db_path);
+        let original_limit = storage.get_max_jobs();
+        let updated_limit = original_limit.saturating_sub(1).max(1);
+
+        storage.set_max_jobs(updated_limit);
+        assert_eq!(storage.get_max_jobs(), updated_limit);
+
+        drop(storage);
+
+        let reopened = SqliteStorage::new(&db_path);
+        assert_eq!(reopened.get_max_jobs(), updated_limit);
+    }
+
+    #[test]
+    fn sqlite_invalid_persisted_max_jobs_falls_back_to_default_limit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("whylowdps-tests.db");
+        let db_path = path.to_string_lossy().to_string();
+
+        let storage = SqliteStorage::new(&db_path);
+        {
+            let conn = storage.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('max_jobs', 'not-a-number')
+                 ON CONFLICT(key) DO UPDATE SET value = 'not-a-number'",
+                [],
+            )
+            .expect("store invalid max_jobs");
+        }
+
+        drop(storage);
+
+        let reopened = SqliteStorage::new(&db_path);
+        assert_eq!(reopened.get_max_jobs(), *crate::storage::MAX_JOBS);
+    }
+
+    #[test]
+    fn sqlite_route_and_profile_upserts_replace_content_and_keep_original_created_at() {
+        let (_dir, storage) = create_storage();
+
+        storage.save_route(SavedRoute {
+            id: "route-1".to_string(),
+            name: "Old Route".to_string(),
+            dungeon: "Ara-Kara".to_string(),
+            level: Some(10),
+            pull_count: Some(12),
+            timer_seconds: Some(1800),
+            affixes: Some("Fortified".to_string()),
+            route_data: "OLD".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        });
+        storage.save_route(SavedRoute {
+            id: "route-1".to_string(),
+            name: "Updated Route".to_string(),
+            dungeon: "Dawnbreaker".to_string(),
+            level: Some(12),
+            pull_count: Some(14),
+            timer_seconds: Some(1700),
+            affixes: Some("Tyrannical".to_string()),
+            route_data: "UPDATED".to_string(),
+            created_at: "2026-01-02T00:00:00Z".to_string(),
+        });
+
+        let route = storage.list_routes().pop().expect("saved route");
+        assert_eq!(route.name, "Updated Route");
+        assert_eq!(route.dungeon, "Dawnbreaker");
+        assert_eq!(route.route_data, "UPDATED");
+        assert_eq!(route.created_at, "2026-01-01T00:00:00Z");
+
+        storage.save_character_profile(SavedCharacterProfile {
+            id: "profile-1".to_string(),
+            name: "OldName".to_string(),
+            realm: "Illidan".to_string(),
+            region: "US".to_string(),
+            class: Some("Mage".to_string()),
+            spec: Some("Arcane".to_string()),
+            simc_input: "mage=\"OldName\"".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        });
+        storage.save_character_profile(SavedCharacterProfile {
+            id: "profile-1".to_string(),
+            name: "NewName".to_string(),
+            realm: "Stormrage".to_string(),
+            region: "EU".to_string(),
+            class: Some("Priest".to_string()),
+            spec: Some("Shadow".to_string()),
+            simc_input: "priest=\"NewName\"".to_string(),
+            created_at: "2026-01-02T00:00:00Z".to_string(),
+        });
+
+        let profile = storage
+            .list_character_profiles(Some("newname"), Some("stormrage"), Some("eu"))
+            .pop()
+            .expect("updated profile");
+        assert_eq!(profile.id, "profile-1");
+        assert_eq!(profile.class.as_deref(), Some("Priest"));
+        assert_eq!(profile.spec.as_deref(), Some("Shadow"));
+        assert_eq!(profile.simc_input, "priest=\"NewName\"");
+        assert_eq!(profile.created_at, "2026-01-01T00:00:00Z");
     }
 
     #[test]
@@ -924,6 +1265,11 @@ mod tests {
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "p1");
         storage.delete_character_profile("p1");
-        assert_eq!(storage.list_character_profiles(Some("mymain"), None, None).len(), 0);
+        assert_eq!(
+            storage
+                .list_character_profiles(Some("mymain"), None, None)
+                .len(),
+            0
+        );
     }
 }

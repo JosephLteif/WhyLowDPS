@@ -936,3 +936,143 @@ impl DungeonDataSource for BlizzardDungeonSource {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn infer_season_name_parses_known_and_unknown_expansion_codes() {
+        assert_eq!(
+            BlizzardDungeonSource::infer_season_name_from_raider_url(
+                "https://raider.io/mythic-plus-rankings/season-tww-3/all/us/leaderboards"
+            ),
+            Some("The War Within Season 3".to_string())
+        );
+        assert_eq!(
+            BlizzardDungeonSource::infer_season_name_from_raider_url(
+                "https://raider.io/mythic-plus-rankings/season-abc-7/all/us/leaderboards"
+            ),
+            Some("ABC Season 7".to_string())
+        );
+        assert_eq!(
+            BlizzardDungeonSource::infer_season_name_from_raider_url(
+                "https://raider.io/mythic-plus-rankings/not-a-season"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn map_affix_spell_id_supports_exact_ids_and_name_fallbacks() {
+        assert_eq!(
+            BlizzardDungeonSource::map_affix_spell_id(160, "Xal'atath's Bargain: Devour"),
+            Some(461866)
+        );
+        assert_eq!(
+            BlizzardDungeonSource::map_affix_spell_id(999, "Fortified Challenge"),
+            Some(409968)
+        );
+        assert_eq!(
+            BlizzardDungeonSource::map_affix_spell_id(999, "Unknown Affix"),
+            None
+        );
+    }
+
+    #[test]
+    fn get_rotation_dungeons_uses_cached_ids_to_filter_and_preserve_order() {
+        let source = BlizzardDungeonSource {
+            runtime_data: json!({
+                "mplus_rotation": [202, 101]
+            }),
+            dungeon_cache: HashMap::from([
+                (
+                    101,
+                    DungeonDetail {
+                        id: 101,
+                        name: "First Dungeon".to_string(),
+                        description: Some("alpha".to_string()),
+                        zone: Some("Zone A".to_string()),
+                        slug: Some("first-dungeon".to_string()),
+                        short_name: Some("FD".to_string()),
+                        wowhead_id: Some(1001),
+                        num_bosses: Some(4),
+                        expansion: Some(10),
+                        expansion_name: Some("The War Within".to_string()),
+                        map_id: Some(11),
+                        challenge_mode_id: Some(21),
+                        minimum_level: Some(80),
+                        keystone_timer_ms: Some(1800000),
+                        keystone_upgrades: vec![1, 2, 3],
+                        encounters: vec!["Boss One".to_string()],
+                        blizzard_href: Some("https://example.com/101".to_string()),
+                        image_url: Some("https://cdn.example.com/101.png".to_string()),
+                        linked_code: Some("fd".to_string()),
+                        blizzard_api_data: Some(json!({"id": 101})),
+                    },
+                ),
+                (
+                    202,
+                    DungeonDetail {
+                        id: 202,
+                        name: "Second Dungeon".to_string(),
+                        description: Some("beta".to_string()),
+                        zone: Some("Zone B".to_string()),
+                        slug: Some("second-dungeon".to_string()),
+                        short_name: Some("SD".to_string()),
+                        wowhead_id: Some(2002),
+                        num_bosses: Some(5),
+                        expansion: Some(10),
+                        expansion_name: Some("The War Within".to_string()),
+                        map_id: Some(12),
+                        challenge_mode_id: Some(22),
+                        minimum_level: Some(80),
+                        keystone_timer_ms: Some(1900000),
+                        keystone_upgrades: vec![1, 2],
+                        encounters: vec!["Boss Two".to_string()],
+                        blizzard_href: Some("https://example.com/202".to_string()),
+                        image_url: Some("https://cdn.example.com/202.png".to_string()),
+                        linked_code: Some("sd".to_string()),
+                        blizzard_api_data: Some(json!({"id": 202})),
+                    },
+                ),
+                (
+                    303,
+                    DungeonDetail {
+                        id: 303,
+                        name: "Unused Dungeon".to_string(),
+                        description: None,
+                        zone: None,
+                        slug: None,
+                        short_name: None,
+                        wowhead_id: None,
+                        num_bosses: None,
+                        expansion: None,
+                        expansion_name: None,
+                        map_id: None,
+                        challenge_mode_id: None,
+                        minimum_level: None,
+                        keystone_timer_ms: None,
+                        keystone_upgrades: Vec::new(),
+                        encounters: Vec::new(),
+                        blizzard_href: None,
+                        image_url: None,
+                        linked_code: None,
+                        blizzard_api_data: None,
+                    },
+                ),
+            ]),
+        };
+
+        let dungeons = source
+            .get_rotation_dungeons()
+            .expect("cached rotation dungeons");
+        assert_eq!(dungeons.len(), 2);
+        assert_eq!(dungeons[0].id, 202);
+        assert_eq!(dungeons[0].name, "Second Dungeon");
+        assert_eq!(dungeons[1].id, 101);
+        assert_eq!(dungeons[1].short_name.as_deref(), Some("FD"));
+        assert!(dungeons.iter().all(|d| d.id != 303));
+    }
+}

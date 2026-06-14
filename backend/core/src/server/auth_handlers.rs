@@ -975,15 +975,11 @@ mod tests {
         )))
     }
 
-    fn make_jwt(sub: &str, access_token: &str, secret: &str) -> String {
+    fn make_jwt_with_exp(sub: &str, access_token: &str, secret: &str, exp: usize) -> String {
         let claims = Claims {
             sub: sub.to_string(),
             access_token: access_token.to_string(),
-            exp: (SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("system time")
-                .as_secs()
-                + 3600) as usize,
+            exp,
         };
         encode(
             &Header::default(),
@@ -991,6 +987,26 @@ mod tests {
             &EncodingKey::from_secret(secret.as_bytes()),
         )
         .expect("jwt encode")
+    }
+
+    fn make_jwt(sub: &str, access_token: &str, secret: &str) -> String {
+        make_jwt_with_exp(
+            sub,
+            access_token,
+            secret,
+            (SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_secs()
+                + 3600) as usize,
+        )
+    }
+
+    fn now_secs() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_secs()
     }
 
     async fn body_json(resp: HttpResponse) -> Value {
@@ -1031,6 +1047,68 @@ mod tests {
         assert_eq!(
             get_effective_creds(&no_env_state, &store, None, None),
             Some(("sys-id".to_string(), "sys-secret".to_string()))
+        );
+    }
+
+    #[actix_web::test]
+    async fn get_credentials_status_reports_env_and_system_configuration() {
+        let empty = get_credentials_status(auth_state(), test_store()).await;
+        assert_eq!(
+            body_json(empty).await.get("globally_configured"),
+            Some(&Value::Bool(false))
+        );
+
+        let store = test_store();
+        store.set_user_config("system", "blizzard_client_id", "system-id");
+        store.set_user_config("system", "blizzard_client_secret", "system-secret");
+
+        let system_configured = get_credentials_status(auth_state(), store).await;
+        assert_eq!(
+            body_json(system_configured)
+                .await
+                .get("globally_configured"),
+            Some(&Value::Bool(true))
+        );
+
+        let env_state = web::Data::new(Arc::new(BlizzardAuthState::new(
+            Some("env-id".to_string()),
+            Some("env-secret".to_string()),
+            "http://localhost/callback".to_string(),
+            "jwt".to_string(),
+        )));
+        let env_configured = get_credentials_status(env_state, test_store()).await;
+        assert_eq!(
+            body_json(env_configured).await.get("globally_configured"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[actix_web::test]
+    async fn set_system_blizzard_creds_persists_global_credentials() {
+        let store = test_store();
+
+        let saved = set_system_blizzard_creds(
+            store.clone(),
+            web::Json(SystemConfigUpdate {
+                client_id: "system-id".to_string(),
+                client_secret: "system-secret".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(saved.status(), 200);
+        assert_eq!(
+            store.get_user_config("system", "blizzard_client_id"),
+            Some("system-id".to_string())
+        );
+        assert_eq!(
+            store.get_user_config("system", "blizzard_client_secret"),
+            Some("system-secret".to_string())
+        );
+
+        let status = get_credentials_status(auth_state(), store).await;
+        assert_eq!(
+            body_json(status).await.get("globally_configured"),
+            Some(&Value::Bool(true))
         );
     }
 
@@ -1135,7 +1213,10 @@ mod tests {
         .await;
         assert_eq!(failed.status(), 400);
         let failed_body = body_json(failed).await;
-        assert_eq!(failed_body.get("status").and_then(Value::as_str), Some("failed"));
+        assert_eq!(
+            failed_body.get("status").and_then(Value::as_str),
+            Some("failed")
+        );
         assert_eq!(
             failed_body.get("error").and_then(Value::as_str),
             Some("oauth denied")
@@ -1150,8 +1231,7 @@ mod tests {
             .cookie(Cookie::new("bnet_session", cookie_token))
             .insert_header((
                 header::AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {bearer_token}"))
-                    .expect("header value"),
+                HeaderValue::from_str(&format!("Bearer {bearer_token}")).expect("header value"),
             ))
             .to_http_request();
 
@@ -1161,12 +1241,157 @@ mod tests {
         let header_only = TestRequest::default()
             .insert_header((
                 header::AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {bearer_token}"))
-                    .expect("header value"),
+                HeaderValue::from_str(&format!("Bearer {bearer_token}")).expect("header value"),
             ))
             .to_http_request();
         let header_claims = verify_jwt(&header_only, "test-secret").expect("header claims");
         assert_eq!(header_claims.sub, "HeaderUser#2222");
+    }
+
+    #[test]
+    fn verify_jwt_rejects_invalid_expired_and_non_bearer_tokens() {
+        let valid = make_jwt("Tester#9999", "access", "test-secret");
+        let wrong_secret = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", valid.clone()))
+            .to_http_request();
+        assert!(verify_jwt(&wrong_secret, "other-secret").is_none());
+
+        let tampered = format!("{valid}x");
+        let tampered_req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", tampered))
+            .to_http_request();
+        assert!(verify_jwt(&tampered_req, "test-secret").is_none());
+
+        let expired = make_jwt_with_exp(
+            "Tester#9999",
+            "access",
+            "test-secret",
+            now_secs().saturating_sub(3600) as usize,
+        );
+        let expired_req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", expired))
+            .to_http_request();
+        assert!(verify_jwt(&expired_req, "test-secret").is_none());
+
+        let non_bearer = TestRequest::default()
+            .insert_header((header::AUTHORIZATION, HeaderValue::from_static("Basic abc")))
+            .to_http_request();
+        assert!(verify_jwt(&non_bearer, "test-secret").is_none());
+    }
+
+    #[actix_web::test]
+    async fn get_me_and_logout_enforce_session_and_clear_sensitive_config() {
+        let state = auth_state();
+        let store = test_store();
+        let unauthorized = get_me(TestRequest::default().to_http_request(), state.clone()).await;
+        assert_eq!(unauthorized.status(), 401);
+
+        let token = make_jwt("Tester#9999", "access", "test-secret");
+        let authed_req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token.clone()))
+            .to_http_request();
+        let me = get_me(authed_req, state.clone()).await;
+        assert_eq!(
+            body_json(me).await.get("battletag").and_then(Value::as_str),
+            Some("Tester#9999")
+        );
+
+        store.set_user_config("Tester#9999", "blizzard_client_id", "user-id");
+        store.set_user_config("Tester#9999", "blizzard_client_secret", "user-secret");
+        store.set_user_config("system", "blizzard_client_id", "system-id");
+        store.set_user_config("system", "blizzard_client_secret", "system-secret");
+
+        let logout_req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token))
+            .to_http_request();
+        let logout = bnet_logout(logout_req, state, store.clone()).await;
+        assert_eq!(logout.status(), 200);
+        assert!(store
+            .get_user_config("Tester#9999", "blizzard_client_id")
+            .is_none());
+        assert!(store
+            .get_user_config("Tester#9999", "blizzard_client_secret")
+            .is_none());
+        assert!(store
+            .get_user_config("system", "blizzard_client_id")
+            .is_none());
+        assert!(store
+            .get_user_config("system", "blizzard_client_secret")
+            .is_none());
+
+        let cookies = logout
+            .headers()
+            .iter()
+            .filter(|(name, _)| **name == header::SET_COOKIE)
+            .map(|(_, value)| value)
+            .filter_map(|value| value.to_str().ok())
+            .collect::<Vec<_>>();
+        assert!(cookies
+            .iter()
+            .any(|cookie| cookie.starts_with("bnet_session=") && cookie.contains("Max-Age=0")));
+        assert!(cookies
+            .iter()
+            .any(|cookie| cookie.starts_with("temp_bnet_id=") && cookie.contains("Max-Age=0")));
+        assert!(cookies
+            .iter()
+            .any(|cookie| cookie.starts_with("temp_bnet_secret=") && cookie.contains("Max-Age=0")));
+    }
+
+    #[actix_web::test]
+    async fn get_characters_requires_session_and_reads_user_scoped_cache() {
+        let state = auth_state();
+        let store = test_store();
+
+        let unauthorized = get_characters(
+            TestRequest::default().to_http_request(),
+            state.clone(),
+            store.clone(),
+            web::Query(RefreshQuery { refresh: None }),
+        )
+        .await;
+        assert_eq!(unauthorized.status(), 401);
+
+        store.set_cache(
+            "user_characters_Tester#9999",
+            json!({
+                "characters": [{
+                    "name": "Tester",
+                    "realm": "area-52",
+                    "region": "us"
+                }]
+            })
+            .to_string(),
+        );
+        store.set_cache(
+            "user_characters_Other#1111",
+            json!({"characters": [{"name": "Other"}]}).to_string(),
+        );
+
+        let token = make_jwt("Tester#9999", "access", "test-secret");
+        let req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token))
+            .to_http_request();
+        let cached = get_characters(
+            req,
+            state,
+            store,
+            web::Query(RefreshQuery {
+                refresh: Some(false),
+            }),
+        )
+        .await;
+        assert_eq!(cached.status(), 200);
+
+        let payload = body_json(cached).await;
+        let characters = payload
+            .get("characters")
+            .and_then(Value::as_array)
+            .expect("characters array");
+        assert_eq!(characters.len(), 1);
+        assert_eq!(
+            characters[0].get("name").and_then(Value::as_str),
+            Some("Tester")
+        );
     }
 
     #[actix_web::test]
@@ -1204,6 +1429,90 @@ mod tests {
         assert_eq!(
             store.get_user_config("Tester#9999", "sim_threads"),
             Some("8".to_string())
+        );
+    }
+
+    #[actix_web::test]
+    async fn user_configs_require_session_and_redact_secret_values() {
+        let state = auth_state();
+        let store = test_store();
+
+        let unauthorized = get_user_configs(
+            TestRequest::default().to_http_request(),
+            state.clone(),
+            store.clone(),
+        )
+        .await;
+        assert_eq!(unauthorized.status(), 401);
+
+        store.set_user_config("Tester#9999", "blizzard_client_id", "client-id");
+        store.set_user_config("Tester#9999", "blizzard_client_secret", "client-secret");
+        store.set_user_config("Tester#9999", "sim_threads", "8");
+        store.set_user_config("Other#1111", "sim_threads", "99");
+
+        let token = make_jwt("Tester#9999", "access", "test-secret");
+        let req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token))
+            .to_http_request();
+        let resp = get_user_configs(req, state, store).await;
+        assert_eq!(resp.status(), 200);
+
+        let payload = body_json(resp).await;
+        assert_eq!(
+            payload.get("blizzard_client_id").and_then(Value::as_str),
+            Some("client-id")
+        );
+        assert_eq!(
+            payload
+                .get("has_blizzard_client_secret")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(payload.get("blizzard_client_secret").is_none());
+        assert_eq!(
+            payload.get("sim_threads").and_then(Value::as_str),
+            Some("8")
+        );
+    }
+
+    #[actix_web::test]
+    async fn clear_user_configs_requires_session_and_only_removes_blizzard_credentials() {
+        let state = auth_state();
+        let store = test_store();
+
+        let unauthorized = clear_user_configs(
+            TestRequest::default().to_http_request(),
+            state.clone(),
+            store.clone(),
+        )
+        .await;
+        assert_eq!(unauthorized.status(), 401);
+
+        store.set_user_config("Tester#9999", "blizzard_client_id", "client-id");
+        store.set_user_config("Tester#9999", "blizzard_client_secret", "client-secret");
+        store.set_user_config("Tester#9999", "sim_threads", "8");
+        store.set_user_config("Other#1111", "blizzard_client_id", "other-client");
+
+        let token = make_jwt("Tester#9999", "access", "test-secret");
+        let req = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", token))
+            .to_http_request();
+        let cleared = clear_user_configs(req, state, store.clone()).await;
+        assert_eq!(cleared.status(), 200);
+
+        assert!(store
+            .get_user_config("Tester#9999", "blizzard_client_id")
+            .is_none());
+        assert!(store
+            .get_user_config("Tester#9999", "blizzard_client_secret")
+            .is_none());
+        assert_eq!(
+            store.get_user_config("Tester#9999", "sim_threads"),
+            Some("8".to_string())
+        );
+        assert_eq!(
+            store.get_user_config("Other#1111", "blizzard_client_id"),
+            Some("other-client".to_string())
         );
     }
 }

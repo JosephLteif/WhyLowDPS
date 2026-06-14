@@ -505,3 +505,264 @@ pub(super) fn validate_batch(
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Job;
+    use crate::storage::MemoryStorage;
+    use crate::types::{CharacterResolveInfo, ResolveGearResponse, ResolvedItem, SlotResolution};
+    use actix_web::body::to_bytes;
+    use std::collections::HashMap;
+
+    fn sim_options(value: Value) -> SimOptions {
+        serde_json::from_value(value).expect("sim options")
+    }
+
+    fn job_in_batch(batch_id: &str) -> Job {
+        let mut job = Job::new(
+            "warrior=tester".to_string(),
+            "quick".to_string(),
+            1000,
+            "Patchwerk".to_string(),
+            0.05,
+        );
+        job.batch_id = Some(batch_id.to_string());
+        job
+    }
+
+    #[test]
+    fn sanitize_custom_simc_strips_output_directives_and_keeps_safe_lines() {
+        let sanitized = sanitize_custom_simc(
+            "actions+=/use_item,name=safe\n output=/tmp/out.simc\nHTML=report.html\njson2=report.json\nxml=report.xml\n# keep comment",
+        );
+
+        assert!(sanitized.contains("actions+=/use_item,name=safe"));
+        assert!(sanitized.contains("# keep comment"));
+        assert!(!sanitized.contains("output=/tmp/out.simc"));
+        assert!(!sanitized.contains("HTML=report.html"));
+        assert!(!sanitized.contains("json2=report.json"));
+        assert!(!sanitized.contains("xml=report.xml"));
+    }
+
+    #[test]
+    fn sanitize_custom_simc_keeps_safe_directive_prefixes() {
+        let sanitized = sanitize_custom_simc(
+            "output_mode=summary\nhtml_safe=1\njson_profile=1\nxml_setting=enabled",
+        );
+
+        assert_eq!(
+            sanitized,
+            "output_mode=summary\nhtml_safe=1\njson_profile=1\nxml_setting=enabled"
+        );
+    }
+
+    #[test]
+    fn inject_expert_fields_sanitizes_all_user_provided_sections() {
+        let options = sim_options(json!({
+            "simc_header": "default_actions=1\noutput=/tmp/header.simc",
+            "simc_base_player": "copy=base\nhtml=base.html",
+            "custom_apl": "actions+=/spell\njson=apl.json",
+            "simc_raid_actors": "priest=helper\nxml=raid.xml",
+            "simc_post_combos": "hunter=post\njson2=post.json",
+            "simc_footer": "iterations=1000\n output=footer.simc"
+        }));
+
+        let injected = inject_expert_fields("warrior=tester", &options);
+
+        assert!(injected.contains("default_actions=1"));
+        assert!(injected.contains("copy=base"));
+        assert!(injected.contains("actions+=/spell"));
+        assert!(injected.contains("priest=helper"));
+        assert!(injected.contains("hunter=post"));
+        assert!(injected.contains("iterations=1000"));
+        assert!(!injected.contains("output=/tmp/header.simc"));
+        assert!(!injected.contains("html=base.html"));
+        assert!(!injected.contains("json=apl.json"));
+        assert!(!injected.contains("xml=raid.xml"));
+        assert!(!injected.contains("json2=post.json"));
+        assert!(!injected.contains("output=footer.simc"));
+    }
+
+    #[test]
+    fn inject_expert_fields_adds_raid_actors_after_single_combo_profileset() {
+        let options = sim_options(json!({
+            "simc_raid_actors": "priest=helper"
+        }));
+        let input = "# Base Actor\nmage=tester\n### Combo 1\nprofileset.\"one\"+=talents=abc";
+
+        let injected = inject_expert_fields(input, &options);
+
+        assert!(injected.contains(
+            "### Combo 1\nprofileset.\"one\"+=talents=abc\n\n# Raid Actors\npriest=helper"
+        ));
+    }
+
+    #[test]
+    fn apply_shared_simc_options_filters_unsafe_consumable_tokens() {
+        let options = sim_options(json!({
+            "consumable_flask": "safe_flask",
+            "consumable_food": "bad food;rm",
+            "consumable_potion": "potion/name:rank+3",
+            "consumable_augmentation": "augmentation$(bad)",
+            "consumable_temporary_enchant": "off_hand:ignored"
+        }));
+
+        let input = "mage=tester\n### Combo 1\nprofileset.\"one\"+=item=1";
+        let output = apply_shared_simc_options(input, &options, false);
+
+        assert!(output.contains("flask=safe_flask"));
+        assert!(output.contains("potion=potion/name:rank+3"));
+        assert!(!output.contains("bad food;rm"));
+        assert!(!output.contains("augmentation$(bad)"));
+        assert!(!output.contains("temporary_enchant=off_hand:ignored"));
+        assert!(
+            output.find("# Shared Sim Options").expect("shared options")
+                < output.find("### Combo 1").expect("combo marker")
+        );
+    }
+
+    #[test]
+    fn apply_shared_simc_options_includes_customized_buffs_and_appends_without_combo_marker() {
+        let options = sim_options(json!({
+            "raid_buff_customized": true,
+            "raid_buff_bloodlust": false,
+            "raid_buff_arcane_intellect": true,
+            "raid_buff_power_word_fortitude": false,
+            "raid_buff_battle_shout": true,
+            "raid_buff_mark_of_the_wild": false,
+            "raid_buff_hunters_mark": true,
+            "raid_buff_bleeding": false,
+            "external_buff_mystic_touch": true,
+            "external_buff_chaos_brand": false,
+            "external_buff_skyfury": true,
+            "external_buff_blessing_of_bronze": false,
+            "external_buff_power_infusion": true,
+            "external_buff_augmentation": true
+        }));
+
+        let output = apply_shared_simc_options("mage=tester", &options, true);
+
+        assert!(output.contains("override.bloodlust=0"));
+        assert!(output.contains("override.arcane_intellect=1"));
+        assert!(output.contains("override.battle_shout=1"));
+        assert!(output.contains("override.mystic_touch=1"));
+        assert!(output.contains("override.skyfury=1"));
+        assert!(output.contains("external_buffs.power_infusion=0/120/240"));
+        assert!(output.contains("dragonflight.brilliance_party=1"));
+        assert!(output.ends_with('\n'));
+    }
+
+    #[test]
+    fn override_helpers_replace_existing_lines_or_append_when_missing() {
+        assert_eq!(
+            apply_talent_override("warrior=tester\ntalents=old", "newbuild"),
+            "warrior=tester\ntalents=newbuild"
+        );
+        assert_eq!(
+            apply_talent_override("warrior=tester", "newbuild"),
+            "warrior=tester\ntalents=newbuild"
+        );
+        assert_eq!(
+            apply_spec_override("warrior=tester\nspec=arms", "fury"),
+            "warrior=tester\nspec=fury"
+        );
+        assert_eq!(
+            apply_spec_override("warrior=tester", "fury"),
+            "warrior=tester\nspec=fury"
+        );
+    }
+
+    #[test]
+    fn resolve_to_items_by_slot_and_inject_realm_preserve_expected_metadata() {
+        let resolved = ResolveGearResponse {
+            character: CharacterResolveInfo {
+                class_name: Some("mage".to_string()),
+                spec: Some("arcane".to_string()),
+                can_dual_wield: false,
+                can_use_offhand: true,
+            },
+            base_profile: "mage=tester".to_string(),
+            slots: HashMap::from([
+                (
+                    "head".to_string(),
+                    SlotResolution {
+                        equipped: Some(ResolvedItem {
+                            uid: "head-1".to_string(),
+                            slot: "head".to_string(),
+                            item_id: 1001,
+                            ..Default::default()
+                        }),
+                        alternatives: vec![ResolvedItem {
+                            uid: "head-2".to_string(),
+                            slot: "head".to_string(),
+                            item_id: 1002,
+                            ..Default::default()
+                        }],
+                    },
+                ),
+                (
+                    "neck".to_string(),
+                    SlotResolution {
+                        equipped: None,
+                        alternatives: vec![],
+                    },
+                ),
+            ]),
+            excluded: vec![],
+            talent_loadouts: vec![],
+            catalyst_charges: None,
+        };
+
+        let items_by_slot = resolve_to_items_by_slot(&resolved);
+        assert_eq!(items_by_slot.len(), 1);
+        assert_eq!(items_by_slot["head"].len(), 2);
+        assert_eq!(items_by_slot["head"][0].item_id, 1001);
+        assert_eq!(items_by_slot["head"][1].item_id, 1002);
+
+        let mut parsed = json!({});
+        inject_realm(
+            &mut parsed,
+            "mage=Tester\nserver=\"area-52\"\nregion=\"us\"\ntalents=\"abc123\"",
+        );
+        assert_eq!(parsed["realm"].as_str(), Some("area-52"));
+        assert_eq!(parsed["region"].as_str(), Some("us"));
+        assert_eq!(parsed["talent_string"].as_str(), Some("abc123"));
+    }
+
+    #[actix_web::test]
+    async fn validate_batch_allows_empty_and_under_limit_batches() {
+        let store = MemoryStorage::new();
+
+        assert!(validate_batch(&None, &store).is_none());
+        assert!(validate_batch(&Some(String::new()), &store).is_none());
+
+        let max = *storage::MAX_SCENARIOS;
+        for _ in 0..max.saturating_sub(1) {
+            store.insert(job_in_batch("batch-a"));
+        }
+
+        assert!(validate_batch(&Some("batch-a".to_string()), &store).is_none());
+    }
+
+    #[actix_web::test]
+    async fn validate_batch_rejects_batches_at_max_scenarios() {
+        let store = MemoryStorage::new();
+        let max = *storage::MAX_SCENARIOS;
+        for _ in 0..max {
+            store.insert(job_in_batch("batch-full"));
+        }
+
+        let resp = validate_batch(&Some("batch-full".to_string()), &store)
+            .expect("batch should be rejected");
+        assert_eq!(resp.status(), 400);
+
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert!(payload
+            .get("detail")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("Batch limit reached"));
+    }
+}

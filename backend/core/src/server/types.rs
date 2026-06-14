@@ -406,3 +406,160 @@ fn default_heatmap_lock_trinket_slot() -> String {
 fn default_heatmap_role_pools() -> String {
     "auto".to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sim_options(value: Value) -> SimOptions {
+        serde_json::from_value(value).expect("sim options")
+    }
+
+    #[test]
+    fn sim_options_deserialize_expected_defaults() {
+        let req: SimRequest = serde_json::from_value(json!({
+            "simc_input": "warrior=tester"
+        }))
+        .expect("sim request");
+
+        assert_eq!(req.sim_type, "quick");
+        assert!(!req.max_upgrade);
+        assert_eq!(req.options.iterations, 1000);
+        assert_eq!(req.options.fight_style, "Patchwerk");
+        assert_eq!(req.options.target_error, 0.05);
+        assert_eq!(req.options.desired_targets, 1);
+        assert_eq!(req.options.max_time, 300);
+        assert_eq!(req.options.simc_channel, "bundled");
+        assert!(req.options.include_timeline);
+        assert!(!req.options.include_trinket_matrix);
+        assert!(req.options.include_tier_matrix);
+    }
+
+    #[test]
+    fn raid_actor_detection_ignores_sanitized_output_only_sections() {
+        let blocked_only = sim_options(json!({
+            "simc_raid_actors": "output=/tmp/raid.simc\nhtml=raid.html\njson=raid.json"
+        }));
+        assert!(!blocked_only.has_raid_actors());
+
+        let safe_actor = sim_options(json!({
+            "simc_raid_actors": "priest=helper\noutput=/tmp/raid.simc"
+        }));
+        assert!(safe_actor.has_raid_actors());
+    }
+
+    #[test]
+    fn sim_options_json_includes_job_metadata_without_secret_custom_text() {
+        let options = sim_options(json!({
+            "iterations": 5000,
+            "simc_channel": "nightly",
+            "simc_raid_actors": "priest=helper\nhtml=raid.html",
+            "baseline_live_stats": {"dps": 12345},
+            "consumable_matrix_flasks": ["flask_a"]
+        }));
+
+        let serialized = options.to_json_with_sim_type("top_gear");
+
+        assert_eq!(
+            serialized.get("sim_type").and_then(Value::as_str),
+            Some("top_gear")
+        );
+        assert_eq!(
+            serialized.get("iterations").and_then(Value::as_u64),
+            Some(5000)
+        );
+        assert_eq!(
+            serialized.get("simc_channel").and_then(Value::as_str),
+            Some("nightly")
+        );
+        assert_eq!(
+            serialized
+                .get("single_actor_batch")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            serialized
+                .get("baseline_live_stats")
+                .and_then(|value| value.get("dps"))
+                .and_then(Value::as_u64),
+            Some(12345)
+        );
+        assert!(serialized.get("simc_raid_actors").is_none());
+        assert_eq!(
+            serialized
+                .get("consumable_matrix_flasks")
+                .and_then(Value::as_array)
+                .and_then(|values| values.first())
+                .and_then(Value::as_str),
+            Some("flask_a")
+        );
+    }
+
+    #[test]
+    fn top_gear_request_defaults_match_expected_batch_behavior() {
+        let req: TopGearRequest = serde_json::from_value(json!({
+            "simc_input": "mage=tester",
+            "selected_items": {
+                "head": ["head-1"]
+            }
+        }))
+        .expect("top gear request");
+
+        assert!(!req.max_upgrade);
+        assert!(!req.copy_enchants);
+        assert_eq!(req.max_combinations, None);
+        assert!(req.talent_builds.is_empty());
+        assert!(!req.catalyst);
+        assert_eq!(req.catalyst_charges, None);
+        assert_eq!(req.options.heatmap_target_ilevel, 289);
+        assert_eq!(req.options.heatmap_trinket_sources, "all");
+        assert_eq!(req.options.heatmap_role_pools, "auto");
+    }
+
+    #[test]
+    fn droptimizer_and_upgrade_compare_requests_apply_declared_defaults() {
+        let drop_req: DroptimizerRequest = serde_json::from_value(json!({
+            "simc_input": "mage=tester",
+            "drop_items": []
+        }))
+        .expect("droptimizer request");
+        assert!(drop_req.copy_enchants);
+        assert_eq!(drop_req.options.simc_channel, "bundled");
+
+        let upgrade_req: UpgradeCompareRequest = serde_json::from_value(json!({
+            "simc_input": "mage=tester",
+            "selected_slots": ["head"]
+        }))
+        .expect("upgrade compare request");
+        assert_eq!(upgrade_req.upgrade_depth, "highest_only");
+        assert_eq!(upgrade_req.budget_mode, "max_affordability");
+        assert!(upgrade_req.upgrade_budget_override.is_empty());
+        assert_eq!(upgrade_req.max_combinations, None);
+    }
+
+    #[test]
+    fn backend_query_types_default_missing_optional_parameters() {
+        let item_batch: ItemInfoBatchRequest =
+            serde_json::from_value(json!({})).expect("item info batch query");
+        assert!(item_batch.items.is_empty());
+        assert!(item_batch.item_ids.is_empty());
+
+        let bonus_ids: BonusIdsQuery = serde_json::from_value(json!({})).expect("bonus ids query");
+        assert_eq!(bonus_ids.bonus_ids, "");
+
+        let consumables: ConsumableOptionsQuery =
+            serde_json::from_value(json!({})).expect("consumables query");
+        assert_eq!(consumables.expansion, 0);
+
+        let list_sims: ListSimsQuery = serde_json::from_value(json!({})).expect("list sims query");
+        assert_eq!(list_sims.player, "");
+        assert_eq!(list_sims.realm, "");
+        assert!(!list_sims.linked_only);
+        assert!(!list_sims.unlinked_only);
+        assert!(!list_sims.pinned_only);
+
+        let logs: LogsQuery = serde_json::from_value(json!({})).expect("logs query");
+        assert_eq!(logs.after, 0);
+    }
+}

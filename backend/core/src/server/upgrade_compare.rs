@@ -456,10 +456,90 @@ pub(super) async fn get_upgrade_options_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item_db::state;
+    use crate::storage::{JobStorage, MemoryStorage};
+    use crate::types::{BonusData, BonusUpgrade};
     use actix_web::body::to_bytes;
+    use std::sync::Arc;
 
     fn parse_upgrade_compare_req(value: Value) -> UpgradeCompareRequest {
         serde_json::from_value(value).expect("valid UpgradeCompareRequest")
+    }
+
+    fn test_store() -> web::Data<Arc<dyn JobStorage>> {
+        web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn test_log_buffer() -> web::Data<Arc<LogBuffer>> {
+        web::Data::new(Arc::new(LogBuffer::new()))
+    }
+
+    fn test_simc_path() -> web::Data<PathBuf> {
+        web::Data::new(PathBuf::from("C:/nonexistent/simc.exe"))
+    }
+
+    #[test]
+    fn resolve_simc_binary_uses_existing_path_and_rejects_missing_binary() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let existing = temp.path().join("simc.exe");
+        std::fs::write(&existing, "binary").expect("write simc");
+
+        let options: SimOptions = serde_json::from_value(json!({})).expect("sim options");
+        assert_eq!(
+            resolve_simc_binary_for_request(&existing, &options).expect("existing simc"),
+            existing
+        );
+
+        let missing = temp.path().join("missing-simc.exe");
+        let err = resolve_simc_binary_for_request(&missing, &options).expect_err("missing simc");
+        #[cfg(feature = "desktop")]
+        assert!(err.contains("Bundled SimulationCraft is missing"));
+        #[cfg(not(feature = "desktop"))]
+        assert!(err.contains("simc binary not found at:"));
+    }
+
+    #[test]
+    fn bonuses_in_same_group_only_matches_shared_upgrade_groups() {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_bonuses = state::BONUSES.read().unwrap().clone();
+        *state::BONUSES.write().unwrap() = Arc::new(HashMap::from([
+            (
+                100u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        group: Some(77),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+            (
+                200u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        group: Some(77),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+            (
+                300u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        group: Some(88),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+        ]));
+
+        assert!(bonuses_in_same_group(100, 200));
+        assert!(!bonuses_in_same_group(100, 300));
+        assert!(!bonuses_in_same_group(100, 999));
+
+        *state::BONUSES.write().unwrap() = prev_bonuses;
     }
 
     #[actix_web::test]
@@ -491,6 +571,239 @@ mod tests {
             payload.get("detail").and_then(Value::as_str),
             Some("No upgrade_currencies found in SimC addon export.")
         );
+    }
+
+    #[actix_web::test]
+    async fn combo_count_reports_upgrade_limit_error_count() {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_bonuses = state::BONUSES.read().unwrap().clone();
+        let prev_tracks = state::UPGRADE_TRACKS.read().unwrap().clone();
+        let prev_step_costs = state::UPGRADE_STEP_COSTS.read().unwrap().clone();
+
+        *state::BONUSES.write().unwrap() = Arc::new(HashMap::from([
+            (
+                101_u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 1/4".to_string()),
+                        group: Some(77),
+                        level: Some(1),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+            (
+                102_u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 2/4".to_string()),
+                        group: Some(77),
+                        level: Some(2),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+        ]));
+        *state::UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
+            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
+            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
+        ]));
+        *state::UPGRADE_STEP_COSTS.write().unwrap() =
+            Arc::new(HashMap::from([(102_u64, HashMap::from([(3008_u64, 15_u64)]))]));
+
+        let req = parse_upgrade_compare_req(json!({
+            "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# upgrade_currencies = c:3008:25\n",
+            "selected_slots": ["head"],
+            "upgrade_depth": "highest_only",
+            "budget_mode": "max_affordability",
+            "upgrade_budget_override": {},
+            "max_combinations": 0
+        }));
+        let resp = get_upgrade_compare_combo_count(web::Json(req)).await;
+        assert_eq!(resp.status(), 200);
+
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        assert_eq!(payload.get("combo_count").and_then(Value::as_u64), Some(1));
+        assert!(
+            payload
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .contains("Too many upgrade combinations (1)")
+        );
+
+        *state::BONUSES.write().unwrap() = prev_bonuses;
+        *state::UPGRADE_TRACKS.write().unwrap() = prev_tracks;
+        *state::UPGRADE_STEP_COSTS.write().unwrap() = prev_step_costs;
+    }
+
+    #[actix_web::test]
+    async fn prepare_returns_upgrade_candidates_and_currency_metadata() {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_bonuses = state::BONUSES.read().unwrap().clone();
+        let prev_tracks = state::UPGRADE_TRACKS.read().unwrap().clone();
+        let prev_step_costs = state::UPGRADE_STEP_COSTS.read().unwrap().clone();
+        let prev_currency_info = state::CURRENCY_INFO.read().unwrap().clone();
+
+        *state::BONUSES.write().unwrap() = Arc::new(HashMap::from([
+            (
+                101_u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 1/4".to_string()),
+                        group: Some(77),
+                        level: Some(1),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+            (
+                102_u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 2/4".to_string()),
+                        group: Some(77),
+                        level: Some(2),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+        ]));
+        *state::UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
+            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
+            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
+        ]));
+        *state::UPGRADE_STEP_COSTS.write().unwrap() =
+            Arc::new(HashMap::from([(102_u64, HashMap::from([(3008_u64, 15_u64)]))]));
+        *state::CURRENCY_INFO.write().unwrap() = Arc::new(HashMap::from([(
+            3008_u64,
+            ("Crests".to_string(), "inv_currency_crests".to_string()),
+        )]));
+
+        let resp = get_upgrade_compare_prepare(web::Json(json!({
+            "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# upgrade_currencies = c:3008:25\n"
+        })))
+        .await;
+        assert_eq!(resp.status(), 200);
+
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+
+        let candidates = payload
+            .get("candidates")
+            .and_then(Value::as_array)
+            .expect("candidates array");
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].get("slot").and_then(Value::as_str), Some("head"));
+        assert_eq!(
+            candidates[0].get("target_ilevel").and_then(Value::as_u64),
+            Some(626)
+        );
+        assert_eq!(
+            candidates[0]
+                .get("costs")
+                .and_then(|costs| costs.get("3008"))
+                .and_then(Value::as_u64),
+            Some(15)
+        );
+
+        let currencies = payload
+            .get("currencies")
+            .and_then(Value::as_object)
+            .expect("currencies object");
+        assert_eq!(
+            currencies
+                .get("3008")
+                .and_then(|value| value.get("name"))
+                .and_then(Value::as_str),
+            Some("Crests")
+        );
+        assert_eq!(
+            currencies
+                .get("3008")
+                .and_then(|value| value.get("icon"))
+                .and_then(Value::as_str),
+            Some("inv_currency_crests")
+        );
+
+        *state::BONUSES.write().unwrap() = prev_bonuses;
+        *state::UPGRADE_TRACKS.write().unwrap() = prev_tracks;
+        *state::UPGRADE_STEP_COSTS.write().unwrap() = prev_step_costs;
+        *state::CURRENCY_INFO.write().unwrap() = prev_currency_info;
+    }
+
+    #[actix_web::test]
+    async fn create_upgrade_compare_reaches_binary_check_for_valid_request() {
+        let _guard = state::TEST_STATE_LOCK.lock().unwrap();
+        let prev_bonuses = state::BONUSES.read().unwrap().clone();
+        let prev_tracks = state::UPGRADE_TRACKS.read().unwrap().clone();
+        let prev_step_costs = state::UPGRADE_STEP_COSTS.read().unwrap().clone();
+
+        *state::BONUSES.write().unwrap() = Arc::new(HashMap::from([
+            (
+                101_u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 1/4".to_string()),
+                        group: Some(77),
+                        level: Some(1),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+            (
+                102_u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 2/4".to_string()),
+                        group: Some(77),
+                        level: Some(2),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
+        ]));
+        *state::UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
+            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
+            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
+        ]));
+        *state::UPGRADE_STEP_COSTS.write().unwrap() =
+            Arc::new(HashMap::from([(102_u64, HashMap::from([(3008_u64, 15_u64)]))]));
+
+        let req = parse_upgrade_compare_req(json!({
+            "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# upgrade_currencies = c:3008:25\n",
+            "selected_slots": ["head"],
+            "upgrade_depth": "highest_only",
+            "budget_mode": "max_affordability",
+            "upgrade_budget_override": {}
+        }));
+        let resp = create_upgrade_compare_sim(
+            web::Json(req),
+            test_store(),
+            test_simc_path(),
+            test_log_buffer(),
+        )
+        .await;
+        assert_eq!(resp.status(), 400);
+
+        let body = to_bytes(resp.into_body()).await.expect("response body");
+        let payload: Value = serde_json::from_slice(&body).expect("json body");
+        let detail = payload
+            .get("detail")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        assert!(detail.contains("simc binary not found") || detail.contains("missing"));
+
+        *state::BONUSES.write().unwrap() = prev_bonuses;
+        *state::UPGRADE_TRACKS.write().unwrap() = prev_tracks;
+        *state::UPGRADE_STEP_COSTS.write().unwrap() = prev_step_costs;
     }
 
     #[actix_web::test]

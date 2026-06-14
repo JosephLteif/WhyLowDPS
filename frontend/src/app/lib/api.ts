@@ -6,7 +6,12 @@ export function isDesktopRuntime(): boolean {
     process.env.DESKTOP_BUILD === 'true' || process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true';
   if (desktopBuild) return true;
   if (typeof window === 'undefined') return false;
+  const isDesktopDevFrontend =
+    window.location.protocol === 'http:' &&
+    (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+    window.location.port === '1420';
   return (
+    isDesktopDevFrontend ||
     window.location.protocol === 'tauri:' ||
     window.location.protocol === 'asset:' ||
     window.location.protocol === 'file:' ||
@@ -123,9 +128,52 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
 /** Cache for generic API requests */
 const memoryCache: Record<string, { data: any; expiry: number }> = {};
 const inflightCache: Record<string, Promise<any> | undefined> = {};
+const PERSISTENT_CACHE_NAME = 'whylowdps-api-cache-v1';
+let legacyLocalStorageCacheCleaned = false;
+
+function cleanupLegacyLocalStorageCache() {
+  if (legacyLocalStorageCacheCleaned || typeof window === 'undefined') return;
+  legacyLocalStorageCacheCleaned = true;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('api_cache_')) localStorage.removeItem(key);
+    }
+  } catch {}
+}
+
+async function readPersistentCache(cacheKey: string): Promise<{ data: any; expiry: number } | null> {
+  if (typeof window === 'undefined' || !('caches' in window)) return null;
+  try {
+    const cache = await caches.open(PERSISTENT_CACHE_NAME);
+    const res = await cache.match(cacheKey);
+    if (!res) return null;
+    const parsed = (await res.json()) as { data?: any; expiry?: number };
+    if (typeof parsed.expiry !== 'number' || parsed.expiry <= Date.now()) {
+      await cache.delete(cacheKey);
+      return null;
+    }
+    return { data: parsed.data, expiry: parsed.expiry };
+  } catch {
+    return null;
+  }
+}
+
+async function writePersistentCache(cacheKey: string, cacheEntry: { data: any; expiry: number }) {
+  if (typeof window === 'undefined' || !('caches' in window)) return;
+  try {
+    const cache = await caches.open(PERSISTENT_CACHE_NAME);
+    await cache.put(
+      cacheKey,
+      new Response(JSON.stringify(cacheEntry), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+  } catch {}
+}
 
 /**
- * Fetches JSON and caches it in memory or localStorage.
+ * Fetches JSON and caches it in memory or the browser Cache API.
  * Only caches GET requests.
  */
 export async function fetchJsonCached<T>(
@@ -144,27 +192,19 @@ export async function fetchJsonCached<T>(
 
   const cacheKey = `api_cache_${url}`;
   const now = Date.now();
+  if (usePersistentCache) cleanupLegacyLocalStorageCache();
 
   // 1. Check Memory Cache
   if (memoryCache[cacheKey] && memoryCache[cacheKey].expiry > now) {
     return memoryCache[cacheKey].data as T;
   }
 
-  // 2. Check Persistent Cache (localStorage)
-  if (usePersistentCache && typeof window !== 'undefined') {
-    const item = localStorage.getItem(cacheKey);
-    if (item) {
-      try {
-        const parsed = JSON.parse(item);
-        if (parsed.expiry > now) {
-          // Warm up memory cache
-          memoryCache[cacheKey] = parsed;
-          return parsed.data as T;
-        }
-      } catch (e) {
-        console.log(e);
-        localStorage.removeItem(cacheKey);
-      }
+  // 2. Check Persistent Cache
+  if (usePersistentCache) {
+    const cached = await readPersistentCache(cacheKey);
+    if (cached) {
+      memoryCache[cacheKey] = cached;
+      return cached.data as T;
     }
   }
 
@@ -179,9 +219,7 @@ export async function fetchJsonCached<T>(
       // 4. Update Caches
       const cacheEntry = { data, expiry: now + ttl };
       memoryCache[cacheKey] = cacheEntry;
-      if (usePersistentCache && typeof window !== 'undefined') {
-        localStorage.setItem(cacheKey, JSON.stringify(cacheEntry));
-      }
+      if (usePersistentCache) await writePersistentCache(cacheKey, cacheEntry);
       return data;
     } finally {
       delete inflightCache[cacheKey];

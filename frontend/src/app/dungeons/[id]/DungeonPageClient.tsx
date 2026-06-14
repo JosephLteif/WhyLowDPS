@@ -11,6 +11,7 @@ import {
   type MythicKeystoneDungeonDetail,
 } from '../../lib/api';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
+import { useAuth } from '../../components/AuthContext';
 import { Instance } from '../../drop-finder/types';
 import { getRaidInstances } from '../shared';
 
@@ -224,6 +225,7 @@ function EncounterAvatar({
 }
 
 export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string; kind?: 'dungeon' | 'raid' }) {
+  const { lightMode } = useAuth();
   const [dungeon, setDungeon] = useState<DungeonInfo | null>(null);
   const [instanceDetails, setInstanceDetails] = useState<Instance | null>(null);
   const [loading, setLoading] = useState(true);
@@ -298,7 +300,7 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
           } as DungeonInfo);
         setDungeon(resolvedDungeon);
 
-        if (kind === 'dungeon') void (async () => {
+        if (!lightMode && kind === 'dungeon') void (async () => {
           try {
             const index = await fetchJsonCached<{ dungeons?: Array<{ id?: number; name?: string }> }>(
               `${API_URL}/api/blizzard/mythic-keystone/dungeon/index?region=us`,
@@ -325,7 +327,7 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [id, kind]);
+  }, [id, kind, lightMode]);
 
   useWowheadTooltips([dungeon, instanceDetails]);
 

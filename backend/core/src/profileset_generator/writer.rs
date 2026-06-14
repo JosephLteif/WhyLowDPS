@@ -398,15 +398,7 @@ mod tests {
     #[test]
     fn append_consumable_metadata_skips_empty_and_appends_values() {
         let mut metadata: HashMap<String, Vec<Value>> = HashMap::new();
-        append_consumable_metadata(
-            &mut metadata,
-            "Combo 2",
-            "",
-            "",
-            "",
-            "",
-            "",
-        );
+        append_consumable_metadata(&mut metadata, "Combo 2", "", "", "", "", "");
         assert!(!metadata.contains_key("Combo 2"));
 
         append_consumable_metadata(
@@ -444,30 +436,17 @@ mod tests {
             base_actor_spec: "arcane",
         };
 
-        write_combo(
-            &mut ctx,
-            2,
-            "Default",
-            "AAAA",
-            &HashMap::new(),
-            true,
-        );
+        write_combo(&mut ctx, 2, "Default", "AAAA", &HashMap::new(), true);
 
-        assert!(
-            lines
-                .iter()
-                .any(|l| l == "profileset.\"Combo 2\"+=head=id=111")
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|l| l == "profileset.\"Combo 2\"+=off_hand=,")
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|l| l == "profileset.\"Combo 2\"+=talents=AAAA")
-        );
+        assert!(lines
+            .iter()
+            .any(|l| l == "profileset.\"Combo 2\"+=head=id=111"));
+        assert!(lines
+            .iter()
+            .any(|l| l == "profileset.\"Combo 2\"+=off_hand=,"));
+        assert!(lines
+            .iter()
+            .any(|l| l == "profileset.\"Combo 2\"+=talents=AAAA"));
         assert!(metadata.contains_key("Combo 2"));
     }
 
@@ -487,21 +466,23 @@ mod tests {
 
         let gear_set = HashMap::from([(
             "main_hand".to_string(),
-            make_item("main_hand", 9001, ItemOrigin::Bags, "id=9001,bonus_id=1", 626),
+            make_item(
+                "main_hand",
+                9001,
+                ItemOrigin::Bags,
+                "id=9001,bonus_id=1",
+                626,
+            ),
         )]);
 
         write_combo(&mut ctx, 3, "Alt", "", &gear_set, false);
 
-        assert!(
-            lines
-                .iter()
-                .any(|l| l == "profileset.\"Combo 3\"+=main_hand=id=9001,bonus_id=1")
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|l| l == "profileset.\"Combo 3\"+=off_hand=,")
-        );
+        assert!(lines
+            .iter()
+            .any(|l| l == "profileset.\"Combo 3\"+=main_hand=id=9001,bonus_id=1"));
+        assert!(lines
+            .iter()
+            .any(|l| l == "profileset.\"Combo 3\"+=off_hand=,"));
         assert!(metadata.contains_key("Combo 3"));
     }
 
@@ -532,5 +513,38 @@ mod tests {
             .iter()
             .filter(|entry| entry.get("slot").and_then(Value::as_str) != Some("off_hand"))
             .all(|entry| entry.get("talent_build").and_then(Value::as_str) == Some("Raid")));
+    }
+
+    #[test]
+    fn item_meta_includes_optional_source_catalyst_and_upgrade_cost_fields() {
+        let mut item = make_item("head", 3001, ItemOrigin::Bags, ",id=3001", 626);
+        item.encounter = "Boss".to_string();
+        item.instance_name = "Raid".to_string();
+        item.source_type = "raid".to_string();
+        item.encounter_id = 101;
+        item.instance_id = 202;
+        item.is_catalyst = true;
+        item.upgrade_costs = HashMap::from([(3008, 12), (3009, 4)]);
+
+        let meta = item_meta(&item, "head");
+
+        assert_eq!(meta.get("encounter").and_then(Value::as_str), Some("Boss"));
+        assert_eq!(
+            meta.get("instance_name").and_then(Value::as_str),
+            Some("Raid")
+        );
+        assert_eq!(
+            meta.get("source_type").and_then(Value::as_str),
+            Some("raid")
+        );
+        assert_eq!(meta.get("encounter_id").and_then(Value::as_i64), Some(101));
+        assert_eq!(meta.get("instance_id").and_then(Value::as_i64), Some(202));
+        assert_eq!(meta.get("is_catalyst").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            meta.get("upgrade_costs")
+                .and_then(|value| value.get("3008"))
+                .and_then(Value::as_u64),
+            Some(12)
+        );
     }
 }

@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronDown, Package } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 import { useSimContext } from './SimContext';
+import { useAuth } from './AuthContext';
 import TalentPicker from './TalentPicker';
 import { API_URL, deleteSavedRoute, fetchJson, listSavedRoutes, saveCharacterProfile, saveRoute } from '../lib/api';
 import { SavedRoute } from '../lib/types';
@@ -38,6 +39,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 
 export default function SimSharedConfig() {
   const pathname = usePathname();
+  const { lightMode } = useAuth();
   const { simcInput, setSimcInput, simcFooter, setSimcFooter, autoClipboardPasteSimc } =
     useSimContext();
   const checksumStatus = useMemo(() => validateChecksum(simcInput), [simcInput]);
@@ -250,7 +252,7 @@ export default function SimSharedConfig() {
           setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
 
           // Try to save character profile if character is in BNet roster
-          if (info.name && info.server) {
+          if (!lightMode && info.name && info.server) {
             try {
               const bnetData = await fetchJson<{
                 characters: Array<{ name: string; realm: string; region: string }>;
@@ -303,7 +305,15 @@ export default function SimSharedConfig() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [autoClipboardPasteSimc, readClipboardText, setSimcFooter, setSimcInput, addToHistoryWithSelection, setSelectedHistoryIdx]);
+  }, [
+    autoClipboardPasteSimc,
+    lightMode,
+    readClipboardText,
+    setSimcFooter,
+    setSimcInput,
+    addToHistoryWithSelection,
+    setSelectedHistoryIdx,
+  ]);
 
   useEffect(() => {
     if (!banner) return;

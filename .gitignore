@@ -11,6 +11,9 @@ node_modules/
 # Next.js / Frontend
 .next/
 out/
+coverage/
+playwright-report/
+test-results/
 *.tsbuildinfo
 
 # Rust / Backend Build

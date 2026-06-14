@@ -136,4 +136,50 @@ mod tests {
             serde_json::from_slice(&listed_after_bytes).expect("list json after delete");
         assert!(rows_after.is_empty());
     }
+
+    #[actix_web::test]
+    async fn save_profile_strips_apostrophes_and_empty_filters_list_all_profiles() {
+        let store = test_store();
+
+        let first = SaveProfileRequest {
+            name: "Kael".to_string(),
+            realm: "Mal'Ganis".to_string(),
+            region: "US".to_string(),
+            class: Some("mage".to_string()),
+            spec: Some("fire".to_string()),
+            simc_input: "mage=Kael".to_string(),
+        };
+        let second = SaveProfileRequest {
+            name: "Jaina".to_string(),
+            realm: "Proudmoore".to_string(),
+            region: "US".to_string(),
+            class: Some("mage".to_string()),
+            spec: Some("frost".to_string()),
+            simc_input: "mage=Jaina".to_string(),
+        };
+
+        let first_resp = save_character_profile(web::Json(first), store.clone()).await;
+        let first_bytes = to_bytes(first_resp.into_body()).await.expect("first body");
+        let first_saved: Value = serde_json::from_slice(&first_bytes).expect("first json");
+        assert_eq!(
+            first_saved.get("id").and_then(Value::as_str),
+            Some("us-malganis-kael")
+        );
+
+        let second_resp = save_character_profile(web::Json(second), store.clone()).await;
+        assert_eq!(second_resp.status(), 200);
+
+        let listed = list_character_profiles(
+            web::Query(ListProfilesQuery {
+                name: None,
+                realm: None,
+                region: None,
+            }),
+            store,
+        )
+        .await;
+        let listed_bytes = to_bytes(listed.into_body()).await.expect("list body");
+        let rows: Vec<Value> = serde_json::from_slice(&listed_bytes).expect("list json");
+        assert_eq!(rows.len(), 2);
+    }
 }

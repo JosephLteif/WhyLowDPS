@@ -9,31 +9,27 @@ pub use sqlite::SqliteStorage;
 use crate::models::{Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute};
 use once_cell::sync::Lazy;
 
-/// Maximum number of jobs to retain. Oldest jobs are deleted on insert.
-/// Override with MAX_JOBS env var. Defaults: desktop=50, web=200.
-pub static MAX_JOBS: Lazy<usize> = Lazy::new(|| {
-    if let Ok(val) = std::env::var("MAX_JOBS") {
-        if let Ok(n) = val.parse() {
-            return n;
-        }
-    }
+fn parse_env_usize(key: &str) -> Option<usize> {
+    std::env::var(key).ok()?.parse().ok()
+}
+
+fn default_max_jobs() -> usize {
     if cfg!(feature = "desktop") {
         50
     } else {
         200
     }
-});
+}
+
+/// Maximum number of jobs to retain. Oldest jobs are deleted on insert.
+/// Override with MAX_JOBS env var. Defaults: desktop=50, web=200.
+pub static MAX_JOBS: Lazy<usize> =
+    Lazy::new(|| parse_env_usize("MAX_JOBS").unwrap_or_else(default_max_jobs));
 
 /// Maximum scenarios per batch. Set to 0 to disable batch submissions.
 /// Override with MAX_SCENARIOS env var. Default: 10.
-pub static MAX_SCENARIOS: Lazy<usize> = Lazy::new(|| {
-    if let Ok(val) = std::env::var("MAX_SCENARIOS") {
-        if let Ok(n) = val.parse() {
-            return n;
-        }
-    }
-    10
-});
+pub static MAX_SCENARIOS: Lazy<usize> =
+    Lazy::new(|| parse_env_usize("MAX_SCENARIOS").unwrap_or(10));
 
 /// Trait for job persistence — implemented by in-memory store (desktop) and SQLite (web).
 pub trait JobStorage: Send + Sync {
@@ -92,5 +88,47 @@ pub trait JobStorage: Send + Sync {
         region: Option<&str>,
     ) -> Vec<SavedCharacterProfile>;
     fn delete_character_profile(&self, id: &str);
+}
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_env_usize_accepts_numeric_values_only() {
+        std::env::set_var("CODEX_TEST_USIZE", "42");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), Some(42));
+
+        std::env::set_var("CODEX_TEST_USIZE", "0");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), Some(0));
+
+        std::env::set_var("CODEX_TEST_USIZE", "not-a-number");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), None);
+
+        std::env::set_var("CODEX_TEST_USIZE", "-1");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), None);
+
+        std::env::set_var("CODEX_TEST_USIZE", "");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), None);
+
+        std::env::set_var("CODEX_TEST_USIZE", " 42 ");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), None);
+
+        std::env::set_var("CODEX_TEST_USIZE", "184467440737095516160");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), None);
+
+        std::env::remove_var("CODEX_TEST_USIZE");
+        assert_eq!(parse_env_usize("CODEX_TEST_USIZE"), None);
+    }
+
+    #[test]
+    fn max_storage_limits_use_expected_defaults_when_env_is_missing() {
+        assert_eq!(
+            default_max_jobs(),
+            if cfg!(feature = "desktop") { 50 } else { 200 }
+        );
+        assert_eq!(parse_env_usize("CODEX_TEST_MISSING_LIMIT"), None);
+        assert_eq!(*MAX_SCENARIOS, 10);
+        assert_eq!(*MAX_JOBS, default_max_jobs());
+    }
 }

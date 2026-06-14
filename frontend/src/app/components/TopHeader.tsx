@@ -239,7 +239,7 @@ export default function TopHeader() {
               title="What's new"
             >
               <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden md:inline">What's new</span>
+              <span className="hidden md:inline">What&apos;s new</span>
             </button>
             {!loading &&
               (lightMode ? (

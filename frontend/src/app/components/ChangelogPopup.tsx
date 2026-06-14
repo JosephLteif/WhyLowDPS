@@ -2,7 +2,7 @@
 
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { APP_VERSION_WITH_PREFIX, APP_VERSION } from '../lib/version';
+import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
 
@@ -64,7 +64,7 @@ export default function ChangelogPopup() {
               {APP_VERSION_WITH_PREFIX}
             </p>
             <h2 id="changelog-title" className="mt-1 text-lg font-semibold text-zinc-100">
-              What's new
+              What&apos;s new
             </h2>
           </div>
           <button

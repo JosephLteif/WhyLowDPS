@@ -3,12 +3,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Menu } from 'lucide-react';
+import { ArrowLeft, Menu, Sparkles } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
 import { API_URL, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
 import DesktopWindowTitleBar from './DesktopWindowTitleBar';
+import { CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
 
 type SearchCharacter = {
   realm: string;
@@ -53,6 +54,10 @@ export default function TopHeader() {
 
   const handleSidebarToggle = () => {
     window.dispatchEvent(new Event('whylowdps:toggle-sidebar'));
+  };
+
+  const handleWhatsNew = () => {
+    window.dispatchEvent(new Event(CHANGELOG_OPEN_EVENT));
   };
 
   useEffect(() => {
@@ -227,6 +232,15 @@ export default function TopHeader() {
           )}
 
           <div data-tauri-drag-region="false" className="flex items-center gap-3 justify-self-end">
+            <button
+              type="button"
+              onClick={handleWhatsNew}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+              title="What's new"
+            >
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden md:inline">What's new</span>
+            </button>
             {!loading &&
               (lightMode ? (
                 <div className="flex items-center gap-2">

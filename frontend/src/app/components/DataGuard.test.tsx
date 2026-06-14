@@ -35,7 +35,11 @@ describe('DataGuard auth gating', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
-    mocks.fetchJson.mockResolvedValue({ files: [] });
+    mocks.fetchJson.mockImplementation((url: string) => {
+      if (url.endsWith('/api/data/status')) return Promise.resolve({ status: 'ready' });
+      if (url.endsWith('/api/data/files')) return Promise.resolve({ files: [] });
+      return Promise.resolve({});
+    });
   });
 
   it('shows app content for an authenticated user even if credentials status is stale false', async () => {

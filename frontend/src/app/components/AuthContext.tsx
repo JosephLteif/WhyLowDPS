@@ -51,10 +51,11 @@ async function fetchCurrentUserOnce(): Promise<{ battletag: string } | null> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<{ battletag: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [lightMode, setLightMode] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem(LIGHT_MODE_KEY) === '1';
-  });
+  const [lightMode, setLightMode] = useState(false);
+
+  useEffect(() => {
+    setLightMode(localStorage.getItem(LIGHT_MODE_KEY) === '1');
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {

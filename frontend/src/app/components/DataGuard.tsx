@@ -11,13 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 export default function DataGuard({ children }: { children: ReactNode }) {
   const AUTO_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
   const [dataStatus, setDataStatus] = useState<any>({ status: 'syncing', progress: '' });
-  const [isReady, setIsReady] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('whylowdps_data_ready') === 'true';
-    } catch {
-      return false;
-    }
-  });
+  const [isReady, setIsReady] = useState(false);
   const { user, loading, lightMode, checkCredentialsStatus } = useAuth();
   const [isGloballyConfigured, setIsGloballyConfigured] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
@@ -117,6 +111,10 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   };
 
   const toSplashProgress = (value: unknown): string => safeText(value, 'Syncing with Blizzard...');
+
+  useEffect(() => {
+    setIsReady(localStorage.getItem('whylowdps_data_ready') === 'true');
+  }, []);
 
   useEffect(() => {
     if (lightMode) {

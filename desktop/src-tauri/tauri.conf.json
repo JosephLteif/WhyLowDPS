@@ -4,8 +4,8 @@
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",
-    "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "npm run dev --prefix ../frontend",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeDevCommand": "npm run dev:desktop --prefix ../frontend",
     "beforeBuildCommand": "npm run build --prefix ../frontend"
   },
   "app": {

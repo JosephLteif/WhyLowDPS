@@ -16,6 +16,7 @@ import {
 } from '../lib/api';
 import { simResultHref } from '../lib/routes';
 import { clearScenarioSiblings, type ScenarioSibling, storeScenarioSiblings } from '../lib/scenario-siblings';
+import { useAuth } from '../components/AuthContext';
 
 interface JobSummary {
   id: string;
@@ -434,6 +435,7 @@ function BatchGroup({
 }
 
 export default function HistoryPage() {
+  const { lightMode } = useAuth();
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [pinFilter, setPinFilter] = useState<'all' | 'pinned' | 'unpinned'>('all');
@@ -456,9 +458,11 @@ export default function HistoryPage() {
   useEffect(() => {
     // Fetch account characters and historical characters
     Promise.all([
-      fetchJson<{ characters: any[] }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({
-        characters: [],
-      })),
+      lightMode
+        ? Promise.resolve({ characters: [] })
+        : fetchJson<{ characters: any[] }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({
+            characters: [],
+          })),
       fetchJson<any[]>(`${API_URL}/api/history/characters`).catch(() => []),
     ])
 
@@ -483,7 +487,7 @@ export default function HistoryPage() {
         setBnetCharacters(merged);
       })
       .catch(() => {});
-  }, []);
+  }, [lightMode]);
 
   const refreshHistory = useCallback(async () => {
     try {

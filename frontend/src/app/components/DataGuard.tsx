@@ -18,7 +18,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       return false;
     }
   });
-  const { user, loading, checkCredentialsStatus } = useAuth();
+  const { user, loading, lightMode, checkCredentialsStatus } = useAuth();
   const [isGloballyConfigured, setIsGloballyConfigured] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
   const [missingRequiredFiles, setMissingRequiredFiles] = useState<string[]>([]);
@@ -119,6 +119,11 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   const toSplashProgress = (value: unknown): string => safeText(value, 'Syncing with Blizzard...');
 
   useEffect(() => {
+    if (lightMode) {
+      setIsGloballyConfigured(false);
+      setIsChecking(false);
+      return;
+    }
     let cancelled = false;
     setIsChecking(true);
     checkCredentialsStatus()
@@ -140,7 +145,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [checkCredentialsStatus]);
+  }, [checkCredentialsStatus, lightMode]);
 
   const checkStatus = useCallback(async () => {
     try {
@@ -167,6 +172,11 @@ export default function DataGuard({ children }: { children: ReactNode }) {
         }
         autoRetryAttemptRef.current = 0;
         setAutoRetryAttempt(0);
+        if (lightMode) {
+          setDataStatus(data);
+          setIsReady(true);
+          return;
+        }
         setIsReady(false);
         try {
           localStorage.removeItem('whylowdps_data_ready');
@@ -218,7 +228,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
         setDataStatus({ status: 'syncing', progress: 'Waiting for backend to start...' });
       }
     }
-  }, []);
+  }, [lightMode]);
 
   useEffect(() => {
     if (!isReady) {
@@ -393,9 +403,33 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   const normalizedPath =
     pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
   const isSettingsPage = normalizedPath === '/settings';
+  const lightModeBlockedRoute =
+    lightMode &&
+    (normalizedPath === '/settings' ||
+      normalizedPath === '/characters' ||
+      normalizedPath.startsWith('/character') ||
+      normalizedPath === '/wishlist' ||
+      normalizedPath === '/talent-playground');
 
   let content: React.ReactNode = children;
-  if ((loading || isChecking) && !isSettingsPage) {
+  if (lightModeBlockedRoute) {
+    content = (
+      <main className="flex min-h-[calc(100vh-var(--app-header-height))] items-center justify-center px-4 py-12">
+        <section className="w-full max-w-md rounded-lg border border-border bg-surface p-5 text-center">
+          <p className="text-sm font-semibold text-zinc-100">Unavailable in Light mode</p>
+          <p className="mt-2 text-sm text-zinc-400">
+            Battle.net character, vault, wishlist, and settings features are disabled.
+          </p>
+          <a
+            href="/quick-sim"
+            className="mt-4 inline-flex rounded-md border border-gold/30 bg-gold/15 px-3 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/25"
+          >
+            Open Quick Sim
+          </a>
+        </section>
+      </main>
+    );
+  } else if ((loading || isChecking) && !isSettingsPage && !lightMode) {
     content = null;
   } else if (user && !isSettingsPage && !isReady) {
     content = (
@@ -408,9 +442,9 @@ export default function DataGuard({ children }: { children: ReactNode }) {
         retriesTotal={AUTO_RETRY_DELAYS_MS.length}
       />
     );
-  } else if (isGloballyConfigured === false && !isSettingsPage) {
+  } else if (!user && isGloballyConfigured === false && !isSettingsPage && !lightMode) {
     content = <SplashScreen status="unauthenticated_needs_keys" progress="" />;
-  } else if (!user && !isSettingsPage) {
+  } else if (!user && !isSettingsPage && !lightMode) {
     content = <SplashScreen status="unauthenticated" progress="" />;
   } else if (!isReady && !isSettingsPage) {
     content = (

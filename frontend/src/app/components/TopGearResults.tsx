@@ -15,6 +15,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useRouter } from 'next/navigation';
 import type { ResultItem, TopGearResult } from '../lib/types';
 import { useTopGearResults } from './top-gear-results/useTopGearResults';
+import { useAuth } from './AuthContext';
 import RankingsHeader from './top-gear-results/RankingsHeader';
 import ResultRow from './top-gear-results/ResultRow';
 import RankedResults from './top-gear-results/RankedResults';
@@ -192,6 +193,7 @@ export default function TopGearResults({
   generatedInput,
   simOptions,
 }: TopGearResultsProps) {
+  const { lightMode } = useAuth();
   const router = useRouter();
   const exactStatsStorageKey = useMemo(
     () => `top_gear_exact_stats_jobs_${parentSimId || 'unknown'}`,
@@ -722,7 +724,7 @@ export default function TopGearResults({
   );
 
   const characterRenderUrl =
-    playerRealm && playerName
+    !lightMode && playerRealm && playerName
       ? `${API_URL}/api/blizzard/character/${encodeURIComponent(
           playerRealm.toLowerCase()
         )}/${encodeURIComponent(playerName.toLowerCase())}/media/render${

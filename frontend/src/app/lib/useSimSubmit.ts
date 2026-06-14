@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
+import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, isDesktop } from './api';
 import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
@@ -100,6 +101,7 @@ async function emitDesktopTrackedSims(
 
 export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: UseSimSubmitOptions) {
   const router = useRouter();
+  const { lightMode } = useAuth();
   const {
     simcInput,
     fightStyle,
@@ -142,6 +144,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
 
   const autoLinkJobToCharacter = useCallback(
     async (jobId: string) => {
+      if (lightMode) return;
       const identity = extractSimcIdentity(simcInput);
       if (!identity) return;
 
@@ -175,10 +178,11 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
         // Keep job unlinked when roster is unavailable/not authenticated.
       }
     },
-    [simcInput]
+    [lightMode, simcInput]
   );
 
   const fetchBaselineLiveStats = useCallback(async () => {
+    if (lightMode) return null;
     const identity = extractSimcIdentity(simcInput);
     if (!identity) return null;
 
@@ -190,7 +194,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
     } catch {
       return null;
     }
-  }, [simcInput]);
+  }, [lightMode, simcInput]);
 
   const submit = useCallback(async () => {
     setError('');

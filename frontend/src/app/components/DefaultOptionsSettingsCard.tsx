@@ -8,6 +8,7 @@ import { RAID_BUFF_MATRIX_OPTIONS } from '../lib/sim-options-catalog';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { API_URL, fetchJson } from '../lib/api';
+import { useAuth } from './AuthContext';
 import ConsumableSelect, { buildQualityMaxByFamily } from './shared/ConsumableSelect';
 import RaidBuffGrid from './shared/RaidBuffGrid';
 import ToggleOptionCard from './shared/ToggleOptionCard';
@@ -37,6 +38,7 @@ interface BnetCharacter {
 
 export default function DefaultOptionsSettingsCard() {
   const { simcInput } = useSimContext();
+  const { lightMode } = useAuth();
   const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
   const activeCharacterKey = getCharacterDefaultsKeyFromSimcInput(simcInput);
   const rememberedCharacterKey = getLastActiveCharacterDefaultsKey();
@@ -59,6 +61,11 @@ export default function DefaultOptionsSettingsCard() {
   }, [activeCharacterKey, selectedCharacterKey]);
 
   useEffect(() => {
+    if (lightMode) {
+      setRoster([]);
+      setRosterLoading(false);
+      return;
+    }
     let cancelled = false;
     setRosterLoading(true);
     fetchJson<{ characters?: BnetCharacter[] }>(`${API_URL}/api/bnet/user/characters`)
@@ -84,7 +91,7 @@ export default function DefaultOptionsSettingsCard() {
     return () => {
       cancelled = true;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [lightMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const refreshDefaults = useCallback(() => {
     setDefaults(

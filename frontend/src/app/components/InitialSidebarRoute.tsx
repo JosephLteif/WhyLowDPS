@@ -32,10 +32,20 @@ const LABEL_TO_HREF: Record<string, string> = {
 
 const AUTH_ONLY_LABELS = new Set<string>(['My Characters', 'Settings']);
 
+function isLightModeBlockedHref(href: string): boolean {
+  return (
+    href === '/settings' ||
+    href === '/characters' ||
+    href.startsWith('/character') ||
+    href === '/wishlist' ||
+    href === '/talent-playground'
+  );
+}
+
 export default function InitialSidebarRoute() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, loading } = useAuth();
+  const { user, loading, lightMode } = useAuth();
   const redirectedRef = useRef(false);
 
   useEffect(() => {
@@ -66,12 +76,13 @@ export default function InitialSidebarRoute() {
       if (!user && AUTH_ONLY_LABELS.has(label)) continue;
       const href = LABEL_TO_HREF[label];
       if (!href) continue;
+      if (lightMode && isLightModeBlockedHref(href)) continue;
       if (href === '/') return;
       redirectedRef.current = true;
       router.replace(href);
       return;
     }
-  }, [loading, pathname, router, user]);
+  }, [lightMode, loading, pathname, router, user]);
 
   return null;
 }

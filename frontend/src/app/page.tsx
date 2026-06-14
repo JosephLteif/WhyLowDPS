@@ -34,6 +34,7 @@ import {
   listSims,
 } from './lib/api';
 import { useSimContext } from './components/SimContext';
+import { useAuth } from './components/AuthContext';
 import CharacterQuickLinks from './components/character/CharacterQuickLinks';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
 import { characterHref } from './lib/routes';
@@ -108,6 +109,16 @@ const QUICK_LINK_OPTIONS: QuickLink[] = [
   { label: 'Talent Playground', href: '/talent-playground' },
   { label: 'Settings', href: '/settings' },
 ];
+
+function isLightModeBlockedHref(href: string): boolean {
+  return (
+    href === '/settings' ||
+    href === '/characters' ||
+    href.startsWith('/character') ||
+    href === '/wishlist' ||
+    href === '/talent-playground'
+  );
+}
 
 function StatIcon({ children }: { children: ReactNode }) {
   return (
@@ -392,6 +403,7 @@ function computeMythicVaultRuns(mythicPlus: any, region?: string): number {
 export default function Home() {
   const router = useRouter();
   const { setSimcInput } = useSimContext();
+  const { lightMode } = useAuth();
   const [sims, setSims] = useState<SimSummary[]>([]);
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null);
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
@@ -563,6 +575,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (lightMode) {
+      setTrackedCharacters([]);
+      setMainVault(null);
+      setMainMeta(null);
+      setMainVaultRewards([]);
+      setMainSimcInput('');
+      setTrackedRefreshing(false);
+      return;
+    }
     const loadMainCharacter = async () => {
       try {
         const rawTracked =
@@ -673,7 +694,7 @@ export default function Home() {
       }
     };
     void loadMainCharacter();
-  }, [activeTrackedIndex, trackedRefreshToken]);
+  }, [activeTrackedIndex, lightMode, trackedRefreshToken]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -688,7 +709,7 @@ export default function Home() {
   }, [trackedCharacters]);
 
   useEffect(() => {
-    if (trackedCharacters.length === 0) return;
+    if (lightMode || trackedCharacters.length === 0) return;
     let cancelled = false;
     const loadTrackedClasses = async () => {
       const updates: Record<string, string> = {};
@@ -712,7 +733,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [trackedCharacters, trackedClassByCharacter]);
+  }, [lightMode, trackedCharacters, trackedClassByCharacter]);
 
   const openMainWorkflow = useCallback(
     (path: string) => {
@@ -734,8 +755,15 @@ export default function Home() {
 
   const addableQuickLinks = useMemo(() => {
     const currentHrefs = new Set(quickLinks.map((link) => link.href));
-    return QUICK_LINK_OPTIONS.filter((link) => !currentHrefs.has(link.href));
-  }, [quickLinks]);
+    return QUICK_LINK_OPTIONS.filter(
+      (link) => !currentHrefs.has(link.href) && (!lightMode || !isLightModeBlockedHref(link.href))
+    );
+  }, [lightMode, quickLinks]);
+
+  const visibleQuickLinks = useMemo(
+    () => quickLinks.filter((link) => !lightMode || !isLightModeBlockedHref(link.href)),
+    [lightMode, quickLinks]
+  );
 
   const addQuickLink = useCallback(
     (link: QuickLink) => {
@@ -1481,7 +1509,7 @@ export default function Home() {
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                 <div className="space-y-2">
-                  {quickLinks.map((link, index) => {
+                  {visibleQuickLinks.map((link, index) => {
                     const className =
                       'block min-w-0 flex-1 truncate rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-zinc-200 transition-colors hover:border-border-light hover:bg-surface';
                     return (
@@ -1498,7 +1526,7 @@ export default function Home() {
                         {quickLinksEditMode && (
                           <button
                             type="button"
-                            onClick={() => removeQuickLink(index)}
+                            onClick={() => removeQuickLink(quickLinks.findIndex((item) => item === link))}
                             aria-label={`Remove ${link.label}`}
                             title={`Remove ${link.label}`}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-400 transition-colors hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300"
@@ -1515,7 +1543,7 @@ export default function Home() {
           </>
         )}
 
-        {renderWidgetShell(
+        {!lightMode && renderWidgetShell(
           'tracked-characters',
           <>
             <section

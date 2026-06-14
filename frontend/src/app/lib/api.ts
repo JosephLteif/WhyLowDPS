@@ -6,7 +6,12 @@ export function isDesktopRuntime(): boolean {
     process.env.DESKTOP_BUILD === 'true' || process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true';
   if (desktopBuild) return true;
   if (typeof window === 'undefined') return false;
+  const isDesktopDevFrontend =
+    window.location.protocol === 'http:' &&
+    (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+    window.location.port === '1420';
   return (
+    isDesktopDevFrontend ||
     window.location.protocol === 'tauri:' ||
     window.location.protocol === 'asset:' ||
     window.location.protocol === 'file:' ||

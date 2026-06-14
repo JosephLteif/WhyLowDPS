@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { API_URL, fetchJson } from '../lib/api';
 import { characterHref } from '../lib/routes';
 import { CLASS_COLORS } from '../lib/types';
+import { useAuth } from './AuthContext';
 
 interface DpsHeroCardProps {
   playerName: string;
@@ -67,11 +68,16 @@ function classColorFromLabel(label: string | undefined): string | undefined {
 function useFaction(
   realm: string | undefined,
   name: string | undefined,
-  region: string | undefined
+  region: string | undefined,
+  disabled: boolean
 ): string | null {
   const [faction, setFaction] = useState<string | null>(null);
 
   useEffect(() => {
+    if (disabled) {
+      setFaction(null);
+      return;
+    }
     if (!realm || !name) return;
     const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
     let cancelled = false;
@@ -98,7 +104,7 @@ function useFaction(
     return () => {
       cancelled = true;
     };
-  }, [realm, name, region]);
+  }, [disabled, realm, name, region]);
 
   return faction;
 }
@@ -121,6 +127,7 @@ export default function DpsHeroCard({
   avgIlevelGain,
   children,
 }: DpsHeroCardProps) {
+  const { lightMode } = useAuth();
   const hasMetadata =
     (dpsError != null && dpsError > 0) ||
     fightLength != null ||
@@ -128,7 +135,7 @@ export default function DpsHeroCard({
     elapsedTime != null ||
     avgIlevel != null;
 
-  const faction = useFaction(playerRealm, playerName, playerRegion);
+  const faction = useFaction(playerRealm, playerName, playerRegion, lightMode);
   const playerClassColor = classColorFromLabel(playerClass);
 
   const [factionIconVisible, setFactionIconVisible] = useState(true);
@@ -153,7 +160,7 @@ export default function DpsHeroCard({
         <div className="relative flex min-h-[120px] items-center justify-center gap-3 px-3 py-3 sm:px-5">
           <div className="relative text-center">
             <div className="mb-0.5 flex items-center justify-center gap-2">
-              {playerRealm ? (
+              {playerRealm && !lightMode ? (
                 <Link
                   href={characterHref(playerRegion || 'us', playerRealm, playerName)}
                   className="text-[1.35rem] font-black leading-none tracking-tight text-white transition-colors hover:text-gold sm:text-[1.75rem]"

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:desktop": "cross-env NEXT_PUBLIC_DESKTOP_BUILD=true next dev --webpack --hostname 127.0.0.1 --port 1420",
     "dev:turbo": "next dev --turbo",
     "build": "next build",
     "start": "next start",

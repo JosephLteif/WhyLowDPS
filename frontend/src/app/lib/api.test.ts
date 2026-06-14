@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchJson, fetchJsonCached, isNetworkUnavailableError, TOKEN_KEY } from './api';
+import {
+  fetchJson,
+  fetchJsonCached,
+  isDesktopRuntime,
+  isNetworkUnavailableError,
+  TOKEN_KEY,
+} from './api';
 
 const jsonResponse = (body: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(body), {
@@ -57,6 +63,20 @@ describe('api helpers', () => {
     expect(isNetworkUnavailableError({ status: 0 })).toBe(true);
     expect(isNetworkUnavailableError({ name: 'AbortError' })).toBe(true);
     expect(isNetworkUnavailableError({ status: 500 })).toBe(false);
+  });
+
+  it('treats the dedicated Tauri dev frontend port as desktop runtime', () => {
+    const originalWindow = window;
+    vi.stubGlobal('window', {
+      ...originalWindow,
+      location: {
+        protocol: 'http:',
+        hostname: '127.0.0.1',
+        port: '1420',
+      },
+    });
+
+    expect(isDesktopRuntime()).toBe(true);
   });
 
   it('dedupes cached GET requests and uses persistent cache when fresh', async () => {

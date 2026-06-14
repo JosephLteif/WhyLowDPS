@@ -19,6 +19,7 @@ import SimResultTalentsCard from '../../components/SimResultTalentsCard';
 import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
+import { useAuth } from '../../components/AuthContext';
 import type { StatSnapshot } from '../../lib/stat-snapshot';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import {
@@ -359,6 +360,7 @@ function CollapsibleSection({
 
 export default function SimResultClient() {
   const router = useRouter();
+  const { lightMode } = useAuth();
   const params = useParams();
   const searchParams = useSearchParams();
   const paramId = params.id as string;
@@ -1032,12 +1034,14 @@ export default function SimResultClient() {
           >
             Sim Again
           </button>
-          <CharacterLinkButton
-            jobId={activeScenarioId}
-            currentLinkedName={job.linked_name}
-            currentLinkedRealm={job.linked_realm}
-            currentLinkedRegion={job.linked_region}
-          />
+          {!lightMode && (
+            <CharacterLinkButton
+              jobId={activeScenarioId}
+              currentLinkedName={job.linked_name}
+              currentLinkedRealm={job.linked_realm}
+              currentLinkedRegion={job.linked_region}
+            />
+          )}
         </div>
       ) : (
         <div />
@@ -1299,7 +1303,7 @@ export default function SimResultClient() {
                     <GearOverview
                       gear={r.equipped_gear as Record<string, GearItem>}
                       characterRenderUrl={
-                        r.realm && r.player_name
+                        !lightMode && r.realm && r.player_name
                           ? `${API_URL}/api/blizzard/character/${encodeURIComponent((r.realm as string).toLowerCase())}/${encodeURIComponent((r.player_name as string).toLowerCase())}/media/render${r.region ? `?region=${(r.region as string).toLowerCase()}` : ''}`
                           : null
                       }

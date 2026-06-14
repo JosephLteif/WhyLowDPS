@@ -6,7 +6,10 @@ import { API_URL, fetchJson, isDesktop, isNetworkUnavailableError, TOKEN_KEY } f
 interface AuthContextType {
   user: { battletag: string } | null;
   loading: boolean;
-  login: (clientId?: string, clientSecret?: string) => void;
+  lightMode: boolean;
+  enableLightMode: () => void;
+  disableLightMode: () => void;
+  login: (clientId?: string, clientSecret?: string) => Promise<void>;
   logout: (switchAccount?: boolean) => void;
   checkCredentialsStatus: () => Promise<{ globally_configured: boolean }>;
   setSystemCredentials: (clientId: string, clientSecret: string) => Promise<boolean>;
@@ -15,7 +18,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
-  login: () => {},
+  lightMode: false,
+  enableLightMode: () => {},
+  disableLightMode: () => {},
+  login: async () => {},
   logout: () => {
   },
   checkCredentialsStatus: async () => ({ globally_configured: false }),
@@ -23,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 let authCheckInFlight: Promise<{ battletag: string } | null> | null = null;
+const LIGHT_MODE_KEY = 'whylowdps_light_mode';
 
 async function fetchCurrentUserOnce(): Promise<{ battletag: string } | null> {
   if (!authCheckInFlight) {
@@ -44,9 +51,19 @@ async function fetchCurrentUserOnce(): Promise<{ battletag: string } | null> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<{ battletag: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lightMode, setLightMode] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(LIGHT_MODE_KEY) === '1';
+  });
 
   useEffect(() => {
     const checkAuth = async () => {
+      if (lightMode) {
+        localStorage.removeItem(TOKEN_KEY);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
       try {
         const data = await fetchCurrentUserOnce();
         setUser(data);
@@ -65,9 +82,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     checkAuth();
-  }, []);
+  }, [lightMode]);
 
   const checkCredentialsStatus = useCallback(async () => {
+    if (lightMode) return { globally_configured: false };
     try {
       return await fetchJson<{ globally_configured: boolean }>(
         `${API_URL}/api/auth/bnet/credentials-status`
@@ -78,6 +96,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     return { globally_configured: false }; // Fallback to avoid dead-end if request fails
+  }, [lightMode]);
+
+  const enableLightMode = useCallback(() => {
+    localStorage.setItem(LIGHT_MODE_KEY, '1');
+    localStorage.removeItem(TOKEN_KEY);
+    setUser(null);
+    setLightMode(true);
+    setLoading(false);
+  }, []);
+
+  const disableLightMode = useCallback(() => {
+    localStorage.removeItem(LIGHT_MODE_KEY);
+    setLightMode(false);
+    setLoading(true);
   }, []);
 
   const setSystemCredentials = useCallback(async (clientId: string, clientSecret: string) => {
@@ -95,6 +127,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (clientId?: string, clientSecret?: string) => {
+    localStorage.removeItem(LIGHT_MODE_KEY);
+    setLightMode(false);
     const flowId = crypto.randomUUID();
     let url = `${API_URL}/api/auth/bnet/login?flow_id=${flowId}`;
 
@@ -105,27 +139,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (isDesktop) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        console.log('Opening isolated auth window:', url);
-
-        // Pass raw URL; desktop command encodes once for Blizzard logout ref.
-        await invoke('open_auth_window', { url });
-
-        // Start polling for token
-        startPolling(flowId);
-        return;
-      } catch (err) {
-        console.error('Failed to use Tauri internal window, falling back to shell:', err);
+      startPolling(flowId);
+      void (async () => {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          await invoke('open_external_url', { url });
-          startPolling(flowId);
-          return;
-        } catch (shellErr) {
-          console.error('Shell fallback failed:', shellErr);
+          console.log('Opening isolated auth window:', url);
+
+          // Pass raw URL; desktop command encodes once for Blizzard logout ref.
+          await invoke('open_auth_window', { url });
+        } catch (err) {
+          console.error('Failed to use Tauri internal window, falling back to shell:', err);
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            await invoke('open_external_url', { url });
+          } catch (shellErr) {
+            console.error('Shell fallback failed:', shellErr);
+            window.location.assign(url);
+          }
         }
-      }
+      })();
+      return;
     }
 
     console.log('Initiating login redirect to:', url);
@@ -180,7 +213,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, logout, checkCredentialsStatus, setSystemCredentials }}
+      value={{
+        user,
+        loading,
+        lightMode,
+        enableLightMode,
+        disableLightMode,
+        login,
+        logout,
+        checkCredentialsStatus,
+        setSystemCredentials,
+      }}
     >
       {children}
     </AuthContext.Provider>

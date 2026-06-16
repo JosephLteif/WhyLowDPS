@@ -6,6 +6,7 @@ interface RaidBuffEntry {
   id: string;
   label: string;
   sourceLabel?: string;
+  sourceDescription?: string;
   disabled?: boolean;
   spellId: number;
   icon: string;
@@ -20,6 +21,11 @@ interface RaidBuffGridProps {
 }
 
 const SPELL_ICON_CACHE = new Map<number, string>();
+const SOURCE_TOOLTIPS: Record<string, string> = {
+  override: 'Present in the SimC input the user provided.',
+  manual: 'Set manually by the user.',
+  default: 'Taken from the default settings.',
+};
 
 function useSpellIcons(spellIds: number[]) {
   const [icons, setIcons] = useState<Map<number, string>>(new Map());
@@ -113,7 +119,10 @@ export default function RaidBuffGrid({ entries, onSelectAll, onClear }: RaidBuff
               />
               <span className="truncate text-[14px]">{entry.label}</span>
               {entry.sourceLabel && (
-                <span className="shrink-0 rounded border border-zinc-600/70 bg-zinc-800/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300">
+                <span
+                  className="shrink-0 rounded border border-zinc-600/70 bg-zinc-800/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300"
+                  title={entry.sourceDescription || SOURCE_TOOLTIPS[entry.sourceLabel] || entry.sourceLabel}
+                >
                   {entry.sourceLabel}
                 </span>
               )}

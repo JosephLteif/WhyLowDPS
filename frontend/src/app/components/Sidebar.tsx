@@ -124,7 +124,17 @@ const baseNavItems: NavItem[] = [
 const SIDEBAR_COLLAPSED_KEY = 'whylowdps_sidebar_collapsed';
 const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
 const SIDEBAR_VISIBLE_KEY = 'whylowdps_sidebar_visible';
-const SIDEBAR_AUTH_ONLY_LABELS = new Set(['My Characters']);
+const SIDEBAR_DEFAULT_VISIBLE_LABELS = new Set(['Settings']);
+
+function ensureDefaultVisibleLabels(labels: string[], availableLabels: string[]): string[] {
+  const next = [...labels];
+  for (const label of SIDEBAR_DEFAULT_VISIBLE_LABELS) {
+    if (!availableLabels.includes(label) || next.includes(label)) continue;
+    next.push(label);
+  }
+  return next;
+}
+
 function moveLabelWithPosition(
   order: string[],
   source: string,
@@ -234,6 +244,7 @@ export default function Sidebar() {
   useEffect(() => {
     const collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
     setIsCollapsed(collapsed === '1');
+    const availableLabels = navItems.map((item) => item.label);
     const savedOrder = localStorage.getItem(SIDEBAR_ORDER_KEY);
     if (savedOrder) {
       try {
@@ -250,13 +261,14 @@ export default function Sidebar() {
       try {
         const parsed = JSON.parse(savedVisible);
         if (Array.isArray(parsed)) {
-          setVisibleLabels(parsed.filter((v) => typeof v === 'string'));
+          const savedLabels = parsed.filter((v): v is string => typeof v === 'string');
+          setVisibleLabels(ensureDefaultVisibleLabels(savedLabels, availableLabels));
         }
       } catch {
         // ignore malformed stored visibility
       }
     }
-  }, []);
+  }, [navItems]);
 
   useEffect(() => {
     // Keep JS breakpoint aligned with Tailwind `xl` (`min-width: 1280px`).
@@ -312,15 +324,11 @@ export default function Sidebar() {
   useEffect(() => {
     setVisibleLabels((prev) => {
       const labels = navItems.map((item) => item.label);
-      if (!prev || prev.length === 0) return labels;
+      if (!prev || prev.length === 0) return ensureDefaultVisibleLabels(labels, labels);
       const deduped = prev.filter((label, idx) => prev.indexOf(label) === idx);
       const filtered = deduped.filter((label) => labels.includes(label));
       if (filtered.length === 0) return labels;
-      for (const label of labels) {
-        if (!SIDEBAR_AUTH_ONLY_LABELS.has(label) || filtered.includes(label)) continue;
-        filtered.push(label);
-      }
-      return filtered;
+      return ensureDefaultVisibleLabels(filtered, labels);
     });
   }, [navItems]);
 

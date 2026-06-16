@@ -607,11 +607,19 @@ mod tests {
             ),
         ]));
         *state::UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
-            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
-            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
+            (
+                ("Hero".to_string(), 1_u64, 4_u64),
+                (623_u64, 101_u64, 4_u64),
+            ),
+            (
+                ("Hero".to_string(), 2_u64, 4_u64),
+                (626_u64, 102_u64, 4_u64),
+            ),
         ]));
-        *state::UPGRADE_STEP_COSTS.write().unwrap() =
-            Arc::new(HashMap::from([(102_u64, HashMap::from([(3008_u64, 15_u64)]))]));
+        *state::UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([(
+            102_u64,
+            HashMap::from([(3008_u64, 15_u64)]),
+        )]));
 
         let req = parse_upgrade_compare_req(json!({
             "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# upgrade_currencies = c:3008:25\n",
@@ -627,13 +635,11 @@ mod tests {
         let body = to_bytes(resp.into_body()).await.expect("response body");
         let payload: Value = serde_json::from_slice(&body).expect("json body");
         assert_eq!(payload.get("combo_count").and_then(Value::as_u64), Some(1));
-        assert!(
-            payload
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .contains("Too many upgrade combinations (1)")
-        );
+        assert!(payload
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("Too many upgrade combinations (1)"));
 
         *state::BONUSES.write().unwrap() = prev_bonuses;
         *state::UPGRADE_TRACKS.write().unwrap() = prev_tracks;
@@ -675,11 +681,19 @@ mod tests {
             ),
         ]));
         *state::UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
-            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
-            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
+            (
+                ("Hero".to_string(), 1_u64, 4_u64),
+                (623_u64, 101_u64, 4_u64),
+            ),
+            (
+                ("Hero".to_string(), 2_u64, 4_u64),
+                (626_u64, 102_u64, 4_u64),
+            ),
         ]));
-        *state::UPGRADE_STEP_COSTS.write().unwrap() =
-            Arc::new(HashMap::from([(102_u64, HashMap::from([(3008_u64, 15_u64)]))]));
+        *state::UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([(
+            102_u64,
+            HashMap::from([(3008_u64, 15_u64)]),
+        )]));
         *state::CURRENCY_INFO.write().unwrap() = Arc::new(HashMap::from([(
             3008_u64,
             ("Crests".to_string(), "inv_currency_crests".to_string()),
@@ -699,7 +713,10 @@ mod tests {
             .and_then(Value::as_array)
             .expect("candidates array");
         assert_eq!(candidates.len(), 1);
-        assert_eq!(candidates[0].get("slot").and_then(Value::as_str), Some("head"));
+        assert_eq!(
+            candidates[0].get("slot").and_then(Value::as_str),
+            Some("head")
+        );
         assert_eq!(
             candidates[0].get("target_ilevel").and_then(Value::as_u64),
             Some(626)
@@ -771,11 +788,19 @@ mod tests {
             ),
         ]));
         *state::UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
-            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
-            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
+            (
+                ("Hero".to_string(), 1_u64, 4_u64),
+                (623_u64, 101_u64, 4_u64),
+            ),
+            (
+                ("Hero".to_string(), 2_u64, 4_u64),
+                (626_u64, 102_u64, 4_u64),
+            ),
         ]));
-        *state::UPGRADE_STEP_COSTS.write().unwrap() =
-            Arc::new(HashMap::from([(102_u64, HashMap::from([(3008_u64, 15_u64)]))]));
+        *state::UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([(
+            102_u64,
+            HashMap::from([(3008_u64, 15_u64)]),
+        )]));
 
         let req = parse_upgrade_compare_req(json!({
             "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# upgrade_currencies = c:3008:25\n",

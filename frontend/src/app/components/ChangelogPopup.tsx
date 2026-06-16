@@ -8,28 +8,55 @@ export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
 
-const releaseNotes = [
+type ReleaseNoteCategory = 'feature' | 'fix';
+
+type ReleaseNote = {
+  category: ReleaseNoteCategory;
+  title: string;
+  body: string;
+};
+
+const releaseNotes: ReleaseNote[] = [
   {
-    title: 'Light mode',
+    category: 'feature',
+    title: 'Saved Blizzard logins',
     body:
-      'Use the app without Blizzard API credentials. You can still launch sims from pasted SimC, while Battle.net character, vault, wishlist, and live character features stay disabled.',
+      'Saved Blizzard credentials now store securely on the device and can be selected, renamed, repaired, or removed from the login flow and settings.',
   },
   {
-    title: 'Desktop auth fixes',
+    category: 'fix',
+    title: 'Settings in the sidebar',
     body:
-      'Battle.net login now uses the local desktop backend correctly in debug mode and returns to the app without needing a manual refresh.',
+      'Settings now stays visible in the sidebar by default, so you do not have to add it back manually.',
   },
   {
-    title: 'Cleaner fallback flow',
+    category: 'fix',
+    title: 'Popup no longer blocks window controls',
     body:
-      'Credential setup now offers a clear path to continue in Light mode when Blizzard API access is unavailable.',
+      'The What\'s new popup no longer covers the desktop title bar, so you can still move the window and use the Windows action buttons while it is open.',
   },
   {
-    title: 'Better local caching',
+    category: 'fix',
+    title: 'Raid buff source badges explain themselves',
     body:
-      'Persistent API cache entries now use browser Cache Storage instead of filling localStorage with item, talent, enchant, and gem records.',
+      'Raid buff source badges now show hover text for Override, Manual, and Default so it is clear whether a buff came from SimC input, direct user changes, or saved defaults.',
   },
 ];
+
+const releaseNoteCategoryOrder: ReleaseNoteCategory[] = ['feature', 'fix'];
+
+const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {
+  feature: 'Features',
+  fix: 'Fixes',
+};
+
+const groupedReleaseNotes = releaseNoteCategoryOrder
+  .map((category) => ({
+    category,
+    label: releaseNoteCategoryLabels[category],
+    notes: releaseNotes.filter((note) => note.category === category),
+  }))
+  .filter((section) => section.notes.length > 0);
 
 export default function ChangelogPopup() {
   const [isOpen, setIsOpen] = useState(false);
@@ -51,7 +78,10 @@ export default function ChangelogPopup() {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 px-4">
+    <div
+      className="fixed inset-x-0 bottom-0 z-[90] flex items-center justify-center bg-black/70 px-4 py-6"
+      style={{ top: 'var(--app-header-height)' }}
+    >
       <section
         role="dialog"
         aria-modal="true"
@@ -77,12 +107,22 @@ export default function ChangelogPopup() {
           </button>
         </div>
 
-        <div className="mt-5 space-y-3">
-          {releaseNotes.map((note) => (
-            <article key={note.title} className="rounded-lg border border-white/10 bg-black/20 p-3">
-              <h3 className="text-sm font-semibold text-zinc-100">{note.title}</h3>
-              <p className="mt-1 text-sm leading-6 text-zinc-300">{note.body}</p>
-            </article>
+        <div className="mt-5 space-y-4">
+          {groupedReleaseNotes.map((section) => (
+            <div key={section.category} className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                {section.label}
+              </h3>
+              {section.notes.map((note) => (
+                <article
+                  key={note.title}
+                  className="rounded-lg border border-white/10 bg-black/20 p-3"
+                >
+                  <h4 className="text-sm font-semibold text-zinc-100">{note.title}</h4>
+                  <p className="mt-1 text-sm leading-6 text-zinc-300">{note.body}</p>
+                </article>
+              ))}
+            </div>
           ))}
         </div>
 

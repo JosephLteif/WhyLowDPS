@@ -3,7 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
-import { API_URL, fetchJson, isDesktop } from '../lib/api';
+import {
+  API_URL,
+  type BlizzardCredentialProfile,
+  deleteBlizzardCredentialProfile,
+  fetchJson,
+  isDesktop,
+  listBlizzardCredentialProfiles,
+  renameBlizzardCredentialProfile,
+  saveBlizzardCredentialProfile,
+} from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
 import { isValidUpdateChannel } from '../lib/update-channel';
@@ -44,21 +53,21 @@ export default function SettingsPage() {
   } = useSimContext();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [credentialName, setCredentialName] = useState('');
+  const [credentialProfiles, setCredentialProfiles] = useState<BlizzardCredentialProfile[]>([]);
   const [secretTouched, setSecretTouched] = useState(false);
   const [hasSecret, setHasSecret] = useState(false);
   const [maxThreads, setMaxThreads] = useState(0);
   const [pageLoading, setPageLoading] = useState(true);
   const [blizzardSaving, setBlizzardSaving] = useState(false);
   const [blizzardTesting, setBlizzardTesting] = useState(false);
-  const [blizzardMessage, setBlizzardMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [blizzardMessage, setBlizzardMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const [performanceSaved, setPerformanceSaved] = useState(false);
-  const {
-    cacheSyncing,
-    cacheMessage,
-    syncProgress,
-    syncProgressPct,
-    refreshDataCache,
-  } = useDataCacheRefresh();
+  const { cacheSyncing, cacheMessage, syncProgress, syncProgressPct, refreshDataCache } =
+    useDataCacheRefresh();
   const {
     dataStateLoading,
     dataStateError,
@@ -113,9 +122,7 @@ export default function SettingsPage() {
         setClientId(data.blizzard_client_id || '');
         setHasSecret(data.has_blizzard_client_secret || false);
         const serverUpdateChannel =
-          typeof data.app_update_channel === 'string'
-            ? data.app_update_channel.toLowerCase()
-            : '';
+          typeof data.app_update_channel === 'string' ? data.app_update_channel.toLowerCase() : '';
         if (isValidUpdateChannel(serverUpdateChannel)) {
           setSelectedUpdateChannel(serverUpdateChannel);
         }
@@ -137,6 +144,13 @@ export default function SettingsPage() {
         setPageLoading(false);
       });
   }, [authLoading, user, router, setMaxCombinations, setThreads, setSelectedUpdateChannel]);
+
+  useEffect(() => {
+    if (!user || !isDesktop) return;
+    listBlizzardCredentialProfiles()
+      .then(setCredentialProfiles)
+      .catch(() => setCredentialProfiles([]));
+  }, [user]);
 
   useEffect(() => {
     fetch(`${API_URL}/health`, { credentials: 'include' })
@@ -183,9 +197,7 @@ export default function SettingsPage() {
         const pref = await invoke<CloseBehaviorPreferenceResponse>('get_close_behavior_preference');
         if (cancelled) return;
         const savedValue = pref?.minimize_to_tray_on_close;
-        setCloseBehaviorMode(
-          savedValue == null ? 'ask' : savedValue ? 'tray' : 'close'
-        );
+        setCloseBehaviorMode(savedValue == null ? 'ask' : savedValue ? 'tray' : 'close');
       } catch {
       } finally {
         if (!cancelled) setCloseBehaviorLoading(false);
@@ -222,7 +234,10 @@ export default function SettingsPage() {
 
       setBlizzardMessage({ type: 'success', text: 'Blizzard credentials verified successfully.' });
     } catch (err: any) {
-      setBlizzardMessage({ type: 'error', text: err.message || 'Failed to verify Blizzard credentials.' });
+      setBlizzardMessage({
+        type: 'error',
+        text: err.message || 'Failed to verify Blizzard credentials.',
+      });
     }
     setBlizzardTesting(false);
   };
@@ -239,23 +254,51 @@ export default function SettingsPage() {
       });
 
       if (clientSecret.trim()) {
-        await fetchJson(`${API_URL}/api/user/config`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            key: 'blizzard_client_secret',
-            value: clientSecret.trim(),
-          }),
+        const profile = await saveBlizzardCredentialProfile({
+          name: credentialName.trim() || 'Main credentials',
+          client_id: clientId.trim(),
+          client_secret: clientSecret.trim(),
+        });
+        setCredentialProfiles((profiles) => {
+          const next = profiles.filter((item) => item.id !== profile.id);
+          return [...next, profile];
         });
         setHasSecret(true);
+        setCredentialName('');
         setClientSecret('');
         setSecretTouched(false);
       }
-      setBlizzardMessage({ type: 'success', text: 'Blizzard settings saved successfully.' });
+      setBlizzardMessage({ type: 'success', text: 'Blizzard credentials saved securely.' });
     } catch (err: any) {
-      setBlizzardMessage({ type: 'error', text: err?.message || 'Failed to save Blizzard settings.' });
+      setBlizzardMessage({
+        type: 'error',
+        text: err?.message || 'Failed to save Blizzard settings.',
+      });
     } finally {
       setBlizzardSaving(false);
+    }
+  };
+
+  const renameSavedCredential = async (id: string, nextName: string) => {
+    const trimmedName = nextName.trim();
+    if (!trimmedName) return;
+    try {
+      const profile = await renameBlizzardCredentialProfile(id, trimmedName);
+      setCredentialProfiles((profiles) =>
+        profiles.map((item) => (item.id === id ? profile : item)),
+      );
+    } catch (err: any) {
+      setBlizzardMessage({ type: 'error', text: err?.message || 'Failed to rename credentials.' });
+    }
+  };
+
+  const deleteSavedCredential = async (id: string) => {
+    if (!window.confirm('Remove these saved Blizzard credentials from this device?')) return;
+    try {
+      await deleteBlizzardCredentialProfile(id);
+      setCredentialProfiles((profiles) => profiles.filter((profile) => profile.id !== id));
+    } catch (err: any) {
+      setBlizzardMessage({ type: 'error', text: err?.message || 'Failed to remove credentials.' });
     }
   };
 
@@ -353,6 +396,11 @@ export default function SettingsPage() {
           setClientId={setClientId}
           clientSecret={clientSecret}
           setClientSecret={setClientSecret}
+          credentialName={credentialName}
+          setCredentialName={setCredentialName}
+          credentialProfiles={credentialProfiles}
+          renameSavedCredential={renameSavedCredential}
+          deleteSavedCredential={deleteSavedCredential}
           secretTouched={secretTouched}
           setSecretTouched={setSecretTouched}
           hasSecret={hasSecret}
@@ -364,96 +412,101 @@ export default function SettingsPage() {
         />
       )}
 
-      {activeTab === 'simulation' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-6 text-xl font-semibold text-white">Simulation Performance</h2>
-        <div className="max-w-2xl space-y-6">
-          {maxThreads > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-zinc-300">CPU Threads</span>
-                <span className="rounded border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] tabular-nums text-white">
-                  {threads}/{maxThreads}
-                </span>
+      {activeTab === 'simulation' && (
+        <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <h2 className="mb-6 text-xl font-semibold text-white">Simulation Performance</h2>
+          <div className="max-w-2xl space-y-6">
+            {maxThreads > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-zinc-300">CPU Threads</span>
+                  <span
+                    className="rounded border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] tabular-nums text-white">
+                    {threads}/{maxThreads}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {PRESETS.map((p, i) => {
+                    const val = Math.max(1, Math.round(maxThreads * p.pct));
+                    return (
+                      <button
+                        key={p.label}
+                        onClick={() => setThreads(val)}
+                        className={`rounded-lg border px-3 py-2 text-center transition-all ${
+                          activePresetIdx === i
+                            ? 'border-white bg-white text-black'
+                            : 'border-border bg-surface-2 text-zinc-400 hover:border-gray-500 hover:text-white'
+                        }`}
+                      >
+                        <span className="block text-[12px] font-semibold">{p.label}</span>
+                        <span className="mt-0.5 block text-[10px] opacity-70">{val} threads</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {PRESETS.map((p, i) => {
-                  const val = Math.max(1, Math.round(maxThreads * p.pct));
-                  return (
-                    <button
-                      key={p.label}
-                      onClick={() => setThreads(val)}
-                      className={`rounded-lg border px-3 py-2 text-center transition-all ${
-                        activePresetIdx === i
-                          ? 'border-white bg-white text-black'
-                          : 'border-border bg-surface-2 text-zinc-400 hover:border-gray-500 hover:text-white'
-                      }`}
-                    >
-                      <span className="block text-[12px] font-semibold">{p.label}</span>
-                      <span className="mt-0.5 block text-[10px] opacity-70">{val} threads</span>
-                    </button>
-                  );
-                })}
+            )}
+
+            <div className="flex items-center justify-between border-t border-border pt-4">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium text-zinc-300">Max Gear Combos</p>
+                <p className="text-[12px] text-zinc-500">Limits Top Gear simulation runtime.</p>
               </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between border-t border-border pt-4">
-            <div className="space-y-0.5">
-              <p className="text-sm font-medium text-zinc-300">Max Gear Combos</p>
-              <p className="text-[12px] text-zinc-500">Limits Top Gear simulation runtime.</p>
-            </div>
-            <input
-              type="number"
-              min={10}
-              max={100000}
-              step={50}
-              value={maxCombinations ?? 500}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (Number.isFinite(val) && val > 0) setMaxCombinations(val);
-              }}
-              className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
-
-        </div>
-      </section>}
-
-      {activeTab === 'simulation' && <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-        <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
-        <p className="mb-5 text-sm text-zinc-400">
-          When the app regains focus, it can check the latest clipboard text and auto-fill the SimC
-          export box if it looks like a valid SimC string.
-        </p>
-
-        <div className="space-y-4">
-          <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-zinc-200">
-                Auto paste latest SimC from clipboard
-              </p>
-              <p className="text-[13px] text-zinc-500">
-                Read the latest clipboard entry and automatically paste it into the main input if it
-                looks like a SimC profile.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAutoClipboardPasteSimc(!autoClipboardPasteSimc)}
-              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-                autoClipboardPasteSimc ? 'bg-gold' : 'border border-border bg-surface'
-              }`}
-              aria-pressed={autoClipboardPasteSimc}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
-                  autoClipboardPasteSimc ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
-                }`}
+              <input
+                type="number"
+                min={10}
+                max={100000}
+                step={50}
+                value={maxCombinations ?? 500}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (Number.isFinite(val) && val > 0) setMaxCombinations(val);
+                }}
+                className="w-24 rounded border border-border bg-surface-2 px-2 py-1 text-center font-mono text-xs tabular-nums text-white [appearance:textfield] focus:border-gold/50 focus:outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
-            </button>
+            </div>
           </div>
-        </div>
-      </section>}
+        </section>
+      )}
+
+      {activeTab === 'simulation' && (
+        <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <h2 className="mb-3 text-xl font-semibold text-white">Clipboard Import</h2>
+          <p className="mb-5 text-sm text-zinc-400">
+            When the app regains focus, it can check the latest clipboard text and auto-fill the
+            SimC export box if it looks like a valid SimC string.
+          </p>
+
+          <div className="space-y-4">
+            <div
+              className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-zinc-200">
+                  Auto paste latest SimC from clipboard
+                </p>
+                <p className="text-[13px] text-zinc-500">
+                  Read the latest clipboard entry and automatically paste it into the main input if
+                  it looks like a SimC profile.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAutoClipboardPasteSimc(!autoClipboardPasteSimc)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  autoClipboardPasteSimc ? 'bg-gold' : 'border border-border bg-surface'
+                }`}
+                aria-pressed={autoClipboardPasteSimc}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+                    autoClipboardPasteSimc ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {activeTab === 'simulation' && isDesktop && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
@@ -540,13 +593,15 @@ export default function SettingsPage() {
         />
       )}
 
-      {activeTab === 'about' && <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
-        <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
-        <p className="text-sm text-zinc-400">
-          Your credentials are used solely to fetch character data directly from Blizzard. They are
-          stored in on your device and are never shared with third parties.
-        </p>
-      </section>}
+      {activeTab === 'about' && (
+        <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
+          <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
+          <p className="text-sm text-zinc-400">
+            Your credentials are used solely to fetch character data directly from Blizzard. They
+            are stored in on your device and are never shared with third parties.
+          </p>
+        </section>
+      )}
 
       <DataFileStateModal
         isOpen={dataStateOpen}

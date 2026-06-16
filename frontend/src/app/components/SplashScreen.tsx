@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { LogIn, X } from 'lucide-react';
-import { API_URL, isDesktop } from '../lib/api';
+import { API_URL, type BlizzardCredentialProfile, isDesktop, listBlizzardCredentialProfiles } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { invoke } from '@tauri-apps/api/core';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
@@ -40,17 +40,45 @@ export default function SplashScreen({
   const { login, setSystemCredentials, enableLightMode } = useAuth();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [credentialProfiles, setCredentialProfiles] = useState<BlizzardCredentialProfile[]>([]);
+  const [selectedCredentialId, setSelectedCredentialId] = useState('');
+  const [saveNewCredentials, setSaveNewCredentials] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [showDebugButton, setShowDebugButton] = useState(false);
   const isDebugMode = process.env.NODE_ENV === 'development';
+  const usableCredentialProfiles = credentialProfiles.filter(
+    (profile) => profile.has_secret !== false,
+  );
+  const missingSecretProfiles = credentialProfiles.filter(
+    (profile) => profile.has_secret === false,
+  );
+  const selectedProfile = credentialProfiles.find((profile) => profile.id === selectedCredentialId);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setShowDebugButton(true);
     }, 5000);
     return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    let cancelled = false;
+    listBlizzardCredentialProfiles()
+      .then((profiles) => {
+        if (cancelled) return;
+        setCredentialProfiles(profiles);
+        setSelectedCredentialId(
+          (current) => current || profiles.find((profile) => profile.has_secret !== false)?.id || '',
+        );
+      })
+      .catch(() => {
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const fetchDebugInfo = async () => {
@@ -99,12 +127,30 @@ export default function SplashScreen({
   const handleSaveAndLogin = async () => {
     setIsSaving(true);
     try {
-      const success = await setSystemCredentials(clientId, clientSecret);
-      if (success) {
-        await login(clientId, clientSecret);
-      } else {
-        alert('Failed to save Blizzard API credentials. Please check your inputs.');
+      if (selectedCredentialId) {
+        if (selectedProfile?.has_secret === false) {
+          alert(
+            'These saved Blizzard credentials are missing their secure secret on this device. Re-enter the client secret and save again.',
+          );
+          setSelectedCredentialId('');
+          return;
+        }
+        await login(undefined, undefined, selectedCredentialId);
+        return;
       }
+
+      if (!saveNewCredentials) {
+        await login(clientId, clientSecret);
+        return;
+      }
+
+      const success = await setSystemCredentials(clientId, clientSecret);
+      if (!success) {
+        alert('Failed to save Blizzard API credentials. Please check your inputs.');
+        return;
+      }
+
+      await login(clientId, clientSecret);
     } finally {
       setIsSaving(false);
     }
@@ -155,16 +201,16 @@ export default function SplashScreen({
     : 'required file';
   const lowerStatus = statusString.toLowerCase();
   const isBlizzardAuthOrApiIssue =
-    lowerStatus.includes('blizzard')
-    && (lowerStatus.includes('auth')
-      || lowerStatus.includes('oauth')
-      || lowerStatus.includes('token')
-      || lowerStatus.includes('authenticate')
-      || lowerStatus.includes('unauthorized')
-      || lowerStatus.includes('forbidden')
-      || lowerStatus.includes('service unavailable')
-      || lowerStatus.includes('timed out')
-      || lowerStatus.includes('timeout'));
+    lowerStatus.includes('blizzard') &&
+    (lowerStatus.includes('auth') ||
+      lowerStatus.includes('oauth') ||
+      lowerStatus.includes('token') ||
+      lowerStatus.includes('authenticate') ||
+      lowerStatus.includes('unauthorized') ||
+      lowerStatus.includes('forbidden') ||
+      lowerStatus.includes('service unavailable') ||
+      lowerStatus.includes('timed out') ||
+      lowerStatus.includes('timeout'));
   const needsMetadataFallback = primaryFailedFile.toLowerCase() === 'metadata.json';
   const manualDownloadUrl = needsMetadataFallback
     ? 'https://www.raidbots.com/static/data/live/metadata.json'
@@ -282,20 +328,89 @@ export default function SplashScreen({
                 </p>
 
                 <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Client ID"
-                    value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-zinc-500 transition-colors focus:border-gold/50 focus:outline-none"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Client Secret"
-                    value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-zinc-500 transition-colors focus:border-gold/50 focus:outline-none"
-                  />
+                  {credentialProfiles.length > 0 && (
+                    <div className="space-y-2">
+                      {credentialProfiles.map((profile) => (
+                        <button
+                          key={profile.id}
+                          type="button"
+                          onClick={() =>
+                            profile.has_secret !== false && setSelectedCredentialId(profile.id)
+                          }
+                          disabled={profile.has_secret === false}
+                          className={`w-full rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                            profile.has_secret === false
+                              ? 'cursor-not-allowed border-amber-500/20 bg-amber-500/10 text-amber-100 opacity-80'
+                              : selectedCredentialId === profile.id
+                                ? 'border-gold/60 bg-gold/10 text-white'
+                                : 'border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10'
+                          }`}
+                        >
+                          <span className="block truncate text-sm font-semibold">
+                            {profile.name}
+                          </span>
+                          <span className="block truncate text-[11px] text-zinc-500">
+                            {profile.client_id}
+                          </span>
+                          {profile.has_secret === false && (
+                            <span className="mt-1 block text-[11px] text-amber-200">
+                              Secure secret missing. Re-enter it to repair this saved login.
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCredentialId('')}
+                        className={`w-full rounded-xl border px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
+                          selectedCredentialId
+                            ? 'border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10'
+                            : 'border-gold/60 bg-gold/10 text-white'
+                        }`}
+                      >
+                        Use new credentials
+                      </button>
+                    </div>
+                  )}
+                  {missingSecretProfiles.length > 0 && (
+                    <p
+                      className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-left text-[12px] text-amber-100">
+                      One or more saved credentials are incomplete on this device. Enter the client
+                      secret again to repair them.
+                    </p>
+                  )}
+                  {usableCredentialProfiles.length === 0 && credentialProfiles.length > 0 && (
+                    <p className="text-left text-[12px] text-zinc-500">
+                      No working saved credentials are available on this device right now.
+                    </p>
+                  )}
+                  {!selectedCredentialId && (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Client ID"
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-zinc-500 transition-colors focus:border-gold/50 focus:outline-none"
+                      />
+                      <input
+                        type="password"
+                        placeholder="Client Secret"
+                        value={clientSecret}
+                        onChange={(e) => setClientSecret(e.target.value)}
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-zinc-500 transition-colors focus:border-gold/50 focus:outline-none"
+                      />
+                      <label className="flex items-center gap-2 text-left text-[12px] text-zinc-400">
+                        <input
+                          type="checkbox"
+                          checked={saveNewCredentials}
+                          onChange={(e) => setSaveNewCredentials(e.target.checked)}
+                          className="h-4 w-4 rounded border-white/20 bg-white/5"
+                        />
+                        Save these credentials securely on this device
+                      </label>
+                    </>
+                  )}
                 </div>
 
                 <div className="text-left">
@@ -321,7 +436,7 @@ export default function SplashScreen({
 
                 <button
                   onClick={handleSaveAndLogin}
-                  disabled={!clientId || !clientSecret || isSaving}
+                  disabled={(!selectedCredentialId && (!clientId || !clientSecret)) || isSaving}
                   className="flex w-full items-center justify-center gap-3 rounded-xl bg-gold px-4 py-4 text-sm font-bold text-black shadow-lg shadow-gold/20 transition-all hover:bg-gold-light active:scale-95 disabled:opacity-50 disabled:grayscale"
                 >
                   {isSaving ? (
@@ -332,7 +447,9 @@ export default function SplashScreen({
                   ) : (
                     <>
                       <LogIn className="h-5 w-5" strokeWidth={2.25} />
-                      Save & Login with Battle.net
+                      {selectedCredentialId
+                        ? 'Login with Battle.net'
+                        : 'Save & Login with Battle.net'}
                     </>
                   )}
                 </button>
@@ -377,14 +494,19 @@ export default function SplashScreen({
                                 {primaryFailedFile}
                               </a>
                             </p>
-                            <p>2. Save it as {primaryFailedFile} (not {primaryFailedFile}.txt).</p>
+                            <p>
+                              2. Save it as {primaryFailedFile} (not {primaryFailedFile}.txt).
+                            </p>
                           </>
                         ) : (
                           <p>1. Check your internet/firewall/proxy and keep the app open.</p>
                         )}
                         {!isBlizzardAuthOrApiIssue && (
                           <>
-                            <p>3. Press Open Data Folder next to this message, then put the file there.</p>
+                            <p>
+                              3. Press Open Data Folder next to this message, then put the file
+                              there.
+                            </p>
                             <p>4. Click Try Again.</p>
                           </>
                         )}

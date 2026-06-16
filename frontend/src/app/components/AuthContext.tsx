@@ -1,7 +1,14 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { API_URL, fetchJson, isDesktop, isNetworkUnavailableError, TOKEN_KEY } from '../lib/api';
+import {
+  API_URL,
+  fetchJson,
+  isDesktop,
+  isNetworkUnavailableError,
+  saveBlizzardCredentialProfile,
+  TOKEN_KEY,
+} from '../lib/api';
 
 interface AuthContextType {
   user: { battletag: string } | null;
@@ -9,7 +16,7 @@ interface AuthContextType {
   lightMode: boolean;
   enableLightMode: () => void;
   disableLightMode: () => void;
-  login: (clientId?: string, clientSecret?: string) => Promise<void>;
+  login: (clientId?: string, clientSecret?: string, credentialId?: string) => Promise<void>;
   logout: (switchAccount?: boolean) => void;
   checkCredentialsStatus: () => Promise<{ globally_configured: boolean }>;
   setSystemCredentials: (clientId: string, clientSecret: string) => Promise<boolean>;
@@ -115,56 +122,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setSystemCredentials = useCallback(async (clientId: string, clientSecret: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/system/blizzard/credentials`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+      await saveBlizzardCredentialProfile({
+        name: 'Main credentials',
+        client_id: clientId,
+        client_secret: clientSecret,
       });
-      return res.ok;
+      return true;
     } catch (err) {
       console.error('Failed to set system credentials:', err);
       return false;
     }
   }, []);
 
-  const login = useCallback(async (clientId?: string, clientSecret?: string) => {
-    localStorage.removeItem(LIGHT_MODE_KEY);
-    setLightMode(false);
-    const flowId = crypto.randomUUID();
-    let url = `${API_URL}/api/auth/bnet/login?flow_id=${flowId}`;
+  const login = useCallback(
+    async (clientId?: string, clientSecret?: string, credentialId?: string) => {
+      localStorage.removeItem(LIGHT_MODE_KEY);
+      setLightMode(false);
+      const flowId = crypto.randomUUID();
+      let url = `${API_URL}/api/auth/bnet/login?flow_id=${flowId}`;
 
-    if (clientId && clientSecret) {
-      url += `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(
-        clientSecret
-      )}`;
-    }
+      if (credentialId) {
+        url += `&credential_id=${encodeURIComponent(credentialId)}`;
+      } else if (clientId && clientSecret) {
+        url += `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(
+          clientSecret,
+        )}`;
+      }
 
-    if (isDesktop) {
-      startPolling(flowId);
-      void (async () => {
-        try {
-          const { invoke } = await import('@tauri-apps/api/core');
-          console.log('Opening isolated auth window:', url);
-
-          // Pass raw URL; desktop command encodes once for Blizzard logout ref.
-          await invoke('open_auth_window', { url });
-        } catch (err) {
-          console.error('Failed to use Tauri internal window, falling back to shell:', err);
+      if (isDesktop) {
+        startPolling(flowId);
+        void (async () => {
           try {
             const { invoke } = await import('@tauri-apps/api/core');
-            await invoke('open_external_url', { url });
-          } catch (shellErr) {
-            console.error('Shell fallback failed:', shellErr);
-            window.location.assign(url);
-          }
-        }
-      })();
-      return;
-    }
+            console.log('Opening isolated auth window:', url);
 
-    console.log('Initiating login redirect to:', url);
-    window.location.assign(url);
-  }, []);
+            // Pass raw URL; desktop command encodes once for Blizzard logout ref.
+            await invoke('open_auth_window', { url });
+          } catch (err) {
+            console.error('Failed to use Tauri internal window, falling back to shell:', err);
+            try {
+              const { invoke } = await import('@tauri-apps/api/core');
+              await invoke('open_external_url', { url });
+            } catch (shellErr) {
+              console.error('Shell fallback failed:', shellErr);
+              window.location.assign(url);
+            }
+          }
+        })();
+        return;
+      }
+
+      console.log('Initiating login redirect to:', url);
+      window.location.assign(url);
+    },
+    [],
+  );
 
   const startPolling = (flowId: string) => {
     const interval = setInterval(async () => {

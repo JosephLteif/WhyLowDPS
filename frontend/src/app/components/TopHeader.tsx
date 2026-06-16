@@ -39,9 +39,9 @@ export default function TopHeader() {
     else setIsModalOpen(true);
   };
 
-  const handleModalConfirm = (clientId: string, clientSecret: string) => {
+  const handleModalConfirm = (clientId: string, clientSecret: string, credentialId?: string) => {
     setIsModalOpen(false);
-    login(clientId, clientSecret);
+    login(clientId, clientSecret, credentialId);
   };
 
   const handleBack = () => {
@@ -289,7 +289,7 @@ export default function TopHeader() {
           <form
             data-tauri-drag-region="false"
             onSubmit={handleCharacterSearch}
-            className="flex items-center gap-1.5 border-t border-white/5 px-3 py-2 xl:hidden md:px-5"
+            className="flex items-center gap-1.5 border-t border-white/5 px-3 py-2 md:px-5 xl:hidden"
           >
             <input
               type="text"

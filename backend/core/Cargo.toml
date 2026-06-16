@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = ["web"]
-desktop = ["dep:rusqlite"]
+desktop = ["dep:keyring", "dep:rusqlite"]
 web = ["dep:rusqlite", "dep:actix-web", "dep:actix-cors", "dep:actix-files"]
 
 [dependencies]
@@ -25,6 +25,7 @@ urlencoding = "2.1"
 thiserror = "2.0.18"
 zip = "2"
 sevenz-rust2 = { version = "0.20", features = ["zstd", "lz4", "deflate", "brotli"] }
+keyring = { version = "3.6.3", optional = true }
 
 actix-web = { version = "4", optional = true }
 actix-cors = { version = "0.7", optional = true }
@@ -34,3 +35,11 @@ actix-files = { version = "0.6", optional = true }
 version = "0.31"
 features = ["bundled"]
 optional = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Foundation",
+    "Win32_Foundation",
+    "Win32_Security_Cryptography",
+    "Win32_System_Memory",
+] }

@@ -16,8 +16,14 @@ describe('ChangelogPopup', () => {
     const { unmount } = render(<ChangelogPopup />);
 
     expect(await screen.findByRole('dialog', { name: /what's new/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Light mode/i })).toBeInTheDocument();
-    expect(screen.getByText(/without Blizzard API credentials/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /features/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /fixes/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /saved blizzard logins/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /settings in the sidebar/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /popup no longer blocks window controls/i })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/move the window and use the Windows action buttons/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -40,5 +46,14 @@ describe('ChangelogPopup', () => {
     window.dispatchEvent(new Event(CHANGELOG_OPEN_EVENT));
 
     expect(await screen.findByRole('dialog', { name: /what's new/i })).toBeInTheDocument();
+  });
+
+  it('keeps the desktop header region uncovered while open', async () => {
+    render(<ChangelogPopup />);
+
+    const dialog = await screen.findByRole('dialog', { name: /what's new/i });
+    const overlay = dialog.parentElement;
+
+    expect(overlay).toHaveStyle({ top: 'var(--app-header-height)' });
   });
 });

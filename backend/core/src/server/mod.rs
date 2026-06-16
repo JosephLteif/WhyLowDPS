@@ -225,6 +225,9 @@ pub async fn start_with_storage_bind(
         let bind_addr = format!("{}:{}", bind_host, port);
 
         let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
+        let blizzard_credential_secrets = web::Data::new(
+            auth_handlers::create_blizzard_credential_secret_store(store_data.get_ref().clone()),
+        );
 
         let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI").unwrap_or_else(|_| {
             if port == 17384 || cfg!(feature = "desktop") {
@@ -292,6 +295,7 @@ pub async fn start_with_storage_bind(
                 .app_data(simc_data.clone())
                 .app_data(log_data.clone())
                 .app_data(blizzard_state.clone())
+                .app_data(blizzard_credential_secrets.clone())
                 .app_data(auth_state.clone())
                 .app_data(auth_state_opt_data.clone())
                 .route(
@@ -310,6 +314,22 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/auth/bnet/credentials-status",
                     web::get().to(auth_handlers::get_credentials_status),
+                )
+                .route(
+                    "/api/auth/bnet/credential-profiles",
+                    web::get().to(auth_handlers::list_blizzard_credential_profiles),
+                )
+                .route(
+                    "/api/auth/bnet/credential-profiles",
+                    web::post().to(auth_handlers::save_blizzard_credential_profile),
+                )
+                .route(
+                    "/api/auth/bnet/credential-profiles/{id}",
+                    web::patch().to(auth_handlers::rename_blizzard_credential_profile),
+                )
+                .route(
+                    "/api/auth/bnet/credential-profiles/{id}",
+                    web::delete().to(auth_handlers::delete_blizzard_credential_profile),
                 )
                 .route("/api/auth/me", web::get().to(auth_handlers::get_me))
                 .route(

@@ -14,6 +14,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
   - `SECURITY.md`
   - `CODE_OF_CONDUCT.md`
   - `ROADMAP.md`
+- Sidebar now shows `Settings` by default so users do not have to re-add it manually.
 
 ## [3.0.1] - 2026-05-19
 
@@ -28,4 +29,3 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 - First-launch Discord invite popup with local dismiss persistence
 - Sidebar quick links for Discord and website access
-

@@ -13,6 +13,11 @@ const releaseNotes = [
     title: 'Saved Blizzard logins',
     body:
       'Saved Blizzard credentials now store securely on the device and can be selected, renamed, repaired, or removed from the login flow and settings.',
+  },
+  {
+    title: 'Settings in the sidebar',
+    body:
+      'Settings now stays visible in the sidebar by default, so you do not have to add it back manually.',
   }
 ];
 

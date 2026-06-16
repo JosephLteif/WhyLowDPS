@@ -14,7 +14,11 @@ The format is based on Keep a Changelog and this project uses semantic versionin
   - `SECURITY.md`
   - `CODE_OF_CONDUCT.md`
   - `ROADMAP.md`
+
+### Fixed
+
 - Sidebar now shows `Settings` by default so users do not have to re-add it manually.
+- The in-app changelog popup no longer blocks the Windows title bar controls or window dragging while it is open.
 
 ## [3.0.1] - 2026-05-19
 

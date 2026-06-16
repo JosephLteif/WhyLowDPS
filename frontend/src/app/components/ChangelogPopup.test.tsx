@@ -16,6 +16,7 @@ describe('ChangelogPopup', () => {
     const { unmount } = render(<ChangelogPopup />);
 
     expect(await screen.findByRole('dialog', { name: /what's new/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /saved blizzard logins/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Light mode/i })).toBeInTheDocument();
     expect(screen.getByText(/without Blizzard API credentials/i)).toBeInTheDocument();
 

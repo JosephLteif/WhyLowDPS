@@ -97,7 +97,10 @@ mod tests {
         assert_eq!(resp.status(), 200);
         let bytes = to_bytes(resp.into_body()).await.expect("save body");
         let saved: Value = serde_json::from_slice(&bytes).expect("saved json");
-        assert_eq!(saved.get("id").and_then(Value::as_str), Some("us-area-52-thrall"));
+        assert_eq!(
+            saved.get("id").and_then(Value::as_str),
+            Some("us-area-52-thrall")
+        );
 
         let listed = list_character_profiles(
             web::Query(ListProfilesQuery {

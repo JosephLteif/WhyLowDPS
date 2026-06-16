@@ -6,6 +6,9 @@ import SplashScreen from './SplashScreen';
 const loginMock = vi.fn();
 const setSystemCredentialsMock = vi.fn();
 const enableLightModeMock = vi.fn();
+const apiMocks = vi.hoisted(() => ({
+  listBlizzardCredentialProfiles: vi.fn(),
+}));
 
 vi.mock('./AuthContext', () => ({
   useAuth: () => ({
@@ -23,11 +26,19 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock('../lib/api', () => ({
+  API_URL: 'http://localhost:17384',
+  isDesktop: true,
+  listBlizzardCredentialProfiles: apiMocks.listBlizzardCredentialProfiles,
+}));
+
 describe('SplashScreen credential flow', () => {
   beforeEach(() => {
     loginMock.mockReset();
     setSystemCredentialsMock.mockReset();
     enableLightModeMock.mockReset();
+    apiMocks.listBlizzardCredentialProfiles.mockReset();
+    apiMocks.listBlizzardCredentialProfiles.mockResolvedValue([]);
   });
 
   it('clears processing state after saving credentials and starting login', async () => {
@@ -48,5 +59,43 @@ describe('SplashScreen credential flow', () => {
     await waitFor(() => {
       expect(screen.queryByText('Processing...')).not.toBeInTheDocument();
     });
+  });
+
+  it('uses saved credentials without showing new credential fields', async () => {
+    apiMocks.listBlizzardCredentialProfiles.mockResolvedValue([
+      {
+        id: 'profile-1',
+        name: 'Main credentials',
+        client_id: 'client-id',
+        created_at: 1,
+        updated_at: 1,
+        has_secret: true,
+      },
+    ]);
+
+    render(<SplashScreen status="unauthenticated_needs_keys" progress="" />);
+
+    expect(await screen.findByRole('button', { name: /main credentials/i })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Client ID')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Client Secret')).not.toBeInTheDocument();
+  });
+
+  it('shows repair flow when a saved credential is missing its secure secret', async () => {
+    apiMocks.listBlizzardCredentialProfiles.mockResolvedValue([
+      {
+        id: 'profile-1',
+        name: 'Main credentials',
+        client_id: 'client-id',
+        created_at: 1,
+        updated_at: 1,
+        has_secret: false,
+      },
+    ]);
+
+    render(<SplashScreen status="unauthenticated_needs_keys" progress="" />);
+
+    expect(await screen.findByText(/secure secret missing/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Client ID')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Client Secret')).toBeInTheDocument();
   });
 });

@@ -1,11 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  fetchJson,
-  fetchJsonCached,
-  isDesktopRuntime,
-  isNetworkUnavailableError,
-  TOKEN_KEY,
-} from './api';
+import { fetchJson, fetchJsonCached, isDesktopRuntime, isNetworkUnavailableError, TOKEN_KEY } from './api';
 
 const jsonResponse = (body: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(body), {
@@ -31,7 +25,7 @@ describe('api helpers', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      fetchJson('/api/test', { method: 'POST', body: JSON.stringify({ a: 1 }) })
+      fetchJson('/api/test', { method: 'PATCH', body: JSON.stringify({ a: 1 }) }),
     ).resolves.toEqual({ ok: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -41,15 +35,30 @@ describe('api helpers', () => {
     expect(init.headers['Content-Type']).toBe('application/json');
   });
 
-  it('returns undefined for empty successful responses and surfaces server detail errors', async () => {
+  it('returns undefined for empty successful responses and surfaces server detail/error fields', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response('', { status: 200 })));
     await expect(fetchJson('/api/empty')).resolves.toBeUndefined();
 
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({ detail: 'Bad input' }, { status: 400 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce(jsonResponse({ detail: 'Bad input' }, { status: 400 })),
+    );
     await expect(fetchJson('/api/bad')).rejects.toMatchObject({
       message: 'Bad input',
       status: 400,
       detail: 'Bad input',
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ error: 'Missing saved secret' }, { status: 400 })),
+    );
+    await expect(fetchJson('/api/bad-secret')).rejects.toMatchObject({
+      message: 'Missing saved secret',
+      status: 400,
+      error: 'Missing saved secret',
     });
   });
 
@@ -67,9 +76,8 @@ describe('api helpers', () => {
   });
 
   it('treats the dedicated Tauri dev frontend port as desktop runtime', () => {
-    const originalWindow = window;
     vi.stubGlobal('window', {
-      ...originalWindow,
+      ...(window),
       location: {
         protocol: 'http:',
         hostname: '127.0.0.1',

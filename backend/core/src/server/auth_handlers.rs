@@ -4,8 +4,258 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+#[cfg(any(test, not(feature = "desktop")))]
+use std::collections::HashMap;
 use std::sync::Arc;
+#[cfg(any(test, not(feature = "desktop")))]
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+use windows::Win32::Foundation::{LocalFree, HLOCAL};
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+use windows::Win32::Security::Cryptography::{
+    CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+};
+
+const BLIZZARD_CREDENTIAL_PROFILES_KEY: &str = "blizzard_credential_profiles";
+#[cfg(feature = "desktop")]
+const BLIZZARD_KEYRING_SERVICE: &str = "WhyLowDPS Blizzard Credentials";
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+const BLIZZARD_SECRET_BLOB_KEY_PREFIX: &str = "blizzard_credential_secret_blob:";
+
+pub trait BlizzardCredentialSecretStore: Send + Sync {
+    fn set_secret(&self, profile_id: &str, secret: &str) -> Result<(), String>;
+    fn get_secret(&self, profile_id: &str) -> Result<Option<String>, String>;
+    fn delete_secret(&self, profile_id: &str) -> Result<(), String>;
+}
+
+#[cfg(feature = "desktop")]
+pub struct OsBlizzardCredentialSecretStore {
+    store: Arc<dyn crate::storage::JobStorage>,
+}
+
+#[cfg(feature = "desktop")]
+impl OsBlizzardCredentialSecretStore {
+    fn read_legacy_keyring_secret(&self, profile_id: &str) -> Result<Option<String>, String> {
+        match keyring::Entry::new(BLIZZARD_KEYRING_SERVICE, profile_id)
+            .map_err(|e| e.to_string())?
+            .get_password()
+        {
+            Ok(secret) => Ok(Some(secret)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn delete_legacy_keyring_secret(&self, profile_id: &str) -> Result<(), String> {
+        match keyring::Entry::new(BLIZZARD_KEYRING_SERVICE, profile_id)
+            .map_err(|e| e.to_string())?
+            .delete_credential()
+        {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+}
+
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+fn secret_blob_config_key(profile_id: &str) -> String {
+    format!("{BLIZZARD_SECRET_BLOB_KEY_PREFIX}{profile_id}")
+}
+
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+fn encode_secret_blob(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for &byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
+
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+fn decode_secret_blob(blob: &str) -> Result<Vec<u8>, String> {
+    fn nibble(byte: u8) -> Result<u8, String> {
+        match byte {
+            b'0'..=b'9' => Ok(byte - b'0'),
+            b'a'..=b'f' => Ok(byte - b'a' + 10),
+            b'A'..=b'F' => Ok(byte - b'A' + 10),
+            _ => Err("Invalid encrypted secret encoding".to_string()),
+        }
+    }
+
+    let bytes = blob.as_bytes();
+    if bytes.len() % 2 != 0 {
+        return Err("Invalid encrypted secret encoding".to_string());
+    }
+
+    let mut output = Vec::with_capacity(bytes.len() / 2);
+    for pair in bytes.chunks_exact(2) {
+        output.push((nibble(pair[0])? << 4) | nibble(pair[1])?);
+    }
+    Ok(output)
+}
+
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+fn encrypt_secret_blob(secret: &str) -> Result<String, String> {
+    unsafe {
+        let bytes = secret.as_bytes();
+        let mut input = CRYPT_INTEGER_BLOB {
+            cbData: bytes.len() as u32,
+            pbData: bytes.as_ptr() as *mut u8,
+        };
+        let mut output = CRYPT_INTEGER_BLOB::default();
+        CryptProtectData(
+            &mut input,
+            None,
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+        .map_err(|e| e.to_string())?;
+
+        let encrypted = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        Ok(encode_secret_blob(&encrypted))
+    }
+}
+
+#[cfg(all(feature = "desktop", target_os = "windows"))]
+fn decrypt_secret_blob(blob: &str) -> Result<String, String> {
+    let encrypted = decode_secret_blob(blob)?;
+    unsafe {
+        let mut input = CRYPT_INTEGER_BLOB {
+            cbData: encrypted.len() as u32,
+            pbData: encrypted.as_ptr() as *mut u8,
+        };
+        let mut output = CRYPT_INTEGER_BLOB::default();
+        CryptUnprotectData(
+            &mut input,
+            None,
+            None,
+            None,
+            None,
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        )
+        .map_err(|e| e.to_string())?;
+
+        let decrypted = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        String::from_utf8(decrypted).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(feature = "desktop")]
+impl BlizzardCredentialSecretStore for OsBlizzardCredentialSecretStore {
+    fn set_secret(&self, profile_id: &str, secret: &str) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            let encrypted = encrypt_secret_blob(secret)?;
+            self.store
+                .set_user_config("system", &secret_blob_config_key(profile_id), &encrypted);
+            let _ = self.delete_legacy_keyring_secret(profile_id);
+            return Ok(());
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            keyring::Entry::new(BLIZZARD_KEYRING_SERVICE, profile_id)
+                .map_err(|e| e.to_string())?
+                .set_password(secret)
+                .map_err(|e| e.to_string())
+        }
+    }
+
+    fn get_secret(&self, profile_id: &str) -> Result<Option<String>, String> {
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(blob) = self
+                .store
+                .get_user_config("system", &secret_blob_config_key(profile_id))
+            {
+                return decrypt_secret_blob(&blob).map(Some);
+            }
+
+            if let Some(secret) = self.read_legacy_keyring_secret(profile_id)? {
+                self.set_secret(profile_id, &secret)?;
+                return Ok(Some(secret));
+            }
+
+            return Ok(None);
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.read_legacy_keyring_secret(profile_id)
+        }
+    }
+
+    fn delete_secret(&self, profile_id: &str) -> Result<(), String> {
+        #[cfg(target_os = "windows")]
+        {
+            self.store
+                .remove_user_config("system", &secret_blob_config_key(profile_id));
+            let _ = self.delete_legacy_keyring_secret(profile_id);
+            return Ok(());
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.delete_legacy_keyring_secret(profile_id)
+        }
+    }
+}
+
+#[cfg(any(test, not(feature = "desktop")))]
+#[derive(Default)]
+pub struct MemoryBlizzardCredentialSecretStore {
+    secrets: Mutex<HashMap<String, String>>,
+}
+
+#[cfg(any(test, not(feature = "desktop")))]
+impl BlizzardCredentialSecretStore for MemoryBlizzardCredentialSecretStore {
+    fn set_secret(&self, profile_id: &str, secret: &str) -> Result<(), String> {
+        self.secrets
+            .lock()
+            .map_err(|e| e.to_string())?
+            .insert(profile_id.to_string(), secret.to_string());
+        Ok(())
+    }
+
+    fn get_secret(&self, profile_id: &str) -> Result<Option<String>, String> {
+        Ok(self
+            .secrets
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get(profile_id)
+            .cloned())
+    }
+
+    fn delete_secret(&self, profile_id: &str) -> Result<(), String> {
+        self.secrets
+            .lock()
+            .map_err(|e| e.to_string())?
+            .remove(profile_id);
+        Ok(())
+    }
+}
+
+pub fn create_blizzard_credential_secret_store(
+    store: Arc<dyn crate::storage::JobStorage>,
+) -> Arc<dyn BlizzardCredentialSecretStore> {
+    #[cfg(feature = "desktop")]
+    {
+        Arc::new(OsBlizzardCredentialSecretStore { store })
+    }
+    #[cfg(not(feature = "desktop"))]
+    {
+        Arc::new(MemoryBlizzardCredentialSecretStore::default())
+    }
+}
 
 pub struct BlizzardAuthState {
     pub client_id: Option<String>,
@@ -59,33 +309,288 @@ struct UserInfoResponse {
 pub struct LoginQuery {
     pub client_id: Option<String>,
     pub client_secret: Option<String>,
+    pub credential_id: Option<String>,
     pub flow_id: Option<String>,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BlizzardCredentialProfile {
+    pub id: String,
+    pub name: String,
+    pub client_id: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Deserialize)]
+pub struct SaveBlizzardCredentialProfileRequest {
+    pub name: Option<String>,
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+#[derive(Deserialize)]
+pub struct RenameBlizzardCredentialProfileRequest {
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BlizzardCredentialProfileSummary {
+    pub id: String,
+    pub name: String,
+    pub client_id: String,
+    pub created_at: u64,
+    pub updated_at: u64,
+    pub has_secret: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum SavedProfileLookupError {
+    NotFound,
+    MissingSecret,
+}
+
+fn now_unix_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn load_blizzard_credential_profiles(
+    store: &dyn crate::storage::JobStorage,
+) -> Vec<BlizzardCredentialProfile> {
+    store
+        .get_user_config("system", BLIZZARD_CREDENTIAL_PROFILES_KEY)
+        .and_then(|raw| serde_json::from_str::<Vec<BlizzardCredentialProfile>>(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_blizzard_credential_profiles(
+    store: &dyn crate::storage::JobStorage,
+    profiles: &[BlizzardCredentialProfile],
+) -> Result<(), String> {
+    let payload = serde_json::to_string(profiles).map_err(|e| e.to_string())?;
+    store.set_user_config("system", BLIZZARD_CREDENTIAL_PROFILES_KEY, &payload);
+    Ok(())
+}
+
+fn load_saved_profile(
+    store: &dyn crate::storage::JobStorage,
+    profile_id: Option<&String>,
+) -> Option<BlizzardCredentialProfile> {
+    let profile_id = profile_id?;
+    load_blizzard_credential_profiles(store)
+        .into_iter()
+        .find(|profile| profile.id == *profile_id || profile.client_id == *profile_id)
+}
+
+fn read_profile_secret(
+    secrets: &dyn BlizzardCredentialSecretStore,
+    profile: &BlizzardCredentialProfile,
+) -> Result<Option<String>, String> {
+    match secrets.get_secret(&profile.id)? {
+        Some(secret) => Ok(Some(secret)),
+        None => secrets.get_secret(&profile.client_id),
+    }
+}
+
+fn profile_summary(
+    secrets: &dyn BlizzardCredentialSecretStore,
+    profile: BlizzardCredentialProfile,
+) -> BlizzardCredentialProfileSummary {
+    let has_secret = read_profile_secret(secrets, &profile)
+        .ok()
+        .flatten()
+        .is_some();
+    BlizzardCredentialProfileSummary {
+        id: profile.id,
+        name: profile.name,
+        client_id: profile.client_id,
+        created_at: profile.created_at,
+        updated_at: profile.updated_at,
+        has_secret,
+    }
+}
+
+fn find_saved_profile_creds(
+    store: &dyn crate::storage::JobStorage,
+    secrets: &dyn BlizzardCredentialSecretStore,
+    profile_id: &String,
+) -> Result<(String, String), SavedProfileLookupError> {
+    let profile =
+        load_saved_profile(store, Some(profile_id)).ok_or(SavedProfileLookupError::NotFound)?;
+    let secret = read_profile_secret(secrets, &profile)
+        .map_err(|_| SavedProfileLookupError::MissingSecret)?
+        .ok_or(SavedProfileLookupError::MissingSecret)?;
+    Ok((profile.client_id, secret))
+}
+
+pub async fn list_blizzard_credential_profiles(
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
+) -> HttpResponse {
+    let profiles = load_blizzard_credential_profiles(&***store)
+        .into_iter()
+        .map(|profile| profile_summary(&***secrets, profile))
+        .collect::<Vec<_>>();
+    HttpResponse::Ok().json(json!({
+        "profiles": profiles
+    }))
+}
+
+pub async fn save_blizzard_credential_profile(
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
+    body: web::Json<SaveBlizzardCredentialProfileRequest>,
+) -> HttpResponse {
+    let client_id = body.client_id.trim();
+    let client_secret = body.client_secret.trim();
+    if client_id.is_empty() || client_secret.is_empty() {
+        return HttpResponse::BadRequest()
+            .json(json!({"error": "Missing client_id or client_secret"}));
+    }
+
+    let mut profiles = load_blizzard_credential_profiles(&***store);
+    let preferred_name = body
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("Blizzard credentials")
+        .to_string();
+    let now = now_unix_secs();
+
+    if let Some(existing) = profiles
+        .iter_mut()
+        .find(|profile| profile.client_id == client_id)
+    {
+        if let Err(e) = secrets.set_secret(&existing.id, client_secret) {
+            return HttpResponse::InternalServerError().json(json!({"error": e}));
+        }
+        let _ = secrets.delete_secret(client_id);
+        existing.name = preferred_name;
+        existing.updated_at = now;
+        let profile = existing.clone();
+        return match save_blizzard_credential_profiles(&***store, &profiles) {
+            Ok(()) => HttpResponse::Ok().json(json!({
+                "profile": profile_summary(&***secrets, profile)
+            })),
+            Err(e) => HttpResponse::InternalServerError().json(json!({"error": e})),
+        };
+    }
+
+    let profile = BlizzardCredentialProfile {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: preferred_name,
+        client_id: client_id.to_string(),
+        created_at: now,
+        updated_at: now,
+    };
+
+    if let Err(e) = secrets.set_secret(&profile.id, client_secret) {
+        return HttpResponse::InternalServerError().json(json!({"error": e}));
+    }
+
+    profiles.push(profile.clone());
+    if let Err(e) = save_blizzard_credential_profiles(&***store, &profiles) {
+        let _ = secrets.delete_secret(&profile.id);
+        return HttpResponse::InternalServerError().json(json!({"error": e}));
+    }
+
+    HttpResponse::Ok().json(json!({ "profile": profile_summary(&***secrets, profile) }))
+}
+
+pub async fn rename_blizzard_credential_profile(
+    path: web::Path<String>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
+    body: web::Json<RenameBlizzardCredentialProfileRequest>,
+) -> HttpResponse {
+    let next_name = body.name.trim();
+    if next_name.is_empty() {
+        return HttpResponse::BadRequest().json(json!({"error": "Missing credential name"}));
+    }
+
+    let profile_id = path.into_inner();
+    let mut profiles = load_blizzard_credential_profiles(&***store);
+    let Some(profile) = profiles.iter_mut().find(|profile| profile.id == profile_id) else {
+        return HttpResponse::NotFound().json(json!({"error": "Credential profile not found"}));
+    };
+    profile.name = next_name.to_string();
+    profile.updated_at = now_unix_secs();
+    let renamed = profile.clone();
+
+    match save_blizzard_credential_profiles(&***store, &profiles) {
+        Ok(()) => HttpResponse::Ok().json(json!({
+            "profile": profile_summary(&***secrets, renamed)
+        })),
+        Err(e) => HttpResponse::InternalServerError().json(json!({"error": e})),
+    }
+}
+
+pub async fn delete_blizzard_credential_profile(
+    path: web::Path<String>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
+) -> HttpResponse {
+    let profile_id = path.into_inner();
+    let mut profiles = load_blizzard_credential_profiles(&***store);
+    let removed_client_id = profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .map(|profile| profile.client_id.clone());
+    let original_len = profiles.len();
+    profiles.retain(|profile| profile.id != profile_id);
+    if profiles.len() == original_len {
+        return HttpResponse::NotFound().json(json!({"error": "Credential profile not found"}));
+    }
+
+    if let Err(e) = secrets.delete_secret(&profile_id) {
+        return HttpResponse::InternalServerError().json(json!({"error": e}));
+    }
+    if let Some(client_id) = removed_client_id {
+        let _ = secrets.delete_secret(&client_id);
+    }
+
+    match save_blizzard_credential_profiles(&***store, &profiles) {
+        Ok(()) => HttpResponse::Ok().json(json!({"status": "deleted"})),
+        Err(e) => HttpResponse::InternalServerError().json(json!({"error": e})),
+    }
+}
+
 fn get_effective_creds(
     state: &BlizzardAuthState,
     store: &dyn crate::storage::JobStorage,
+    secrets: &dyn BlizzardCredentialSecretStore,
     query_id: Option<&String>,
     query_secret: Option<&String>,
-) -> Option<(String, String)> {
+    credential_id: Option<&String>,
+) -> Result<Option<(String, String)>, SavedProfileLookupError> {
     // 1. Try query params (temporary session use)
     if let (Some(id), Some(sec)) = (query_id, query_secret) {
-        return Some((id.clone(), sec.clone()));
+        return Ok(Some((id.clone(), sec.clone())));
     }
 
-    // 2. Try environment variables
+    // 2. Try a selected saved desktop credential profile
+    if let Some(profile_id) = credential_id {
+        return find_saved_profile_creds(store, secrets, profile_id).map(Some);
+    }
+
+    // 3. Try environment variables
     if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
-        return Some((id.clone(), sec.clone()));
+        return Ok(Some((id.clone(), sec.clone())));
     }
 
-    // 3. Try "system" config in storage (saved via UI)
+    // 4. Try legacy "system" config in storage (saved by older builds)
     if let (Some(id), Some(sec)) = (
         store.get_user_config("system", "blizzard_client_id"),
         store.get_user_config("system", "blizzard_client_secret"),
     ) {
-        return Some((id, sec));
+        return Ok(Some((id, sec)));
     }
 
-    None
+    Ok(None)
 }
 
 pub async fn get_credentials_status(
@@ -93,6 +598,7 @@ pub async fn get_credentials_status(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     let env_configured = state.client_id.is_some() && state.client_secret.is_some();
+    let saved_profile_count = load_blizzard_credential_profiles(&***store).len();
     let system_configured = store
         .get_user_config("system", "blizzard_client_id")
         .is_some()
@@ -101,7 +607,8 @@ pub async fn get_credentials_status(
             .is_some();
 
     HttpResponse::Ok().json(json!({
-        "globally_configured": env_configured || system_configured
+        "globally_configured": env_configured || system_configured,
+        "saved_profile_count": saved_profile_count
     }))
 }
 
@@ -109,20 +616,33 @@ pub async fn bnet_login(
     req: HttpRequest,
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
     query: web::Query<LoginQuery>,
 ) -> HttpResponse {
     let creds = get_effective_creds(
         &state,
         &***store,
+        &***secrets,
         query.client_id.as_ref(),
         query.client_secret.as_ref(),
+        query.credential_id.as_ref(),
     );
 
     let (client_id, _client_secret) = match creds {
-        Some(c) => c,
-        None => return HttpResponse::BadRequest().json(json!({
+        Ok(Some(c)) => c,
+        Ok(None) => return HttpResponse::BadRequest().json(json!({
             "error": "Blizzard API Client ID not configured globally and not provided in request."
         })),
+        Err(SavedProfileLookupError::NotFound) => {
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Saved Blizzard credentials were not found on this device."
+            }))
+        }
+        Err(SavedProfileLookupError::MissingSecret) => {
+            return HttpResponse::BadRequest().json(json!({
+                "error": "Saved Blizzard credentials are missing their secure secret on this device. Re-enter the client secret and save again."
+            }))
+        }
     };
 
     let mut builder = HttpResponse::Found();
@@ -311,6 +831,7 @@ pub async fn bnet_callback(
     query: web::Query<AuthCallbackQuery>,
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
 ) -> HttpResponse {
     let client = reqwest::Client::new();
     let flow_id_opt = query
@@ -372,7 +893,9 @@ pub async fn bnet_callback(
             (Some(id_c), Some(sec_c)) => {
                 Some((id_c.value().to_string(), sec_c.value().to_string()))
             }
-            _ => get_effective_creds(&state, &***store, None, None),
+            _ => get_effective_creds(&state, &***store, &***secrets, None, None, None)
+                .ok()
+                .flatten(),
         },
     };
 
@@ -966,6 +1489,11 @@ mod tests {
         web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
     }
 
+    fn test_secret_store() -> web::Data<Arc<dyn BlizzardCredentialSecretStore>> {
+        web::Data::new(Arc::new(MemoryBlizzardCredentialSecretStore::default())
+            as Arc<dyn BlizzardCredentialSecretStore>)
+    }
+
     fn auth_state() -> web::Data<Arc<BlizzardAuthState>> {
         web::Data::new(Arc::new(BlizzardAuthState::new(
             None,
@@ -1023,19 +1551,27 @@ mod tests {
             "jwt".to_string(),
         );
         let store = MemoryStorage::new();
+        let secrets = MemoryBlizzardCredentialSecretStore::default();
         store.set_user_config("system", "blizzard_client_id", "sys-id");
         store.set_user_config("system", "blizzard_client_secret", "sys-secret");
 
         let query_id = Some("query-id".to_string());
         let query_secret = Some("query-secret".to_string());
         assert_eq!(
-            get_effective_creds(&state, &store, query_id.as_ref(), query_secret.as_ref()),
-            Some(("query-id".to_string(), "query-secret".to_string()))
+            get_effective_creds(
+                &state,
+                &store,
+                &secrets,
+                query_id.as_ref(),
+                query_secret.as_ref(),
+                None
+            ),
+            Ok(Some(("query-id".to_string(), "query-secret".to_string())))
         );
 
         assert_eq!(
-            get_effective_creds(&state, &store, None, None),
-            Some(("env-id".to_string(), "env-secret".to_string()))
+            get_effective_creds(&state, &store, &secrets, None, None, None),
+            Ok(Some(("env-id".to_string(), "env-secret".to_string())))
         );
 
         let no_env_state = BlizzardAuthState::new(
@@ -1045,8 +1581,8 @@ mod tests {
             "jwt".to_string(),
         );
         assert_eq!(
-            get_effective_creds(&no_env_state, &store, None, None),
-            Some(("sys-id".to_string(), "sys-secret".to_string()))
+            get_effective_creds(&no_env_state, &store, &secrets, None, None, None),
+            Ok(Some(("sys-id".to_string(), "sys-secret".to_string())))
         );
     }
 
@@ -1113,6 +1649,309 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn saved_blizzard_credentials_are_listed_without_secret_values() {
+        let store = test_store();
+        let secrets = test_secret_store();
+
+        let saved = save_blizzard_credential_profile(
+            store.clone(),
+            secrets.clone(),
+            web::Json(SaveBlizzardCredentialProfileRequest {
+                name: Some("Main".to_string()),
+                client_id: "client-id".to_string(),
+                client_secret: "client-secret".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(saved.status(), 200);
+
+        let listed = list_blizzard_credential_profiles(store, secrets.clone()).await;
+        assert_eq!(listed.status(), 200);
+        let payload = body_json(listed).await;
+        let profiles = payload
+            .get("profiles")
+            .and_then(Value::as_array)
+            .expect("profiles array");
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(
+            profiles[0].get("name").and_then(Value::as_str),
+            Some("Main")
+        );
+        assert_eq!(
+            profiles[0].get("client_id").and_then(Value::as_str),
+            Some("client-id")
+        );
+        assert_eq!(
+            profiles[0].get("has_secret").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(profiles[0].get("client_secret").is_none());
+
+        let profile_id = profiles[0]
+            .get("id")
+            .and_then(Value::as_str)
+            .expect("profile id");
+        assert_eq!(
+            secrets.get_secret(profile_id).expect("secret read"),
+            Some("client-secret".to_string())
+        );
+    }
+
+    #[actix_web::test]
+    async fn saved_blizzard_credentials_can_be_renamed_and_deleted() {
+        let store = test_store();
+        let secrets = test_secret_store();
+        let saved = save_blizzard_credential_profile(
+            store.clone(),
+            secrets.clone(),
+            web::Json(SaveBlizzardCredentialProfileRequest {
+                name: Some("Original".to_string()),
+                client_id: "client-id".to_string(),
+                client_secret: "client-secret".to_string(),
+            }),
+        )
+        .await;
+        let saved_payload = body_json(saved).await;
+        let profile_id = saved_payload
+            .get("profile")
+            .and_then(|profile| profile.get("id"))
+            .and_then(Value::as_str)
+            .expect("profile id")
+            .to_string();
+
+        let renamed = rename_blizzard_credential_profile(
+            web::Path::from(profile_id.clone()),
+            store.clone(),
+            secrets.clone(),
+            web::Json(RenameBlizzardCredentialProfileRequest {
+                name: "Renamed".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(renamed.status(), 200);
+        assert_eq!(
+            secrets.get_secret(&profile_id).expect("secret read"),
+            Some("client-secret".to_string())
+        );
+
+        let listed =
+            body_json(list_blizzard_credential_profiles(store.clone(), secrets.clone()).await)
+                .await;
+        assert_eq!(
+            listed["profiles"][0].get("name").and_then(Value::as_str),
+            Some("Renamed")
+        );
+
+        let deleted = delete_blizzard_credential_profile(
+            web::Path::from(profile_id.clone()),
+            store.clone(),
+            secrets.clone(),
+        )
+        .await;
+        assert_eq!(deleted.status(), 200);
+        assert_eq!(secrets.get_secret(&profile_id).expect("secret read"), None);
+        let listed_after_delete =
+            body_json(list_blizzard_credential_profiles(store.clone(), secrets.clone()).await)
+                .await;
+        assert_eq!(
+            listed_after_delete
+                .get("profiles")
+                .and_then(Value::as_array)
+                .map(Vec::len),
+            Some(0)
+        );
+    }
+
+    #[actix_web::test]
+    async fn saved_blizzard_credentials_report_missing_secret_and_are_repaired_by_resave() {
+        let store = test_store();
+        let secrets = test_secret_store();
+        let now = now_secs();
+        let profile = BlizzardCredentialProfile {
+            id: "profile-id".to_string(),
+            name: "Main".to_string(),
+            client_id: "saved-client-id".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        save_blizzard_credential_profiles(&***store, &[profile]).expect("save profile");
+
+        let listed =
+            body_json(list_blizzard_credential_profiles(store.clone(), secrets.clone()).await)
+                .await;
+        assert_eq!(
+            listed["profiles"][0]
+                .get("has_secret")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+
+        let repaired = save_blizzard_credential_profile(
+            store.clone(),
+            secrets.clone(),
+            web::Json(SaveBlizzardCredentialProfileRequest {
+                name: Some("Main credentials".to_string()),
+                client_id: "saved-client-id".to_string(),
+                client_secret: "saved-client-secret".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(repaired.status(), 200);
+
+        let repaired_payload = body_json(repaired).await;
+        assert_eq!(
+            repaired_payload["profile"]
+                .get("id")
+                .and_then(Value::as_str),
+            Some("profile-id")
+        );
+        assert_eq!(
+            repaired_payload["profile"]
+                .get("has_secret")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            secrets.get_secret("profile-id").expect("secret read"),
+            Some("saved-client-secret".to_string())
+        );
+    }
+
+    #[actix_web::test]
+    async fn bnet_login_uses_saved_credential_profile_without_query_secret() {
+        let req = TestRequest::default().to_http_request();
+        let state = auth_state();
+        let store = test_store();
+        let secrets = test_secret_store();
+
+        let saved = save_blizzard_credential_profile(
+            store.clone(),
+            secrets.clone(),
+            web::Json(SaveBlizzardCredentialProfileRequest {
+                name: Some("Main".to_string()),
+                client_id: "saved-client-id".to_string(),
+                client_secret: "saved-client-secret".to_string(),
+            }),
+        )
+        .await;
+        let saved_payload = body_json(saved).await;
+        let profile_id = saved_payload
+            .get("profile")
+            .and_then(|profile| profile.get("id"))
+            .and_then(Value::as_str)
+            .expect("profile id")
+            .to_string();
+
+        let resp = bnet_login(
+            req,
+            state,
+            store.clone(),
+            secrets,
+            web::Query(LoginQuery {
+                client_id: None,
+                client_secret: None,
+                credential_id: Some(profile_id),
+                flow_id: Some("flow-123".to_string()),
+            }),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 302);
+        assert_eq!(
+            store.get_cache("login_flow_client_id_flow-123"),
+            Some("saved-client-id".to_string())
+        );
+        assert_eq!(
+            store.get_cache("login_flow_client_secret_flow-123"),
+            Some("saved-client-secret".to_string())
+        );
+    }
+
+    #[actix_web::test]
+    async fn bnet_login_uses_saved_profile_secret_stored_by_client_id() {
+        let req = TestRequest::default().to_http_request();
+        let state = auth_state();
+        let store = test_store();
+        let secrets = test_secret_store();
+        let now = now_secs();
+        let profile = BlizzardCredentialProfile {
+            id: "profile-id".to_string(),
+            name: "Main".to_string(),
+            client_id: "saved-client-id".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        save_blizzard_credential_profiles(&***store, &[profile]).expect("save profile");
+        secrets
+            .set_secret("saved-client-id", "saved-client-secret")
+            .expect("save legacy secret");
+
+        let resp = bnet_login(
+            req,
+            state,
+            store.clone(),
+            secrets,
+            web::Query(LoginQuery {
+                client_id: None,
+                client_secret: None,
+                credential_id: Some("profile-id".to_string()),
+                flow_id: Some("flow-123".to_string()),
+            }),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 302);
+        assert_eq!(
+            store.get_cache("login_flow_client_id_flow-123"),
+            Some("saved-client-id".to_string())
+        );
+        assert_eq!(
+            store.get_cache("login_flow_client_secret_flow-123"),
+            Some("saved-client-secret".to_string())
+        );
+    }
+
+    #[actix_web::test]
+    async fn bnet_login_reports_missing_saved_profile_secret() {
+        let req = TestRequest::default().to_http_request();
+        let state = auth_state();
+        let store = test_store();
+        let secrets = test_secret_store();
+        let now = now_secs();
+        let profile = BlizzardCredentialProfile {
+            id: "profile-id".to_string(),
+            name: "Main".to_string(),
+            client_id: "saved-client-id".to_string(),
+            created_at: now,
+            updated_at: now,
+        };
+        save_blizzard_credential_profiles(&***store, &[profile]).expect("save profile");
+
+        let resp = bnet_login(
+            req,
+            state,
+            store,
+            secrets,
+            web::Query(LoginQuery {
+                client_id: None,
+                client_secret: None,
+                credential_id: Some("profile-id".to_string()),
+                flow_id: Some("flow-123".to_string()),
+            }),
+        )
+        .await;
+
+        assert_eq!(resp.status(), 400);
+        let payload = body_json(resp).await;
+        assert_eq!(
+            payload.get("error").and_then(Value::as_str),
+            Some(
+                "Saved Blizzard credentials are missing their secure secret on this device. Re-enter the client secret and save again."
+            )
+        );
+    }
+
+    #[actix_web::test]
     async fn bnet_login_requires_configured_credentials() {
         let req = TestRequest::default().to_http_request();
         let state = auth_state();
@@ -1122,9 +1961,11 @@ mod tests {
             req,
             state,
             store,
+            test_secret_store(),
             web::Query(LoginQuery {
                 client_id: None,
                 client_secret: None,
+                credential_id: None,
                 flow_id: None,
             }),
         )
@@ -1149,9 +1990,11 @@ mod tests {
             req,
             state,
             store.clone(),
+            test_secret_store(),
             web::Query(LoginQuery {
                 client_id: Some("query-id".to_string()),
                 client_secret: Some("query-secret".to_string()),
+                credential_id: None,
                 flow_id: Some(flow_id.clone()),
             }),
         )

@@ -1,21 +1,44 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { type BlizzardCredentialProfile, isDesktop, listBlizzardCredentialProfiles } from '../lib/api';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (clientId: string, clientSecret: string) => void;
+  onConfirm: (clientId: string, clientSecret: string, credentialId?: string) => void;
 }
 
 export default function LoginModal({ isOpen, onClose, onConfirm }: LoginModalProps) {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [credentialProfiles, setCredentialProfiles] = useState<BlizzardCredentialProfile[]>([]);
+  const [selectedCredentialId, setSelectedCredentialId] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || !isDesktop) return;
+    let cancelled = false;
+    listBlizzardCredentialProfiles()
+      .then((profiles) => {
+        if (cancelled) return;
+        setCredentialProfiles(profiles);
+        setSelectedCredentialId((current) => current || profiles[0]?.id || '');
+      })
+      .catch(() => {
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (selectedCredentialId) {
+      onConfirm('', '', selectedCredentialId);
+      return;
+    }
     if (clientId && clientSecret) {
       onConfirm(clientId, clientSecret);
     }
@@ -40,29 +63,69 @@ export default function LoginModal({ isOpen, onClose, onConfirm }: LoginModalPro
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-[13px] font-medium text-zinc-300">Client ID</label>
-            <input
-              type="text"
-              required
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="Enter your Client ID"
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white transition-all placeholder:text-zinc-600 focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
-            />
-          </div>
+          {credentialProfiles.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-[13px] font-medium text-zinc-300">Saved Credentials</label>
+              <div className="space-y-2">
+                {credentialProfiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    onClick={() => setSelectedCredentialId(profile.id)}
+                    className={`w-full rounded-lg border px-4 py-2.5 text-left transition-colors ${
+                      selectedCredentialId === profile.id
+                        ? 'border-gold/60 bg-gold/10 text-white'
+                        : 'border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10'
+                    }`}
+                  >
+                    <span className="block truncate text-sm font-semibold">{profile.name}</span>
+                    <span className="block truncate text-[11px] text-zinc-500">
+                      {profile.client_id}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setSelectedCredentialId('')}
+                  className={`w-full rounded-lg border px-4 py-2.5 text-left text-sm font-semibold transition-colors ${
+                    selectedCredentialId
+                      ? 'border-white/10 bg-white/5 text-zinc-200 hover:bg-white/10'
+                      : 'border-gold/60 bg-gold/10 text-white'
+                  }`}
+                >
+                  Use new credentials
+                </button>
+              </div>
+            </div>
+          )}
 
-          <div className="space-y-2">
-            <label className="text-[13px] font-medium text-zinc-300">Client Secret</label>
-            <input
-              type="password"
-              required
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="Enter your Client Secret"
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white transition-all placeholder:text-zinc-600 focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
-            />
-          </div>
+          {!selectedCredentialId && (
+            <>
+              <div className="space-y-2">
+                <label className="text-[13px] font-medium text-zinc-300">Client ID</label>
+                <input
+                  type="text"
+                  required
+                  value={clientId}
+                  onChange={(e) => setClientId(e.target.value)}
+                  placeholder="Enter your Client ID"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white transition-all placeholder:text-zinc-600 focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[13px] font-medium text-zinc-300">Client Secret</label>
+                <input
+                  type="password"
+                  required
+                  value={clientSecret}
+                  onChange={(e) => setClientSecret(e.target.value)}
+                  placeholder="Enter your Client Secret"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-white transition-all placeholder:text-zinc-600 focus:border-gold/50 focus:outline-none focus:ring-1 focus:ring-gold/50"
+                />
+              </div>
+            </>
+          )}
 
           <div className="rounded-lg border border-gold/10 bg-gold/5 p-3 text-[12px] leading-relaxed text-gold/80">
             You can create these on the{' '}
@@ -87,7 +150,7 @@ export default function LoginModal({ isOpen, onClose, onConfirm }: LoginModalPro
             </button>
             <button
               type="submit"
-              disabled={!clientId || !clientSecret}
+              disabled={!selectedCredentialId && (!clientId || !clientSecret)}
               className="flex-[2] rounded-lg bg-[#0074e0] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-500/10 transition-all hover:bg-[#005fb8] disabled:cursor-not-allowed disabled:opacity-50"
             >
               Link & Proceed to Login

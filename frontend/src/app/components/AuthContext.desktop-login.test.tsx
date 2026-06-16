@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthProvider, useAuth } from './AuthContext';
 
 const mocks = vi.hoisted(() => ({
   fetchJson: vi.fn(),
@@ -13,14 +14,13 @@ vi.mock('../lib/api', () => ({
   fetchJson: mocks.fetchJson,
   isDesktop: true,
   isNetworkUnavailableError: vi.fn(() => false),
+  saveBlizzardCredentialProfile: vi.fn(),
   TOKEN_KEY: 'whylowdps_token',
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: mocks.invoke,
 }));
-
-import { AuthProvider, useAuth } from './AuthContext';
 
 function wrapper({ children }: { children: ReactNode }) {
   return <AuthProvider>{children}</AuthProvider>;
@@ -55,6 +55,20 @@ describe('AuthContext desktop login', () => {
     await waitFor(() => {
       expect(mocks.invoke).toHaveBeenCalledWith('open_auth_window', {
         url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&client_id=client-id&client_secret=client-secret',
+      });
+    });
+  });
+
+  it('passes saved credential profile id to desktop auth login', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await result.current.login(undefined, undefined, 'profile-123');
+
+    await waitFor(() => {
+      expect(mocks.invoke).toHaveBeenCalledWith('open_auth_window', {
+        url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&credential_id=profile-123',
       });
     });
   });

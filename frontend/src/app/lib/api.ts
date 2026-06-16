@@ -40,6 +40,15 @@ const DEFAULT_FETCH_TIMEOUT_MS = 8000;
 const GET_RETRY_ATTEMPTS = 2;
 const GET_RETRY_DELAY_MS = 300;
 
+export type BlizzardCredentialProfile = {
+  id: string;
+  name: string;
+  client_id: string;
+  created_at: number;
+  updated_at: number;
+  has_secret?: boolean;
+};
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -68,8 +77,9 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     }
   }
 
-  // Default to application/json for POST/PUT if not specified
-  if (init?.method === 'POST' || init?.method === 'PUT') {
+  // Default to application/json for mutating requests if not specified.
+  const requestMethod = init?.method?.toUpperCase();
+  if (requestMethod === 'POST' || requestMethod === 'PUT' || requestMethod === 'PATCH') {
     if (!headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
@@ -98,7 +108,6 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
       lastErr = err;
       if (attempt < retries) {
         await sleep(GET_RETRY_DELAY_MS * (attempt + 1));
-
       }
     }
   }
@@ -113,9 +122,11 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    const error = new Error(data.detail || `Server error ${res.status}`) as any;
+    const message = data.detail || data.error || `Server error ${res.status}`;
+    const error = new Error(message) as any;
     error.status = res.status;
     error.detail = data.detail;
+    error.error = data.error;
     throw error;
   }
   const text = await res.text();
@@ -142,7 +153,9 @@ function cleanupLegacyLocalStorageCache() {
   } catch {}
 }
 
-async function readPersistentCache(cacheKey: string): Promise<{ data: any; expiry: number } | null> {
+async function readPersistentCache(
+  cacheKey: string,
+): Promise<{ data: any; expiry: number } | null> {
   if (typeof window === 'undefined' || !('caches' in window)) return null;
   try {
     const cache = await caches.open(PERSISTENT_CACHE_NAME);
@@ -239,6 +252,48 @@ export async function setSimPinned(id: string, pinned: boolean): Promise<void> {
   await fetchJson(`${API_URL}/api/sim/${id}/pin`, {
     method: 'POST',
     body: JSON.stringify({ pinned }),
+  });
+}
+
+export async function listBlizzardCredentialProfiles(): Promise<BlizzardCredentialProfile[]> {
+  const data = await fetchJson<{ profiles?: BlizzardCredentialProfile[] }>(
+    `${API_URL}/api/auth/bnet/credential-profiles`,
+  );
+  return Array.isArray(data?.profiles) ? data.profiles : [];
+}
+
+export async function saveBlizzardCredentialProfile(input: {
+  name?: string;
+  client_id: string;
+  client_secret: string;
+}): Promise<BlizzardCredentialProfile> {
+  const data = await fetchJson<{ profile: BlizzardCredentialProfile }>(
+    `${API_URL}/api/auth/bnet/credential-profiles`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+  return data.profile;
+}
+
+export async function renameBlizzardCredentialProfile(
+  id: string,
+  name: string,
+): Promise<BlizzardCredentialProfile> {
+  const data = await fetchJson<{ profile: BlizzardCredentialProfile }>(
+    `${API_URL}/api/auth/bnet/credential-profiles/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    },
+  );
+  return data.profile;
+}
+
+export async function deleteBlizzardCredentialProfile(id: string): Promise<void> {
+  await fetchJson(`${API_URL}/api/auth/bnet/credential-profiles/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
   });
 }
 

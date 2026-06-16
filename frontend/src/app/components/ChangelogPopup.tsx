@@ -10,25 +10,10 @@ const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
 
 const releaseNotes = [
   {
-    title: 'Light mode',
+    title: 'Saved Blizzard logins',
     body:
-      'Use the app without Blizzard API credentials. You can still launch sims from pasted SimC, while Battle.net character, vault, wishlist, and live character features stay disabled.',
-  },
-  {
-    title: 'Desktop auth fixes',
-    body:
-      'Battle.net login now uses the local desktop backend correctly in debug mode and returns to the app without needing a manual refresh.',
-  },
-  {
-    title: 'Cleaner fallback flow',
-    body:
-      'Credential setup now offers a clear path to continue in Light mode when Blizzard API access is unavailable.',
-  },
-  {
-    title: 'Better local caching',
-    body:
-      'Persistent API cache entries now use browser Cache Storage instead of filling localStorage with item, talent, enchant, and gem records.',
-  },
+      'Saved Blizzard credentials now store securely on the device and can be selected, renamed, repaired, or removed from the login flow and settings.',
+  }
 ];
 
 export default function ChangelogPopup() {

@@ -621,7 +621,10 @@ mod tests {
         assert_eq!(resolve_active_spec_id("mage", "frost"), Some(64));
         assert_eq!(resolve_active_spec_id("deathknight", "frostdk"), Some(251));
         assert_eq!(resolve_active_spec_id("hunter", "beast_mastery"), Some(253));
-        assert_eq!(resolve_active_spec_id("shaman", "restorationshaman"), Some(264));
+        assert_eq!(
+            resolve_active_spec_id("shaman", "restorationshaman"),
+            Some(264)
+        );
     }
 
     #[actix_web::test]
@@ -779,13 +782,11 @@ mod tests {
         let body = to_bytes(resp.into_body()).await.expect("response body");
         let payload: Value = serde_json::from_slice(&body).expect("json body");
         assert_eq!(payload.get("combo_count").and_then(Value::as_u64), Some(2));
-        assert!(
-            payload
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .contains("Too many combinations (2)")
-        );
+        assert!(payload
+            .get("error")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains("Too many combinations (2)"));
     }
 
     #[actix_web::test]
@@ -875,7 +876,9 @@ mod tests {
         assert_eq!(job.batch_id.as_deref(), Some("top-gear-meta"));
         assert!(job.combo_metadata_json.is_some());
         let combo_meta: Value = serde_json::from_str(
-            job.combo_metadata_json.as_deref().expect("combo metadata json"),
+            job.combo_metadata_json
+                .as_deref()
+                .expect("combo metadata json"),
         )
         .expect("combo metadata value");
         assert_eq!(combo_meta["_combo_count"].as_u64(), Some(2));
@@ -1044,7 +1047,9 @@ mod tests {
         assert_eq!(job.batch_id.as_deref(), Some("droptimizer-meta"));
         assert!(job.combo_metadata_json.is_some());
         let combo_meta: Value = serde_json::from_str(
-            job.combo_metadata_json.as_deref().expect("combo metadata json"),
+            job.combo_metadata_json
+                .as_deref()
+                .expect("combo metadata json"),
         )
         .expect("combo metadata value");
         assert_eq!(combo_meta["_combo_count"].as_u64(), Some(1));
@@ -1231,7 +1236,9 @@ mod tests {
         assert_eq!(job.batch_id.as_deref(), Some("matrix-meta"));
         assert!(job.combo_metadata_json.is_some());
         let combo_meta: Value = serde_json::from_str(
-            job.combo_metadata_json.as_deref().expect("combo metadata json"),
+            job.combo_metadata_json
+                .as_deref()
+                .expect("combo metadata json"),
         )
         .expect("combo metadata value");
         assert_eq!(combo_meta["_combo_count"].as_u64(), Some(1));
@@ -1295,12 +1302,15 @@ mod tests {
         assert_eq!(job.batch_id.as_deref(), Some("consumable-meta"));
         assert!(job.combo_metadata_json.is_some());
         let combo_meta: Value = serde_json::from_str(
-            job.combo_metadata_json.as_deref().expect("combo metadata json"),
+            job.combo_metadata_json
+                .as_deref()
+                .expect("combo metadata json"),
         )
         .expect("combo metadata value");
         assert_eq!(combo_meta["_combo_count"].as_u64(), Some(1));
         assert_eq!(
-            combo_meta["_combo_metadata"]["Consumable 1 | Flask: flask_a"][0]["consumable_category"],
+            combo_meta["_combo_metadata"]["Consumable 1 | Flask: flask_a"][0]
+                ["consumable_category"],
             json!("flask")
         );
     }

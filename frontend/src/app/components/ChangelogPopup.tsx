@@ -35,6 +35,12 @@ const releaseNotes: ReleaseNote[] = [
     body:
       'The What\'s new popup no longer covers the desktop title bar, so you can still move the window and use the Windows action buttons while it is open.',
   },
+  {
+    category: 'fix',
+    title: 'Raid buff source badges explain themselves',
+    body:
+      'Raid buff source badges now show hover text for Override, Manual, and Default so it is clear whether a buff came from SimC input, direct user changes, or saved defaults.',
+  },
 ];
 
 const releaseNoteCategoryOrder: ReleaseNoteCategory[] = ['feature', 'fix'];

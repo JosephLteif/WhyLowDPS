@@ -48,3 +48,4 @@ desktop/dist/
 
 
 tools/
+.cache/

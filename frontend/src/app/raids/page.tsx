@@ -4,7 +4,13 @@ import { useEffect, useState } from 'react';
 import { API_URL, DungeonInfo, fetchJsonCached } from '../lib/api';
 import type { Instance } from '../drop-finder/types';
 import { DungeonCard, WowheadZonesIndexSummary, getLocalInstanceImageUrl, getRaidInstances, normalizeDungeonName, normalizeImageUrl } from '../dungeons/shared';
-import { wowExpansions, wowSeasons } from '../lib/wow-season-content';
+import {
+  getRuntimeWowSeasonContent,
+  wowExpansions,
+  wowSeasons,
+  type WowExpansion,
+  type WowSeason,
+} from '../lib/wow-season-content';
 import {
   filterRaidsByExpansion,
   getCurrentSeasonExpansionId,
@@ -41,6 +47,8 @@ function RaidsPageSkeleton() {
 
 export default function RaidsPage() {
   const [raids, setRaids] = useState<DungeonInfo[]>([]);
+  const [expansions, setExpansions] = useState<WowExpansion[]>(wowExpansions);
+  const [seasons, setSeasons] = useState<WowSeason[]>(wowSeasons);
   const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(
     getCurrentSeasonExpansionId(wowSeasons),
   );
@@ -50,15 +58,21 @@ export default function RaidsPage() {
     let cancelled = false;
     (async () => {
       try {
-        const [fallbackInstances, zonesSummaryResp] = await Promise.all([
+        const [fallbackInstances, runtimeWow, zonesSummaryResp] = await Promise.all([
           fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, { ttl: 60_000 }).catch(
             () => [] as Instance[],
           ),
+          getRuntimeWowSeasonContent().catch(() => null),
           fetchJsonCached<WowheadZonesIndexSummary>(
             `${API_URL}/api/data/wowhead-zones-index/summary?kind=raid`,
             { ttl: 60_000 },
           ).catch(() => ({ zones: [], raids: [] })),
         ]);
+        if (!cancelled && runtimeWow) {
+          setExpansions(runtimeWow.expansions);
+          setSeasons(runtimeWow.seasons);
+          setSelectedExpansionId((current) => current ?? getCurrentSeasonExpansionId(runtimeWow.seasons));
+        }
         const parsedRaids = Array.isArray(zonesSummaryResp?.raids) ? zonesSummaryResp.raids : [];
         const zonesByName = new Map<string, { id?: number; name?: string; expansion?: number | null; encounters?: string[] }>();
         for (const zone of parsedRaids) {
@@ -94,8 +108,8 @@ export default function RaidsPage() {
 
   if (loading) return <RaidsPageSkeleton />;
 
-  const expansionOptions = listRaidExpansionOptions(raids, wowExpansions);
-  const currentExpansionId = getCurrentSeasonExpansionId(wowSeasons);
+  const expansionOptions = listRaidExpansionOptions(raids, expansions);
+  const currentExpansionId = getCurrentSeasonExpansionId(seasons);
   const filteredRaids = filterRaidsByExpansion(raids, selectedExpansionId);
 
   return (

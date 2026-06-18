@@ -1,0 +1,67 @@
+[
+  {
+    "id": 74,
+    "name": "Mists of Pandaria",
+    "slug": "mists-of-pandaria"
+  },
+  {
+    "id": 68,
+    "name": "Classic",
+    "slug": "classic"
+  },
+  {
+    "id": 70,
+    "name": "Burning Crusade",
+    "slug": "burning-crusade"
+  },
+  {
+    "id": 72,
+    "name": "Wrath of the Lich King",
+    "slug": "wrath-of-the-lich-king"
+  },
+  {
+    "id": 73,
+    "name": "Cataclysm",
+    "slug": "cataclysm"
+  },
+  {
+    "id": 124,
+    "name": "Warlords of Draenor",
+    "slug": "warlords-of-draenor"
+  },
+  {
+    "id": 395,
+    "name": "Legion",
+    "slug": "legion"
+  },
+  {
+    "id": 396,
+    "name": "Battle for Azeroth",
+    "slug": "battle-for-azeroth"
+  },
+  {
+    "id": 499,
+    "name": "Shadowlands",
+    "slug": "shadowlands"
+  },
+  {
+    "id": 503,
+    "name": "Dragonflight",
+    "slug": "dragonflight"
+  },
+  {
+    "id": 505,
+    "name": "Current Season",
+    "slug": "current-season"
+  },
+  {
+    "id": 516,
+    "name": "Midnight",
+    "slug": "midnight"
+  },
+  {
+    "id": 514,
+    "name": "The War Within",
+    "slug": "the-war-within"
+  }
+]

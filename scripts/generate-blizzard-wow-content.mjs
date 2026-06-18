@@ -8,6 +8,10 @@ const LOCALE = process.env.BLIZZARD_LOCALE || 'en_US';
 const CLIENT_ID = process.env.BLIZZARD_CLIENT_ID;
 const CLIENT_SECRET = process.env.BLIZZARD_CLIENT_SECRET;
 const OUTPUT_DIR = path.resolve('frontend/src/app/data/wow');
+const BACKEND_RESOURCE_OUTPUT_DIR = path.resolve('backend/resources/wow');
+const EXTRA_OUTPUT_DIR = process.env.WOW_CONTENT_OUTPUT_DIR
+  ? path.resolve(process.env.WOW_CONTENT_OUTPUT_DIR)
+  : null;
 
 function usage() {
   console.error(
@@ -97,13 +101,20 @@ async function main() {
     { dungeons: [] }
   );
   const mplusByJournalId = new Map();
+  const mythicPlusDungeonMappings = [];
   for (const dungeon of mplusIndex.dungeons || []) {
     const detail = await optional(
       () => fetchBlizzard(`/data/wow/mythic-keystone/dungeon/${dungeon.id}`, 'dynamic'),
       null
     );
     const journalId = detail?.journal_instance?.id;
-    if (journalId) mplusByJournalId.set(journalId, dungeon.id);
+    if (journalId) {
+      mplusByJournalId.set(journalId, dungeon.id);
+      mythicPlusDungeonMappings.push({
+        mythicPlusDungeonId: dungeon.id,
+        journalInstanceId: journalId,
+      });
+    }
   }
 
   const instances = [];
@@ -159,14 +170,28 @@ async function main() {
     });
   }
 
-  await fs.mkdir(OUTPUT_DIR, { recursive: true });
-  await fs.writeFile(path.join(OUTPUT_DIR, 'wow-expansions.json'), JSON.stringify(expansions, null, 2));
-  await fs.writeFile(path.join(OUTPUT_DIR, 'wow-instances.json'), JSON.stringify(instances, null, 2));
-  await fs.writeFile(path.join(OUTPUT_DIR, 'wow-encounters.json'), JSON.stringify(encounters, null, 2));
+  const outputDirs = [OUTPUT_DIR, BACKEND_RESOURCE_OUTPUT_DIR];
+  if (EXTRA_OUTPUT_DIR) outputDirs.push(EXTRA_OUTPUT_DIR);
+  for (const outputDir of outputDirs) {
+    await fs.mkdir(outputDir, { recursive: true });
+  }
+  const generatedFiles = [
+    ['wow-expansions.json', expansions],
+    ['wow-instances.json', instances],
+    ['wow-encounters.json', encounters],
+    ['wow-mythic-plus-dungeons.json', mythicPlusDungeonMappings],
+  ];
+  for (const [fileName, data] of generatedFiles) {
+    const content = JSON.stringify(data, null, 2);
+    for (const outputDir of outputDirs) {
+      await fs.writeFile(path.join(outputDir, fileName), content);
+    }
+  }
   console.log(
-    `Wrote ${expansions.length} expansions, ${instances.length} instances, ${encounters.length} encounters`
+    `Wrote ${expansions.length} expansions, ${instances.length} instances, ${encounters.length} encounters, ${mythicPlusDungeonMappings.length} Mythic+ dungeon mappings`
   );
-  console.log('Season mappings are curated manually in wow-seasons.json.');
+  console.log(`Output directories: ${outputDirs.join(', ')}`);
+  console.log('Season mappings are curated manually in wow-seasons.json and restored through Game Data File States.');
 }
 
 main().catch((error) => {

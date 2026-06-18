@@ -42,9 +42,12 @@ import {
   selectSeasonSlugForExpansion,
 } from './dungeon-rotation';
 import {
+  getRuntimeWowSeasonContent,
   getStaticWowSeasonContent,
   selectDefaultWowSeasonSlug,
   wowExpansions,
+  type WowExpansion,
+  type WowSeasonContent,
 } from '../lib/wow-season-content';
 
 const staticSeasonContent = getStaticWowSeasonContent().content;
@@ -60,6 +63,7 @@ function parseExpansionParam(value: string | null): number | null {
 }
 
 function selectedSeasonData(
+  seasonContent: WowSeasonContent[],
   seasonSlug: string | undefined,
   liveData: DungeonSeasonData,
   liveDungeons: DungeonInfo[],
@@ -67,7 +71,7 @@ function selectedSeasonData(
   previousDungeons?: DungeonInfo[],
 ): DungeonSeasonData {
   const content =
-    staticSeasonContent.find((entry) => entry.season.slug === seasonSlug) ?? staticSeasonContent[0];
+    seasonContent.find((entry) => entry.season.slug === seasonSlug) ?? seasonContent[0];
   if (!content) {
     return {
       ...liveData,
@@ -218,12 +222,18 @@ export default function DungeonsPage() {
   const [mplusDetailsByName, setMplusDetailsByName] = useState<Record<string, MythicKeystoneDungeonDetail>>({});
   const [mplusDetailsLoaded, setMplusDetailsLoaded] = useState(false);
   const [gameState, setGameState] = useState<GameDataState | null>(null);
+  const [seasonContent, setSeasonContent] = useState<WowSeasonContent[]>(staticSeasonContent);
+  const [expansions, setExpansions] = useState<WowExpansion[]>(wowExpansions);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const isSelectedCurrentSeason = selectedSeasonSlug === defaultSeasonSlug;
-  const expansionOptions = listDungeonExpansionOptions(staticSeasonContent, wowExpansions);
-  const seasonOptions = listDungeonSeasonOptions(staticSeasonContent, selectedExpansionId);
+  const currentDefaultSeasonSlug =
+    selectDefaultWowSeasonSlug(seasonContent.map((content) => content.season)) ??
+    seasonContent[0]?.season.slug ??
+    defaultSeasonSlug;
+  const isSelectedCurrentSeason = selectedSeasonSlug === currentDefaultSeasonSlug;
+  const expansionOptions = listDungeonExpansionOptions(seasonContent, expansions);
+  const seasonOptions = listDungeonSeasonOptions(seasonContent, selectedExpansionId);
   const updateFilterQuery = (expansionId: number | null, seasonSlug: string) => {
     const next = new URLSearchParams(searchParams.toString());
     if (expansionId == null) {
@@ -264,16 +274,28 @@ export default function DungeonsPage() {
   useWowheadTooltips([data?.current_affixes, data?.rotation_dungeons]);
 
   useEffect(() => {
-    const seasonSlug = searchParams.get('season') || defaultSeasonSlug;
+    let cancelled = false;
+    getRuntimeWowSeasonContent().then((runtimeWow) => {
+      if (cancelled) return;
+      setSeasonContent(runtimeWow.result.content);
+      setExpansions(runtimeWow.expansions);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const seasonSlug = searchParams.get('season') || currentDefaultSeasonSlug;
     const content =
-      staticSeasonContent.find((entry) => entry.season.slug === seasonSlug) ??
-      defaultSeasonContent;
+      seasonContent.find((entry) => entry.season.slug === seasonSlug) ??
+      seasonContent.find((entry) => entry.season.slug === currentDefaultSeasonSlug);
     const expansionId = parseExpansionParam(searchParams.get('expansion')) ??
       content?.season.expansionId ??
       null;
     setSelectedExpansionId(expansionId);
-    setSelectedSeasonSlug(content?.season.slug ?? defaultSeasonSlug);
-  }, [defaultSeasonContent, searchParams]);
+    setSelectedSeasonSlug(content?.season.slug ?? currentDefaultSeasonSlug);
+  }, [currentDefaultSeasonSlug, searchParams, seasonContent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +306,7 @@ export default function DungeonsPage() {
       setError(null);
       setData(
         selectedSeasonData(
+          seasonContent,
           selectedSeasonSlug,
           {
             season_id: 0,
@@ -435,6 +458,7 @@ export default function DungeonsPage() {
           setGameState(gameDataState);
           setData((previous) =>
             selectedSeasonData(
+              seasonContent,
               selectedSeasonSlug,
               seasonData,
               filteredDungeons,
@@ -460,7 +484,7 @@ export default function DungeonsPage() {
     return () => {
       cancelled = true;
     };
-  }, [isSelectedCurrentSeason, selectedSeasonSlug]);
+  }, [isSelectedCurrentSeason, seasonContent, selectedSeasonSlug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -653,6 +677,7 @@ export default function DungeonsPage() {
       setGameState(gameDataState);
       setData((previous) =>
         selectedSeasonData(
+          seasonContent,
           selectedSeasonSlug,
           seasonData,
           filteredDungeons,
@@ -709,9 +734,9 @@ export default function DungeonsPage() {
                 const next = Number(event.target.value);
                 const expansionId = Number.isFinite(next) ? next : null;
                 const seasonSlug = selectSeasonSlugForExpansion(
-                  staticSeasonContent,
+                  seasonContent,
                   expansionId,
-                  defaultSeasonSlug,
+                  currentDefaultSeasonSlug,
                 );
                 setSelectedExpansionId(expansionId);
                 setSelectedSeasonSlug(seasonSlug);

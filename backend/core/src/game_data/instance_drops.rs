@@ -1,5 +1,6 @@
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use super::drops::{
     canonical_drop_key, drop_candidate_score, finalize_slot_map, item_matches_primary_stats,
@@ -11,31 +12,68 @@ use serde_json::json;
 
 const WOW_INSTANCES_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../frontend/src/app/data/wow/wow-instances.json"
+    "/../resources/wow/wow-instances.json"
 ));
 const WOW_ENCOUNTERS_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../frontend/src/app/data/wow/wow-encounters.json"
+    "/../resources/wow/wow-encounters.json"
 ));
 const WOW_SEASONS_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../frontend/src/app/data/wow/wow-seasons.json"
+    "/../resources/wow/wow-seasons.json"
 ));
 const WOW_MYTHIC_PLUS_DUNGEONS_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../frontend/src/app/data/wow/wow-mythic-plus-dungeons.json"
+    "/../resources/wow/wow-mythic-plus-dungeons.json"
 ));
 
 pub fn get_instances() -> Vec<Value> {
-    static_blizzard_instances()
+    let loaded = item_db::instances();
+    if loaded.is_empty() {
+        bundled_blizzard_instances()
+    } else {
+        loaded
+    }
 }
 
-fn static_blizzard_instances() -> Vec<Value> {
-    let instances: Vec<Value> = serde_json::from_str(WOW_INSTANCES_JSON).unwrap_or_default();
-    let encounters: Vec<Value> = serde_json::from_str(WOW_ENCOUNTERS_JSON).unwrap_or_default();
-    let seasons: Vec<Value> = serde_json::from_str(WOW_SEASONS_JSON).unwrap_or_default();
-    let mythic_plus_mappings: Vec<Value> =
-        serde_json::from_str(WOW_MYTHIC_PLUS_DUNGEONS_JSON).unwrap_or_default();
+pub(crate) fn load_instances_from_wow_content(data_dir: &Path) -> Vec<Value> {
+    let wow_dir = data_dir.join("wow");
+    let instances = read_json_array(&wow_dir.join("wow-instances.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_INSTANCES_JSON).unwrap_or_default());
+    let encounters = read_json_array(&wow_dir.join("wow-encounters.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_ENCOUNTERS_JSON).unwrap_or_default());
+    let seasons = read_json_array(&wow_dir.join("wow-seasons.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_SEASONS_JSON).unwrap_or_default());
+    let mythic_plus_mappings = read_json_array(&wow_dir.join("wow-mythic-plus-dungeons.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_MYTHIC_PLUS_DUNGEONS_JSON).unwrap_or_default());
+    blizzard_instances_from_content(instances, encounters, seasons, mythic_plus_mappings)
+}
+
+fn bundled_blizzard_instances() -> Vec<Value> {
+    blizzard_instances_from_content(
+        serde_json::from_str(WOW_INSTANCES_JSON).unwrap_or_default(),
+        serde_json::from_str(WOW_ENCOUNTERS_JSON).unwrap_or_default(),
+        serde_json::from_str(WOW_SEASONS_JSON).unwrap_or_default(),
+        serde_json::from_str(WOW_MYTHIC_PLUS_DUNGEONS_JSON).unwrap_or_default(),
+    )
+}
+
+fn read_json_array(path: &Path) -> Option<Vec<Value>> {
+    let file = std::fs::File::open(path).ok()?;
+    serde_json::from_reader(std::io::BufReader::new(file))
+        .map_err(|err| {
+            eprintln!("Failed to deserialize {}: {}", path.display(), err);
+            err
+        })
+        .ok()
+}
+
+fn blizzard_instances_from_content(
+    instances: Vec<Value>,
+    encounters: Vec<Value>,
+    seasons: Vec<Value>,
+    mythic_plus_mappings: Vec<Value>,
+) -> Vec<Value> {
     let mythic_plus_to_journal: HashMap<i64, i64> = mythic_plus_mappings
         .into_iter()
         .filter_map(|mapping| {

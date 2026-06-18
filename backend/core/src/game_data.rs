@@ -3,7 +3,7 @@
 mod catalyst;
 mod drop_queries;
 mod drops;
-mod instance_drops;
+pub(crate) mod instance_drops;
 
 pub use drop_queries::{get_drops_by_instances, get_drops_by_type};
 pub use instance_drops::{get_instance_drops, get_instances};
@@ -30,6 +30,7 @@ mod tests {
     use crate::types::{GameItem, GameItemStat, ItemSource};
     use serde_json::{json, Value};
     use std::collections::{HashMap, HashSet};
+    use std::fs;
     use std::sync::Arc;
 
     struct GameDataSnapshot {
@@ -291,24 +292,48 @@ mod tests {
     }
 
     #[test]
-    fn get_instances_uses_static_blizzard_content_with_mplus_bucket() {
+    fn get_instances_uses_wow_content_files_with_mplus_bucket() {
         let _state_guard = state::TEST_STATE_LOCK
             .lock()
             .unwrap_or_else(|err| err.into_inner());
         let snapshot = GameDataSnapshot::capture();
-        *state::INSTANCES.write().unwrap() = vec![json!({
-            "id": 55,
-            "name": "Old Raidbots Raid",
-            "encounters": [{"id": 551, "name":"Boss", "image_url":"https://old"}]
-        })];
+        let temp = tempfile::tempdir().expect("temp dir");
+        let wow_dir = temp.path().join("wow");
+        fs::create_dir_all(&wow_dir).expect("wow dir");
+        fs::write(
+            wow_dir.join("wow-instances.json"),
+            serde_json::to_string(&json!([
+                {"id": 9001, "name": "AppData Raid", "type": "raid", "expansionId": 516},
+                {"id": 9002, "name": "AppData Dungeon", "type": "dungeon", "expansionId": 516}
+            ]))
+            .expect("instances json"),
+        )
+        .expect("write instances");
+        fs::write(
+            wow_dir.join("wow-encounters.json"),
+            serde_json::to_string(&json!([
+                {"id": 9101, "instanceId": 9001, "name": "Raid Boss"},
+                {"id": 9102, "instanceId": 9002, "name": "Dungeon Boss"}
+            ]))
+            .expect("encounters json"),
+        )
+        .expect("write encounters");
+        fs::write(
+            wow_dir.join("wow-seasons.json"),
+            serde_json::to_string(&json!([
+                {"slug": "appdata-season", "name": "AppData Season", "expansionId": 516, "mythicPlusDungeonIds": [9002]}
+            ]))
+            .expect("seasons json"),
+        )
+        .expect("write seasons");
+        fs::write(wow_dir.join("wow-mythic-plus-dungeons.json"), "[]")
+            .expect("write mplus mappings");
+        crate::item_db::loader::load_instances(temp.path());
 
         let rows = get_instances();
         assert!(rows
             .iter()
-            .any(|row| row.get("name").and_then(Value::as_str) == Some("The Voidspire")));
-        assert!(!rows
-            .iter()
-            .any(|row| row.get("name").and_then(Value::as_str) == Some("Old Raidbots Raid")));
+            .any(|row| row.get("name").and_then(Value::as_str) == Some("AppData Raid")));
 
         let mplus_bucket = rows
             .iter()
@@ -325,7 +350,7 @@ mod tests {
             .iter()
             .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
             .collect();
-        assert_eq!(mplus_ids, vec![1300, 1315, 1316, 1299, 1201, 945, 476, 278]);
+        assert_eq!(mplus_ids, vec![9002]);
 
         let serialized = serde_json::to_string(&rows).expect("instances json");
         assert!(!serialized.contains("wowheadUrl"));

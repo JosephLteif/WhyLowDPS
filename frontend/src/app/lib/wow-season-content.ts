@@ -3,6 +3,7 @@ import instances from '../data/wow/wow-instances.json';
 import encounters from '../data/wow/wow-encounters.json';
 import seasons from '../data/wow/wow-seasons.json';
 import mythicPlusDungeons from '../data/wow/wow-mythic-plus-dungeons.json';
+import { API_URL, fetchJsonCached } from './api';
 
 export type WowInstanceType = 'raid' | 'dungeon';
 
@@ -64,6 +65,10 @@ export interface WowSeasonContentInput {
 export interface WowSeasonContentResult {
   content: WowSeasonContent[];
   warnings: string[];
+}
+
+interface DataFileContentResponse {
+  content: string;
 }
 
 export type WowInstancesByExpansion = Record<number, { raids: WowInstance[]; dungeons: WowInstance[] }>;
@@ -224,4 +229,46 @@ export function getStaticWowSeasonContent(): WowSeasonContentResult {
     encounters: wowEncounters,
     mythicPlusDungeons: wowMythicPlusDungeons,
   });
+}
+
+async function fetchDataFileArray<T>(key: string): Promise<T[]> {
+  const response = await fetchJsonCached<DataFileContentResponse>(
+    `${API_URL}/api/data/files/${key}`,
+    { ttl: 60_000 },
+  );
+  const parsed = JSON.parse(response.content);
+  return Array.isArray(parsed) ? (parsed as T[]) : [];
+}
+
+export async function getRuntimeWowSeasonContent(): Promise<{
+  expansions: WowExpansion[];
+  seasons: WowSeason[];
+  result: WowSeasonContentResult;
+}> {
+  try {
+    const [runtimeExpansions, runtimeInstances, runtimeEncounters, runtimeSeasons, runtimeMplus] =
+      await Promise.all([
+        fetchDataFileArray<WowExpansion>('wow_expansions'),
+        fetchDataFileArray<WowInstance>('wow_instances'),
+        fetchDataFileArray<WowEncounter>('wow_encounters'),
+        fetchDataFileArray<WowSeason>('wow_seasons'),
+        fetchDataFileArray<MythicPlusDungeonMapping>('wow_mythic_plus_dungeons'),
+      ]);
+    return {
+      expansions: runtimeExpansions,
+      seasons: runtimeSeasons,
+      result: buildWowSeasonContent({
+        seasons: runtimeSeasons,
+        instances: runtimeInstances,
+        encounters: runtimeEncounters,
+        mythicPlusDungeons: runtimeMplus,
+      }),
+    };
+  } catch {
+    return {
+      expansions: wowExpansions,
+      seasons: wowSeasons,
+      result: getStaticWowSeasonContent(),
+    };
+  }
 }

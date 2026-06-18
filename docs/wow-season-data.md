@@ -1,28 +1,42 @@
 # WoW Season Content Data
 
-WhyLowDPS keeps structured WoW content data in `frontend/src/app/data/wow`.
+WhyLowDPS keeps structured WoW content data in the app data directory at
+`AppData/Roaming/com.whylowdps/data/wow`. `backend/resources/wow` is only the bundled seed used by
+Settings -> Game Data File States to restore missing local files.
 
 ## Blizzard-derived files
 
 These files should be regenerated from the Blizzard API at build or maintenance time:
 
 - `wow-expansions.json`: journal expansions.
-- `wow-instances.json`: journal raids and dungeons, plus Mythic+ dungeon ID mappings when Blizzard exposes them.
+- `wow-instances.json`: journal raids and dungeons.
 - `wow-encounters.json`: journal encounters keyed to their journal instance.
+- `wow-mythic-plus-dungeons.json`: Mythic Keystone dungeon ID to journal instance ID mappings.
 
 Run:
 
 ```powershell
 $env:BLIZZARD_CLIENT_ID = "..."
 $env:BLIZZARD_CLIENT_SECRET = "..."
-node scripts/generate-blizzard-wow-content.mjs
+npm run generate:wow-content
 ```
 
-The script writes static JSON only. Do not put Blizzard credentials in frontend or Tauri code.
+To generate directly into the desktop app data directory:
+
+```powershell
+$env:WOW_CONTENT_OUTPUT_DIR = "$env:APPDATA/com.whylowdps/data/wow"
+npm run generate:wow-content
+```
+
+The script writes static JSON only and mirrors Blizzard-derived files to `backend/resources/wow`
+for packaging. Use Game Data File States to restore those files into the app data directory.
+It does not generate `wow-seasons.json`. Do not put Blizzard credentials in frontend or Tauri code.
 
 ## Manual season mapping
 
-`wow-seasons.json` is curated by hand. Each season entry maps:
+`wow-seasons.json` is curated by hand. Keep the bundled seed in `backend/resources/wow` in sync, then
+restore it through Game Data File States so the runtime copy in app data is updated. Each season
+entry maps:
 
 - `slug`
 - `name`

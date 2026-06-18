@@ -512,8 +512,9 @@ export default function DataGuard({ children }: { children: ReactNode }) {
             )}
             <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-zinc-200">
               <p className="font-semibold text-zinc-100">Manual Recovery</p>
-              <p className="mt-1">
-                1. Download{' '}
+              <p className="mt-1">1. Click Retry Sync to restore bundled/generated local files.</p>
+              <p>
+                2. If Raidbots metadata is still missing, download{' '}
                 <a
                   href="https://www.raidbots.com/static/data/live/metadata.json"
                   target="_blank"
@@ -522,10 +523,10 @@ export default function DataGuard({ children }: { children: ReactNode }) {
                 >
                   metadata.json
                 </a>
+                .
               </p>
-              <p>2. Save it as metadata.json (not metadata.json.txt).</p>
-              <p>3. Put it in %APPDATA%/com.whylowdps/data.</p>
-              <p>4. Click Retry Sync or Download Missing Data.</p>
+              <p>3. Save it as metadata.json in %APPDATA%/com.whylowdps/data.</p>
+              <p>4. WoW seasons are manual: place wow-seasons.json in %APPDATA%/com.whylowdps/data/wow.</p>
             </div>
             <div className="mt-4 flex items-center gap-2">
               <button

@@ -13,6 +13,22 @@ const STATIC_KEYSTONE_TIMERS: Record<number, { timerMs: number; upgrades: number
   1178: { timerMs: 1_920_000, upgrades: [1, 2, 3] },
 };
 
+const EXPANSION_ORDER: Record<string, number> = {
+  classic: 0,
+  'burning-crusade': 1,
+  'wrath-of-the-lich-king': 2,
+  cataclysm: 3,
+  'mists-of-pandaria': 4,
+  'warlords-of-draenor': 5,
+  legion: 6,
+  'battle-for-azeroth': 7,
+  shadowlands: 8,
+  dragonflight: 9,
+  'the-war-within': 10,
+  midnight: 11,
+  'current-season': 12,
+};
+
 function currentMplusBucket(instances: Instance[]): Instance | undefined {
   return (
     instances.find((instance) => instance.type === 'mplus-chest') ||
@@ -119,9 +135,22 @@ export function listDungeonExpansionOptions(
   expansions: WowExpansion[],
 ): WowExpansion[] {
   const expansionNames = new Map(expansions.map((expansion) => [expansion.id, expansion.name]));
-  return Array.from(new Set(contents.map((content) => content.season.expansionId)))
-    .map((id) => ({ id, name: expansionNames.get(id) || `Expansion ${id}` }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const selectedIds = new Set(contents.map((content) => content.season.expansionId));
+  const ordered = expansions
+    .filter((expansion) => selectedIds.has(expansion.id))
+    .map((expansion) => ({ id: expansion.id, name: expansion.name }));
+  ordered.sort((a, b) => {
+    const left = EXPANSION_ORDER[expansions.find((expansion) => expansion.id === a.id)?.slug || ''] ?? 999;
+    const right = EXPANSION_ORDER[expansions.find((expansion) => expansion.id === b.id)?.slug || ''] ?? 999;
+    if (left !== right) return right - left;
+    return a.name.localeCompare(b.name);
+  });
+  for (const id of selectedIds) {
+    if (!ordered.some((expansion) => expansion.id === id)) {
+      ordered.push({ id, name: expansionNames.get(id) || `Expansion ${id}` });
+    }
+  }
+  return ordered;
 }
 
 export function listDungeonSeasonOptions(

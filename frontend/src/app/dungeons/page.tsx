@@ -24,6 +24,7 @@ import {
   AffixCard,
   DisplayAffix,
   DungeonCard,
+  dungeonUiKey,
   getLocalInstanceImageUrl,
   getRaidInstances,
   mergeWithInstancesFallback,
@@ -835,7 +836,7 @@ export default function DungeonsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.rotation_dungeons.map((dungeon) => (
               <DungeonCard
-                key={dungeon.id}
+                key={dungeonUiKey(dungeon)}
                 dungeon={dungeon}
                 mplusDetail={
                   mplusDetailsLoaded

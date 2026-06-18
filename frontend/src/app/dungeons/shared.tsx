@@ -30,6 +30,9 @@ export function normalizeMplusName(name: string): string {
 export function normalizeAffixName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
+export function dungeonUiKey(dungeon: Pick<DungeonInfo, 'id' | 'slug' | 'name'>): string {
+  return `${dungeon.id}-${dungeon.slug || normalizeDungeonName(dungeon.name)}`;
+}
 export function normalizeImageUrl(url?: string | null): string | undefined { return url ?? undefined; }
 export function getLocalInstanceImageUrl(instanceId?: number | null): string | null {
   if (!instanceId || instanceId <= 0) return null;
@@ -157,7 +160,9 @@ export function DungeonCard({ dungeon, mplusDetail, detailsBasePath }: { dungeon
         <div className="mt-3">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">Encounters ({encounterCount})</p>
           <ul className="space-y-1 text-sm text-zinc-100">
-            {dungeon.encounters.map((encounter) => <li key={`${dungeon.id}-${encounter}`}>{encounter}</li>)}
+            {dungeon.encounters.map((encounter, index) => (
+              <li key={`${dungeonUiKey(dungeon)}-${index}-${encounter}`}>{encounter}</li>
+            ))}
           </ul>
         </div>
       ) : null}

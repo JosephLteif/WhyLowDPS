@@ -1,5 +1,6 @@
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use super::drops::{
     canonical_drop_key, drop_candidate_score, finalize_slot_map, item_matches_primary_stats,
@@ -7,48 +8,188 @@ use super::drops::{
 };
 use crate::item_db::{self, catalyst_tier_item, is_catalyst_tier_item};
 use crate::types::class_data;
+use serde_json::json;
+
+const WOW_INSTANCES_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../resources/wow/wow-instances.json"
+));
+const WOW_ENCOUNTERS_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../resources/wow/wow-encounters.json"
+));
+const WOW_SEASONS_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../resources/wow/wow-seasons.json"
+));
+const WOW_MYTHIC_PLUS_DUNGEONS_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../resources/wow/wow-mythic-plus-dungeons.json"
+));
 
 pub fn get_instances() -> Vec<Value> {
-    item_db::instances()
-        .into_iter()
-        .map(|mut inst| {
-            if let Some(obj) = inst.as_object_mut() {
-                let instance_id = obj.get("id").and_then(|v| v.as_i64()).unwrap_or_default();
+    let loaded = item_db::instances();
+    if loaded.is_empty() {
+        bundled_blizzard_instances()
+    } else {
+        loaded
+    }
+}
 
-                // Route all instance images through the backend proxy so Blizzard API
-                // remains the primary source regardless of stale upstream image_url values.
-                if instance_id > 0 {
-                    obj.insert(
-                        "image_url".to_string(),
-                        Value::String(format!("/api/data/images/instance/{}", instance_id)),
-                    );
-                }
+pub(crate) fn load_instances_from_wow_content(data_dir: &Path) -> Vec<Value> {
+    let wow_dir = data_dir.join("wow");
+    let instances = read_json_array(&wow_dir.join("wow-instances.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_INSTANCES_JSON).unwrap_or_default());
+    let encounters = read_json_array(&wow_dir.join("wow-encounters.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_ENCOUNTERS_JSON).unwrap_or_default());
+    let seasons = read_json_array(&wow_dir.join("wow-seasons.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_SEASONS_JSON).unwrap_or_default());
+    let mythic_plus_mappings = read_json_array(&wow_dir.join("wow-mythic-plus-dungeons.json"))
+        .unwrap_or_else(|| serde_json::from_str(WOW_MYTHIC_PLUS_DUNGEONS_JSON).unwrap_or_default());
+    blizzard_instances_from_content(instances, encounters, seasons, mythic_plus_mappings)
+}
 
-                // Do the same for encounter images to avoid direct Raidbots URLs in clients.
-                if let Some(encounters) = obj.get_mut("encounters").and_then(|v| v.as_array_mut()) {
-                    for encounter in encounters {
-                        let Some(enc_obj) = encounter.as_object_mut() else {
-                            continue;
-                        };
-                        let encounter_id = enc_obj
-                            .get("id")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or_default();
-                        if encounter_id > 0 {
-                            enc_obj.insert(
-                                "image_url".to_string(),
-                                Value::String(format!(
-                                    "/api/data/images/encounter/{}",
-                                    encounter_id
-                                )),
-                            );
-                        }
-                    }
-                }
-            }
-            inst
+fn bundled_blizzard_instances() -> Vec<Value> {
+    blizzard_instances_from_content(
+        serde_json::from_str(WOW_INSTANCES_JSON).unwrap_or_default(),
+        serde_json::from_str(WOW_ENCOUNTERS_JSON).unwrap_or_default(),
+        serde_json::from_str(WOW_SEASONS_JSON).unwrap_or_default(),
+        serde_json::from_str(WOW_MYTHIC_PLUS_DUNGEONS_JSON).unwrap_or_default(),
+    )
+}
+
+fn read_json_array(path: &Path) -> Option<Vec<Value>> {
+    let file = std::fs::File::open(path).ok()?;
+    serde_json::from_reader(std::io::BufReader::new(file))
+        .map_err(|err| {
+            eprintln!("Failed to deserialize {}: {}", path.display(), err);
+            err
         })
-        .collect()
+        .ok()
+}
+
+fn blizzard_instances_from_content(
+    instances: Vec<Value>,
+    encounters: Vec<Value>,
+    seasons: Vec<Value>,
+    mythic_plus_mappings: Vec<Value>,
+) -> Vec<Value> {
+    let mythic_plus_to_journal: HashMap<i64, i64> = mythic_plus_mappings
+        .into_iter()
+        .filter_map(|mapping| {
+            Some((
+                mapping.get("mythicPlusDungeonId")?.as_i64()?,
+                mapping.get("journalInstanceId")?.as_i64()?,
+            ))
+        })
+        .collect();
+    let active_season = seasons.last();
+    let active_mplus_journal_ids_ordered: Vec<i64> = active_season
+        .and_then(|season| season.get("mythicPlusDungeonIds"))
+        .and_then(Value::as_array)
+        .map(|ids| {
+            ids.iter()
+                .filter_map(Value::as_i64)
+                .map(|id| mythic_plus_to_journal.get(&id).copied().unwrap_or(id))
+                .collect()
+        })
+        .unwrap_or_default();
+    let active_mplus_journal_ids: HashSet<i64> =
+        active_mplus_journal_ids_ordered.iter().copied().collect();
+
+    let mut encounters_by_instance: HashMap<i64, Vec<Value>> = HashMap::new();
+    for encounter in encounters {
+        let Some(instance_id) = encounter.get("instanceId").and_then(Value::as_i64) else {
+            continue;
+        };
+        let Some(encounter_id) = encounter.get("id").and_then(Value::as_i64) else {
+            continue;
+        };
+        let Some(name) = encounter.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        encounters_by_instance
+            .entry(instance_id)
+            .or_default()
+            .push(json!({
+                "id": encounter_id,
+                "name": name,
+                "image_url": format!("/api/data/images/encounter/{}", encounter_id),
+            }));
+    }
+
+    let mut rows = Vec::new();
+    let mut instance_names_by_id = HashMap::new();
+    for instance in instances {
+        let Some(id) = instance.get("id").and_then(Value::as_i64) else {
+            continue;
+        };
+        let Some(name) = instance.get("name").and_then(Value::as_str) else {
+            continue;
+        };
+        let instance_type = instance
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("dungeon");
+        let expansion = instance
+            .get("expansionId")
+            .and_then(Value::as_i64)
+            .unwrap_or_default();
+        let mythic_plus_id = instance.get("mythicPlusDungeonId").and_then(Value::as_i64);
+        let active_rotation = active_mplus_journal_ids.contains(&id)
+            || mythic_plus_id.is_some_and(|id| {
+                mythic_plus_to_journal
+                    .get(&id)
+                    .is_some_and(|journal_id| active_mplus_journal_ids.contains(journal_id))
+            });
+        let instance_encounters = encounters_by_instance.remove(&id).unwrap_or_default();
+
+        instance_names_by_id.insert(id, name.to_string());
+
+        let mut row = json!({
+            "id": id,
+            "name": name,
+            "type": instance_type,
+            "expansion": expansion,
+            "encounters": instance_encounters,
+            "image_url": format!("/api/data/images/instance/{}", id),
+        });
+
+        if let Some(slug) = instance.get("slug").and_then(Value::as_str) {
+            row["slug"] = json!(slug);
+        }
+        if let Some(mythic_plus_id) = mythic_plus_id {
+            row["mythic_plus_dungeon_id"] = json!(mythic_plus_id);
+        }
+        if instance_type == "dungeon" {
+            row["active_rotation"] = json!(active_rotation);
+        }
+
+        rows.push(row);
+    }
+
+    let mplus_bucket_encounters: Vec<Value> = active_mplus_journal_ids_ordered
+        .into_iter()
+        .filter_map(|id| {
+            let name = instance_names_by_id.get(&id)?;
+            Some(json!({ "id": id, "name": name }))
+        })
+        .collect();
+
+    if !mplus_bucket_encounters.is_empty() {
+        rows.push(json!({
+            "id": -1,
+            "name": "Mythic+ Dungeons",
+            "type": "mplus-chest",
+            "expansion": active_season
+                .and_then(|season| season.get("expansionId"))
+                .and_then(Value::as_i64)
+                .unwrap_or_default(),
+            "encounters": mplus_bucket_encounters,
+        }));
+    }
+
+    rows
 }
 
 // ---- Drop Resolver ----

@@ -230,6 +230,12 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
 }
 
 pub fn load_instances(data_dir: &Path) {
+    let blizzard_instances = crate::game_data::instance_drops::load_instances_from_wow_content(data_dir);
+    if !blizzard_instances.is_empty() {
+        *INSTANCES.write().unwrap() = blizzard_instances;
+        return;
+    }
+
     let path = data_dir.join("instances.json");
     if !path.exists() {
         return;

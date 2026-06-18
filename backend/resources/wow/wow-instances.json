@@ -1,0 +1,3128 @@
+[
+  {
+    "id": 64,
+    "name": "Shadowfang Keep",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 64,
+    "encounterIds": [
+      96,
+      97,
+      98,
+      99,
+      100
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/shadowfang-keep-small.jpg"
+  },
+  {
+    "id": 67,
+    "name": "The Stonecore",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 67,
+    "encounterIds": [
+      110,
+      111,
+      112,
+      113
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-stonecore-small.jpg"
+  },
+  {
+    "id": 76,
+    "name": "Zul'Gurub",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 76,
+    "encounterIds": [
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      184,
+      185
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/zulgurub-small.jpg"
+  },
+  {
+    "id": 66,
+    "name": "Blackrock Caverns",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 66,
+    "encounterIds": [
+      105,
+      106,
+      107,
+      108,
+      109
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/blackrock-caverns-small.jpg"
+  },
+  {
+    "id": 63,
+    "name": "Deadmines",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 63,
+    "encounterIds": [
+      2630,
+      2632,
+      2631,
+      2628,
+      89,
+      2624,
+      2629,
+      2613,
+      2626,
+      90,
+      2623,
+      91,
+      2622,
+      92,
+      2621,
+      93,
+      2620,
+      95
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/deadmines-small.jpg"
+  },
+  {
+    "id": 69,
+    "name": "Lost City of the Tol'vir",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 69,
+    "encounterIds": [
+      117,
+      118,
+      119,
+      122
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/lost-city-of-the-tolvir-small.jpg"
+  },
+  {
+    "id": 78,
+    "name": "Firelands",
+    "type": "raid",
+    "expansionId": 73,
+    "journalInstanceId": 78,
+    "encounterIds": [
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/firelands-small.jpg"
+  },
+  {
+    "id": 77,
+    "name": "Zul'Aman",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 77,
+    "encounterIds": [
+      186,
+      187,
+      188,
+      189,
+      190,
+      191
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/zulaman-small.jpg"
+  },
+  {
+    "id": 70,
+    "name": "Halls of Origination",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 70,
+    "encounterIds": [
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/halls-of-origination-small.jpg"
+  },
+  {
+    "id": 72,
+    "name": "The Bastion of Twilight",
+    "type": "raid",
+    "expansionId": 73,
+    "journalInstanceId": 72,
+    "encounterIds": [
+      156,
+      157,
+      158,
+      167,
+      168
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-bastion-of-twilight-small.jpg"
+  },
+  {
+    "id": 75,
+    "name": "Baradin Hold",
+    "type": "raid",
+    "expansionId": 73,
+    "journalInstanceId": 75,
+    "encounterIds": [
+      139,
+      140,
+      339
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/baradin-hold-small.jpg"
+  },
+  {
+    "id": 68,
+    "name": "The Vortex Pinnacle",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 68,
+    "encounterIds": [
+      114,
+      115,
+      116
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-vortex-pinnacle-small.jpg"
+  },
+  {
+    "id": 65,
+    "name": "Throne of the Tides",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 65,
+    "encounterIds": [
+      101,
+      102,
+      103,
+      104
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/throne-of-the-tides-small.jpg"
+  },
+  {
+    "id": 184,
+    "name": "End Time",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 184,
+    "encounterIds": [
+      340,
+      285,
+      323,
+      283,
+      289
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/end-time-small.jpg"
+  },
+  {
+    "id": 185,
+    "name": "Well of Eternity",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 185,
+    "encounterIds": [
+      290,
+      291,
+      292
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/well-of-eternity-small.jpg"
+  },
+  {
+    "id": 186,
+    "name": "Hour of Twilight",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 186,
+    "encounterIds": [
+      322,
+      342,
+      341
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/hour-of-twilight-small.jpg"
+  },
+  {
+    "id": 74,
+    "name": "Throne of the Four Winds",
+    "type": "raid",
+    "expansionId": 73,
+    "journalInstanceId": 74,
+    "encounterIds": [
+      154,
+      155
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/throne-of-the-four-winds-small.jpg"
+  },
+  {
+    "id": 73,
+    "name": "Blackwing Descent",
+    "type": "raid",
+    "expansionId": 73,
+    "journalInstanceId": 73,
+    "encounterIds": [
+      169,
+      170,
+      171,
+      172,
+      173,
+      174
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/blackwing-descent-small.jpg"
+  },
+  {
+    "id": 187,
+    "name": "Dragon Soul",
+    "type": "raid",
+    "expansionId": 73,
+    "journalInstanceId": 187,
+    "encounterIds": [
+      311,
+      324,
+      325,
+      317,
+      331,
+      332,
+      318,
+      333
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/dragon-soul-small.jpg"
+  },
+  {
+    "id": 71,
+    "name": "Grim Batol",
+    "type": "dungeon",
+    "expansionId": 73,
+    "journalInstanceId": 71,
+    "encounterIds": [
+      2617,
+      2627,
+      2618,
+      2619
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/grim-batol-small.jpg"
+  },
+  {
+    "id": 256,
+    "name": "The Blood Furnace",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 256,
+    "encounterIds": [
+      555,
+      556,
+      557
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-blood-furnace-small.jpg"
+  },
+  {
+    "id": 260,
+    "name": "The Slave Pens",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 260,
+    "encounterIds": [
+      570,
+      571,
+      572
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-slave-pens-small.jpg"
+  },
+  {
+    "id": 281,
+    "name": "The Nexus",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 281,
+    "encounterIds": [
+      833,
+      617,
+      618,
+      619,
+      620,
+      621
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-nexus-small.jpg"
+  },
+  {
+    "id": 311,
+    "name": "Scarlet Halls",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 311,
+    "encounterIds": [
+      660,
+      654,
+      656
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/scarlet-halls-small.jpg"
+  },
+  {
+    "id": 273,
+    "name": "Drak'Tharon Keep",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 273,
+    "encounterIds": [
+      588,
+      589,
+      590,
+      591
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/draktharon-keep-small.jpg"
+  },
+  {
+    "id": 247,
+    "name": "Auchenai Crypts",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 247,
+    "encounterIds": [
+      523,
+      524
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/auchenai-crypts-small.jpg"
+  },
+  {
+    "id": 320,
+    "name": "Terrace of Endless Spring",
+    "type": "raid",
+    "expansionId": 74,
+    "journalInstanceId": 320,
+    "encounterIds": [
+      683,
+      742,
+      729,
+      709
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/terrace-of-endless-spring-small.jpg"
+  },
+  {
+    "id": 285,
+    "name": "Utgarde Keep",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 285,
+    "encounterIds": [
+      638,
+      639,
+      640
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/utgarde-keep-small.jpg"
+  },
+  {
+    "id": 330,
+    "name": "Heart of Fear",
+    "type": "raid",
+    "expansionId": 74,
+    "journalInstanceId": 330,
+    "encounterIds": [
+      745,
+      744,
+      713,
+      741,
+      737,
+      743
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/heart-of-fear-small.jpg"
+  },
+  {
+    "id": 230,
+    "name": "Dire Maul - Capital Gardens",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 230,
+    "encounterIds": [
+      406,
+      407,
+      408,
+      409,
+      410
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/dire-maul---capital-gardens-small.jpg"
+  },
+  {
+    "id": 254,
+    "name": "The Arcatraz",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 254,
+    "encounterIds": [
+      548,
+      549,
+      550,
+      551
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-arcatraz-small.jpg"
+  },
+  {
+    "id": 249,
+    "name": "Magisters' Terrace",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 249,
+    "encounterIds": [
+      530,
+      531,
+      532,
+      533
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/magisters-terrace-small.jpg"
+  },
+  {
+    "id": 251,
+    "name": "Old Hillsbrad Foothills",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 251,
+    "encounterIds": [
+      538,
+      539,
+      540
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/old-hillsbrad-foothills-small.jpg"
+  },
+  {
+    "id": 283,
+    "name": "The Violet Hold",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 283,
+    "encounterIds": [
+      626,
+      627,
+      628,
+      629,
+      630,
+      631,
+      632
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-violet-hold-small.jpg"
+  },
+  {
+    "id": 248,
+    "name": "Hellfire Ramparts",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 248,
+    "encounterIds": [
+      527,
+      528,
+      529
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/hellfire-ramparts-small.jpg"
+  },
+  {
+    "id": 271,
+    "name": "Ahn'kahet: The Old Kingdom",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 271,
+    "encounterIds": [
+      580,
+      581,
+      582,
+      583,
+      584
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/ahnkahet-the-old-kingdom-small.jpg"
+  },
+  {
+    "id": 317,
+    "name": "Mogu'shan Vaults",
+    "type": "raid",
+    "expansionId": 74,
+    "journalInstanceId": 317,
+    "encounterIds": [
+      679,
+      689,
+      682,
+      687,
+      726,
+      677
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/mogushan-vaults-small.jpg"
+  },
+  {
+    "id": 316,
+    "name": "Scarlet Monastery",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 316,
+    "encounterIds": [
+      688,
+      671,
+      674
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/scarlet-monastery-small.jpg"
+  },
+  {
+    "id": 279,
+    "name": "The Culling of Stratholme",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 279,
+    "encounterIds": [
+      611,
+      612,
+      613,
+      614
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-culling-of-stratholme-small.jpg"
+  },
+  {
+    "id": 253,
+    "name": "Shadow Labyrinth",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 253,
+    "encounterIds": [
+      544,
+      545,
+      546,
+      547
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/shadow-labyrinth-small.jpg"
+  },
+  {
+    "id": 255,
+    "name": "The Black Morass",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 255,
+    "encounterIds": [
+      552,
+      553,
+      554
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-black-morass-small.jpg"
+  },
+  {
+    "id": 284,
+    "name": "Trial of the Champion",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 284,
+    "encounterIds": [
+      634,
+      834,
+      635,
+      636,
+      637
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/trial-of-the-champion-small.jpg"
+  },
+  {
+    "id": 261,
+    "name": "The Steamvault",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 261,
+    "encounterIds": [
+      573,
+      574,
+      575
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-steamvault-small.jpg"
+  },
+  {
+    "id": 257,
+    "name": "The Botanica",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 257,
+    "encounterIds": [
+      558,
+      559,
+      560,
+      561,
+      562
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-botanica-small.jpg"
+  },
+  {
+    "id": 321,
+    "name": "Mogu'shan Palace",
+    "type": "dungeon",
+    "expansionId": 74,
+    "journalInstanceId": 321,
+    "encounterIds": [
+      708,
+      690,
+      698
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/mogushan-palace-small.jpg"
+  },
+  {
+    "id": 233,
+    "name": "Razorfen Downs",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 233,
+    "encounterIds": [
+      1142,
+      433,
+      1143,
+      1146,
+      1141
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/razorfen-downs-small.jpg"
+  },
+  {
+    "id": 246,
+    "name": "Scholomance",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 246,
+    "encounterIds": [
+      659,
+      663,
+      665,
+      666,
+      684
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/scholomance-small.jpg"
+  },
+  {
+    "id": 303,
+    "name": "Gate of the Setting Sun",
+    "type": "dungeon",
+    "expansionId": 74,
+    "journalInstanceId": 303,
+    "encounterIds": [
+      655,
+      675,
+      676,
+      649
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/gate-of-the-setting-sun-small.jpg"
+  },
+  {
+    "id": 277,
+    "name": "Halls of Stone",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 277,
+    "encounterIds": [
+      604,
+      605,
+      606,
+      607
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/halls-of-stone-small.jpg"
+  },
+  {
+    "id": 228,
+    "name": "Blackrock Depths",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 228,
+    "encounterIds": [
+      369,
+      370,
+      371,
+      372,
+      373,
+      374,
+      375,
+      376,
+      377,
+      378,
+      379,
+      380,
+      381,
+      383,
+      384,
+      385,
+      386,
+      387
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/blackrock-depths-small.jpg"
+  },
+  {
+    "id": 312,
+    "name": "Shado-Pan Monastery",
+    "type": "dungeon",
+    "expansionId": 74,
+    "journalInstanceId": 312,
+    "encounterIds": [
+      673,
+      657,
+      685,
+      686
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/shado-pan-monastery-small.jpg"
+  },
+  {
+    "id": 250,
+    "name": "Mana-Tombs",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 250,
+    "encounterIds": [
+      534,
+      535,
+      536,
+      537
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/mana-tombs-small.jpg"
+  },
+  {
+    "id": 259,
+    "name": "The Shattered Halls",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 259,
+    "encounterIds": [
+      566,
+      728,
+      568,
+      569
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-shattered-halls-small.jpg"
+  },
+  {
+    "id": 252,
+    "name": "Sethekk Halls",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 252,
+    "encounterIds": [
+      541,
+      542,
+      543
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/sethekk-halls-small.jpg"
+  },
+  {
+    "id": 324,
+    "name": "Siege of Niuzao Temple",
+    "type": "dungeon",
+    "expansionId": 74,
+    "journalInstanceId": 324,
+    "encounterIds": [
+      693,
+      738,
+      692,
+      727
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/siege-of-niuzao-temple-small.jpg"
+  },
+  {
+    "id": 278,
+    "name": "Pit of Saron",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 278,
+    "encounterIds": [
+      608,
+      609,
+      610
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/pit-of-saron-small.jpg"
+  },
+  {
+    "id": 240,
+    "name": "Wailing Caverns",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 240,
+    "encounterIds": [
+      474,
+      476,
+      475,
+      477,
+      478,
+      479,
+      480,
+      481
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/wailing-caverns-small.jpg"
+  },
+  {
+    "id": 236,
+    "name": "Stratholme - Main Gate",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 236,
+    "encounterIds": [
+      443,
+      450,
+      2633,
+      445,
+      749,
+      446,
+      448,
+      449
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/stratholme---main-gate-small.jpg"
+  },
+  {
+    "id": 227,
+    "name": "Blackfathom Deeps",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 227,
+    "encounterIds": [
+      368,
+      436,
+      426,
+      1145,
+      447,
+      1144,
+      437,
+      444
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/blackfathom-deeps-small.jpg"
+  },
+  {
+    "id": 238,
+    "name": "The Stockade",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 238,
+    "encounterIds": [
+      464,
+      465,
+      466
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-stockade-small.jpg"
+  },
+  {
+    "id": 286,
+    "name": "Utgarde Pinnacle",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 286,
+    "encounterIds": [
+      641,
+      642,
+      643,
+      644
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/utgarde-pinnacle-small.jpg"
+  },
+  {
+    "id": 258,
+    "name": "The Mechanar",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 258,
+    "encounterIds": [
+      563,
+      564,
+      565
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-mechanar-small.jpg"
+  },
+  {
+    "id": 302,
+    "name": "Stormstout Brewery",
+    "type": "dungeon",
+    "expansionId": 74,
+    "journalInstanceId": 302,
+    "encounterIds": [
+      668,
+      669,
+      670
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/stormstout-brewery-small.jpg"
+  },
+  {
+    "id": 241,
+    "name": "Zul'Farrak",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 241,
+    "encounterIds": [
+      485,
+      484,
+      482,
+      486,
+      483,
+      487,
+      489
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/zulfarrak-small.jpg"
+  },
+  {
+    "id": 274,
+    "name": "Gundrak",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 274,
+    "encounterIds": [
+      592,
+      593,
+      594,
+      595,
+      596
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/gundrak-small.jpg"
+  },
+  {
+    "id": 272,
+    "name": "Azjol-Nerub",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 272,
+    "encounterIds": [
+      585,
+      586,
+      587
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/azjol-nerub-small.jpg"
+  },
+  {
+    "id": 276,
+    "name": "Halls of Reflection",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 276,
+    "encounterIds": [
+      601,
+      602,
+      603
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/halls-of-reflection-small.jpg"
+  },
+  {
+    "id": 231,
+    "name": "Gnomeregan",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 231,
+    "encounterIds": [
+      419,
+      420,
+      421,
+      418,
+      422
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/gnomeregan-small.jpg"
+  },
+  {
+    "id": 226,
+    "name": "Ragefire Chasm",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 226,
+    "encounterIds": [
+      694,
+      695,
+      696,
+      697
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/ragefire-chasm-small.jpg"
+  },
+  {
+    "id": 237,
+    "name": "The Temple of Atal'hakkar",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 237,
+    "encounterIds": [
+      457,
+      458,
+      459,
+      463
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-temple-of-atalhakkar-small.jpg"
+  },
+  {
+    "id": 234,
+    "name": "Razorfen Kraul",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 234,
+    "encounterIds": [
+      896,
+      895,
+      899,
+      900,
+      901
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/razorfen-kraul-small.jpg"
+  },
+  {
+    "id": 282,
+    "name": "The Oculus",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 282,
+    "encounterIds": [
+      622,
+      623,
+      624,
+      625
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-oculus-small.jpg"
+  },
+  {
+    "id": 232,
+    "name": "Maraudon",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 232,
+    "encounterIds": [
+      423,
+      424,
+      425,
+      427,
+      428,
+      429,
+      430,
+      431
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/maraudon-small.jpg"
+  },
+  {
+    "id": 262,
+    "name": "The Underbog",
+    "type": "dungeon",
+    "expansionId": 70,
+    "journalInstanceId": 262,
+    "encounterIds": [
+      576,
+      577,
+      578,
+      579
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-underbog-small.jpg"
+  },
+  {
+    "id": 275,
+    "name": "Halls of Lightning",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 275,
+    "encounterIds": [
+      597,
+      598,
+      599,
+      600
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/halls-of-lightning-small.jpg"
+  },
+  {
+    "id": 280,
+    "name": "The Forge of Souls",
+    "type": "dungeon",
+    "expansionId": 72,
+    "journalInstanceId": 280,
+    "encounterIds": [
+      615,
+      616
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-forge-of-souls-small.jpg"
+  },
+  {
+    "id": 239,
+    "name": "Uldaman",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 239,
+    "encounterIds": [
+      467,
+      468,
+      469,
+      748,
+      470,
+      471,
+      472,
+      473
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/uldaman-small.jpg"
+  },
+  {
+    "id": 229,
+    "name": "Lower Blackrock Spire",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 229,
+    "encounterIds": [
+      388,
+      389,
+      390,
+      391,
+      392,
+      393,
+      394,
+      395,
+      396
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/lower-blackrock-spire-small.jpg"
+  },
+  {
+    "id": 313,
+    "name": "Temple of the Jade Serpent",
+    "type": "dungeon",
+    "expansionId": 74,
+    "journalInstanceId": 313,
+    "encounterIds": [
+      672,
+      664,
+      658,
+      335
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/temple-of-the-jade-serpent-small.jpg"
+  },
+  {
+    "id": 362,
+    "name": "Throne of Thunder",
+    "type": "raid",
+    "expansionId": 74,
+    "journalInstanceId": 362,
+    "encounterIds": [
+      827,
+      819,
+      816,
+      825,
+      821,
+      828,
+      818,
+      820,
+      824,
+      817,
+      829,
+      832,
+      831
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/throne-of-thunder-small.jpg"
+  },
+  {
+    "id": 369,
+    "name": "Siege of Orgrimmar",
+    "type": "raid",
+    "expansionId": 74,
+    "journalInstanceId": 369,
+    "encounterIds": [
+      852,
+      849,
+      866,
+      867,
+      868,
+      881,
+      864,
+      856,
+      850,
+      846,
+      870,
+      851,
+      865,
+      853,
+      869
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/siege-of-orgrimmar-small.jpg"
+  },
+  {
+    "id": 385,
+    "name": "Bloodmaul Slag Mines",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 385,
+    "encounterIds": [
+      893,
+      888,
+      887,
+      889
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/bloodmaul-slag-mines-small.jpg"
+  },
+  {
+    "id": 721,
+    "name": "Halls of Valor",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 721,
+    "encounterIds": [
+      1485,
+      1486,
+      1487,
+      1488,
+      1489
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/halls-of-valor-small.jpg"
+  },
+  {
+    "id": 726,
+    "name": "The Arcway",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 726,
+    "encounterIds": [
+      1497,
+      1498,
+      1499,
+      1500,
+      1501
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-arcway-small.jpg"
+  },
+  {
+    "id": 477,
+    "name": "Highmaul",
+    "type": "raid",
+    "expansionId": 124,
+    "journalInstanceId": 477,
+    "encounterIds": [
+      1128,
+      971,
+      1195,
+      1196,
+      1148,
+      1153,
+      1197
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/highmaul-small.jpg"
+  },
+  {
+    "id": 547,
+    "name": "Auchindoun",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 547,
+    "encounterIds": [
+      1185,
+      1186,
+      1216,
+      1225
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/auchindoun-small.jpg"
+  },
+  {
+    "id": 556,
+    "name": "The Everbloom",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 556,
+    "encounterIds": [
+      1214,
+      1207,
+      1208,
+      1209,
+      1210
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-everbloom-small.jpg"
+  },
+  {
+    "id": 757,
+    "name": "Trial of the Crusader",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 757,
+    "encounterIds": [
+      1618,
+      1619,
+      1620,
+      1621,
+      1622,
+      1623
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/trial-of-the-crusader-small.jpg"
+  },
+  {
+    "id": 758,
+    "name": "Icecrown Citadel",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 758,
+    "encounterIds": [
+      1624,
+      1625,
+      1626,
+      1627,
+      1628,
+      1629,
+      1630,
+      1631,
+      1632,
+      1633,
+      1634,
+      1635,
+      1636
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/icecrown-citadel-small.jpg"
+  },
+  {
+    "id": 759,
+    "name": "Ulduar",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 759,
+    "encounterIds": [
+      1637,
+      1638,
+      1639,
+      1640,
+      1641,
+      1642,
+      1643,
+      1644,
+      1645,
+      1646,
+      1647,
+      1648,
+      1649,
+      1650
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/ulduar-small.jpg"
+  },
+  {
+    "id": 760,
+    "name": "Onyxia's Lair",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 760,
+    "encounterIds": [
+      1651
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/onyxias-lair-small.jpg"
+  },
+  {
+    "id": 761,
+    "name": "The Ruby Sanctum",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 761,
+    "encounterIds": [
+      1652
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-ruby-sanctum-small.jpg"
+  },
+  {
+    "id": 767,
+    "name": "Neltharion's Lair",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 767,
+    "encounterIds": [
+      1662,
+      1665,
+      1673,
+      1687
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/neltharions-lair-small.jpg"
+  },
+  {
+    "id": 945,
+    "name": "Seat of the Triumvirate",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 945,
+    "encounterIds": [
+      1979,
+      1980,
+      1981,
+      1982
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/seat-of-the-triumvirate-small.jpg"
+  },
+  {
+    "id": 1021,
+    "name": "Waycrest Manor",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1021,
+    "encounterIds": [
+      2125,
+      2126,
+      2127,
+      2128,
+      2129
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/waycrest-manor-small.jpg"
+  },
+  {
+    "id": 1022,
+    "name": "The Underrot",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1022,
+    "encounterIds": [
+      2157,
+      2131,
+      2130,
+      2158
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-underrot-small.jpg"
+  },
+  {
+    "id": 946,
+    "name": "Antorus, the Burning Throne",
+    "type": "raid",
+    "expansionId": 395,
+    "journalInstanceId": 946,
+    "encounterIds": [
+      1992,
+      1987,
+      1997,
+      1985,
+      2025,
+      2009,
+      2004,
+      1986,
+      1983,
+      1984,
+      2031
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/antorus-the-burning-throne-small.jpg"
+  },
+  {
+    "id": 536,
+    "name": "Grimrail Depot",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 536,
+    "encounterIds": [
+      1138,
+      1163,
+      1133
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/grimrail-depot-small.jpg"
+  },
+  {
+    "id": 537,
+    "name": "Shadowmoon Burial Grounds",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 537,
+    "encounterIds": [
+      1139,
+      1168,
+      1140,
+      1160
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/shadowmoon-burial-grounds-small.jpg"
+  },
+  {
+    "id": 558,
+    "name": "Iron Docks",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 558,
+    "encounterIds": [
+      1235,
+      1236,
+      1237,
+      1238
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/iron-docks-small.jpg"
+  },
+  {
+    "id": 559,
+    "name": "Upper Blackrock Spire",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 559,
+    "encounterIds": [
+      1226,
+      1227,
+      1228,
+      1229,
+      1234
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/upper-blackrock-spire-small.jpg"
+  },
+  {
+    "id": 707,
+    "name": "Vault of the Wardens",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 707,
+    "encounterIds": [
+      1467,
+      1695,
+      1468,
+      1469,
+      1470
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/vault-of-the-wardens-small.jpg"
+  },
+  {
+    "id": 762,
+    "name": "Darkheart Thicket",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 762,
+    "encounterIds": [
+      1654,
+      1655,
+      1656,
+      1657
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/darkheart-thicket-small.jpg"
+  },
+  {
+    "id": 457,
+    "name": "Blackrock Foundry",
+    "type": "raid",
+    "expansionId": 124,
+    "journalInstanceId": 457,
+    "encounterIds": [
+      1202,
+      1155,
+      1122,
+      1161,
+      1123,
+      1147,
+      1154,
+      1162,
+      1203,
+      959
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/blackrock-foundry-small.jpg"
+  },
+  {
+    "id": 669,
+    "name": "Hellfire Citadel",
+    "type": "raid",
+    "expansionId": 124,
+    "journalInstanceId": 669,
+    "encounterIds": [
+      1426,
+      1425,
+      1392,
+      1432,
+      1396,
+      1372,
+      1433,
+      1427,
+      1391,
+      1447,
+      1394,
+      1395,
+      1438
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/hellfire-citadel-small.jpg"
+  },
+  {
+    "id": 476,
+    "name": "Skyreach",
+    "type": "dungeon",
+    "expansionId": 124,
+    "journalInstanceId": 476,
+    "encounterIds": [
+      965,
+      966,
+      967,
+      968
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/skyreach-small.jpg"
+  },
+  {
+    "id": 768,
+    "name": "The Emerald Nightmare",
+    "type": "raid",
+    "expansionId": 395,
+    "journalInstanceId": 768,
+    "encounterIds": [
+      1703,
+      1738,
+      1744,
+      1667,
+      1704,
+      1750,
+      1726
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-emerald-nightmare-small.jpg"
+  },
+  {
+    "id": 727,
+    "name": "Maw of Souls",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 727,
+    "encounterIds": [
+      1502,
+      1512,
+      1663
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/maw-of-souls-small.jpg"
+  },
+  {
+    "id": 741,
+    "name": "Molten Core",
+    "type": "raid",
+    "expansionId": 68,
+    "journalInstanceId": 741,
+    "encounterIds": [
+      1519,
+      1520,
+      1521,
+      1522,
+      1523,
+      1524,
+      1525,
+      1526,
+      1527,
+      1528
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/molten-core-small.jpg"
+  },
+  {
+    "id": 742,
+    "name": "Blackwing Lair",
+    "type": "raid",
+    "expansionId": 68,
+    "journalInstanceId": 742,
+    "encounterIds": [
+      1529,
+      1530,
+      1531,
+      1532,
+      1533,
+      1534,
+      1535,
+      1536
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/blackwing-lair-small.jpg"
+  },
+  {
+    "id": 743,
+    "name": "Ruins of Ahn'Qiraj",
+    "type": "raid",
+    "expansionId": 68,
+    "journalInstanceId": 743,
+    "encounterIds": [
+      1537,
+      1538,
+      1539,
+      1540,
+      1541,
+      1542
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/ruins-of-ahnqiraj-small.jpg"
+  },
+  {
+    "id": 744,
+    "name": "Temple of Ahn'Qiraj",
+    "type": "raid",
+    "expansionId": 68,
+    "journalInstanceId": 744,
+    "encounterIds": [
+      1543,
+      1547,
+      1544,
+      1545,
+      1548,
+      1546,
+      1549,
+      1550,
+      1551
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/temple-of-ahnqiraj-small.jpg"
+  },
+  {
+    "id": 745,
+    "name": "Karazhan",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 745,
+    "encounterIds": [
+      1552,
+      1553,
+      1554,
+      1555,
+      1556,
+      1557,
+      1559,
+      1560,
+      1561,
+      1562,
+      1764,
+      1563
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/karazhan-small.jpg"
+  },
+  {
+    "id": 746,
+    "name": "Gruul's Lair",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 746,
+    "encounterIds": [
+      1564,
+      1565
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/gruuls-lair-small.jpg"
+  },
+  {
+    "id": 747,
+    "name": "Magtheridon's Lair",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 747,
+    "encounterIds": [
+      1566
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/magtheridons-lair-small.jpg"
+  },
+  {
+    "id": 748,
+    "name": "Serpentshrine Cavern",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 748,
+    "encounterIds": [
+      1567,
+      1568,
+      1569,
+      1570,
+      1571,
+      1572
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/serpentshrine-cavern-small.jpg"
+  },
+  {
+    "id": 749,
+    "name": "The Eye",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 749,
+    "encounterIds": [
+      1573,
+      1574,
+      1575,
+      1576
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-eye-small.jpg"
+  },
+  {
+    "id": 750,
+    "name": "The Battle for Mount Hyjal",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 750,
+    "encounterIds": [
+      1577,
+      1578,
+      1579,
+      1580,
+      1581
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-battle-for-mount-hyjal-small.jpg"
+  },
+  {
+    "id": 751,
+    "name": "Black Temple",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 751,
+    "encounterIds": [
+      1582,
+      1583,
+      1584,
+      1585,
+      1586,
+      1587,
+      1588,
+      1589,
+      1590
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/black-temple-small.jpg"
+  },
+  {
+    "id": 752,
+    "name": "Sunwell Plateau",
+    "type": "raid",
+    "expansionId": 70,
+    "journalInstanceId": 752,
+    "encounterIds": [
+      1591,
+      1592,
+      1593,
+      1594,
+      1595,
+      1596
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/sunwell-plateau-small.jpg"
+  },
+  {
+    "id": 753,
+    "name": "Vault of Archavon",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 753,
+    "encounterIds": [
+      1597,
+      1598,
+      1599,
+      1600
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/vault-of-archavon-small.jpg"
+  },
+  {
+    "id": 754,
+    "name": "Naxxramas",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 754,
+    "encounterIds": [
+      1601,
+      1602,
+      1603,
+      1604,
+      1605,
+      1606,
+      1607,
+      1608,
+      1609,
+      1610,
+      1611,
+      1612,
+      1613,
+      1614,
+      1615
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/naxxramas-small.jpg"
+  },
+  {
+    "id": 755,
+    "name": "The Obsidian Sanctum",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 755,
+    "encounterIds": [
+      1616
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-obsidian-sanctum-small.jpg"
+  },
+  {
+    "id": 756,
+    "name": "The Eye of Eternity",
+    "type": "raid",
+    "expansionId": 72,
+    "journalInstanceId": 756,
+    "encounterIds": [
+      1617
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-eye-of-eternity-small.jpg"
+  },
+  {
+    "id": 716,
+    "name": "Eye of Azshara",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 716,
+    "encounterIds": [
+      1480,
+      1490,
+      1491,
+      1479,
+      1492
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/eye-of-azshara-small.jpg"
+  },
+  {
+    "id": 740,
+    "name": "Black Rook Hold",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 740,
+    "encounterIds": [
+      1518,
+      1653,
+      1664,
+      1672
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/black-rook-hold-small.jpg"
+  },
+  {
+    "id": 860,
+    "name": "Return to Karazhan",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 860,
+    "encounterIds": [
+      1820,
+      1826,
+      1827,
+      1825,
+      1835,
+      1837,
+      1836,
+      1817,
+      1818,
+      1838
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/return-to-karazhan-small.jpg"
+  },
+  {
+    "id": 777,
+    "name": "Assault on Violet Hold",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 777,
+    "encounterIds": [
+      1702,
+      1693,
+      1694,
+      1696,
+      1688,
+      1686,
+      1711,
+      1697
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/assault-on-violet-hold-small.jpg"
+  },
+  {
+    "id": 786,
+    "name": "The Nighthold",
+    "type": "raid",
+    "expansionId": 395,
+    "journalInstanceId": 786,
+    "encounterIds": [
+      1706,
+      1725,
+      1731,
+      1751,
+      1762,
+      1713,
+      1761,
+      1732,
+      1743,
+      1737
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-nighthold-small.jpg"
+  },
+  {
+    "id": 800,
+    "name": "Court of Stars",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 800,
+    "encounterIds": [
+      1718,
+      1719,
+      1720
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/court-of-stars-small.jpg"
+  },
+  {
+    "id": 861,
+    "name": "Trial of Valor",
+    "type": "raid",
+    "expansionId": 395,
+    "journalInstanceId": 861,
+    "encounterIds": [
+      1819,
+      1830,
+      1829
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/trial-of-valor-small.jpg"
+  },
+  {
+    "id": 1002,
+    "name": "Tol Dagor",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1002,
+    "encounterIds": [
+      2097,
+      2098,
+      2099,
+      2096
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/tol-dagor-small.jpg"
+  },
+  {
+    "id": 900,
+    "name": "Cathedral of Eternal Night",
+    "type": "dungeon",
+    "expansionId": 395,
+    "journalInstanceId": 900,
+    "encounterIds": [
+      1905,
+      1906,
+      1904,
+      1878
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/cathedral-of-eternal-night-small.jpg"
+  },
+  {
+    "id": 875,
+    "name": "Tomb of Sargeras",
+    "type": "raid",
+    "expansionId": 395,
+    "journalInstanceId": 875,
+    "encounterIds": [
+      1862,
+      1867,
+      1856,
+      1903,
+      1861,
+      1896,
+      1897,
+      1873,
+      1898
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/tomb-of-sargeras-small.jpg"
+  },
+  {
+    "id": 1001,
+    "name": "Freehold",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1001,
+    "encounterIds": [
+      2102,
+      2093,
+      2094,
+      2095
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/freehold-small.jpg"
+  },
+  {
+    "id": 968,
+    "name": "Atal'Dazar",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 968,
+    "encounterIds": [
+      2082,
+      2036,
+      2083,
+      2030
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/ataldazar-small.jpg"
+  },
+  {
+    "id": 1023,
+    "name": "Siege of Boralus",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1023,
+    "encounterIds": [
+      2132,
+      2654,
+      2133,
+      2173,
+      2134,
+      2140
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/siege-of-boralus-small.jpg"
+  },
+  {
+    "id": 1012,
+    "name": "The MOTHERLODE!!",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1012,
+    "encounterIds": [
+      2109,
+      2114,
+      2115,
+      2116
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-motherlode-small.jpg"
+  },
+  {
+    "id": 1030,
+    "name": "Temple of Sethraliss",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1030,
+    "encounterIds": [
+      2142,
+      2143,
+      2144,
+      2145
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/temple-of-sethraliss-small.jpg"
+  },
+  {
+    "id": 1031,
+    "name": "Uldir",
+    "type": "raid",
+    "expansionId": 396,
+    "journalInstanceId": 1031,
+    "encounterIds": [
+      2168,
+      2167,
+      2146,
+      2169,
+      2166,
+      2195,
+      2194,
+      2147
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/uldir-small.jpg"
+  },
+  {
+    "id": 1179,
+    "name": "The Eternal Palace",
+    "type": "raid",
+    "expansionId": 396,
+    "journalInstanceId": 1179,
+    "encounterIds": [
+      2352,
+      2347,
+      2353,
+      2354,
+      2351,
+      2359,
+      2349,
+      2361
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-eternal-palace-small.jpg"
+  },
+  {
+    "id": 1036,
+    "name": "Shrine of the Storm",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1036,
+    "encounterIds": [
+      2153,
+      2154,
+      2155,
+      2156
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/shrine-of-the-storm-small.jpg"
+  },
+  {
+    "id": 1041,
+    "name": "Kings' Rest",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1041,
+    "encounterIds": [
+      2165,
+      2171,
+      2170,
+      2172
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/kings-rest-small.jpg"
+  },
+  {
+    "id": 1176,
+    "name": "Battle of Dazar'alor",
+    "type": "raid",
+    "expansionId": 396,
+    "journalInstanceId": 1176,
+    "encounterIds": [
+      2333,
+      2344,
+      2325,
+      2340,
+      2323,
+      2341,
+      2342,
+      2330,
+      2335,
+      2334,
+      2337,
+      2343
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/battle-of-dazaralor-small.jpg"
+  },
+  {
+    "id": 1178,
+    "name": "Operation: Mechagon",
+    "type": "dungeon",
+    "expansionId": 396,
+    "journalInstanceId": 1178,
+    "encounterIds": [
+      2357,
+      2358,
+      2360,
+      2355,
+      2336,
+      2339,
+      2348,
+      2331
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/operation-mechagon-small.jpg"
+  },
+  {
+    "id": 1180,
+    "name": "Ny'alotha, the Waking City",
+    "type": "raid",
+    "expansionId": 396,
+    "journalInstanceId": 1180,
+    "encounterIds": [
+      2368,
+      2365,
+      2369,
+      2377,
+      2372,
+      2367,
+      2373,
+      2374,
+      2370,
+      2364,
+      2366,
+      2375
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/nyalotha-the-waking-city-small.jpg"
+  },
+  {
+    "id": 1177,
+    "name": "Crucible of Storms",
+    "type": "raid",
+    "expansionId": 396,
+    "journalInstanceId": 1177,
+    "encounterIds": [
+      2328,
+      2332
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/crucible-of-storms-small.jpg"
+  },
+  {
+    "id": 1182,
+    "name": "The Necrotic Wake",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1182,
+    "encounterIds": [
+      2395,
+      2391,
+      2392,
+      2396
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-necrotic-wake-small.jpg"
+  },
+  {
+    "id": 1183,
+    "name": "Plaguefall",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1183,
+    "encounterIds": [
+      2419,
+      2403,
+      2423,
+      2404
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/plaguefall-small.jpg"
+  },
+  {
+    "id": 1184,
+    "name": "Mists of Tirna Scithe",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1184,
+    "encounterIds": [
+      2400,
+      2402,
+      2405
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/mists-of-tirna-scithe-small.jpg"
+  },
+  {
+    "id": 1185,
+    "name": "Halls of Atonement",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1185,
+    "encounterIds": [
+      2406,
+      2387,
+      2411,
+      2413
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/halls-of-atonement-small.jpg"
+  },
+  {
+    "id": 1186,
+    "name": "Spires of Ascension",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1186,
+    "encounterIds": [
+      2399,
+      2416,
+      2414,
+      2412
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/spires-of-ascension-small.jpg"
+  },
+  {
+    "id": 1187,
+    "name": "Theater of Pain",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1187,
+    "encounterIds": [
+      2397,
+      2401,
+      2390,
+      2389,
+      2417
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/theater-of-pain-small.jpg"
+  },
+  {
+    "id": 1188,
+    "name": "De Other Side",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1188,
+    "encounterIds": [
+      2408,
+      2409,
+      2398,
+      2410
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/de-other-side-small.jpg"
+  },
+  {
+    "id": 1189,
+    "name": "Sanguine Depths",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1189,
+    "encounterIds": [
+      2388,
+      2415,
+      2421,
+      2407
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/sanguine-depths-small.jpg"
+  },
+  {
+    "id": 1190,
+    "name": "Castle Nathria",
+    "type": "raid",
+    "expansionId": 499,
+    "journalInstanceId": 1190,
+    "encounterIds": [
+      2393,
+      2429,
+      2422,
+      2418,
+      2428,
+      2420,
+      2426,
+      2394,
+      2425,
+      2424
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/castle-nathria-small.jpg"
+  },
+  {
+    "id": 1193,
+    "name": "Sanctum of Domination",
+    "type": "raid",
+    "expansionId": 499,
+    "journalInstanceId": 1193,
+    "encounterIds": [
+      2435,
+      2442,
+      2439,
+      2444,
+      2445,
+      2443,
+      2446,
+      2447,
+      2440,
+      2441
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/sanctum-of-domination-small.jpg"
+  },
+  {
+    "id": 1194,
+    "name": "Tazavesh, the Veiled Market",
+    "type": "dungeon",
+    "expansionId": 499,
+    "journalInstanceId": 1194,
+    "encounterIds": [
+      2437,
+      2454,
+      2436,
+      2452,
+      2451,
+      2448,
+      2449,
+      2455
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/tazavesh-the-veiled-market-small.jpg"
+  },
+  {
+    "id": 1195,
+    "name": "Sepulcher of the First Ones",
+    "type": "raid",
+    "expansionId": 499,
+    "journalInstanceId": 1195,
+    "encounterIds": [
+      2458,
+      2465,
+      2470,
+      2459,
+      2460,
+      2461,
+      2463,
+      2469,
+      2457,
+      2467,
+      2464
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/sepulcher-of-the-first-ones-small.jpg"
+  },
+  {
+    "id": 1200,
+    "name": "Vault of the Incarnates",
+    "type": "raid",
+    "expansionId": 503,
+    "journalInstanceId": 1200,
+    "encounterIds": [
+      2480,
+      2500,
+      2486,
+      2482,
+      2502,
+      2491,
+      2493,
+      2499
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/vault-of-the-incarnates-small.jpg"
+  },
+  {
+    "id": 1201,
+    "name": "Algeth'ar Academy",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1201,
+    "encounterIds": [
+      2509,
+      2512,
+      2495,
+      2514
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/algethar-academy-small.jpg"
+  },
+  {
+    "id": 1202,
+    "name": "Ruby Life Pools",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1202,
+    "encounterIds": [
+      2488,
+      2485,
+      2503
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/ruby-life-pools-small.jpg"
+  },
+  {
+    "id": 1203,
+    "name": "The Azure Vault",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1203,
+    "encounterIds": [
+      2492,
+      2505,
+      2483,
+      2508
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-azure-vault-small.jpg"
+  },
+  {
+    "id": 1205,
+    "name": "Dragon Isles",
+    "type": "raid",
+    "expansionId": 503,
+    "journalInstanceId": 1205,
+    "encounterIds": [
+      2515,
+      2506,
+      2517,
+      2518,
+      2531,
+      2562
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/dragon-isles-small.jpg"
+  },
+  {
+    "id": 1199,
+    "name": "Neltharus",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1199,
+    "encounterIds": [
+      2490,
+      2489,
+      2494,
+      2501
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/neltharus-small.jpg"
+  },
+  {
+    "id": 1197,
+    "name": "Uldaman: Legacy of Tyr",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1197,
+    "encounterIds": [
+      2475,
+      2487,
+      2484,
+      2476,
+      2479
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/uldaman-legacy-of-tyr-small.jpg"
+  },
+  {
+    "id": 1198,
+    "name": "The Nokhud Offensive",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1198,
+    "encounterIds": [
+      2498,
+      2497,
+      2478,
+      2477
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-nokhud-offensive-small.jpg"
+  },
+  {
+    "id": 1207,
+    "name": "Amirdrassil, the Dream's Hope",
+    "type": "raid",
+    "expansionId": 503,
+    "journalInstanceId": 1207,
+    "encounterIds": [
+      2564,
+      2554,
+      2557,
+      2555,
+      2553,
+      2556,
+      2563,
+      2565,
+      2519
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/amirdrassil-the-dreams-hope-small.jpg"
+  },
+  {
+    "id": 1204,
+    "name": "Halls of Infusion",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1204,
+    "encounterIds": [
+      2504,
+      2507,
+      2510,
+      2511
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/halls-of-infusion-small.jpg"
+  },
+  {
+    "id": 1196,
+    "name": "Brackenhide Hollow",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1196,
+    "encounterIds": [
+      2471,
+      2473,
+      2472,
+      2474
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/brackenhide-hollow-small.jpg"
+  },
+  {
+    "id": 1208,
+    "name": "Aberrus, the Shadowed Crucible",
+    "type": "raid",
+    "expansionId": 503,
+    "journalInstanceId": 1208,
+    "encounterIds": [
+      2522,
+      2529,
+      2530,
+      2524,
+      2525,
+      2532,
+      2527,
+      2523,
+      2520
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/aberrus-the-shadowed-crucible-small.jpg"
+  },
+  {
+    "id": 1299,
+    "name": "Windrunner Spire",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1299,
+    "encounterIds": [
+      2655,
+      2656,
+      2657,
+      2658
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/windrunner-spire-small.jpg"
+  },
+  {
+    "id": 1209,
+    "name": "Dawn of the Infinite",
+    "type": "dungeon",
+    "expansionId": 503,
+    "journalInstanceId": 1209,
+    "encounterIds": [
+      2521,
+      2528,
+      2535,
+      2537,
+      2526,
+      2536,
+      2533,
+      2534,
+      2538
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/dawn-of-the-infinite-small.jpg"
+  },
+  {
+    "id": 1269,
+    "name": "The Stonevault",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1269,
+    "encounterIds": [
+      2572,
+      2590,
+      2579,
+      2582
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-stonevault-small.jpg"
+  },
+  {
+    "id": 1274,
+    "name": "City of Threads",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1274,
+    "encounterIds": [
+      2594,
+      2595,
+      2600,
+      2596
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/city-of-threads-small.jpg"
+  },
+  {
+    "id": 1314,
+    "name": "The Dreamrift",
+    "type": "raid",
+    "expansionId": 516,
+    "journalInstanceId": 1314,
+    "encounterIds": [
+      2795
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-dreamrift-small.jpg"
+  },
+  {
+    "id": 1303,
+    "name": "Eco-Dome Al'dani",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1303,
+    "encounterIds": [
+      2675,
+      2676,
+      2677
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/eco-dome-aldani-small.jpg"
+  },
+  {
+    "id": 1307,
+    "name": "The Voidspire",
+    "type": "raid",
+    "expansionId": 516,
+    "journalInstanceId": 1307,
+    "encounterIds": [
+      2733,
+      2734,
+      2736,
+      2735,
+      2737,
+      2738
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-voidspire-small.jpg"
+  },
+  {
+    "id": 1308,
+    "name": "March on Quel'Danas",
+    "type": "raid",
+    "expansionId": 516,
+    "journalInstanceId": 1308,
+    "encounterIds": [
+      2739,
+      2740
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/march-on-queldanas-small.jpg"
+  },
+  {
+    "id": 1298,
+    "name": "Operation: Floodgate",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1298,
+    "encounterIds": [
+      2648,
+      2649,
+      2650,
+      2651
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/operation-floodgate-small.jpg"
+  },
+  {
+    "id": 1273,
+    "name": "Nerub-ar Palace",
+    "type": "raid",
+    "expansionId": 514,
+    "journalInstanceId": 1273,
+    "encounterIds": [
+      2607,
+      2611,
+      2599,
+      2609,
+      2612,
+      2601,
+      2608,
+      2602
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/nerub-ar-palace-small.jpg"
+  },
+  {
+    "id": 1302,
+    "name": "Manaforge Omega",
+    "type": "raid",
+    "expansionId": 514,
+    "journalInstanceId": 1302,
+    "encounterIds": [
+      2684,
+      2686,
+      2685,
+      2687,
+      2688,
+      2747,
+      2690,
+      2691
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/manaforge-omega-small.jpg"
+  },
+  {
+    "id": 1311,
+    "name": "Den of Nalorakk",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1311,
+    "encounterIds": [
+      2776,
+      2777,
+      2778
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/den-of-nalorakk-small.jpg"
+  },
+  {
+    "id": 1271,
+    "name": "Ara-Kara, City of Echoes",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1271,
+    "encounterIds": [
+      2583,
+      2584,
+      2585
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/ara-kara-city-of-echoes-small.jpg"
+  },
+  {
+    "id": 1292,
+    "name": "Stratholme - Service Entrance",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 1292,
+    "encounterIds": [
+      451,
+      452,
+      453,
+      454,
+      455,
+      456
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/stratholme---service-entrance-small.jpg"
+  },
+  {
+    "id": 1270,
+    "name": "The Dawnbreaker",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1270,
+    "encounterIds": [
+      2580,
+      2581,
+      2593
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-dawnbreaker-small.jpg"
+  },
+  {
+    "id": 1272,
+    "name": "Cinderbrew Meadery",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1272,
+    "encounterIds": [
+      2588,
+      2586,
+      2589,
+      2587
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/cinderbrew-meadery-small.jpg"
+  },
+  {
+    "id": 1276,
+    "name": "Dire Maul - Warpwood Quarter",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 1276,
+    "encounterIds": [
+      404,
+      403,
+      402,
+      405
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/dire-maul---warpwood-quarter-small.jpg"
+  },
+  {
+    "id": 1277,
+    "name": "Dire Maul - Gordok Commons",
+    "type": "dungeon",
+    "expansionId": 68,
+    "journalInstanceId": 1277,
+    "encounterIds": [
+      411,
+      412,
+      413,
+      414,
+      415,
+      416,
+      417
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/dire-maul---gordok-commons-small.jpg"
+  },
+  {
+    "id": 1300,
+    "name": "Magisters' Terrace",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1300,
+    "encounterIds": [
+      2659,
+      2661,
+      2660,
+      2662
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/magisters-terrace-small.jpg"
+  },
+  {
+    "id": 1301,
+    "name": "Blackrock Depths",
+    "type": "raid",
+    "expansionId": 68,
+    "journalInstanceId": 1301,
+    "encounterIds": [
+      2663,
+      2664,
+      2665,
+      2666,
+      2667,
+      2668,
+      2669,
+      2670
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/blackrock-depths-small.jpg"
+  },
+  {
+    "id": 1278,
+    "name": "Khaz Algar",
+    "type": "raid",
+    "expansionId": 514,
+    "journalInstanceId": 1278,
+    "encounterIds": [
+      2762,
+      2637,
+      2635,
+      2636,
+      2625,
+      2683
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/khaz-algar-small.jpg"
+  },
+  {
+    "id": 1313,
+    "name": "Voidscar Arena",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1313,
+    "encounterIds": [
+      2791,
+      2792,
+      2793
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/voidscar-arena-small.jpg"
+  },
+  {
+    "id": 1296,
+    "name": "Liberation of Undermine",
+    "type": "raid",
+    "expansionId": 514,
+    "journalInstanceId": 1296,
+    "encounterIds": [
+      2639,
+      2640,
+      2641,
+      2642,
+      2653,
+      2644,
+      2645,
+      2646
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/liberation-of-undermine-small.jpg"
+  },
+  {
+    "id": 1268,
+    "name": "The Rookery",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1268,
+    "encounterIds": [
+      2566,
+      2567,
+      2568
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-rookery-small.jpg"
+  },
+  {
+    "id": 1210,
+    "name": "Darkflame Cleft",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1210,
+    "encounterIds": [
+      2569,
+      2559,
+      2560,
+      2561
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/darkflame-cleft-small.jpg"
+  },
+  {
+    "id": 1312,
+    "name": "Midnight",
+    "type": "raid",
+    "expansionId": 516,
+    "journalInstanceId": 1312,
+    "encounterIds": [
+      2827,
+      2829,
+      2828,
+      2782
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/midnight-small.jpg"
+  },
+  {
+    "id": 1309,
+    "name": "The Blinding Vale",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1309,
+    "encounterIds": [
+      2769,
+      2770,
+      2771,
+      2772
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-blinding-vale-small.jpg"
+  },
+  {
+    "id": 1267,
+    "name": "Priory of the Sacred Flame",
+    "type": "dungeon",
+    "expansionId": 514,
+    "journalInstanceId": 1267,
+    "encounterIds": [
+      2571,
+      2570,
+      2573
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/priory-of-the-sacred-flame-small.jpg"
+  },
+  {
+    "id": 1304,
+    "name": "Murder Row",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1304,
+    "encounterIds": [
+      2679,
+      2680,
+      2681,
+      2682
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/murder-row-small.jpg"
+  },
+  {
+    "id": 1305,
+    "name": "Sporefall",
+    "type": "raid",
+    "expansionId": 516,
+    "journalInstanceId": 1305,
+    "encounterIds": [
+      2711
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/sporefall-small.jpg"
+  },
+  {
+    "id": 1316,
+    "name": "Nexus-Point Xenas",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1316,
+    "encounterIds": [
+      2813,
+      2814,
+      2815
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/nexus-point-xenas-small.jpg"
+  },
+  {
+    "id": 1319,
+    "name": "Keystone Dungeons",
+    "type": "dungeon",
+    "expansionId": 0,
+    "journalInstanceId": 1319,
+    "encounterIds": [
+      2870,
+      2869
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/keystone-dungeons-small.jpg"
+  },
+  {
+    "id": 1315,
+    "name": "Maisara Caverns",
+    "type": "dungeon",
+    "expansionId": 516,
+    "journalInstanceId": 1315,
+    "encounterIds": [
+      2810,
+      2811,
+      2812
+    ],
+    "imageUrl": "https://render.worldofwarcraft.com/us/zones/maisara-caverns-small.jpg"
+  }
+]

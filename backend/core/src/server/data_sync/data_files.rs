@@ -52,7 +52,9 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
     let files: Vec<DataFileState> = catalog
         .iter()
         .map(|entry| {
-            let path = if entry.entry_type == DataFileEntryType::Directory {
+            let path = if entry.entry_type == DataFileEntryType::Directory
+                || (entry.source == DataFileSource::Local && entry.bundled_path.is_some())
+            {
                 resolve_runtime_path(&root, entry)
             } else {
                 resolve_data_file_read_path(&root, entry)
@@ -180,6 +182,9 @@ mod tests {
     async fn data_file_states_report_existing_files_with_size_and_flags() {
         let temp = tempfile::tempdir().expect("temp dir");
         std::fs::write(temp.path().join("metadata.json"), "{}").expect("write metadata");
+        let wow_dir = temp.path().join("wow");
+        std::fs::create_dir_all(&wow_dir).expect("create wow dir");
+        std::fs::write(wow_dir.join("wow-instances.json"), "[]").expect("write wow instances");
 
         let resp = get_data_file_states(web::Data::new(Some(temp.path().to_path_buf()))).await;
         assert_eq!(resp.status(), 200);
@@ -201,6 +206,20 @@ mod tests {
         assert!(metadata["resolved_path"]
             .as_str()
             .is_some_and(|path| path.ends_with("metadata.json")));
+
+        let wow_instances = payload["files"]
+            .as_array()
+            .expect("files array")
+            .iter()
+            .find(|file| file.get("key").and_then(Value::as_str) == Some("wow_instances"))
+            .expect("wow instances state");
+        assert_eq!(wow_instances["section"].as_str(), Some("WoW Content"));
+        assert_eq!(wow_instances["downloadable"].as_bool(), Some(true));
+        assert_eq!(wow_instances["exists"].as_bool(), Some(true));
+        assert!(wow_instances["resolved_path"]
+            .as_str()
+            .is_some_and(|path| path.ends_with("wow\\wow-instances.json")
+                || path.ends_with("wow/wow-instances.json")));
     }
 
     #[actix_web::test]

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import {
   API_URL,
@@ -23,7 +24,7 @@ import {
   AffixCard,
   DisplayAffix,
   DungeonCard,
-  getCurrentMplusDungeonIds,
+  dungeonUiKey,
   getLocalInstanceImageUrl,
   getRaidInstances,
   mergeWithInstancesFallback,
@@ -34,6 +35,67 @@ import {
   WowheadZonesIndexSummary,
 } from './shared';
 import type { Instance } from '../drop-finder/types';
+import {
+  filterCurrentSeasonDungeons,
+  listDungeonExpansionOptions,
+  listDungeonSeasonOptions,
+  seasonContentDungeonsToDungeonInfo,
+  selectSeasonSlugForExpansion,
+} from './dungeon-rotation';
+import {
+  getRuntimeWowSeasonContent,
+  getStaticWowSeasonContent,
+  selectDefaultWowSeasonSlug,
+  wowExpansions,
+  type WowExpansion,
+  type WowSeasonContent,
+} from '../lib/wow-season-content';
+
+const staticSeasonContent = getStaticWowSeasonContent().content;
+const defaultSeasonSlug =
+  selectDefaultWowSeasonSlug(staticSeasonContent.map((content) => content.season)) ??
+  staticSeasonContent[0]?.season.slug ??
+  '';
+
+function parseExpansionParam(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function selectedSeasonData(
+  seasonContent: WowSeasonContent[],
+  seasonSlug: string | undefined,
+  liveData: DungeonSeasonData,
+  liveDungeons: DungeonInfo[],
+  includeLiveAffixes: boolean,
+  previousDungeons?: DungeonInfo[],
+): DungeonSeasonData {
+  const content =
+    seasonContent.find((entry) => entry.season.slug === seasonSlug) ?? seasonContent[0];
+  if (!content) {
+    return {
+      ...liveData,
+      current_affixes: includeLiveAffixes ? liveData.current_affixes : [],
+      rotation_dungeons: includeLiveAffixes
+        ? mergeWithPreviousDungeonData(liveDungeons, previousDungeons)
+        : [],
+    };
+  }
+
+  const staticDungeons = seasonContentDungeonsToDungeonInfo(content);
+  const dungeons =
+    includeLiveAffixes && liveDungeons.length > 0
+      ? mergeWithPreviousDungeonData(staticDungeons, liveDungeons)
+      : staticDungeons;
+
+  return {
+    ...liveData,
+    season_name: content.season.name,
+    current_affixes: includeLiveAffixes ? liveData.current_affixes : [],
+    rotation_dungeons: dungeons,
+  };
+}
 
 function mergeWithPreviousDungeonData(
   nextDungeons: DungeonInfo[],
@@ -89,18 +151,106 @@ function mergeWithPreviousDungeonData(
   });
 }
 
+function DungeonsPageSkeleton() {
+  return (
+    <div className="space-y-6" aria-label="Loading dungeon data">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="h-10 w-80 max-w-full animate-pulse rounded bg-white/10" />
+          <div className="mt-3 h-5 w-48 animate-pulse rounded bg-white/10" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="h-10 w-48 animate-pulse rounded-lg bg-white/10" />
+          <div className="h-10 w-56 animate-pulse rounded-lg bg-white/10" />
+          <div className="h-10 w-32 animate-pulse rounded-lg bg-white/10" />
+        </div>
+      </div>
+
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {[1, 2, 3].map((idx) => (
+          <div key={`summary-skeleton-${idx}`} className="rounded-xl border border-white/15 bg-zinc-900/70 p-4">
+            <div className="h-3 w-20 animate-pulse rounded bg-white/10" />
+            <div className="mt-4 h-8 w-32 animate-pulse rounded bg-white/10" />
+            <div className="mt-3 h-4 w-28 animate-pulse rounded bg-white/10" />
+          </div>
+        ))}
+      </section>
+
+      <section className="space-y-3">
+        <div className="h-5 w-52 animate-pulse rounded bg-white/10" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((idx) => (
+            <div key={`dungeon-card-skeleton-${idx}`} className="rounded-xl border border-white/15 bg-zinc-900/80 p-4">
+              <div className="mb-3 h-28 w-full animate-pulse rounded-lg bg-white/10" />
+              <div className="h-7 w-2/3 animate-pulse rounded bg-white/10" />
+              <div className="mt-3 flex gap-1.5">
+                <div className="h-5 w-16 animate-pulse rounded bg-white/10" />
+                <div className="h-5 w-16 animate-pulse rounded bg-white/10" />
+                <div className="h-5 w-16 animate-pulse rounded bg-white/10" />
+              </div>
+              <div className="mt-5 h-3 w-24 animate-pulse rounded bg-white/10" />
+              <div className="mt-3 space-y-2">
+                <div className="h-4 w-36 animate-pulse rounded bg-white/10" />
+                <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
+                <div className="h-4 w-40 animate-pulse rounded bg-white/10" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function DungeonsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const defaultSeasonContent = staticSeasonContent.find(
+    (content) => content.season.slug === defaultSeasonSlug,
+  );
+  const initialSeasonSlug = searchParams.get('season') || defaultSeasonSlug;
+  const initialSeasonContent =
+    staticSeasonContent.find((content) => content.season.slug === initialSeasonSlug) ??
+    defaultSeasonContent;
+  const initialExpansionId = parseExpansionParam(searchParams.get('expansion'));
+  const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(
+    initialExpansionId ?? initialSeasonContent?.season.expansionId ?? null,
+  );
+  const [selectedSeasonSlug, setSelectedSeasonSlug] = useState(
+    initialSeasonContent?.season.slug ?? defaultSeasonSlug,
+  );
   const [data, setData] = useState<DungeonSeasonData | null>(null);
   const [mplusDetailsByName, setMplusDetailsByName] = useState<Record<string, MythicKeystoneDungeonDetail>>({});
+  const [mplusDetailsLoaded, setMplusDetailsLoaded] = useState(false);
   const [gameState, setGameState] = useState<GameDataState | null>(null);
+  const [seasonContent, setSeasonContent] = useState<WowSeasonContent[]>(staticSeasonContent);
+  const [expansions, setExpansions] = useState<WowExpansion[]>(wowExpansions);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const currentDefaultSeasonSlug =
+    selectDefaultWowSeasonSlug(seasonContent.map((content) => content.season)) ??
+    seasonContent[0]?.season.slug ??
+    defaultSeasonSlug;
+  const isSelectedCurrentSeason = selectedSeasonSlug === currentDefaultSeasonSlug;
+  const expansionOptions = listDungeonExpansionOptions(seasonContent, expansions);
+  const seasonOptions = listDungeonSeasonOptions(seasonContent, selectedExpansionId);
+  const updateFilterQuery = (expansionId: number | null, seasonSlug: string) => {
+    const next = new URLSearchParams(searchParams.toString());
+    if (expansionId == null) {
+      next.delete('expansion');
+    } else {
+      next.set('expansion', String(expansionId));
+    }
+    next.set('season', seasonSlug);
+    router.replace(`/dungeons?${next.toString()}`, { scroll: false });
+  };
   const hasDungeons = (data?.rotation_dungeons?.length ?? 0) > 0;
   const backendError = (data as (DungeonSeasonData & { error?: string }) | null)?.error;
   const hasAnyBlizzardDetails =
     data?.rotation_dungeons?.some((d) => d.blizzard_href || d.blizzard_api_data) ?? false;
   const displayedAffixes: DisplayAffix[] = (() => {
+    if (!isSelectedCurrentSeason) return [];
     const backendAffixes = data?.current_affixes ?? [];
     if (!gameState?.active_affixes?.length) {
       return backendAffixes;
@@ -126,6 +276,54 @@ export default function DungeonsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    getRuntimeWowSeasonContent().then((runtimeWow) => {
+      if (cancelled) return;
+      setSeasonContent(runtimeWow.result.content);
+      setExpansions(runtimeWow.expansions);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const seasonSlug = searchParams.get('season') || currentDefaultSeasonSlug;
+    const content =
+      seasonContent.find((entry) => entry.season.slug === seasonSlug) ??
+      seasonContent.find((entry) => entry.season.slug === currentDefaultSeasonSlug);
+    const expansionId = parseExpansionParam(searchParams.get('expansion')) ??
+      content?.season.expansionId ??
+      null;
+    setSelectedExpansionId(expansionId);
+    setSelectedSeasonSlug(content?.season.slug ?? currentDefaultSeasonSlug);
+  }, [currentDefaultSeasonSlug, searchParams, seasonContent]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isSelectedCurrentSeason) {
+      setGameState(null);
+      setMplusDetailsByName({});
+      setError(null);
+      setData(
+        selectedSeasonData(
+          seasonContent,
+          selectedSeasonSlug,
+          {
+            season_id: 0,
+            season_name: '',
+            current_affixes: [],
+            rotation_dungeons: [],
+          },
+          [],
+          false,
+        ),
+      );
+      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const loadDungeonData = async (preferCache: boolean) => {
       setLoading(true);
@@ -235,7 +433,6 @@ export default function DungeonsPage() {
           (a, b) => a.name.localeCompare(b.name),
         );
         const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
-        const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
         const mergedWithFallback = mergeWithInstancesFallback(
           seasonData.rotation_dungeons,
           fallbackInstances,
@@ -252,22 +449,24 @@ export default function DungeonsPage() {
             image_url: normalizeImageUrl(localInstanceImage || dungeon.image_url),
           };
         });
-        const filteredDungeons =
-          currentMplusIds.size > 0
-            ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
-            : activeRotationIds.size > 0
-            ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
-            : enrichedDungeons;
+        const filteredDungeons = filterCurrentSeasonDungeons(
+          enrichedDungeons,
+          fallbackInstances,
+          activeRotationIds,
+        );
 
         if (!cancelled) {
           setGameState(gameDataState);
-          setData((previous) => ({
-            ...seasonData,
-            rotation_dungeons: mergeWithPreviousDungeonData(
+          setData((previous) =>
+            selectedSeasonData(
+              seasonContent,
+              selectedSeasonSlug,
+              seasonData,
               filteredDungeons,
+              isSelectedCurrentSeason,
               previous?.rotation_dungeons,
             ),
-          }));
+          );
         }
       } catch (err) {
         if (!cancelled) {
@@ -286,15 +485,17 @@ export default function DungeonsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isSelectedCurrentSeason, seasonContent, selectedSeasonSlug]);
 
   useEffect(() => {
     let cancelled = false;
     const loadMplusDetails = async () => {
       if (!data?.rotation_dungeons?.length) {
         setMplusDetailsByName({});
+        setMplusDetailsLoaded(true);
         return;
       }
+      setMplusDetailsLoaded(false);
       try {
         const index = await getMythicKeystoneDungeonIndex('us');
         const indexByName = new Map<number | string, number>();
@@ -326,8 +527,12 @@ export default function DungeonsPage() {
           if (key) byName[key] = detail;
         }
         setMplusDetailsByName(byName);
+        setMplusDetailsLoaded(true);
       } catch {
-        if (!cancelled) setMplusDetailsByName({});
+        if (!cancelled) {
+          setMplusDetailsByName({});
+          setMplusDetailsLoaded(true);
+        }
       }
     };
     loadMplusDetails();
@@ -451,7 +656,6 @@ export default function DungeonsPage() {
         (a, b) => a.name.localeCompare(b.name),
       );
       const activeRotationIds = new Set<number>(gameDataState?.mplus_rotation ?? []);
-      const currentMplusIds = getCurrentMplusDungeonIds(fallbackInstances);
       const mergedWithFallback = mergeWithInstancesFallback(
         seasonData.rotation_dungeons,
         fallbackInstances,
@@ -465,21 +669,23 @@ export default function DungeonsPage() {
           image_url: normalizeImageUrl(localInstanceImage || dungeon.image_url),
         };
       });
-      const filteredDungeons =
-        currentMplusIds.size > 0
-          ? enrichedDungeons.filter((dungeon) => currentMplusIds.has(dungeon.id))
-          : activeRotationIds.size > 0
-          ? enrichedDungeons.filter((dungeon) => activeRotationIds.has(dungeon.id))
-          : enrichedDungeons;
+      const filteredDungeons = filterCurrentSeasonDungeons(
+        enrichedDungeons,
+        fallbackInstances,
+        activeRotationIds,
+      );
 
       setGameState(gameDataState);
-      setData((previous) => ({
-        ...seasonData,
-        rotation_dungeons: mergeWithPreviousDungeonData(
+      setData((previous) =>
+        selectedSeasonData(
+          seasonContent,
+          selectedSeasonSlug,
+          seasonData,
           filteredDungeons,
+          isSelectedCurrentSeason,
           previous?.rotation_dungeons,
         ),
-      }));
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh dungeon data.');
     } finally {
@@ -488,12 +694,7 @@ export default function DungeonsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-96 flex-col items-center justify-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-800 border-t-gold" />
-        <p className="text-sm font-medium text-zinc-500">Loading dungeon data...</p>
-      </div>
-    );
+    return <DungeonsPageSkeleton />;
   }
 
   if (error && !data) {
@@ -526,14 +727,59 @@ export default function DungeonsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void handleRefresh()}
-            disabled={refreshing}
-            className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-gold/60 hover:text-gold disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {refreshing ? 'Refreshing...' : 'Refresh Dungeons'}
-          </button>
+          <label className="flex items-center gap-2 text-sm font-medium text-zinc-300">
+            <span>Expansion</span>
+            <select
+              value={selectedExpansionId ?? ''}
+              onChange={(event) => {
+                const next = Number(event.target.value);
+                const expansionId = Number.isFinite(next) ? next : null;
+                const seasonSlug = selectSeasonSlugForExpansion(
+                  seasonContent,
+                  expansionId,
+                  currentDefaultSeasonSlug,
+                );
+                setSelectedExpansionId(expansionId);
+                setSelectedSeasonSlug(seasonSlug);
+                updateFilterQuery(expansionId, seasonSlug);
+              }}
+              className="rounded-lg border border-white/15 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 outline-none transition-colors hover:border-gold/60 focus:border-gold"
+            >
+              {expansionOptions.map((expansion) => (
+                <option key={expansion.id} value={expansion.id}>
+                  {expansion.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-zinc-300">
+            <span>Season</span>
+            <select
+              value={selectedSeasonSlug}
+              onChange={(event) => {
+                const seasonSlug = event.target.value;
+                setSelectedSeasonSlug(seasonSlug);
+                updateFilterQuery(selectedExpansionId, seasonSlug);
+              }}
+              className="rounded-lg border border-white/15 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 outline-none transition-colors hover:border-gold/60 focus:border-gold"
+            >
+              {seasonOptions.map((content) => (
+                <option key={content.season.slug} value={content.season.slug}>
+                  {content.season.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {isSelectedCurrentSeason && (
+            <button
+              type="button"
+              onClick={() => void handleRefresh()}
+              disabled={refreshing}
+              className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-gold/60 hover:text-gold disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh Dungeons'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -546,12 +792,18 @@ export default function DungeonsPage() {
           <div className="rounded-xl border border-white/15 bg-zinc-900/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Dungeons</p>
             <p className="mt-2 text-2xl font-extrabold text-white">{data.rotation_dungeons.length}</p>
-            <p className="text-sm font-medium text-zinc-300">Currently in rotation</p>
+            <p className="text-sm font-medium text-zinc-300">
+              {isSelectedCurrentSeason ? 'Currently in rotation' : 'Season rotation'}
+            </p>
           </div>
           <div className="rounded-xl border border-white/15 bg-zinc-900/70 p-4">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Affixes</p>
-            <p className="mt-2 text-2xl font-extrabold text-white">{data.current_affixes.length}</p>
-            <p className="text-sm font-medium text-zinc-300">Active this week</p>
+            <p className="mt-2 text-2xl font-extrabold text-white">
+              {isSelectedCurrentSeason ? data.current_affixes.length : 'N/A'}
+            </p>
+            <p className="text-sm font-medium text-zinc-300">
+              {isSelectedCurrentSeason ? 'Active this week' : 'Current season only'}
+            </p>
           </div>
         </section>
       )}
@@ -584,9 +836,13 @@ export default function DungeonsPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.rotation_dungeons.map((dungeon) => (
               <DungeonCard
-                key={dungeon.id}
+                key={dungeonUiKey(dungeon)}
                 dungeon={dungeon}
-                mplusDetail={mplusDetailsByName[normalizeMplusName(dungeon.name)] || null}
+                mplusDetail={
+                  mplusDetailsLoaded
+                    ? mplusDetailsByName[normalizeMplusName(dungeon.name)] || null
+                    : undefined
+                }
                 detailsBasePath="/dungeons/details"
               />
             ))}

@@ -1284,7 +1284,11 @@ pub async fn download_missing_data_files(
             && ((e.source == DataFileSource::Raidbots && e.remote_path.is_some())
                 || (e.source == DataFileSource::Local && e.bundled_path.is_some()))
     }) {
-        let path = resolve_data_file_read_path(&root, entry);
+        let path = if entry.source == DataFileSource::Local && entry.bundled_path.is_some() {
+            catalog::resolve_runtime_path(&root, entry)
+        } else {
+            resolve_data_file_read_path(&root, entry)
+        };
         if path.exists() {
             continue;
         }

@@ -196,10 +196,12 @@ function EncounterAvatar({
     (url): url is string => !!url,
   );
   const [sourceIndex, setSourceIndex] = useState(0);
-  const src = sources[sourceIndex] || null;
+  const [failedAllSources, setFailedAllSources] = useState(false);
+  const src = failedAllSources ? null : sources[sourceIndex] || null;
 
   useEffect(() => {
     setSourceIndex(0);
+    setFailedAllSources(false);
   }, [preferredSource, preferredAbilityIcon, proxyImage]);
 
   if (!src) {
@@ -218,9 +220,64 @@ function EncounterAvatar({
       onError={() => {
         if (sourceIndex < sources.length - 1) {
           setSourceIndex((idx) => idx + 1);
+        } else {
+          setFailedAllSources(true);
         }
       }}
     />
+  );
+}
+
+function wowheadSearchUrl(name: string): string {
+  return `https://www.wowhead.com/search?q=${encodeURIComponent(name)}`;
+}
+
+function DungeonDetailSkeleton() {
+  return (
+    <div className="space-y-6" aria-label="Loading details">
+      <div className="flex items-center gap-4">
+        <div className="h-20 w-20 animate-pulse rounded-xl bg-white/10" />
+        <div className="min-w-0 flex-1">
+          <div className="h-9 w-80 max-w-full animate-pulse rounded bg-white/10" />
+          <div className="mt-2 h-5 w-28 animate-pulse rounded bg-white/10" />
+          <div className="mt-3 h-8 w-36 animate-pulse rounded-md bg-white/10" />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="flex flex-wrap gap-2">
+          <div className="h-8 w-24 animate-pulse rounded bg-white/10" />
+          <div className="h-8 w-28 animate-pulse rounded bg-white/10" />
+        </div>
+        <div className="mt-4 h-3 w-44 animate-pulse rounded bg-white/10" />
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="h-5 w-16 animate-pulse rounded bg-white/10" />
+          <div className="h-5 w-16 animate-pulse rounded bg-white/10" />
+          <div className="h-5 w-16 animate-pulse rounded bg-white/10" />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="h-7 w-32 animate-pulse rounded bg-white/10" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((idx) => (
+            <div key={`detail-encounter-skeleton-${idx}`} className="rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 animate-pulse rounded bg-white/10" />
+                <div className="min-w-0 flex-1">
+                  <div className="h-5 w-36 animate-pulse rounded bg-white/10" />
+                  <div className="mt-2 h-7 w-32 animate-pulse rounded-md bg-white/10" />
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                <div className="h-3 w-full animate-pulse rounded bg-white/10" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-white/10" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -261,13 +318,16 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
           kind === 'raid'
             ? getRaidInstances(instances).map((instance) => ({ id: instance.id }))
             : seasonData.rotation_dungeons;
-        const found = (pool as Array<{ id: number }>).find((d) => d.id === dungeonId) as DungeonInfo | undefined;
+        const found = (pool as Array<Partial<DungeonInfo> & { id: number }>).find(
+          (d) => d.id === dungeonId,
+        );
+        const foundDetails = found?.name ? (found as DungeonInfo) : undefined;
         const inst = instances.find((i) => i.id === dungeonId) || null;
         if (inst) setInstanceDetails(inst);
 
-        const lookupName = found?.name || inst?.name || '';
+        const lookupName = foundDetails?.name || inst?.name || '';
         const matchedResp = await fetchJsonCached<WowheadZoneMatchResponse>(
-          `${API_URL}/api/data/wowhead-zones-index/match?instance_id=${encodeURIComponent(String(dungeonId))}&wowhead_id=${encodeURIComponent(String(found?.wowhead_id ?? ''))}&name=${encodeURIComponent(lookupName)}&is_raid=${encodeURIComponent(String(kind === 'raid'))}`,
+          `${API_URL}/api/data/wowhead-zones-index/match?instance_id=${encodeURIComponent(String(dungeonId))}&wowhead_id=${encodeURIComponent(String(foundDetails?.wowhead_id ?? ''))}&name=${encodeURIComponent(lookupName)}&is_raid=${encodeURIComponent(String(kind === 'raid'))}`,
           { ttl: 60_000 },
         ).catch(() => ({ zone: null }));
         const matched = matchedResp?.zone || null;
@@ -275,7 +335,7 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
         setWowheadZonesIndex(matched ? [matched] : []);
 
         const resolvedDungeon: DungeonInfo =
-          found ??
+          foundDetails ??
           ({
             id: dungeonId,
             name: matched?.name || inst?.name || `Dungeon ${dungeonId}`,
@@ -294,7 +354,7 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
             keystone_upgrades: [],
             encounters: (matched?.encounters || []).map((e) => e.name),
             blizzard_href: null,
-            image_url: matched?.image_url || null,
+            image_url: matched?.image_url || inst?.image_url || null,
             linked_code: undefined,
             blizzard_api_data: null,
           } as DungeonInfo);
@@ -332,12 +392,7 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
   useWowheadTooltips([dungeon, instanceDetails]);
 
   if (loading) {
-    return (
-      <div className="flex h-96 flex-col items-center justify-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-800 border-t-gold" />
-        <p className="text-sm font-medium text-zinc-500">Loading dungeon...</p>
-      </div>
-    );
+    return <DungeonDetailSkeleton />;
   }
 
   if (error || !dungeon) {
@@ -413,6 +468,12 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
   const sectionEncounters = zoneEncounters.length > 0 ? zoneEncounters : fallbackEncounters;
   const encounterCount =
     sectionEncounters.length || instanceDetails?.encounters?.length || dungeon.num_bosses || 0;
+  const subtitle =
+    dungeon.zone ||
+    (wowheadZone?.name && wowheadZone.name !== dungeon.name ? wowheadZone.name : null) ||
+    (kind === 'raid' ? 'Raid' : 'Dungeon');
+  const zoneActionHref = wowheadZone?.url || wowheadSearchUrl(dungeon.name);
+  const zoneActionText = wowheadZone?.url ? 'Open on Wowhead' : 'Search on Wowhead';
 
   return (
     <div className="space-y-6">
@@ -426,20 +487,18 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
         )}
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-100">{dungeon.name}</h1>
-          <p className="text-zinc-400">{dungeon.zone || wowheadZone?.name || 'Unknown Zone'}</p>
+          <p className="text-zinc-400">{subtitle}</p>
           {typeof wowheadZone?.expansion === 'number' && (
             <p className="text-xs text-zinc-500">Expansion {wowheadZone.expansion}</p>
           )}
-          {wowheadZone?.url && (
-            <a
-              href={wowheadZone.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold"
-            >
-              Open on Wowhead
-            </a>
-          )}
+          <a
+            href={zoneActionHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold"
+          >
+            {zoneActionText}
+          </a>
         </div>
       </div>
 
@@ -506,16 +565,14 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
                     />
                     <div>
                       <p className="font-bold text-zinc-200">{decodeHtmlEntities(encounter.name)}</p>
-                      {encounter.url && (
-                        <a
-                          href={encounter.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-1 inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
-                        >
-                          View on Wowhead
-                        </a>
-                      )}
+                      <a
+                        href={encounter.url || wowheadSearchUrl(encounter.name)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
+                      >
+                        {encounter.url ? 'View on Wowhead' : 'Search on Wowhead'}
+                      </a>
                     </div>
                   </div>
                   {encounter.description && (

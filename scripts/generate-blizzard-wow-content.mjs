@@ -7,7 +7,6 @@ const REGION = process.env.BLIZZARD_REGION || 'us';
 const LOCALE = process.env.BLIZZARD_LOCALE || 'en_US';
 const CLIENT_ID = process.env.BLIZZARD_CLIENT_ID;
 const CLIENT_SECRET = process.env.BLIZZARD_CLIENT_SECRET;
-const OUTPUT_DIR = path.resolve('frontend/src/app/data/wow');
 const BACKEND_RESOURCE_OUTPUT_DIR = path.resolve('backend/resources/wow');
 const EXTRA_OUTPUT_DIR = process.env.WOW_CONTENT_OUTPUT_DIR
   ? path.resolve(process.env.WOW_CONTENT_OUTPUT_DIR)
@@ -170,7 +169,7 @@ async function main() {
     });
   }
 
-  const outputDirs = [OUTPUT_DIR, BACKEND_RESOURCE_OUTPUT_DIR];
+  const outputDirs = [BACKEND_RESOURCE_OUTPUT_DIR];
   if (EXTRA_OUTPUT_DIR) outputDirs.push(EXTRA_OUTPUT_DIR);
   for (const outputDir of outputDirs) {
     await fs.mkdir(outputDir, { recursive: true });

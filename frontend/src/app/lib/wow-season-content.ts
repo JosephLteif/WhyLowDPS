@@ -1,8 +1,8 @@
-import expansions from '../data/wow/wow-expansions.json';
-import instances from '../data/wow/wow-instances.json';
-import encounters from '../data/wow/wow-encounters.json';
-import seasons from '../data/wow/wow-seasons.json';
-import mythicPlusDungeons from '../data/wow/wow-mythic-plus-dungeons.json';
+import expansions from '../../../../backend/resources/wow/wow-expansions.json';
+import instances from '../../../../backend/resources/wow/wow-instances.json';
+import encounters from '../../../../backend/resources/wow/wow-encounters.json';
+import seasons from '../../../../backend/resources/wow/wow-seasons.json';
+import mythicPlusDungeons from '../../../../backend/resources/wow/wow-mythic-plus-dungeons.json';
 import { API_URL, fetchJsonCached } from './api';
 
 export type WowInstanceType = 'raid' | 'dungeon';
@@ -42,11 +42,20 @@ export interface WowSeason {
   slug: string;
   name: string;
   expansionId: number;
+  expansion?: WowExpansion;
   patch?: string;
   startDate?: string;
   endDate?: string;
+  mythicPlusStartDate?: string;
   raidInstanceIds: number[];
   mythicPlusDungeonIds: number[];
+  worldBossInstanceIds?: number[];
+  raidInstances?: WowInstance[];
+  mythicPlusDungeons?: WowInstance[];
+  worldBossInstances?: WowInstance[];
+  source?: Record<string, unknown>;
+  warnings?: string[];
+  counts?: Record<string, number>;
 }
 
 export interface WowSeasonContent {
@@ -99,7 +108,10 @@ function warnDuplicate<T, K extends string | number>(
 function withEncounters(instance: WowInstance, encountersById: Map<number, WowEncounter[]>) {
   return {
     ...instance,
-    encounters: encountersById.get(instance.id) ?? [],
+    encounters:
+      (instance.encounters && instance.encounters.length > 0
+        ? instance.encounters
+        : encountersById.get(instance.id)) ?? [],
   };
 }
 
@@ -143,23 +155,31 @@ export function buildWowSeasonContent(input: WowSeasonContentInput): WowSeasonCo
   }
 
   const content = input.seasons.map((season) => {
-    const raids = season.raidInstanceIds.flatMap((id) => {
-      const instance = instancesById.get(id);
-      if (!instance) {
-        warnings.push(`Season ${season.slug} references missing raid instance id ${id}`);
-        return [];
-      }
-      return [withEncounters(instance, encountersByInstanceId)];
-    });
+    const raids =
+      season.raidInstances && season.raidInstances.length > 0
+        ? season.raidInstances.map((instance) => withEncounters(instance, encountersByInstanceId))
+        : season.raidInstanceIds.flatMap((id) => {
+            const instance = instancesById.get(id);
+            if (!instance) {
+              warnings.push(`Season ${season.slug} references missing raid instance id ${id}`);
+              return [];
+            }
+            return [withEncounters(instance, encountersByInstanceId)];
+          });
 
-    const dungeons = season.mythicPlusDungeonIds.flatMap((id) => {
-      const instance = instancesByMythicPlusId.get(id) ?? instancesById.get(id);
-      if (!instance) {
-        warnings.push(`Season ${season.slug} references missing Mythic+ dungeon id ${id}`);
-        return [];
-      }
-      return [withEncounters(instance, encountersByInstanceId)];
-    });
+    const dungeons =
+      season.mythicPlusDungeons && season.mythicPlusDungeons.length > 0
+        ? season.mythicPlusDungeons.map((instance) =>
+            withEncounters(instance, encountersByInstanceId),
+          )
+        : season.mythicPlusDungeonIds.flatMap((id) => {
+            const instance = instancesByMythicPlusId.get(id) ?? instancesById.get(id);
+            if (!instance) {
+              warnings.push(`Season ${season.slug} references missing Mythic+ dungeon id ${id}`);
+              return [];
+            }
+            return [withEncounters(instance, encountersByInstanceId)];
+          });
 
     return { season, raids, dungeons };
   });

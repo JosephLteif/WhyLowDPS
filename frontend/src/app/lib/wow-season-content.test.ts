@@ -60,6 +60,48 @@ describe('wow season content normalization', () => {
     expect(grouped[10].dungeons.map((dungeon) => dungeon.id)).toEqual([1267, 1198]);
   });
 
+  it('prefers embedded season instances and dungeons when present', () => {
+    const { content, warnings } = buildWowSeasonContent({
+      seasons: [
+        {
+          slug: 'embedded-season',
+          name: 'Embedded Season',
+          expansionId: 10,
+          raidInstanceIds: [9999],
+          mythicPlusDungeonIds: [404],
+          raidInstances: [
+            {
+              id: 777,
+              name: 'Embedded Raid',
+              type: 'raid',
+              expansionId: 10,
+              encounters: [{ id: 9001, name: 'Embedded Boss', instanceId: 777 }],
+            },
+          ],
+          mythicPlusDungeons: [
+            {
+              id: 778,
+              name: 'Embedded Dungeon',
+              type: 'dungeon',
+              expansionId: 10,
+              encounters: [{ id: 9002, name: 'Embedded Trash Boss', instanceId: 778 }],
+            },
+          ],
+        },
+      ],
+      instances,
+      encounters,
+      mythicPlusDungeons: [],
+    });
+
+    expect(warnings).toEqual([]);
+    expect(content[0].raids.map((raid) => raid.name)).toEqual(['Embedded Raid']);
+    expect(content[0].dungeons.map((dungeon) => dungeon.name)).toEqual(['Embedded Dungeon']);
+    expect(content[0].raids[0].encounters?.map((encounter) => encounter.name)).toEqual([
+      'Embedded Boss',
+    ]);
+  });
+
   it('warns for missing season IDs and encounter IDs without crashing', () => {
     const { content, warnings } = buildWowSeasonContent({
       seasons: [

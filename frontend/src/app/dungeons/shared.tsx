@@ -65,6 +65,20 @@ function formatMs(ms?: number | null): string | null {
   const totalSeconds = Math.floor(ms / 1000);
   return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`;
 }
+export function fallbackUpgradeTimers(timerMs?: number | null, upgradeLevels?: number[]) {
+  if (!timerMs || timerMs <= 0) return [];
+  const levels = upgradeLevels?.length ? upgradeLevels : [1, 2, 3];
+  return levels
+    .map((level) => {
+      const multiplier = level === 1 ? 1 : level === 2 ? 0.8 : level === 3 ? 0.6 : null;
+      if (!multiplier) return null;
+      return {
+        upgrade_level: level,
+        qualifying_duration: Math.floor(timerMs * multiplier),
+      };
+    })
+    .filter((timer): timer is { upgrade_level: number; qualifying_duration: number } => !!timer);
+}
 function getDungeonPlaceholder(name: string) {
   const lower = name.toLowerCase();
   for (const [key, val] of Object.entries(DUNGEON_PLACEHOLDERS)) if (lower.includes(key.toLowerCase())) return val;
@@ -95,7 +109,16 @@ export function DungeonCard({ dungeon, mplusDetail, detailsBasePath }: { dungeon
   const placeholder = !dungeon.image_url ? getDungeonPlaceholder(dungeon.name) : null;
   const imageUrl = getLocalInstanceImageUrl(dungeon.id) || dungeon.image_url || placeholder?.icon;
   const [imageFailed, setImageFailed] = useState(false);
+  const isMplusDetailLoading = mplusDetail === undefined;
   const detailUpgrades = (mplusDetail?.keystone_upgrades ?? []).map((u) => ({ upgrade_level: Number(u?.upgrade_level ?? 0), qualifying_duration: Number(u?.qualifying_duration ?? 0) })).filter((u) => u.upgrade_level > 0 && u.qualifying_duration > 0);
+  const dungeonUpgradeLevels = (dungeon.keystone_upgrades ?? [])
+    .map((upgrade) => Number(upgrade))
+    .filter((upgrade) => Number.isFinite(upgrade) && upgrade > 0)
+    .sort((a, b) => a - b);
+  const fallbackUpgrades = isMplusDetailLoading
+    ? []
+    : fallbackUpgradeTimers(dungeon.keystone_timer_ms, dungeonUpgradeLevels);
+  const displayedUpgrades = detailUpgrades.length > 0 ? detailUpgrades : fallbackUpgrades;
   const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
   const wowheadZoneUrl = dungeon.wowhead_id && dungeon.wowhead_id > 0 ? `https://www.wowhead.com/zone=${dungeon.wowhead_id}` : null;
   return (
@@ -112,7 +135,24 @@ export function DungeonCard({ dungeon, mplusDetail, detailsBasePath }: { dungeon
           </div>
         ) : null}
       </div>
-      {detailUpgrades.length > 0 ? <div className="mt-2 flex flex-wrap gap-1.5">{detailUpgrades.map((u) => <span key={`${dungeon.id}-${u.upgrade_level}`} className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">+{u.upgrade_level} ({formatMs(u.qualifying_duration)})</span>)}</div> : null}
+      {isMplusDetailLoading ? (
+        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Loading keystone timers">
+          {[1, 2, 3].map((idx) => (
+            <span
+              key={`${dungeon.id}-timer-skeleton-${idx}`}
+              className="h-5 w-16 animate-pulse rounded bg-white/10"
+            />
+          ))}
+        </div>
+      ) : displayedUpgrades.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">{displayedUpgrades.map((u) => <span key={`${dungeon.id}-${u.upgrade_level}`} className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">+{u.upgrade_level} ({formatMs(u.qualifying_duration)})</span>)}</div>
+      ) : dungeonUpgradeLevels.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {dungeonUpgradeLevels.map((upgrade) => (
+            <span key={`${dungeon.id}-upgrade-${upgrade}`} className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold">+{upgrade}</span>
+          ))}
+        </div>
+      ) : null}
       {dungeon.encounters && dungeon.encounters.length > 0 ? (
         <div className="mt-3">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">Encounters ({encounterCount})</p>

@@ -1,0 +1,491 @@
+[
+  {
+    "slug": "the-war-within-season-2",
+    "name": "The War Within Season 2",
+    "expansionId": 514,
+    "expansion": {
+      "id": 514,
+      "name": "The War Within",
+      "slug": "the-war-within"
+    },
+    "patch": "11.1.0",
+    "startDate": "2025-03-04",
+    "raidInstanceIds": [
+      1296
+    ],
+    "mythicPlusDungeonIds": [
+      1272,
+      1210,
+      1267,
+      1268,
+      1298,
+      1012,
+      1187,
+      1178
+    ],
+    "source": {
+      "expansionId": 10,
+      "raidInstanceIds": [
+        1278
+      ],
+      "mythicPlusDungeonIds": [
+        506,
+        525
+      ]
+    },
+    "raidInstances": [
+      {
+        "id": 1296,
+        "name": "Liberation of Undermine",
+        "slug": "liberation-of-undermine",
+        "sourceName": "Liberation of Undermine",
+        "type": "raid",
+        "expansionId": 514,
+        "expansion": {
+          "id": 514,
+          "name": "The War Within",
+          "slug": "the-war-within"
+        },
+        "journalInstanceId": 1296,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/liberation-of-undermine-small.jpg",
+        "encounterIds": [
+          2639,
+          2640,
+          2641,
+          2642,
+          2653,
+          2644,
+          2645,
+          2646
+        ],
+        "encounters": [
+          {
+            "id": 2639,
+            "name": "Vexie and the Geargrinders",
+            "instanceId": 1296,
+            "order": 1
+          },
+          {
+            "id": 2640,
+            "name": "Cauldron of Carnage",
+            "instanceId": 1296,
+            "order": 2
+          },
+          {
+            "id": 2641,
+            "name": "Rik Reverb",
+            "instanceId": 1296,
+            "order": 3
+          },
+          {
+            "id": 2642,
+            "name": "Stix Bunkjunker",
+            "instanceId": 1296,
+            "order": 4
+          },
+          {
+            "id": 2653,
+            "name": "Sprocketmonger Lockenstock",
+            "instanceId": 1296,
+            "order": 5
+          },
+          {
+            "id": 2644,
+            "name": "The One-Armed Bandit",
+            "instanceId": 1296,
+            "order": 6
+          },
+          {
+            "id": 2645,
+            "name": "Mug'Zee, Heads of Security",
+            "instanceId": 1296,
+            "order": 7
+          },
+          {
+            "id": 2646,
+            "name": "Chrome King Gallywix",
+            "instanceId": 1296,
+            "order": 8
+          }
+        ]
+      }
+    ],
+    "mythicPlusDungeons": [
+      {
+        "id": 1272,
+        "name": "Cinderbrew Meadery",
+        "slug": "cinderbrew-meadery",
+        "sourceName": "Cinderbrew Meadery",
+        "type": "dungeon",
+        "expansionId": 514,
+        "expansion": {
+          "id": 514,
+          "name": "The War Within",
+          "slug": "the-war-within"
+        },
+        "journalInstanceId": 1272,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/cinderbrew-meadery-small.jpg",
+        "encounterIds": [
+          2588,
+          2586,
+          2589,
+          2587
+        ],
+        "encounters": [
+          {
+            "id": 2588,
+            "name": "Benk Buzzbee",
+            "instanceId": 1272,
+            "order": 1
+          },
+          {
+            "id": 2586,
+            "name": "Brew Master Aldryr",
+            "instanceId": 1272,
+            "order": 2
+          },
+          {
+            "id": 2589,
+            "name": "Goldie Baronbottom",
+            "instanceId": 1272,
+            "order": 3
+          },
+          {
+            "id": 2587,
+            "name": "I'pa",
+            "instanceId": 1272,
+            "order": 4
+          }
+        ]
+      },
+      {
+        "id": 1210,
+        "name": "Darkflame Cleft",
+        "slug": "darkflame-cleft",
+        "sourceName": "Darkflame Cleft",
+        "type": "dungeon",
+        "expansionId": 514,
+        "expansion": {
+          "id": 514,
+          "name": "The War Within",
+          "slug": "the-war-within"
+        },
+        "journalInstanceId": 1210,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/darkflame-cleft-small.jpg",
+        "encounterIds": [
+          2569,
+          2559,
+          2560,
+          2561
+        ],
+        "encounters": [
+          {
+            "id": 2569,
+            "name": "Ol' Waxbeard",
+            "instanceId": 1210,
+            "order": 1
+          },
+          {
+            "id": 2559,
+            "name": "Blazikon",
+            "instanceId": 1210,
+            "order": 2
+          },
+          {
+            "id": 2560,
+            "name": "The Candle King",
+            "instanceId": 1210,
+            "order": 3
+          },
+          {
+            "id": 2561,
+            "name": "The Darkness",
+            "instanceId": 1210,
+            "order": 4
+          }
+        ]
+      },
+      {
+        "id": 1267,
+        "name": "Priory of the Sacred Flame",
+        "slug": "priory-of-the-sacred-flame",
+        "sourceName": "Priory of the Sacred Flame",
+        "type": "dungeon",
+        "expansionId": 514,
+        "expansion": {
+          "id": 514,
+          "name": "The War Within",
+          "slug": "the-war-within"
+        },
+        "journalInstanceId": 1267,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/priory-of-the-sacred-flame-small.jpg",
+        "encounterIds": [
+          2571,
+          2570,
+          2573
+        ],
+        "encounters": [
+          {
+            "id": 2571,
+            "name": "Captain Dailcry",
+            "instanceId": 1267,
+            "order": 1
+          },
+          {
+            "id": 2570,
+            "name": "Baron Braunpyke",
+            "instanceId": 1267,
+            "order": 2
+          },
+          {
+            "id": 2573,
+            "name": "Prioress Murrpray",
+            "instanceId": 1267,
+            "order": 3
+          }
+        ]
+      },
+      {
+        "id": 1268,
+        "name": "The Rookery",
+        "slug": "the-rookery",
+        "sourceName": "The Rookery",
+        "type": "dungeon",
+        "expansionId": 514,
+        "expansion": {
+          "id": 514,
+          "name": "The War Within",
+          "slug": "the-war-within"
+        },
+        "journalInstanceId": 1268,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-rookery-small.jpg",
+        "encounterIds": [
+          2566,
+          2567,
+          2568
+        ],
+        "encounters": [
+          {
+            "id": 2566,
+            "name": "Kyrioss",
+            "instanceId": 1268,
+            "order": 1
+          },
+          {
+            "id": 2567,
+            "name": "Stormguard Gorren",
+            "instanceId": 1268,
+            "order": 2
+          },
+          {
+            "id": 2568,
+            "name": "Voidstone Monstrosity",
+            "instanceId": 1268,
+            "order": 3
+          }
+        ]
+      },
+      {
+        "id": 1298,
+        "name": "Operation: Floodgate",
+        "slug": "operation-floodgate",
+        "sourceName": "Operation: Floodgate",
+        "type": "dungeon",
+        "expansionId": 514,
+        "expansion": {
+          "id": 514,
+          "name": "The War Within",
+          "slug": "the-war-within"
+        },
+        "journalInstanceId": 1298,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/operation-floodgate-small.jpg",
+        "encounterIds": [
+          2648,
+          2649,
+          2650,
+          2651
+        ],
+        "encounters": [
+          {
+            "id": 2648,
+            "name": "Big M.O.M.M.A.",
+            "instanceId": 1298,
+            "order": 1
+          },
+          {
+            "id": 2649,
+            "name": "Demolition Duo",
+            "instanceId": 1298,
+            "order": 2
+          },
+          {
+            "id": 2650,
+            "name": "Swampface",
+            "instanceId": 1298,
+            "order": 3
+          },
+          {
+            "id": 2651,
+            "name": "Geezle Gigazap",
+            "instanceId": 1298,
+            "order": 4
+          }
+        ]
+      },
+      {
+        "id": 1012,
+        "name": "The MOTHERLODE!!",
+        "slug": "the-motherlode",
+        "sourceName": "The MOTHERLODE!!",
+        "type": "dungeon",
+        "expansionId": 396,
+        "expansion": {
+          "id": 396,
+          "name": "Battle for Azeroth",
+          "slug": "battle-for-azeroth"
+        },
+        "journalInstanceId": 1012,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/the-motherlode-small.jpg",
+        "encounterIds": [
+          2109,
+          2114,
+          2115,
+          2116
+        ],
+        "encounters": [
+          {
+            "id": 2109,
+            "name": "Coin-Operated Crowd Pummeler",
+            "instanceId": 1012,
+            "order": 1
+          },
+          {
+            "id": 2114,
+            "name": "Azerokk",
+            "instanceId": 1012,
+            "order": 2
+          },
+          {
+            "id": 2115,
+            "name": "Rixxa Fluxflame",
+            "instanceId": 1012,
+            "order": 3
+          },
+          {
+            "id": 2116,
+            "name": "Mogul Razdunk",
+            "instanceId": 1012,
+            "order": 4
+          }
+        ]
+      },
+      {
+        "id": 1187,
+        "name": "Theater of Pain",
+        "slug": "theater-of-pain",
+        "sourceName": "Theater of Pain",
+        "type": "dungeon",
+        "expansionId": 499,
+        "expansion": {
+          "id": 499,
+          "name": "Shadowlands",
+          "slug": "shadowlands"
+        },
+        "journalInstanceId": 1187,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/theater-of-pain-small.jpg",
+        "encounterIds": [
+          2397,
+          2401,
+          2390,
+          2389,
+          2417
+        ],
+        "encounters": [
+          {
+            "id": 2397,
+            "name": "An Affront of Challengers",
+            "instanceId": 1187,
+            "order": 1
+          },
+          {
+            "id": 2401,
+            "name": "Gorechop",
+            "instanceId": 1187,
+            "order": 2
+          },
+          {
+            "id": 2390,
+            "name": "Xav the Unfallen",
+            "instanceId": 1187,
+            "order": 3
+          },
+          {
+            "id": 2389,
+            "name": "Kul'tharok",
+            "instanceId": 1187,
+            "order": 4
+          },
+          {
+            "id": 2417,
+            "name": "Mordretha, the Endless Empress",
+            "instanceId": 1187,
+            "order": 5
+          }
+        ]
+      },
+      {
+        "id": 1178,
+        "name": "Operation: Mechagon - Workshop",
+        "slug": "operation-mechagon-workshop",
+        "sourceName": "Operation: Mechagon",
+        "type": "dungeon",
+        "expansionId": 396,
+        "expansion": {
+          "id": 396,
+          "name": "Battle for Azeroth",
+          "slug": "battle-for-azeroth"
+        },
+        "journalInstanceId": 1178,
+        "imageUrl": "https://render.worldofwarcraft.com/us/zones/operation-mechagon-small.jpg",
+        "encounterIds": [
+          2336,
+          2339,
+          2348,
+          2331
+        ],
+        "encounters": [
+          {
+            "id": 2336,
+            "name": "Tussle Tonks",
+            "instanceId": 1178,
+            "order": 5
+          },
+          {
+            "id": 2339,
+            "name": "K.U.-J.0.",
+            "instanceId": 1178,
+            "order": 6
+          },
+          {
+            "id": 2348,
+            "name": "Machinist's Garden",
+            "instanceId": 1178,
+            "order": 7
+          },
+          {
+            "id": 2331,
+            "name": "King Mechagon",
+            "instanceId": 1178,
+            "order": 8
+          }
+        ]
+      }
+    ],
+    "warnings": [
+      "Original expansionId was 10, but wow-expansions.json uses 514 for The War Within.",
+      "Original raidInstanceIds contained 1278 (Khaz Algar). For The War Within Season 2, the raid instance was corrected to 1296 (Liberation of Undermine).",
+      "Original mythicPlusDungeonIds [506, 525] do not exist in wow-instances.json. The corrected file uses journal instance IDs from wow-instances.json.",
+      "Operation: Mechagon - Workshop is represented by the full Operation: Mechagon instance in wow-instances.json, so this file keeps the instance id 1178 but filters encounters to the four Workshop bosses."
+    ]
+  }
+]

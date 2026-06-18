@@ -291,28 +291,46 @@ mod tests {
     }
 
     #[test]
-    fn get_instances_rewrites_proxy_image_urls_for_instances_and_encounters() {
+    fn get_instances_uses_static_blizzard_content_with_mplus_bucket() {
         let _state_guard = state::TEST_STATE_LOCK
             .lock()
             .unwrap_or_else(|err| err.into_inner());
         let snapshot = GameDataSnapshot::capture();
         *state::INSTANCES.write().unwrap() = vec![json!({
             "id": 55,
-            "name": "Raid 55",
+            "name": "Old Raidbots Raid",
             "encounters": [{"id": 551, "name":"Boss", "image_url":"https://old"}]
         })];
 
         let rows = get_instances();
+        assert!(rows
+            .iter()
+            .any(|row| row.get("name").and_then(Value::as_str) == Some("The Voidspire")));
+        assert!(!rows
+            .iter()
+            .any(|row| row.get("name").and_then(Value::as_str) == Some("Old Raidbots Raid")));
+
+        let mplus_bucket = rows
+            .iter()
+            .find(|row| row.get("name").and_then(Value::as_str) == Some("Mythic+ Dungeons"))
+            .expect("mplus bucket");
         assert_eq!(
-            rows[0].get("image_url").and_then(Value::as_str),
-            Some("/api/data/images/instance/55")
+            mplus_bucket.get("type").and_then(Value::as_str),
+            Some("mplus-chest")
         );
-        let encounter_image = rows[0]
+        let mplus_ids: Vec<i64> = mplus_bucket
             .get("encounters")
             .and_then(Value::as_array)
-            .and_then(|arr| arr[0].get("image_url"))
-            .and_then(Value::as_str);
-        assert_eq!(encounter_image, Some("/api/data/images/encounter/551"));
+            .expect("mplus encounters")
+            .iter()
+            .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+            .collect();
+        assert_eq!(mplus_ids, vec![1300, 1315, 1316, 1299, 1201, 945, 476, 278]);
+
+        let serialized = serde_json::to_string(&rows).expect("instances json");
+        assert!(!serialized.contains("wowheadUrl"));
+        assert!(!serialized.contains("raiderIoUrl"));
+        assert!(!serialized.contains("warcraftLogsUrl"));
         snapshot.restore();
     }
 

@@ -8,7 +8,7 @@ export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
 
-type ReleaseNoteCategory = 'feature' | 'fix';
+type ReleaseNoteCategory = 'feature' | 'fix' | 'improvement';
 
 type ReleaseNote = {
   category: ReleaseNoteCategory;
@@ -18,36 +18,19 @@ type ReleaseNote = {
 
 const releaseNotes: ReleaseNote[] = [
   {
-    category: 'feature',
-    title: 'Saved Blizzard logins',
+    category: 'improvement',
+    title: 'Added more dungeon and raid info',
     body:
-      'Saved Blizzard credentials now store securely on the device and can be selected, renamed, repaired, or removed from the login flow and settings.',
-  },
-  {
-    category: 'fix',
-    title: 'Settings in the sidebar',
-    body:
-      'Settings now stays visible in the sidebar by default, so you do not have to add it back manually.',
-  },
-  {
-    category: 'fix',
-    title: 'Popup no longer blocks window controls',
-    body:
-      'The What\'s new popup no longer covers the desktop title bar, so you can still move the window and use the Windows action buttons while it is open.',
-  },
-  {
-    category: 'fix',
-    title: 'Raid buff source badges explain themselves',
-    body:
-      'Raid buff source badges now show hover text for Override, Manual, and Default so it is clear whether a buff came from SimC input, direct user changes, or saved defaults.',
-  },
+      'Added data for dungeons and raid of older expansions but with no wowhead data for it.',
+  }
 ];
 
-const releaseNoteCategoryOrder: ReleaseNoteCategory[] = ['feature', 'fix'];
+const releaseNoteCategoryOrder: ReleaseNoteCategory[] = ['feature', 'fix', 'improvement'];
 
 const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {
   feature: 'Features',
   fix: 'Fixes',
+  improvement: 'Improvements',
 };
 
 const groupedReleaseNotes = releaseNoteCategoryOrder

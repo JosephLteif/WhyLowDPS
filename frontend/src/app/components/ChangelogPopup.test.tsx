@@ -16,14 +16,11 @@ describe('ChangelogPopup', () => {
     const { unmount } = render(<ChangelogPopup />);
 
     expect(await screen.findByRole('dialog', { name: /what's new/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /features/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /fixes/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /saved blizzard logins/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /settings in the sidebar/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /improvements/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /simulation activity time grouping/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: /popup no longer blocks window controls/i })
+      screen.getByText(/daily, weekly, monthly, and yearly views/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/move the window and use the Windows action buttons/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

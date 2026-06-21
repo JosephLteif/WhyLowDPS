@@ -19,10 +19,9 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'improvement',
-    title: 'Added more dungeon and raid info',
-    body:
-      'Added data for dungeons and raid of older expansions but with no wowhead data for it.',
-  }
+    title: 'Simulation Activity time grouping',
+    body: 'The dashboard activity chart now switches between daily, weekly, monthly, and yearly views.',
+  },
 ];
 
 const releaseNoteCategoryOrder: ReleaseNoteCategory[] = ['feature', 'fix', 'improvement'];

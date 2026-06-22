@@ -19,6 +19,11 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'improvement',
+    title: 'Warcraft Logs boss guides',
+    body: 'Current-season raid bosses now link directly to Warcraft Logs guides where one is available.',
+  },
+  {
+    category: 'improvement',
     title: 'Simulation Activity time grouping',
     body: 'The dashboard activity chart now switches between daily, weekly, monthly, and yearly views.',
   },

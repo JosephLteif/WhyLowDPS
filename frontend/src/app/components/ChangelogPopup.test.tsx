@@ -21,6 +21,10 @@ describe('ChangelogPopup', () => {
     expect(
       screen.getByText(/daily, weekly, monthly, and yearly views/i)
     ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /warcraft logs boss guides/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/current-season raid bosses now link directly to warcraft logs guides/i),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

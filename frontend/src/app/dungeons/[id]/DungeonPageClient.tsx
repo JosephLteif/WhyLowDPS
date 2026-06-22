@@ -10,6 +10,7 @@ import {
   getDungeonDataCached,
   type MythicKeystoneDungeonDetail,
 } from '../../lib/api';
+import { getWarcraftLogsGuideUrl } from '../../lib/warcraft-logs-guides';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { useAuth } from '../../components/AuthContext';
 import { Instance } from '../../drop-finder/types';
@@ -473,7 +474,7 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
     (wowheadZone?.name && wowheadZone.name !== dungeon.name ? wowheadZone.name : null) ||
     (kind === 'raid' ? 'Raid' : 'Dungeon');
   const zoneActionHref = wowheadZone?.url || wowheadSearchUrl(dungeon.name);
-  const zoneActionText = wowheadZone?.url ? 'Open on Wowhead' : 'Search on Wowhead';
+  const zoneActionText = 'Wowhead';
 
   return (
     <div className="space-y-6">
@@ -551,6 +552,7 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
           <h2 className="text-xl font-bold text-zinc-200">Encounters</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {sectionEncounters.map((encounter) => {
+              const guideUrl = getWarcraftLogsGuideUrl(encounter.name);
               return (
                 <div
                   key={encounter.npc_id}
@@ -565,14 +567,26 @@ export default function DungeonPageClient({ id, kind = 'dungeon' }: { id: string
                     />
                     <div>
                       <p className="font-bold text-zinc-200">{decodeHtmlEntities(encounter.name)}</p>
-                      <a
-                        href={encounter.url || wowheadSearchUrl(encounter.name)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-1 inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
-                      >
-                        {encounter.url ? 'View on Wowhead' : 'Search on Wowhead'}
-                      </a>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        <a
+                          href={encounter.url || wowheadSearchUrl(encounter.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
+                        >
+                          Wowhead
+                        </a>
+                        {guideUrl ? (
+                          <a
+                            href={guideUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center rounded-md border border-gold/35 bg-gold/10 px-2 py-1 text-xs font-semibold text-gold transition-colors hover:bg-gold/20"
+                          >
+                            Guide
+                          </a>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                   {encounter.description && (

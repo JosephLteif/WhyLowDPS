@@ -4,9 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  schedule:
-    - cron: '0 1 * * *'
-    - cron: '0 2 * * 1'
   workflow_dispatch:
     inputs:
       source_ref:
@@ -14,17 +11,8 @@ on:
         required: true
         default: master
         type: string
-      release_mode:
-        description: 'Release mode'
-        required: true
-        default: stable
-        type: choice
-        options:
-          - stable
-          - weekly
-          - nightly
       release_type:
-        description: 'Semantic version bump type (stable mode only)'
+        description: 'Semantic version bump type'
         required: true
         default: patch
         type: choice
@@ -35,7 +23,7 @@ on:
 
 jobs:
   bump-version-stable:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.release_mode == 'stable'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,89 +77,6 @@ jobs:
           git push origin master
           git push origin "v${{ steps.bump.outputs.new_version }}"
 
-  create-channel-tag:
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_mode != 'stable')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout master
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.source_ref }}
-          fetch-depth: 0
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Setup node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            frontend/package-lock.json
-
-      - name: Compute channel version
-        id: channel
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            CHANNEL="${{ github.event.inputs.release_mode }}"
-          else
-            case "${{ github.event.schedule }}" in
-              '0 2 * * 1') CHANNEL="weekly" ;;
-              *) CHANNEL="nightly" ;;
-            esac
-          fi
-
-          BASE_VERSION="$(tr -d '\r\n' < VERSION)"
-          if [[ "$CHANNEL" == "nightly" ]]; then
-            STAMP="$(date -u +%Y%m%d)"
-          elif [[ "$CHANNEL" == "weekly" ]]; then
-            STAMP="$(date -u +%G%V)"
-          else
-            echo "Unsupported channel: $CHANNEL"
-            exit 1
-          fi
-
-          NEW_VERSION="${BASE_VERSION}-${CHANNEL}.${STAMP}"
-          TAG="v${NEW_VERSION}"
-
-          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
-            echo "Tag ${TAG} already exists. Skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
-          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare channel version files
-        if: steps.channel.outputs.skip != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "${{ steps.channel.outputs.new_version }}" > VERSION
-          npm run sync:version
-          npm install --package-lock-only
-          npm install --package-lock-only --prefix frontend
-
-      - name: Commit and push channel tag
-        if: steps.channel.outputs.skip != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json
-          git commit -m "chore(release): ${{ steps.channel.outputs.channel }} build v${{ steps.channel.outputs.new_version }}"
-          git tag "${{ steps.channel.outputs.tag }}"
-          git push origin "${{ steps.channel.outputs.tag }}"
-
   publish:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -187,19 +92,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Determine release channel
-        id: release_channel
-        shell: bash
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          if [[ "$TAG" == *"-nightly."* ]]; then
-            echo "channel=nightly" >> "$GITHUB_OUTPUT"
-          elif [[ "$TAG" == *"-weekly."* ]]; then
-            echo "channel=weekly" >> "$GITHUB_OUTPUT"
-          else
-            echo "channel=stable" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: setup node
         uses: actions/setup-node@v4
@@ -238,33 +130,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p backend/resources/data
-          mkdir -p backend/resources/simc
           if [[ ! -f backend/resources/zones-encounters-index.json ]]; then
             echo "backend/resources/zones-encounters-index.json is required for release bundles"
             exit 1
           fi
           cp backend/resources/zones-encounters-index.json backend/resources/data/zones-encounters-index.json
           touch backend/resources/data/.keep
-          touch backend/resources/simc/.keep
-
-      - name: Refresh bundled SimC for all release channels
-        if: matrix.platform == 'windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p backend/resources/simc
-          rm -f backend/resources/simc/simc.exe backend/resources/simc/simc
-          curl -L "https://nightly.link/simulationcraft/simc-publish/workflows/nightly/master/simc-nightly-win64-midnight.zip" -o simc_win.zip
-          unzip -o simc_win.zip -d backend/resources/simc/
-          find backend/resources/simc -name "*.7z" -exec 7z x {} -obackend/resources/simc/ \;
-          SIMC_PATH="$(find backend/resources/simc -iname "simc.exe" | head -n 1)"
-          if [[ -z "$SIMC_PATH" ]]; then
-            echo "Failed to locate extracted simc.exe"
-            exit 1
-          fi
-          cp "$SIMC_PATH" backend/resources/simc/simc.exe
-          echo "${GITHUB_REF_NAME#v}" > backend/resources/simc/simc-version
-          touch backend/resources/simc/.keep
 
       - name: Build and release desktop app
         uses: tauri-apps/tauri-action@v0
@@ -280,7 +151,7 @@ jobs:
           releaseName: "WhyLowDps ${{ github.ref_name }}"
           releaseBody: "Release assets uploaded. Checksums will be added automatically."
           releaseDraft: false
-          prerelease: ${{ contains(github.ref_name, '-nightly.') || contains(github.ref_name, '-weekly.') }}
+          prerelease: false
           args: ${{ matrix.args }}
 
       - name: Upload zones encounters index asset
@@ -335,11 +206,9 @@ jobs:
         if: matrix.platform == 'windows'
         shell: bash
         env:
-          CHANNEL: ${{ steps.release_channel.outputs.channel }}
+          CHANNEL: stable
           TAG: ${{ github.ref_name }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
-          NIGHTLY_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_NIGHTLY }}
-          WEEKLY_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_WEEKLY }}
           STABLE_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_STABLE }}
         run: |
           set -euo pipefail

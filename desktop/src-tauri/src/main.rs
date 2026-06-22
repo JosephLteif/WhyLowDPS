@@ -18,6 +18,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use whylowdps_core::game_data;
 use whylowdps_core::server;
+use whylowdps_core::simc_runtime::{resolve_simc_runtime, SimcChannel, SimcRuntimeConfig};
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
 
 #[tauri::command]
@@ -95,6 +96,14 @@ struct SystemInfo {
     version: String,
 }
 
+#[derive(serde::Serialize)]
+struct SimcRuntimeStatusResponse {
+    channel: String,
+    version: String,
+    updated: bool,
+    simc_path: String,
+}
+
 #[tauri::command]
 fn get_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
@@ -123,6 +132,49 @@ fn clear_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
 ) -> Result<(), String> {
     clear_close_behavior_preference_internal(&state)
+}
+
+#[tauri::command]
+fn get_simc_update_channel(
+    state: tauri::State<'_, AppClosePreferencesState>,
+) -> SimcUpdateChannelResponse {
+    let channel = state
+        .prefs
+        .lock()
+        .ok()
+        .and_then(|prefs| prefs.simc_update_channel.clone())
+        .unwrap_or_else(|| "weekly".to_string());
+
+    SimcUpdateChannelResponse { channel }
+}
+
+#[tauri::command]
+fn set_simc_update_channel(
+    state: tauri::State<'_, AppClosePreferencesState>,
+    channel: String,
+) -> Result<SimcUpdateChannelResponse, String> {
+    let channel = set_simc_update_channel_internal(&state, &channel)?;
+    Ok(SimcUpdateChannelResponse { channel })
+}
+
+#[tauri::command]
+async fn update_simc_runtime(
+    app: tauri::AppHandle,
+    channel: String,
+) -> Result<SimcRuntimeStatusResponse, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    let config = SimcRuntimeConfig::new(SimcChannel::parse(&channel), app_data_dir.join("simc"));
+    let resolution = resolve_simc_runtime(&config).await?;
+
+    Ok(SimcRuntimeStatusResponse {
+        channel: resolution.channel,
+        version: resolution.version,
+        updated: resolution.updated,
+        simc_path: resolution.simc_path.to_string_lossy().to_string(),
+    })
 }
 
 #[tauri::command]
@@ -397,10 +449,7 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
 
     let data_dir = app_data_dir.join("data");
 
-    let simc_dir = app
-        .path()
-        .resolve("simc", BaseDirectory::Resource)
-        .unwrap_or_else(|_| app_data_dir.join("simc"));
+    let simc_dir = app_data_dir.join("simc");
 
     let classes_json = data_dir.join("classes.json");
     let simc_exe = simc_dir.join(simc_binary_name());
@@ -441,6 +490,9 @@ fn main() {
             get_close_behavior_preference,
             set_close_behavior_preference,
             clear_close_behavior_preference,
+            get_simc_update_channel,
+            set_simc_update_channel,
+            update_simc_runtime,
             apply_close_behavior_choice,
             restart_app,
             quit_app_now,
@@ -458,6 +510,10 @@ fn main() {
 
             let close_prefs_path = app_data_dir.join("desktop_prefs.json");
             let close_prefs = load_close_preferences(&close_prefs_path);
+            let simc_channel = close_prefs
+                .simc_update_channel
+                .clone()
+                .unwrap_or_else(|| "weekly".to_string());
 
             app.manage(AppClosePreferencesState {
                 prefs: std::sync::Mutex::new(close_prefs),
@@ -594,10 +650,7 @@ fn main() {
 
             let bundled_data_dir = resolve_bundled_resource("data", "../../backend/resources/data");
 
-            let bundled_simc_dir = resolve_bundled_resource("simc", "../../backend/resources/simc");
-
             println!("Resolved bundled_data_dir: {:?}", bundled_data_dir);
-            println!("Resolved bundled_simc_dir: {:?}", bundled_simc_dir);
 
             let app_data_dir = app_handle
                 .path()
@@ -616,18 +669,33 @@ fn main() {
 
             seed_runtime_data_if_missing(&bundled_data_dir, &data_dir);
 
-            let bundled_simc_bin = bundled_simc_dir.join(simc_binary_name());
-            let legacy_runtime_simc_bin = app_data_dir.join("simc").join(simc_binary_name());
-            let simc_bin = choose_simc_bin(bundled_simc_bin, legacy_runtime_simc_bin);
-
-            println!("Using bundled simc_bin path: {:?}", simc_bin);
+            let simc_dir = app_data_dir.join("simc");
+            let simc_bin = simc_dir.join(simc_binary_name());
 
             let db_path = app_data_dir.join("whylowdps.db");
             let db_path_str = db_path.to_string_lossy().to_string();
 
-            tauri::async_runtime::spawn(async move {
-                println!("Using simc binary at {:?}", simc_bin);
+            tauri::async_runtime::spawn({
+                let simc_dir = simc_dir.clone();
+                let simc_channel = simc_channel.clone();
+                async move {
+                    let simc_config =
+                        SimcRuntimeConfig::new(SimcChannel::parse(&simc_channel), simc_dir);
+                    match resolve_simc_runtime(&simc_config).await {
+                        Ok(resolution) => {
+                            println!(
+                                "Using SimC {} channel version {} at {:?}",
+                                resolution.channel, resolution.version, resolution.simc_path
+                            );
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to update SimC runtime: {err}");
+                        }
+                    }
+                }
+            });
 
+            tauri::async_runtime::spawn(async move {
                 println!("Loading game data from {:?}", data_dir);
                 game_data::load(&data_dir);
 

@@ -131,10 +131,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p backend/resources/data
-          mkdir -p backend/resources/simc
           echo "{}" > backend/resources/zones-encounters-index.json
           touch backend/resources/data/.keep
-          touch backend/resources/simc/.keep
 
       - name: Install dependencies
         run: npm ci && npm ci --prefix frontend

@@ -57,12 +57,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 ENV LANG=en_US.UTF-8
 
 COPY --from=builder /build/target/release/whylowdps-server /usr/local/bin/whylowdps-server
-# COPY --from=simc-builder /usr/local/bin/simc /usr/local/bin/simc
 COPY --from=fetcher /data/compact /app/resources/data
 
 WORKDIR /app
 ENV DATA_DIR=/app/resources/data
-ENV SIMC_PATH=/usr/local/bin/simc
+ENV SIMC_RUNTIME_DIR=/app/simc
+ENV SIMC_CHANNEL=weekly
 ENV PORT=8000
 
 EXPOSE 8000

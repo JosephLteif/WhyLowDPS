@@ -6759,6 +6759,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sevenz-rust2",
+ "sha2",
  "sysinfo",
  "tempfile",
  "thiserror 2.0.18",

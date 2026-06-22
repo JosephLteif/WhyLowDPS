@@ -15,7 +15,6 @@ import {
 } from '../lib/api';
 import { useSimContext } from '../components/SimContext';
 import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard';
-import { isValidUpdateChannel } from '../lib/update-channel';
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
 import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
@@ -35,6 +34,15 @@ type CloseBehaviorPreferenceResponse = {
   minimize_to_tray_on_close?: boolean | null;
 };
 type CloseBehaviorMode = 'ask' | 'close' | 'tray';
+type SimcUpdateChannel = 'weekly' | 'nightly';
+type SimcUpdateChannelResponse = {
+  channel?: string | null;
+};
+type SimcRuntimeStatusResponse = {
+  channel?: string | null;
+  version?: string | null;
+  updated?: boolean | null;
+};
 
 type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
 
@@ -98,11 +106,15 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [selectedSimcChannel, setSelectedSimcChannelState] =
+    useState<SimcUpdateChannel>('weekly');
+  const [simcChannelMessage, setSimcChannelMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
   const {
     updateCheckState,
     updateMessage,
-    selectedUpdateChannel,
-    setSelectedUpdateChannel,
     checkForUpdatesNow,
     downloadAndInstallLatest,
   } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
@@ -121,11 +133,6 @@ export default function SettingsPage() {
       .then((data) => {
         setClientId(data.blizzard_client_id || '');
         setHasSecret(data.has_blizzard_client_secret || false);
-        const serverUpdateChannel =
-          typeof data.app_update_channel === 'string' ? data.app_update_channel.toLowerCase() : '';
-        if (isValidUpdateChannel(serverUpdateChannel)) {
-          setSelectedUpdateChannel(serverUpdateChannel);
-        }
         const savedThreads = parseInt(data.sim_threads || '', 10);
         if (Number.isFinite(savedThreads) && savedThreads > 0) {
           setThreads(savedThreads);
@@ -143,7 +150,7 @@ export default function SettingsPage() {
       .finally(() => {
         setPageLoading(false);
       });
-  }, [authLoading, user, router, setMaxCombinations, setThreads, setSelectedUpdateChannel]);
+  }, [authLoading, user, router, setMaxCombinations, setThreads]);
 
   useEffect(() => {
     if (!user || !isDesktop) return;
@@ -201,6 +208,24 @@ export default function SettingsPage() {
       } catch {
       } finally {
         if (!cancelled) setCloseBehaviorLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const pref = await invoke<SimcUpdateChannelResponse>('get_simc_update_channel');
+        if (cancelled) return;
+        setSelectedSimcChannelState(pref?.channel === 'nightly' ? 'nightly' : 'weekly');
+      } catch {
+        if (!cancelled) setSelectedSimcChannelState('weekly');
       }
     })();
     return () => {
@@ -344,6 +369,55 @@ export default function SettingsPage() {
       });
     } finally {
       setCloseBehaviorLoading(false);
+    }
+  };
+
+  const setSelectedSimcChannel = async (nextChannel: SimcUpdateChannel) => {
+    if (!isDesktop) return;
+    const previous = selectedSimcChannel;
+    setSelectedSimcChannelState(nextChannel);
+    setSimcChannelMessage(null);
+    const { invoke } = await import('@tauri-apps/api/core');
+    let savedChannel: SimcUpdateChannel;
+    try {
+      const pref = await invoke<SimcUpdateChannelResponse>('set_simc_update_channel', {
+        channel: nextChannel,
+      });
+      savedChannel = pref?.channel === 'nightly' ? 'nightly' : 'weekly';
+      setSelectedSimcChannelState(savedChannel);
+    } catch (err: any) {
+      setSelectedSimcChannelState(previous);
+      setSimcChannelMessage({
+        type: 'error',
+        text: err?.message || err?.toString?.() || 'Failed to update SimC channel.',
+      });
+      return;
+    }
+
+    setSimcChannelMessage({
+      type: 'success',
+      text: `Downloading ${savedChannel} SimC runtime...`,
+    });
+
+    try {
+      const status = await invoke<SimcRuntimeStatusResponse>('update_simc_runtime', {
+        channel: savedChannel,
+      });
+      const version = status?.version ? ` (${status.version})` : '';
+      setSimcChannelMessage({
+        type: 'success',
+        text: status?.updated
+          ? `SimC ${savedChannel} runtime downloaded${version}.`
+          : `SimC ${savedChannel} runtime is already up to date${version}.`,
+      });
+    } catch (err: any) {
+      setSimcChannelMessage({
+        type: 'error',
+        text:
+          err?.message ||
+          err?.toString?.() ||
+          `SimC channel saved as ${savedChannel}, but the runtime download failed.`,
+      });
     }
   };
 
@@ -584,8 +658,10 @@ export default function SettingsPage() {
 
       {activeTab === 'updates' && (
         <UpdatesSettingsSection
-          selectedUpdateChannel={selectedUpdateChannel}
-          setSelectedUpdateChannel={setSelectedUpdateChannel}
+          selectedSimcChannel={selectedSimcChannel}
+          setSelectedSimcChannel={setSelectedSimcChannel}
+          simcChannelMessage={simcChannelMessage}
+          isDesktopRuntime={isDesktop}
           updateCheckState={updateCheckState}
           checkForUpdatesNow={checkForUpdatesNow}
           downloadAndInstallLatest={downloadAndInstallLatest}

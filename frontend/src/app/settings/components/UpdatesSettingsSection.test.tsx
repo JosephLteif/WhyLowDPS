@@ -5,7 +5,7 @@ import UpdatesSettingsSection from './UpdatesSettingsSection';
 const noop = vi.fn();
 
 describe('UpdatesSettingsSection', () => {
-  it('renders update status messages inside their related cards', () => {
+  it('renders update status messages at the bottom of their related cards', () => {
     render(
       <UpdatesSettingsSection
         selectedSimcChannel="nightly"
@@ -44,12 +44,20 @@ describe('UpdatesSettingsSection', () => {
 
     const appCard = screen.getByText('Stable Version').closest('[data-update-card]');
     const simcCard = screen.getByText('SimC Channel').closest('[data-update-card]');
+    const appMessage = screen.getByText('You are on the latest version (3.3.1).');
+    const simcMessage = screen.getByText('SimC channel saved as nightly.');
 
-    expect(appCard).toContainElement(screen.getByText('You are on the latest version (3.3.1).'));
-    expect(appCard).not.toContainElement(screen.getByText('SimC channel saved as nightly.'));
-    expect(simcCard).toContainElement(screen.getByText('SimC channel saved as nightly.'));
-    expect(simcCard).not.toContainElement(
-      screen.getByText('You are on the latest version (3.3.1).')
+    expect(appCard).toContainElement(appMessage);
+    expect(appCard).not.toContainElement(simcMessage);
+    expect(simcCard).toContainElement(simcMessage);
+    expect(simcCard).not.toContainElement(appMessage);
+    expect(appMessage.closest('[data-update-status-message]')).toHaveAttribute(
+      'data-update-status-message',
+      'bottom'
+    );
+    expect(simcMessage.closest('[data-update-status-message]')).toHaveAttribute(
+      'data-update-status-message',
+      'bottom'
     );
   });
 });

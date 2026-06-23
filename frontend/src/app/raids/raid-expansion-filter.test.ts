@@ -14,7 +14,29 @@ const raids: RaidExpansionFilterRaid[] = [
 
 describe('raid expansion filtering', () => {
   it('defaults to the current season expansion', () => {
-    expect(getCurrentSeasonExpansionId([{ expansionId: 514 }])).toBe(514);
+    expect(
+      getCurrentSeasonExpansionId(
+        [
+          { expansionId: 516, startDate: '2026-03-17' },
+          { expansionId: 514, startDate: '2025-03-04', endDate: '2026-03-16' },
+          { expansionId: 395, startDate: '2016-08-30', endDate: '2017-12-31' },
+        ],
+        new Date('2026-06-20T00:00:00Z'),
+      ),
+    ).toBe(516);
+  });
+
+  it('does not rely on the source array order', () => {
+    expect(
+      getCurrentSeasonExpansionId(
+        [
+          { expansionId: 516, startDate: '2026-03-17' },
+          { expansionId: 395, startDate: '2016-08-30', endDate: '2017-12-31' },
+          { expansionId: 514, startDate: '2025-03-04', endDate: '2026-03-16' },
+        ],
+        new Date('2026-06-20T00:00:00Z'),
+      ),
+    ).toBe(516);
   });
 
   it('lists only expansions that have raids', () => {

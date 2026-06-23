@@ -57,3 +57,5 @@ To add a future season:
 5. Run `npm run test --prefix frontend -- wow-season-content.test.ts`.
 
 The normalizer in `frontend/src/app/lib/wow-season-content.ts` joins seasons, instances, encounters, and Mythic+ dungeon IDs into `WowSeasonContent`. It warns for missing IDs and duplicate IDs. The new data model intentionally has no Wowhead, Raider.IO, WarcraftLogs, generic link, or placeholder external link fields.
+
+For the season-by-season operator checklist, including Warcraft Logs guide alias maintenance and runtime file expectations, see [docs/wow-season-manual-updates.md](./wow-season-manual-updates.md).

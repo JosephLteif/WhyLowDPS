@@ -37,8 +37,7 @@
     ],
     "resources": {
       "../../backend/resources/data": "data",
-      "../../backend/resources/zones-encounters-index.json": "data/zones-encounters-index.json",
-      "../../backend/resources/simc": "simc"
+      "../../backend/resources/zones-encounters-index.json": "data/zones-encounters-index.json"
     }
   },
   "plugins": {

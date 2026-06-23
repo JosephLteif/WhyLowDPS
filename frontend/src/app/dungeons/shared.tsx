@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API_URL, DungeonAffix, DungeonInfo, type MythicKeystoneDungeonDetail } from '../lib/api';
+import { getWarcraftLogsGuideUrl } from '../lib/warcraft-logs-guides';
 import type { Instance } from '../drop-finder/types';
 
 const DUNGEON_PLACEHOLDERS: Record<string, { icon: string; zone: string }> = {
@@ -161,7 +162,21 @@ export function DungeonCard({ dungeon, mplusDetail, detailsBasePath }: { dungeon
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">Encounters ({encounterCount})</p>
           <ul className="space-y-1 text-sm text-zinc-100">
             {dungeon.encounters.map((encounter, index) => (
-              <li key={`${dungeonUiKey(dungeon)}-${index}-${encounter}`}>{encounter}</li>
+              <li key={`${dungeonUiKey(dungeon)}-${index}-${encounter}`} className="flex items-center gap-2">
+                <span>{encounter}</span>
+                {getWarcraftLogsGuideUrl(encounter) ? (
+                  <a
+                    href={getWarcraftLogsGuideUrl(encounter) ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs font-semibold text-gold hover:text-gold/80"
+                    aria-label={`Warcraft Logs guide for ${encounter}`}
+                  >
+                    Guide
+                  </a>
+                ) : null}
+              </li>
             ))}
           </ul>
         </div>

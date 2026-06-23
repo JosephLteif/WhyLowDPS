@@ -33,6 +33,11 @@ import {
   listCharacterProfiles,
   listSims,
 } from './lib/api';
+import {
+  buildActivityData,
+  getActivityPeriodTitle,
+  type ActivityPeriod,
+} from './lib/activity';
 import { useSimContext } from './components/SimContext';
 import { useAuth } from './components/AuthContext';
 import CharacterQuickLinks from './components/character/CharacterQuickLinks';
@@ -53,6 +58,13 @@ const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
 type DashboardWidgetId = 'stats' | 'activity' | 'quick-links' | 'tracked-characters';
 type DashboardWidgetSize = 1 | 2 | 3;
 type StatCardId = 'active' | 'total' | 'history' | 'system';
+
+const ACTIVITY_PERIOD_OPTIONS: { value: ActivityPeriod; label: string }[] = [
+  { value: 'day', label: 'Daily' },
+  { value: 'week', label: 'Weekly' },
+  { value: 'month', label: 'Monthly' },
+  { value: 'year', label: 'Yearly' },
+];
 
 const DASHBOARD_WIDGETS: {
   id: DashboardWidgetId;
@@ -242,38 +254,6 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[i]}`;
 }
 
-function chartDateLabel(date: Date): string {
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function buildActivityData(sims: SimSummary[], days = 14): { date: string; count: number }[] {
-  const end = new Date();
-  end.setHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setDate(start.getDate() - (days - 1));
-
-  const byDay = new Map<string, number>();
-  for (let i = 0; i < days; i += 1) {
-    const day = new Date(start);
-    day.setDate(start.getDate() + i);
-    byDay.set(day.toISOString().slice(0, 10), 0);
-  }
-
-  for (const sim of sims) {
-    const created = new Date(sim.created_at);
-    if (!Number.isFinite(created.getTime())) continue;
-    created.setHours(0, 0, 0, 0);
-    const key = created.toISOString().slice(0, 10);
-    if (!byDay.has(key)) continue;
-    byDay.set(key, (byDay.get(key) || 0) + 1);
-  }
-
-  return [...byDay.entries()].map(([iso, count]) => ({
-    date: chartDateLabel(new Date(iso)),
-    count,
-  }));
-}
-
 function toTimestampMs(raw: unknown): number {
   const n = Number(raw || 0);
   if (!Number.isFinite(n) || n <= 0) return 0;
@@ -437,6 +417,7 @@ export default function Home() {
   >(DEFAULT_DASHBOARD_WIDGET_SIZES);
   const [visibleStatCards, setVisibleStatCards] = useState<StatCardId[]>(STAT_CARD_ORDER);
   const [dashboardEditMode, setDashboardEditMode] = useState(false);
+  const [activityPeriod, setActivityPeriod] = useState<ActivityPeriod>('day');
   const [showDashboardAddMenu, setShowDashboardAddMenu] = useState(false);
   const [draggingWidgetId, setDraggingWidgetId] = useState<DashboardWidgetId | null>(null);
   const [dragOverWidgetId, setDragOverWidgetId] = useState<DashboardWidgetId | null>(null);
@@ -1150,7 +1131,10 @@ export default function Home() {
   const euNextResetMs = useMemo(() => getNextWeeklyResetMs('eu', new Date(nowMs)), [nowMs]);
 
   const activeSims = useMemo(() => sims.filter((sim) => sim.status === 'running').length, [sims]);
-  const activity = useMemo(() => buildActivityData(sims, 14), [sims]);
+  const activity = useMemo(
+    () => buildActivityData(sims, activityPeriod, new Date(nowMs)),
+    [activityPeriod, nowMs, sims]
+  );
   const widgetMetaById = useMemo(
     () => new Map(DASHBOARD_WIDGETS.map((widget) => [widget.id, widget])),
     []
@@ -1405,9 +1389,26 @@ export default function Home() {
           <>
             <section className="card flex h-full min-h-0 flex-col p-4">
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-zinc-200">
-                  Simulation Activity (Last 14 Days)
-                </h2>
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-200">Simulation Activity</h2>
+                  <p className="text-xs text-zinc-500">{getActivityPeriodTitle(activityPeriod)}</p>
+                </div>
+                <div className="flex items-center gap-1 rounded-md border border-white/10 bg-black/20 p-1">
+                  {ACTIVITY_PERIOD_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setActivityPeriod(option.value)}
+                      className={`rounded px-2 py-1 text-[11px] font-semibold transition-colors ${
+                        activityPeriod === option.value
+                          ? 'bg-gold/15 text-gold'
+                          : 'text-zinc-400 hover:bg-white/10 hover:text-zinc-200'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="h-64 min-h-[256px] min-w-0">
                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>

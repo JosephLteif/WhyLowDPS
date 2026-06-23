@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use whylowdps_core::game_data;
 use whylowdps_core::server;
+use whylowdps_core::simc_runtime::{resolve_simc_runtime, SimcChannel, SimcRuntimeConfig};
 use whylowdps_core::storage::JobStorage;
 
 fn env_or(key: &str, default: &str) -> String {
@@ -38,15 +39,27 @@ async fn main() {
     let base_dir = choose_base_dir(std::path::Path::new("backend/resources").exists());
 
     let data_dir_default = format!("{}/data", base_dir);
-    let simc_path_default = if cfg!(windows) {
-        format!("{}/simc/simc.exe", base_dir)
-    } else {
-        "/usr/local/bin/simc".to_string()
-    };
-
     let data_dir = PathBuf::from(env_or("DATA_DIR", &data_dir_default));
-    let simc_path = PathBuf::from(env_or("SIMC_PATH", &simc_path_default));
     let frontend_dir = std::env::var("FRONTEND_DIR").ok().map(PathBuf::from);
+    let simc_runtime_dir = PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime"));
+    let simc_channel = SimcChannel::parse(&env_or("SIMC_CHANNEL", "weekly"));
+    let simc_config = SimcRuntimeConfig::new(simc_channel, simc_runtime_dir);
+    let simc_path = match std::env::var("SIMC_PATH") {
+        Ok(path) if !path.trim().is_empty() => PathBuf::from(path),
+        _ => match resolve_simc_runtime(&simc_config).await {
+            Ok(resolution) => {
+                println!(
+                    "Using SimC {} channel version {} at {:?}",
+                    resolution.channel, resolution.version, resolution.simc_path
+                );
+                resolution.simc_path
+            }
+            Err(err) => {
+                eprintln!("Failed to update SimC runtime: {err}");
+                simc_config.simc_path()
+            }
+        },
+    };
 
     let bind_host = env_or("BIND_HOST", "0.0.0.0");
 

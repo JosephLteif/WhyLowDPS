@@ -9,8 +9,19 @@ export type RaidExpansionOption = {
   name: string;
 };
 
-export function getCurrentSeasonExpansionId(seasons: Array<{ expansionId?: number }>): number | null {
-  const active = seasons[seasons.length - 1];
+export function getCurrentSeasonExpansionId(
+  seasons: Array<{ expansionId?: number; startDate?: string; endDate?: string }>,
+  now: Date = new Date(),
+): number | null {
+  const today = now.toISOString().slice(0, 10);
+  const active = [...seasons]
+    .sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
+    .reverse()
+    .find(
+      (season) =>
+        (!season.startDate || season.startDate <= today) &&
+        (!season.endDate || season.endDate >= today),
+    );
   return typeof active?.expansionId === 'number' ? active.expansionId : null;
 }
 

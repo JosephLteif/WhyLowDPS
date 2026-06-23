@@ -1,0 +1,42 @@
+[
+  {
+    "slug": "imperator-averzian",
+    "encounterNames": ["Imperator Averzian"]
+  },
+  {
+    "slug": "vorasius",
+    "encounterNames": ["Vorasius"]
+  },
+  {
+    "slug": "fallen-king-salhadaar",
+    "encounterNames": ["Fallen-King Salhadaar"]
+  },
+  {
+    "slug": "vaelgor-and-ezzorak",
+    "encounterNames": ["Vaelgor & Ezzorak", "Vaelgor", "Ezzorak"]
+  },
+  {
+    "slug": "lightblinded-vanguard",
+    "encounterNames": ["Lightblinded Vanguard", "War Chaplain Senn", "Bellamy", "Lightblood"]
+  },
+  {
+    "slug": "crown-of-the-cosmos",
+    "encounterNames": ["Crown of the Cosmos", "Alleria Windrunner"]
+  },
+  {
+    "slug": "chimaerus-the-undreamt-god",
+    "encounterNames": ["Chimaerus the Undreamt God"]
+  },
+  {
+    "slug": "beloren-child-of-alar",
+    "encounterNames": ["Belo'ren, Child of Al'ar"]
+  },
+  {
+    "slug": "midnight-falls",
+    "encounterNames": ["Midnight Falls"]
+  },
+  {
+    "slug": "rotmire",
+    "encounterNames": ["Rotmire"]
+  }
+]

@@ -1,23 +1,13 @@
-export type UpdateChannel = 'stable' | 'weekly' | 'nightly';
+export type UpdateChannel = 'stable';
 
-export const UPDATE_CHANNEL_STORAGE_KEY = 'whylowdps_update_channel';
-
-export const UPDATE_CHANNEL_OPTIONS: Array<{ id: UpdateChannel; label: string }> = [
-  { id: 'stable', label: 'Stable' },
-  { id: 'weekly', label: 'Weekly' },
-  { id: 'nightly', label: 'Nightly' },
-];
+const UPDATE_CHANNEL_STORAGE_KEY = 'whylowdps_update_channel';
 
 export function isValidUpdateChannel(value: string): value is UpdateChannel {
-  return value === 'stable' || value === 'weekly' || value === 'nightly';
+  return value === 'stable';
 }
 
 export function classifyReleaseChannel(tagOrVersion: string): UpdateChannel {
-  const value = String(tagOrVersion || '').toLowerCase();
-  // Prefer explicit markers; release tags/names are not always strict semver.
-  // Examples handled: 1.2.3-nightly.20260423, v1.2.3+weekly, nightly-20260510, weekly build 2026-05-10
-  if (/nightly/.test(value)) return 'nightly';
-  if (/weekly/.test(value)) return 'weekly';
+  void tagOrVersion;
   return 'stable';
 }
 
@@ -37,5 +27,5 @@ export function readStoredUpdateChannel(
   if (isValidUpdateChannel(raw)) {
     return raw;
   }
-  return detectVersionChannel(fallbackVersion);
+  return 'stable';
 }

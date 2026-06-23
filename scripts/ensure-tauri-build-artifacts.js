@@ -33,7 +33,6 @@ function ensureDirWithKeepFile(dir) {
 function main() {
   const repoRoot = process.cwd();
   ensureDirWithKeepFile(path.join(repoRoot, 'backend', 'resources', 'data'));
-  ensureDirWithKeepFile(path.join(repoRoot, 'backend', 'resources', 'simc'));
   const removed = cleanTauriBuildArtifacts(repoRoot);
   if (removed > 0) {
     console.log(`Removed ${removed} stale tauri build artifact director${removed === 1 ? 'y' : 'ies'}.`);

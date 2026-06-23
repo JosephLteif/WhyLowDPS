@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { API_URL, DungeonInfo, fetchJsonCached } from '../lib/api';
 import type { Instance } from '../drop-finder/types';
 import { DungeonCard, WowheadZonesIndexSummary, getLocalInstanceImageUrl, getRaidInstances, normalizeDungeonName, normalizeImageUrl } from '../dungeons/shared';
@@ -46,11 +47,17 @@ function RaidsPageSkeleton() {
 }
 
 export default function RaidsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [raids, setRaids] = useState<DungeonInfo[]>([]);
   const [expansions, setExpansions] = useState<WowExpansion[]>(wowExpansions);
   const [seasons, setSeasons] = useState<WowSeason[]>(wowSeasons);
   const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(
-    getCurrentSeasonExpansionId(wowSeasons),
+    (() => {
+      const fromQuery = searchParams.get('expansion');
+      const parsed = fromQuery ? Number(fromQuery) : NaN;
+      return Number.isFinite(parsed) ? parsed : getCurrentSeasonExpansionId(wowSeasons);
+    })(),
   );
   const [loading, setLoading] = useState(true);
 
@@ -128,7 +135,17 @@ export default function RaidsPage() {
               value={selectedExpansionId ?? ''}
               onChange={(event) => {
                 const next = Number(event.target.value);
-                setSelectedExpansionId(Number.isFinite(next) ? next : null);
+                const nextExpansionId = Number.isFinite(next) ? next : null;
+                setSelectedExpansionId(nextExpansionId);
+                const query = new URLSearchParams(searchParams.toString());
+                if (nextExpansionId == null) {
+                  query.delete('expansion');
+                } else {
+                  query.set('expansion', String(nextExpansionId));
+                }
+                router.replace(query.toString() ? `/raids?${query.toString()}` : '/raids', {
+                  scroll: false,
+                });
               }}
               className="min-w-56 rounded-lg border border-white/15 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 outline-none transition-colors hover:border-gold/50 focus:border-gold"
             >

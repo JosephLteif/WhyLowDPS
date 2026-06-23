@@ -40,7 +40,10 @@ pub(crate) fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data
 
 #[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize)]
 pub(crate) struct AppClosePreferences {
+    #[serde(default)]
     pub(crate) minimize_to_tray_on_close: Option<bool>,
+    #[serde(default)]
+    pub(crate) simc_update_channel: Option<String>,
 }
 
 #[derive(Debug)]
@@ -54,6 +57,18 @@ pub(crate) struct CloseBehaviorPreferenceResponse {
     pub(crate) minimize_to_tray_on_close: Option<bool>,
 }
 
+#[derive(serde::Serialize)]
+pub(crate) struct SimcUpdateChannelResponse {
+    pub(crate) channel: String,
+}
+
+pub(crate) fn normalize_simc_update_channel(channel: &str) -> String {
+    match channel.trim().to_ascii_lowercase().as_str() {
+        "nightly" => "nightly".to_string(),
+        _ => "weekly".to_string(),
+    }
+}
+
 pub(crate) fn load_close_preferences(path: &Path) -> AppClosePreferences {
     if !path.exists() {
         return AppClosePreferences::default();
@@ -64,7 +79,12 @@ pub(crate) fn load_close_preferences(path: &Path) -> AppClosePreferences {
         Err(_) => return AppClosePreferences::default(),
     };
 
-    serde_json::from_str::<AppClosePreferences>(&raw).unwrap_or_default()
+    let mut prefs = serde_json::from_str::<AppClosePreferences>(&raw).unwrap_or_default();
+    prefs.simc_update_channel = prefs
+        .simc_update_channel
+        .as_deref()
+        .map(normalize_simc_update_channel);
+    prefs
 }
 
 pub(crate) fn save_close_preferences(
@@ -73,6 +93,17 @@ pub(crate) fn save_close_preferences(
 ) -> Result<(), String> {
     let payload = serde_json::to_string_pretty(prefs).map_err(|e| e.to_string())?;
     std::fs::write(path, payload).map_err(|e| e.to_string())
+}
+
+pub(crate) fn set_simc_update_channel_internal(
+    state: &AppClosePreferencesState,
+    channel: &str,
+) -> Result<String, String> {
+    let normalized = normalize_simc_update_channel(channel);
+    let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+    prefs.simc_update_channel = Some(normalized.clone());
+    save_close_preferences(&state.path, &prefs)?;
+    Ok(normalized)
 }
 
 pub(crate) fn set_close_behavior_preference_internal(
@@ -503,6 +534,60 @@ mod tests {
         assert_eq!(
             load_close_preferences(&invalid).minimize_to_tray_on_close,
             None
+        );
+    }
+
+    #[test]
+    fn desktop_preferences_load_supported_simc_channel_or_default_weekly() {
+        let dir = test_temp_dir("prefs");
+
+        assert_eq!(
+            load_close_preferences(&dir.join("missing.json")).simc_update_channel,
+            None
+        );
+
+        let prefs = dir.join("prefs.json");
+        write_file(&prefs, r#"{ "simc_update_channel": "nightly" }"#);
+        assert_eq!(
+            load_close_preferences(&prefs)
+                .simc_update_channel
+                .as_deref(),
+            Some("nightly")
+        );
+
+        write_file(&prefs, r#"{ "simc_update_channel": "stable" }"#);
+        assert_eq!(
+            load_close_preferences(&prefs)
+                .simc_update_channel
+                .as_deref(),
+            Some("weekly")
+        );
+    }
+
+    #[test]
+    fn desktop_preferences_save_simc_channel() {
+        let dir = test_temp_dir("prefs");
+        let path = dir.join("prefs.json");
+
+        let state = AppClosePreferencesState {
+            prefs: Mutex::new(AppClosePreferences::default()),
+            path: path.clone(),
+        };
+
+        set_simc_update_channel_internal(&state, "nightly").unwrap();
+        assert_eq!(
+            state.prefs.lock().unwrap().simc_update_channel.as_deref(),
+            Some("nightly")
+        );
+        assert_eq!(
+            load_close_preferences(&path).simc_update_channel.as_deref(),
+            Some("nightly")
+        );
+
+        set_simc_update_channel_internal(&state, "stable").unwrap();
+        assert_eq!(
+            load_close_preferences(&path).simc_update_channel.as_deref(),
+            Some("weekly")
         );
     }
 

@@ -16,14 +16,11 @@ describe('ChangelogPopup', () => {
     const { unmount } = render(<ChangelogPopup />);
 
     expect(await screen.findByRole('dialog', { name: /what's new/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /features/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /fixes/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /saved blizzard logins/i })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /settings in the sidebar/i })).toBeInTheDocument();
+    expect(screen.getByText(/improvements/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /warcraft logs boss guides/i })).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { name: /popup no longer blocks window controls/i })
+      screen.getByText(/current-season raid bosses now link directly to warcraft logs guides/i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/move the window and use the Windows action buttons/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -55,5 +52,58 @@ describe('ChangelogPopup', () => {
     const overlay = dialog.parentElement;
 
     expect(overlay).toHaveStyle({ top: 'var(--app-header-height)' });
+  });
+
+  it('pages through changelog items with bottom progress dots', async () => {
+    const user = userEvent.setup();
+    render(<ChangelogPopup />);
+
+    expect(
+      await screen.findByRole('heading', { name: /warcraft logs boss guides/i })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/1\s*\/\s*3/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+    expect(screen.getByRole('button', { name: /show changelog item 2/i })).toHaveAttribute(
+      'aria-current',
+      'false'
+    );
+
+    await user.click(screen.getByRole('button', { name: /next changelog item/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /simulation activity time grouping/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
+      'aria-current',
+      'false'
+    );
+    expect(screen.getByRole('button', { name: /show changelog item 2/i })).toHaveAttribute(
+      'aria-current',
+      'true'
+    );
+  });
+
+  it('renders detailed changelog content as rich text', async () => {
+    const user = userEvent.setup();
+    render(<ChangelogPopup />);
+
+    await screen.findByRole('dialog', { name: /what's new/i });
+    await user.click(screen.getByRole('button', { name: /show changelog item 3/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /simc and app updates decoupling/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/app updates and simulationcraft updates are now managed separately/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/new simc versions can be delivered faster/i).closest('li')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/app updates should now be less frequent/i).closest('li')
+    ).toBeInTheDocument();
   });
 });

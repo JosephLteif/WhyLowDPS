@@ -41,7 +41,7 @@ fn resolve_simc_binary_for_request(
         }
 
         Err(
-            "Bundled SimulationCraft is missing from this app build. Reinstall the app or switch to another release channel build."
+            "SimulationCraft is not available yet. Check your internet connection or update the SimC runtime from Settings."
                 .to_string(),
         )
     }

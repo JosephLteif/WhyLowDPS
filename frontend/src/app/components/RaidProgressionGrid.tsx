@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { getWarcraftLogsGuideUrl } from '../lib/warcraft-logs-guides';
 
 type DifficultyKey = 'lfr' | 'normal' | 'heroic' | 'mythic';
 
@@ -430,6 +431,7 @@ export default function RaidProgressionGrid({
                   (sum, diff) => sum + (boss.byDifficulty[diff].lastKillTs >= weekCutoffTs ? 1 : 0),
                   0,
                 );
+                const guideUrl = getWarcraftLogsGuideUrl(boss.name);
                 const dotClass = (active: boolean, diff: DifficultyKey) => {
                   if (!active) return 'bg-zinc-700/60 ring-white/10';
                   if (diff === 'mythic') return 'bg-violet-400 ring-violet-300/60';
@@ -443,7 +445,20 @@ export default function RaidProgressionGrid({
                     className="rounded-md border border-white/10 bg-black/20 px-3 py-2"
                   >
                     <div className="grid grid-cols-[minmax(240px,1fr)_repeat(4,36px)_60px] items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-zinc-100">{boss.name}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-zinc-100">{boss.name}</p>
+                        {guideUrl ? (
+                          <a
+                            href={guideUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 text-xs font-semibold text-gold hover:text-gold/80"
+                            aria-label={`Warcraft Logs guide for ${boss.name}`}
+                          >
+                            Guide
+                          </a>
+                        ) : null}
+                      </div>
                       {DIFFICULTIES.map((diff) => {
                         const killed =
                           viewMode === 'overall'

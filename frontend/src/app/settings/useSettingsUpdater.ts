@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, fetchJson, isDesktop } from '../lib/api';
-import {
-  readStoredUpdateChannel,
-  UPDATE_CHANNEL_STORAGE_KEY,
-  type UpdateChannel,
-} from '../lib/update-channel';
+import { fetchStableAppReleases, type AppReleaseInfo } from '../lib/updater-release';
 import type { SettingsStatusMessage } from './types';
 
 type UpdateCheckState = 'idle' | 'checking' | 'installing';
@@ -17,7 +13,10 @@ type UseSettingsUpdaterArgs = {
 export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpdaterArgs) {
   const [updateCheckState, setUpdateCheckState] = useState<UpdateCheckState>('idle');
   const [updateMessage, setUpdateMessage] = useState<SettingsStatusMessage | null>(null);
-  const [selectedUpdateChannel, setSelectedUpdateChannel] = useState<UpdateChannel>('stable');
+  const [appReleases, setAppReleases] = useState<AppReleaseInfo[]>([]);
+  const [appReleaseMetadataStatus, setAppReleaseMetadataStatus] =
+    useState<'available' | 'rate_limited' | 'unavailable'>('unavailable');
+  const [selectedAppVersion, setSelectedAppVersion] = useState('');
 
   useEffect(() => {
     const onUpdaterStatus = (event: Event) => {
@@ -62,13 +61,8 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
 
   useEffect(() => {
     if (!isDesktop) return;
-    setSelectedUpdateChannel(readStoredUpdateChannel());
-  }, []);
-
-  useEffect(() => {
-    if (!isDesktop) return;
     try {
-      localStorage.setItem(UPDATE_CHANNEL_STORAGE_KEY, selectedUpdateChannel);
+      localStorage.removeItem('whylowdps_update_channel');
     } catch {}
     if (!performanceSaved || !hasUser) return;
     fetchJson(`${API_URL}/api/user/config`, {
@@ -76,36 +70,65 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: 'app_update_channel',
-        value: selectedUpdateChannel,
+        value: 'stable',
       }),
     }).catch(() => {});
-  }, [hasUser, performanceSaved, selectedUpdateChannel]);
+  }, [hasUser, performanceSaved]);
+
+  const loadAppReleases = useCallback(async (options?: { forceRefresh?: boolean }) => {
+    const result = await fetchStableAppReleases(options);
+    const releases = result.releases;
+    setAppReleases(releases);
+    setAppReleaseMetadataStatus(result.metadataStatus);
+    setSelectedAppVersion((current) =>
+      current && releases.some((release) => release.version === current)
+        ? current
+        : releases[0]?.version || '',
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    void loadAppReleases();
+  }, [loadAppReleases]);
 
   const checkForUpdatesNow = useCallback(() => {
     setUpdateCheckState('checking');
     setUpdateMessage(null);
     window.dispatchEvent(
       new CustomEvent('whylowdps-updater-check', {
-        detail: { channel: selectedUpdateChannel },
+        detail: { channel: 'stable' },
       })
     );
-  }, [selectedUpdateChannel]);
+  }, []);
 
   const downloadAndInstallLatest = useCallback(() => {
     setUpdateCheckState('installing');
     setUpdateMessage(null);
+    const release = appReleases.find((item) => item.version === selectedAppVersion) || appReleases[0];
     window.dispatchEvent(
       new CustomEvent('whylowdps-updater-install', {
-        detail: { channel: selectedUpdateChannel },
+        detail: release
+          ? {
+              channel: 'stable',
+              version: release.version,
+              notes: release.notes,
+              manualDownloadUrl: release.downloadUrl,
+              fallbackOnly: true,
+            }
+          : { channel: 'stable' },
       })
     );
-  }, [selectedUpdateChannel]);
+  }, [appReleases, selectedAppVersion]);
 
   return {
     updateCheckState,
     updateMessage,
-    selectedUpdateChannel,
-    setSelectedUpdateChannel,
+    appReleases,
+    appReleaseMetadataStatus,
+    selectedAppVersion,
+    setSelectedAppVersion,
+    loadAppReleases,
     checkForUpdatesNow,
     downloadAndInstallLatest,
   };

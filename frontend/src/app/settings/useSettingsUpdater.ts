@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, fetchJson, isDesktop } from '../lib/api';
+import { fetchStableAppReleases, type AppReleaseInfo } from '../lib/updater-release';
 import type { SettingsStatusMessage } from './types';
 
 type UpdateCheckState = 'idle' | 'checking' | 'installing';
@@ -12,6 +13,10 @@ type UseSettingsUpdaterArgs = {
 export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpdaterArgs) {
   const [updateCheckState, setUpdateCheckState] = useState<UpdateCheckState>('idle');
   const [updateMessage, setUpdateMessage] = useState<SettingsStatusMessage | null>(null);
+  const [appReleases, setAppReleases] = useState<AppReleaseInfo[]>([]);
+  const [appReleaseMetadataStatus, setAppReleaseMetadataStatus] =
+    useState<'available' | 'rate_limited' | 'unavailable'>('unavailable');
+  const [selectedAppVersion, setSelectedAppVersion] = useState('');
 
   useEffect(() => {
     const onUpdaterStatus = (event: Event) => {
@@ -70,6 +75,23 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     }).catch(() => {});
   }, [hasUser, performanceSaved]);
 
+  const loadAppReleases = useCallback(async (options?: { forceRefresh?: boolean }) => {
+    const result = await fetchStableAppReleases(options);
+    const releases = result.releases;
+    setAppReleases(releases);
+    setAppReleaseMetadataStatus(result.metadataStatus);
+    setSelectedAppVersion((current) =>
+      current && releases.some((release) => release.version === current)
+        ? current
+        : releases[0]?.version || '',
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    void loadAppReleases();
+  }, [loadAppReleases]);
+
   const checkForUpdatesNow = useCallback(() => {
     setUpdateCheckState('checking');
     setUpdateMessage(null);
@@ -83,16 +105,30 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
   const downloadAndInstallLatest = useCallback(() => {
     setUpdateCheckState('installing');
     setUpdateMessage(null);
+    const release = appReleases.find((item) => item.version === selectedAppVersion) || appReleases[0];
     window.dispatchEvent(
       new CustomEvent('whylowdps-updater-install', {
-        detail: { channel: 'stable' },
+        detail: release
+          ? {
+              channel: 'stable',
+              version: release.version,
+              notes: release.notes,
+              manualDownloadUrl: release.downloadUrl,
+              fallbackOnly: true,
+            }
+          : { channel: 'stable' },
       })
     );
-  }, []);
+  }, [appReleases, selectedAppVersion]);
 
   return {
     updateCheckState,
     updateMessage,
+    appReleases,
+    appReleaseMetadataStatus,
+    selectedAppVersion,
+    setSelectedAppVersion,
+    loadAppReleases,
     checkForUpdatesNow,
     downloadAndInstallLatest,
   };

@@ -20,6 +20,7 @@ import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
+import { fetchSimcRuntimeInfo, type SimcRuntimeInfo } from '../lib/simc-runtime-release';
 import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
@@ -112,10 +113,17 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [simcRuntimeInfo, setSimcRuntimeInfo] = useState<SimcRuntimeInfo | null>(null);
+  const [simcRuntimeInfoLoading, setSimcRuntimeInfoLoading] = useState(false);
+  const [simcRuntimeDownloading, setSimcRuntimeDownloading] = useState(false);
   const {
     updateCheckState,
     updateMessage,
-    checkForUpdatesNow,
+    appReleases,
+    appReleaseMetadataStatus,
+    selectedAppVersion,
+    setSelectedAppVersion,
+    loadAppReleases,
     downloadAndInstallLatest,
   } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
 
@@ -372,6 +380,22 @@ export default function SettingsPage() {
     }
   };
 
+  const loadSimcRuntimeInfo = async (
+    channel: SimcUpdateChannel,
+    options?: { forceRefresh?: boolean },
+  ) => {
+    if (!isDesktop) return;
+    setSimcRuntimeInfoLoading(true);
+    const info = await fetchSimcRuntimeInfo(channel, options);
+    setSimcRuntimeInfo(info);
+    setSimcRuntimeInfoLoading(false);
+  };
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    void loadSimcRuntimeInfo(selectedSimcChannel);
+  }, [selectedSimcChannel]);
+
   const setSelectedSimcChannel = async (nextChannel: SimcUpdateChannel) => {
     if (!isDesktop) return;
     const previous = selectedSimcChannel;
@@ -396,28 +420,41 @@ export default function SettingsPage() {
 
     setSimcChannelMessage({
       type: 'success',
-      text: `Downloading ${savedChannel} SimC runtime...`,
+      text: `SimC channel saved as ${savedChannel}.`,
     });
+  };
 
+  const downloadSelectedSimcRuntime = async () => {
+    if (!isDesktop || simcRuntimeDownloading) return;
+    const channel = selectedSimcChannel;
+    setSimcRuntimeDownloading(true);
+    setSimcChannelMessage({
+      type: 'success',
+      text: `Downloading ${channel} SimC runtime...`,
+    });
+    const { invoke } = await import('@tauri-apps/api/core');
     try {
       const status = await invoke<SimcRuntimeStatusResponse>('update_simc_runtime', {
-        channel: savedChannel,
+        channel,
       });
       const version = status?.version ? ` (${status.version})` : '';
       setSimcChannelMessage({
         type: 'success',
         text: status?.updated
-          ? `SimC ${savedChannel} runtime downloaded${version}.`
-          : `SimC ${savedChannel} runtime is already up to date${version}.`,
+          ? `SimC ${channel} runtime downloaded${version}.`
+          : `SimC ${channel} runtime is already up to date${version}.`,
       });
+      await loadSimcRuntimeInfo(channel);
     } catch (err: any) {
       setSimcChannelMessage({
         type: 'error',
         text:
           err?.message ||
           err?.toString?.() ||
-          `SimC channel saved as ${savedChannel}, but the runtime download failed.`,
+          `SimC ${channel} runtime download failed.`,
       });
+    } finally {
+      setSimcRuntimeDownloading(false);
     }
   };
 
@@ -660,10 +697,21 @@ export default function SettingsPage() {
         <UpdatesSettingsSection
           selectedSimcChannel={selectedSimcChannel}
           setSelectedSimcChannel={setSelectedSimcChannel}
+          simcRuntimeInfo={simcRuntimeInfo}
+          simcRuntimeInfoLoading={simcRuntimeInfoLoading}
+          simcRuntimeDownloading={simcRuntimeDownloading}
+          refreshSimcRuntimeInfo={() =>
+            void loadSimcRuntimeInfo(selectedSimcChannel, { forceRefresh: true })
+          }
+          downloadSelectedSimcRuntime={downloadSelectedSimcRuntime}
           simcChannelMessage={simcChannelMessage}
           isDesktopRuntime={isDesktop}
           updateCheckState={updateCheckState}
-          checkForUpdatesNow={checkForUpdatesNow}
+          appReleases={appReleases}
+          appReleaseMetadataStatus={appReleaseMetadataStatus}
+          selectedAppVersion={selectedAppVersion}
+          setSelectedAppVersion={setSelectedAppVersion}
+          loadAppReleases={loadAppReleases}
           downloadAndInstallLatest={downloadAndInstallLatest}
           updateMessage={updateMessage}
         />

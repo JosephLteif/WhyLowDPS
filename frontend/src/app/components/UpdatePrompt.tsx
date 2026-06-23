@@ -513,8 +513,26 @@ export default function UpdatePrompt() {
 
   useEffect(() => {
     const wrapped = (event: Event) => {
-      const detail = (event as CustomEvent<{ channel?: UpdateChannel }>).detail;
+      const detail = (
+        event as CustomEvent<{
+          channel?: UpdateChannel;
+          version?: string;
+          notes?: string;
+          manualDownloadUrl?: string;
+          fallbackOnly?: boolean;
+        }>
+      ).detail;
       const requestedChannel = detail?.channel ?? readStoredUpdateChannel();
+      if (detail?.manualDownloadUrl && detail?.version) {
+        void startInstallFromDetails({
+          version: detail.version,
+          notes: detail.notes,
+          manualDownloadUrl: detail.manualDownloadUrl,
+          fallbackOnly: detail.fallbackOnly ?? true,
+          channel: requestedChannel,
+        });
+        return;
+      }
       if (state === 'available' && details && details.channel === requestedChannel) {
         void startInstallFromDetails(details);
         return;

@@ -2,6 +2,8 @@ import { APP_VERSION } from './version';
 import { classifyReleaseChannel, type UpdateChannel } from './update-channel';
 
 const GITHUB_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
+const APP_RELEASES_CACHE_KEY = 'whylowdps_app_releases_stable';
+const APP_RELEASES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 type ParsedSemver = {
   major: number;
@@ -16,14 +18,73 @@ export type RemoteReleaseInfo = {
   downloadUrl?: string;
 };
 
+export type AppReleaseInfo = RemoteReleaseInfo & {
+  assetName?: string;
+  assetSizeBytes?: number;
+  publishedAt?: string;
+};
+
+export type AppReleaseListResult = {
+  releases: AppReleaseInfo[];
+  metadataStatus: 'available' | 'rate_limited' | 'unavailable';
+};
+
+type CachedAppReleaseListResult = {
+  cachedAt?: unknown;
+  result?: unknown;
+};
+
+type FetchStableAppReleasesOptions = {
+  forceRefresh?: boolean;
+};
+
 type GitHubRelease = {
   tag_name?: unknown;
   name?: unknown;
   draft?: unknown;
   prerelease?: unknown;
+  published_at?: unknown;
   body?: unknown;
-  assets?: Array<{ browser_download_url?: unknown; name?: unknown }>;
+  assets?: Array<{ browser_download_url?: unknown; name?: unknown; size?: unknown }>;
 };
+
+function isAppReleaseListResult(value: unknown): value is AppReleaseListResult {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<AppReleaseListResult>;
+  return (
+    Array.isArray(candidate.releases) &&
+    (candidate.metadataStatus === 'available' ||
+      candidate.metadataStatus === 'rate_limited' ||
+      candidate.metadataStatus === 'unavailable')
+  );
+}
+
+function readCachedAppReleases(): AppReleaseListResult | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(APP_RELEASES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedAppReleaseListResult;
+    if (typeof parsed.cachedAt !== 'number') return null;
+    if (Date.now() - parsed.cachedAt > APP_RELEASES_CACHE_TTL_MS) return null;
+    return isAppReleaseListResult(parsed.result) ? parsed.result : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedAppReleases(result: AppReleaseListResult) {
+  if (typeof window === 'undefined' || result.metadataStatus !== 'available') return;
+  try {
+    window.localStorage.setItem(
+      APP_RELEASES_CACHE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        result,
+      }),
+    );
+  } catch {}
+}
 
 export function normalizeVersion(version: string): string {
   return version.trim().replace(/^v/i, '');
@@ -136,21 +197,58 @@ export function resolveCurrentVersion(tauriVersion: string | null): string | nul
   return comparison === -1 ? frontendVersion : tauriVersion;
 }
 
-function pickWindowsAssetUrl(
-  assets: Array<{ browser_download_url?: unknown; name?: unknown }>,
-): string | undefined {
+function isStableVersion(value: string): boolean {
+  const parsed = parseVersion(value);
+  return Boolean(parsed && parsed.prerelease.length === 0);
+}
+
+function pickWindowsAsset(
+  assets: Array<{ browser_download_url?: unknown; name?: unknown; size?: unknown }>,
+): { url: string; name?: string; size?: number } | undefined {
   const urls = (assets || [])
     .map((asset) => ({
       url: typeof asset.browser_download_url === 'string' ? asset.browser_download_url : '',
       name: typeof asset.name === 'string' ? asset.name : '',
+      size: typeof asset.size === 'number' && Number.isFinite(asset.size) ? asset.size : undefined,
     }))
     .filter((asset) => asset.url.length > 0);
   if (urls.length === 0) return undefined;
-  const preferred =
+  return (
     urls.find((asset) => /windows|win64|x64|setup|nsis/i.test(asset.name || asset.url)) ||
     urls.find((asset) => /\.(exe|msi|zip)$/i.test(asset.name || asset.url)) ||
-    urls[0];
-  return preferred.url;
+    urls[0]
+  );
+}
+
+export function parseStableAppReleases(payload: GitHubRelease[]): AppReleaseInfo[] {
+  return (payload || [])
+    .flatMap((entry) => {
+      if (entry?.draft || entry?.prerelease) return [];
+      const tagRaw =
+        typeof entry.tag_name === 'string'
+          ? entry.tag_name
+          : typeof entry.name === 'string'
+            ? entry.name
+            : '';
+      if (!tagRaw || !isStableVersion(tagRaw)) return [];
+      const asset = pickWindowsAsset(entry.assets || []);
+      if (!asset?.url) return [];
+      return [
+        {
+          version: normalizeVersion(tagRaw),
+          notes: typeof entry.body === 'string' ? entry.body : undefined,
+          downloadUrl: asset.url,
+          assetName: asset.name || undefined,
+          assetSizeBytes: asset.size,
+          publishedAt: typeof entry.published_at === 'string' ? entry.published_at : undefined,
+        },
+      ];
+    })
+    .sort((a, b) => {
+      const comparison = compareVersions(a.version, b.version);
+      if (comparison != null && comparison !== 0) return -comparison;
+      return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''));
+    });
 }
 
 async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
@@ -163,36 +261,14 @@ async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promis
     });
     if (!response.ok) return null;
 
-    const payload = (await response.json()) as GitHubRelease[];
-    const match = (payload || []).find((entry) => {
-      if (entry?.draft) return false;
-      const tagRaw =
-        typeof entry.tag_name === 'string'
-          ? entry.tag_name
-          : typeof entry.name === 'string'
-            ? entry.name
-            : '';
-      if (!tagRaw) return false;
-      const releaseChannel = classifyReleaseChannel(tagRaw);
-      if (releaseChannel !== channel) return false;
-      if (channel === 'stable' && entry?.prerelease) return false;
-      return true;
-    });
+    const releases = parseStableAppReleases((await response.json()) as GitHubRelease[]);
+    const match = releases.find((release) => classifyReleaseChannel(release.version) === channel);
     if (!match) return null;
 
-    const versionRaw =
-      typeof match.tag_name === 'string'
-        ? match.tag_name
-        : typeof match.name === 'string'
-          ? match.name
-          : '';
-    const version = normalizeVersion(versionRaw);
-    if (!version) return null;
-
     return {
-      version,
-      notes: typeof match.body === 'string' ? match.body : undefined,
-      downloadUrl: pickWindowsAssetUrl(match.assets || []),
+      version: match.version,
+      notes: match.notes,
+      downloadUrl: match.downloadUrl,
     };
   } catch {
     return null;
@@ -201,4 +277,34 @@ async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promis
 
 export async function fetchManifestVersion(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
   return fetchManifestVersionFromGitHubApi(channel);
+}
+
+export async function fetchStableAppReleases(
+  options: FetchStableAppReleasesOptions = {},
+): Promise<AppReleaseListResult> {
+  if (!options.forceRefresh) {
+    const cached = readCachedAppReleases();
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await fetch(GITHUB_RELEASES_API, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (response.status === 403 || response.status === 429) {
+      return { releases: [], metadataStatus: 'rate_limited' };
+    }
+    if (!response.ok) return { releases: [], metadataStatus: 'unavailable' };
+    const result = {
+      releases: parseStableAppReleases((await response.json()) as GitHubRelease[]),
+      metadataStatus: 'available' as const,
+    };
+    writeCachedAppReleases(result);
+    return result;
+  } catch {
+    return { releases: [], metadataStatus: 'unavailable' };
+  }
 }

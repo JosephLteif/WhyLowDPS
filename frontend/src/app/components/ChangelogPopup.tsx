@@ -29,8 +29,8 @@ const releaseNotes: ReleaseNote[] = [
   },
   {
     category: 'improvement',
-    title: 'SimC runtime download progress',
-    body: 'SimC runtime downloads now show progress, speed, and elapsed time in the desktop popup.',
+    title: 'Update and SimC download controls',
+    body: 'App updates now let you choose a stable GitHub release, and SimC channel changes show version details before you start the download.',
   },
 ];
 

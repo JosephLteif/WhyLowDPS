@@ -50,136 +50,148 @@ export default function UpdatesSettingsSection({
   return (
     <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
       <h2 className="mb-3 text-xl font-semibold text-white">App Updates</h2>
-      <div className="max-w-2xl space-y-3">
-        <div className="rounded-lg border border-border bg-surface-2 p-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium text-zinc-300">Stable Version</span>
-            <select
-              value={selectedAppVersion}
-              onChange={(e) => setSelectedAppVersion(e.target.value)}
-              className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
-            >
-              {appReleases.length === 0 ? (
-                <option value="">No releases loaded</option>
-              ) : (
-                appReleases.map((release) => (
-                  <option key={release.version} value={release.version}>
-                    {release.version}
-                  </option>
-                ))
-              )}
-            </select>
-            <button
-              onClick={() => loadAppReleases({ forceRefresh: true })}
-              disabled={updateCheckState !== 'idle'}
-              className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
-            >
-              Refresh
-            </button>
-            <button
-              onClick={downloadAndInstallLatest}
-              disabled={updateCheckState !== 'idle' || !selectedAppRelease?.downloadUrl}
-              className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
-            >
-              {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
-            </button>
-          </div>
-          {selectedAppRelease && (
-            <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
-              <span>Version: {selectedAppRelease.version}</span>
-              <span>Size: {formatBytesDecimal(selectedAppRelease.assetSizeBytes)}</span>
-              <span className="truncate" title={selectedAppRelease.assetName || undefined}>
-                Asset: {selectedAppRelease.assetName || 'Windows installer'}
-              </span>
-            </div>
-          )}
-          {appMetadataRateLimited && (
-            <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-              GitHub rate limited this request, so app versions and installer sizes cannot be
-              shown. Check back later.
-            </p>
-          )}
-        </div>
-
-        {isDesktopRuntime && (
-          <div className="rounded-lg border border-border bg-surface-2 p-3">
+      <div className="max-w-5xl space-y-3">
+        <div
+          data-update-card
+          className="grid gap-3 rounded-lg border border-border bg-surface-2 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]"
+        >
+          <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-zinc-300">SimC Channel</span>
+              <span className="text-sm font-medium text-zinc-300">Stable Version</span>
               <select
-                value={selectedSimcChannel}
-                onChange={(e) => setSelectedSimcChannel(e.target.value as 'weekly' | 'nightly')}
+                value={selectedAppVersion}
+                onChange={(e) => setSelectedAppVersion(e.target.value)}
                 className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
               >
-                <option value="weekly">Weekly</option>
-                <option value="nightly">Nightly</option>
+                {appReleases.length === 0 ? (
+                  <option value="">No releases loaded</option>
+                ) : (
+                  appReleases.map((release) => (
+                    <option key={release.version} value={release.version}>
+                      {release.version}
+                    </option>
+                  ))
+                )}
               </select>
               <button
-                onClick={refreshSimcRuntimeInfo}
-                disabled={simcRuntimeInfoLoading}
+                onClick={() => loadAppReleases({ forceRefresh: true })}
+                disabled={updateCheckState !== 'idle'}
                 className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
               >
-                {simcRuntimeInfoLoading ? 'Refreshing...' : 'Refresh'}
+                Refresh
               </button>
               <button
-                onClick={downloadSelectedSimcRuntime}
-                disabled={simcRuntimeDownloading}
+                onClick={downloadAndInstallLatest}
+                disabled={updateCheckState !== 'idle' || !selectedAppRelease?.downloadUrl}
                 className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
               >
-                {simcRuntimeDownloading ? 'Downloading...' : 'Download'}
+                {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
               </button>
             </div>
-            <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
-              <span>
-                Version:{' '}
-                {simcRuntimeInfoLoading
-                  ? 'Loading...'
-                  : simcMetadataRateLimited
-                    ? 'Rate limited'
-                    : simcRuntimeInfo?.version || 'Unavailable'}
-              </span>
-              <span>
-                Size:{' '}
-                {simcMetadataRateLimited
-                  ? 'Rate limited'
-                  : formatBytesDecimal(simcRuntimeInfo?.assetSizeBytes)}
-              </span>
-              <span className="truncate" title={simcRuntimeInfo?.assetName || undefined}>
-                Asset: {simcRuntimeInfo?.assetName || 'Current platform archive'}
-              </span>
-            </div>
-            {simcMetadataRateLimited && (
+            {selectedAppRelease && (
+              <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
+                <span>Version: {selectedAppRelease.version}</span>
+                <span>Size: {formatBytesDecimal(selectedAppRelease.assetSizeBytes)}</span>
+                <span className="truncate" title={selectedAppRelease.assetName || undefined}>
+                  Asset: {selectedAppRelease.assetName || 'Windows installer'}
+                </span>
+              </div>
+            )}
+            {appMetadataRateLimited && (
               <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                GitHub rate limited this request, so the SimC version and size cannot be shown.
-                Check back later.
+                GitHub rate limited this request, so app versions and installer sizes cannot be
+                shown. Check back later.
               </p>
             )}
           </div>
-        )}
 
-        {isDesktopRuntime && simcChannelMessage && (
-          <div
-            className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-              simcChannelMessage.type === 'success'
-                ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                : 'border border-red-500/20 bg-red-500/10 text-red-400'
-            }`}
-          >
-            {simcChannelMessage.text}
-          </div>
-        )}
+          {updateMessage && <StatusMessage message={updateMessage} className="lg:self-center" />}
+        </div>
 
-        {updateMessage && (
+        {isDesktopRuntime && (
           <div
-            className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
-              updateMessage.type === 'success'
-                ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
-                : 'border border-red-500/20 bg-red-500/10 text-red-400'
-            }`}
+            data-update-card
+            className="grid gap-3 rounded-lg border border-border bg-surface-2 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)]"
           >
-            {updateMessage.text}
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-zinc-300">SimC Channel</span>
+                <select
+                  value={selectedSimcChannel}
+                  onChange={(e) => setSelectedSimcChannel(e.target.value as 'weekly' | 'nightly')}
+                  className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="nightly">Nightly</option>
+                </select>
+                <button
+                  onClick={refreshSimcRuntimeInfo}
+                  disabled={simcRuntimeInfoLoading}
+                  className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+                >
+                  {simcRuntimeInfoLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+                <button
+                  onClick={downloadSelectedSimcRuntime}
+                  disabled={simcRuntimeDownloading}
+                  className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+                >
+                  {simcRuntimeDownloading ? 'Downloading...' : 'Download'}
+                </button>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
+                <span>
+                  Version:{' '}
+                  {simcRuntimeInfoLoading
+                    ? 'Loading...'
+                    : simcMetadataRateLimited
+                      ? 'Rate limited'
+                      : simcRuntimeInfo?.version || 'Unavailable'}
+                </span>
+                <span>
+                  Size:{' '}
+                  {simcMetadataRateLimited
+                    ? 'Rate limited'
+                    : formatBytesDecimal(simcRuntimeInfo?.assetSizeBytes)}
+                </span>
+                <span className="truncate" title={simcRuntimeInfo?.assetName || undefined}>
+                  Asset: {simcRuntimeInfo?.assetName || 'Current platform archive'}
+                </span>
+              </div>
+              {simcMetadataRateLimited && (
+                <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                  GitHub rate limited this request, so the SimC version and size cannot be shown.
+                  Check back later.
+                </p>
+              )}
+            </div>
+
+            {simcChannelMessage && (
+              <StatusMessage message={simcChannelMessage} className="lg:self-center" />
+            )}
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+function StatusMessage({
+  message,
+  className = '',
+}: {
+  message: SettingsStatusMessage;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`animate-in fade-in zoom-in rounded-lg p-4 text-sm duration-300 ${
+        message.type === 'success'
+          ? 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+          : 'border border-red-500/20 bg-red-500/10 text-red-400'
+      } ${className}`}
+    >
+      {message.text}
+    </div>
   );
 }

@@ -21,11 +21,19 @@ describe('buildSimcRuntimeInfo', () => {
       },
       {
         assets: [
-          { name: 'simc-linux-x64.zip', browser_download_url: 'https://example.test/linux.zip', size: 10 },
-          { name: 'simc-win64.zip', browser_download_url: 'https://example.test/win.zip', size: 20 },
+          {
+            name: 'simc-linux-x64.zip',
+            browser_download_url: 'https://example.test/linux.zip',
+            size: 10,
+          },
+          {
+            name: 'simc-win64.zip',
+            browser_download_url: 'https://example.test/win.zip',
+            size: 20,
+          },
         ],
       },
-      'win64',
+      'win64'
     );
 
     expect(info).toEqual({
@@ -48,17 +56,19 @@ describe('buildSimcRuntimeInfo', () => {
               {
                 name: 'manifest.json',
                 url: 'https://api.github.com/repos/acme/runtime/releases/assets/1',
-                browser_download_url: 'https://github.com/acme/runtime/releases/download/weekly/manifest.json',
+                browser_download_url:
+                  'https://github.com/acme/runtime/releases/download/weekly/manifest.json',
                 size: 200,
               },
               {
                 name: 'simc-win64.zip',
-                browser_download_url: 'https://github.com/acme/runtime/releases/download/weekly/simc-win64.zip',
+                browser_download_url:
+                  'https://github.com/acme/runtime/releases/download/weekly/simc-win64.zip',
                 size: 300,
               },
             ],
           }),
-          { status: 200 },
+          { status: 200 }
         );
       }
       if (url === 'https://api.github.com/repos/acme/runtime/releases/assets/1') {
@@ -75,7 +85,7 @@ describe('buildSimcRuntimeInfo', () => {
               },
             ],
           }),
-          { status: 200 },
+          { status: 200 }
         );
       }
       return new Response('', { status: 404 });
@@ -89,7 +99,7 @@ describe('buildSimcRuntimeInfo', () => {
     });
     expect(fetchMock).not.toHaveBeenCalledWith(
       'https://github.com/JosephLteif/whylowdps-simc-runtime/releases/download/weekly/manifest.json',
-      expect.anything(),
+      expect.anything()
     );
   });
 
@@ -105,21 +115,23 @@ describe('buildSimcRuntimeInfo', () => {
                 {
                   name: 'manifest.json',
                   url: 'https://api.github.com/repos/acme/runtime/releases/assets/1',
-                  browser_download_url: 'https://github.com/acme/runtime/releases/download/nightly/manifest.json',
+                  browser_download_url:
+                    'https://github.com/acme/runtime/releases/download/nightly/manifest.json',
                   size: 200,
                 },
                 {
                   name: 'simc-win64.zip',
-                  browser_download_url: 'https://github.com/acme/runtime/releases/download/nightly/simc-win64.zip',
+                  browser_download_url:
+                    'https://github.com/acme/runtime/releases/download/nightly/simc-win64.zip',
                   size: 300,
                 },
               ],
             }),
-            { status: 200 },
+            { status: 200 }
           );
         }
         return new Response(JSON.stringify({ message: 'rate limited' }), { status: 403 });
-      }),
+      })
     );
 
     await expect(fetchSimcRuntimeInfo('nightly')).resolves.toMatchObject({
@@ -129,10 +141,52 @@ describe('buildSimcRuntimeInfo', () => {
     });
   });
 
+  it('falls back to release metadata when manifest content cannot be fetched', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.endsWith('/releases/tags/nightly')) {
+          return new Response(
+            JSON.stringify({
+              updated_at: '2026-06-23T05:09:50Z',
+              assets: [
+                {
+                  name: 'manifest.json',
+                  url: 'https://api.github.com/repos/acme/runtime/releases/assets/1',
+                  browser_download_url:
+                    'https://github.com/acme/runtime/releases/download/nightly/manifest.json',
+                  size: 200,
+                },
+                {
+                  name: 'simc-win64.zip',
+                  browser_download_url:
+                    'https://github.com/acme/runtime/releases/download/nightly/simc-win64.zip',
+                  size: 15055959,
+                },
+              ],
+            }),
+            { status: 200 }
+          );
+        }
+        throw new TypeError('Failed to fetch');
+      })
+    );
+
+    await expect(fetchSimcRuntimeInfo('nightly')).resolves.toMatchObject({
+      version: 'nightly-202606230509',
+      assetName: 'simc-win64.zip',
+      assetSizeBytes: 15055959,
+      metadataStatus: 'available',
+    });
+  });
+
   it('reports GitHub rate limits when release metadata cannot be read', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ message: 'API rate limit exceeded' }), { status: 403 })),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'API rate limit exceeded' }), { status: 403 })
+      )
     );
 
     await expect(fetchSimcRuntimeInfo('nightly')).resolves.toEqual({
@@ -154,7 +208,7 @@ describe('buildSimcRuntimeInfo', () => {
           assetSizeBytes: 123,
           metadataStatus: 'available',
         },
-      }),
+      })
     );
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -176,7 +230,7 @@ describe('buildSimcRuntimeInfo', () => {
           version: 'weekly-cached',
           metadataStatus: 'available',
         },
-      }),
+      })
     );
     vi.stubGlobal(
       'fetch',
@@ -188,16 +242,17 @@ describe('buildSimcRuntimeInfo', () => {
               assets: [
                 {
                   name: 'simc-win64.zip',
-                  browser_download_url: 'https://github.com/acme/runtime/releases/download/weekly/simc-win64.zip',
+                  browser_download_url:
+                    'https://github.com/acme/runtime/releases/download/weekly/simc-win64.zip',
                   size: 300,
                 },
               ],
             }),
-            { status: 200 },
+            { status: 200 }
           );
         }
         return new Response('', { status: 404 });
-      }),
+      })
     );
 
     await expect(fetchSimcRuntimeInfo('weekly', { forceRefresh: true })).resolves.toMatchObject({

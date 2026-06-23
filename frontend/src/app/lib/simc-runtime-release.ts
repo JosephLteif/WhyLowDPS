@@ -68,7 +68,7 @@ function writeCachedSimcRuntimeInfo(info: SimcRuntimeInfo | null) {
       JSON.stringify({
         cachedAt: Date.now(),
         info,
-      }),
+      })
     );
   } catch {}
 }
@@ -83,7 +83,7 @@ export function buildSimcRuntimeInfo(
   channel: SimcUpdateChannel,
   manifest: SimcManifest,
   release: SimcRelease,
-  platform = currentSimcPlatform(),
+  platform = currentSimcPlatform()
 ): SimcRuntimeInfo | null {
   const version = typeof manifest.version === 'string' ? manifest.version : '';
   if (!version) return null;
@@ -93,7 +93,9 @@ export function buildSimcRuntimeInfo(
   const releaseAsset = (release.assets || []).find((asset) => {
     const url = typeof asset.browser_download_url === 'string' ? asset.browser_download_url : '';
     const name = typeof asset.name === 'string' ? asset.name : '';
-    return (downloadUrl && url === downloadUrl) || name.toLowerCase().includes(platform.toLowerCase());
+    return (
+      (downloadUrl && url === downloadUrl) || name.toLowerCase().includes(platform.toLowerCase())
+    );
   });
 
   return {
@@ -121,7 +123,7 @@ function versionFromReleaseTimestamp(channel: SimcUpdateChannel, value: unknown)
 function buildSimcRuntimeInfoFromRelease(
   channel: SimcUpdateChannel,
   release: SimcRelease,
-  platform = currentSimcPlatform(),
+  platform = currentSimcPlatform()
 ): SimcRuntimeInfo {
   const releaseAsset = (release.assets || []).find((asset) => {
     const name = typeof asset.name === 'string' ? asset.name : '';
@@ -147,7 +149,7 @@ function buildSimcRuntimeInfoFromRelease(
 
 export async function fetchSimcRuntimeInfo(
   channel: SimcUpdateChannel,
-  options: FetchSimcRuntimeInfoOptions = {},
+  options: FetchSimcRuntimeInfoOptions = {}
 ): Promise<SimcRuntimeInfo | null> {
   if (!options.forceRefresh) {
     const cached = readCachedSimcRuntimeInfo(channel);
@@ -176,19 +178,30 @@ export async function fetchSimcRuntimeInfo(
       writeCachedSimcRuntimeInfo(info);
       return info;
     }
-    const manifestResponse = await fetch(manifestUrl, {
-      cache: 'no-store',
-      headers: { Accept: 'application/octet-stream' },
-    });
-    if (!manifestResponse.ok) {
+    try {
+      const manifestResponse = await fetch(manifestUrl, {
+        cache: 'no-store',
+        headers: { Accept: 'application/octet-stream' },
+      });
+      if (!manifestResponse.ok) {
+        const info = buildSimcRuntimeInfoFromRelease(channel, release);
+        writeCachedSimcRuntimeInfo(info);
+        return info;
+      }
+      const manifest = (await manifestResponse.json()) as SimcManifest;
+      const info = buildSimcRuntimeInfo(channel, manifest, release);
+      if (info) {
+        writeCachedSimcRuntimeInfo(info);
+        return info;
+      }
+      const releaseInfo = buildSimcRuntimeInfoFromRelease(channel, release);
+      writeCachedSimcRuntimeInfo(releaseInfo);
+      return releaseInfo;
+    } catch {
       const info = buildSimcRuntimeInfoFromRelease(channel, release);
       writeCachedSimcRuntimeInfo(info);
       return info;
     }
-    const manifest = (await manifestResponse.json()) as SimcManifest;
-    const info = buildSimcRuntimeInfo(channel, manifest, release);
-    writeCachedSimcRuntimeInfo(info);
-    return info;
   } catch {
     return null;
   }

@@ -21,6 +21,7 @@ import {
 
 type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'handoff' | 'error';
 type CacheRefreshState = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
+type SimcRuntimeState = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
 type UpdaterStatusEvent =
   | 'checking'
   | 'available'
@@ -55,6 +56,15 @@ type CacheProgress = {
   speedBytesPerSec: number;
 };
 
+type SimcRuntimeProgress = {
+  channel: string;
+  downloadedBytes: number;
+  totalBytes?: number;
+  elapsedSeconds: number;
+  speedBytesPerSec: number;
+  etaSeconds?: number | null;
+};
+
 type TauriDownloadEvent =
   | { event: 'Started'; data: { contentLength?: number } }
   | { event: 'Progress'; data: { chunkLength: number } }
@@ -67,9 +77,23 @@ type DirectInstallProgressEvent = {
   message?: string;
 };
 
+type SimcRuntimeProgressEvent = {
+  status?: string;
+  channel?: string;
+  downloaded_bytes?: number;
+  total_bytes?: number;
+  elapsed_ms?: number;
+  speed_bytes_per_sec?: number;
+  eta_seconds?: number | null;
+  version?: string;
+  updated?: boolean;
+  message?: string;
+};
+
 const UPDATE_CHECK_EVENT = 'whylowdps-updater-check';
 const UPDATE_INSTALL_EVENT = 'whylowdps-updater-install';
 const DIRECT_INSTALL_PROGRESS_EVENT = 'whylowdps-direct-install-progress';
+const SIMC_RUNTIME_PROGRESS_EVENT = 'whylowdps-simc-runtime-progress';
 const UPDATE_STATUS_EVENT = 'whylowdps-updater-status';
 const CACHE_REFRESH_CHECK_EVENT = 'whylowdps-cache-refresh-start';
 const CACHE_REFRESH_STATUS_EVENT = 'whylowdps-cache-refresh-status';
@@ -103,16 +127,32 @@ async function listenToDirectInstallProgress(
   return eventModule.listen(DIRECT_INSTALL_PROGRESS_EVENT, (event) => callback(event.payload || {}));
 }
 
+async function listenToSimcRuntimeProgress(
+  callback: (detail: SimcRuntimeProgressEvent) => void,
+): Promise<() => void> {
+  const eventModule = (await import('@tauri-apps/api/event')) as {
+    listen: (
+      event: string,
+      handler: (event: { payload: SimcRuntimeProgressEvent }) => void,
+    ) => Promise<() => void>;
+  };
+  return eventModule.listen(SIMC_RUNTIME_PROGRESS_EVENT, (event) => callback(event.payload || {}));
+}
+
 export default function UpdatePrompt() {
   const [state, setState] = useState<UpdateState>('idle');
   const [cacheState, setCacheState] = useState<CacheRefreshState>('idle');
+  const [simcState, setSimcState] = useState<SimcRuntimeState>('idle');
   const [details, setDetails] = useState<UpdateDetails | null>(null);
   const [cacheDetails, setCacheDetails] = useState<string>('');
+  const [simcDetails, setSimcDetails] = useState<string>('');
   const [errorText, setErrorText] = useState<string>('');
   const [cacheErrorText, setCacheErrorText] = useState<string>('');
+  const [simcErrorText, setSimcErrorText] = useState<string>('');
   const [dismissed, setDismissed] = useState(false);
   const [backgroundMode, setBackgroundMode] = useState(false);
   const [cacheBackgroundMode, setCacheBackgroundMode] = useState(false);
+  const [simcDismissed, setSimcDismissed] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress>({ downloadedBytes: 0 });
   const [cacheProgress, setCacheProgress] = useState<CacheProgress>({
     current: 0,
@@ -122,6 +162,14 @@ export default function UpdatePrompt() {
     totalBytes: 0,
     elapsedSeconds: 0,
     speedBytesPerSec: 0,
+  });
+  const [simcProgress, setSimcProgress] = useState<SimcRuntimeProgress>({
+    channel: 'weekly',
+    downloadedBytes: 0,
+    totalBytes: undefined,
+    elapsedSeconds: 0,
+    speedBytesPerSec: 0,
+    etaSeconds: null,
   });
   const updateRef = useRef<any>(null);
   const isCheckingRef = useRef(false);
@@ -161,6 +209,13 @@ export default function UpdatePrompt() {
       Math.round((cacheProgress.downloadedBytes / cacheProgress.totalBytes) * 100),
     );
   }, [cacheProgress]);
+  const simcProgressPercent = useMemo(() => {
+    if (!simcProgress.totalBytes || simcProgress.totalBytes <= 0) return null;
+    return Math.min(
+      100,
+      Math.round((simcProgress.downloadedBytes / simcProgress.totalBytes) * 100),
+    );
+  }, [simcProgress]);
 
   const resetSpeedTracking = useCallback(() => {
     const now = Date.now();
@@ -521,6 +576,90 @@ export default function UpdatePrompt() {
   }, [applyProgressSample, resetSpeedTracking]);
 
   useEffect(() => {
+    if (!isDesktopRuntime()) return;
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    const onSimcRuntimeProgress = (detail: SimcRuntimeProgressEvent) => {
+      const status = String(detail.status || '');
+      const channel = detail.channel || 'weekly';
+      const downloadedBytes = Number(detail.downloaded_bytes || 0);
+      const totalBytes =
+        typeof detail.total_bytes === 'number' && Number.isFinite(detail.total_bytes)
+          ? detail.total_bytes
+          : undefined;
+      const elapsedMs = Number(detail.elapsed_ms || 0);
+      const speedBytesPerSec = Number(detail.speed_bytes_per_sec || 0);
+      const etaSeconds =
+        typeof detail.eta_seconds === 'number' && Number.isFinite(detail.eta_seconds)
+          ? detail.eta_seconds
+          : null;
+
+      if (status === 'started') {
+        setSimcState('checking');
+        setSimcDismissed(false);
+        setSimcDetails(detail.message || `Checking ${channel} SimC runtime...`);
+        setSimcErrorText('');
+        setSimcProgress({
+          channel,
+          downloadedBytes: 0,
+          totalBytes: undefined,
+          elapsedSeconds: 0,
+          speedBytesPerSec: 0,
+          etaSeconds: null,
+        });
+        return;
+      }
+
+      if (status === 'progress') {
+        setSimcState('downloading');
+        setSimcDismissed(false);
+        setSimcDetails(`Downloading ${channel} SimC runtime...`);
+        setSimcErrorText('');
+        setSimcProgress({
+          channel,
+          downloadedBytes,
+          totalBytes,
+          elapsedSeconds: Number.isFinite(elapsedMs) ? elapsedMs / 1000 : 0,
+          speedBytesPerSec: Number.isFinite(speedBytesPerSec) ? speedBytesPerSec : 0,
+          etaSeconds,
+        });
+        return;
+      }
+
+      if (status === 'finished') {
+        setSimcState('downloaded');
+        setSimcDismissed(false);
+        setSimcDetails(
+          detail.message ||
+            (detail.updated
+              ? `SimC ${channel} runtime downloaded.`
+              : `SimC ${channel} runtime is already up to date.`),
+        );
+        setSimcErrorText('');
+        return;
+      }
+
+      if (status === 'error') {
+        setSimcState('error');
+        setSimcDismissed(false);
+        setSimcErrorText(detail.message || 'Failed to update SimC runtime.');
+      }
+    };
+
+    void listenToSimcRuntimeProgress(onSimcRuntimeProgress).then((off) => {
+      if (cancelled) {
+        off();
+        return;
+      }
+      unlisten = off;
+    });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  useEffect(() => {
     const onCacheRefreshStart = () => {
       setCacheState('checking');
       setCacheDetails('Preparing cache refresh...');
@@ -804,6 +943,97 @@ export default function UpdatePrompt() {
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {!simcDismissed && simcState !== 'idle' && (
+        <div className="fixed bottom-4 right-4 z-[84] w-80 rounded-lg border border-border bg-surface px-4 py-3 shadow-xl">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">
+                {simcState === 'error'
+                  ? 'SimC Download Failed'
+                  : simcState === 'downloaded'
+                    ? 'SimC Runtime Ready'
+                    : 'SimC Runtime'}
+              </p>
+              <p className="mt-1 text-xs text-zinc-300">
+                {simcDetails || `Preparing ${simcProgress.channel} SimC runtime...`}
+              </p>
+            </div>
+            {simcState !== 'downloading' && simcState !== 'checking' && (
+              <button
+                onClick={() => setSimcDismissed(true)}
+                className="rounded-md px-2 py-1 text-zinc-400 transition-colors hover:bg-surface-2 hover:text-zinc-200"
+                aria-label="Dismiss SimC runtime prompt"
+              >
+                x
+              </button>
+            )}
+          </div>
+
+          {(simcState === 'checking' || simcState === 'downloading') && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-zinc-300">
+                {simcState === 'checking'
+                  ? 'Checking runtime...'
+                  : `Downloading runtime${simcProgressPercent != null ? `... ${simcProgressPercent}%` : '...'}`}
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                Speed: {formatTransferSpeed(simcProgress.speedBytesPerSec)} | ETA:{' '}
+                {formatEta(simcProgress.etaSeconds)}
+              </p>
+              <p className="text-[11px] text-zinc-500">
+                Duration: {formatElapsedCompact(simcProgress.elapsedSeconds)}
+              </p>
+              {simcProgress.downloadedBytes > 0 || simcProgress.totalBytes ? (
+                <p className="text-[11px] text-zinc-500">
+                  {formatBytesDecimal(simcProgress.downloadedBytes)} /{' '}
+                  {formatBytesDecimal(simcProgress.totalBytes)}
+                </p>
+              ) : null}
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                {simcProgressPercent != null ? (
+                  <div
+                    className="h-full bg-gold transition-all duration-200"
+                    style={{ width: `${simcProgressPercent}%` }}
+                  />
+                ) : (
+                  <div className="h-full w-1/3 animate-pulse bg-gold" />
+                )}
+              </div>
+            </div>
+          )}
+
+          {simcState === 'downloaded' && (
+            <p className="mt-2 text-xs text-emerald-300">
+              {simcDetails || 'SimC runtime is ready.'}
+            </p>
+          )}
+
+          {simcState === 'error' && (
+            <p className="mt-2 text-xs text-red-300">
+              {simcErrorText || 'Could not update the SimC runtime.'}
+            </p>
+          )}
+
+          <div className="mt-3 flex justify-end">
+            {simcState === 'downloading' || simcState === 'checking' ? (
+              <button
+                onClick={() => setSimcDismissed(true)}
+                className="btn-outline px-3 py-1.5 text-xs"
+              >
+                Run in Background
+              </button>
+            ) : (
+              <button
+                onClick={() => setSimcDismissed(true)}
+                className="btn-outline px-3 py-1.5 text-xs"
+              >
+                Close
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -18,7 +18,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use whylowdps_core::game_data;
 use whylowdps_core::server;
-use whylowdps_core::simc_runtime::{resolve_simc_runtime, SimcChannel, SimcRuntimeConfig};
+use whylowdps_core::simc_runtime::{
+    resolve_simc_runtime, resolve_simc_runtime_with_progress, SimcChannel, SimcRuntimeConfig,
+};
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
 
 #[tauri::command]
@@ -104,6 +106,20 @@ struct SimcRuntimeStatusResponse {
     simc_path: String,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct SimcRuntimeProgressEvent {
+    status: String,
+    channel: String,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    elapsed_ms: u64,
+    speed_bytes_per_sec: u64,
+    eta_seconds: Option<u64>,
+    version: Option<String>,
+    updated: Option<bool>,
+    message: Option<String>,
+}
+
 #[tauri::command]
 fn get_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
@@ -166,8 +182,84 @@ async fn update_simc_runtime(
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
-    let config = SimcRuntimeConfig::new(SimcChannel::parse(&channel), app_data_dir.join("simc"));
-    let resolution = resolve_simc_runtime(&config).await?;
+    let parsed_channel = SimcChannel::parse(&channel);
+    let channel = parsed_channel.as_str().to_string();
+    let config = SimcRuntimeConfig::new(parsed_channel, app_data_dir.join("simc"));
+    let _ = app.emit(
+        "whylowdps-simc-runtime-progress",
+        SimcRuntimeProgressEvent {
+            status: "started".to_string(),
+            channel: channel.clone(),
+            downloaded_bytes: 0,
+            total_bytes: None,
+            elapsed_ms: 0,
+            speed_bytes_per_sec: 0,
+            eta_seconds: None,
+            version: None,
+            updated: None,
+            message: Some(format!("Checking {channel} SimC runtime...")),
+        },
+    );
+    let progress_app = app.clone();
+    let progress_channel = channel.clone();
+    let resolution = match resolve_simc_runtime_with_progress(&config, move |progress| {
+        let _ = progress_app.emit(
+            "whylowdps-simc-runtime-progress",
+            SimcRuntimeProgressEvent {
+                status: "progress".to_string(),
+                channel: progress_channel.clone(),
+                downloaded_bytes: progress.downloaded_bytes,
+                total_bytes: progress.total_bytes,
+                elapsed_ms: progress.elapsed_ms,
+                speed_bytes_per_sec: progress.speed_bytes_per_sec,
+                eta_seconds: progress.eta_seconds,
+                version: None,
+                updated: None,
+                message: None,
+            },
+        );
+    })
+    .await
+    {
+        Ok(resolution) => resolution,
+        Err(err) => {
+            let _ = app.emit(
+                "whylowdps-simc-runtime-progress",
+                SimcRuntimeProgressEvent {
+                    status: "error".to_string(),
+                    channel,
+                    downloaded_bytes: 0,
+                    total_bytes: None,
+                    elapsed_ms: 0,
+                    speed_bytes_per_sec: 0,
+                    eta_seconds: None,
+                    version: None,
+                    updated: None,
+                    message: Some(err.clone()),
+                },
+            );
+            return Err(err);
+        }
+    };
+    let _ = app.emit(
+        "whylowdps-simc-runtime-progress",
+        SimcRuntimeProgressEvent {
+            status: "finished".to_string(),
+            channel: resolution.channel.clone(),
+            downloaded_bytes: 0,
+            total_bytes: None,
+            elapsed_ms: 0,
+            speed_bytes_per_sec: 0,
+            eta_seconds: None,
+            version: Some(resolution.version.clone()),
+            updated: Some(resolution.updated),
+            message: Some(if resolution.updated {
+                format!("SimC {} runtime downloaded.", resolution.channel)
+            } else {
+                format!("SimC {} runtime is already up to date.", resolution.channel)
+            }),
+        },
+    );
 
     Ok(SimcRuntimeStatusResponse {
         channel: resolution.channel,

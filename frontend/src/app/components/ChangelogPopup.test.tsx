@@ -25,6 +25,10 @@ describe('ChangelogPopup', () => {
     expect(
       screen.getByText(/current-season raid bosses now link directly to warcraft logs guides/i),
     ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /simc runtime download progress/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/simc runtime downloads now show progress, speed, and elapsed time/i),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

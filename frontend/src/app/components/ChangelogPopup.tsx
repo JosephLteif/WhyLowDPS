@@ -27,6 +27,11 @@ const releaseNotes: ReleaseNote[] = [
     title: 'Simulation Activity time grouping',
     body: 'The dashboard activity chart now switches between daily, weekly, monthly, and yearly views.',
   },
+  {
+    category: 'improvement',
+    title: 'SimC runtime download progress',
+    body: 'SimC runtime downloads now show progress, speed, and elapsed time in the desktop popup.',
+  },
 ];
 
 const releaseNoteCategoryOrder: ReleaseNoteCategory[] = ['feature', 'fix', 'improvement'];

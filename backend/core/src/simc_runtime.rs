@@ -4,6 +4,8 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+use tokio::io::AsyncWriteExt;
 
 const DEFAULT_MANIFEST_BASE_URL: &str =
     "https://github.com/JosephLteif/whylowdps-simc-runtime/releases/download";
@@ -109,6 +111,40 @@ pub struct SimcRuntimeResolution {
     pub updated: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SimcDownloadProgress {
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub elapsed_ms: u64,
+    pub speed_bytes_per_sec: u64,
+    pub eta_seconds: Option<u64>,
+}
+
+impl SimcDownloadProgress {
+    pub fn new(downloaded_bytes: u64, total_bytes: Option<u64>, elapsed: Duration) -> Self {
+        let elapsed_ms = elapsed.as_millis() as u64;
+        let speed_bytes_per_sec = if elapsed_ms > 0 {
+            downloaded_bytes.saturating_mul(1000) / elapsed_ms
+        } else {
+            0
+        };
+        let eta_seconds = match (total_bytes, speed_bytes_per_sec) {
+            (Some(total), speed) if speed > 0 && downloaded_bytes < total => {
+                Some((total - downloaded_bytes).div_ceil(speed))
+            }
+            _ => None,
+        };
+
+        Self {
+            downloaded_bytes,
+            total_bytes,
+            elapsed_ms,
+            speed_bytes_per_sec,
+            eta_seconds,
+        }
+    }
+}
+
 pub fn needs_update(current: Option<&SimcCachedMetadata>, asset: &SimcManifestAsset) -> bool {
     current
         .map(|metadata| metadata.sha256 != asset.sha256)
@@ -143,6 +179,16 @@ pub fn read_cached_metadata(path: &Path) -> Option<SimcCachedMetadata> {
 pub async fn resolve_simc_runtime(
     config: &SimcRuntimeConfig,
 ) -> Result<SimcRuntimeResolution, String> {
+    resolve_simc_runtime_with_progress(config, |_| {}).await
+}
+
+pub async fn resolve_simc_runtime_with_progress<F>(
+    config: &SimcRuntimeConfig,
+    mut on_progress: F,
+) -> Result<SimcRuntimeResolution, String>
+where
+    F: FnMut(SimcDownloadProgress) + Send,
+{
     fs::create_dir_all(&config.install_dir)
         .map_err(|e| format!("Failed to create SimC runtime dir: {e}"))?;
 
@@ -183,7 +229,7 @@ pub async fn resolve_simc_runtime(
     }
 
     let download_path = config.install_dir.join("simc-download.zip");
-    download_asset(asset, &download_path).await?;
+    download_asset(asset, &download_path, &mut on_progress).await?;
     verify_sha256(&download_path, &asset.sha256)?;
 
     let extract_dir = config.install_dir.join("next");
@@ -245,17 +291,46 @@ async fn fetch_manifest(url: &str) -> Result<SimcManifest, String> {
         .map_err(|e| format!("Failed to parse SimC manifest: {e}"))
 }
 
-async fn download_asset(asset: &SimcManifestAsset, path: &Path) -> Result<(), String> {
-    let bytes = reqwest::get(&asset.url)
+async fn download_asset<F>(
+    asset: &SimcManifestAsset,
+    path: &Path,
+    on_progress: &mut F,
+) -> Result<(), String>
+where
+    F: FnMut(SimcDownloadProgress) + Send,
+{
+    let mut response = reqwest::get(&asset.url)
         .await
         .map_err(|e| format!("Failed to request SimC asset: {e}"))?
         .error_for_status()
-        .map_err(|e| format!("Failed to download SimC asset: {e}"))?
-        .bytes()
+        .map_err(|e| format!("Failed to download SimC asset: {e}"))?;
+    let total_bytes = response.content_length();
+    let started_at = Instant::now();
+    let mut downloaded_bytes = 0_u64;
+    let mut file = tokio::fs::File::create(path)
         .await
-        .map_err(|e| format!("Failed to read SimC asset: {e}"))?;
+        .map_err(|e| format!("Failed to write SimC asset: {e}"))?;
 
-    fs::write(path, bytes).map_err(|e| format!("Failed to write SimC asset: {e}"))
+    on_progress(SimcDownloadProgress::new(0, total_bytes, started_at.elapsed()));
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("Failed to read SimC asset: {e}"))?
+    {
+        downloaded_bytes += chunk.len() as u64;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("Failed to write SimC asset: {e}"))?;
+        on_progress(SimcDownloadProgress::new(
+            downloaded_bytes,
+            total_bytes,
+            started_at.elapsed(),
+        ));
+    }
+
+    file.flush()
+        .await
+        .map_err(|e| format!("Failed to finalize SimC asset: {e}"))
 }
 
 fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
@@ -320,6 +395,7 @@ fn find_file_named(root: &Path, name: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::time::Duration;
 
     #[test]
     fn channel_parsing_accepts_supported_values_and_defaults_to_weekly() {
@@ -382,5 +458,16 @@ mod tests {
         };
         assert!(!needs_update(Some(&current), &asset));
         assert!(needs_update(None, &asset));
+    }
+
+    #[test]
+    fn simc_download_progress_calculates_elapsed_speed_and_eta() {
+        let progress = SimcDownloadProgress::new(4_096, Some(8_192), Duration::from_secs(2));
+
+        assert_eq!(progress.downloaded_bytes, 4_096);
+        assert_eq!(progress.total_bytes, Some(8_192));
+        assert_eq!(progress.elapsed_ms, 2_000);
+        assert_eq!(progress.speed_bytes_per_sec, 2_048);
+        assert_eq!(progress.eta_seconds, Some(2));
     }
 }

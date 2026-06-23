@@ -7,10 +7,6 @@ function normalizeChannel(channel) {
 function getChannelConfig(channel) {
   const normalized = normalizeChannel(channel);
   switch (normalized) {
-    case "nightly":
-      return { channel: "nightly", titlePrefix: "Nightly Release", color: 3447003 };
-    case "weekly":
-      return { channel: "weekly", titlePrefix: "Weekly Release", color: 15844367 };
     case "stable":
       return { channel: "stable", titlePrefix: "Stable Release", color: 3066993 };
     default:
@@ -93,8 +89,6 @@ async function main() {
   }
 
   const webhooks = {
-    nightly: process.env.NIGHTLY_WEBHOOK || "",
-    weekly: process.env.WEEKLY_WEBHOOK || "",
     stable: process.env.STABLE_WEBHOOK || "",
   };
 

@@ -23,6 +23,20 @@ use whylowdps_core::simc_runtime::{
 };
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
 
+#[cfg(target_os = "windows")]
+fn enable_high_dpi_awareness() {
+    use windows::Win32::UI::HiDpi::{
+        SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+    };
+
+    unsafe {
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn enable_high_dpi_awareness() {}
+
 #[tauri::command]
 async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), String> {
     tauri::WebviewWindowBuilder::new(

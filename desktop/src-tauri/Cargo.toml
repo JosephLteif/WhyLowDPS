@@ -30,4 +30,5 @@ windows = { version = "0.58", features = [
     "ApplicationModel_DataTransfer",
     "Foundation",
     "Foundation_Collections",
+    "Win32_UI_HiDpi",
 ] }

@@ -2,6 +2,8 @@ export type SimcUpdateChannel = 'weekly' | 'nightly';
 
 const SIMC_RELEASE_API_BASE =
   'https://api.github.com/repos/JosephLteif/whylowdps-simc-runtime/releases/tags';
+const SIMC_RELEASES_API_URL =
+  'https://api.github.com/repos/JosephLteif/whylowdps-simc-runtime/releases?per_page=50';
 const SIMC_RUNTIME_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 type SimcManifest = {
@@ -12,9 +14,17 @@ type SimcManifest = {
 };
 
 type SimcRelease = {
+  tag_name?: unknown;
+  name?: unknown;
   updated_at?: unknown;
   published_at?: unknown;
   assets?: Array<{ name?: unknown; url?: unknown; browser_download_url?: unknown; size?: unknown }>;
+};
+
+export type SimcRuntimeVersionOption = {
+  channel: SimcUpdateChannel;
+  version: string;
+  publishedAt?: string;
 };
 
 export type SimcRuntimeInfo = {
@@ -204,5 +214,42 @@ export async function fetchSimcRuntimeInfo(
     }
   } catch {
     return null;
+  }
+}
+
+function channelFromReleaseTag(tag: string): SimcUpdateChannel | null {
+  if (tag === 'weekly' || tag.startsWith('weekly-')) return 'weekly';
+  if (tag === 'nightly' || tag.startsWith('nightly-')) return 'nightly';
+  return null;
+}
+
+export async function fetchSimcRuntimeVersions(): Promise<SimcRuntimeVersionOption[]> {
+  try {
+    const response = await fetch(SIMC_RELEASES_API_URL, {
+      cache: 'no-store',
+      headers: { Accept: 'application/vnd.github+json' },
+    });
+    if (!response.ok) return [];
+    const releases = (await response.json()) as SimcRelease[];
+    return releases
+      .map((release): SimcRuntimeVersionOption | null => {
+        const tag = typeof release.tag_name === 'string' ? release.tag_name : '';
+        const channel = channelFromReleaseTag(tag);
+        if (!channel || tag === channel) return null;
+        return {
+          channel,
+          version: tag,
+          publishedAt:
+            typeof release.published_at === 'string'
+              ? release.published_at
+              : typeof release.updated_at === 'string'
+                ? release.updated_at
+                : undefined,
+        };
+      })
+      .filter((item): item is SimcRuntimeVersionOption => Boolean(item))
+      .sort((a, b) => (b.publishedAt || b.version).localeCompare(a.publishedAt || a.version));
+  } catch {
+    return [];
   }
 }

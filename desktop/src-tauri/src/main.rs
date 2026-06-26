@@ -179,6 +179,19 @@ fn get_simc_update_channel(
 }
 
 #[tauri::command]
+fn get_simc_runtime_version(
+    state: tauri::State<'_, AppClosePreferencesState>,
+) -> SimcRuntimeVersionPreferenceResponse {
+    let version = state
+        .prefs
+        .lock()
+        .ok()
+        .and_then(|prefs| prefs.simc_runtime_version.clone());
+
+    SimcRuntimeVersionPreferenceResponse { version }
+}
+
+#[tauri::command]
 fn set_simc_update_channel(
     state: tauri::State<'_, AppClosePreferencesState>,
     channel: String,
@@ -188,9 +201,19 @@ fn set_simc_update_channel(
 }
 
 #[tauri::command]
+fn set_simc_runtime_version(
+    state: tauri::State<'_, AppClosePreferencesState>,
+    version: Option<String>,
+) -> Result<SimcRuntimeVersionPreferenceResponse, String> {
+    let version = set_simc_runtime_version_internal(&state, version.as_deref())?;
+    Ok(SimcRuntimeVersionPreferenceResponse { version })
+}
+
+#[tauri::command]
 async fn update_simc_runtime(
     app: tauri::AppHandle,
     channel: String,
+    version: Option<String>,
 ) -> Result<SimcRuntimeStatusResponse, String> {
     let app_data_dir = app
         .path()
@@ -198,7 +221,9 @@ async fn update_simc_runtime(
         .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
     let parsed_channel = SimcChannel::parse(&channel);
     let channel = parsed_channel.as_str().to_string();
-    let config = SimcRuntimeConfig::new(parsed_channel, app_data_dir.join("simc"));
+    let release_tag = version.and_then(|value| normalize_simc_runtime_version(&value));
+    let config = SimcRuntimeConfig::new(parsed_channel, app_data_dir.join("simc"))
+        .with_release_tag(release_tag.clone());
     let _ = app.emit(
         "whylowdps-simc-runtime-progress",
         SimcRuntimeProgressEvent {
@@ -211,7 +236,10 @@ async fn update_simc_runtime(
             eta_seconds: None,
             version: None,
             updated: None,
-            message: Some(format!("Checking {channel} SimC runtime...")),
+            message: Some(match release_tag.as_deref() {
+                Some(version) => format!("Checking SimC runtime {version}..."),
+                None => format!("Checking {channel} SimC runtime..."),
+            }),
         },
     );
     let progress_app = app.clone();
@@ -575,6 +603,8 @@ async fn get_system_info(app: tauri::AppHandle) -> Result<SystemInfo, String> {
 }
 
 fn main() {
+    enable_high_dpi_awareness();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -598,6 +628,8 @@ fn main() {
             clear_close_behavior_preference,
             get_simc_update_channel,
             set_simc_update_channel,
+            get_simc_runtime_version,
+            set_simc_runtime_version,
             update_simc_runtime,
             apply_close_behavior_choice,
             restart_app,
@@ -620,6 +652,7 @@ fn main() {
                 .simc_update_channel
                 .clone()
                 .unwrap_or_else(|| "weekly".to_string());
+            let simc_runtime_version = close_prefs.simc_runtime_version.clone();
 
             app.manage(AppClosePreferencesState {
                 prefs: std::sync::Mutex::new(close_prefs),
@@ -784,9 +817,11 @@ fn main() {
             tauri::async_runtime::spawn({
                 let simc_dir = simc_dir.clone();
                 let simc_channel = simc_channel.clone();
+                let simc_runtime_version = simc_runtime_version.clone();
                 async move {
                     let simc_config =
-                        SimcRuntimeConfig::new(SimcChannel::parse(&simc_channel), simc_dir);
+                        SimcRuntimeConfig::new(SimcChannel::parse(&simc_channel), simc_dir)
+                            .with_release_tag(simc_runtime_version);
                     match resolve_simc_runtime(&simc_config).await {
                         Ok(resolution) => {
                             println!(

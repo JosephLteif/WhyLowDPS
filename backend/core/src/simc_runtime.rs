@@ -44,6 +44,7 @@ pub struct SimcRuntimeConfig {
     pub channel: SimcChannel,
     pub manifest_base_url: String,
     pub install_dir: PathBuf,
+    pub release_tag: Option<String>,
 }
 
 impl SimcRuntimeConfig {
@@ -55,14 +56,31 @@ impl SimcRuntimeConfig {
             channel,
             manifest_base_url,
             install_dir,
+            release_tag: None,
         }
     }
 
+    pub fn with_release_tag(mut self, release_tag: Option<String>) -> Self {
+        self.release_tag = release_tag.and_then(|tag| {
+            let trimmed = tag.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
+        self
+    }
+
     pub fn manifest_url(&self) -> String {
+        let release_tag = self
+            .release_tag
+            .as_deref()
+            .unwrap_or_else(|| self.channel.as_str());
         format!(
             "{}/{}/manifest.json",
             self.manifest_base_url.trim_end_matches('/'),
-            self.channel.as_str()
+            release_tag
         )
     }
 
@@ -145,9 +163,18 @@ impl SimcDownloadProgress {
     }
 }
 
-pub fn needs_update(current: Option<&SimcCachedMetadata>, asset: &SimcManifestAsset) -> bool {
+pub fn needs_update(
+    current: Option<&SimcCachedMetadata>,
+    channel: &str,
+    version: &str,
+    asset: &SimcManifestAsset,
+) -> bool {
     current
-        .map(|metadata| metadata.sha256 != asset.sha256)
+        .map(|metadata| {
+            metadata.channel != channel
+                || metadata.version != version
+                || metadata.sha256 != asset.sha256
+        })
         .unwrap_or(true)
 }
 
@@ -219,7 +246,14 @@ where
         .asset_for_platform(platform)
         .ok_or_else(|| format!("SimC runtime manifest has no asset for platform {platform}"))?;
 
-    if cached_path.exists() && !needs_update(cached_metadata.as_ref(), asset) {
+    if cached_path.exists()
+        && !needs_update(
+            cached_metadata.as_ref(),
+            &manifest.channel,
+            &manifest.version,
+            asset,
+        )
+    {
         return Ok(SimcRuntimeResolution {
             simc_path: cached_path,
             channel: manifest.channel,
@@ -311,7 +345,11 @@ where
         .await
         .map_err(|e| format!("Failed to write SimC asset: {e}"))?;
 
-    on_progress(SimcDownloadProgress::new(0, total_bytes, started_at.elapsed()));
+    on_progress(SimcDownloadProgress::new(
+        0,
+        total_bytes,
+        started_at.elapsed(),
+    ));
     while let Some(chunk) = response
         .chunk()
         .await
@@ -412,11 +450,28 @@ mod tests {
             manifest_base_url: "https://github.com/acme/whylowdps-simc-runtime/releases/download"
                 .to_string(),
             install_dir: PathBuf::from("runtime"),
+            release_tag: None,
         };
 
         assert_eq!(
             config.manifest_url(),
             "https://github.com/acme/whylowdps-simc-runtime/releases/download/nightly/manifest.json"
+        );
+    }
+
+    #[test]
+    fn manifest_url_uses_pinned_release_tag_when_selected() {
+        let config = SimcRuntimeConfig {
+            channel: SimcChannel::Nightly,
+            manifest_base_url: "https://github.com/acme/whylowdps-simc-runtime/releases/download"
+                .to_string(),
+            install_dir: PathBuf::from("runtime"),
+            release_tag: Some("weekly-202606240100".to_string()),
+        };
+
+        assert_eq!(
+            config.manifest_url(),
+            "https://github.com/acme/whylowdps-simc-runtime/releases/download/weekly-202606240100/manifest.json"
         );
     }
 
@@ -438,7 +493,7 @@ mod tests {
     }
 
     #[test]
-    fn cached_metadata_detects_changed_checksum() {
+    fn cached_metadata_detects_changed_channel_version_or_checksum() {
         let current = SimcCachedMetadata {
             channel: "weekly".to_string(),
             version: "old".to_string(),
@@ -450,14 +505,16 @@ mod tests {
             sha256: "new-hash".to_string(),
         };
 
-        assert!(needs_update(Some(&current), &asset));
+        assert!(needs_update(Some(&current), "weekly", "old", &asset));
+        assert!(needs_update(Some(&current), "nightly", "old", &asset));
+        assert!(needs_update(Some(&current), "weekly", "new", &asset));
 
         let current = SimcCachedMetadata {
             sha256: "new-hash".to_string(),
             ..current
         };
-        assert!(!needs_update(Some(&current), &asset));
-        assert!(needs_update(None, &asset));
+        assert!(!needs_update(Some(&current), "weekly", "old", &asset));
+        assert!(needs_update(None, "weekly", "old", &asset));
     }
 
     #[test]

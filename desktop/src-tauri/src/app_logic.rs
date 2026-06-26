@@ -44,6 +44,8 @@ pub(crate) struct AppClosePreferences {
     pub(crate) minimize_to_tray_on_close: Option<bool>,
     #[serde(default)]
     pub(crate) simc_update_channel: Option<String>,
+    #[serde(default)]
+    pub(crate) simc_runtime_version: Option<String>,
 }
 
 #[derive(Debug)]
@@ -62,10 +64,24 @@ pub(crate) struct SimcUpdateChannelResponse {
     pub(crate) channel: String,
 }
 
+#[derive(serde::Serialize)]
+pub(crate) struct SimcRuntimeVersionPreferenceResponse {
+    pub(crate) version: Option<String>,
+}
+
 pub(crate) fn normalize_simc_update_channel(channel: &str) -> String {
     match channel.trim().to_ascii_lowercase().as_str() {
         "nightly" => "nightly".to_string(),
         _ => "weekly".to_string(),
+    }
+}
+
+pub(crate) fn normalize_simc_runtime_version(version: &str) -> Option<String> {
+    let trimmed = version.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("latest") {
+        None
+    } else {
+        Some(trimmed.to_string())
     }
 }
 
@@ -84,6 +100,10 @@ pub(crate) fn load_close_preferences(path: &Path) -> AppClosePreferences {
         .simc_update_channel
         .as_deref()
         .map(normalize_simc_update_channel);
+    prefs.simc_runtime_version = prefs
+        .simc_runtime_version
+        .as_deref()
+        .and_then(normalize_simc_runtime_version);
     prefs
 }
 
@@ -102,6 +122,17 @@ pub(crate) fn set_simc_update_channel_internal(
     let normalized = normalize_simc_update_channel(channel);
     let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
     prefs.simc_update_channel = Some(normalized.clone());
+    save_close_preferences(&state.path, &prefs)?;
+    Ok(normalized)
+}
+
+pub(crate) fn set_simc_runtime_version_internal(
+    state: &AppClosePreferencesState,
+    version: Option<&str>,
+) -> Result<Option<String>, String> {
+    let normalized = version.and_then(normalize_simc_runtime_version);
+    let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+    prefs.simc_runtime_version = normalized.clone();
     save_close_preferences(&state.path, &prefs)?;
     Ok(normalized)
 }
@@ -562,6 +593,39 @@ mod tests {
                 .as_deref(),
             Some("weekly")
         );
+    }
+
+    #[test]
+    fn desktop_preferences_load_and_save_pinned_simc_version() {
+        let dir = test_temp_dir("prefs");
+        let path = dir.join("prefs.json");
+        write_file(
+            &path,
+            r#"{ "simc_update_channel": "nightly", "simc_runtime_version": "nightly-202606240100" }"#,
+        );
+
+        let prefs = load_close_preferences(&path);
+        assert_eq!(prefs.simc_update_channel.as_deref(), Some("nightly"));
+        assert_eq!(
+            prefs.simc_runtime_version.as_deref(),
+            Some("nightly-202606240100")
+        );
+
+        let state = AppClosePreferencesState {
+            prefs: Mutex::new(AppClosePreferences::default()),
+            path: path.clone(),
+        };
+
+        set_simc_runtime_version_internal(&state, Some("weekly-202606230100")).unwrap();
+        assert_eq!(
+            load_close_preferences(&path)
+                .simc_runtime_version
+                .as_deref(),
+            Some("weekly-202606230100")
+        );
+
+        set_simc_runtime_version_internal(&state, None).unwrap();
+        assert_eq!(load_close_preferences(&path).simc_runtime_version, None);
     }
 
     #[test]

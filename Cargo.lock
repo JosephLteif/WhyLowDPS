@@ -6743,7 +6743,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "whylowdps-core"
-version = "3.3.1"
+version = "3.4.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -6772,7 +6772,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-desktop"
-version = "3.3.1"
+version = "3.4.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -6795,7 +6795,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-server"
-version = "3.3.1"
+version = "3.4.0"
 dependencies = [
  "tokio",
  "whylowdps-core",

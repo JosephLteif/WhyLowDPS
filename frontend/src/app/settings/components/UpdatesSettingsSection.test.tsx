@@ -80,7 +80,7 @@ describe('UpdatesSettingsSection', () => {
     ).toBe('bottom');
   });
 
-  it('groups SimC runtime choices by weekly and nightly releases', () => {
+  it('shows channel tabs first, then the versions for the selected channel', () => {
     render(
       <UpdatesSettingsSection
         selectedSimcChannel="weekly"
@@ -118,17 +118,76 @@ describe('UpdatesSettingsSection', () => {
       />
     );
 
-    expect(screen.getByRole('button', { name: 'Latest weekly' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Latest weekly' }));
 
-    expect(screen.getByRole('group', { name: 'Weekly' })).toBeTruthy();
-    expect(screen.getByRole('group', { name: 'Nightly' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Weekly (1)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Nightly (1)' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Latest weekly' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'weekly-202606220100' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'nightly-202606240100' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '2026-06-22 01:00' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: '2026-06-24 01:00' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nightly (1)' }));
+
+    expect(screen.getByRole('option', { name: 'Latest nightly' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '2026-06-24 01:00' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: '2026-06-22 01:00' })).toBeNull();
   });
 
-  it('explains when GitHub has not published older SimC versions yet', () => {
+  it('formats SimC version names into readable dates while tolerating non-timestamp names', () => {
+    render(
+      <UpdatesSettingsSection
+        selectedSimcChannel="nightly"
+        setSelectedSimcChannel={noop}
+        selectedSimcRuntimeVersion="nightly-202606290558"
+        setSelectedSimcRuntimeVersion={noop}
+        simcRuntimeVersions={[
+          {
+            channel: 'weekly',
+            version: 'weekly-20260629',
+            publishedAt: '2026-06-29T00:00:00Z',
+          },
+          {
+            channel: 'nightly',
+            version: 'nightly-202606290558',
+            publishedAt: '2026-06-29T05:58:00Z',
+          },
+          {
+            channel: 'nightly',
+            version: 'nightly-release-candidate',
+            publishedAt: '2026-06-29T06:00:00Z',
+          },
+        ]}
+        simcRuntimeVersionsLoading={false}
+        simcRuntimeInfo={null}
+        simcRuntimeInfoLoading={false}
+        simcRuntimeDownloading={false}
+        refreshSimcRuntimeInfo={noop}
+        downloadSelectedSimcRuntime={noop}
+        simcChannelMessage={null}
+        isDesktopRuntime={true}
+        updateCheckState="idle"
+        appReleases={[]}
+        appReleaseMetadataStatus="available"
+        selectedAppVersion=""
+        setSelectedAppVersion={noop}
+        loadAppReleases={noop}
+        downloadAndInstallLatest={noop}
+        updateMessage={null}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '2026-06-29 05:58' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '2026-06-29 05:58' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Weekly (1)' }));
+    expect(screen.getByRole('option', { name: '2026-06-29' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Nightly (2)' }));
+    expect(screen.getByRole('option', { name: '2026-06-29 05:58' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'nightly-release-candidate' })).toBeTruthy();
+  });
+
+  it('explains when GitHub has not published older SimC versions yet for the selected channel', () => {
     render(
       <UpdatesSettingsSection
         selectedSimcChannel="nightly"
@@ -157,7 +216,7 @@ describe('UpdatesSettingsSection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Latest nightly' }));
 
-    expect(screen.getByText('No older weekly versions found yet.')).toBeTruthy();
     expect(screen.getByText('No older nightly versions found yet.')).toBeTruthy();
+    expect(screen.queryByText('No older weekly versions found yet.')).toBeNull();
   });
 });

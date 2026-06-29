@@ -42,7 +42,7 @@ const releaseNotes: ReleaseNote[] = [
     body: [
       {
         type: 'paragraph',
-        text: 'You can now select from any historical simc version, not just the latest per channel.',
+        text: 'You can now select from any available historical simc version, not just the latest per channel.',
       },
     ],
   }

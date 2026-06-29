@@ -47,27 +47,13 @@ function makeRequest() {
 }
 
 test("normalizeChannel trims and lowercases input", () => {
-  assert.equal(normalizeChannel(" Weekly "), "weekly");
-  assert.equal(normalizeChannel("NIGHTLY"), "nightly");
   assert.equal(normalizeChannel(" Stable "), "stable");
   assert.equal(normalizeChannel(""), "");
   assert.equal(normalizeChannel(undefined), "");
   assert.equal(normalizeChannel(null), "");
 });
 
-test("getChannelConfig returns expected values for all channels", () => {
-  assert.deepEqual(getChannelConfig("nightly"), {
-    channel: "nightly",
-    titlePrefix: "Nightly Release",
-    color: 3447003,
-  });
-
-  assert.deepEqual(getChannelConfig("weekly"), {
-    channel: "weekly",
-    titlePrefix: "Weekly Release",
-    color: 15844367,
-  });
-
+test("getChannelConfig returns expected values for stable releases", () => {
   assert.deepEqual(getChannelConfig("stable"), {
     channel: "stable",
     titlePrefix: "Stable Release",
@@ -76,42 +62,26 @@ test("getChannelConfig returns expected values for all channels", () => {
 });
 
 test("getChannelConfig accepts mixed-case and padded channel names", () => {
-  assert.equal(getChannelConfig(" NIGHTLY ").channel, "nightly");
-  assert.equal(getChannelConfig("WeEkLy").channel, "weekly");
   assert.equal(getChannelConfig(" STABLE ").channel, "stable");
 });
 
 test("getChannelConfig rejects unsupported channel", () => {
+  assert.throws(() => getChannelConfig("nightly"), /Unsupported channel/);
+  assert.throws(() => getChannelConfig("weekly"), /Unsupported channel/);
   assert.throws(() => getChannelConfig("canary"), /Unsupported channel/);
   assert.throws(() => getChannelConfig(""), /Unsupported channel/);
   assert.throws(() => getChannelConfig(undefined), /Unsupported channel/);
 });
 
-test("selectWebhookUrl chooses correct webhook by normalized channel", () => {
-  const webhooks = {
-    nightly: "https://discord.example/nightly",
-    weekly: "https://discord.example/weekly",
-    stable: "https://discord.example/stable",
-  };
+test("selectWebhookUrl chooses stable webhook by normalized channel", () => {
+  const webhooks = { stable: "https://discord.example/stable" };
 
-  assert.equal(selectWebhookUrl(" Nightly ", webhooks), webhooks.nightly);
-  assert.equal(selectWebhookUrl("weekly", webhooks), webhooks.weekly);
   assert.equal(selectWebhookUrl("STABLE", webhooks), webhooks.stable);
 });
 
 test("selectWebhookUrl rejects missing webhook for selected channel", () => {
   assert.throws(
-    () => selectWebhookUrl("nightly", { nightly: "", weekly: "x", stable: "y" }),
-    /Missing Discord webhook URL for channel: nightly/
-  );
-
-  assert.throws(
-    () => selectWebhookUrl("weekly", { nightly: "x", weekly: "", stable: "y" }),
-    /Missing Discord webhook URL for channel: weekly/
-  );
-
-  assert.throws(
-    () => selectWebhookUrl("stable", { nightly: "x", weekly: "y", stable: "" }),
+    () => selectWebhookUrl("stable", { stable: "" }),
     /Missing Discord webhook URL for channel: stable/
   );
 });
@@ -123,11 +93,11 @@ test("selectWebhookUrl rejects when webhooks object is missing", () => {
   );
 });
 
-test("buildPayload formats weekly embed correctly", () => {
+test("buildPayload formats stable embed correctly", () => {
   const payload = buildPayload({
-    channel: "weekly",
-    tag: "v3.1.5-weekly.202621",
-    releaseUrl: "https://github.com/org/repo/releases/tag/v3.1.5-weekly.202621",
+    channel: "stable",
+    tag: "v3.1.5",
+    releaseUrl: "https://github.com/org/repo/releases/tag/v3.1.5",
   });
 
   assert.equal(payload.content, "");
@@ -135,26 +105,26 @@ test("buildPayload formats weekly embed correctly", () => {
 
   const embed = payload.embeds[0];
 
-  assert.equal(embed.title, "Weekly Release: v3.1.5-weekly.202621");
-  assert.equal(embed.description, "A new **weekly** build is available.");
-  assert.equal(embed.color, 15844367);
+  assert.equal(embed.title, "Stable Release: v3.1.5");
+  assert.equal(embed.description, "A new **stable** build is available.");
+  assert.equal(embed.color, 3066993);
 
   assert.deepEqual(embed.fields[0], {
     name: "Version",
-    value: "`3.1.5-weekly.202621`",
+    value: "`3.1.5`",
     inline: true,
   });
 
   assert.deepEqual(embed.fields[1], {
     name: "Channel",
-    value: "`weekly`",
+    value: "`stable`",
     inline: true,
   });
 
   assert.deepEqual(embed.fields[2], {
     name: "Downloads",
     value:
-      "[Open GitHub Release](https://github.com/org/repo/releases/tag/v3.1.5-weekly.202621)",
+      "[Open GitHub Release](https://github.com/org/repo/releases/tag/v3.1.5)",
     inline: false,
   });
 });
@@ -181,31 +151,14 @@ test("buildPayload adds v to title when tag has no leading v", () => {
   assert.equal(payload.embeds[0].fields[0].value, "`1.2.3`");
 });
 
-test("buildPayload uses channel-specific colors and descriptions", () => {
-  const nightly = buildPayload({
-    channel: "nightly",
-    tag: "v1.0.0",
-    releaseUrl: "https://example.com",
-  });
-
-  const weekly = buildPayload({
-    channel: "weekly",
-    tag: "v1.0.0",
-    releaseUrl: "https://example.com",
-  });
-
+test("buildPayload uses stable color and description", () => {
   const stable = buildPayload({
     channel: "stable",
     tag: "v1.0.0",
     releaseUrl: "https://example.com",
   });
 
-  assert.equal(nightly.embeds[0].color, 3447003);
-  assert.equal(weekly.embeds[0].color, 15844367);
   assert.equal(stable.embeds[0].color, 3066993);
-
-  assert.equal(nightly.embeds[0].description, "A new **nightly** build is available.");
-  assert.equal(weekly.embeds[0].description, "A new **weekly** build is available.");
   assert.equal(stable.embeds[0].description, "A new **stable** build is available.");
 });
 
@@ -339,8 +292,6 @@ test("main rejects when selected webhook is missing", async () => {
     CHANNEL: "stable",
     TAG: "v1.0.0",
     RELEASE_URL: "https://github.com/org/repo/releases/tag/v1.0.0",
-    NIGHTLY_WEBHOOK: "https://discord.example/nightly",
-    WEEKLY_WEBHOOK: "https://discord.example/weekly",
     STABLE_WEBHOOK: "",
   };
 
@@ -376,8 +327,6 @@ test("main posts stable release payload to selected webhook", async () => {
     CHANNEL: "stable",
     TAG: "v1.2.3",
     RELEASE_URL: "https://github.com/org/repo/releases/tag/v1.2.3",
-    NIGHTLY_WEBHOOK: "https://discord.example/nightly",
-    WEEKLY_WEBHOOK: "https://discord.example/weekly",
     STABLE_WEBHOOK: "https://discord.example/stable",
   };
 
@@ -387,45 +336,6 @@ test("main posts stable release payload to selected webhook", async () => {
     assert.equal(capturedUrl, "https://discord.example/stable");
     assert.equal(capturedPayload.embeds[0].title, "Stable Release: v1.2.3");
     assert.equal(capturedPayload.embeds[0].description, "A new **stable** build is available.");
-  } finally {
-    process.env = oldEnv;
-    restore();
-  }
-});
-
-test("main posts nightly release payload to selected webhook", async () => {
-  const oldEnv = process.env;
-  let capturedUrl;
-  let capturedPayload;
-
-  const restore = mockHttpsRequest((url, options, callback) => {
-    capturedUrl = url;
-
-    const request = makeRequest();
-    request.write = (body) => {
-      capturedPayload = JSON.parse(body);
-    };
-
-    callback(makeResponse(204));
-    return request;
-  });
-
-  process.env = {
-    ...oldEnv,
-    CHANNEL: "nightly",
-    TAG: "v1.2.3-nightly.20260605",
-    RELEASE_URL: "https://github.com/org/repo/releases/tag/v1.2.3-nightly.20260605",
-    NIGHTLY_WEBHOOK: "https://discord.example/nightly",
-    WEEKLY_WEBHOOK: "https://discord.example/weekly",
-    STABLE_WEBHOOK: "https://discord.example/stable",
-  };
-
-  try {
-    await main();
-
-    assert.equal(capturedUrl, "https://discord.example/nightly");
-    assert.equal(capturedPayload.embeds[0].title, "Nightly Release: v1.2.3-nightly.20260605");
-    assert.equal(capturedPayload.embeds[0].description, "A new **nightly** build is available.");
   } finally {
     process.env = oldEnv;
     restore();

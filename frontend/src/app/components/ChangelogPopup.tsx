@@ -28,51 +28,24 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'improvement',
-    title: 'Warcraft Logs boss guides',
+    title: 'High res desktop icon',
     body: [
       {
         type: 'paragraph',
-        text: 'Current-season raid bosses now link directly to Warcraft Logs guides where one is available.',
+        text: 'Desktop icon is now high res and do not appear as blurry anymore.',
       },
     ],
   },
   {
     category: 'improvement',
-    title: 'Simulation Activity time grouping',
+    title: 'Simc channel versions',
     body: [
       {
         type: 'paragraph',
-        text: 'The dashboard activity chart now switches between daily, weekly, monthly, and yearly views.',
+        text: 'You can now select from any available historical simc version, not just the latest per channel.',
       },
     ],
-  },
-  {
-    category: 'improvement',
-    title: 'SimC and app updates decoupling',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'App updates and SimulationCraft updates are now managed separately.',
-      },
-      {
-        type: 'paragraph',
-        text: 'Previously, every new SimC nightly or weekly build required a matching app update/version, which created unnecessary releases and made the app update flow noisier than it needed to be.',
-      },
-      {
-        type: 'paragraph',
-        text: 'Now, the app can update SimC independently from the main application. You can choose a dedicated SimC update channel, while app updates are reserved for stable application releases only.',
-      },
-      {
-        type: 'list',
-        items: [
-          'New SimC versions can be delivered faster without requiring a full app release.',
-          'App updates should now be less frequent and more meaningful.',
-          'Nightly and weekly SimC builds no longer force separate app versions.',
-          'You have more control over which SimC channel the app uses.',
-        ],
-      },
-    ],
-  },
+  }
 ];
 
 const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {

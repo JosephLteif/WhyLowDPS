@@ -20,7 +20,12 @@ import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
-import { fetchSimcRuntimeInfo, type SimcRuntimeInfo } from '../lib/simc-runtime-release';
+import {
+  fetchSimcRuntimeInfo,
+  fetchSimcRuntimeVersions,
+  type SimcRuntimeInfo,
+  type SimcRuntimeVersionOption,
+} from '../lib/simc-runtime-release';
 import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
@@ -38,6 +43,9 @@ type CloseBehaviorMode = 'ask' | 'close' | 'tray';
 type SimcUpdateChannel = 'weekly' | 'nightly';
 type SimcUpdateChannelResponse = {
   channel?: string | null;
+};
+type SimcRuntimeVersionPreferenceResponse = {
+  version?: string | null;
 };
 type SimcRuntimeStatusResponse = {
   channel?: string | null;
@@ -107,13 +115,17 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
-  const [selectedSimcChannel, setSelectedSimcChannelState] =
-    useState<SimcUpdateChannel>('weekly');
+  const [selectedSimcChannel, setSelectedSimcChannelState] = useState<SimcUpdateChannel>('weekly');
+  const [selectedSimcRuntimeVersion, setSelectedSimcRuntimeVersionState] = useState<string | null>(
+    null
+  );
   const [simcChannelMessage, setSimcChannelMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
   const [simcRuntimeInfo, setSimcRuntimeInfo] = useState<SimcRuntimeInfo | null>(null);
+  const [simcRuntimeVersions, setSimcRuntimeVersions] = useState<SimcRuntimeVersionOption[]>([]);
+  const [simcRuntimeVersionsLoading, setSimcRuntimeVersionsLoading] = useState(false);
   const [simcRuntimeInfoLoading, setSimcRuntimeInfoLoading] = useState(false);
   const [simcRuntimeDownloading, setSimcRuntimeDownloading] = useState(false);
   const {
@@ -230,10 +242,17 @@ export default function SettingsPage() {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const pref = await invoke<SimcUpdateChannelResponse>('get_simc_update_channel');
+        const versionPref = await invoke<SimcRuntimeVersionPreferenceResponse>(
+          'get_simc_runtime_version'
+        );
         if (cancelled) return;
         setSelectedSimcChannelState(pref?.channel === 'nightly' ? 'nightly' : 'weekly');
+        setSelectedSimcRuntimeVersionState(versionPref?.version || null);
       } catch {
-        if (!cancelled) setSelectedSimcChannelState('weekly');
+        if (!cancelled) {
+          setSelectedSimcChannelState('weekly');
+          setSelectedSimcRuntimeVersionState(null);
+        }
       }
     })();
     return () => {
@@ -318,7 +337,7 @@ export default function SettingsPage() {
     try {
       const profile = await renameBlizzardCredentialProfile(id, trimmedName);
       setCredentialProfiles((profiles) =>
-        profiles.map((item) => (item.id === id ? profile : item)),
+        profiles.map((item) => (item.id === id ? profile : item))
       );
     } catch (err: any) {
       setBlizzardMessage({ type: 'error', text: err?.message || 'Failed to rename credentials.' });
@@ -382,7 +401,7 @@ export default function SettingsPage() {
 
   const loadSimcRuntimeInfo = async (
     channel: SimcUpdateChannel,
-    options?: { forceRefresh?: boolean },
+    options?: { forceRefresh?: boolean }
   ) => {
     if (!isDesktop) return;
     setSimcRuntimeInfoLoading(true);
@@ -391,10 +410,33 @@ export default function SettingsPage() {
     setSimcRuntimeInfoLoading(false);
   };
 
+  const loadSimcRuntimeVersions = async () => {
+    setSimcRuntimeVersionsLoading(true);
+    const versions = await fetchSimcRuntimeVersions();
+    setSimcRuntimeVersions(versions);
+    setSimcRuntimeVersionsLoading(false);
+  };
+
   useEffect(() => {
     if (!isDesktop) return;
     void loadSimcRuntimeInfo(selectedSimcChannel);
   }, [selectedSimcChannel]);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    let cancelled = false;
+    setSimcRuntimeVersionsLoading(true);
+    fetchSimcRuntimeVersions()
+      .then((versions) => {
+        if (!cancelled) setSimcRuntimeVersions(versions);
+      })
+      .finally(() => {
+        if (!cancelled) setSimcRuntimeVersionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const setSelectedSimcChannel = async (nextChannel: SimcUpdateChannel) => {
     if (!isDesktop) return;
@@ -407,8 +449,10 @@ export default function SettingsPage() {
       const pref = await invoke<SimcUpdateChannelResponse>('set_simc_update_channel', {
         channel: nextChannel,
       });
+      await invoke('set_simc_runtime_version', { version: null });
       savedChannel = pref?.channel === 'nightly' ? 'nightly' : 'weekly';
       setSelectedSimcChannelState(savedChannel);
+      setSelectedSimcRuntimeVersionState(null);
     } catch (err: any) {
       setSelectedSimcChannelState(previous);
       setSimcChannelMessage({
@@ -424,6 +468,40 @@ export default function SettingsPage() {
     });
   };
 
+  const setSelectedSimcRuntimeVersion = async (value: string) => {
+    if (!isDesktop) return;
+    const previousChannel = selectedSimcChannel;
+    const previousVersion = selectedSimcRuntimeVersion;
+    const { invoke } = await import('@tauri-apps/api/core');
+    const [mode, selected] = value.split(':', 2);
+    const nextChannel =
+      selected === 'nightly' || selected?.startsWith('nightly-') ? 'nightly' : 'weekly';
+    const nextVersion = mode === 'version' ? selected : null;
+    setSelectedSimcChannelState(nextChannel);
+    setSelectedSimcRuntimeVersionState(nextVersion);
+    setSimcChannelMessage(null);
+    try {
+      await invoke<SimcUpdateChannelResponse>('set_simc_update_channel', { channel: nextChannel });
+      const pref = await invoke<SimcRuntimeVersionPreferenceResponse>('set_simc_runtime_version', {
+        version: nextVersion,
+      });
+      setSelectedSimcRuntimeVersionState(pref?.version || null);
+      setSimcChannelMessage({
+        type: 'success',
+        text: nextVersion
+          ? `SimC pinned to ${nextVersion}.`
+          : `SimC will follow latest ${nextChannel}.`,
+      });
+    } catch (err: any) {
+      setSelectedSimcChannelState(previousChannel);
+      setSelectedSimcRuntimeVersionState(previousVersion);
+      setSimcChannelMessage({
+        type: 'error',
+        text: err?.message || err?.toString?.() || 'Failed to update SimC version.',
+      });
+    }
+  };
+
   const downloadSelectedSimcRuntime = async () => {
     if (!isDesktop || simcRuntimeDownloading) return;
     const channel = selectedSimcChannel;
@@ -436,22 +514,20 @@ export default function SettingsPage() {
     try {
       const status = await invoke<SimcRuntimeStatusResponse>('update_simc_runtime', {
         channel,
+        version: selectedSimcRuntimeVersion,
       });
       const version = status?.version ? ` (${status.version})` : '';
       setSimcChannelMessage({
         type: 'success',
         text: status?.updated
           ? `SimC ${channel} runtime downloaded${version}.`
-          : `SimC ${channel} runtime is already up to date${version}.`,
+          : `SimC ${selectedSimcRuntimeVersion || channel} runtime is already up to date${version}.`,
       });
       await loadSimcRuntimeInfo(channel);
     } catch (err: any) {
       setSimcChannelMessage({
         type: 'error',
-        text:
-          err?.message ||
-          err?.toString?.() ||
-          `SimC ${channel} runtime download failed.`,
+        text: err?.message || err?.toString?.() || `SimC ${channel} runtime download failed.`,
       });
     } finally {
       setSimcRuntimeDownloading(false);
@@ -531,8 +607,7 @@ export default function SettingsPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-zinc-300">CPU Threads</span>
-                  <span
-                    className="rounded border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] tabular-nums text-white">
+                  <span className="rounded border border-border bg-surface-2 px-2 py-0.5 font-mono text-[11px] tabular-nums text-white">
                     {threads}/{maxThreads}
                   </span>
                 </div>
@@ -589,8 +664,7 @@ export default function SettingsPage() {
           </p>
 
           <div className="space-y-4">
-            <div
-              className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+            <div className="flex max-w-2xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
               <div className="space-y-1">
                 <p className="text-sm font-medium text-zinc-200">
                   Auto paste latest SimC from clipboard
@@ -697,12 +771,17 @@ export default function SettingsPage() {
         <UpdatesSettingsSection
           selectedSimcChannel={selectedSimcChannel}
           setSelectedSimcChannel={setSelectedSimcChannel}
+          selectedSimcRuntimeVersion={selectedSimcRuntimeVersion}
+          setSelectedSimcRuntimeVersion={setSelectedSimcRuntimeVersion}
+          simcRuntimeVersions={simcRuntimeVersions}
+          simcRuntimeVersionsLoading={simcRuntimeVersionsLoading}
           simcRuntimeInfo={simcRuntimeInfo}
           simcRuntimeInfoLoading={simcRuntimeInfoLoading}
           simcRuntimeDownloading={simcRuntimeDownloading}
-          refreshSimcRuntimeInfo={() =>
-            void loadSimcRuntimeInfo(selectedSimcChannel, { forceRefresh: true })
-          }
+          refreshSimcRuntimeInfo={() => {
+            void loadSimcRuntimeInfo(selectedSimcChannel, { forceRefresh: true });
+            void loadSimcRuntimeVersions();
+          }}
           downloadSelectedSimcRuntime={downloadSelectedSimcRuntime}
           simcChannelMessage={simcChannelMessage}
           isDesktopRuntime={isDesktop}

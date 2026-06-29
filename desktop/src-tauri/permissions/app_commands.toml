@@ -11,6 +11,8 @@ commands.allow = [
     "clear_close_behavior_preference",
     "get_simc_update_channel",
     "set_simc_update_channel",
+    "get_simc_runtime_version",
+    "set_simc_runtime_version",
     "update_simc_runtime",
     "apply_close_behavior_choice",
     "restart_app",

@@ -1,11 +1,18 @@
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import type { SettingsStatusMessage } from '../types';
 import { formatBytesDecimal } from '../../lib/format';
+import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
 import type { AppReleaseInfo } from '../../lib/updater-release';
-import type { SimcRuntimeInfo } from '../../lib/simc-runtime-release';
+import type { SimcRuntimeInfo, SimcRuntimeVersionOption } from '../../lib/simc-runtime-release';
 
 type UpdatesSettingsSectionProps = {
   selectedSimcChannel: 'weekly' | 'nightly';
   setSelectedSimcChannel: (channel: 'weekly' | 'nightly') => void;
+  selectedSimcRuntimeVersion: string | null;
+  setSelectedSimcRuntimeVersion: (value: string) => void;
+  simcRuntimeVersions: SimcRuntimeVersionOption[];
+  simcRuntimeVersionsLoading: boolean;
   simcRuntimeInfo: SimcRuntimeInfo | null;
   simcRuntimeInfoLoading: boolean;
   simcRuntimeDownloading: boolean;
@@ -26,6 +33,10 @@ type UpdatesSettingsSectionProps = {
 export default function UpdatesSettingsSection({
   selectedSimcChannel,
   setSelectedSimcChannel,
+  selectedSimcRuntimeVersion,
+  setSelectedSimcRuntimeVersion,
+  simcRuntimeVersions,
+  simcRuntimeVersionsLoading,
   simcRuntimeInfo,
   simcRuntimeInfoLoading,
   simcRuntimeDownloading,
@@ -46,6 +57,16 @@ export default function UpdatesSettingsSection({
     appReleases.find((release) => release.version === selectedAppVersion) || appReleases[0] || null;
   const appMetadataRateLimited = appReleaseMetadataStatus === 'rate_limited';
   const simcMetadataRateLimited = simcRuntimeInfo?.metadataStatus === 'rate_limited';
+  const selectedSimcVersionValue = selectedSimcRuntimeVersion
+    ? `version:${selectedSimcRuntimeVersion}`
+    : `latest:${selectedSimcChannel}`;
+  const displayedSimcVersion = formatSimcVersionName(
+    selectedSimcRuntimeVersion || simcRuntimeInfo?.version
+  );
+  const weeklySimcVersions = simcRuntimeVersions.filter((version) => version.channel === 'weekly');
+  const nightlySimcVersions = simcRuntimeVersions.filter(
+    (version) => version.channel === 'nightly'
+  );
 
   return (
     <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
@@ -105,15 +126,19 @@ export default function UpdatesSettingsSection({
         {isDesktopRuntime && (
           <div data-update-card className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-zinc-300">SimC Channel</span>
-              <select
-                value={selectedSimcChannel}
-                onChange={(e) => setSelectedSimcChannel(e.target.value as 'weekly' | 'nightly')}
-                className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
-              >
-                <option value="weekly">Weekly</option>
-                <option value="nightly">Nightly</option>
-              </select>
+              <span className="text-sm font-medium text-zinc-300">SimC Version</span>
+              <SimcVersionDropdown
+                value={selectedSimcVersionValue}
+                selectedChannel={selectedSimcChannel}
+                selectedVersion={selectedSimcRuntimeVersion}
+                weeklyVersions={weeklySimcVersions}
+                nightlyVersions={nightlySimcVersions}
+                onSelectLatest={setSelectedSimcChannel}
+                onSelectVersion={setSelectedSimcRuntimeVersion}
+              />
+              {simcRuntimeVersionsLoading && (
+                <span className="text-xs text-zinc-500">Loading versions...</span>
+              )}
               <button
                 onClick={refreshSimcRuntimeInfo}
                 disabled={simcRuntimeInfoLoading}
@@ -136,7 +161,7 @@ export default function UpdatesSettingsSection({
                   ? 'Loading...'
                   : simcMetadataRateLimited
                     ? 'Rate limited'
-                    : simcRuntimeInfo?.version || 'Unavailable'}
+                    : displayedSimcVersion || 'Unavailable'}
               </span>
               <span>
                 Size:{' '}
@@ -160,6 +185,195 @@ export default function UpdatesSettingsSection({
       </div>
     </section>
   );
+}
+
+function SimcVersionDropdown({
+  value,
+  selectedChannel,
+  selectedVersion,
+  weeklyVersions,
+  nightlyVersions,
+  onSelectLatest,
+  onSelectVersion,
+}: {
+  value: string;
+  selectedChannel: 'weekly' | 'nightly';
+  selectedVersion: string | null;
+  weeklyVersions: SimcRuntimeVersionOption[];
+  nightlyVersions: SimcRuntimeVersionOption[];
+  onSelectLatest: (channel: 'weekly' | 'nightly') => void;
+  onSelectVersion: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeChannel, setActiveChannel] = useState<'weekly' | 'nightly'>(selectedChannel);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useDismissOnOutside(rootRef, open, () => setOpen(false));
+  const selectedVersionChannel = selectedVersion
+    ? weeklyVersions.some((version) => version.version === selectedVersion)
+      ? 'weekly'
+      : nightlyVersions.some((version) => version.version === selectedVersion)
+        ? 'nightly'
+        : selectedChannel
+    : selectedChannel;
+  const activeVersions = activeChannel === 'weekly' ? weeklyVersions : nightlyVersions;
+  const label = selectedVersion
+    ? formatSimcVersionName(selectedVersion)
+    : `Latest ${selectedChannel}`;
+
+  useEffect(() => {
+    setActiveChannel(selectedVersionChannel);
+  }, [selectedVersionChannel]);
+
+  const selectLatest = (channel: 'weekly' | 'nightly') => {
+    onSelectLatest(channel);
+    setActiveChannel(channel);
+    setOpen(false);
+  };
+
+  const selectVersion = (version: string) => {
+    onSelectVersion(`version:${version}`);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className="relative min-w-[220px]">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-center justify-between gap-3 rounded-md border border-gold/35 bg-surface-2/95 px-3 py-2 text-left text-sm font-semibold text-zinc-100 shadow-sm shadow-black/30 transition-colors hover:border-gold/60 hover:bg-surface"
+      >
+        <span className="min-w-0 truncate">{label}</span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform duration-200 ${
+            open ? 'rotate-180' : ''
+          }`}
+          strokeWidth={2}
+        />
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-label="SimC Version"
+          className="absolute left-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur"
+        >
+          <div className="flex border-b border-border">
+            <button
+              type="button"
+              onClick={() => setActiveChannel('weekly')}
+              className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-semibold transition-colors ${
+                activeChannel === 'weekly'
+                  ? 'border-gold text-gold'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Weekly ({weeklyVersions.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveChannel('nightly')}
+              className={`flex-1 border-b-2 px-3 py-2 text-[12px] font-semibold transition-colors ${
+                activeChannel === 'nightly'
+                  ? 'border-gold text-gold'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Nightly ({nightlyVersions.length})
+            </button>
+          </div>
+          <div className="max-h-[240px] overflow-y-auto py-2">
+            <SimcVersionGroup
+              title={activeChannel === 'weekly' ? 'Weekly' : 'Nightly'}
+              latestLabel={`Latest ${activeChannel}`}
+              latestSelected={value === `latest:${activeChannel}`}
+              versions={activeVersions}
+              selectedVersion={selectedVersion}
+              onSelectLatest={() => selectLatest(activeChannel)}
+              onSelectVersion={selectVersion}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SimcVersionGroup({
+  title,
+  latestLabel,
+  latestSelected,
+  versions,
+  selectedVersion,
+  onSelectLatest,
+  onSelectVersion,
+}: {
+  title: string;
+  latestLabel: string;
+  latestSelected: boolean;
+  versions: SimcRuntimeVersionOption[];
+  selectedVersion: string | null;
+  onSelectLatest: () => void;
+  onSelectVersion: (version: string) => void;
+}) {
+  return (
+    <div className="py-1" role="group" aria-label={title}>
+      <button
+        type="button"
+        role="option"
+        aria-selected={latestSelected}
+        onClick={onSelectLatest}
+        className={`w-full px-8 py-1.5 text-left text-[13px] font-semibold transition-colors ${
+          latestSelected ? 'bg-white/15 text-white' : 'text-zinc-100 hover:bg-white/10'
+        }`}
+      >
+        {latestLabel}
+      </button>
+      {versions.length === 0 ? (
+        <div className="px-8 py-1.5 text-[12px] italic text-zinc-500">
+          No older {title.toLowerCase()} versions found yet.
+        </div>
+      ) : (
+        versions.map((version) => (
+          <button
+            key={version.version}
+            type="button"
+            role="option"
+            aria-selected={selectedVersion === version.version}
+            onClick={() => onSelectVersion(version.version)}
+            className={`w-full px-8 py-1.5 text-left text-[13px] font-semibold transition-colors ${
+              selectedVersion === version.version
+                ? 'bg-white/15 text-white'
+                : 'text-zinc-100 hover:bg-white/10'
+            }`}
+          >
+            {formatSimcVersionName(version.version)}
+          </button>
+        ))
+      )}
+    </div>
+  );
+}
+
+function formatSimcVersionName(version: string | null | undefined): string {
+  if (!version) return 'Unavailable';
+
+  const match = version.match(/^(?:[^-]+-)?(\d{8})(\d{4})?$/);
+  if (!match) return version;
+
+  const [, datePart, timePart] = match;
+  const year = datePart.slice(0, 4);
+  const month = datePart.slice(4, 6);
+  const day = datePart.slice(6, 8);
+
+  if (!timePart) {
+    return `${year}-${month}-${day}`;
+  }
+
+  const hours = timePart.slice(0, 2);
+  const minutes = timePart.slice(2, 4);
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
 function StatusMessage({ message }: { message: SettingsStatusMessage }) {

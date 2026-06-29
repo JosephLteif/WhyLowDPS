@@ -19,22 +19,24 @@
   <meta
     content="Run SimulationCraft locally, compare gear and talent choices, plan upgrades, and use Light Mode without an API key."
     property="og:description" />
-  <meta content="https://josephlteif.github.io/WhyLowDPS/assets/screenshots/dashboard.png" property="og:image" />
-  <meta content="WhyLowDPS dashboard with tracked characters, vault progress, simulation activity, and system status."
+  <meta content="https://josephlteif.github.io/WhyLowDPS/assets/og-image.png" property="og:image" />
+  <meta content="WhyLowDPS social preview showing the app dashboard, Light Mode, and local-first Windows desktop positioning."
         property="og:image:alt" />
   <meta content="summary_large_image" name="twitter:card" />
   <meta content="WhyLowDPS | Local-first WoW simulator and planner for Windows" name="twitter:title" />
   <meta
     content="Run SimulationCraft locally, compare gear and talent choices, plan upgrades, and use Light Mode without an API key."
     name="twitter:description" />
-  <meta content="https://josephlteif.github.io/WhyLowDPS/assets/screenshots/dashboard.png" name="twitter:image" />
-  <meta content="WhyLowDPS dashboard with tracked characters, vault progress, simulation activity, and system status."
+  <meta content="https://josephlteif.github.io/WhyLowDPS/assets/og-image.png" name="twitter:image" />
+  <meta content="WhyLowDPS social preview showing the app dashboard, Light Mode, and local-first Windows desktop positioning."
         name="twitter:image:alt" />
   <title>WhyLowDPS | Local-first WoW simulator and planner for Windows</title>
   <link href="https://josephlteif.github.io/WhyLowDPS/" rel="canonical" />
+  <link href="./favicon.ico" rel="icon" sizes="any" />
   <link href="./assets/icon.png" rel="icon" sizes="32x32" type="image/png" />
-  <link href="./assets/icon.png" rel="shortcut icon" type="image/png" />
-  <link href="./assets/icon.png" rel="apple-touch-icon" />
+  <link href="./favicon.ico" rel="shortcut icon" />
+  <link href="./assets/icon-512.png" rel="apple-touch-icon" />
+  <link href="./site.webmanifest" rel="manifest" />
   <link href="./styles.css" rel="stylesheet" />
   <script type="application/ld+json">
     {
@@ -47,9 +49,13 @@
       "softwareVersion": "Latest release",
       "url": "https://josephlteif.github.io/WhyLowDPS/",
       "downloadUrl": "https://github.com/JosephLteif/simcraft/releases/latest",
-      "image": "https://josephlteif.github.io/WhyLowDPS/assets/icon.png",
+      "image": "https://josephlteif.github.io/WhyLowDPS/assets/og-image.png",
       "screenshot": "https://josephlteif.github.io/WhyLowDPS/assets/screenshots/dashboard.png",
       "description": "WhyLowDPS is a local-first Windows app for simulating, comparing, and planning World of Warcraft characters with SimulationCraft. It supports a credential-free Light Mode and optional Battle.net connectivity.",
+      "sameAs": [
+        "https://github.com/JosephLteif/simcraft",
+        "https://discord.com/invite/ZjxQv5kFxe"
+      ],
       "offers": {
         "@type": "Offer",
         "price": "0",
@@ -70,6 +76,8 @@
     <a href="#features">Features</a>
     <a href="#modes">Light Mode</a>
     <a href="#product-tour">Product tour</a>
+    <a href="#compare">Why it stands out</a>
+    <a href="#faq">FAQ</a>
     <a href="#setup">Setup</a>
     <a href="#privacy">Privacy</a>
   </nav>
@@ -93,16 +101,21 @@
           <a class="button button-primary"
              href="https://github.com/JosephLteif/simcraft/releases/latest"
              rel="noopener noreferrer"
-             target="_blank">Download latest release</a>
+             target="_blank">Download for Windows</a>
           <a class="button button-secondary"
              href="https://github.com/JosephLteif/simcraft"
              rel="noopener noreferrer"
              target="_blank">View on GitHub</a>
         </div>
+        <p class="hero-proof">
+          Free desktop app. Actively maintained on GitHub. Start in Light Mode immediately,
+          then connect Battle.net only if you want account-aware tools.
+        </p>
         <ul aria-label="Platform details" class="hero-details">
           <li>Windows only</li>
           <li>Local simulations</li>
           <li>No API key required in Light Mode</li>
+          <li>Published through GitHub releases</li>
           <li>Your data stays on your machine</li>
         </ul>
       </div>
@@ -125,6 +138,33 @@
       <div><strong>Clear comparisons</strong><span>See DPS changes and result details</span></div>
       <div><strong>Character planning</strong><span>Turn results into upgrade decisions</span></div>
       <div><strong>Persistent context</strong><span>Keep profiles, routes, and sim history</span></div>
+    </div>
+  </section>
+
+  <section class="section proof-section">
+    <div class="container">
+      <header class="section-heading section-heading-compact">
+        <p class="eyebrow">Why people keep it open</p>
+        <h2>One desktop workflow instead of scattered tabs.</h2>
+      </header>
+      <div class="proof-grid">
+        <article>
+          <strong>Start without setup friction</strong>
+          <p>Light Mode gives you local simulation and planning tools immediately, without making Battle.net credentials a prerequisite.</p>
+        </article>
+        <article>
+          <strong>Keep the work on your machine</strong>
+          <p>SimulationCraft runs locally and your credentials, saved profiles, routes, and planning data stay under your control.</p>
+        </article>
+        <article>
+          <strong>Plan around the content you play</strong>
+          <p>Wishlists, Great Vault tracking, routes, encounters, and upgrade checks stay close to the same character context.</p>
+        </article>
+        <article>
+          <strong>Use a tool that stays current</strong>
+          <p>Releases are published on GitHub, the project is open for inspection, and Discord gives users a direct support path.</p>
+        </article>
+      </div>
     </div>
   </section>
 
@@ -323,6 +363,39 @@
     </div>
   </section>
 
+  <section class="section compare-section" id="compare">
+    <div class="container">
+      <header class="section-heading">
+        <p class="eyebrow">Positioning</p>
+        <h2>WhyLowDPS keeps the optimization loop closer to the player.</h2>
+        <p>
+          It is built for players who want the speed of a desktop workflow, local control,
+          and more context than a single simulation result page.
+        </p>
+      </header>
+      <div class="compare-grid">
+        <article class="compare-card compare-card-featured">
+          <h3>WhyLowDPS</h3>
+          <ul class="check-list">
+            <li>Local SimulationCraft runs on your own machine</li>
+            <li>Light Mode works without an API key</li>
+            <li>Routes, wishlists, vault, and history stay in one desktop app</li>
+            <li>Open GitHub releases and visible project source</li>
+          </ul>
+        </article>
+        <article class="compare-card">
+          <h3>Browser-only or split-tool workflows</h3>
+          <ul class="compare-list">
+            <li>Often centered on one simulation job at a time</li>
+            <li>Character context is easier to lose across tabs and services</li>
+            <li>Saved planning state is usually spread across multiple tools</li>
+            <li>Offline and local-first workflows are more limited</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
   <section class="section setup-section" id="setup">
     <div class="container setup-layout">
       <div>
@@ -369,16 +442,64 @@
     </div>
   </section>
 
+  <section class="section faq-section" id="faq">
+    <div class="container">
+      <header class="section-heading section-heading-compact">
+        <p class="eyebrow">FAQ</p>
+        <h2>Answers before you download.</h2>
+      </header>
+      <div class="faq-list">
+        <div class="faq-item">
+          <details>
+            <summary>Do I need a Battle.net API key to use the app?</summary>
+            <p>No. Light Mode is a first-class workflow and lets you use supported local simulation and planning features without credentials.</p>
+          </details>
+        </div>
+        <div class="faq-item">
+          <details>
+            <summary>What does Light Mode include?</summary>
+            <p>Light Mode supports manual SimC-based workflows, local analysis, saved history, upgrade planning, and route, raid, and dungeon reference tools.</p>
+          </details>
+        </div>
+        <div class="faq-item">
+          <details>
+            <summary>What do credentials unlock if I add them later?</summary>
+            <p>Connected Mode adds Battle.net-backed character context like saved rosters, Great Vault integration, wishlists, and character-aware tooling.</p>
+          </details>
+        </div>
+        <div class="faq-item">
+          <details>
+            <summary>Does WhyLowDPS run simulations locally?</summary>
+            <p>Yes. The app runs SimulationCraft locally on your Windows machine rather than sending your simulation jobs through a separate hosted queue.</p>
+          </details>
+        </div>
+        <div class="faq-item">
+          <details>
+            <summary>Is the app free and Windows-only?</summary>
+            <p>Yes. The landing page and release flow are aimed at Windows desktop users, and the app is distributed through GitHub releases.</p>
+          </details>
+        </div>
+        <div class="faq-item">
+          <details>
+            <summary>Is this affiliated with Blizzard, SimulationCraft, or Raidbots?</summary>
+            <p>No. WhyLowDPS is an independent project and is not affiliated with Blizzard Entertainment, SimulationCraft, or Raidbots.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="section final-cta">
     <div class="container cta-panel">
       <p class="eyebrow">Ready to answer “is this better?”</p>
       <h2>Run the comparison on your own character.</h2>
-      <p>Download WhyLowDPS for Windows and keep the full simulation workflow local.</p>
+      <p>Download WhyLowDPS for Windows and keep the full simulation workflow local, searchable, and under your control.</p>
+      <p class="cta-note">Actively maintained on GitHub with release downloads and Discord support.</p>
       <div class="actions actions-centered">
         <a class="button button-primary"
            href="https://github.com/JosephLteif/simcraft/releases/latest"
            rel="noopener noreferrer"
-           target="_blank">Download latest release</a>
+           target="_blank">Download for Windows</a>
         <a class="button button-secondary"
            href="https://discord.com/invite/ZjxQv5kFxe"
            rel="noopener noreferrer"
@@ -401,6 +522,8 @@
       <a href="https://github.com/JosephLteif/simcraft" rel="noopener noreferrer" target="_blank">GitHub</a>
       <a href="https://github.com/JosephLteif/simcraft/releases" rel="noopener noreferrer" target="_blank">Releases</a>
       <a href="https://discord.com/invite/ZjxQv5kFxe" rel="noopener noreferrer" target="_blank">Discord</a>
+      <a href="#compare">Why it stands out</a>
+      <a href="#faq">FAQ</a>
       <a href="#privacy">Privacy</a>
     </nav>
   </div>

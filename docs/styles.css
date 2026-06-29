@@ -84,7 +84,7 @@ h1 {
 
 h2 {
   margin-bottom: 20px;
-  font-size: clamp(2.2rem, 4vw, 4rem);
+  font-size: clamp(1.95rem, 3.2vw, 3.1rem);
   font-weight: 720;
 }
 
@@ -228,10 +228,17 @@ h3 {
 .eyebrow, .step-label {
   margin-bottom: 18px;
   color: var(--accent-bright);
-  font-size: .76rem;
+  font-size: .82rem;
   font-weight: 800;
   letter-spacing: .14em;
   text-transform: uppercase;
+}
+
+.hero-copy h2 {
+  max-width: 760px;
+  margin-bottom: 24px;
+  font-size: clamp(3.15rem, 6.2vw, 5.8rem);
+  font-weight: 760;
 }
 
 .hero-lede {
@@ -409,6 +416,18 @@ h3 {
   margin-bottom: clamp(60px, 8vw, 100px);
 }
 
+.section-heading .eyebrow {
+  margin-bottom: 20px;
+  font-size: .96rem;
+  letter-spacing: .12em;
+}
+
+.section-heading h2 {
+  max-width: 900px;
+  font-size: clamp(2.1rem, 3.5vw, 3.35rem);
+  letter-spacing: -.03em;
+}
+
 .section-heading > p:last-child, .section-copy {
   max-width: 650px;
   margin-bottom: 0;
@@ -418,6 +437,62 @@ h3 {
 
 .section-heading-compact {
   margin-bottom: 54px;
+}
+
+.faq-list {
+  display: grid;
+  gap: 16px;
+}
+
+.faq-item {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.faq-item details {
+  display: block;
+}
+
+.faq-item summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 22px 24px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 1.02rem;
+  font-weight: 650;
+  transition: background-color 160ms ease;
+}
+
+.faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.faq-item summary::after {
+  flex: none;
+  color: var(--accent-bright);
+  content: "+";
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.faq-item details[open] summary {
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, .02);
+}
+
+.faq-item details[open] summary::after {
+  content: "−";
+}
+
+.faq-item p {
+  margin: 0;
+  padding: 18px 24px 22px;
+  color: var(--text-soft);
 }
 
 .tour-row {

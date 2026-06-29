@@ -1,260 +1,361 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta content="width=device-width, initial-scale=1" name="viewport" />
   <meta
-    content="WhyLowDPS is a Windows desktop app for local World of Warcraft character simulation, sim history, upgrade planning, routes, vault tracking, and player-focused optimization workflows."
+    content="WhyLowDPS is a local-first Windows app for simulating, comparing, and planning World of Warcraft characters."
     name="description" />
-  <title>WhyLowDPS - Local WoW Character Optimization</title>
+  <title>WhyLowDPS — Sim, compare, and plan your WoW characters</title>
   <link href="./styles.css" rel="stylesheet" />
 </head>
 <body>
-<div aria-hidden="true" class="page-glow page-glow-one"></div>
-<div aria-hidden="true" class="page-glow page-glow-two"></div>
+<a class="skip-link" href="#main-content">Skip to content</a>
 
 <header class="site-header">
   <a aria-label="WhyLowDPS home" class="brand" href="#top">
-    <img alt="WhyLowDPS Logo." src="./assets/icon.png" />
+    <img alt="" src="./assets/icon.png" />
     <span>WhyLowDPS</span>
   </a>
   <nav aria-label="Main navigation" class="nav">
     <a href="#features">Features</a>
-    <a href="#screenshots">Screenshots</a>
+    <a href="#modes">Light Mode</a>
+    <a href="#product-tour">Product tour</a>
     <a href="#setup">Setup</a>
     <a href="#privacy">Privacy</a>
   </nav>
-  <a class="header-cta" href="https://github.com/JosephLteif/simcraft/releases/latest" rel="noopener noreferrer"
+  <a class="button button-primary header-download"
+     href="https://github.com/JosephLteif/simcraft/releases/latest"
+     rel="noopener noreferrer"
      target="_blank">Download</a>
 </header>
 
-<main id="top">
-  <section class="hero section-pad">
-    <div class="container hero-grid">
+<main id="main-content">
+  <section class="hero" id="top">
+    <div class="container hero-layout">
       <div class="hero-copy">
-        <p class="eyebrow">Windows desktop app - Local-first simulation workflow</p>
-        <h1>Sim, compare, and plan in one place.</h1>
-        <p class="lede">
-          WhyLowDPS is built around the player and their characters: local SimulationCraft runs,
-          sim history, route-aware setups, vault tracking, seasonal data, upgrade planning, and
-          wishlists without turning the app into a guild-management platform.
+        <p class="eyebrow">Local-first · Windows desktop app</p>
+        <h2>Know what improves your character.</h2>
+        <p class="hero-lede">
+          Run SimulationCraft locally, compare results, and plan your next upgrade without
+          stitching together disconnected tools.
         </p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/JosephLteif/simcraft/releases/latest"
+        <div class="actions">
+          <a class="button button-primary"
+             href="https://github.com/JosephLteif/simcraft/releases/latest"
              rel="noopener noreferrer"
              target="_blank">Download latest release</a>
-          <a class="btn btn-secondary" href="https://github.com/JosephLteif/simcraft/releases" rel="noopener noreferrer"
-             target="_blank">View all releases</a>
-          <a class="btn btn-secondary" href="https://discord.com/invite/ZjxQv5kFxe" rel="noopener noreferrer"
-             target="_blank">Join
-            Discord</a>
+          <a class="button button-secondary"
+             href="https://github.com/JosephLteif/simcraft"
+             rel="noopener noreferrer"
+             target="_blank">View on GitHub</a>
         </div>
-        <div aria-label="Project notes" class="hero-notes">
-          <span>Windows only for now</span>
-          <span>Battle.net API key required</span>
-          <span>Credentials stored locally</span>
-        </div>
+        <ul aria-label="Platform details" class="hero-details">
+          <li>Windows only</li>
+          <li>Local simulations</li>
+          <li>No API key required in Light Mode</li>
+          <li>Your data stays on your machine</li>
+        </ul>
       </div>
 
-      <div aria-label="WhyLowDPS dashboard preview" class="hero-showcase">
-        <div class="window-bar">
-          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-          <span class="window-title">WhyLowDPS dashboard</span>
+      <figure class="app-frame hero-frame">
+        <div aria-hidden="true" class="frame-bar">
+          <span></span><span></span><span></span>
+          <strong>WhyLowDPS</strong>
         </div>
         <img
-          alt="WhyLowDPS simulation dashboard showing tracked characters, vault progress, simulation activity, quick links, and system stats."
+          alt="WhyLowDPS dashboard with tracked characters, vault progress, simulation activity, and system status."
           src="./assets/screenshots/dashboard.png" />
-      </div>
+      </figure>
     </div>
   </section>
 
-  <section aria-label="Project highlights" class="stats-strip">
-    <div class="container stats-grid">
-      <div><strong>Local sims</strong><span>SimulationCraft-powered workflows</span></div>
-      <div><strong>Character hub</strong><span>Roster, vault, wishlist, and saved setups</span></div>
-      <div><strong>Planning tools</strong><span>Top Gear, drops, upgrades, crests, matrices</span></div>
-      <div><strong>Season context</strong><span>Dungeons, raids, routes, and weekly info</span></div>
+  <section aria-label="Product highlights" class="highlights" id="features">
+    <div class="container highlight-grid">
+      <div><strong>Local SimC</strong><span>Run simulations on your own hardware</span></div>
+      <div><strong>Clear comparisons</strong><span>See DPS changes and result details</span></div>
+      <div><strong>Character planning</strong><span>Turn results into upgrade decisions</span></div>
+      <div><strong>Persistent context</strong><span>Keep profiles, routes, and sim history</span></div>
     </div>
   </section>
 
-  <section class="section-pad" id="features">
+  <section class="section modes-section" id="modes">
     <div class="container">
-      <div class="section-heading">
-        <p class="eyebrow">What it is</p>
-        <h2>A personal optimization cockpit for World of Warcraft.</h2>
+      <header class="section-heading section-heading-compact">
+        <p class="eyebrow">Use it your way</p>
+        <h2>Start without an API key. Connect when you want more.</h2>
         <p>
-          The app focuses on the loop players actually repeat: import or save character data, run sims,
-          compare results, understand upgrades, and keep track of what to chase next.
+          WhyLowDPS does not force a Battle.net login before you can explore its local
+          simulation and planning tools.
         </p>
-      </div>
-
-      <div class="feature-grid">
-        <article class="feature-card featured-card">
-          <h3>Simulation workflows</h3>
-          <p>Run local sims, compare scenario results, review damage breakdowns, and keep your sim history
-            organized.</p>
+      </header>
+      <div class="mode-grid">
+        <article class="mode-card mode-card-featured">
+          <div class="mode-heading">
+            <span class="mode-badge">No credentials</span>
+            <h3>Credential-free Light Mode</h3>
+          </div>
+          <p>
+            Open the app immediately and use supported manual SimC, analysis, upgrade,
+            dungeon, raid, and route workflows without creating a Battle.net API client.
+          </p>
+          <ul class="check-list">
+            <li>Quick Sim from manually supplied SimC data</li>
+            <li>Local simulation history and result analysis</li>
+            <li>Upgrade, encounter, and route reference tools</li>
+          </ul>
         </article>
-        <article class="feature-card">
-          <h3>Route-aware setups</h3>
-          <p>Save routes from SimC strings and reuse them later when you want to sim around a specific dungeon
-            route.</p>
-        </article>
-        <article class="feature-card">
-          <h3>Gear planning</h3>
-          <p>Use Top Gear, drop finder, crest upgrades, trinket combinations, tier decisions, and consumable
-            comparisons.</p>
-        </article>
-        <article class="feature-card">
-          <h3>Character wishlists</h3>
-          <p>Group wanted items by character so you can track what you need, where it drops, and who needs it.</p>
-        </article>
-        <article class="feature-card">
-          <h3>Season data</h3>
-          <p>Browse current dungeons, raids, encounters, affixes, and useful seasonal context directly in the app.</p>
-        </article>
-        <article class="feature-card">
-          <h3>Local credentials</h3>
-          <p>Your Battle.net API credentials are required for the app and are stored locally on your machine only.</p>
-        </article>
-        <article class="feature-card">
-          <h3>Stat and timeline analysis</h3>
-          <p>Inspect timeline casts, action sequences, stat weights, and result deltas when validating upgrades.</p>
-        </article>
-        <article class="feature-card">
-          <h3>Talent playground</h3>
-          <p>Save and revisit builds per character, then compare talent setups directly against simulation outcomes.</p>
-        </article>
-        <article class="feature-card">
-          <h3>Persistent local workflows</h3>
-          <p>Reuse saved routes, profiles, and history so each sim pass starts from your real progression context.</p>
+        <article class="mode-card">
+          <div class="mode-heading">
+            <span class="mode-badge">Optional connection</span>
+            <h3>Connected Mode</h3>
+          </div>
+          <p>
+            Add your own Battle.net credentials when you want account-aware features and
+            automatic character context.
+          </p>
+          <ul class="check-list">
+            <li>Battle.net character roster and saved characters</li>
+            <li>Great Vault and account-backed character data</li>
+            <li>Character wishlists and talent playground</li>
+          </ul>
         </article>
       </div>
     </div>
   </section>
 
-  <section class="section-pad screenshots-section" id="screenshots">
+  <section class="section product-tour" id="product-tour">
     <div class="container">
-      <div class="section-heading compact">
-        <p class="eyebrow">Screenshots</p>
-        <h2>Dark, dense, and built around real sim data.</h2>
-        <p>These screens show the current direction of the app: practical, information-heavy, and focused on character
-          decisions.</p>
-      </div>
+      <header class="section-heading">
+        <p class="eyebrow">Product tour</p>
+        <h2>From a question to a confident upgrade.</h2>
+        <p>WhyLowDPS keeps the full optimization loop in one desktop workflow.</p>
+      </header>
 
-      <div class="screenshot-feature">
-        <div class="screenshot-copy">
-          <span class="tag">Top Gear</span>
-          <h3>Compare gear setups without losing context.</h3>
-          <p>Ranked results, DPS deltas, item levels, selected gear, and a direct path back into the sim workflow.</p>
+      <article class="tour-row">
+        <div class="tour-copy">
+          <p class="step-label">01 · Simulate and inspect</p>
+          <h3>Understand more than the final number.</h3>
+          <p>
+            Run simulations locally, review damage breakdowns, inspect action timelines,
+            and compare character profiles without losing the setup behind each result.
+          </p>
+          <ul class="check-list">
+            <li>Simulation history and saved profiles</li>
+            <li>Timeline, action, and stat analysis</li>
+            <li>Side-by-side result context</li>
+          </ul>
         </div>
-        <img alt="WhyLowDPS Top Gear results showing ranked item and talent combinations with DPS changes."
-             src="./assets/screenshots/top-gear.png" />
-      </div>
+        <figure class="app-frame">
+          <img alt="Simulation timeline showing casts, actions, and damage events."
+               src="./assets/screenshots/sim-timeline.png" />
+          <figcaption>Inspect the actions behind each result.</figcaption>
+        </figure>
+      </article>
 
-      <div class="gallery-grid">
-        <figure><img alt="Simulation result timeline and action sequence view."
-                     src="./assets/screenshots/sim-timeline.png" />
-          <figcaption>Timeline and action sequence analysis</figcaption>
+      <article class="tour-row tour-row-reverse">
+        <div class="tour-copy">
+          <p class="step-label">02 · Compare and prioritize</p>
+          <h3>Make gear decisions with the delta attached.</h3>
+          <p>
+            Test combinations, rank outcomes, and see which items or talents actually move
+            your character forward before spending gold, crests, or time.
+          </p>
+          <ul class="check-list">
+            <li>Top Gear and upgrade comparisons</li>
+            <li>Drop, trinket, tier, and consumable planning</li>
+            <li>Wishlists organized by character and source</li>
+          </ul>
+        </div>
+        <figure class="app-frame">
+          <img alt="Top Gear results ranked by DPS with selected item and talent combinations."
+               src="./assets/screenshots/top-gear.png" />
+          <figcaption>Rank real combinations, not isolated item levels.</figcaption>
         </figure>
-        <figure><img alt="Detailed sim result profile with character panel, gear, stats, and DPS summary."
-                     src="./assets/screenshots/result-profile.png" />
-          <figcaption>Character result profile and stat comparison</figcaption>
+      </article>
+
+      <article class="tour-row">
+        <div class="tour-copy">
+          <p class="step-label">03 · Plan in context</p>
+          <h3>Carry dungeon and season context into the sim.</h3>
+          <p>
+            Save route-aware setups, browse current encounters, and keep the weekly context
+            that shapes your next simulation close to the character it belongs to.
+          </p>
+          <ul class="check-list">
+            <li>Saved routes from SimC strings</li>
+            <li>Dungeon, raid, and encounter references</li>
+            <li>Great Vault and seasonal tracking</li>
+          </ul>
+        </div>
+        <figure class="app-frame">
+          <img alt="Dungeon route planner showing pulls, route health, timer, and SimulationCraft actions."
+               src="./assets/screenshots/route.png" />
+          <figcaption>Build simulations around the route you will play.</figcaption>
         </figure>
-        <figure><img alt="Dungeon route modal with pulls, route HP, timer, and SimC route actions."
-                     src="./assets/screenshots/route.png" />
-          <figcaption>Route-aware dungeon planning</figcaption>
-        </figure>
-        <figure><img alt="Talent playground view for saved character builds and specialization trees."
-                     src="./assets/screenshots/talent-playground.png" />
-          <figcaption>Saved builds and talent playground</figcaption>
-        </figure>
-        <figure><img alt="Raid encounter information cards with boss abilities and links."
-                     src="./assets/screenshots/raid-info.png" />
-          <figcaption>Raid encounter reference</figcaption>
-        </figure>
-        <figure><img alt="Wishlist page showing desired items grouped by instance for a selected character."
-                     src="./assets/screenshots/wishlist.png" />
-          <figcaption>Character wishlists by source</figcaption>
-        </figure>
+      </article>
+    </div>
+  </section>
+
+  <section class="section capabilities">
+    <div class="container">
+      <header class="section-heading section-heading-compact">
+        <p class="eyebrow">Built for repeatable decisions</p>
+        <h2>Your character workflow, remembered.</h2>
+      </header>
+      <div class="capability-grid feature-group-grid">
+        <article>
+          <span aria-hidden="true">↗</span>
+          <h3>Simulation</h3>
+          <p>Run locally, follow active jobs, and keep every result available for comparison.</p>
+          <ul class="feature-list">
+            <li>Quick Sim</li>
+            <li>Top Gear</li>
+            <li>Live tracking</li>
+            <li>Simulation history</li>
+          </ul>
+        </article>
+        <article>
+          <span aria-hidden="true">◇</span>
+          <h3>Upgrade planning</h3>
+          <p>Compare realistic upgrade paths before committing currency or farming time.</p>
+          <ul class="feature-list">
+            <li>Drop Finder</li>
+            <li>Crest Upgrades</li>
+            <li>Trinket Matrix</li>
+            <li>Tier Slot Matrix</li>
+          </ul>
+        </article>
+        <article>
+          <span aria-hidden="true">◎</span>
+          <h3>Analysis</h3>
+          <p>Go beyond a DPS total and inspect how stats, actions, and choices affect it.</p>
+          <ul class="feature-list">
+            <li>Quick Weights</li>
+            <li>Stat Plot</li>
+            <li>Consumable Matrix</li>
+            <li>Timelines and breakdowns</li>
+          </ul>
+        </article>
+        <article>
+          <span aria-hidden="true">▦</span>
+          <h3>Character tools</h3>
+          <p>Keep each character's goals, builds, and weekly progress organized together.</p>
+          <ul class="feature-list">
+            <li>Saved SimC profiles</li>
+            <li>Great Vault</li>
+            <li>Wishlists</li>
+            <li>Talent playground</li>
+          </ul>
+        </article>
+        <article>
+          <span aria-hidden="true">⌁</span>
+          <h3>PvE planning</h3>
+          <p>Bring current content and the route you intend to play into your preparation.</p>
+          <ul class="feature-list">
+            <li>Dungeon rotation and affixes</li>
+            <li>Raid encounters and guides</li>
+            <li>Saved dungeon routes</li>
+            <li>Route-specific simulations</li>
+          </ul>
+        </article>
+        <article>
+          <span aria-hidden="true">⌂</span>
+          <h3>Desktop experience</h3>
+          <p>Keep the application, simulation runtime, and working data under your control.</p>
+          <ul class="feature-list">
+            <li>Local-first storage</li>
+            <li>Dashboard customization</li>
+            <li>Runtime updates</li>
+            <li>Stable app updates</li>
+          </ul>
+        </article>
       </div>
     </div>
   </section>
 
-  <section class="section-pad setup-section" id="setup">
-    <div class="container setup-grid">
-      <div class="section-heading align-left">
-        <p class="eyebrow">Setup</p>
-        <h2>Bring your own Battle.net API credentials.</h2>
-        <p>
-          WhyLowDPS uses Blizzard APIs for game and character data. To keep the app user-owned and avoid shipping shared
-          credentials,
-          each user must generate their own Battle.net API credentials and enter them in the app.
-        </p>
-      </div>
-      <div class="setup-card">
-        <ol>
-          <li><strong>Download</strong><span>Install the latest Windows release from GitHub.</span></li>
-          <li><strong>Create Battle.net credentials</strong><span>Follow the in-app instructions to generate your own API key.</span>
-          </li>
-          <li><strong>Start simming</strong><span>Import or save character data, then run the workflows that matter to you.</span>
-          </li>
-        </ol>
-      </div>
-    </div>
-  </section>
-
-  <section class="section-pad privacy-section" id="privacy">
-    <div class="container privacy-grid">
+  <section class="section setup-section" id="setup">
+    <div class="container setup-layout">
       <div>
-        <p class="eyebrow">Data sources</p>
-        <h2>No custom account backend.</h2>
-        <p>
-          The app currently uses Blizzard APIs for game data, GitHub for releases and release-published data refreshes,
-          and Raidbots-related data where needed for consumables, items, and simulation workflows.
+        <p class="eyebrow">Quick setup</p>
+        <h2>Start with your own character.</h2>
+        <p class="section-copy">
+          WhyLowDPS is distributed as a Windows desktop app. Start credential-free, or
+          connect your own Battle.net API client for account-aware features.
         </p>
       </div>
-      <div class="privacy-card">
-        <h3>Credentials stay on your machine.</h3>
+      <ol class="steps">
+        <li><span>1</span>
+          <div><strong>Download</strong>
+            <p>Get the latest Windows release from GitHub.</p></div>
+        </li>
+        <li><span>2</span>
+          <div><strong>Choose your mode</strong>
+            <p>Continue in Light Mode, or add your own Battle.net credentials.</p></div>
+        </li>
+        <li><span>3</span>
+          <div><strong>Start comparing</strong>
+            <p>Paste SimC data or import a connected character, then run a simulation.</p></div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="section privacy-section" id="privacy">
+    <div class="container privacy-layout">
+      <div>
+        <p class="eyebrow">Local by design</p>
+        <h2>Your credentials stay on your machine.</h2>
+      </div>
+      <div class="privacy-copy">
         <p>
-          Battle.net API credentials are required, stored locally, and are not uploaded or shared by the application.
+          Your Battle.net API credentials are stored locally and are not uploaded or shared
+          by WhyLowDPS. There is no custom WhyLowDPS account backend.
+        </p>
+        <p>
+          The app uses Blizzard APIs for game data, GitHub for releases and published data
+          updates, and Raidbots-related data where simulation workflows require it.
         </p>
       </div>
     </div>
   </section>
 
-  <section class="final-cta section-pad">
-    <div class="container final-card">
-      <p class="eyebrow">Ready to test it?</p>
-      <h2>Download WhyLowDPS and try the workflow on your own characters.</h2>
-      <p>Feedback is welcome - the app is actively evolving around real player usage.</p>
-      <div class="hero-actions center-actions">
-        <a class="btn btn-primary" href="https://github.com/JosephLteif/simcraft/releases/latest"
+  <section class="section final-cta">
+    <div class="container cta-panel">
+      <p class="eyebrow">Ready to answer “is this better?”</p>
+      <h2>Run the comparison on your own character.</h2>
+      <p>Download WhyLowDPS for Windows and keep the full simulation workflow local.</p>
+      <div class="actions actions-centered">
+        <a class="button button-primary"
+           href="https://github.com/JosephLteif/simcraft/releases/latest"
            rel="noopener noreferrer"
            target="_blank">Download latest release</a>
-        <a class="btn btn-secondary" href="https://github.com/JosephLteif/simcraft/releases" rel="noopener noreferrer"
-           target="_blank">View all releases</a>
-        <a class="btn btn-secondary" href="https://discord.com/invite/ZjxQv5kFxe" rel="noopener noreferrer"
-           target="_blank">Join
-          Discord</a>
+        <a class="button button-secondary"
+           href="https://discord.com/invite/ZjxQv5kFxe"
+           rel="noopener noreferrer"
+           target="_blank">Join Discord</a>
       </div>
     </div>
   </section>
 </main>
 
 <footer class="site-footer">
-  <div class="container footer-grid">
-    <div>
-      <strong>WhyLowDPS</strong>
-      <p>Player-focused World of Warcraft simulation and character optimization.</p>
+  <div class="container footer-layout">
+    <div class="footer-brand">
+      <a class="brand" href="#top">
+        <img alt="" src="./assets/icon.png" />
+        <span>WhyLowDPS</span>
+      </a>
+      <p>Local World of Warcraft simulation and character optimization.</p>
     </div>
-    <div class="footer-links">
+    <nav aria-label="Footer navigation" class="footer-links">
       <a href="https://github.com/JosephLteif/simcraft" rel="noopener noreferrer" target="_blank">GitHub</a>
       <a href="https://github.com/JosephLteif/simcraft/releases" rel="noopener noreferrer" target="_blank">Releases</a>
       <a href="https://discord.com/invite/ZjxQv5kFxe" rel="noopener noreferrer" target="_blank">Discord</a>
       <a href="#privacy">Privacy</a>
-    </div>
+    </nav>
   </div>
-  <p class="legal">Not affiliated with Blizzard Entertainment, SimulationCraft, or Raidbots.</p>
+  <p class="container legal">Not affiliated with Blizzard Entertainment, SimulationCraft, or Raidbots.</p>
 </footer>
 </body>
 </html>

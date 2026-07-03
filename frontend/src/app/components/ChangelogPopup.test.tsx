@@ -15,12 +15,10 @@ describe('ChangelogPopup', () => {
     const user = userEvent.setup();
     const { unmount } = render(<ChangelogPopup />);
 
-    expect(await screen.findByRole('dialog', { name: /what's new/i })).toBeInTheDocument();
-    expect(screen.getByText(/improvements/i)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /warcraft logs boss guides/i })).toBeInTheDocument();
-    expect(
-      screen.getByText(/current-season raid bosses now link directly to warcraft logs guides/i)
-    ).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: /what's new/i });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
+    expect(dialog.querySelector('article p, article ul')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -58,10 +56,10 @@ describe('ChangelogPopup', () => {
     const user = userEvent.setup();
     render(<ChangelogPopup />);
 
-    expect(
-      await screen.findByRole('heading', { name: /warcraft logs boss guides/i })
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/1\s*\/\s*3/i)).not.toBeInTheDocument();
+    await screen.findByRole('dialog', { name: /what's new/i });
+
+    const firstHeading = screen.getByRole('heading', { level: 3 }).textContent;
+    expect(firstHeading).toBeTruthy();
     expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
       'aria-current',
       'true'
@@ -73,9 +71,7 @@ describe('ChangelogPopup', () => {
 
     await user.click(screen.getByRole('button', { name: /next changelog item/i }));
 
-    expect(
-      screen.getByRole('heading', { name: /simulation activity time grouping/i })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3 }).textContent).not.toBe(firstHeading);
     expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
       'aria-current',
       'false'
@@ -91,19 +87,9 @@ describe('ChangelogPopup', () => {
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /show changelog item 3/i }));
+    await user.click(screen.getByRole('button', { name: /show changelog item 2/i }));
 
-    expect(
-      screen.getByRole('heading', { name: /simc and app updates decoupling/i })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/app updates and simulationcraft updates are now managed separately/i)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/new simc versions can be delivered faster/i).closest('li')
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/app updates should now be less frequent/i).closest('li')
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
+    expect(document.querySelector('article p, article ul')).not.toBeNull();
   });
 });

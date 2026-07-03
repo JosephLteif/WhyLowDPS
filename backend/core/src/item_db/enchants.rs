@@ -592,3 +592,190 @@ pub fn apply_copy_enchants_to_map(
     }
     items_by_slot
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{EnchantData, GameItem};
+    use std::sync::Arc;
+
+    struct StateSnapshot {
+        items: Arc<HashMap<u64, GameItem>>,
+        enchants: Arc<HashMap<u64, EnchantData>>,
+        enchants_by_item_id: Arc<HashMap<u64, EnchantData>>,
+    }
+
+    impl StateSnapshot {
+        fn capture() -> Self {
+            Self {
+                items: ITEMS.read().unwrap().clone(),
+                enchants: ENCHANTS.read().unwrap().clone(),
+                enchants_by_item_id: ENCHANTS_BY_ITEM_ID.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *ITEMS.write().unwrap() = self.items;
+            *ENCHANTS.write().unwrap() = self.enchants;
+            *ENCHANTS_BY_ITEM_ID.write().unwrap() = self.enchants_by_item_id;
+        }
+    }
+
+    fn enchant(
+        id: u64,
+        item_id: Option<u64>,
+        item_name: &str,
+        quality: u64,
+        expansion: u64,
+    ) -> EnchantData {
+        EnchantData {
+            id,
+            item_id,
+            item_name: Some(item_name.to_string()),
+            item_icon: Some(format!("icon_{id}")),
+            slot: Some("socket".to_string()),
+            quality: Some(quality),
+            expansion: Some(expansion),
+            socket_type: Some("PRISMATIC".to_string()),
+            crafting_quality: Some(quality),
+            ..EnchantData::default()
+        }
+    }
+
+    fn gem_item(id: u64, name: &str, quality: u64) -> GameItem {
+        GameItem {
+            id,
+            name: name.to_string(),
+            icon: format!("gem_{id}"),
+            quality,
+            base_ilevel: None,
+            class: Some(3),
+            subclass: None,
+            inventory_type: None,
+            set_id: None,
+            has_sockets: false,
+            socket_info: None,
+            classes: None,
+            specs: None,
+            stats: None,
+            bonus_lists: Vec::new(),
+            sources: None,
+            profession: None,
+        }
+    }
+
+    #[test]
+    fn list_gems_prefers_current_prismatic_enchant_dataset_and_highest_quality() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *ENCHANTS.write().unwrap() = Arc::new(HashMap::from([
+            (1_u64, enchant(1, Some(1001), "Lower Ruby", 2, 10)),
+            (2_u64, enchant(2, Some(1001), "Higher Ruby", 4, 10)),
+            (3_u64, enchant(3, Some(1002), "Amber", 3, 10)),
+            (4_u64, enchant(4, Some(1003), "Old Emerald", 5, 9)),
+            (
+                5_u64,
+                EnchantData {
+                    slot: Some("socket".to_string()),
+                    socket_type: Some("TINKER".to_string()),
+                    expansion: Some(10),
+                    ..enchant(5, Some(1004), "Ignored Tinker", 5, 10)
+                },
+            ),
+        ]));
+        *ITEMS.write().unwrap() = Arc::new(HashMap::from([(2001_u64, gem_item(2001, "Fallback Gem", 5))]));
+
+        let gems = list_gems();
+
+        assert_eq!(gems.len(), 2);
+        assert_eq!(gems[0]["name"], "Amber");
+        assert_eq!(gems[1]["name"], "Higher Ruby");
+        assert_eq!(gems[1]["item_id"], 1001);
+        assert_eq!(gems[1]["quality"], 4);
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn list_gems_and_get_gem_info_fall_back_to_item_and_item_id_maps() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *ENCHANTS.write().unwrap() = Arc::new(HashMap::new());
+        *ITEMS.write().unwrap() = Arc::new(HashMap::from([
+            (3001_u64, gem_item(3001, "Ruby", 4)),
+            (3002_u64, gem_item(3002, "Uncommon", 2)),
+        ]));
+        *ENCHANTS_BY_ITEM_ID.write().unwrap() = Arc::new(HashMap::from([(
+            4001_u64,
+            EnchantData {
+                id: 91,
+                item_name: Some("Fallback Sapphire".to_string()),
+                spell_icon: Some("spell_icon".to_string()),
+                quality: Some(3),
+                ..EnchantData::default()
+            },
+        )]));
+
+        let gems = list_gems();
+        assert_eq!(gems.len(), 1);
+        assert_eq!(gems[0]["item_id"], 3001);
+        assert_eq!(gems[0]["name"], "Ruby");
+
+        let from_items = get_gem_info(3001).expect("item dataset gem");
+        assert_eq!(from_items["name"], "Ruby");
+        assert_eq!(from_items["icon"], "gem_3001");
+
+        let from_enchants = get_gem_info(4001).expect("enchant fallback gem");
+        assert_eq!(from_enchants["name"], "Fallback Sapphire");
+        assert_eq!(from_enchants["icon"], "spell_icon");
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn tooltip_parsers_extract_expected_effect_shapes() {
+        assert_eq!(normalize_gem_stat("  Mastery and"), Some(("mast", "Mast")));
+        assert_eq!(decode_html_entities("&lt;test&amp;value&gt;"), "<test&value>");
+        assert_eq!(
+            collapse_tooltip_text("<!--x--><div>Use:&nbsp;+123 Haste</div>"),
+            "Use: +123 Haste"
+        );
+        assert_eq!(
+            extract_special_gem_label("<!--nameDescStats--><br /> +Stormbringer and +Static Charge <!--i?"),
+            Some("Stormbringer + Static Charge".to_string())
+        );
+
+        let gem = parse_gem_effect_info(
+            "Versatile Emerald",
+            "+<!--gem1-->400 <!----> Versatility <br /> +<!--gem2-->200 <!----> Mastery",
+        );
+        assert_eq!(gem.label, "400 Vers & 200 Mast");
+        assert_eq!(gem.category, "vers");
+        assert_eq!(gem.primary_stat.as_deref(), Some("vers"));
+        assert_eq!(gem.secondary_stat.as_deref(), Some("mast"));
+
+        let enchant = parse_enchant_effect_info(
+            "<div>Use: Permanently enchants a weapon to grant 150 Haste and 90 Mastery. Requires Level 80</div>",
+        )
+        .expect("parsed enchant effect");
+        assert_eq!(
+            enchant.effect_key.as_deref(),
+            Some("grant # haste and # mastery")
+        );
+        assert_eq!(enchant.effect_amounts, vec![150.0, 90.0]);
+    }
+
+    #[test]
+    fn apply_copy_enchants_replaces_existing_ids_with_source_values() {
+        let updated = apply_copy_enchants(
+            "head=id=1,enchant_id=555,gem_id=777",
+            "head=id=2,enchant_id=10,gem_id=20",
+        );
+        assert_eq!(updated, "head=id=2,enchant_id=555,gem_id=777");
+
+        let removed = apply_copy_enchants("head=id=1", "head=id=2,enchant_id=10,gem_id=20");
+        assert_eq!(removed, "head=id=2");
+    }
+}

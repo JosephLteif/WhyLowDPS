@@ -221,6 +221,7 @@ mod tests {
     use actix_web::cookie::Cookie;
     use actix_web::{test::TestRequest, web};
     use jsonwebtoken::{encode, EncodingKey, Header};
+    use serde_json::json;
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -266,6 +267,63 @@ mod tests {
                 "tester".to_string()
             ))
         );
+    }
+
+    #[test]
+    fn enrich_member_with_profile_link_populates_member_and_profile_fields() {
+        let mut member = serde_json::json!({
+            "profile": {
+                "url": "https://worldofwarcraft.blizzard.com/en-us/character/us/illidan/tester"
+            }
+        })
+        .as_object()
+        .cloned()
+        .expect("member object");
+
+        enrich_member_with_profile_link(&mut member);
+
+        assert_eq!(member.get("linked_region"), Some(&json!("us")));
+        assert_eq!(member.get("linked_realm"), Some(&json!("illidan")));
+        assert_eq!(member.get("linked_name"), Some(&json!("tester")));
+        assert_eq!(
+            member.get("linked_profile_url"),
+            Some(&json!(
+                "https://worldofwarcraft.blizzard.com/en-us/character/us/illidan/tester"
+            ))
+        );
+        assert_eq!(member["profile"]["region"], "us");
+        assert_eq!(member["profile"]["name"], "tester");
+        assert_eq!(member["profile"]["realm"]["slug"], "illidan");
+    }
+
+    #[test]
+    fn enrich_mythic_profile_member_links_recurses_nested_members_and_preserves_existing_fields() {
+        let mut payload = json!({
+            "members": [
+                {
+                    "character": {
+                        "url": "https://worldofwarcraft.blizzard.com/en-us/character/eu/tarren-mill/healer"
+                    },
+                    "linked_name": "custom-name"
+                }
+            ],
+            "nested": {
+                "members": [
+                    {
+                        "url": "https://worldofwarcraft.blizzard.com/en-us/character/us/area-52/dps"
+                    }
+                ]
+            }
+        });
+
+        enrich_mythic_profile_member_links(&mut payload);
+
+        assert_eq!(payload["members"][0]["linked_region"], "eu");
+        assert_eq!(payload["members"][0]["linked_realm"], "tarren-mill");
+        assert_eq!(payload["members"][0]["linked_name"], "custom-name");
+        assert_eq!(payload["nested"]["members"][0]["linked_region"], "us");
+        assert_eq!(payload["nested"]["members"][0]["linked_realm"], "area-52");
+        assert_eq!(payload["nested"]["members"][0]["linked_name"], "dps");
     }
 
     #[test]
@@ -395,6 +453,136 @@ mod tests {
         .await;
 
         assert_eq!(resp.status(), 401);
+    }
+
+    #[actix_web::test]
+    async fn additional_character_proxy_handlers_reject_requests_without_token_or_credentials() {
+        let equipment = proxy_character_equipment(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(("Area 52".to_string(), "Thrall".to_string())),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(equipment.status(), 401);
+
+        let statistics = proxy_character_statistics(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(("Area 52".to_string(), "Thrall".to_string())),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(statistics.status(), 401);
+
+        let specializations = proxy_character_specializations(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(("Area 52".to_string(), "Thrall".to_string())),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(specializations.status(), 401);
+
+        let professions = proxy_character_professions(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(("Area 52".to_string(), "Thrall".to_string())),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(professions.status(), 401);
+    }
+
+    #[actix_web::test]
+    async fn mythic_and_realm_proxy_handlers_reject_requests_without_token_or_credentials() {
+        let mythic_profile = proxy_character_mythic_keystone_profile(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(("Area 52".to_string(), "Thrall".to_string())),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(mythic_profile.status(), 401);
+
+        let raid_progress = proxy_character_raid_encounters(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(("Area 52".to_string(), "Thrall".to_string())),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(raid_progress.status(), 401);
+
+        let dungeon_index = proxy_mythic_keystone_dungeon_index(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(dungeon_index.status(), 401);
+
+        let dungeon_detail = proxy_mythic_keystone_dungeon_detail(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Path::from(399_u64),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(dungeon_detail.status(), 401);
+
+        let realms_index = proxy_realms_index(
+            TestRequest::default().to_http_request(),
+            test_state(),
+            no_auth_state(),
+            test_store(),
+            web::Query(ProxyQuery {
+                region: Some("us".to_string()),
+                refresh: Some(true),
+            }),
+        )
+        .await;
+        assert_eq!(realms_index.status(), 401);
     }
 }
 

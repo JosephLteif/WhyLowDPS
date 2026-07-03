@@ -260,6 +260,410 @@ pub(super) fn normalized_locked_trinket_slot(raw: &str) -> Option<&'static str> 
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item_db::state;
+    use crate::types::class_data::{self, ClassDef, SpecDef};
+    use crate::types::{GameItem, ItemSource};
+    use serde_json::json;
+    use std::sync::Arc;
+
+    struct StateSnapshot {
+        instances: Vec<Value>,
+        items: Arc<HashMap<u64, GameItem>>,
+        drops_by_encounter: Arc<state::DropMap>,
+        catalyst: Arc<state::CatalystData>,
+    }
+
+    impl StateSnapshot {
+        fn capture() -> Self {
+            Self {
+                instances: state::INSTANCES.read().unwrap().clone(),
+                items: state::ITEMS.read().unwrap().clone(),
+                drops_by_encounter: state::DROPS_BY_ENCOUNTER.read().unwrap().clone(),
+                catalyst: state::CATALYST.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *state::INSTANCES.write().unwrap() = self.instances;
+            *state::ITEMS.write().unwrap() = self.items;
+            *state::DROPS_BY_ENCOUNTER.write().unwrap() = self.drops_by_encounter;
+            *state::CATALYST.write().unwrap() = self.catalyst;
+        }
+    }
+
+    struct ClassSnapshot {
+        classes: Arc<Vec<ClassDef>>,
+        trait_spec_ids: HashMap<String, Vec<u64>>,
+        class_wow_ids: HashMap<String, u64>,
+        spec_to_wow_class: HashMap<u64, u64>,
+    }
+
+    impl ClassSnapshot {
+        fn capture() -> Self {
+            Self {
+                classes: class_data::CLASSES.read().unwrap().clone(),
+                trait_spec_ids: class_data::CLASS_TRAIT_SPEC_IDS.read().unwrap().clone(),
+                class_wow_ids: class_data::CLASS_WOW_IDS.read().unwrap().clone(),
+                spec_to_wow_class: class_data::SPEC_TO_WOW_CLASS.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *class_data::CLASSES.write().unwrap() = self.classes;
+            *class_data::CLASS_TRAIT_SPEC_IDS.write().unwrap() = self.trait_spec_ids;
+            *class_data::CLASS_WOW_IDS.write().unwrap() = self.class_wow_ids;
+            *class_data::SPEC_TO_WOW_CLASS.write().unwrap() = self.spec_to_wow_class;
+        }
+    }
+
+    fn test_item(id: u64, specs: Option<Vec<u64>>, sources: Option<Vec<ItemSource>>) -> GameItem {
+        GameItem {
+            id,
+            name: format!("Item {id}"),
+            icon: "inv_misc_questionmark".to_string(),
+            quality: 4,
+            base_ilevel: Some(639),
+            class: Some(4),
+            subclass: Some(0),
+            inventory_type: Some(12),
+            set_id: None,
+            has_sockets: false,
+            socket_info: None,
+            classes: None,
+            specs,
+            stats: None,
+            bonus_lists: Vec::new(),
+            sources,
+            profession: None,
+        }
+    }
+
+    fn install_warrior_fixture() {
+        *class_data::CLASSES.write().unwrap() = Arc::new(vec![ClassDef {
+            name: "warrior".to_string(),
+            aliases: Vec::new(),
+            max_armor: 1,
+            weapons: vec![4],
+            specs: vec![
+                SpecDef {
+                    name: "fury".to_string(),
+                    id: 72,
+                    weapon_subclasses: vec![4],
+                    primary_stats: vec![4],
+                    can_dual_wield: true,
+                    can_use_shield: false,
+                    can_use_offhand: false,
+                },
+                SpecDef {
+                    name: "protection".to_string(),
+                    id: 73,
+                    weapon_subclasses: vec![4],
+                    primary_stats: vec![4],
+                    can_dual_wield: false,
+                    can_use_shield: true,
+                    can_use_offhand: true,
+                },
+            ],
+        }]);
+        class_data::set_class_trait_spec_ids(HashMap::from([(
+            "warrior".to_string(),
+            vec![72, 73],
+        )]));
+        class_data::set_class_wow_ids(HashMap::from([("warrior".to_string(), 1)]));
+        class_data::set_spec_to_wow_class(HashMap::from([(72, 1), (73, 1)]));
+    }
+
+    #[test]
+    fn role_pool_and_scope_selection_normalize_tokens_and_defaults() {
+        assert_eq!(spec_id_to_role_pool(66), TrinketRolePool::Tank);
+        assert_eq!(spec_id_to_role_pool(1468), TrinketRolePool::Healer);
+        assert_eq!(spec_id_to_role_pool(71), TrinketRolePool::Dps);
+
+        assert_eq!(
+            selected_heatmap_role_pools("tank, heal", Some(66)),
+            HashSet::from([TrinketRolePool::Tank, TrinketRolePool::Healer])
+        );
+        assert_eq!(
+            selected_heatmap_role_pools("auto", Some(65)),
+            HashSet::from([TrinketRolePool::Healer])
+        );
+        assert_eq!(
+            selected_heatmap_role_pools("", None),
+            HashSet::from([TrinketRolePool::Dps])
+        );
+
+        assert_eq!(
+            selected_heatmap_source_types("raid, professions, raid"),
+            vec!["profession", "raid"]
+        );
+        assert_eq!(
+            selected_heatmap_source_types(""),
+            vec!["delve", "dungeon", "profession", "pvp", "raid"]
+        );
+        assert_eq!(normalized_locked_trinket_slot(" Trinket2 "), Some("trinket2"));
+        assert_eq!(normalized_locked_trinket_slot("both"), None);
+    }
+
+    #[test]
+    fn spec_and_role_matching_cover_spec_class_and_ignore_paths() {
+        let dps_only = HashSet::from([TrinketRolePool::Dps]);
+        let healer_only = HashSet::from([TrinketRolePool::Healer]);
+
+        assert!(item_specs_match_role_pools(&[577], &dps_only));
+        assert!(!item_specs_match_role_pools(&[577], &healer_only));
+        assert!(item_specs_match_role_pools(&[2], &healer_only));
+        assert!(!item_specs_match_role_pools(&[3], &healer_only));
+
+        assert!(item_specs_match_active_spec(&[577], Some(577), false));
+        assert!(!item_specs_match_active_spec(&[577], Some(581), false));
+        assert!(item_specs_match_active_spec(&[], Some(62), false));
+        assert!(item_specs_match_active_spec(&[577], Some(581), true));
+
+        assert!(trinket_json_matches_active_spec(
+            &json!({ "specs": [577] }),
+            Some(577),
+            false,
+            &dps_only
+        ));
+        assert!(!trinket_json_matches_active_spec(
+            &json!({ "specs": [577] }),
+            Some(577),
+            false,
+            &healer_only
+        ));
+        assert!(trinket_json_matches_active_spec(
+            &json!({ "specs": ["bad"] }),
+            Some(577),
+            false,
+            &dps_only
+        ));
+    }
+
+    #[test]
+    fn mplus_and_item_lookup_helpers_use_runtime_state_and_drop_lookup() {
+        let _guard = state::TEST_STATE_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let snapshot = StateSnapshot::capture();
+
+        *state::INSTANCES.write().unwrap() = vec![json!({
+            "id": -1,
+            "encounters": [{ "id": 2001 }, { "id": 2002 }]
+        })];
+
+        let item = test_item(
+            9001,
+            Some(vec![577]),
+            Some(vec![
+                ItemSource {
+                    encounter_id: Some(1),
+                    instance_id: Some(2002),
+                },
+                ItemSource {
+                    encounter_id: Some(2),
+                    instance_id: Some(3000),
+                },
+            ]),
+        );
+        let no_rotation_item = test_item(
+            9002,
+            Some(vec![577]),
+            Some(vec![ItemSource {
+                encounter_id: Some(3),
+                instance_id: Some(4000),
+            }]),
+        );
+        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([
+            (9001_u64, item.clone()),
+            (9002_u64, no_rotation_item.clone()),
+        ]));
+
+        let mplus_ids = mplus_rotation_instance_ids();
+        assert_eq!(mplus_ids, HashSet::from([2001_i64, 2002_i64]));
+        assert!(item_has_mplus_rotation_source(&item, &mplus_ids));
+        assert!(!item_has_mplus_rotation_source(&no_rotation_item, &mplus_ids));
+
+        assert!(item_id_matches_active_spec(9001, Some(577), false));
+        assert!(!item_id_matches_active_spec(9001, Some(581), false));
+
+        let role_pools = HashSet::from([TrinketRolePool::Dps]);
+        let lookup = HashMap::from([(9002_u64, vec![581_u64])]);
+        assert!(!item_id_matches_active_spec_with_lookup(
+            9002,
+            Some(577),
+            &lookup,
+            false,
+            &role_pools
+        ));
+        assert!(item_id_matches_active_spec_with_lookup(
+            9001,
+            Some(577),
+            &HashMap::new(),
+            false,
+            &role_pools
+        ));
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn build_heatmap_profileset_input_generates_locked_trinket_matrix_from_fallback_drops() {
+        let _state_guard = state::TEST_STATE_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let _class_guard = class_data::TEST_CLASS_DATA_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let state_snapshot = StateSnapshot::capture();
+        let class_snapshot = ClassSnapshot::capture();
+
+        install_warrior_fixture();
+
+        let mut fixed_one = test_item(9000, Some(vec![72]), None);
+        fixed_one.name = "Equipped Lock".to_string();
+        fixed_one.base_ilevel = Some(619);
+
+        let mut fixed_two = test_item(9003, Some(vec![72]), None);
+        fixed_two.name = "Second Equipped".to_string();
+        fixed_two.base_ilevel = Some(615);
+
+        let mut candidate_one = test_item(9101, Some(vec![72]), None);
+        candidate_one.name = "Raid Trinket Alpha".to_string();
+
+        let mut candidate_two = test_item(9102, Some(vec![72]), None);
+        candidate_two.name = "Raid Trinket Beta".to_string();
+
+        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([
+            (9000_u64, fixed_one),
+            (9003_u64, fixed_two),
+            (9101_u64, candidate_one.clone()),
+            (9102_u64, candidate_two.clone()),
+        ]));
+        *state::INSTANCES.write().unwrap() = vec![json!({
+            "id": 7001,
+            "type": "raid",
+            "encounters": [{ "id": 8001 }]
+        })];
+        *state::DROPS_BY_ENCOUNTER.write().unwrap() = Arc::new(HashMap::from([(
+            8001_i64,
+            vec![candidate_one, candidate_two],
+        )]));
+
+        let (generated_input, combo_count, combo_metadata) = build_heatmap_profileset_input(
+            "warrior=\"Tester\"\nspec=fury\ntrinket1=id=9000,ilevel=619\ntrinket2=id=9003,ilevel=615\n",
+            "warrior",
+            true,
+            false,
+            620,
+            "raid",
+            "trinket1",
+            "auto",
+            false,
+        )
+        .expect("trinket heatmap input");
+
+        assert_eq!(combo_count, 2);
+        assert_eq!(combo_metadata.len(), 2);
+        assert!(generated_input.contains("profileset.\"Heatmap Trinket 1"));
+        assert!(generated_input.contains("profileset.\"Heatmap Trinket 2"));
+        assert!(generated_input.contains("trinket2=,id=9101,ilevel=639"));
+        assert!(generated_input.contains("trinket2=,id=9102,ilevel=639"));
+        assert!(combo_metadata.values().all(|meta| {
+            meta.iter()
+                .any(|entry| entry.get("heatmap_kind") == Some(&Value::String("trinket".to_string())))
+        }));
+
+        class_snapshot.restore();
+        state_snapshot.restore();
+    }
+
+    #[test]
+    fn build_heatmap_profileset_input_generates_tier_piece_combinations() {
+        let _state_guard = state::TEST_STATE_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let _class_guard = class_data::TEST_CLASS_DATA_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let state_snapshot = StateSnapshot::capture();
+        let class_snapshot = ClassSnapshot::capture();
+
+        install_warrior_fixture();
+        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([
+            (1001_u64, {
+                let mut item = test_item(1001, Some(vec![72]), None);
+                item.name = "Helm of Trials".to_string();
+                item.inventory_type = Some(1);
+                item.base_ilevel = Some(620);
+                item
+            }),
+            (1002_u64, {
+                let mut item = test_item(1002, Some(vec![72]), None);
+                item.name = "Chest of Trials".to_string();
+                item.inventory_type = Some(5);
+                item.base_ilevel = Some(618);
+                item
+            }),
+        ]));
+        *state::CATALYST.write().unwrap() = Arc::new(state::CatalystData {
+            tier_items: HashMap::from([
+                (
+                    (1_u64, 1_u64),
+                    state::CatalystTierItem {
+                        item_id: 99001,
+                        name: "Tier Helm".to_string(),
+                        icon: "inv_helmet".to_string(),
+                        has_set: false,
+                        bonus_ids: Vec::new(),
+                    },
+                ),
+                (
+                    (1_u64, 5_u64),
+                    state::CatalystTierItem {
+                        item_id: 99005,
+                        name: "Tier Chest".to_string(),
+                        icon: "inv_chest".to_string(),
+                        has_set: false,
+                        bonus_ids: Vec::new(),
+                    },
+                ),
+            ]),
+            tier_item_ids: HashSet::from([99001_u64, 99005_u64]),
+            catalyst_currency_id: 0,
+        });
+
+        let (generated_input, combo_count, combo_metadata) = build_heatmap_profileset_input(
+            "warrior=\"Tester\"\nspec=fury\nhead=id=1001,ilevel=620\nchest=id=1002,ilevel=618\n",
+            "warrior",
+            false,
+            true,
+            0,
+            "",
+            "",
+            "auto",
+            false,
+        )
+        .expect("tier heatmap input");
+
+        assert_eq!(combo_count, 3);
+        assert_eq!(combo_metadata.len(), 3);
+        assert!(generated_input.contains("profileset.\"Heatmap Tier 1 | 1p\"+=head=,id=99001"));
+        assert!(generated_input.contains("profileset.\"Heatmap Tier 2 | 1p\"+=chest=,id=99005"));
+        assert!(generated_input.contains("profileset.\"Heatmap Tier 3 | 2p\"+=head=,id=99001"));
+        assert!(generated_input.contains("profileset.\"Heatmap Tier 3 | 2p\"+=chest=,id=99005"));
+        assert!(combo_metadata.values().all(|meta| {
+            meta.iter()
+                .any(|entry| entry.get("heatmap_kind") == Some(&Value::String("tier".to_string())))
+        }));
+
+        class_snapshot.restore();
+        state_snapshot.restore();
+    }
+}
+
 #[derive(Clone)]
 struct HeatmapTrinketVariant {
     label: String,

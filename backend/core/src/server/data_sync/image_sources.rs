@@ -310,6 +310,10 @@ mod tests {
     use super::*;
     use crate::item_db::state;
     use serde_json::json;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
     use tempfile::tempdir;
 
     #[test]
@@ -405,5 +409,85 @@ mod tests {
 
         *state::RUNTIME_DATA.write().unwrap() = prev_runtime;
         *state::INSTANCES.write().unwrap() = prev_instances;
+    }
+
+    #[tokio::test]
+    async fn journal_lookup_helpers_use_cached_entries_for_exact_and_partial_matches() {
+        let mut cache = JOURNAL_INDEX_CACHE.lock().await;
+        *cache = Some(JournalIndexCache {
+            fetched_at: chrono::Utc::now(),
+            entries: vec![
+                (101, "Operation: Floodgate".to_string()),
+                (202, "The MOTHERLODE!!".to_string()),
+            ],
+        });
+        drop(cache);
+
+        let client = reqwest::Client::new();
+        let exact = journal_index_entries_with_token(&client, "ignored").await;
+        assert_eq!(
+            exact,
+            vec![
+                (101, "Operation: Floodgate".to_string()),
+                (202, "The MOTHERLODE!!".to_string())
+            ]
+        );
+
+        let exact_id = journal_instance_id_from_names_with_token(
+            &client,
+            "ignored",
+            &["operation floodgate".to_string()],
+        )
+        .await;
+        assert_eq!(exact_id, Some(101));
+
+        let partial_id = journal_instance_id_from_names_with_token(
+            &client,
+            "ignored",
+            &["motherlode".to_string()],
+        )
+        .await;
+        assert_eq!(partial_id, Some(202));
+
+        *JOURNAL_INDEX_CACHE.lock().await = None;
+    }
+
+    #[tokio::test]
+    async fn media_url_from_media_href_appends_locale_and_filters_assets() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let (tx, rx) = mpsc::channel();
+
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let mut buffer = [0_u8; 4096];
+            let read = stream.read(&mut buffer).expect("read request");
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            let first_line = request.lines().next().unwrap_or_default().to_string();
+            tx.send(first_line).expect("send request line");
+
+            let body = r#"{"assets":[{"key":"tile","value":"https://render.worldofwarcraft.com/us/tile.jpg"},{"key":"icon","value":"https://example.com/icon.jpg"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+        });
+
+        let client = reqwest::Client::new();
+        let url = format!("http://{}/media/path", addr);
+        let selected = media_url_from_media_href(&client, "token", &url).await;
+
+        assert_eq!(
+            selected,
+            Some("https://render.worldofwarcraft.com/us/tile.jpg".to_string())
+        );
+        let request_line = rx.recv().expect("request line");
+        assert!(request_line.contains("/media/path?locale=en_US"));
+
+        server.join().expect("server join");
     }
 }

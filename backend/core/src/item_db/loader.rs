@@ -1352,3 +1352,285 @@ pub fn hydrate_runtime_metadata(runtime_path: &Path) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item_db::state::{
+        BONUSES, CRAFTING_LIMIT_CATS, CURRENT_SEASON_ID, ITEM_LIMIT_CATS, RUNTIME_DATA,
+        UPGRADE_TRACKS,
+    };
+    use crate::types::BonusData;
+    use std::sync::Arc;
+
+    struct StateSnapshot {
+        bonuses: Arc<HashMap<u64, crate::types::BonusData>>,
+        crafting_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
+        item_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
+        upgrade_tracks: Arc<HashMap<(String, u64, u64), (u64, u64, u64)>>,
+        current_season_id: u64,
+        runtime_data: Value,
+    }
+
+    impl StateSnapshot {
+        fn capture() -> Self {
+            Self {
+                bonuses: BONUSES.read().unwrap().clone(),
+                crafting_limit_cats: CRAFTING_LIMIT_CATS.read().unwrap().clone(),
+                item_limit_cats: ITEM_LIMIT_CATS.read().unwrap().clone(),
+                upgrade_tracks: UPGRADE_TRACKS.read().unwrap().clone(),
+                current_season_id: *CURRENT_SEASON_ID.read().unwrap(),
+                runtime_data: RUNTIME_DATA.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *BONUSES.write().unwrap() = self.bonuses;
+            *CRAFTING_LIMIT_CATS.write().unwrap() = self.crafting_limit_cats;
+            *ITEM_LIMIT_CATS.write().unwrap() = self.item_limit_cats;
+            *UPGRADE_TRACKS.write().unwrap() = self.upgrade_tracks;
+            *CURRENT_SEASON_ID.write().unwrap() = self.current_season_id;
+            *RUNTIME_DATA.write().unwrap() = self.runtime_data;
+        }
+    }
+
+    fn install_tracks() {
+        *UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
+            (("Explorer".to_string(), 1_u64, 8_u64), (597_u64, 1001_u64, 2_u64)),
+            (
+                ("Adventurer".to_string(), 1_u64, 8_u64),
+                (610_u64, 1002_u64, 3_u64),
+            ),
+            (
+                ("Veteran".to_string(), 1_u64, 8_u64),
+                (623_u64, 1003_u64, 3_u64),
+            ),
+            (
+                ("Champion".to_string(), 1_u64, 8_u64),
+                (636_u64, 1004_u64, 4_u64),
+            ),
+            (
+                ("Champion".to_string(), 5_u64, 8_u64),
+                (649_u64, 1005_u64, 4_u64),
+            ),
+            (("Hero".to_string(), 1_u64, 6_u64), (652_u64, 1006_u64, 4_u64)),
+            (("Hero".to_string(), 4_u64, 6_u64), (665_u64, 1007_u64, 4_u64)),
+            (("Myth".to_string(), 1_u64, 6_u64), (678_u64, 1008_u64, 4_u64)),
+        ]));
+    }
+
+    #[test]
+    fn season_label_and_metadata_readers_prefer_runtime_and_active_entries() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        *RUNTIME_DATA.write().unwrap() = json!({ "season_name": "  Season of Tests  " });
+        *CURRENT_SEASON_ID.write().unwrap() = 12;
+        assert_eq!(inferred_season_label(), "Season of Tests");
+
+        *RUNTIME_DATA.write().unwrap() = json!({});
+        assert_eq!(inferred_season_label(), "Season 12");
+        *CURRENT_SEASON_ID.write().unwrap() = 0;
+        assert_eq!(inferred_season_label(), "Current Season");
+
+        fs::write(
+            dir.path().join("seasons.json"),
+            serde_json::to_string(&vec![
+                json!({
+                    "name": "Inactive",
+                    "active": false,
+                    "itemConversionCurrency": 1111,
+                    "itemConversionId": 7
+                }),
+                json!({
+                    "name": "Active",
+                    "active": true,
+                    "itemConversionCurrency": 2222,
+                    "itemConversionId": 9
+                }),
+            ])
+            .expect("seasons json"),
+        )
+        .expect("write seasons");
+
+        assert_eq!(
+            read_active_season_metadata(dir.path()),
+            (Some("Active".to_string()), Some(2222), Some(9))
+        );
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn conversion_bonus_and_runtime_entry_parsing_handle_fallbacks() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        let dir = tempfile::tempdir().expect("temp dir");
+        install_tracks();
+
+        fs::write(
+            dir.path().join("item-conversions.json"),
+            serde_json::to_string(&json!({
+                "7": { "bonusIds": [70, 71] },
+                "9": { "bonusIds": [90, 91] }
+            }))
+            .expect("conversions json"),
+        )
+        .expect("write conversions");
+
+        assert_eq!(read_conversion_bonus_id(dir.path(), Some(7)), Some(70));
+        assert_eq!(read_conversion_bonus_id(dir.path(), Some(999)), Some(90));
+        assert_eq!(track_rank_index("Hero"), 4);
+        assert_eq!(track_rank_index("Unknown"), usize::MAX / 2);
+        assert_eq!(pick_track_name("champion", &available_track_names()), "Champion");
+        assert_eq!(pick_track_name("Mythic", &available_track_names()), "Myth");
+        assert_eq!(clamp_level(0, 6), 1);
+        assert_eq!(clamp_level(9, 6), 6);
+        assert_eq!(slugify_key("  Mythic__Plus  "), "mythic-plus");
+        assert_eq!(
+            localized_or_string(&json!({"fr_FR":"", "en_US":"  Heroic  "})),
+            Some("Heroic".to_string())
+        );
+        assert_eq!(parse_u64_flexible(&json!("8/12")), Some(8));
+        assert_eq!(parse_u64_flexible(&json!("10 items")), Some(10));
+        assert_eq!(
+            runtime_track_name(&json!({"label": {"en_US": "Hero"}})),
+            Some("Hero".to_string())
+        );
+
+        let parsed = parse_runtime_difficulty_entry(
+            &json!({
+                "difficultyLabel": { "en_US": "Mythic Override" },
+                "trackName": { "en_US": "Mythic" },
+                "upgradeLevel": "9/9",
+                "sortOrder": "5",
+                "fixedIlvl": "678",
+                "fixedQuality": 4
+            }),
+            0,
+            &available_track_names(),
+        )
+        .expect("parsed override");
+
+        assert_eq!(parsed["key"], "mythic-override");
+        assert_eq!(parsed["label"], "Mythic Override");
+        assert_eq!(parsed["track"], "Myth");
+        assert_eq!(parsed["level"], 6);
+        assert_eq!(parsed["sortOrder"], 5);
+        assert_eq!(parsed["fixedIlvl"], 678);
+        assert_eq!(parsed["fixedQuality"], 4);
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn generated_season_config_uses_runtime_overrides_and_file_metadata() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        let dir = tempfile::tempdir().expect("temp dir");
+        install_tracks();
+        *CURRENT_SEASON_ID.write().unwrap() = 15;
+        *RUNTIME_DATA.write().unwrap() = json!({
+            "season_name": "Runtime Season",
+            "nested": {
+                "difficulty_overrides": [
+                    {
+                        "key": "mythic+12",
+                        "label": "Mythic +12",
+                        "track": "Myth",
+                        "level": 2,
+                        "sortOrder": 14
+                    }
+                ]
+            }
+        });
+
+        fs::write(
+            dir.path().join("seasons.json"),
+            serde_json::to_string(&vec![json!({
+                "name": "File Season",
+                "active": true,
+                "itemConversionCurrency": 4444,
+                "itemConversionId": 11
+            })])
+            .expect("season json"),
+        )
+        .expect("write seasons");
+        fs::write(
+            dir.path().join("item-conversions.json"),
+            serde_json::to_string(&json!({
+                "11": { "bonusIds": [1234] }
+            }))
+            .expect("conversion json"),
+        )
+        .expect("write conversions");
+
+        let season_config = generated_season_config(dir.path());
+
+        assert_eq!(season_config["season"], "File Season");
+        assert_eq!(season_config["catalyst_currency_id"], 4444);
+        assert_eq!(season_config["tierSetBonusId"], 1234);
+        assert_eq!(season_config["raidDifficultyTracks"]["lfr"], "Veteran");
+        assert_eq!(
+            season_config["dungeonDifficultyTracks"]["mythic+10"]["track"],
+            "Hero"
+        );
+
+        let mplus = season_config["dungeonCategories"][0]["difficulties"]
+            .as_array()
+            .expect("mplus difficulties");
+        assert!(mplus.iter().any(|entry| entry["key"] == "mythic+12"));
+        assert_eq!(
+            season_config["dungeonCategories"][0]["defaultDifficulty"],
+            "mythic+10"
+        );
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn load_item_limit_categories_merges_crafting_and_bonus_category_mappings() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        *CRAFTING_LIMIT_CATS.write().unwrap() =
+            Arc::new(HashMap::from([(900_u64, (77_u64, 1_u64))]));
+        *BONUSES.write().unwrap() = Arc::new(HashMap::from([
+            (
+                100_u64,
+                BonusData {
+                    item_limit_category: Some(55),
+                    ..BonusData::default()
+                },
+            ),
+            (
+                101_u64,
+                BonusData {
+                    item_limit_category: Some(56),
+                    ..BonusData::default()
+                },
+            ),
+        ]));
+
+        fs::write(
+            dir.path().join("item-limit-categories.json"),
+            serde_json::to_string(&json!({
+                "55": { "quantity": 2 },
+                "99": { "quantity": 5 }
+            }))
+            .expect("limit json"),
+        )
+        .expect("write limit categories");
+
+        load_item_limit_categories(dir.path());
+        let loaded = ITEM_LIMIT_CATS.read().unwrap().clone();
+
+        assert_eq!(loaded.get(&900), Some(&(77, 1)));
+        assert_eq!(loaded.get(&100), Some(&(55, 2)));
+        assert_eq!(loaded.get(&101), None);
+
+        snapshot.restore();
+    }
+}

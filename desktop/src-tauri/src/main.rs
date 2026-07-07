@@ -788,8 +788,11 @@ fn main() {
             };
 
             let bundled_data_dir = resolve_bundled_resource("data", "../../backend/resources/data");
+            let bundled_wow_dir =
+                resolve_bundled_resource("data/wow", "../../backend/resources/wow");
 
             println!("Resolved bundled_data_dir: {:?}", bundled_data_dir);
+            println!("Resolved bundled_wow_dir: {:?}", bundled_wow_dir);
 
             let app_data_dir = app_handle
                 .path()
@@ -807,6 +810,7 @@ fn main() {
             }
 
             seed_runtime_data_if_missing(&bundled_data_dir, &data_dir);
+            seed_runtime_data_if_missing(&bundled_wow_dir, &data_dir.join("wow"));
 
             let simc_dir = app_data_dir.join("simc");
             let simc_bin = simc_dir.join(simc_binary_name());

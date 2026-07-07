@@ -134,6 +134,12 @@ jobs:
             echo "backend/resources/zones-encounters-index.json is required for release bundles"
             exit 1
           fi
+          for file in wow-expansions.json wow-instances.json wow-encounters.json wow-seasons.json; do
+            if [[ ! -f "backend/resources/wow/$file" ]]; then
+              echo "backend/resources/wow/$file is required for release bundles"
+              exit 1
+            fi
+          done
           cp backend/resources/zones-encounters-index.json backend/resources/data/zones-encounters-index.json
           touch backend/resources/data/.keep
 

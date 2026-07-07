@@ -285,39 +285,6 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       }
     };
   }, []);
-  const pollMissingDataSyncStatus = useCallback(async (): Promise<void> => {
-    const data = await fetchJson<any>(`${API_URL}/api/data/status`);
-    const status = safeText(data?.status, '').toLowerCase();
-    const parsed = parseProgress(safeText(data?.progress, ''));
-    setMissingDataProgress(parsed);
-    if (status === 'ready') {
-      setMissingDataDownloadBusy(false);
-      try {
-        const state = await fetchJson<any>(`${API_URL}/api/data/files`);
-        const missing = Array.isArray(state?.files)
-          ? state.files
-              .filter((f: any) => f?.required && !f?.exists)
-              .map((f: any) => String(f?.label || f?.relative_path || f?.key || 'Unknown file'))
-          : [];
-        setMissingRequiredFiles(missing);
-        setShowMissingFilesPopup(missing.length > 0);
-      } catch {
-        setShowMissingFilesPopup(false);
-      }
-      return;
-    }
-    if (status.includes('error') || status === 'needs_credentials') {
-      setMissingDataDownloadBusy(false);
-      setMissingDataError(
-        safeText(data?.status, '').replace(/^error:/i, '').trim() ||
-          safeText(data?.message, 'Failed to refresh missing data.')
-      );
-      return;
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, 1200));
-    await pollMissingDataSyncStatus();
-  }, []);
-
   const startMissingDataDownload = useCallback(async () => {
     setMissingDataError('');
     setMissingDataDownloadBusy(true);
@@ -325,7 +292,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       task: '',
       current: 0,
       total: 0,
-      details: 'Starting data sync...',
+      details: 'Repairing missing files...',
       downloadedBytes: 0,
       totalBytes: 0,
       speedBytesPerSec: 0,
@@ -339,12 +306,31 @@ export default function DataGuard({ children }: { children: ReactNode }) {
         const firstError = result.failed[0]?.error || 'Some files failed to download.';
         setMissingDataError(firstError);
       }
-      await pollMissingDataSyncStatus();
+
+      const state = await fetchJson<any>(`${API_URL}/api/data/files`);
+      const missing = Array.isArray(state?.files)
+        ? state.files
+            .filter((f: any) => f?.required && !f?.exists)
+            .map((f: any) => String(f?.label || f?.relative_path || f?.key || 'Unknown file'))
+        : [];
+      setMissingRequiredFiles(missing);
+      setShowMissingFilesPopup(missing.length > 0);
+      setMissingDataProgress({
+        task: '',
+        current: 0,
+        total: 0,
+        details:
+          missing.length > 0 ? 'Some required files are still missing.' : 'Missing files repaired.',
+        downloadedBytes: 0,
+        totalBytes: 0,
+        speedBytesPerSec: 0,
+      });
+      setMissingDataDownloadBusy(false);
     } catch (err: any) {
       setMissingDataDownloadBusy(false);
       setMissingDataError(err?.message || 'Failed to start missing data download.');
     }
-  }, [pollMissingDataSyncStatus]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -473,7 +459,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
             {missingRequiredFiles.length > 4 ? ` +${missingRequiredFiles.length - 4} more` : ''}
             </p>
             <div className="mt-4 rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-zinc-200">
-              <p>{missingDataProgress.details || 'Waiting to start...'}</p>
+              <p>{missingDataProgress.details || 'Click Repair Missing Files to restore app data.'}</p>
               {(missingDataDownloadBusy || missingDataProgress.totalBytes > 0) && (
                 <div className="mt-2 space-y-1 text-zinc-300">
                   <p>
@@ -512,9 +498,9 @@ export default function DataGuard({ children }: { children: ReactNode }) {
             )}
             <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-zinc-200">
               <p className="font-semibold text-zinc-100">Manual Recovery</p>
-              <p className="mt-1">1. Click Retry Sync to restore bundled/generated local files.</p>
+              <p className="mt-1">1. Click Repair Missing Files to restore packaged local files.</p>
               <p>
-                2. If Raidbots metadata is still missing, download{' '}
+                2. If Raidbots files are still missing, open{' '}
                 <a
                   href="https://www.raidbots.com/static/data/live/metadata.json"
                   target="_blank"
@@ -523,10 +509,10 @@ export default function DataGuard({ children }: { children: ReactNode }) {
                 >
                   metadata.json
                 </a>
-                .
+                to verify Raidbots is reachable, then run Repair Missing Files again.
               </p>
-              <p>3. Save it as metadata.json in %APPDATA%/com.whylowdps/data.</p>
-              <p>4. WoW seasons are manual: place wow-seasons.json in %APPDATA%/com.whylowdps/data/wow.</p>
+              <p>3. Use Open Data Folder only if support asks for the exact data path.</p>
+              <p>4. Restart the app after updating so packaged WoW data can be seeded.</p>
             </div>
             <div className="mt-4 flex items-center gap-2">
               <button
@@ -535,7 +521,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
                 disabled={missingDataDownloadBusy}
                 className="rounded-md border border-amber-400/40 bg-amber-400/15 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-400/25 disabled:opacity-60"
               >
-                {missingDataDownloadBusy ? 'Syncing...' : 'Retry Sync'}
+                {missingDataDownloadBusy ? 'Repairing...' : 'Repair Missing Files'}
               </button>
               <button
                 type="button"

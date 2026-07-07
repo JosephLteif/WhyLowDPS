@@ -28,21 +28,11 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'improvement',
-    title: 'High res desktop icon',
+    title: 'Missing required wow season files fixed',
     body: [
       {
         type: 'paragraph',
-        text: 'Desktop icon is now high res and do not appear as blurry anymore.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Simc channel versions',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'You can now select from any available historical simc version, not just the latest per channel.',
+        text: 'Missing required data are no bundled with the app, avoiding issues on launch',
       },
     ],
   }

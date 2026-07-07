@@ -403,7 +403,10 @@ mod tests {
             selected_heatmap_source_types(""),
             vec!["delve", "dungeon", "profession", "pvp", "raid"]
         );
-        assert_eq!(normalized_locked_trinket_slot(" Trinket2 "), Some("trinket2"));
+        assert_eq!(
+            normalized_locked_trinket_slot(" Trinket2 "),
+            Some("trinket2")
+        );
         assert_eq!(normalized_locked_trinket_slot("both"), None);
     }
 
@@ -484,7 +487,10 @@ mod tests {
         let mplus_ids = mplus_rotation_instance_ids();
         assert_eq!(mplus_ids, HashSet::from([2001_i64, 2002_i64]));
         assert!(item_has_mplus_rotation_source(&item, &mplus_ids));
-        assert!(!item_has_mplus_rotation_source(&no_rotation_item, &mplus_ids));
+        assert!(!item_has_mplus_rotation_source(
+            &no_rotation_item,
+            &mplus_ids
+        ));
 
         assert!(item_id_matches_active_spec(9001, Some(577), false));
         assert!(!item_id_matches_active_spec(9001, Some(581), false));
@@ -572,8 +578,9 @@ mod tests {
         assert!(generated_input.contains("trinket2=,id=9101,ilevel=639"));
         assert!(generated_input.contains("trinket2=,id=9102,ilevel=639"));
         assert!(combo_metadata.values().all(|meta| {
-            meta.iter()
-                .any(|entry| entry.get("heatmap_kind") == Some(&Value::String("trinket".to_string())))
+            meta.iter().any(|entry| {
+                entry.get("heatmap_kind") == Some(&Value::String("trinket".to_string()))
+            })
         }));
 
         class_snapshot.restore();

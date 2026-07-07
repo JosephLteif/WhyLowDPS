@@ -515,7 +515,10 @@ mod tests {
         let bundled = test_temp_dir("bundled");
         let runtime = test_temp_dir("runtime");
 
-        write_file(bundled.join("wow").join("wow-seasons.json"), "bundled seasons");
+        write_file(
+            bundled.join("wow").join("wow-seasons.json"),
+            "bundled seasons",
+        );
 
         seed_runtime_data_if_missing(&bundled, &runtime);
 

@@ -351,8 +351,10 @@ mod tests {
 
         let original = CATALYST.read().expect("catalyst").clone();
 
-        let mut data = CatalystData::default();
-        data.catalyst_currency_id = 3378;
+        let mut data = CatalystData {
+            catalyst_currency_id: 3378,
+            ..Default::default()
+        };
         data.tier_item_ids.insert(111);
 
         data.tier_items.insert(

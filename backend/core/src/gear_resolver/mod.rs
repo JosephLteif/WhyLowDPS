@@ -284,7 +284,7 @@ fn resolve_gear_impl(
     for slot_res in slots.values_mut() {
         slot_res
             .alternatives
-            .sort_by(|a, b| b.ilevel.cmp(&a.ilevel));
+            .sort_by_key(|item| std::cmp::Reverse(item.ilevel));
     }
 
     if let Some(class_id) = crate::types::class_data::class_wow_id(class_name) {

@@ -47,15 +47,12 @@ static GEM_TOOLTIP_RE: Lazy<Regex> =
 static GEM_PVP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#">\s*PVP\s*<"#).unwrap());
 static GEM_XML_TOOLTIP_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?s)<htmlTooltip><!\[CDATA\[(.*?)\]\]></htmlTooltip>"#).unwrap());
-static GEM_SPECIAL_LINE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?s)<!--nameDescStats--><br\s*/?>(.*?)<!--i\?"#).unwrap()
-});
-static GEM_HTML_COMMENT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"(?s)<!--.*?-->"#).unwrap());
+static GEM_SPECIAL_LINE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?s)<!--nameDescStats--><br\s*/?>(.*?)<!--i\?"#).unwrap());
+static GEM_HTML_COMMENT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?s)<!--.*?-->"#).unwrap());
 static GEM_HTML_TAG_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(?s)<[^>]+>"#).unwrap());
 static GEM_WHITESPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\s+"#).unwrap());
-static GEM_SPECIAL_AND_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\s+and\s+\+"#).unwrap());
+static GEM_SPECIAL_AND_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\s+and\s+\+"#).unwrap());
 static ENCHANT_TOOLTIP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
     reqwest::Client::builder()
         .user_agent("WhyLowDps/2.4 Enchant Metadata")
@@ -64,16 +61,14 @@ static ENCHANT_TOOLTIP_CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 });
 static ENCHANT_XML_TOOLTIP_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(?s)<htmlTooltip><!\[CDATA\[(.*?)\]\]></htmlTooltip>"#).unwrap());
-static ENCHANT_USE_TEXT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"(?is)\bUse:\s*(.*?)(?:Requires Level|Max Stack:|Sell Price:|$)"#).unwrap());
-static ENCHANT_PREFIX_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?is)^permanently enchants .*?(?:,| to )\s*"#).unwrap()
+static ENCHANT_USE_TEXT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r#"(?is)\bUse:\s*(.*?)(?:Requires Level|Max Stack:|Sell Price:|$)"#).unwrap()
 });
-static ENCHANT_RESTRICTION_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"(?is)\b(?:Cannot be applied|Requires Level)\b.*$"#).unwrap()
-});
-static ENCHANT_NUMBER_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\d+(?:\.\d+)?"#).unwrap());
+static ENCHANT_PREFIX_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?is)^permanently enchants .*?(?:,| to )\s*"#).unwrap());
+static ENCHANT_RESTRICTION_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(?is)\b(?:Cannot be applied|Requires Level)\b.*$"#).unwrap());
+static ENCHANT_NUMBER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\d+(?:\.\d+)?"#).unwrap());
 static ENCHANT_KEY_NUMBER_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"\b\d+(?:\.\d+)?%?\b"#).unwrap());
 
@@ -184,7 +179,10 @@ fn collapse_tooltip_text(raw: &str) -> String {
     let without_comments = GEM_HTML_COMMENT_RE.replace_all(raw, "");
     let without_tags = GEM_HTML_TAG_RE.replace_all(&without_comments, " ");
     let decoded = decode_html_entities(&without_tags);
-    GEM_WHITESPACE_RE.replace_all(&decoded, " ").trim().to_string()
+    GEM_WHITESPACE_RE
+        .replace_all(&decoded, " ")
+        .trim()
+        .to_string()
 }
 
 fn extract_special_gem_label(tooltip: &str) -> Option<String> {
@@ -226,7 +224,7 @@ fn parse_gem_effect_info(name: &str, tooltip: &str) -> GemEffectInfo {
         })
         .collect();
 
-    stats.sort_by(|a, b| b.0.cmp(&a.0));
+    stats.sort_by_key(|stat| std::cmp::Reverse(stat.0));
 
     let primary = stats.first().cloned();
     let secondary = stats.get(1).cloned();
@@ -294,7 +292,10 @@ fn parse_enchant_effect_info(tooltip: &str) -> Option<EnchantEffectInfo> {
         .and_then(|capture| capture.get(1))
         .map(|capture| capture.as_str().trim().to_string())?;
 
-    let without_restrictions = ENCHANT_RESTRICTION_RE.replace(&use_text, "").trim().to_string();
+    let without_restrictions = ENCHANT_RESTRICTION_RE
+        .replace(&use_text, "")
+        .trim()
+        .to_string();
     let first_sentence = without_restrictions
         .split('.')
         .map(str::trim)
@@ -364,7 +365,7 @@ pub async fn enrich_enchants_with_effects(options: Vec<Value>) -> Vec<Value> {
     };
 
     if !missing.is_empty() {
-        let fetched: Vec<(u64, Option<EnchantEffectInfo>)> = stream::iter(missing.into_iter())
+        let fetched: Vec<(u64, Option<EnchantEffectInfo>)> = stream::iter(missing)
             .map(|item_id| async move { (item_id, fetch_enchant_effect_info(item_id).await) })
             .buffer_unordered(8)
             .collect()
@@ -434,7 +435,7 @@ pub async fn list_gems_with_effects() -> Vec<Value> {
     };
 
     if !missing.is_empty() {
-        let fetched: Vec<(u64, Option<GemEffectInfo>)> = stream::iter(missing.into_iter())
+        let fetched: Vec<(u64, Option<GemEffectInfo>)> = stream::iter(missing)
             .map(|(item_id, name)| async move {
                 let effect = fetch_gem_effect_info(item_id, &name).await;
                 (item_id, effect)
@@ -684,7 +685,10 @@ mod tests {
                 },
             ),
         ]));
-        *ITEMS.write().unwrap() = Arc::new(HashMap::from([(2001_u64, gem_item(2001, "Fallback Gem", 5))]));
+        *ITEMS.write().unwrap() = Arc::new(HashMap::from([(
+            2001_u64,
+            gem_item(2001, "Fallback Gem", 5),
+        )]));
 
         let gems = list_gems();
 
@@ -737,13 +741,18 @@ mod tests {
     #[test]
     fn tooltip_parsers_extract_expected_effect_shapes() {
         assert_eq!(normalize_gem_stat("  Mastery and"), Some(("mast", "Mast")));
-        assert_eq!(decode_html_entities("&lt;test&amp;value&gt;"), "<test&value>");
+        assert_eq!(
+            decode_html_entities("&lt;test&amp;value&gt;"),
+            "<test&value>"
+        );
         assert_eq!(
             collapse_tooltip_text("<!--x--><div>Use:&nbsp;+123 Haste</div>"),
             "Use: +123 Haste"
         );
         assert_eq!(
-            extract_special_gem_label("<!--nameDescStats--><br /> +Stormbringer and +Static Charge <!--i?"),
+            extract_special_gem_label(
+                "<!--nameDescStats--><br /> +Stormbringer and +Static Charge <!--i?"
+            ),
             Some("Stormbringer + Static Charge".to_string())
         );
 

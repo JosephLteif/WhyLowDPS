@@ -636,8 +636,14 @@ mod tests {
             ),
         ]));
         *CRAFTING_REAGENTS.write().unwrap() = Arc::new(HashMap::from([
-            (1_u64, reagent(1, "Lower Fireflash Missive", 1, Some(2001), vec![100])),
-            (2_u64, reagent(2, "Better Fireflash Missive", 3, Some(2002), vec![100])),
+            (
+                1_u64,
+                reagent(1, "Lower Fireflash Missive", 1, Some(2001), vec![100]),
+            ),
+            (
+                2_u64,
+                reagent(2, "Better Fireflash Missive", 3, Some(2002), vec![100]),
+            ),
             (3_u64, reagent(3, "Aurora Missive", 2, None, vec![101])),
             (4_u64, reagent(4, "Stale Missive", 5, Some(2004), vec![102])),
         ]));

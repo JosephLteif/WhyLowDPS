@@ -32,7 +32,8 @@ pub fn build_slot_candidates(
             selected_uids.iter().map(|uid| uid_identity(uid)).collect();
         let mut selected_core_keys: HashSet<String> = selected_uids
             .iter()
-            .filter(|uid| !exact_selection_uids.contains(*uid)).filter_map(|uid| uid_core_key(uid))
+            .filter(|uid| !exact_selection_uids.contains(*uid))
+            .filter_map(|uid| uid_core_key(uid))
             .collect();
         if let Some(paired) = class_data::paired_slot(&slot_str) {
             if let Some(p_uids) = selected_items.get(paired) {
@@ -166,13 +167,10 @@ pub fn build_gear_set_from_combo(
                 continue;
             };
             let current_identity = bundle_item_identity(current_item);
-            if let Some(bundle_item) = items
-                .iter()
-                .find(|item| {
-                    item.global_affix_bundle_id.trim() == bundle_id.as_str()
-                        && bundle_item_identity(item) == current_identity
-                })
-            {
+            if let Some(bundle_item) = items.iter().find(|item| {
+                item.global_affix_bundle_id.trim() == bundle_id.as_str()
+                    && bundle_item_identity(item) == current_identity
+            }) {
                 gear_set.insert(s_str, bundle_item.clone());
             }
         }
@@ -235,15 +233,14 @@ fn global_affix_bundle_anchor_slots(
 }
 
 fn active_global_affix_bundle_id(gs: &HashMap<String, ResolvedItem>) -> Option<&str> {
-    gs.values()
-        .find_map(|item| {
-            let bundle_id = item.global_affix_bundle_id.trim();
-            if bundle_id.is_empty() {
-                None
-            } else {
-                Some(bundle_id)
-            }
-        })
+    gs.values().find_map(|item| {
+        let bundle_id = item.global_affix_bundle_id.trim();
+        if bundle_id.is_empty() {
+            None
+        } else {
+            Some(bundle_id)
+        }
+    })
 }
 
 pub fn is_baseline_gear_set(gs: &HashMap<String, ResolvedItem>) -> bool {
@@ -271,11 +268,7 @@ pub fn gear_set_identity_key(gs: &HashMap<String, ResolvedItem>) -> String {
                 .join(":");
             let item_key = format!(
                 "{}:{}:i{}:e{}:g{}",
-                i.item_id,
-                b_key,
-                i.ilevel,
-                i.enchant_id,
-                i.gem_id
+                i.item_id, b_key, i.ilevel, i.enchant_id, i.gem_id
             );
 
             match *slot {
@@ -461,8 +454,24 @@ mod tests {
 
     #[test]
     fn global_affix_bundles_keep_distinct_ring_pairings() {
-        let platinum = make_item("plat-eq", "finger1", 1001, ItemOrigin::Equipped, 501, 701, "");
-        let loa = make_item("loa-eq", "finger2", 1002, ItemOrigin::Equipped, 502, 702, "");
+        let platinum = make_item(
+            "plat-eq",
+            "finger1",
+            1001,
+            ItemOrigin::Equipped,
+            501,
+            701,
+            "",
+        );
+        let loa = make_item(
+            "loa-eq",
+            "finger2",
+            1002,
+            ItemOrigin::Equipped,
+            502,
+            702,
+            "",
+        );
 
         let mut finger1_items = vec![
             platinum.clone(),
@@ -590,8 +599,7 @@ mod tests {
     }
 
     fn find_two_hand_item_id() -> Option<u64> {
-        (1_u64..=450_000_u64)
-            .find(|&item_id| game_data::get_inventory_type(item_id) == Some(17))
+        (1_u64..=450_000_u64).find(|&item_id| game_data::get_inventory_type(item_id) == Some(17))
     }
 
     #[test]
@@ -719,14 +727,14 @@ mod tests {
         let budget = HashMap::from([(3008_u64, 5_u64), (3009_u64, 3_u64)]);
         let ctx = run_upgrade_dfs(&slots, &options, &budget, 20, true);
 
-        assert!(ctx
-            .retained
+        assert!(ctx.retained.iter().any(|combo| combo
+            .choices
             .iter()
-            .any(|combo| combo.choices.iter().any(|(slot, idx)| slot == "head" && *idx == 2)));
-        assert!(!ctx
-            .retained
+            .any(|(slot, idx)| slot == "head" && *idx == 2)));
+        assert!(!ctx.retained.iter().any(|combo| combo
+            .choices
             .iter()
-            .any(|combo| combo.choices.iter().any(|(slot, idx)| slot == "head" && *idx == 1)));
+            .any(|(slot, idx)| slot == "head" && *idx == 1)));
     }
 
     #[test]
@@ -740,7 +748,10 @@ mod tests {
                     json!({"upgrade_costs": {"3008": 5}}),
                 ],
             ),
-            ("chest".to_string(), vec![json!({"upgrade_costs": {"3008": 3}})]),
+            (
+                "chest".to_string(),
+                vec![json!({"upgrade_costs": {"3008": 3}})],
+            ),
         ]);
         let budget = HashMap::from([(3008_u64, 5_u64)]);
 

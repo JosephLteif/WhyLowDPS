@@ -141,11 +141,10 @@ pub struct SimcDownloadProgress {
 impl SimcDownloadProgress {
     pub fn new(downloaded_bytes: u64, total_bytes: Option<u64>, elapsed: Duration) -> Self {
         let elapsed_ms = elapsed.as_millis() as u64;
-        let speed_bytes_per_sec = if elapsed_ms > 0 {
-            downloaded_bytes.saturating_mul(1000) / elapsed_ms
-        } else {
-            0
-        };
+        let speed_bytes_per_sec = downloaded_bytes
+            .saturating_mul(1000)
+            .checked_div(elapsed_ms)
+            .unwrap_or(0);
         let eta_seconds = match (total_bytes, speed_bytes_per_sec) {
             (Some(total), speed) if speed > 0 && downloaded_bytes < total => {
                 Some((total - downloaded_bytes).div_ceil(speed))
@@ -629,7 +628,10 @@ mod tests {
         extract_simc_binary(&zip_path, &extract_dir).expect("extract archive");
 
         let extracted = find_file_named(&extract_dir, simc_binary_name()).expect("find binary");
-        assert_eq!(fs::read(&extracted).expect("read extracted"), b"simc-binary");
+        assert_eq!(
+            fs::read(&extracted).expect("read extracted"),
+            b"simc-binary"
+        );
         assert!(extracted.ends_with(Path::new("nested").join(simc_binary_name())));
     }
 }

@@ -237,7 +237,9 @@ pub fn temp_enchant_options_raw() -> Arc<Vec<Value>> {
 }
 
 // Re-exports from bonuses
-pub use bonuses::{is_minimum_track, resolve_bonuses, resolve_extra_effects, track_rank, upgrade_track_max};
+pub use bonuses::{
+    is_minimum_track, resolve_bonuses, resolve_extra_effects, track_rank, upgrade_track_max,
+};
 pub use upgrades::describe_upgrade_from_bonus_ids;
 
 pub use loader::hydrate_runtime_metadata;
@@ -536,8 +538,10 @@ mod tests {
             ),
             (7002_u64, BonusData::default()),
         ]));
-        *state::ITEM_LIMIT_CATS.write().unwrap() =
-            Arc::new(HashMap::from([(7001_u64, (11_u64, 2_u64)), (7002_u64, (11_u64, 2_u64))]));
+        *state::ITEM_LIMIT_CATS.write().unwrap() = Arc::new(HashMap::from([
+            (7001_u64, (11_u64, 2_u64)),
+            (7002_u64, (11_u64, 2_u64)),
+        ]));
 
         assert_eq!(filter_ilevel_bonus_ids(&[7001, 7002, 9999]), vec![7001]);
         let cats = get_item_limit_categories(&[7001, 9999]);
@@ -551,7 +555,10 @@ mod tests {
         let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
         let snapshot = StateSnapshot::capture();
 
-        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([(9001_u64, game_item_with_inventory(9001, 13))]));
+        *state::ITEMS.write().unwrap() = Arc::new(HashMap::from([(
+            9001_u64,
+            game_item_with_inventory(9001, 13),
+        )]));
         assert_eq!(get_inventory_type(9001), Some(13));
         assert_eq!(get_inventory_type(9999), None);
 

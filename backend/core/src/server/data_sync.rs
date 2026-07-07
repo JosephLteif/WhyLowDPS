@@ -272,6 +272,7 @@ pub async fn open_data_directory(data_dir: web::Data<Option<PathBuf>>) -> HttpRe
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::wowhead_zones::{WowheadZoneMatchQuery, WowheadZonesSummaryQuery};
     use super::*;

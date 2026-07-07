@@ -230,7 +230,8 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
 }
 
 pub fn load_instances(data_dir: &Path) {
-    let blizzard_instances = crate::game_data::instance_drops::load_instances_from_wow_content(data_dir);
+    let blizzard_instances =
+        crate::game_data::instance_drops::load_instances_from_wow_content(data_dir);
     if !blizzard_instances.is_empty() {
         *INSTANCES.write().unwrap() = blizzard_instances;
         return;
@@ -900,7 +901,7 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
     let (_, _, preferred_group_id) = read_active_season_metadata(data_dir);
     let selected_group_id = preferred_group_id
         .filter(|id| data.contains_key(&id.to_string()))
-        .or_else(|| data.iter().filter_map(|(k, _)| k.parse::<u64>().ok()).max());
+        .or_else(|| data.keys().filter_map(|k| k.parse::<u64>().ok()).max());
 
     if let Some(group_id) = selected_group_id {
         if let Some(group) = data.get(&group_id.to_string()) {
@@ -1363,11 +1364,13 @@ mod tests {
     use crate::types::BonusData;
     use std::sync::Arc;
 
+    type UpgradeTracks = Arc<HashMap<(String, u64, u64), (u64, u64, u64)>>;
+
     struct StateSnapshot {
         bonuses: Arc<HashMap<u64, crate::types::BonusData>>,
         crafting_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
         item_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
-        upgrade_tracks: Arc<HashMap<(String, u64, u64), (u64, u64, u64)>>,
+        upgrade_tracks: UpgradeTracks,
         current_season_id: u64,
         runtime_data: Value,
     }
@@ -1396,7 +1399,10 @@ mod tests {
 
     fn install_tracks() {
         *UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
-            (("Explorer".to_string(), 1_u64, 8_u64), (597_u64, 1001_u64, 2_u64)),
+            (
+                ("Explorer".to_string(), 1_u64, 8_u64),
+                (597_u64, 1001_u64, 2_u64),
+            ),
             (
                 ("Adventurer".to_string(), 1_u64, 8_u64),
                 (610_u64, 1002_u64, 3_u64),
@@ -1413,9 +1419,18 @@ mod tests {
                 ("Champion".to_string(), 5_u64, 8_u64),
                 (649_u64, 1005_u64, 4_u64),
             ),
-            (("Hero".to_string(), 1_u64, 6_u64), (652_u64, 1006_u64, 4_u64)),
-            (("Hero".to_string(), 4_u64, 6_u64), (665_u64, 1007_u64, 4_u64)),
-            (("Myth".to_string(), 1_u64, 6_u64), (678_u64, 1008_u64, 4_u64)),
+            (
+                ("Hero".to_string(), 1_u64, 6_u64),
+                (652_u64, 1006_u64, 4_u64),
+            ),
+            (
+                ("Hero".to_string(), 4_u64, 6_u64),
+                (665_u64, 1007_u64, 4_u64),
+            ),
+            (
+                ("Myth".to_string(), 1_u64, 6_u64),
+                (678_u64, 1008_u64, 4_u64),
+            ),
         ]));
     }
 
@@ -1483,7 +1498,10 @@ mod tests {
         assert_eq!(read_conversion_bonus_id(dir.path(), Some(999)), Some(90));
         assert_eq!(track_rank_index("Hero"), 4);
         assert_eq!(track_rank_index("Unknown"), usize::MAX / 2);
-        assert_eq!(pick_track_name("champion", &available_track_names()), "Champion");
+        assert_eq!(
+            pick_track_name("champion", &available_track_names()),
+            "Champion"
+        );
         assert_eq!(pick_track_name("Mythic", &available_track_names()), "Myth");
         assert_eq!(clamp_level(0, 6), 1);
         assert_eq!(clamp_level(9, 6), 6);

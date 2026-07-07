@@ -616,7 +616,7 @@ mod tests {
             .and_then(|line| line.strip_prefix("talents="))
             .expect("main talents line");
         let normalized_profileset = lines
-            .nth(0)
+            .next()
             .and_then(|line| line.strip_prefix("profileset.\"Alt\"+=talents="))
             .expect("profileset talents line");
 

@@ -56,7 +56,10 @@ mod tests {
         assert!(matches!(io_error, AppError::IoError(_)));
         assert_eq!(io_error.to_string(), "IO error: missing file");
 
-        let regex_error: AppError = regex::Regex::new("(").expect_err("invalid regex").into();
+        let invalid_pattern = "(".to_string();
+        let regex_error: AppError = regex::Regex::new(&invalid_pattern)
+            .expect_err("invalid regex")
+            .into();
         assert!(matches!(regex_error, AppError::RegexError(_)));
         assert!(regex_error.to_string().starts_with("Regex error: "));
 

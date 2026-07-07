@@ -376,7 +376,9 @@ mod tests {
             assert_eq!(catalyst_item.origin, ItemOrigin::Bags);
             assert_eq!(catalyst_item.bonus_ids, vec![2468, 7001, 8888]);
             assert!(catalyst_item.simc_string.contains(",id=99001"));
-            assert!(catalyst_item.simc_string.contains(",bonus_id=2468/7001/8888"));
+            assert!(catalyst_item
+                .simc_string
+                .contains(",bonus_id=2468/7001/8888"));
             assert!(catalyst_item.simc_string.contains(",enchant_id=44"));
             assert!(catalyst_item.simc_string.contains(",gem_id=55"));
             assert!(catalyst_item.is_catalyst);

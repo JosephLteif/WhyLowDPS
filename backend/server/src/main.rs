@@ -184,11 +184,7 @@ mod tests {
     fn resolve_port_ignores_unrelated_args() {
         assert_eq!(
             resolve_port(
-                vec![
-                    "--other".to_string(),
-                    "1".to_string(),
-                    "--flag".to_string(),
-                ],
+                vec!["--other".to_string(), "1".to_string(), "--flag".to_string(),],
                 8000,
             ),
             8000
@@ -285,10 +281,7 @@ mod tests {
 
     #[test]
     fn resolve_port_does_not_treat_port_equals_syntax_as_supported() {
-        assert_eq!(
-            resolve_port(vec!["--port=9000".to_string()], 8000),
-            8000
-        );
+        assert_eq!(resolve_port(vec!["--port=9000".to_string()], 8000), 8000);
     }
 
     #[test]

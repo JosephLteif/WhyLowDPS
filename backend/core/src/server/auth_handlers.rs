@@ -86,7 +86,7 @@ fn decode_secret_blob(blob: &str) -> Result<Vec<u8>, String> {
     }
 
     let bytes = blob.as_bytes();
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return Err("Invalid encrypted secret encoding".to_string());
     }
 
@@ -101,13 +101,13 @@ fn decode_secret_blob(blob: &str) -> Result<Vec<u8>, String> {
 fn encrypt_secret_blob(secret: &str) -> Result<String, String> {
     unsafe {
         let bytes = secret.as_bytes();
-        let mut input = CRYPT_INTEGER_BLOB {
+        let input = CRYPT_INTEGER_BLOB {
             cbData: bytes.len() as u32,
             pbData: bytes.as_ptr() as *mut u8,
         };
         let mut output = CRYPT_INTEGER_BLOB::default();
         CryptProtectData(
-            &mut input,
+            &input,
             None,
             None,
             None,
@@ -127,13 +127,13 @@ fn encrypt_secret_blob(secret: &str) -> Result<String, String> {
 fn decrypt_secret_blob(blob: &str) -> Result<String, String> {
     let encrypted = decode_secret_blob(blob)?;
     unsafe {
-        let mut input = CRYPT_INTEGER_BLOB {
+        let input = CRYPT_INTEGER_BLOB {
             cbData: encrypted.len() as u32,
             pbData: encrypted.as_ptr() as *mut u8,
         };
         let mut output = CRYPT_INTEGER_BLOB::default();
         CryptUnprotectData(
-            &mut input,
+            &input,
             None,
             None,
             None,
@@ -158,7 +158,7 @@ impl BlizzardCredentialSecretStore for OsBlizzardCredentialSecretStore {
             self.store
                 .set_user_config("system", &secret_blob_config_key(profile_id), &encrypted);
             let _ = self.delete_legacy_keyring_secret(profile_id);
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -185,7 +185,7 @@ impl BlizzardCredentialSecretStore for OsBlizzardCredentialSecretStore {
                 return Ok(Some(secret));
             }
 
-            return Ok(None);
+            Ok(None)
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -200,7 +200,7 @@ impl BlizzardCredentialSecretStore for OsBlizzardCredentialSecretStore {
             self.store
                 .remove_user_config("system", &secret_blob_config_key(profile_id));
             let _ = self.delete_legacy_keyring_secret(profile_id);
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(target_os = "windows"))]
@@ -245,11 +245,11 @@ impl BlizzardCredentialSecretStore for MemoryBlizzardCredentialSecretStore {
 }
 
 pub fn create_blizzard_credential_secret_store(
-    store: Arc<dyn crate::storage::JobStorage>,
+    _store: Arc<dyn crate::storage::JobStorage>,
 ) -> Arc<dyn BlizzardCredentialSecretStore> {
     #[cfg(feature = "desktop")]
     {
-        Arc::new(OsBlizzardCredentialSecretStore { store })
+        Arc::new(OsBlizzardCredentialSecretStore { store: _store })
     }
     #[cfg(not(feature = "desktop"))]
     {

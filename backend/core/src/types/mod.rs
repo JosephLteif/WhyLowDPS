@@ -375,7 +375,6 @@ pub struct GameItemStat {
     pub alloc: Option<u64>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct GameItemProfession {

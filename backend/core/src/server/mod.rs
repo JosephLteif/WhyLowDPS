@@ -45,6 +45,7 @@ use types::FrontendDir;
 
 #[cfg(test)]
 #[cfg(feature = "web")]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use actix_web::body::to_bytes;

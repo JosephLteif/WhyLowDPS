@@ -545,3 +545,158 @@ pub fn list_current_missives() -> Vec<Value> {
     });
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::item_db::state::{BONUSES, CRAFTING_REAGENTS, CURRENT_SEASON_ID};
+    use crate::types::{BonusData, BonusUpgrade};
+
+    struct StateSnapshot {
+        bonuses: Arc<HashMap<u64, crate::types::BonusData>>,
+        crafting_reagents: Arc<HashMap<u64, CraftingReagentData>>,
+        current_season_id: u64,
+    }
+
+    impl StateSnapshot {
+        fn capture() -> Self {
+            Self {
+                bonuses: BONUSES.read().unwrap().clone(),
+                crafting_reagents: CRAFTING_REAGENTS.read().unwrap().clone(),
+                current_season_id: *CURRENT_SEASON_ID.read().unwrap(),
+            }
+        }
+
+        fn restore(self) {
+            *BONUSES.write().unwrap() = self.bonuses;
+            *CRAFTING_REAGENTS.write().unwrap() = self.crafting_reagents;
+            *CURRENT_SEASON_ID.write().unwrap() = self.current_season_id;
+        }
+    }
+
+    fn reagent(
+        id: u64,
+        name: &str,
+        quality: u64,
+        item_id: Option<u64>,
+        bonus_ids: Vec<u64>,
+    ) -> CraftingReagentData {
+        CraftingReagentData {
+            id,
+            name: name.to_string(),
+            icon: format!("icon_{id}"),
+            quality,
+            item_id,
+            crafting_bonus_ids: bonus_ids,
+            reagent_type: "item".to_string(),
+            expansion: Some(10),
+            ..CraftingReagentData::default()
+        }
+    }
+
+    #[test]
+    fn list_current_missives_prefers_highest_quality_and_sorts_labels() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *CURRENT_SEASON_ID.write().unwrap() = 5;
+        *BONUSES.write().unwrap() = Arc::new(HashMap::from([
+            (
+                100_u64,
+                BonusData {
+                    crafted_stats: vec![36, 32],
+                    upgrade: Some(BonusUpgrade {
+                        season_id: Some(5),
+                        ..BonusUpgrade::default()
+                    }),
+                    ..BonusData::default()
+                },
+            ),
+            (
+                101_u64,
+                BonusData {
+                    crafted_stats: vec![40, 49],
+                    upgrade: Some(BonusUpgrade {
+                        season_id: Some(5),
+                        ..BonusUpgrade::default()
+                    }),
+                    ..BonusData::default()
+                },
+            ),
+            (
+                102_u64,
+                BonusData {
+                    crafted_stats: vec![32, 49],
+                    upgrade: Some(BonusUpgrade {
+                        season_id: Some(4),
+                        ..BonusUpgrade::default()
+                    }),
+                    ..BonusData::default()
+                },
+            ),
+        ]));
+        *CRAFTING_REAGENTS.write().unwrap() = Arc::new(HashMap::from([
+            (
+                1_u64,
+                reagent(1, "Lower Fireflash Missive", 1, Some(2001), vec![100]),
+            ),
+            (
+                2_u64,
+                reagent(2, "Better Fireflash Missive", 3, Some(2002), vec![100]),
+            ),
+            (3_u64, reagent(3, "Aurora Missive", 2, None, vec![101])),
+            (4_u64, reagent(4, "Stale Missive", 5, Some(2004), vec![102])),
+        ]));
+
+        let missives = list_current_missives();
+
+        assert_eq!(missives.len(), 2);
+        assert_eq!(missives[0]["token"], "crit/haste");
+        assert_eq!(missives[0]["label"], "Critical Strike / Haste");
+        assert_eq!(missives[0]["quality"], 3);
+        assert_eq!(missives[0]["item_id"], 2002);
+
+        assert_eq!(missives[1]["token"], "mastery/versatility");
+        assert_eq!(missives[1]["label"], "Mastery / Versatility");
+        assert_eq!(missives[1]["item_id"], 3);
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn list_current_missives_falls_back_to_name_tokens_and_defaults_when_empty() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        *CURRENT_SEASON_ID.write().unwrap() = 9;
+        *BONUSES.write().unwrap() = Arc::new(HashMap::from([(
+            300_u64,
+            BonusData {
+                crafted_stats: vec![],
+                upgrade: Some(BonusUpgrade {
+                    season_id: Some(9),
+                    ..BonusUpgrade::default()
+                }),
+                ..BonusData::default()
+            },
+        )]));
+        *CRAFTING_REAGENTS.write().unwrap() = Arc::new(HashMap::from([(
+            30_u64,
+            reagent(30, "Peerless Missive", 4, Some(3030), vec![300]),
+        )]));
+
+        let missives = list_current_missives();
+        assert_eq!(missives.len(), 1);
+        assert_eq!(missives[0]["token"], "crit/versatility");
+        assert_eq!(missives[0]["label"], "Critical Strike / Versatility");
+        assert_eq!(missives[0]["quality"], 4);
+
+        *CRAFTING_REAGENTS.write().unwrap() = Arc::new(HashMap::new());
+        let defaults = list_current_missives();
+        assert_eq!(defaults.len(), 6);
+        assert_eq!(defaults[0]["token"], "crit/haste");
+        assert_eq!(defaults[5]["token"], "mastery/versatility");
+
+        snapshot.restore();
+    }
+}

@@ -394,6 +394,7 @@ mod tests {
     }
 
     #[actix_web::test]
+    #[allow(clippy::await_holding_lock)]
     async fn get_game_data_state_returns_runtime_fallback_while_refresh_is_in_progress() {
         let _test_guard = TEST_GAME_DATA_CACHE_LOCK.lock().await;
         let _guard = state::TEST_STATE_LOCK.lock().unwrap();

@@ -11,11 +11,10 @@ pub(super) fn raidbots_file_progress(
     elapsed: Duration,
 ) -> String {
     let elapsed_ms = elapsed.as_millis() as u64;
-    let speed_bytes_per_sec = if elapsed_ms > 0 {
-        downloaded_bytes.saturating_mul(1000) / elapsed_ms
-    } else {
-        0
-    };
+    let speed_bytes_per_sec = downloaded_bytes
+        .saturating_mul(1000)
+        .checked_div(elapsed_ms)
+        .unwrap_or(0);
     format!(
         "Files:{}:{}:{}:{}:{}:{}:{}",
         index,

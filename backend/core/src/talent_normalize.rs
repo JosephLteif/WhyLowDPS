@@ -330,3 +330,300 @@ fn normalize_talent_string(talent_str: &str) -> Option<String> {
 
     Some(writer.to_base64())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    struct StateSnapshot {
+        talent_trees: Arc<HashMap<u64, Value>>,
+    }
+
+    impl StateSnapshot {
+        fn capture() -> Self {
+            Self {
+                talent_trees: crate::item_db::state::TALENT_TREES.read().unwrap().clone(),
+            }
+        }
+
+        fn restore(self) {
+            *crate::item_db::state::TALENT_TREES.write().unwrap() = self.talent_trees;
+        }
+    }
+
+    fn install_test_talent_trees() {
+        let current_tree = json!({
+            "classId": 7,
+            "fullNodeOrder": [100, 300, 400],
+            "classNodes": [
+                {
+                    "id": 100,
+                    "maxRanks": 2,
+                    "freeNode": true,
+                    "entries": [{}]
+                }
+            ],
+            "specNodes": [],
+            "heroNodes": [
+                {
+                    "id": 400,
+                    "maxRanks": 1,
+                    "entries": [{}]
+                }
+            ],
+            "subTreeNodes": [
+                {
+                    "id": 300,
+                    "entries": [
+                        { "nodes": [400] },
+                        { "nodes": [401] }
+                    ]
+                }
+            ]
+        });
+        let sibling_tree = json!({
+            "classId": 7,
+            "fullNodeOrder": [100, 300, 401],
+            "classNodes": [
+                {
+                    "id": 100,
+                    "maxRanks": 2,
+                    "freeNode": true,
+                    "entries": [{}]
+                }
+            ],
+            "specNodes": [],
+            "heroNodes": [
+                {
+                    "id": 401,
+                    "maxRanks": 1,
+                    "entries": [{}]
+                }
+            ],
+            "subTreeNodes": [
+                {
+                    "id": 300,
+                    "entries": [
+                        { "nodes": [400] },
+                        { "nodes": [401] }
+                    ]
+                }
+            ]
+        });
+
+        *crate::item_db::state::TALENT_TREES.write().unwrap() = Arc::new(HashMap::from([
+            (42_u64, current_tree),
+            (43_u64, sibling_tree),
+        ]));
+    }
+
+    fn encode_talent_string(spec_id: u64, selections: &[(u64, NodeSelection)]) -> String {
+        let mut writer = BitWriter::new();
+        writer.write(1, 8);
+        writer.write(spec_id, 16);
+        for _ in 0..16 {
+            writer.write(0, 8);
+        }
+
+        let selection_map: HashMap<u64, NodeSelection> = selections
+            .iter()
+            .map(|(node_id, selection)| (*node_id, selection.clone()))
+            .collect();
+
+        for node_id in [100_u64, 300_u64, 400_u64] {
+            let Some(selection) = selection_map.get(&node_id) else {
+                writer.write(0, 1);
+                continue;
+            };
+
+            writer.write(1, 1);
+
+            match node_id {
+                100 => {
+                    writer.write(0, 1);
+                }
+                300 => {
+                    writer.write(1, 1);
+                    writer.write(0, 1);
+                    writer.write(1, 1);
+                    writer.write(selection.choice_index.max(0) as u64, 2);
+                }
+                400 => {
+                    writer.write(1, 1);
+                    writer.write(0, 1);
+                    writer.write(0, 1);
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        writer.to_base64()
+    }
+
+    fn decode_test_nodes(talent_str: &str) -> HashMap<u64, NodeSelection> {
+        let bits = to_bits(talent_str);
+        let (_, mut pos) = read_bits(&bits, 0, 8);
+        let (_, new_pos) = read_bits(&bits, pos, 16);
+        pos = new_pos + 128;
+
+        let mut selections = HashMap::new();
+        for node_id in [100_u64, 300_u64, 400_u64] {
+            let (is_selected, next_pos) = read_bits(&bits, pos, 1);
+            pos = next_pos;
+            if is_selected == 0 {
+                continue;
+            }
+
+            let (is_purchased, next_pos) = read_bits(&bits, pos, 1);
+            pos = next_pos;
+            if is_purchased == 0 {
+                selections.insert(
+                    node_id,
+                    NodeSelection {
+                        ranks: 2,
+                        choice_index: -1,
+                    },
+                );
+                continue;
+            }
+
+            let (is_partial, next_pos) = read_bits(&bits, pos, 1);
+            pos = next_pos;
+            let ranks = if is_partial == 1 {
+                let (ranks, next_pos) = read_bits(&bits, pos, 6);
+                pos = next_pos;
+                ranks
+            } else {
+                1
+            };
+
+            let (is_choice, next_pos) = read_bits(&bits, pos, 1);
+            pos = next_pos;
+            let choice_index = if is_choice == 1 {
+                let (choice_index, next_pos) = read_bits(&bits, pos, 2);
+                pos = next_pos;
+                choice_index as i32
+            } else {
+                -1
+            };
+
+            selections.insert(
+                node_id,
+                NodeSelection {
+                    ranks,
+                    choice_index,
+                },
+            );
+        }
+
+        selections
+    }
+
+    #[test]
+    fn normalize_talent_string_adds_missing_free_node_and_subtree_selector() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        install_test_talent_trees();
+
+        let encoded = encode_talent_string(
+            42,
+            &[(
+                400,
+                NodeSelection {
+                    ranks: 1,
+                    choice_index: -1,
+                },
+            )],
+        );
+
+        let normalized = normalize_talent_string(&encoded).expect("talents should normalize");
+        let decoded = decode_test_nodes(&normalized);
+
+        assert_eq!(decoded.get(&100).map(|sel| sel.ranks), Some(2));
+        assert_eq!(decoded.get(&300).map(|sel| sel.choice_index), Some(0));
+        assert_eq!(decoded.get(&400).map(|sel| sel.ranks), Some(1));
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn normalize_talent_string_returns_none_when_no_adjustment_is_needed() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        install_test_talent_trees();
+
+        let encoded = encode_talent_string(
+            42,
+            &[
+                (
+                    100,
+                    NodeSelection {
+                        ranks: 2,
+                        choice_index: -1,
+                    },
+                ),
+                (
+                    300,
+                    NodeSelection {
+                        ranks: 1,
+                        choice_index: 0,
+                    },
+                ),
+                (
+                    400,
+                    NodeSelection {
+                        ranks: 1,
+                        choice_index: -1,
+                    },
+                ),
+            ],
+        );
+
+        assert_eq!(normalize_talent_string(&encoded), None);
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn normalize_simc_talents_updates_base_and_profileset_lines_only_when_supported() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        install_test_talent_trees();
+
+        let encoded = encode_talent_string(
+            42,
+            &[(
+                400,
+                NodeSelection {
+                    ranks: 1,
+                    choice_index: -1,
+                },
+            )],
+        );
+        let input = format!(
+            "warrior=\"Tester\"\ntalents={}\nprofileset.\"Alt\"+=talents={}\ntrinket1=id=1\nprofileset.\"Keep\"+=talents=short\n",
+            encoded, encoded
+        );
+
+        let output = normalize_simc_talents(&input);
+        let mut lines = output.lines();
+
+        let normalized_main = lines
+            .nth(1)
+            .and_then(|line| line.strip_prefix("talents="))
+            .expect("main talents line");
+        let normalized_profileset = lines
+            .next()
+            .and_then(|line| line.strip_prefix("profileset.\"Alt\"+=talents="))
+            .expect("profileset talents line");
+
+        assert_ne!(normalized_main, encoded);
+        assert_eq!(normalized_main, normalized_profileset);
+        assert!(output.contains("profileset.\"Keep\"+=talents=short"));
+
+        snapshot.restore();
+    }
+}

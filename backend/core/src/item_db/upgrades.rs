@@ -422,14 +422,26 @@ trinket1=item=299999,bonus_id=7777
         *BONUSES.write().unwrap() = Arc::new(bonuses);
 
         *UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
-            (("Hero".to_string(), 1_u64, 4_u64), (623_u64, 101_u64, 4_u64)),
-            (("Hero".to_string(), 2_u64, 4_u64), (626_u64, 102_u64, 4_u64)),
-            (("Hero".to_string(), 3_u64, 4_u64), (629_u64, 103_u64, 4_u64)),
+            (
+                ("Hero".to_string(), 1_u64, 4_u64),
+                (623_u64, 101_u64, 4_u64),
+            ),
+            (
+                ("Hero".to_string(), 2_u64, 4_u64),
+                (626_u64, 102_u64, 4_u64),
+            ),
+            (
+                ("Hero".to_string(), 3_u64, 4_u64),
+                (629_u64, 103_u64, 4_u64),
+            ),
         ]));
 
         *UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([
             (102_u64, HashMap::from([(3008_u64, 15_u64)])),
-            (103_u64, HashMap::from([(3008_u64, 15_u64), (3009_u64, 5_u64)])),
+            (
+                103_u64,
+                HashMap::from([(3008_u64, 15_u64), (3009_u64, 5_u64)]),
+            ),
         ]));
 
         let options = get_upgrade_options(&[101_u64]);

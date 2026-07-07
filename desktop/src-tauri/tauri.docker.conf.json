@@ -33,7 +33,8 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../../backend/resources/data": "data"
+      "../../backend/resources/data": "data",
+      "../../backend/resources/wow": "data/wow"
     }
   },
   "plugins": {

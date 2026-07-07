@@ -263,6 +263,15 @@ mod tests {
         serde_json::from_value(json!({})).expect("default SimOptions")
     }
 
+    fn assert_missing_simc_detail(detail: &str) {
+        assert!(
+            detail.contains("simc binary not found")
+                || detail.contains("missing")
+                || detail.contains("SimulationCraft is not available yet"),
+            "unexpected missing simc detail: {detail}"
+        );
+    }
+
     #[test]
     fn simc_binary_resolver_accepts_existing_path_and_rejects_missing_path() {
         let temp = tempfile::tempdir().expect("temp simc dir");
@@ -277,7 +286,7 @@ mod tests {
 
         let missing = temp.path().join("missing-simc");
         let detail = resolve_simc_binary_for_request(&missing, &options).expect_err("missing simc");
-        assert!(detail.contains("simc binary not found") || detail.contains("missing"));
+        assert_missing_simc_detail(&detail);
     }
 
     #[test]
@@ -672,7 +681,7 @@ mod tests {
             .get("detail")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        assert!(detail.contains("simc binary not found") || detail.contains("missing"));
+        assert_missing_simc_detail(detail);
     }
 
     #[actix_web::test]
@@ -838,7 +847,7 @@ mod tests {
             .get("detail")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        assert!(detail.contains("simc binary not found") || detail.contains("missing"));
+        assert_missing_simc_detail(detail);
     }
 
     #[actix_web::test]
@@ -1003,7 +1012,7 @@ mod tests {
             .get("detail")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        assert!(detail.contains("simc binary not found") || detail.contains("missing"));
+        assert_missing_simc_detail(detail);
     }
 
     #[actix_web::test]
@@ -1203,7 +1212,7 @@ mod tests {
             .get("detail")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        assert!(detail.contains("simc binary not found") || detail.contains("missing"));
+        assert_missing_simc_detail(detail);
     }
 
     #[actix_web::test]
@@ -1269,7 +1278,7 @@ mod tests {
             .get("detail")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        assert!(detail.contains("simc binary not found") || detail.contains("missing"));
+        assert_missing_simc_detail(detail);
     }
 
     #[actix_web::test]

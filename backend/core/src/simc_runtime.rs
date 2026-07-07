@@ -141,11 +141,10 @@ pub struct SimcDownloadProgress {
 impl SimcDownloadProgress {
     pub fn new(downloaded_bytes: u64, total_bytes: Option<u64>, elapsed: Duration) -> Self {
         let elapsed_ms = elapsed.as_millis() as u64;
-        let speed_bytes_per_sec = if elapsed_ms > 0 {
-            downloaded_bytes.saturating_mul(1000) / elapsed_ms
-        } else {
-            0
-        };
+        let speed_bytes_per_sec = downloaded_bytes
+            .saturating_mul(1000)
+            .checked_div(elapsed_ms)
+            .unwrap_or(0);
         let eta_seconds = match (total_bytes, speed_bytes_per_sec) {
             (Some(total), speed) if speed > 0 && downloaded_bytes < total => {
                 Some((total - downloaded_bytes).div_ceil(speed))
@@ -432,6 +431,8 @@ fn find_file_named(root: &Path, name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::io::Write;
     use std::path::PathBuf;
     use std::time::Duration;
 
@@ -441,6 +442,71 @@ mod tests {
         assert_eq!(SimcChannel::parse(" WEEKLY "), SimcChannel::Weekly);
         assert_eq!(SimcChannel::parse("stable"), SimcChannel::Weekly);
         assert_eq!(SimcChannel::parse(""), SimcChannel::Weekly);
+        assert_eq!(SimcChannel::Nightly.to_string(), "nightly");
+        assert_eq!(SimcChannel::Weekly.to_string(), "weekly");
+    }
+
+    #[test]
+    fn runtime_config_new_and_release_tag_helpers_trim_and_build_paths() {
+        let original = std::env::var("SIMC_RUNTIME_MANIFEST_BASE_URL").ok();
+        std::env::set_var(
+            "SIMC_RUNTIME_MANIFEST_BASE_URL",
+            "https://runtime.example/releases/download/",
+        );
+
+        let config = SimcRuntimeConfig::new(SimcChannel::Weekly, PathBuf::from("runtime"))
+            .with_release_tag(Some("  pinned-release  ".to_string()));
+
+        assert_eq!(
+            config.manifest_base_url,
+            "https://runtime.example/releases/download/"
+        );
+        assert_eq!(config.release_tag.as_deref(), Some("pinned-release"));
+        assert_eq!(
+            config.simc_path(),
+            PathBuf::from("runtime").join(simc_binary_name())
+        );
+        assert_eq!(
+            config.metadata_path(),
+            PathBuf::from("runtime").join("simc-metadata.json")
+        );
+
+        let config = config.with_release_tag(Some("   ".to_string()));
+        assert_eq!(config.release_tag, None);
+
+        match original {
+            Some(value) => std::env::set_var("SIMC_RUNTIME_MANIFEST_BASE_URL", value),
+            None => std::env::remove_var("SIMC_RUNTIME_MANIFEST_BASE_URL"),
+        }
+    }
+
+    #[test]
+    fn read_cached_metadata_returns_none_for_missing_or_invalid_files() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let missing = dir.path().join("missing.json");
+        assert!(read_cached_metadata(&missing).is_none());
+
+        let invalid = dir.path().join("invalid.json");
+        fs::write(&invalid, "{not json").expect("invalid metadata");
+        assert!(read_cached_metadata(&invalid).is_none());
+
+        let valid = dir.path().join("valid.json");
+        fs::write(
+            &valid,
+            r#"{"channel":"weekly","version":"2026.06.30","sha256":"abc"}"#,
+        )
+        .expect("valid metadata");
+
+        let cached = read_cached_metadata(&valid).expect("cached metadata");
+        assert_eq!(cached.channel, "weekly");
+        assert_eq!(cached.version, "2026.06.30");
+        assert_eq!(cached.sha256, "abc");
+    }
+
+    #[test]
+    fn current_platform_and_binary_name_are_non_empty() {
+        assert!(!current_platform().is_empty());
+        assert!(!simc_binary_name().is_empty());
     }
 
     #[test]
@@ -526,5 +592,46 @@ mod tests {
         assert_eq!(progress.elapsed_ms, 2_000);
         assert_eq!(progress.speed_bytes_per_sec, 2_048);
         assert_eq!(progress.eta_seconds, Some(2));
+    }
+
+    #[test]
+    fn verify_sha256_accepts_matching_digest_and_rejects_mismatch() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("simc.zip");
+        fs::write(&path, b"runtime-bytes").expect("runtime bytes");
+
+        let expected = format!("{:x}", Sha256::digest(b"runtime-bytes")).to_uppercase();
+        assert!(verify_sha256(&path, &expected).is_ok());
+
+        let err = verify_sha256(&path, "deadbeef").expect_err("checksum mismatch");
+        assert!(err.contains("checksum mismatch"));
+    }
+
+    #[test]
+    fn extract_simc_binary_and_find_file_named_handle_nested_archives() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let zip_path = dir.path().join("simc.zip");
+        let extract_dir = dir.path().join("extract");
+
+        let file = fs::File::create(&zip_path).expect("zip file");
+        let mut archive = zip::ZipWriter::new(file);
+        let options: zip::write::FileOptions<'_, ()> = zip::write::FileOptions::default();
+        archive
+            .add_directory("nested/", options)
+            .expect("nested dir entry");
+        archive
+            .start_file(format!("nested/{}", simc_binary_name()), options)
+            .expect("binary entry");
+        archive.write_all(b"simc-binary").expect("binary bytes");
+        archive.finish().expect("finish archive");
+
+        extract_simc_binary(&zip_path, &extract_dir).expect("extract archive");
+
+        let extracted = find_file_named(&extract_dir, simc_binary_name()).expect("find binary");
+        assert_eq!(
+            fs::read(&extracted).expect("read extracted"),
+            b"simc-binary"
+        );
+        assert!(extracted.ends_with(Path::new("nested").join(simc_binary_name())));
     }
 }

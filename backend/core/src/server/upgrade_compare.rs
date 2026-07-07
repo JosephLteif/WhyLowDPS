@@ -574,6 +574,7 @@ mod tests {
     }
 
     #[actix_web::test]
+    #[allow(clippy::await_holding_lock)]
     async fn combo_count_reports_upgrade_limit_error_count() {
         let _guard = state::TEST_STATE_LOCK.lock().unwrap();
         let prev_bonuses = state::BONUSES.read().unwrap().clone();
@@ -647,6 +648,7 @@ mod tests {
     }
 
     #[actix_web::test]
+    #[allow(clippy::await_holding_lock)]
     async fn prepare_returns_upgrade_candidates_and_currency_metadata() {
         let _guard = state::TEST_STATE_LOCK.lock().unwrap();
         let prev_bonuses = state::BONUSES.read().unwrap().clone();
@@ -755,6 +757,7 @@ mod tests {
     }
 
     #[actix_web::test]
+    #[allow(clippy::await_holding_lock)]
     async fn create_upgrade_compare_reaches_binary_check_for_valid_request() {
         let _guard = state::TEST_STATE_LOCK.lock().unwrap();
         let prev_bonuses = state::BONUSES.read().unwrap().clone();

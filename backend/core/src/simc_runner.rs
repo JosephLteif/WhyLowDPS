@@ -1378,7 +1378,7 @@ fight_style=Patchwerk
     }
 
     fn fake_simc_script(name: &str, mode: &str) -> PathBuf {
-        let dir = tempfile::tempdir().expect("fake simc dir").into_path();
+        let dir = tempfile::tempdir().expect("fake simc dir").keep();
 
         #[cfg(unix)]
         {

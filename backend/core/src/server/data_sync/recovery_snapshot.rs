@@ -4,8 +4,8 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::io::{self, Read, Write};
-use std::path::{Component, Path};
+use std::io::{Read, Write};
+use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 const RECOVERY_MANIFEST_URL: &str = "https://github.com/JosephLteif/whylowdps-game-data/releases/download/recovery-latest/manifest.json";
@@ -240,7 +240,7 @@ fn apply_verified_archive(
         .map_err(|err| format!("Failed to create recovery staging directory: {err}"))?;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(archive))
         .map_err(|err| format!("Failed to open recovery archive: {err}"))?;
-    let mut staged_paths = HashSet::new();
+    let mut archive_paths = HashSet::new();
     for index in 0..zip.len() {
         let mut file = zip
             .by_index(index)
@@ -249,13 +249,12 @@ fn apply_verified_archive(
         if file.is_dir() || !is_safe_relative_path(&path) {
             return Err("Recovery archive contains an unsafe path".to_string());
         }
-        let Some((_, expected)) = requested.get(path.as_str()) else {
-            // Recovery snapshots may also contain intact files. They are never staged or applied.
-            continue;
-        };
-        if !staged_paths.insert(path.clone()) {
+        if !archive_paths.insert(path.clone()) {
             return Err(format!("Recovery archive contains duplicate path {path}"));
         }
+        let Some((_, expected)) = requested.get(path.as_str()) else {
+            return Err(format!("Recovery archive contains unrequested path {path}"));
+        };
         if file.size() != expected.size {
             return Err(format!("Recovery archive size mismatch for {path}"));
         }
@@ -295,53 +294,147 @@ fn apply_verified_archive(
         }
     }
 
-    if staged_paths.len() != requested.len() {
+    if archive_paths.len() != requested.len() {
         return Err("Recovery archive is missing requested files".to_string());
     }
+    let mut published = Vec::with_capacity(entries.len());
+    let mut created_directories = Vec::new();
     for entry in entries {
-        move_staged_file(staging.path(), root, &entry.local_path)?;
+        let final_path = root.join(&entry.local_path);
+        if let Err(err) = publish_staged_file(
+            staging.path(),
+            &entry.local_path,
+            &final_path,
+            &mut created_directories,
+        ) {
+            let rollback_err = rollback_live_changes(&published, &created_directories);
+            return Err(match rollback_err {
+                Ok(()) => err,
+                Err(rollback_err) => format!("{err}; recovery rollback failed: {rollback_err}"),
+            });
+        }
+        published.push(final_path);
     }
     Ok(entries.iter().map(|entry| entry.key.clone()).collect())
 }
 
-fn move_staged_file(
+fn publish_staged_file(
     staging_root: &Path,
-    final_root: &Path,
     relative_path: &str,
+    final_path: &Path,
+    created_directories: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
     let staged = staging_root.join(relative_path);
-    let final_path = final_root.join(relative_path);
     if let Some(parent) = final_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| {
+        create_final_directory(parent, created_directories)?;
+    }
+    if final_path.exists() {
+        return Err(format!(
+            "Refusing to replace existing recovery target {}",
+            final_path.display()
+        ));
+    }
+    match std::fs::hard_link(&staged, final_path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => Err(format!(
+            "Refusing to replace existing recovery target {}",
+            final_path.display()
+        )),
+        Err(_) => copy_staged_file_without_replacing(&staged, final_path),
+    }
+}
+
+fn create_final_directory(
+    directory: &Path,
+    created_directories: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let mut missing = Vec::new();
+    let mut current = directory;
+    while !current.exists() {
+        missing.push(current.to_path_buf());
+        current = current.parent().ok_or_else(|| {
             format!(
-                "Failed to create final directory for {}: {err}",
-                final_path.display()
+                "Recovery target directory {} has no parent",
+                directory.display()
             )
         })?;
     }
-    match std::fs::rename(&staged, &final_path) {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == io::ErrorKind::CrossesDevices => {
-            std::fs::copy(&staged, &final_path).map_err(|copy_err| {
-                format!(
-                    "Failed to copy staged file {} to {}: {copy_err}",
-                    staged.display(),
-                    final_path.display()
-                )
-            })?;
-            std::fs::remove_file(&staged).ok();
-            Ok(())
+    if !current.is_dir() {
+        return Err(format!(
+            "Recovery target directory {} is not a directory",
+            current.display()
+        ));
+    }
+    for path in missing.into_iter().rev() {
+        match std::fs::create_dir(&path) {
+            Ok(()) => created_directories.push(path),
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists && path.is_dir() => {}
+            Err(err) => {
+                return Err(format!(
+                    "Failed to create final directory for {}: {err}",
+                    path.display()
+                ));
+            }
         }
-        Err(err) => Err(format!(
-            "Failed to move staged file {} to {}: {err}",
+    }
+    Ok(())
+}
+
+fn copy_staged_file_without_replacing(staged: &Path, final_path: &Path) -> Result<(), String> {
+    let mut source = std::fs::File::open(staged).map_err(|err| {
+        format!(
+            "Failed to open staged recovery file {}: {err}",
+            staged.display()
+        )
+    })?;
+    let mut destination = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(final_path)
+        .map_err(|err| {
+            format!(
+                "Failed to create recovery target {} without replacing it: {err}",
+                final_path.display()
+            )
+        })?;
+    if let Err(err) = std::io::copy(&mut source, &mut destination) {
+        drop(destination);
+        std::fs::remove_file(final_path).ok();
+        return Err(format!(
+            "Failed to copy staged recovery file {} to {}: {err}",
             staged.display(),
             final_path.display()
-        )),
+        ));
+    }
+    Ok(())
+}
+
+fn rollback_live_changes(
+    published: &[PathBuf],
+    created_directories: &[PathBuf],
+) -> Result<(), String> {
+    let mut errors = Vec::new();
+    for path in published.iter().rev() {
+        if let Err(err) = std::fs::remove_file(path) {
+            errors.push(format!("failed to remove {}: {err}", path.display()));
+        }
+    }
+    for path in created_directories.iter().rev() {
+        if let Err(err) = std::fs::remove_dir(path) {
+            errors.push(format!("failed to remove {}: {err}", path.display()));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
     }
 }
 
 fn is_safe_relative_path(path: &str) -> bool {
     !path.is_empty()
+        && !path.contains("//")
+        && !path.ends_with('/')
         && path.chars().all(|character| {
             character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-' | '/')
         })
@@ -395,6 +488,20 @@ mod tests {
         writer.finish().expect("finish archive").into_inner()
     }
 
+    fn zip_bytes_with_duplicate_unrequested_entry() -> Vec<u8> {
+        let mut archive = zip_bytes(&[
+            ("items.json", b"[]"),
+            ("bonus-one.json", b"first"),
+            ("bonus-two.json", b"second"),
+        ]);
+        for index in 0..=archive.len() - b"bonus-two.json".len() {
+            if archive[index..].starts_with(b"bonus-two.json") {
+                archive[index..index + b"bonus-two.json".len()].copy_from_slice(b"bonus-one.json");
+            }
+        }
+        archive
+    }
+
     fn manifest_at(generated_at: chrono::DateTime<Utc>) -> RecoveryManifest {
         RecoveryManifest {
             schema_version: 1,
@@ -439,29 +546,24 @@ mod tests {
     }
 
     #[test]
-    fn rejects_traversal_and_preserves_live_file() {
+    fn rejects_traversal_before_creating_a_live_file() {
         let root = tempfile::tempdir().expect("root");
-        std::fs::write(root.path().join("items.json"), b"existing").expect("live file");
         let archive = zip_bytes(&[("../items.json", b"replacement")]);
 
         assert!(apply_verified_archive(
             root.path(),
-            &manifest_for(&archive, &[]),
+            &manifest_for(&archive, &[("items.json", b"replacement")]),
             &archive,
             &[entry("items", "items.json")]
         )
         .is_err());
-        assert_eq!(
-            std::fs::read(root.path().join("items.json")).expect("live file"),
-            b"existing"
-        );
+        assert!(!root.path().join("items.json").exists());
     }
 
     #[test]
-    fn stages_only_verified_missing_files() {
+    fn stages_verified_missing_files() {
         let root = tempfile::tempdir().expect("root");
-        std::fs::write(root.path().join("bonuses.json"), b"existing").expect("live file");
-        let archive = zip_bytes(&[("items.json", b"[]"), ("bonuses.json", b"new")]);
+        let archive = zip_bytes(&[("items.json", b"[]")]);
 
         assert_eq!(
             apply_verified_archive(
@@ -477,10 +579,6 @@ mod tests {
             std::fs::read(root.path().join("items.json")).expect("restored file"),
             b"[]"
         );
-        assert_eq!(
-            std::fs::read(root.path().join("bonuses.json")).expect("live file"),
-            b"existing"
-        );
     }
 
     #[test]
@@ -495,7 +593,6 @@ mod tests {
     #[test]
     fn rejects_payload_with_invalid_checksum_or_size_before_apply() {
         let root = tempfile::tempdir().expect("root");
-        std::fs::write(root.path().join("items.json"), b"existing").expect("live file");
         let archive = zip_bytes(&[("items.json", b"replacement")]);
 
         assert!(apply_verified_archive(
@@ -505,10 +602,7 @@ mod tests {
             &[entry("items", "items.json")]
         )
         .is_err());
-        assert_eq!(
-            std::fs::read(root.path().join("items.json")).expect("live file"),
-            b"existing"
-        );
+        assert!(!root.path().join("items.json").exists());
     }
 
     #[test]
@@ -520,5 +614,75 @@ mod tests {
 
         assert!(validate_manifest(&missing, Utc::now(), &requested).is_err());
         assert!(validate_manifest(&duplicate, Utc::now(), &requested).is_err());
+    }
+
+    #[test]
+    fn rejects_unexpected_archive_entries() {
+        let root = tempfile::tempdir().expect("root");
+        let archive = zip_bytes(&[("items.json", b"[]"), ("bonuses.json", b"new")]);
+
+        assert!(apply_verified_archive(
+            root.path(),
+            &manifest_for(&archive, &[("items.json", b"[]")]),
+            &archive,
+            &[entry("items", "items.json")]
+        )
+        .is_err());
+        assert!(!root.path().join("items.json").exists());
+    }
+
+    #[test]
+    fn rejects_duplicate_unrequested_archive_entries() {
+        let root = tempfile::tempdir().expect("root");
+        let archive = zip_bytes_with_duplicate_unrequested_entry();
+
+        assert!(apply_verified_archive(
+            root.path(),
+            &manifest_for(&archive, &[("items.json", b"[]")]),
+            &archive,
+            &[entry("items", "items.json")]
+        )
+        .is_err());
+        assert!(!root.path().join("items.json").exists());
+    }
+
+    #[test]
+    fn rejects_alternate_separator_paths() {
+        let archive = zip_bytes(&[("items//items.json", b"[]")]);
+        let entries = [entry("items", "items//items.json")];
+
+        assert!(validate_manifest(
+            &manifest_for(&archive, &[("items//items.json", b"[]")]),
+            Utc::now(),
+            &entries
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rolls_back_earlier_moves_when_a_later_move_fails() {
+        let root = tempfile::tempdir().expect("root");
+        std::fs::write(root.path().join("blocked"), b"existing").expect("block directory");
+        let archive = zip_bytes(&[("items.json", b"[]"), ("blocked/bonuses.json", b"{}")]);
+        let entries = [
+            entry("items", "items.json"),
+            entry("bonuses", "blocked/bonuses.json"),
+        ];
+
+        assert!(apply_verified_archive(
+            root.path(),
+            &manifest_for(
+                &archive,
+                &[("items.json", b"[]"), ("blocked/bonuses.json", b"{}")]
+            ),
+            &archive,
+            &entries
+        )
+        .is_err());
+        assert!(!root.path().join("items.json").exists());
+        assert_eq!(
+            std::fs::read(root.path().join("blocked")).unwrap(),
+            b"existing"
+        );
     }
 }

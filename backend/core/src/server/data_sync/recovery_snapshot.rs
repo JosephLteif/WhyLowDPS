@@ -1,9 +1,9 @@
 use super::catalog::DataFileEntry;
 use chrono::{DateTime, Duration, Utc};
-use futures_util::StreamExt;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
@@ -49,30 +49,58 @@ pub(super) async fn restore_missing_raidbots_files<F>(
     client: &reqwest::Client,
     root: &Path,
     entries: &[DataFileEntry],
-    mut report_progress: F,
+    report_progress: F,
 ) -> Result<Vec<String>, String>
 where
     F: FnMut(RepairProgress),
 {
-    let manifest_response = client
-        .get(RECOVERY_MANIFEST_URL)
-        .header("User-Agent", "WhyLowDps/recovery")
-        .send()
-        .await
-        .map_err(|err| format!("Failed to download recovery manifest: {err}"))?
-        .error_for_status()
-        .map_err(|err| format!("Recovery manifest request failed: {err}"))?;
-    let manifest: RecoveryManifest = manifest_response
-        .json()
-        .await
-        .map_err(|err| format!("Failed to parse recovery manifest: {err}"))?;
+    restore_missing_raidbots_files_with_downloader(
+        root,
+        entries,
+        report_progress,
+        |url| async move {
+            let response = client
+                .get(url)
+                .header("User-Agent", "WhyLowDps/recovery")
+                .send()
+                .await
+                .map_err(|err| format!("Failed to download recovery snapshot: {err}"))?
+                .error_for_status()
+                .map_err(|err| format!("Recovery snapshot request failed: {err}"))?;
+            response
+                .bytes()
+                .await
+                .map(|bytes| bytes.to_vec())
+                .map_err(|err| format!("Failed to read recovery snapshot: {err}"))
+        },
+    )
+    .await
+}
 
+pub(super) async fn restore_missing_raidbots_files_with_downloader<F, D, Fut>(
+    root: &Path,
+    entries: &[DataFileEntry],
+    mut report_progress: F,
+    mut download: D,
+) -> Result<Vec<String>, String>
+where
+    F: FnMut(RepairProgress),
+    D: FnMut(String) -> Fut,
+    Fut: Future<Output = Result<Vec<u8>, String>>,
+{
+    report_progress(RepairProgress {
+        current: 0,
+        total: entries.len(),
+        detail: "Downloading verified recovery snapshot".to_string(),
+        downloaded_bytes: 0,
+        total_bytes: 0,
+        speed_bytes_per_sec: 0,
+    });
+
+    let manifest_bytes = download(RECOVERY_MANIFEST_URL.to_string()).await?;
+    let manifest: RecoveryManifest = serde_json::from_slice(&manifest_bytes)
+        .map_err(|err| format!("Failed to parse recovery manifest: {err}"))?;
     validate_manifest(&manifest, Utc::now(), entries)?;
-    std::fs::create_dir_all(root)
-        .map_err(|err| format!("Failed to create recovery root {}: {err}", root.display()))?;
-    let staging = tempfile::tempdir_in(root)
-        .map_err(|err| format!("Failed to create recovery staging directory: {err}"))?;
-    let archive_path = staging.path().join("recovery.zip");
 
     report_progress(RepairProgress {
         current: 0,
@@ -83,51 +111,29 @@ where
         speed_bytes_per_sec: 0,
     });
 
-    let archive_response = client
-        .get(format!(
-            "{}/{}",
-            RECOVERY_RELEASE_BASE_URL, manifest.archive.name
-        ))
-        .header("User-Agent", "WhyLowDps/recovery")
-        .send()
-        .await
-        .map_err(|err| format!("Failed to download recovery archive: {err}"))?
-        .error_for_status()
-        .map_err(|err| format!("Recovery archive request failed: {err}"))?;
     let started = Instant::now();
-    let mut downloaded_bytes = 0_u64;
-    let mut archive_file = std::fs::File::create(&archive_path)
-        .map_err(|err| format!("Failed to create recovery archive file: {err}"))?;
-    let mut stream = archive_response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|err| format!("Failed to read recovery archive: {err}"))?;
-        downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
-        if downloaded_bytes > manifest.archive.size {
-            return Err("Recovery archive exceeds the manifest size".to_string());
-        }
-        archive_file
-            .write_all(&chunk)
-            .map_err(|err| format!("Failed to save recovery archive: {err}"))?;
-        let elapsed = started.elapsed().as_secs_f64();
-        report_progress(RepairProgress {
-            current: 0,
-            total: entries.len(),
-            detail: "Downloading verified recovery snapshot".to_string(),
-            downloaded_bytes,
-            total_bytes: manifest.archive.size,
-            speed_bytes_per_sec: if elapsed > 0.0 {
-                (downloaded_bytes as f64 / elapsed) as u64
-            } else {
-                0
-            },
-        });
+    let archive = download(format!(
+        "{}/{}",
+        RECOVERY_RELEASE_BASE_URL, manifest.archive.name
+    ))
+    .await?;
+    let downloaded_bytes = archive.len() as u64;
+    if downloaded_bytes > manifest.archive.size {
+        return Err("Recovery archive exceeds the manifest size".to_string());
     }
-    archive_file
-        .flush()
-        .map_err(|err| format!("Failed to finish recovery archive: {err}"))?;
-
-    let archive = std::fs::read(&archive_path)
-        .map_err(|err| format!("Failed to read recovery archive: {err}"))?;
+    let elapsed = started.elapsed().as_secs_f64();
+    report_progress(RepairProgress {
+        current: 0,
+        total: entries.len(),
+        detail: "Downloading verified recovery snapshot".to_string(),
+        downloaded_bytes,
+        total_bytes: manifest.archive.size,
+        speed_bytes_per_sec: if elapsed > 0.0 {
+            (downloaded_bytes as f64 / elapsed) as u64
+        } else {
+            0
+        },
+    });
     validate_archive(&manifest, &archive)?;
     let restored = apply_verified_archive(root, &manifest, &archive, entries)?;
 
@@ -140,6 +146,29 @@ where
         speed_bytes_per_sec: 0,
     });
     Ok(restored)
+}
+
+pub(super) async fn restore_missing_raidbots_files_from_bytes<F>(
+    root: &Path,
+    entries: &[DataFileEntry],
+    manifest: &[u8],
+    archive: &[u8],
+    report_progress: F,
+) -> Result<Vec<String>, String>
+where
+    F: FnMut(RepairProgress),
+{
+    let manifest = manifest.to_vec();
+    let archive = archive.to_vec();
+    restore_missing_raidbots_files_with_downloader(root, entries, report_progress, move |url| {
+        let bytes = if url.ends_with("manifest.json") {
+            manifest.clone()
+        } else {
+            archive.clone()
+        };
+        async move { Ok(bytes) }
+    })
+    .await
 }
 
 fn validate_manifest(

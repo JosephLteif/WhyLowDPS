@@ -639,16 +639,17 @@ mod tests {
         );
         manifest.archive.sha256 = "0".repeat(64);
 
-        assert!(apply_verified_archive(
+        let error = apply_verified_archive(
             root.path(),
             &manifest,
             &archive,
             &[
                 entry("items", "items.json"),
-                entry("bonuses", "bonuses.json")
+                entry("bonuses", "bonuses.json"),
             ],
         )
-        .is_err());
+        .expect_err("invalid archive checksum must reject before checking live targets");
+        assert!(error.contains("Recovery archive checksum does not match manifest"));
         assert_eq!(
             std::fs::read(root.path().join("items.json")).expect("read items"),
             b"old-items"

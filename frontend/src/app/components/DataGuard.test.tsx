@@ -112,7 +112,7 @@ describe('DataGuard auth gating', () => {
     });
   });
 
-  it('does not start recovery while a desktop update is available', async () => {
+  it('keeps the repair action hidden while a desktop update is available', async () => {
     localStorage.setItem('whylowdps_data_ready', 'true');
     mocks.useAuth.mockReturnValue({
       user: { battletag: 'User#1234' },
@@ -145,10 +145,12 @@ describe('DataGuard auth gating', () => {
       expect(mocks.fetchJson).toHaveBeenCalledWith(expect.stringContaining('/api/data/files'));
     });
     expect(screen.queryByRole('button', { name: 'Repair Missing Files' })).not.toBeInTheDocument();
-    expect(mocks.fetchJson).not.toHaveBeenCalledWith(
-      expect.stringContaining('/api/data/files/missing/download'),
-      expect.anything()
-    );
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-updater-status', { detail: { status: 'none' } })
+      );
+    });
+    expect(await screen.findByRole('button', { name: 'Repair Missing Files' })).toBeInTheDocument();
   });
 
   it('shows recovery snapshot progress while repair is running', async () => {

@@ -720,6 +720,46 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn missing_data_repair_creates_missing_root_before_snapshot_restore() {
+        let parent = tempfile::tempdir().expect("repair parent");
+        let root = parent.path().join("missing-root");
+        let entry = raidbots_entry("items", "items.json");
+        let (manifest, archive) = recovery_snapshot_fixture("items.json", b"[]");
+        let raidbots_attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let recovery_entries = vec![entry.clone()];
+        let recovery = recovery_snapshot::restore_missing_raidbots_files_from_bytes(
+            &root,
+            &recovery_entries,
+            &manifest,
+            &archive,
+            |_| {},
+        );
+
+        let result = repair_missing_raidbots_entries(&root, &[entry], recovery, || {}, {
+            let raidbots_attempts = raidbots_attempts.clone();
+            move |_| {
+                let raidbots_attempts = raidbots_attempts.clone();
+                async move {
+                    raidbots_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Err("Raidbots is unavailable".to_string())
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(
+            result.sources["recovery_snapshot"],
+            vec!["items".to_string()]
+        );
+        assert!(result.failed.is_empty());
+        assert_eq!(
+            raidbots_attempts.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+        assert_eq!(std::fs::read(root.join("items.json")).unwrap(), b"[]");
+    }
+
+    #[actix_web::test]
     async fn sync_status_reports_credential_availability_without_starting_sync() {
         let req = TestRequest::default().to_http_request();
         let state = test_sync_state();

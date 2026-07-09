@@ -265,6 +265,8 @@ fn apply_verified_archive(
         return Err("Recovery target is no longer missing".to_string());
     }
 
+    std::fs::create_dir_all(root)
+        .map_err(|err| format!("Failed to create recovery root {}: {err}", root.display()))?;
     let staging = tempfile::tempdir_in(root)
         .map_err(|err| format!("Failed to create recovery staging directory: {err}"))?;
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(archive))

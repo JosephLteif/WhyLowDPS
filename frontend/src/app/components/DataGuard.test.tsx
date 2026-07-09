@@ -112,6 +112,45 @@ describe('DataGuard auth gating', () => {
     });
   });
 
+  it('does not start recovery while a desktop update is available', async () => {
+    localStorage.setItem('whylowdps_data_ready', 'true');
+    mocks.useAuth.mockReturnValue({
+      user: { battletag: 'User#1234' },
+      loading: false,
+      lightMode: false,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: true }),
+    });
+    mocks.fetchJson.mockImplementation((url: string) => {
+      if (url.endsWith('/api/data/status')) return Promise.resolve({ status: 'ready' });
+      if (url.endsWith('/api/data/files')) {
+        return Promise.resolve({
+          files: [{ required: true, exists: false, label: 'WoW Seasons' }],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-updater-status', { detail: { status: 'available' } })
+      );
+    });
+
+    await waitFor(() => {
+      expect(mocks.fetchJson).toHaveBeenCalledWith(expect.stringContaining('/api/data/files'));
+    });
+    expect(screen.queryByRole('button', { name: 'Repair Missing Files' })).not.toBeInTheDocument();
+    expect(mocks.fetchJson).not.toHaveBeenCalledWith(
+      expect.stringContaining('/api/data/files/missing/download'),
+      expect.anything()
+    );
+  });
+
   it('shows recovery snapshot progress while repair is running', async () => {
     const user = userEvent.setup();
     localStorage.setItem('whylowdps_data_ready', 'true');

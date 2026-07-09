@@ -622,6 +622,64 @@ mod tests {
     }
 
     #[test]
+    fn invalid_archive_hash_leaves_all_live_files_unchanged() {
+        let root = tempfile::tempdir().expect("root");
+        std::fs::write(root.path().join("items.json"), b"old-items").expect("write items");
+        std::fs::write(root.path().join("bonuses.json"), b"old-bonuses").expect("write bonuses");
+        let archive = zip_bytes(&[
+            ("items.json", b"new-items"),
+            ("bonuses.json", b"new-bonuses"),
+        ]);
+        let mut manifest = manifest_for(
+            &archive,
+            &[
+                ("items.json", b"new-items"),
+                ("bonuses.json", b"new-bonuses"),
+            ],
+        );
+        manifest.archive.sha256 = "0".repeat(64);
+
+        assert!(apply_verified_archive(
+            root.path(),
+            &manifest,
+            &archive,
+            &[
+                entry("items", "items.json"),
+                entry("bonuses", "bonuses.json")
+            ],
+        )
+        .is_err());
+        assert_eq!(
+            std::fs::read(root.path().join("items.json")).expect("read items"),
+            b"old-items"
+        );
+        assert_eq!(
+            std::fs::read(root.path().join("bonuses.json")).expect("read bonuses"),
+            b"old-bonuses"
+        );
+    }
+
+    #[test]
+    fn manifest_missing_a_required_entry_is_rejected_before_apply() {
+        let root = tempfile::tempdir().expect("root");
+        let archive = zip_bytes(&[("items.json", b"[]")]);
+        let manifest = manifest_for(&archive, &[("items.json", b"[]")]);
+
+        assert!(apply_verified_archive(
+            root.path(),
+            &manifest,
+            &archive,
+            &[
+                entry("items", "items.json"),
+                entry("bonuses", "bonuses.json")
+            ],
+        )
+        .is_err());
+        assert!(!root.path().join("items.json").exists());
+        assert!(!root.path().join("bonuses.json").exists());
+    }
+
+    #[test]
     fn rejects_payload_checksum_mismatch_before_apply() {
         let root = tempfile::tempdir().expect("root");
         let archive = zip_bytes(&[("items.json", b"replacement")]);

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -61,5 +61,53 @@ describe('DataGuard auth gating', () => {
       expect(screen.getByText('App content')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('splash')).not.toBeInTheDocument();
+  });
+
+  it('prioritizes an available app update over missing required data', async () => {
+    localStorage.setItem('whylowdps_data_ready', 'true');
+    mocks.useAuth.mockReturnValue({
+      user: { battletag: 'User#1234' },
+      loading: false,
+      lightMode: false,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: true }),
+    });
+    mocks.fetchJson.mockImplementation((url: string) => {
+      if (url.endsWith('/api/data/status')) return Promise.resolve({ status: 'ready' });
+      if (url.endsWith('/api/data/files')) {
+        return Promise.resolve({
+          files: [{ required: true, exists: false, label: 'WoW Seasons' }],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+
+    await waitFor(() => {
+      expect(mocks.fetchJson).toHaveBeenCalledWith(
+        expect.stringContaining('/api/data/files')
+      );
+    });
+    expect(screen.queryByText('Critical data files are missing')).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-updater-status', { detail: { status: 'available' } })
+      );
+    });
+    expect(screen.queryByText('Critical data files are missing')).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-updater-status', { detail: { status: 'none' } })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByText('Critical data files are missing')).toBeInTheDocument();
+    });
   });
 });

@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -109,5 +110,89 @@ describe('DataGuard auth gating', () => {
     await waitFor(() => {
       expect(screen.getByText('Critical data files are missing')).toBeInTheDocument();
     });
+  });
+
+  it('shows recovery snapshot progress while repair is running', async () => {
+    const user = userEvent.setup();
+    localStorage.setItem('whylowdps_data_ready', 'true');
+    mocks.useAuth.mockReturnValue({
+      user: { battletag: 'User#1234' },
+      loading: false,
+      lightMode: false,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: true }),
+    });
+    mocks.fetchJson.mockImplementation((url: string) => {
+      if (url.endsWith('/api/data/status')) {
+        return Promise.resolve({
+          status: 'ready',
+          progress: 'Repair:1:3:Downloading verified recovery snapshot:512:1024:1000:512',
+        });
+      }
+      if (url.endsWith('/api/data/files')) {
+        return Promise.resolve({ files: [{ required: true, exists: false, label: 'Items' }] });
+      }
+      if (url.endsWith('/api/data/files/missing/download')) return new Promise(() => {});
+      return Promise.resolve({});
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-updater-status', { detail: { status: 'none' } })
+      );
+    });
+    await user.click(await screen.findByRole('button', { name: 'Repair Missing Files' }));
+
+    expect(
+      await screen.findByText('Downloading verified recovery snapshot', {}, { timeout: 3000 })
+    ).toBeInTheDocument();
+    expect(screen.getByText('Downloaded: 512 B / 1 KB')).toBeInTheDocument();
+  });
+
+  it('reports the recovery snapshot source without exposing a metadata link', async () => {
+    localStorage.setItem('whylowdps_data_ready', 'true');
+    mocks.useAuth.mockReturnValue({
+      user: { battletag: 'User#1234' },
+      loading: false,
+      lightMode: false,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: true }),
+    });
+    mocks.fetchJson.mockImplementation((url: string) => {
+      if (url.endsWith('/api/data/status')) return Promise.resolve({ status: 'ready' });
+      if (url.endsWith('/api/data/files')) {
+        return Promise.resolve({ files: [{ required: true, exists: false, label: 'Items' }] });
+      }
+      if (url.endsWith('/api/data/files/missing/download')) {
+        return Promise.resolve({
+          sources: { bundled: [], recovery_snapshot: ['items'], raidbots: [] },
+          failed: [],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('whylowdps-updater-status', { detail: { status: 'none' } })
+      );
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Repair Missing Files' }));
+
+    expect(await screen.findByText(/Repaired from verified recovery snapshot/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'metadata.json' })).not.toBeInTheDocument();
   });
 });

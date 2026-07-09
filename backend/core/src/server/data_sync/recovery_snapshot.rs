@@ -591,17 +591,34 @@ mod tests {
     }
 
     #[test]
-    fn rejects_payload_with_invalid_checksum_or_size_before_apply() {
+    fn rejects_payload_checksum_mismatch_before_apply() {
         let root = tempfile::tempdir().expect("root");
         let archive = zip_bytes(&[("items.json", b"replacement")]);
 
-        assert!(apply_verified_archive(
+        let err = apply_verified_archive(
             root.path(),
-            &manifest_for(&archive, &[("items.json", b"expected")]),
+            &manifest_for(&archive, &[("items.json", b"expectdment")]),
             &archive,
-            &[entry("items", "items.json")]
+            &[entry("items", "items.json")],
         )
-        .is_err());
+        .expect_err("equal-sized payload with a different checksum must fail");
+        assert!(err.contains("checksum mismatch"));
+        assert!(!root.path().join("items.json").exists());
+    }
+
+    #[test]
+    fn rejects_payload_size_mismatch_before_apply() {
+        let root = tempfile::tempdir().expect("root");
+        let archive = zip_bytes(&[("items.json", b"[]")]);
+
+        let err = apply_verified_archive(
+            root.path(),
+            &manifest_for(&archive, &[("items.json", b"three")]),
+            &archive,
+            &[entry("items", "items.json")],
+        )
+        .expect_err("payload size mismatch must fail");
+        assert!(err.contains("size mismatch"));
         assert!(!root.path().join("items.json").exists());
     }
 

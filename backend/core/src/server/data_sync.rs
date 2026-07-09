@@ -18,6 +18,8 @@ mod data_files;
 mod image_helpers;
 mod image_sources;
 mod raidbots;
+#[allow(dead_code)] // Task 3 wires this isolated recovery module into the handler flow.
+mod recovery_snapshot;
 mod wowhead_zones;
 mod zones_index;
 

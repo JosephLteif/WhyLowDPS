@@ -7,12 +7,6 @@ import type {
   SettingsStatusMessage,
 } from './types';
 
-type SectionSummary = {
-  totalBytes: number;
-  downloaded: number;
-  total: number;
-};
-
 export function useDataFileStateManager() {
   const [dataStateLoading, setDataStateLoading] = useState(false);
   const [dataStateError, setDataStateError] = useState('');
@@ -140,22 +134,6 @@ export function useDataFileStateManager() {
     [dataFileStates]
   );
 
-  const sectionSummaries = useMemo(
-    () =>
-      Object.entries(groupedDataFiles || {}).reduce<Record<string, SectionSummary>>(
-        (acc, [section, files]) => {
-          acc[section] = {
-            totalBytes: files.reduce((sum, file) => sum + (file.exists ? file.size_bytes : 0), 0),
-            downloaded: files.filter((file) => file.exists).length,
-            total: files.length,
-          };
-          return acc;
-        },
-        {}
-      ),
-    [groupedDataFiles]
-  );
-
   return {
     dataStateLoading,
     dataStateError,
@@ -176,6 +154,5 @@ export function useDataFileStateManager() {
     openDataRootDirectory,
     showFileContent,
     groupedDataFiles,
-    sectionSummaries,
   };
 }

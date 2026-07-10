@@ -78,7 +78,7 @@ export function useDataFileStateManager() {
     try {
       const data = await fetchJson<{ downloaded_keys?: string[]; failed?: unknown[] }>(
         `${API_URL}/api/data/files/missing/download`,
-        { method: 'POST' }
+        { method: 'POST', timeoutMs: 120_000 }
       );
       await refreshDataStates();
       const count = data.downloaded_keys?.length ?? 0;

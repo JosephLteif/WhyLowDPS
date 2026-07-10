@@ -9,8 +9,6 @@ import { usePathname } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
 
 const AUTO_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
-const UPDATE_STATUS_EVENT = 'whylowdps-updater-status';
-const PENDING_UPDATE_STATUSES = new Set(['available', 'downloading', 'downloaded']);
 
 export default function DataGuard({ children }: { children: ReactNode }) {
   const [dataStatus, setDataStatus] = useState<any>({ status: 'syncing', progress: '' });
@@ -20,8 +18,6 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   const [isChecking, setIsChecking] = useState(true);
   const [missingRequiredFiles, setMissingRequiredFiles] = useState<string[]>([]);
   const [showMissingFilesPopup, setShowMissingFilesPopup] = useState(false);
-  const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(isDesktop);
-  const [isUpdatePending, setIsUpdatePending] = useState(false);
   const [missingDataDownloadBusy, setMissingDataDownloadBusy] = useState(false);
   const [missingDataProgress, setMissingDataProgress] = useState<{
     task: string;
@@ -46,19 +42,6 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   const statusFailureFirstAtRef = useRef<number | null>(null);
   const autoRetryAttemptRef = useRef(0);
   const autoRetryTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const onUpdaterStatus = (event: Event) => {
-      const status = String(
-        (event as CustomEvent<{ status?: string }>).detail?.status || ''
-      ).toLowerCase();
-      setIsUpdateCheckPending(false);
-      setIsUpdatePending(PENDING_UPDATE_STATUSES.has(status));
-    };
-
-    window.addEventListener(UPDATE_STATUS_EVENT, onUpdaterStatus as EventListener);
-    return () => window.removeEventListener(UPDATE_STATUS_EVENT, onUpdaterStatus as EventListener);
-  }, []);
 
   const safeText = (value: unknown, fallback = ''): string => {
     if (typeof value === 'string') return value;
@@ -324,7 +307,10 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       const result = await fetchJson<{
         failed?: Array<{ error?: string }>;
         sources?: Record<string, string[]>;
-      }>(`${API_URL}/api/data/files/missing/download`, { method: 'POST' });
+      }>(`${API_URL}/api/data/files/missing/download`, {
+        method: 'POST',
+        timeoutMs: 120_000,
+      });
       if (Array.isArray(result?.failed) && result.failed.length > 0) {
         const firstError = result.failed[0]?.error || 'Some files failed to download.';
         setMissingDataError(firstError);
@@ -431,8 +417,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       normalizedPath.startsWith('/character') ||
       normalizedPath === '/wishlist' ||
        normalizedPath === '/talent-playground');
-  const shouldShowMissingFilesPopup =
-    showMissingFilesPopup && !isUpdateCheckPending && !isUpdatePending;
+  const shouldShowMissingFilesPopup = showMissingFilesPopup;
 
   let content: React.ReactNode = children;
   if (lightModeBlockedRoute) {

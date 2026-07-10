@@ -64,7 +64,7 @@ describe('DataGuard auth gating', () => {
     expect(screen.queryByTestId('splash')).not.toBeInTheDocument();
   });
 
-  it('prioritizes an available app update over missing required data', async () => {
+  it('keeps missing required data actionable while an app update is available', async () => {
     localStorage.setItem('whylowdps_data_ready', 'true');
     mocks.useAuth.mockReturnValue({
       user: { battletag: 'User#1234' },
@@ -93,18 +93,9 @@ describe('DataGuard auth gating', () => {
         expect.stringContaining('/api/data/files')
       );
     });
-    expect(screen.queryByText('Critical data files are missing')).not.toBeInTheDocument();
-
     act(() => {
       window.dispatchEvent(
         new CustomEvent('whylowdps-updater-status', { detail: { status: 'available' } })
-      );
-    });
-    expect(screen.queryByText('Critical data files are missing')).not.toBeInTheDocument();
-
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('whylowdps-updater-status', { detail: { status: 'none' } })
       );
     });
     await waitFor(() => {
@@ -112,7 +103,7 @@ describe('DataGuard auth gating', () => {
     });
   });
 
-  it('keeps the repair action hidden while a desktop update is available', async () => {
+  it('keeps the repair action available while a desktop update is available', async () => {
     localStorage.setItem('whylowdps_data_ready', 'true');
     mocks.useAuth.mockReturnValue({
       user: { battletag: 'User#1234' },
@@ -144,13 +135,42 @@ describe('DataGuard auth gating', () => {
     await waitFor(() => {
       expect(mocks.fetchJson).toHaveBeenCalledWith(expect.stringContaining('/api/data/files'));
     });
-    expect(screen.queryByRole('button', { name: 'Repair Missing Files' })).not.toBeInTheDocument();
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('whylowdps-updater-status', { detail: { status: 'none' } })
-      );
-    });
     expect(await screen.findByRole('button', { name: 'Repair Missing Files' })).toBeInTheDocument();
+  });
+
+  it('rechecks required files and opens repair on app focus', async () => {
+    localStorage.setItem('whylowdps_data_ready', 'true');
+    let files = [] as Array<{ required: boolean; exists: boolean; label: string }>;
+    mocks.useAuth.mockReturnValue({
+      user: { battletag: 'User#1234' },
+      loading: false,
+      lightMode: false,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: true }),
+    });
+    mocks.fetchJson.mockImplementation((url: string) => {
+      if (url.endsWith('/api/data/status')) return Promise.resolve({ status: 'ready' });
+      if (url.endsWith('/api/data/files')) return Promise.resolve({ files });
+      return Promise.resolve({});
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+
+    await waitFor(() => {
+      expect(mocks.fetchJson).toHaveBeenCalledWith(expect.stringContaining('/api/data/files'));
+    });
+    expect(screen.queryByText('Critical data files are missing')).not.toBeInTheDocument();
+
+    files = [{ required: true, exists: false, label: 'WoW Seasons' }];
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    expect(await screen.findByText('Critical data files are missing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Repair Missing Files' })).toBeInTheDocument();
   });
 
   it('shows recovery snapshot progress while repair is running', async () => {
@@ -196,6 +216,39 @@ describe('DataGuard auth gating', () => {
       await screen.findByText('Downloading verified recovery snapshot', {}, { timeout: 3000 })
     ).toBeInTheDocument();
     expect(screen.getByText('Downloaded: 512 B / 1 KB')).toBeInTheDocument();
+  });
+
+  it('allows the missing-data repair request to outlive the default API timeout', async () => {
+    localStorage.setItem('whylowdps_data_ready', 'true');
+    mocks.useAuth.mockReturnValue({
+      user: { battletag: 'User#1234' },
+      loading: false,
+      lightMode: false,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: true }),
+    });
+    mocks.fetchJson.mockImplementation((url: string) => {
+      if (url.endsWith('/api/data/status')) return Promise.resolve({ status: 'ready' });
+      if (url.endsWith('/api/data/files')) {
+        return Promise.resolve({ files: [{ required: true, exists: false, label: 'Items' }] });
+      }
+      if (url.endsWith('/api/data/files/missing/download')) {
+        return Promise.resolve({ sources: {}, failed: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Repair Missing Files' }));
+
+    expect(mocks.fetchJson).toHaveBeenCalledWith(
+      expect.stringContaining('/api/data/files/missing/download'),
+      { method: 'POST', timeoutMs: 120_000 },
+    );
   });
 
   it('reports the recovery snapshot source without exposing a metadata link', async () => {

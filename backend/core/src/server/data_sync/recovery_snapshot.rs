@@ -258,6 +258,12 @@ fn apply_verified_archive(
             (entry.local_path.as_str(), (entry, file))
         })
         .collect();
+    let mut manifest_files = HashMap::new();
+    for file in &manifest.files {
+        if manifest_files.insert(file.path.as_str(), file).is_some() {
+            return Err(format!("Recovery manifest contains duplicate path {}", file.path));
+        }
+    }
     if entries
         .iter()
         .any(|entry| root.join(&entry.local_path).exists())
@@ -283,24 +289,30 @@ fn apply_verified_archive(
         if !archive_paths.insert(path.clone()) {
             return Err(format!("Recovery archive contains duplicate path {path}"));
         }
-        let Some((_, expected)) = requested.get(path.as_str()) else {
-            return Err(format!("Recovery archive contains unrequested path {path}"));
+        let Some(expected) = manifest_files.get(path.as_str()) else {
+            return Err(format!("Recovery archive contains unexpected path {path}"));
         };
         if file.size() != expected.size {
             return Err(format!("Recovery archive size mismatch for {path}"));
         }
 
-        let staged_path = staging.path().join(&path);
-        if let Some(parent) = staged_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|err| {
-                format!(
-                    "Failed to create recovery staging directory {}: {err}",
-                    parent.display()
-                )
-            })?;
-        }
-        let mut staged_file = std::fs::File::create(&staged_path)
-            .map_err(|err| format!("Failed to stage recovery file {path}: {err}"))?;
+        let mut staged_file = if requested.contains_key(path.as_str()) {
+            let staged_path = staging.path().join(&path);
+            if let Some(parent) = staged_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|err| {
+                    format!(
+                        "Failed to create recovery staging directory {}: {err}",
+                        parent.display()
+                    )
+                })?;
+            }
+            Some(
+                std::fs::File::create(&staged_path)
+                    .map_err(|err| format!("Failed to stage recovery file {path}: {err}"))?,
+            )
+        } else {
+            None
+        };
         let mut hasher = Sha256::new();
         let mut written = 0_u64;
         let mut buffer = [0_u8; 32 * 1024];
@@ -316,17 +328,19 @@ fn apply_verified_archive(
                 return Err(format!("Recovery archive size mismatch for {path}"));
             }
             hasher.update(&buffer[..count]);
-            staged_file
-                .write_all(&buffer[..count])
-                .map_err(|err| format!("Failed to stage recovery file {path}: {err}"))?;
+            if let Some(staged_file) = staged_file.as_mut() {
+                staged_file
+                    .write_all(&buffer[..count])
+                    .map_err(|err| format!("Failed to stage recovery file {path}: {err}"))?;
+            }
         }
         if written != expected.size || format!("{:x}", hasher.finalize()) != expected.sha256 {
             return Err(format!("Recovery archive checksum mismatch for {path}"));
         }
     }
 
-    if archive_paths.len() != requested.len() {
-        return Err("Recovery archive is missing requested files".to_string());
+    if archive_paths.len() != manifest_files.len() {
+        return Err("Recovery archive does not match manifest files".to_string());
     }
     let mut published = Vec::with_capacity(entries.len());
     let mut created_directories = Vec::new();
@@ -724,18 +738,25 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unexpected_archive_entries() {
+    fn restores_requested_files_from_complete_archive() {
         let root = tempfile::tempdir().expect("root");
         let archive = zip_bytes(&[("items.json", b"[]"), ("bonuses.json", b"new")]);
 
-        assert!(apply_verified_archive(
-            root.path(),
-            &manifest_for(&archive, &[("items.json", b"[]")]),
-            &archive,
-            &[entry("items", "items.json")]
-        )
-        .is_err());
-        assert!(!root.path().join("items.json").exists());
+        assert_eq!(
+            apply_verified_archive(
+                root.path(),
+                &manifest_for(
+                    &archive,
+                    &[("items.json", b"[]"), ("bonuses.json", b"new")]
+                ),
+                &archive,
+                &[entry("items", "items.json")]
+            )
+            .expect("complete archive restores requested file"),
+            vec!["items"]
+        );
+        assert_eq!(std::fs::read(root.path().join("items.json")).unwrap(), b"[]");
+        assert!(!root.path().join("bonuses.json").exists());
     }
 
     #[test]
@@ -745,7 +766,10 @@ mod tests {
 
         assert!(apply_verified_archive(
             root.path(),
-            &manifest_for(&archive, &[("items.json", b"[]")]),
+            &manifest_for(
+                &archive,
+                &[("items.json", b"[]"), ("bonus-one.json", b"first")]
+            ),
             &archive,
             &[entry("items", "items.json")]
         )

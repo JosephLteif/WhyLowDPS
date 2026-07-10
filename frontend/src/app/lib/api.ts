@@ -40,6 +40,10 @@ const DEFAULT_FETCH_TIMEOUT_MS = 8000;
 const GET_RETRY_ATTEMPTS = 2;
 const GET_RETRY_DELAY_MS = 300;
 
+type FetchJsonInit = RequestInit & {
+  timeoutMs?: number;
+};
+
 export type BlizzardCredentialProfile = {
   id: string;
   name: string;
@@ -67,8 +71,9 @@ export function isNetworkUnavailableError(err: any): boolean {
 }
 
 /** Fetch JSON with consistent error handling. Throws on non-ok responses. */
-export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const headers = { ...init?.headers } as Record<string, string>;
+export async function fetchJson<T>(url: string, init?: FetchJsonInit): Promise<T> {
+  const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, ...requestInit } = init || {};
+  const headers = { ...requestInit.headers } as Record<string, string>;
 
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -78,7 +83,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
   }
 
   // Default to application/json for mutating requests if not specified.
-  const requestMethod = init?.method?.toUpperCase();
+  const requestMethod = requestInit.method?.toUpperCase();
   if (requestMethod === 'POST' || requestMethod === 'PUT' || requestMethod === 'PATCH') {
     if (!headers['Content-Type']) {
       headers['Content-Type'] = 'application/json';
@@ -86,7 +91,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
   }
 
   const finalInit = {
-    ...init,
+    ...requestInit,
     headers,
     credentials: 'include' as RequestCredentials,
   };
@@ -96,7 +101,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
   let res: Response | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
-    const timedInit = withTimeout(finalInit, DEFAULT_FETCH_TIMEOUT_MS);
+    const timedInit = withTimeout(finalInit, timeoutMs);
     const clearTimer = (timedInit as any).__clearTimeout as (() => void) | undefined;
     delete (timedInit as any).__clearTimeout;
     try {

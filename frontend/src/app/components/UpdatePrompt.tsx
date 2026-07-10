@@ -391,9 +391,18 @@ export default function UpdatePrompt() {
     try {
       if (window.electronAPI) {
         const result = await window.electronAPI.checkForUpdate();
-        if (!result) {
+        const currentVersion = resolveCurrentVersion(await getCurrentAppVersion());
+        if (
+          !result ||
+          !isRemoteNewerForSelectedChannel(currentVersion, result.version, selectedChannel)
+        ) {
           setState('idle');
-          emitUpdaterStatus('none', 'You are on the latest version.');
+          emitUpdaterStatus(
+            'none',
+            currentVersion
+              ? `You are on the latest version (${currentVersion}).`
+              : 'You are on the latest version.',
+          );
           return;
         }
         updateRef.current = null;
@@ -477,6 +486,16 @@ export default function UpdatePrompt() {
 
       updateRef.current = update;
       const version = String(update.version ?? update.versionName ?? 'latest');
+      if (!isRemoteNewerForSelectedChannel(currentVersion, version, selectedChannel)) {
+        setState('idle');
+        emitUpdaterStatus(
+          'none',
+          currentVersion
+            ? `You are on the latest version (${currentVersion}).`
+            : 'You are on the latest version.',
+        );
+        return;
+      }
       const notes = typeof update.body === 'string' ? update.body : undefined;
       const updateSnapshot = {
         version,

@@ -17,7 +17,9 @@ describe('ChangelogPopup', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Reliable missing-data repair' })
+    ).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));

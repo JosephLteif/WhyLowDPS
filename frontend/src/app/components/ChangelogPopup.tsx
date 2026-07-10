@@ -27,12 +27,22 @@ type ReleaseNote = {
 
 const releaseNotes: ReleaseNote[] = [
   {
-    category: 'improvement',
-    title: 'Missing required wow season files fixed',
+    category: 'fix',
+    title: 'Reliable missing-data repair',
     body: [
       {
         type: 'paragraph',
-        text: 'Missing required data are no bundled with the app, avoiding issues on launch',
+        text: 'Download All Missing now restores verified game data from GitHub first and automatically falls back to Raidbots if needed.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Clearer game data file states',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The Game Data File States view now labels every file as Required or Optional, alongside its download status.',
       },
     ],
   }

@@ -14,7 +14,6 @@ type DataFileStateModalProps = {
   dataStateMessage: SettingsStatusMessage | null;
   dataActionBusyKey: string | null;
   groupedDataFiles?: Record<string, DataFileState[]>;
-  sectionSummaries: Record<string, { totalBytes: number; downloaded: number; total: number }>;
   refreshDataStates: () => Promise<void>;
   downloadAllMissingFiles: () => Promise<void>;
   openDataRootDirectory: () => Promise<void>;
@@ -34,7 +33,6 @@ export default function DataFileStateModal({
   dataStateMessage,
   dataActionBusyKey,
   groupedDataFiles,
-  sectionSummaries,
   refreshDataStates,
   downloadAllMissingFiles,
   openDataRootDirectory,
@@ -44,6 +42,12 @@ export default function DataFileStateModal({
 }: DataFileStateModalProps) {
   const modalRef = useRef<HTMLDivElement | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'missing' | 'available'>(
+    'all'
+  );
+  const [requirementFilter, setRequirementFilter] = useState<'all' | 'required' | 'optional'>(
+    'all'
+  );
   useDismissOnOutside(modalRef, isOpen && !disableOutsideDismiss, onClose);
 
   const formatBytes = (n: number) =>
@@ -51,17 +55,22 @@ export default function DataFileStateModal({
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredGroupedDataFiles = useMemo(() => {
     const source = groupedDataFiles || {};
-    if (!normalizedQuery) return source;
     const out: Record<string, DataFileState[]> = {};
     for (const [section, files] of Object.entries(source)) {
       const filtered = files.filter((file) => {
+        const matchesAvailability =
+          availabilityFilter === 'all' ||
+          (availabilityFilter === 'missing' ? !file.exists : file.exists);
+        const matchesRequirement =
+          requirementFilter === 'all' ||
+          (requirementFilter === 'required' ? file.required : !file.required);
         const hay = `${section} ${file.label} ${file.key} ${file.relative_path}`.toLowerCase();
-        return hay.includes(normalizedQuery);
+        return matchesAvailability && matchesRequirement && hay.includes(normalizedQuery);
       });
       if (filtered.length > 0) out[section] = filtered;
     }
     return out;
-  }, [groupedDataFiles, normalizedQuery]);
+  }, [availabilityFilter, groupedDataFiles, normalizedQuery, requirementFilter]);
 
   if (!isOpen) return null;
 
@@ -87,37 +96,85 @@ export default function DataFileStateModal({
         </div>
 
         <div className="max-h-[calc(80vh-72px)] overflow-y-auto p-5">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => void refreshDataStates()}
-              disabled={dataStateLoading || dataActionBusyKey !== null}
-              className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-            >
-              Refresh List
-            </button>
-            <button
-              onClick={() => void downloadAllMissingFiles()}
-              disabled={dataStateLoading || dataActionBusyKey !== null}
-              className="rounded-md border border-gold/30 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:opacity-50"
-            >
-              {dataActionBusyKey === 'download-missing'
-                ? 'Downloading Missing...'
-                : 'Download All Missing'}
-            </button>
-            <button
-              onClick={() => void openDataRootDirectory()}
-              disabled={!isDesktop || !dataFileStates?.base_path}
-              className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
-            >
-              Open Data Dir
-            </button>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search files..."
-              className="ml-auto min-w-[220px] rounded-md border border-zinc-700 bg-black/40 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500"
-            />
+          <div className="mb-3 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => void downloadAllMissingFiles()}
+                disabled={dataStateLoading || dataActionBusyKey !== null}
+                className="rounded-md border border-gold/30 bg-gold/10 px-3 py-1.5 text-xs font-semibold text-gold hover:bg-gold/20 disabled:opacity-50"
+              >
+                {dataActionBusyKey === 'download-missing'
+                  ? 'Downloading Missing...'
+                  : 'Download All Missing'}
+              </button>
+              <div className="inline-flex gap-2 border-l border-border/70 pl-2">
+                <button
+                  onClick={() => void refreshDataStates()}
+                  disabled={dataStateLoading || dataActionBusyKey !== null}
+                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
+                >
+                  Refresh List
+                </button>
+                <button
+                  onClick={() => void openDataRootDirectory()}
+                  disabled={!isDesktop || !dataFileStates?.base_path}
+                  className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/10 disabled:opacity-50"
+                >
+                  Open Data Dir
+                </button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                role="group"
+                aria-label="Availability"
+                className="flex items-center gap-1 rounded-md border border-border/70 bg-black/20 p-1"
+              >
+                {(['all', 'missing', 'available'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    aria-pressed={availabilityFilter === filter}
+                    onClick={() => setAvailabilityFilter(filter)}
+                    className={`rounded px-2 py-1 text-[11px] font-semibold ${
+                      availabilityFilter === filter
+                        ? 'bg-gold/15 text-gold'
+                        : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                    }`}
+                  >
+                    {filter === 'all' ? 'All' : filter === 'missing' ? 'Missing' : 'Available'}
+                  </button>
+                ))}
+              </div>
+              <div
+                role="group"
+                aria-label="Requirement"
+                className="flex items-center gap-1 rounded-md border border-border/70 bg-black/20 p-1"
+              >
+                {(['all', 'required', 'optional'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    aria-pressed={requirementFilter === filter}
+                    onClick={() => setRequirementFilter(filter)}
+                    className={`rounded px-2 py-1 text-[11px] font-semibold ${
+                      requirementFilter === filter
+                        ? 'bg-gold/15 text-gold'
+                        : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                    }`}
+                  >
+                    {filter === 'all' ? 'All' : filter === 'required' ? 'Required' : 'Optional'}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search files..."
+                className="min-w-[220px] flex-1 rounded-md border border-zinc-700 bg-black/40 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-500"
+              />
+            </div>
           </div>
 
           {dataStateLoading && <p className="text-sm text-zinc-400">Loading data state...</p>}
@@ -150,8 +207,13 @@ export default function DataFileStateModal({
                     </h4>
                     <div className="h-px flex-1 bg-border/70" />
                     <span className="text-[11px] text-zinc-500">
-                      {sectionSummaries[section]?.downloaded ?? 0}/{files.length} files ·{' '}
-                      {formatBytes(sectionSummaries[section]?.totalBytes ?? 0)}
+                      {files.filter((file) => file.exists).length}/{files.length} files ·{' '}
+                      {formatBytes(
+                        files.reduce(
+                          (totalBytes, file) => totalBytes + (file.exists ? file.size_bytes : 0),
+                          0
+                        )
+                      )}
                     </span>
                   </div>
                   <div className="space-y-2">
@@ -167,6 +229,15 @@ export default function DataFileStateModal({
                           </p>
                           <p className="truncate font-mono text-[11px] text-zinc-600">
                             {file.resolved_path}
+                          </p>
+                          <p
+                            className={`mt-1 w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              file.required
+                                ? 'bg-amber-500/10 text-amber-300'
+                                : 'bg-zinc-700/40 text-zinc-400'
+                            }`}
+                          >
+                            {file.required ? 'Required' : 'Optional'}
                           </p>
                         </div>
                         <span
@@ -212,7 +283,7 @@ export default function DataFileStateModal({
               ))}
               {Object.keys(filteredGroupedDataFiles).length === 0 && (
                 <div className="rounded-lg border border-border/70 bg-surface/40 p-3 text-sm text-zinc-400">
-                  No files match your search.
+                  No files match the active filters or search.
                 </div>
               )}
             </div>

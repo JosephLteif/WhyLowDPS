@@ -2,6 +2,8 @@ use actix_web::{web, HttpResponse};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
+use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -18,6 +20,8 @@ mod data_files;
 mod image_helpers;
 mod image_sources;
 mod raidbots;
+#[allow(dead_code)] // Task 3 wires this isolated recovery module into the handler flow.
+mod recovery_snapshot;
 mod wowhead_zones;
 mod zones_index;
 
@@ -584,6 +588,7 @@ mod tests {
         let resp = download_missing_data_files(
             web::Data::new(None),
             web::Data::new(Arc::new(BlizzardState::new())),
+            test_sync_state(),
         )
         .await;
         assert_eq!(resp.status(), 400);
@@ -593,6 +598,214 @@ mod tests {
             payload.get("detail").and_then(Value::as_str),
             Some("Data directory is unavailable")
         );
+    }
+
+    fn raidbots_entry(key: &str, local_path: &str) -> catalog::DataFileEntry {
+        catalog::DataFileEntry {
+            key: key.to_string(),
+            label: key.to_string(),
+            section: "Test".to_string(),
+            source: DataFileSource::Raidbots,
+            remote_path: Some(local_path.to_string()),
+            local_path: local_path.to_string(),
+            required: true,
+            entry_type: DataFileEntryType::File,
+            bundled_path: None,
+        }
+    }
+
+    fn recovery_snapshot_fixture(path: &str, contents: &[u8]) -> (Vec<u8>, Vec<u8>) {
+        use sha2::{Digest, Sha256};
+        use std::io::Write;
+
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        zip.start_file::<_, ()>(path, zip::write::FileOptions::default())
+            .expect("start recovery fixture entry");
+        zip.write_all(contents)
+            .expect("write recovery fixture entry");
+        let archive = zip.finish().expect("finish recovery fixture").into_inner();
+        let sha256 = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
+        let manifest = serde_json::to_vec(&json!({
+            "schema_version": 1,
+            "generated_at": chrono::Utc::now(),
+            "archive": {
+                "name": "snapshot.zip",
+                "sha256": sha256(&archive),
+                "size": archive.len(),
+            },
+            "files": [{
+                "path": path,
+                "sha256": sha256(contents),
+                "size": contents.len(),
+            }],
+        }))
+        .expect("serialize recovery fixture manifest");
+        (manifest, archive)
+    }
+
+    #[actix_web::test]
+    async fn missing_data_repair_prefers_recovery_snapshot() {
+        let root = tempfile::tempdir().expect("repair root");
+        let entry = raidbots_entry("items", "items.json");
+        let (manifest, archive) = recovery_snapshot_fixture("items.json", b"[]");
+        let raidbots_attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let recovery_root = root.path().to_path_buf();
+        let recovery_entries = vec![entry.clone()];
+        let recovery = recovery_snapshot::restore_missing_raidbots_files_from_bytes(
+            &recovery_root,
+            &recovery_entries,
+            &manifest,
+            &archive,
+            |_| {},
+        );
+
+        let result = repair_missing_raidbots_entries(root.path(), &[entry], recovery, || {}, {
+            let raidbots_attempts = raidbots_attempts.clone();
+            move |_| {
+                let raidbots_attempts = raidbots_attempts.clone();
+                async move {
+                    raidbots_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Err("Raidbots is unavailable".to_string())
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(
+            result.sources["recovery_snapshot"],
+            vec!["items".to_string()]
+        );
+        assert!(result.sources["raidbots"].is_empty());
+        assert!(result.failed.is_empty());
+        assert_eq!(
+            raidbots_attempts.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
+    #[actix_web::test]
+    async fn missing_data_repair_falls_back_only_after_snapshot_failure() {
+        let root = tempfile::tempdir().expect("repair root");
+        let entry = raidbots_entry("items", "items.json");
+        let (mut manifest, archive) = recovery_snapshot_fixture("items.json", b"[]");
+        manifest[0] = b'!';
+        let recovery_root = root.path().to_path_buf();
+        let recovery_entries = vec![entry.clone()];
+        let recovery = recovery_snapshot::restore_missing_raidbots_files_from_bytes(
+            &recovery_root,
+            &recovery_entries,
+            &manifest,
+            &archive,
+            |_| {},
+        );
+
+        let result = repair_missing_raidbots_entries(
+            root.path(),
+            &[entry],
+            recovery,
+            || {},
+            |entry| {
+                let target = root.path().join(&entry.local_path);
+                async move {
+                    std::fs::write(target, b"[]").map_err(|err| err.to_string())?;
+                    Ok(())
+                }
+            },
+        )
+        .await;
+
+        assert!(result.sources["recovery_snapshot"].is_empty());
+        assert_eq!(result.sources["raidbots"], vec!["items".to_string()]);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0]["source"], "recovery_snapshot");
+        assert!(result.failed[0]["error"].is_string());
+    }
+
+    #[actix_web::test]
+    async fn missing_data_repair_reports_recovery_failure_after_raidbots_fallback() {
+        let root = tempfile::tempdir().expect("repair root");
+        let entry = raidbots_entry("items", "items.json");
+
+        let result = repair_missing_raidbots_entries(
+            root.path(),
+            &[entry],
+            async { Err("snapshot unavailable".to_string()) },
+            || {},
+            |entry| {
+                let target = root.path().join(&entry.local_path);
+                async move {
+                    std::fs::write(target, b"[]").map_err(|err| err.to_string())?;
+                    Ok(())
+                }
+            },
+        )
+        .await;
+
+        assert_eq!(result.sources["raidbots"], vec!["items".to_string()]);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0]["source"], "recovery_snapshot");
+        assert_eq!(result.failed[0]["error"], "snapshot unavailable");
+    }
+
+    #[actix_web::test]
+    async fn missing_data_repair_reports_recovery_and_raidbots_failures() {
+        let root = tempfile::tempdir().expect("repair root");
+        let entry = raidbots_entry("items", "items.json");
+
+        let result = repair_missing_raidbots_entries(
+            root.path(),
+            &[entry],
+            async { Err("snapshot unavailable".to_string()) },
+            || {},
+            |_| async { Err("Raidbots unavailable".to_string()) },
+        )
+        .await;
+
+        assert_eq!(result.failed.len(), 2);
+        assert_eq!(result.failed[0]["source"], "recovery_snapshot");
+        assert_eq!(result.failed[0]["error"], "snapshot unavailable");
+        assert_eq!(result.failed[1]["source"], "raidbots");
+        assert_eq!(result.failed[1]["error"], "Raidbots unavailable");
+    }
+
+    #[actix_web::test]
+    async fn missing_data_repair_creates_missing_root_before_snapshot_restore() {
+        let parent = tempfile::tempdir().expect("repair parent");
+        let root = parent.path().join("missing-root");
+        let entry = raidbots_entry("items", "items.json");
+        let (manifest, archive) = recovery_snapshot_fixture("items.json", b"[]");
+        let raidbots_attempts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let recovery_entries = vec![entry.clone()];
+        let recovery = recovery_snapshot::restore_missing_raidbots_files_from_bytes(
+            &root,
+            &recovery_entries,
+            &manifest,
+            &archive,
+            |_| {},
+        );
+
+        let result = repair_missing_raidbots_entries(&root, &[entry], recovery, || {}, {
+            let raidbots_attempts = raidbots_attempts.clone();
+            move |_| {
+                let raidbots_attempts = raidbots_attempts.clone();
+                async move {
+                    raidbots_attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Err("Raidbots is unavailable".to_string())
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(
+            result.sources["recovery_snapshot"],
+            vec!["items".to_string()]
+        );
+        assert!(result.failed.is_empty());
+        assert_eq!(
+            raidbots_attempts.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+        assert_eq!(std::fs::read(root.join("items.json")).unwrap(), b"[]");
     }
 
     #[actix_web::test]
@@ -1160,6 +1373,137 @@ async fn download_raidbots_file(
     Ok(())
 }
 
+#[derive(Default)]
+struct MissingDataRepairResult {
+    downloaded_keys: Vec<String>,
+    sources: BTreeMap<String, Vec<String>>,
+    failed: Vec<Value>,
+}
+
+impl MissingDataRepairResult {
+    fn new() -> Self {
+        let mut sources = BTreeMap::new();
+        for source in ["bundled", "recovery_snapshot", "raidbots"] {
+            sources.insert(source.to_string(), Vec::new());
+        }
+        Self {
+            sources,
+            ..Self::default()
+        }
+    }
+
+    fn restored(&mut self, source: &str, entry: &catalog::DataFileEntry) {
+        self.downloaded_keys.push(entry.key.clone());
+        self.sources
+            .get_mut(source)
+            .expect("repair source initialized")
+            .push(entry.key.clone());
+    }
+
+    fn failed(&mut self, source: &str, entry: &catalog::DataFileEntry, error: String) {
+        self.failed.push(json!({
+            "source": source,
+            "key": entry.key,
+            "relative_path": entry.local_path,
+            "error": error,
+        }));
+    }
+
+    fn merge(&mut self, other: Self) {
+        self.downloaded_keys.extend(other.downloaded_keys);
+        self.failed.extend(other.failed);
+        for (source, keys) in other.sources {
+            self.sources
+                .get_mut(&source)
+                .expect("repair source initialized")
+                .extend(keys);
+        }
+    }
+}
+
+async fn restore_local_entries(
+    root: &Path,
+    entries: &[catalog::DataFileEntry],
+    client: &reqwest::Client,
+    result: &mut MissingDataRepairResult,
+) {
+    for entry in entries {
+        let restore_result = if entry.key == ZONES_INDEX_ENTRY_KEY {
+            download_github_release_asset(
+                client,
+                env!("CARGO_PKG_VERSION"),
+                ZONES_INDEX_FILE_NAME,
+                &resolve_zones_index_path(root),
+            )
+            .await
+        } else {
+            restore_local_file_from_bundle(root, entry)
+        };
+        match restore_result {
+            Ok(()) => result.restored("bundled", entry),
+            Err(error) => result.failed("bundled", entry, error),
+        }
+    }
+}
+
+async fn repair_missing_raidbots_entries<R, D, DFut, P>(
+    root: &Path,
+    entries: &[catalog::DataFileEntry],
+    recovery: R,
+    mut report_snapshot_failure: P,
+    mut download: D,
+) -> MissingDataRepairResult
+where
+    R: Future<Output = Result<Vec<String>, String>>,
+    D: FnMut(catalog::DataFileEntry) -> DFut,
+    DFut: Future<Output = Result<(), String>>,
+    P: FnMut(),
+{
+    let mut result = MissingDataRepairResult::new();
+    match recovery.await {
+        Ok(restored) => {
+            for key in restored {
+                if let Some(entry) = entries.iter().find(|entry| entry.key == key) {
+                    result.restored("recovery_snapshot", entry);
+                }
+            }
+        }
+        Err(error) => {
+            result.failed.push(json!({
+                "source": "recovery_snapshot",
+                "error": error,
+            }));
+            report_snapshot_failure();
+        }
+    }
+
+    for entry in entries
+        .iter()
+        .filter(|entry| !resolve_data_file_read_path(root, entry).exists())
+    {
+        match download(entry.clone()).await {
+            Ok(()) => result.restored("raidbots", entry),
+            Err(error) => result.failed("raidbots", entry, error),
+        }
+    }
+    result
+}
+
+fn repair_progress(
+    current: usize,
+    total: usize,
+    detail: &str,
+    downloaded_bytes: u64,
+    total_bytes: u64,
+    started: Instant,
+    speed_bytes_per_sec: u64,
+) -> String {
+    format!(
+        "Repair:{current}:{total}:{detail}:{downloaded_bytes}:{total_bytes}:{}:{speed_bytes_per_sec}",
+        started.elapsed().as_millis()
+    )
+}
+
 pub async fn download_data_file(
     path: web::Path<String>,
     data_dir: web::Data<Option<PathBuf>>,
@@ -1264,6 +1608,7 @@ pub async fn download_data_file(
 pub async fn download_missing_data_files(
     data_dir: web::Data<Option<PathBuf>>,
     blizzard: web::Data<Arc<BlizzardState>>,
+    state: web::Data<Arc<DataSyncState>>,
 ) -> HttpResponse {
     let catalog = match data_file_catalog() {
         Ok(entries) => entries,
@@ -1277,83 +1622,100 @@ pub async fn download_missing_data_files(
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
 
-    let mut downloaded: Vec<String> = Vec::new();
-    let mut failed: Vec<serde_json::Value> = Vec::new();
+    let missing_entries: Vec<_> = catalog
+        .into_iter()
+        .filter(|entry| {
+            entry.entry_type == DataFileEntryType::File
+                && ((entry.source == DataFileSource::Raidbots && entry.remote_path.is_some())
+                    || (entry.source == DataFileSource::Local && entry.bundled_path.is_some()))
+        })
+        .filter(|entry| {
+            let path = if entry.source == DataFileSource::Local && entry.bundled_path.is_some() {
+                catalog::resolve_runtime_path(&root, entry)
+            } else {
+                resolve_data_file_read_path(&root, entry)
+            };
+            !path.exists()
+        })
+        .collect();
+    let (local_entries, raidbots_entries): (Vec<_>, Vec<_>) = missing_entries
+        .into_iter()
+        .partition(|entry| entry.source == DataFileSource::Local);
+    let mut result = MissingDataRepairResult::new();
+    restore_local_entries(&root, &local_entries, &blizzard.client, &mut result).await;
 
-    for entry in catalog.iter().filter(|e| {
-        e.entry_type == DataFileEntryType::File
-            && ((e.source == DataFileSource::Raidbots && e.remote_path.is_some())
-                || (e.source == DataFileSource::Local && e.bundled_path.is_some()))
-    }) {
-        let path = if entry.source == DataFileSource::Local && entry.bundled_path.is_some() {
-            catalog::resolve_runtime_path(&root, entry)
-        } else {
-            resolve_data_file_read_path(&root, entry)
-        };
-        if path.exists() {
-            continue;
-        }
-
-        if entry.source == DataFileSource::Local {
-            if entry.key == ZONES_INDEX_ENTRY_KEY {
-                let destination = resolve_zones_index_path(&root);
-                let version = env!("CARGO_PKG_VERSION");
-                match download_github_release_asset(
-                    &blizzard.client,
-                    version,
-                    ZONES_INDEX_FILE_NAME,
-                    &destination,
-                )
-                .await
-                {
-                    Ok(()) => {
-                        downloaded.push(entry.key.clone());
-                    }
-                    Err(err) => failed.push(json!({
-                        "key": entry.key,
-                        "relative_path": entry.local_path,
-                        "error": err,
-                    })),
+    if !raidbots_entries.is_empty() {
+        let started = Instant::now();
+        let raidbots_total = raidbots_entries.len();
+        let progress_state = state.get_ref().clone();
+        let recovery_progress_state = progress_state.clone();
+        let recovery = recovery_snapshot::restore_missing_raidbots_files(
+            &blizzard.client,
+            &root,
+            &raidbots_entries,
+            move |progress| {
+                if let Ok(mut value) = recovery_progress_state.progress.try_lock() {
+                    *value = repair_progress(
+                        progress.current,
+                        progress.total,
+                        &progress.detail,
+                        progress.downloaded_bytes,
+                        progress.total_bytes,
+                        started,
+                        progress.speed_bytes_per_sec,
+                    );
                 }
-                continue;
-            }
-
-            match restore_local_file_from_bundle(&root, entry) {
-                Ok(()) => downloaded.push(entry.key.clone()),
-                Err(err) => failed.push(json!({
-                    "key": entry.key,
-                    "relative_path": entry.local_path,
-                    "error": err,
-                })),
-            }
-            continue;
-        }
-
-        let Some(remote_path) = entry.remote_path.as_deref() else {
-            continue;
-        };
-
-        match download_raidbots_file(&blizzard.client, &root, remote_path, &entry.local_path).await
-        {
-            Ok(()) => downloaded.push(entry.key.clone()),
-            Err(err) => failed.push(json!({
-                "key": entry.key,
-                "relative_path": entry.local_path,
-                "error": err,
-            })),
-        }
+            },
+        );
+        let raidbots_client = blizzard.get_ref().clone();
+        let raidbots_root = root.clone();
+        let raidbots_result = repair_missing_raidbots_entries(
+            &root,
+            &raidbots_entries,
+            recovery,
+            move || {
+                if let Ok(mut value) = progress_state.progress.try_lock() {
+                    *value = repair_progress(
+                        0,
+                        raidbots_total,
+                        "Recovery snapshot unavailable; trying Raidbots",
+                        0,
+                        0,
+                        started,
+                        0,
+                    );
+                }
+            },
+            move |entry| {
+                let client = raidbots_client.clone();
+                let root = raidbots_root.clone();
+                async move {
+                    let remote_path = entry
+                        .remote_path
+                        .as_deref()
+                        .expect("raidbots repair entries must have remote paths");
+                    download_raidbots_file(&client.client, &root, remote_path, &entry.local_path)
+                        .await
+                }
+            },
+        )
+        .await;
+        result.merge(raidbots_result);
     }
 
-    crate::item_db::load(&root);
-    let runtime_file = root.join("blizzard-runtime-data.json");
-    if runtime_file.exists() {
-        crate::item_db::hydrate_runtime_metadata(&runtime_file);
+    if !result.downloaded_keys.is_empty() {
+        crate::item_db::load(&root);
+        let runtime_file = root.join("blizzard-runtime-data.json");
+        if runtime_file.exists() {
+            crate::item_db::hydrate_runtime_metadata(&runtime_file);
+        }
     }
 
     HttpResponse::Ok().json(json!({
-        "status": if failed.is_empty() { "ok" } else { "partial" },
-        "downloaded_keys": downloaded,
-        "failed": failed,
+        "status": if result.failed.is_empty() { "ok" } else { "partial" },
+        "downloaded_keys": result.downloaded_keys,
+        "sources": result.sources,
+        "failed": result.failed,
     }))
 }
 

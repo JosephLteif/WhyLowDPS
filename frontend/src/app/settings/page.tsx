@@ -105,7 +105,6 @@ export default function SettingsPage() {
     openDataRootDirectory,
     showFileContent,
     groupedDataFiles,
-    sectionSummaries,
   } = useDataFileStateManager();
   const [refreshPreset, setRefreshPreset] = useState<'disabled' | 'daily' | 'weekly'>('disabled');
   const [activeTab, setActiveTab] = useState<SettingsTab>('simulation');
@@ -817,7 +816,6 @@ export default function SettingsPage() {
         dataStateMessage={dataStateMessage}
         dataActionBusyKey={dataActionBusyKey}
         groupedDataFiles={groupedDataFiles}
-        sectionSummaries={sectionSummaries}
         refreshDataStates={refreshDataStates}
         downloadAllMissingFiles={downloadAllMissingFiles}
         openDataRootDirectory={openDataRootDirectory}

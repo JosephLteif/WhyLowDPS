@@ -68,7 +68,9 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       value /= 1024;
       unit += 1;
     }
-    return `${value.toFixed(value >= 100 || unit === 0 ? 0 : value >= 10 ? 1 : 2)} ${units[unit]}`;
+    return `${value.toFixed(
+      value >= 100 || unit === 0 || Number.isInteger(value) ? 0 : value >= 10 ? 1 : 2
+    )} ${units[unit]}`;
   };
   const parseProgress = (progress: string) => {
     const parts = String(progress || '').split(':');
@@ -152,6 +154,10 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       statusFailureCountRef.current = 0;
       statusFailureFirstAtRef.current = null;
 
+      if (missingDataDownloadBusy && String(data?.progress || '').startsWith('Repair:')) {
+        setMissingDataProgress(parseProgress(String(data.progress)));
+      }
+
       if (data.status === 'ready') {
         if (autoRetryTimerRef.current != null) {
           window.clearTimeout(autoRetryTimerRef.current);
@@ -227,7 +233,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
         setDataStatus({ status: 'syncing', progress: 'Waiting for backend to start...' });
       }
     }
-  }, [lightMode]);
+  }, [lightMode, missingDataDownloadBusy]);
 
   useEffect(() => {
     if (!isReady) {
@@ -298,14 +304,28 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       speedBytesPerSec: 0,
     });
     try {
-      const result = await fetchJson<{ failed?: Array<{ error?: string }> }>(
-        `${API_URL}/api/data/files/missing/download`,
-        { method: 'POST' }
-      );
+      const result = await fetchJson<{
+        failed?: Array<{ error?: string }>;
+        sources?: Record<string, string[]>;
+      }>(`${API_URL}/api/data/files/missing/download`, {
+        method: 'POST',
+        timeoutMs: 120_000,
+      });
       if (Array.isArray(result?.failed) && result.failed.length > 0) {
         const firstError = result.failed[0]?.error || 'Some files failed to download.';
         setMissingDataError(firstError);
       }
+      const repairedSources = [
+        ['bundled', 'packaged files'],
+        ['recovery_snapshot', 'verified recovery snapshot'],
+        ['raidbots', 'Raidbots'],
+      ]
+        .filter(([key]) => (result?.sources?.[key] || []).length > 0)
+        .map(([, label]) => label);
+      const repairDetails =
+        repairedSources.length > 0
+          ? `Repaired from ${repairedSources.join(' and ')}.`
+          : 'Missing files repaired.';
 
       const state = await fetchJson<any>(`${API_URL}/api/data/files`);
       const missing = Array.isArray(state?.files)
@@ -320,7 +340,9 @@ export default function DataGuard({ children }: { children: ReactNode }) {
         current: 0,
         total: 0,
         details:
-          missing.length > 0 ? 'Some required files are still missing.' : 'Missing files repaired.',
+          missing.length > 0
+            ? `${repairDetails} Some required files are still missing.`
+            : repairDetails,
         downloadedBytes: 0,
         totalBytes: 0,
         speedBytesPerSec: 0,
@@ -394,7 +416,8 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       normalizedPath === '/characters' ||
       normalizedPath.startsWith('/character') ||
       normalizedPath === '/wishlist' ||
-      normalizedPath === '/talent-playground');
+       normalizedPath === '/talent-playground');
+  const shouldShowMissingFilesPopup = showMissingFilesPopup;
 
   let content: React.ReactNode = children;
   if (lightModeBlockedRoute) {
@@ -447,7 +470,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   return (
     <>
       {content}
-      {showMissingFilesPopup && (
+      {shouldShowMissingFilesPopup && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
           <div className="w-full max-w-lg rounded-xl border border-amber-500/30 bg-[#1a1306] p-5 shadow-2xl">
             <p className="text-base font-semibold text-amber-200">Critical data files are missing</p>
@@ -497,22 +520,10 @@ export default function DataGuard({ children }: { children: ReactNode }) {
               <p className="mt-3 text-xs text-red-300">{missingDataError}</p>
             )}
             <div className="mt-3 rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-zinc-200">
-              <p className="font-semibold text-zinc-100">Manual Recovery</p>
-              <p className="mt-1">1. Click Repair Missing Files to restore packaged local files.</p>
               <p>
-                2. If Raidbots files are still missing, open{' '}
-                <a
-                  href="https://www.raidbots.com/static/data/live/metadata.json"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-amber-200 underline"
-                >
-                  metadata.json
-                </a>
-                to verify Raidbots is reachable, then run Repair Missing Files again.
+                Repair restores packaged files first, then downloads a verified recovery snapshot. If
+                that snapshot is unavailable, it tries Raidbots automatically.
               </p>
-              <p>3. Use Open Data Folder only if support asks for the exact data path.</p>
-              <p>4. Restart the app after updating so packaged WoW data can be seeded.</p>
             </div>
             <div className="mt-4 flex items-center gap-2">
               <button

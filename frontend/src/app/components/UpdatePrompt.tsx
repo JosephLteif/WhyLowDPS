@@ -193,6 +193,11 @@ export default function UpdatePrompt() {
     );
   }, [backgroundMode, dismissed, state]);
 
+  const dismissUpdatePrompt = useCallback(() => {
+    setDismissed(true);
+    emitUpdaterStatus('none', 'Update prompt dismissed.');
+  }, []);
+
   const progressPercent = useMemo(() => {
     if (!progress.totalBytes || progress.totalBytes <= 0) return null;
     return Math.min(100, Math.round((progress.downloadedBytes / progress.totalBytes) * 100));
@@ -386,9 +391,18 @@ export default function UpdatePrompt() {
     try {
       if (window.electronAPI) {
         const result = await window.electronAPI.checkForUpdate();
-        if (!result) {
+        const currentVersion = resolveCurrentVersion(await getCurrentAppVersion());
+        if (
+          !result ||
+          !isRemoteNewerForSelectedChannel(currentVersion, result.version, selectedChannel)
+        ) {
           setState('idle');
-          emitUpdaterStatus('none', 'You are on the latest version.');
+          emitUpdaterStatus(
+            'none',
+            currentVersion
+              ? `You are on the latest version (${currentVersion}).`
+              : 'You are on the latest version.',
+          );
           return;
         }
         updateRef.current = null;
@@ -472,6 +486,16 @@ export default function UpdatePrompt() {
 
       updateRef.current = update;
       const version = String(update.version ?? update.versionName ?? 'latest');
+      if (!isRemoteNewerForSelectedChannel(currentVersion, version, selectedChannel)) {
+        setState('idle');
+        emitUpdaterStatus(
+          'none',
+          currentVersion
+            ? `You are on the latest version (${currentVersion}).`
+            : 'You are on the latest version.',
+        );
+        return;
+      }
       const notes = typeof update.body === 'string' ? update.body : undefined;
       const updateSnapshot = {
         version,
@@ -778,7 +802,7 @@ export default function UpdatePrompt() {
             </div>
             {state !== 'downloading' && (
               <button
-                onClick={() => setDismissed(true)}
+                onClick={dismissUpdatePrompt}
                 className="rounded-md px-2 py-1 text-zinc-400 transition-colors hover:bg-surface-2 hover:text-zinc-200"
                 aria-label="Dismiss update prompt"
               >
@@ -838,7 +862,7 @@ export default function UpdatePrompt() {
           <div className="mt-3 flex justify-end gap-2">
             {state === 'available' && (
               <>
-                <button onClick={() => setDismissed(true)} className="btn-outline px-3 py-1.5 text-xs">
+                <button onClick={dismissUpdatePrompt} className="btn-outline px-3 py-1.5 text-xs">
                   Later
                 </button>
                 <button
@@ -864,7 +888,7 @@ export default function UpdatePrompt() {
 
             {state === 'downloaded' && (
               <>
-                <button onClick={() => setDismissed(true)} className="btn-outline px-3 py-1.5 text-xs">
+                <button onClick={dismissUpdatePrompt} className="btn-outline px-3 py-1.5 text-xs">
                   Later
                 </button>
                 <button onClick={() => void handleRestart()} className="btn-primary px-3 py-1.5 text-xs">
@@ -874,13 +898,13 @@ export default function UpdatePrompt() {
             )}
 
             {state === 'handoff' && (
-              <button onClick={() => setDismissed(true)} className="btn-outline px-3 py-1.5 text-xs">
+              <button onClick={dismissUpdatePrompt} className="btn-outline px-3 py-1.5 text-xs">
                 Close
               </button>
             )}
 
             {state === 'error' && (
-              <button onClick={() => setDismissed(true)} className="btn-outline px-3 py-1.5 text-xs">
+              <button onClick={dismissUpdatePrompt} className="btn-outline px-3 py-1.5 text-xs">
                 Close
               </button>
             )}

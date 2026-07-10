@@ -720,6 +720,53 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn missing_data_repair_reports_recovery_failure_after_raidbots_fallback() {
+        let root = tempfile::tempdir().expect("repair root");
+        let entry = raidbots_entry("items", "items.json");
+
+        let result = repair_missing_raidbots_entries(
+            root.path(),
+            &[entry],
+            async { Err("snapshot unavailable".to_string()) },
+            || {},
+            |entry| {
+                let target = root.path().join(&entry.local_path);
+                async move {
+                    std::fs::write(target, b"[]").map_err(|err| err.to_string())?;
+                    Ok(())
+                }
+            },
+        )
+        .await;
+
+        assert_eq!(result.sources["raidbots"], vec!["items".to_string()]);
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0]["source"], "recovery_snapshot");
+        assert_eq!(result.failed[0]["error"], "snapshot unavailable");
+    }
+
+    #[actix_web::test]
+    async fn missing_data_repair_reports_recovery_and_raidbots_failures() {
+        let root = tempfile::tempdir().expect("repair root");
+        let entry = raidbots_entry("items", "items.json");
+
+        let result = repair_missing_raidbots_entries(
+            root.path(),
+            &[entry],
+            async { Err("snapshot unavailable".to_string()) },
+            || {},
+            |_| async { Err("Raidbots unavailable".to_string()) },
+        )
+        .await;
+
+        assert_eq!(result.failed.len(), 2);
+        assert_eq!(result.failed[0]["source"], "recovery_snapshot");
+        assert_eq!(result.failed[0]["error"], "snapshot unavailable");
+        assert_eq!(result.failed[1]["source"], "raidbots");
+        assert_eq!(result.failed[1]["error"], "Raidbots unavailable");
+    }
+
+    #[actix_web::test]
     async fn missing_data_repair_creates_missing_root_before_snapshot_restore() {
         let parent = tempfile::tempdir().expect("repair parent");
         let root = parent.path().join("missing-root");
@@ -1351,8 +1398,9 @@ impl MissingDataRepairResult {
             .push(entry.key.clone());
     }
 
-    fn failed(&mut self, entry: &catalog::DataFileEntry, error: String) {
+    fn failed(&mut self, source: &str, entry: &catalog::DataFileEntry, error: String) {
         self.failed.push(json!({
+            "source": source,
             "key": entry.key,
             "relative_path": entry.local_path,
             "error": error,
@@ -1391,7 +1439,7 @@ async fn restore_local_entries(
         };
         match restore_result {
             Ok(()) => result.restored("bundled", entry),
-            Err(error) => result.failed(entry, error),
+            Err(error) => result.failed("bundled", entry, error),
         }
     }
 }
@@ -1418,7 +1466,13 @@ where
                 }
             }
         }
-        Err(_) => report_snapshot_failure(),
+        Err(error) => {
+            result.failed.push(json!({
+                "source": "recovery_snapshot",
+                "error": error,
+            }));
+            report_snapshot_failure();
+        }
     }
 
     for entry in entries
@@ -1427,7 +1481,7 @@ where
     {
         match download(entry.clone()).await {
             Ok(()) => result.restored("raidbots", entry),
-            Err(error) => result.failed(entry, error),
+            Err(error) => result.failed("raidbots", entry, error),
         }
     }
     result

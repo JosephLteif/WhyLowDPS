@@ -716,7 +716,9 @@ mod tests {
 
         assert!(result.sources["recovery_snapshot"].is_empty());
         assert_eq!(result.sources["raidbots"], vec!["items".to_string()]);
-        assert!(result.failed.is_empty());
+        assert_eq!(result.failed.len(), 1);
+        assert_eq!(result.failed[0]["source"], "recovery_snapshot");
+        assert!(result.failed[0]["error"].is_string());
     }
 
     #[actix_web::test]

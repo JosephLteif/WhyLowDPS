@@ -42,10 +42,10 @@ const releaseNotes: ReleaseNote[] = [
     body: [
       {
         type: 'paragraph',
-        text: 'The Game Data File States view now labels every file as Required or Optional, alongside its download status.',
+        text: 'The Game Data File States view now labels every file as Required or Optional, lets you filter by availability or requirement, and keeps the main recovery actions easier to find.',
       },
     ],
-  }
+  },
 ];
 
 const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {

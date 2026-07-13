@@ -28,7 +28,6 @@
     "build:frontend": "npm run build --prefix frontend",
     "tauri:build:check": "cargo check --manifest-path desktop/src-tauri/Cargo.toml",
     "tauri": "tauri",
-    "web": "docker compose up --build",
     "clean:caches": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$paths=@('target\\\\debug\\\\incremental','backend\\\\target\\\\debug\\\\incremental','desktop\\\\src-tauri\\\\target_desktop\\\\debug\\\\incremental'); foreach($p in $paths){ if(Test-Path $p){ Remove-Item -LiteralPath $p -Recurse -Force } }; Write-Host 'Incremental caches cleaned.'\"",
     "ensure:frontend": "node scripts/ensure-frontend-deps.js",
     "ensure:cargo": "node scripts/ensure-cargo.js",
@@ -39,6 +38,7 @@
     "desktop:dev": "npm run ensure:frontend && npm run ensure:cargo && npm run ensure:tauri-build && cd desktop && cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true tauri dev --config src-tauri/tauri.conf.json",
     "desktop:debug": "npm run ensure:frontend && npm run ensure:cargo && npm run ensure:tauri-build && cd desktop && cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true RUST_LOG=debug RUST_BACKTRACE=1 tauri dev --config src-tauri/tauri.conf.json",
     "desktop:build": "npm run ensure:tauri-build && cd desktop && cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true tauri build --config src-tauri/tauri.conf.json",
-    "sync:version": "node scripts/sync-version.js"
+    "sync:version": "node scripts/sync-version.js",
+    "verify:release": "node scripts/validate-version.js"
   }
 }

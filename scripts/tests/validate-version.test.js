@@ -47,9 +47,15 @@ function writeFixture({ frontendVersion = "3.4.2" } = {}) {
 }
 
 test("validateVersion accepts the repository's synchronized version", () => {
-  const result = validateVersion({ rootDir: ROOT, expectedVersion: "v3.4.2" });
+  const repositoryVersion = fs
+    .readFileSync(path.join(ROOT, "VERSION"), "utf8")
+    .trim();
+  const result = validateVersion({
+    rootDir: ROOT,
+    expectedVersion: `v${repositoryVersion}`,
+  });
 
-  assert.equal(result.version, "3.4.2");
+  assert.equal(result.version, repositoryVersion);
   assert.deepEqual(result.errors, []);
 });
 

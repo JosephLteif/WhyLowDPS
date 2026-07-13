@@ -56,6 +56,31 @@ const ZONES_INDEX_FILE_NAME: &str = "zones-encounters-index.json";
 const ZONES_INDEX_RELEASE_BASE_URL: &str =
     "https://github.com/JosephLteif/simcraft/releases/download";
 
+fn write_runtime_file_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Missing parent directory for {}", path.display()))?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let temporary = parent.join(format!(
+        ".{}.part-{}",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("runtime-data"),
+        uuid::Uuid::new_v4()
+    ));
+    let result = (|| {
+        std::fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
+        if path.exists() {
+            std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(&temporary, path).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    result
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct WowheadZoneNameId {
     pub id: u32,
@@ -150,7 +175,7 @@ async fn download_github_release_asset(
             .bytes()
             .await
             .map_err(|e| format!("Failed to read response for {}: {}", asset_url, e))?;
-        std::fs::write(destination, bytes)
+        write_runtime_file_atomically(destination, &bytes)
             .map_err(|e| format!("Failed to save {}: {}", destination.display(), e))?;
         return Ok(());
     }
@@ -238,7 +263,7 @@ async fn download_github_release_asset_with_progress(
             );
         }
 
-        std::fs::write(destination, content)
+        write_runtime_file_atomically(destination, &content)
             .map_err(|e| format!("Failed to save {}: {}", destination.display(), e))?;
         return Ok(());
     }
@@ -300,6 +325,15 @@ mod tests {
 
     fn test_sync_state() -> web::Data<Arc<DataSyncState>> {
         web::Data::new(Arc::new(DataSyncState::new()))
+    }
+
+    #[tokio::test]
+    async fn data_operations_share_one_lifecycle_lock() {
+        let state = DataSyncState::new();
+        let guard = state.operation_lock.lock().await;
+        assert!(state.operation_lock.try_lock().is_err());
+        drop(guard);
+        assert!(state.operation_lock.try_lock().is_ok());
     }
 
     #[test]
@@ -547,6 +581,7 @@ mod tests {
             web::Path::from("metadata".to_string()),
             web::Data::new(None),
             web::Data::new(Arc::new(BlizzardState::new())),
+            test_sync_state(),
         )
         .await;
         assert_eq!(unavailable.status(), 400);
@@ -556,6 +591,7 @@ mod tests {
             web::Path::from("../../../metadata".to_string()),
             web::Data::new(Some(dir.path().to_path_buf())),
             web::Data::new(Arc::new(BlizzardState::new())),
+            test_sync_state(),
         )
         .await;
         assert_eq!(unknown.status(), 404);
@@ -570,6 +606,7 @@ mod tests {
             web::Path::from("runtime_blizzard".to_string()),
             web::Data::new(Some(dir.path().to_path_buf())),
             web::Data::new(Arc::new(BlizzardState::new())),
+            test_sync_state(),
         )
         .await;
         assert_eq!(cannot_download.status(), 400);
@@ -824,9 +861,13 @@ mod tests {
             Some(false)
         );
 
-        store.set_user_config("system", "blizzard_client_id", "client-id");
-        store.set_user_config("system", "blizzard_client_secret", "client-secret");
-        let configured = get_sync_status(req, state, test_auth_state(), store).await;
+        let configured_auth = web::Data::new(Arc::new(BlizzardAuthState::new(
+            Some("client-id".to_string()),
+            Some("client-secret".to_string()),
+            "http://localhost/callback".to_string(),
+            "test-secret".to_string(),
+        )));
+        let configured = get_sync_status(req, state, configured_auth, store).await;
         let configured_body = to_bytes(configured.into_body())
             .await
             .expect("configured status body");
@@ -1247,20 +1288,22 @@ pub async fn get_data_image(
                 .await;
             }
         } else if let Some(claims) = verify_jwt(&req, &auth_state.jwt_secret) {
-            source_url = fetch_blizzard_mythic_dungeon_image_url_with_token(
-                &blizzard.client,
-                &claims.access_token,
-                id,
-                &name_candidates,
-            )
-            .await;
-            if source_url.is_none() {
-                source_url = fetch_blizzard_journal_instance_image_url_with_token(
+            if let Some(access_token) = auth_state.oauth_token(&claims.session_id) {
+                source_url = fetch_blizzard_mythic_dungeon_image_url_with_token(
                     &blizzard.client,
-                    &claims.access_token,
-                    &candidate_ids,
+                    &access_token,
+                    id,
+                    &name_candidates,
                 )
                 .await;
+                if source_url.is_none() {
+                    source_url = fetch_blizzard_journal_instance_image_url_with_token(
+                        &blizzard.client,
+                        &access_token,
+                        &candidate_ids,
+                    )
+                    .await;
+                }
             }
         }
     }
@@ -1369,7 +1412,8 @@ async fn download_raidbots_file(
         .bytes()
         .await
         .map_err(|e| format!("Failed to read {}: {}", remote_path, e))?;
-    std::fs::write(dst, bytes).map_err(|e| format!("Failed to save {}: {}", local_path, e))?;
+    write_runtime_file_atomically(&dst, &bytes)
+        .map_err(|e| format!("Failed to save {}: {}", local_path, e))?;
     Ok(())
 }
 
@@ -1508,7 +1552,9 @@ pub async fn download_data_file(
     path: web::Path<String>,
     data_dir: web::Data<Option<PathBuf>>,
     blizzard: web::Data<Arc<BlizzardState>>,
+    state: web::Data<Arc<DataSyncState>>,
 ) -> HttpResponse {
+    let _operation = state.operation_lock.lock().await;
     let key = path.into_inner();
     let catalog = match data_file_catalog() {
         Ok(entries) => entries,
@@ -1610,6 +1656,7 @@ pub async fn download_missing_data_files(
     blizzard: web::Data<Arc<BlizzardState>>,
     state: web::Data<Arc<DataSyncState>>,
 ) -> HttpResponse {
+    let _operation = state.operation_lock.lock().await;
     let catalog = match data_file_catalog() {
         Ok(entries) => entries,
         Err(err) => {
@@ -1849,6 +1896,7 @@ async fn perform_sync(
     data_dir: Option<PathBuf>,
     force_refresh: bool,
 ) -> Result<(), String> {
+    let _operation = state.operation_lock.lock().await;
     let request_timeout = Duration::from_secs(15);
     if let Some(ref dir) = data_dir {
         let destination = dir.join(ZONES_INDEX_FILE_NAME);
@@ -2366,6 +2414,7 @@ async fn perform_dungeon_sync(
     data_dir: Option<PathBuf>,
     force_refresh: bool,
 ) -> Result<(), String> {
+    let _operation = state.operation_lock.lock().await;
     {
         let mut p = state.progress.lock().await;
         *p = "Dungeons:0:1:Checking Blizzard dungeon cache...".to_string();

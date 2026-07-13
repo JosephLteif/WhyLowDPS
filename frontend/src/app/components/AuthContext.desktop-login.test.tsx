@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   fetchJson: vi.fn(),
   invoke: vi.fn(),
   randomUUID: vi.fn(),
+  saveBlizzardCredentialProfile: vi.fn(),
 }));
 
 vi.mock('../lib/api', () => ({
@@ -14,8 +15,8 @@ vi.mock('../lib/api', () => ({
   fetchJson: mocks.fetchJson,
   isDesktop: true,
   isNetworkUnavailableError: vi.fn(() => false),
-  saveBlizzardCredentialProfile: vi.fn(),
-  TOKEN_KEY: 'whylowdps_token',
+  saveBlizzardCredentialProfile: mocks.saveBlizzardCredentialProfile,
+  setSessionToken: vi.fn(),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -32,6 +33,7 @@ describe('AuthContext desktop login', () => {
     vi.restoreAllMocks();
     mocks.fetchJson.mockRejectedValue(new Error('unauthorized'));
     mocks.invoke.mockReturnValue(new Promise(() => {}));
+    mocks.saveBlizzardCredentialProfile.mockResolvedValue({ id: 'saved-profile-123' });
     mocks.randomUUID.mockReturnValue('flow-123');
     vi.stubGlobal('fetch', vi.fn());
     Object.defineProperty(globalThis, 'crypto', {
@@ -54,8 +56,13 @@ describe('AuthContext desktop login', () => {
     expect(outcome).toBe('resolved');
     await waitFor(() => {
       expect(mocks.invoke).toHaveBeenCalledWith('open_auth_window', {
-        url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&client_id=client-id&client_secret=client-secret',
+        url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&credential_id=saved-profile-123',
       });
+    });
+    expect(mocks.saveBlizzardCredentialProfile).toHaveBeenCalledWith({
+      name: 'Login credentials',
+      client_id: 'client-id',
+      client_secret: 'client-secret',
     });
   });
 

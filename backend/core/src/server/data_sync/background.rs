@@ -11,6 +11,7 @@ use crate::storage::JobStorage;
 pub struct DataSyncState {
     pub status: Mutex<SyncStatus>,
     pub progress: Mutex<String>,
+    pub operation_lock: Mutex<()>,
 }
 
 impl DataSyncState {
@@ -18,21 +19,15 @@ impl DataSyncState {
         Self {
             status: Mutex::new(SyncStatus::Ready),
             progress: Mutex::new(String::new()),
+            operation_lock: Mutex::new(()),
         }
     }
 }
 
 fn get_background_credentials(
     auth_state: &BlizzardAuthState,
-    store: &dyn JobStorage,
+    _store: &dyn JobStorage,
 ) -> Option<(String, String)> {
-    if let (Some(id), Some(sec)) = (
-        store.get_user_config("system", "blizzard_client_id"),
-        store.get_user_config("system", "blizzard_client_secret"),
-    ) {
-        return Some((id, sec));
-    }
-
     if let (Some(id), Some(sec)) = (&auth_state.client_id, &auth_state.client_secret) {
         return Some((id.clone(), sec.clone()));
     }
@@ -167,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn background_credentials_prefer_system_config_then_auth_state() {
+    fn background_credentials_use_only_auth_state_configuration() {
         let store = MemoryStorage::new();
         store.set_user_config("system", "blizzard_client_id", "system-id");
         store.set_user_config("system", "blizzard_client_secret", "system-secret");
@@ -180,7 +175,7 @@ mod tests {
 
         assert_eq!(
             get_background_credentials(&auth, &store),
-            Some(("system-id".to_string(), "system-secret".to_string()))
+            Some(("auth-id".to_string(), "auth-secret".to_string()))
         );
 
         let fallback_store = MemoryStorage::new();

@@ -4,12 +4,10 @@ use actix_web::{web, HttpRequest, HttpResponse};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-#[cfg(any(test, not(feature = "desktop")))]
 use std::collections::HashMap;
 use std::sync::Arc;
-#[cfg(any(test, not(feature = "desktop")))]
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 #[cfg(all(feature = "desktop", target_os = "windows"))]
 use windows::Win32::Foundation::{LocalFree, HLOCAL};
 #[cfg(all(feature = "desktop", target_os = "windows"))]
@@ -262,6 +260,28 @@ pub struct BlizzardAuthState {
     pub client_secret: Option<String>,
     pub redirect_uri: String,
     pub jwt_secret: String,
+    oauth_sessions: Mutex<HashMap<String, (String, Instant)>>,
+}
+
+pub fn validate_jwt_secret(
+    configured: Option<String>,
+    require_strong: bool,
+) -> Result<String, String> {
+    let secret = configured
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "dev-secret-key-123".to_string());
+    let weak = secret.len() < 32
+        || matches!(
+            secret.as_str(),
+            "dev-secret-key-123" | "change-me" | "secret" | "password"
+        )
+        || secret
+            .chars()
+            .all(|character| character == secret.chars().next().unwrap_or('\0'));
+    if require_strong && weak {
+        return Err("JWT_SECRET must be at least 32 characters and must not use a development/default value".to_string());
+    }
+    Ok(secret)
 }
 
 impl BlizzardAuthState {
@@ -276,14 +296,48 @@ impl BlizzardAuthState {
             client_secret,
             redirect_uri,
             jwt_secret,
+            oauth_sessions: Mutex::new(HashMap::new()),
         }
+    }
+
+    fn store_oauth_session(&self, session_id: String, access_token: String) {
+        self.oauth_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(
+                session_id,
+                (
+                    access_token,
+                    Instant::now() + Duration::from_secs(24 * 60 * 60),
+                ),
+            );
+    }
+
+    pub(crate) fn oauth_token(&self, session_id: &str) -> Option<String> {
+        let mut sessions = self
+            .oauth_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (token, expires_at) = sessions.get(session_id)?.clone();
+        if expires_at <= Instant::now() {
+            sessions.remove(session_id);
+            return None;
+        }
+        Some(token)
+    }
+
+    fn remove_oauth_session(&self, session_id: &str) {
+        self.oauth_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(session_id);
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String, // BattleTag
-    pub access_token: String,
+    pub session_id: String,
     pub exp: usize,
 }
 
@@ -307,8 +361,6 @@ struct UserInfoResponse {
 
 #[derive(Deserialize)]
 pub struct LoginQuery {
-    pub client_id: Option<String>,
-    pub client_secret: Option<String>,
     pub credential_id: Option<String>,
     pub flow_id: Option<String>,
 }
@@ -563,31 +615,16 @@ fn get_effective_creds(
     state: &BlizzardAuthState,
     store: &dyn crate::storage::JobStorage,
     secrets: &dyn BlizzardCredentialSecretStore,
-    query_id: Option<&String>,
-    query_secret: Option<&String>,
     credential_id: Option<&String>,
 ) -> Result<Option<(String, String)>, SavedProfileLookupError> {
-    // 1. Try query params (temporary session use)
-    if let (Some(id), Some(sec)) = (query_id, query_secret) {
-        return Ok(Some((id.clone(), sec.clone())));
-    }
-
-    // 2. Try a selected saved desktop credential profile
+    // 1. Try a selected saved desktop credential profile
     if let Some(profile_id) = credential_id {
         return find_saved_profile_creds(store, secrets, profile_id).map(Some);
     }
 
-    // 3. Try environment variables
+    // 2. Try environment variables
     if let (Some(id), Some(sec)) = (&state.client_id, &state.client_secret) {
         return Ok(Some((id.clone(), sec.clone())));
-    }
-
-    // 4. Try legacy "system" config in storage (saved by older builds)
-    if let (Some(id), Some(sec)) = (
-        store.get_user_config("system", "blizzard_client_id"),
-        store.get_user_config("system", "blizzard_client_secret"),
-    ) {
-        return Ok(Some((id, sec)));
     }
 
     Ok(None)
@@ -599,15 +636,8 @@ pub async fn get_credentials_status(
 ) -> HttpResponse {
     let env_configured = state.client_id.is_some() && state.client_secret.is_some();
     let saved_profile_count = load_blizzard_credential_profiles(&***store).len();
-    let system_configured = store
-        .get_user_config("system", "blizzard_client_id")
-        .is_some()
-        && store
-            .get_user_config("system", "blizzard_client_secret")
-            .is_some();
-
     HttpResponse::Ok().json(json!({
-        "globally_configured": env_configured || system_configured,
+        "globally_configured": env_configured || saved_profile_count > 0,
         "saved_profile_count": saved_profile_count
     }))
 }
@@ -619,19 +649,12 @@ pub async fn bnet_login(
     secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
     query: web::Query<LoginQuery>,
 ) -> HttpResponse {
-    let creds = get_effective_creds(
-        &state,
-        &***store,
-        &***secrets,
-        query.client_id.as_ref(),
-        query.client_secret.as_ref(),
-        query.credential_id.as_ref(),
-    );
+    let creds = get_effective_creds(&state, &***store, &***secrets, query.credential_id.as_ref());
 
     let (client_id, _client_secret) = match creds {
         Ok(Some(c)) => c,
         Ok(None) => return HttpResponse::BadRequest().json(json!({
-            "error": "Blizzard API Client ID not configured globally and not provided in request."
+            "error": "Blizzard API Client ID is not configured. Save a credential profile or configure the server environment."
         })),
         Err(SavedProfileLookupError::NotFound) => {
             return HttpResponse::BadRequest().json(json!({
@@ -647,26 +670,6 @@ pub async fn bnet_login(
 
     let mut builder = HttpResponse::Found();
 
-    // If credentials were provided in query, set them as temporary cookies
-    if let (Some(id), Some(sec)) = (&query.client_id, &query.client_secret) {
-        builder.cookie(
-            Cookie::build("temp_bnet_id", id)
-                .path("/")
-                .http_only(true)
-                .secure(false) // Local dev
-                .same_site(SameSite::Lax)
-                .finish(),
-        );
-        builder.cookie(
-            Cookie::build("temp_bnet_secret", sec)
-                .path("/")
-                .http_only(true)
-                .secure(false) // Local dev
-                .same_site(SameSite::Lax)
-                .finish(),
-        );
-    }
-
     let conn = req.connection_info();
     let request_host = conn.host().to_string();
     let request_scheme = conn.scheme().to_string();
@@ -678,9 +681,6 @@ pub async fn bnet_login(
         .ok()
         .filter(|v| !v.trim().is_empty())
         .unwrap_or(request_redirect_uri);
-
-    println!("Starting Blizzard Login for client_id: {}", client_id);
-    println!("Target Redirect URI (flow): {}", redirect_uri_for_flow);
 
     let flow_id = query
         .flow_id
@@ -709,8 +709,6 @@ pub async fn bnet_login(
         urlencoding::encode(&redirect_uri_for_flow),
         flow_id
     );
-
-    println!("Final Blizzard Auth URL: {}", auth_url);
 
     builder.append_header((header::LOCATION, auth_url)).finish()
 }
@@ -883,20 +881,16 @@ pub async fn bnet_callback(
         }
     };
 
-    // Always prefer credentials captured at login start for this exact flow.
+    // Prefer credentials captured at login start for this exact flow. Secrets stay
+    // server-side and are never transported in the OAuth URL or browser cookies.
     let creds = match (
         store.get_cache(&client_id_cache_key),
         store.get_cache(&client_secret_cache_key),
     ) {
         (Some(id), Some(sec)) => Some((id, sec)),
-        _ => match (req.cookie("temp_bnet_id"), req.cookie("temp_bnet_secret")) {
-            (Some(id_c), Some(sec_c)) => {
-                Some((id_c.value().to_string(), sec_c.value().to_string()))
-            }
-            _ => get_effective_creds(&state, &***store, &***secrets, None, None, None)
-                .ok()
-                .flatten(),
-        },
+        _ => get_effective_creds(&state, &***store, &***secrets, None)
+            .ok()
+            .flatten(),
     };
 
     let (client_id, client_secret) = match creds {
@@ -924,25 +918,24 @@ pub async fn bnet_callback(
             match serde_json::from_str::<TokenResponse>(&text) {
                 Ok(data) => data.access_token,
                 Err(e) => {
-                    println!("Failed to parse token response: {}, raw: {}", e, text);
+                    println!("Failed to parse token response: {}", e);
                     return HttpResponse::InternalServerError()
-                        .json(json!({"error": "Failed to parse token response", "details": text}));
+                        .json(json!({"error": "Failed to parse token response"}));
                 }
             }
         }
         Ok(res) => {
             let status = res.status();
-            let text = res.text().await.unwrap_or_default();
-            println!(
-                "Token exchange failed with status: {}, body: {}",
-                status, text
-            );
+            let _text = res.text().await.unwrap_or_default();
+            println!("Token exchange failed with status: {}", status);
             if flow_id_opt.is_some() {
-                store.set_cache(&error_cache_key, text.clone());
+                store.set_cache(
+                    &error_cache_key,
+                    "Token exchange was rejected by Blizzard.".to_string(),
+                );
                 store.remove_cache(&status_cache_key);
             }
-            return HttpResponse::BadRequest()
-                .json(json!({"error": "Failed to exchange code", "details": text}));
+            return HttpResponse::BadRequest().json(json!({"error": "Failed to exchange code"}));
         }
         Err(e) => {
             println!("Network error during token exchange: {}", e);
@@ -970,22 +963,17 @@ pub async fn bnet_callback(
             match serde_json::from_str::<UserInfoResponse>(&text) {
                 Ok(data) => data.battletag,
                 Err(e) => {
-                    println!("Failed to parse userinfo response: {}, raw: {}", e, text);
-                    return HttpResponse::InternalServerError().json(
-                        json!({"error": "Failed to parse userinfo response", "details": text}),
-                    );
+                    println!("Failed to parse userinfo response: {}", e);
+                    return HttpResponse::InternalServerError()
+                        .json(json!({"error": "Failed to parse userinfo response"}));
                 }
             }
         }
         Ok(res) => {
             let status = res.status();
-            let text = res.text().await.unwrap_or_default();
-            println!(
-                "Userinfo fetch failed with status: {}, body: {}",
-                status, text
-            );
-            return HttpResponse::BadRequest()
-                .json(json!({"error": "Failed to get userinfo", "details": text}));
+            let _text = res.text().await.unwrap_or_default();
+            println!("Userinfo fetch failed with status: {}", status);
+            return HttpResponse::BadRequest().json(json!({"error": "Failed to get userinfo"}));
         }
         Err(e) => {
             println!("Network error during userinfo fetch: {}", e);
@@ -1000,9 +988,11 @@ pub async fn bnet_callback(
         .as_secs() as usize
         + (30 * 24 * 60 * 60); // 30 days
 
+    let session_id = uuid::Uuid::new_v4().to_string();
+    state.store_oauth_session(session_id.clone(), access_token);
     let claims = Claims {
         sub: battletag.clone(),
-        access_token,
+        session_id,
         exp: expiration,
     };
 
@@ -1050,26 +1040,6 @@ pub async fn bnet_callback(
     store.remove_cache(&client_secret_cache_key);
     store.remove_cache(&status_cache_key);
 
-    // If we used temporary credentials, save them to the user's permanent config
-    if state.client_id.is_none() {
-        store.set_user_config(&battletag, "blizzard_client_id", &client_id);
-        store.set_user_config(&battletag, "blizzard_client_secret", &client_secret);
-
-        // Clear temporary cookies
-        resp_builder.cookie(
-            Cookie::build("temp_bnet_id", "")
-                .path("/")
-                .max_age(actix_web::cookie::time::Duration::seconds(0))
-                .finish(),
-        );
-        resp_builder.cookie(
-            Cookie::build("temp_bnet_secret", "")
-                .path("/")
-                .max_age(actix_web::cookie::time::Duration::seconds(0))
-                .finish(),
-        );
-    }
-
     resp_builder.finish()
 }
 
@@ -1084,10 +1054,6 @@ pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
             return None;
         }
     } else {
-        println!(
-            "No auth found in request (cookie or Authorization header). headers: {:?}",
-            req.headers()
-        );
         return None;
     };
 
@@ -1099,32 +1065,16 @@ pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
 
     match token_data {
         Ok(data) => Some(data.claims),
-        Err(e) => {
-            println!("Failed to decode JWT: {}", e);
-            None
-        }
+        Err(_) => None,
     }
 }
 
 pub async fn get_me(req: HttpRequest, state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
-    println!("get_me called. Headers: {:?}", req.headers());
-    if let Some(cookie) = req.cookie("bnet_session") {
-        println!("Found bnet_session cookie: {}", cookie.value());
-    } else {
-        println!("No bnet_session cookie found.");
-    }
-
     match verify_jwt(&req, &state.jwt_secret) {
-        Some(claims) => {
-            println!("get_me success: {}", claims.sub);
-            HttpResponse::Ok().json(json!({
-                "battletag": claims.sub
-            }))
-        }
-        None => {
-            println!("get_me failed: not logged in or invalid token");
-            HttpResponse::Unauthorized().json(json!({"error": "Not logged in"}))
-        }
+        Some(claims) => HttpResponse::Ok().json(json!({
+            "battletag": claims.sub
+        })),
+        None => HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     }
 }
 
@@ -1134,6 +1084,7 @@ pub async fn bnet_logout(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
     if let Some(claims) = verify_jwt(&req, &state.jwt_secret) {
+        state.remove_oauth_session(&claims.session_id);
         store.remove_user_config(&claims.sub, "blizzard_client_id");
         store.remove_user_config(&claims.sub, "blizzard_client_secret");
     }
@@ -1200,6 +1151,11 @@ pub async fn get_characters(
         }
     }
 
+    let access_token = match state.oauth_token(&claims.session_id) {
+        Some(token) => token,
+        None => return HttpResponse::Unauthorized().json(json!({"error": "Session expired"})),
+    };
+
     let client = reqwest::Client::new();
 
     // We attempt to fetch from both US and EU regions as we don't know the user's primary region
@@ -1213,11 +1169,7 @@ pub async fn get_characters(
             "https://{}.api.blizzard.com/profile/user/wow?namespace={}&locale=en_US",
             region, namespace
         );
-        let resp = client
-            .get(&url)
-            .bearer_auth(&claims.access_token)
-            .send()
-            .await;
+        let resp = client.get(&url).bearer_auth(&access_token).send().await;
 
         match resp {
             Ok(res) if res.status().is_success() => {
@@ -1325,12 +1277,6 @@ pub async fn get_user_configs(
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
 
-    let client_id = store
-        .get_user_config(&claims.sub, "blizzard_client_id")
-        .unwrap_or_default();
-    let has_secret = store
-        .get_user_config(&claims.sub, "blizzard_client_secret")
-        .is_some();
     let sim_threads = store
         .get_user_config(&claims.sub, "sim_threads")
         .unwrap_or_default();
@@ -1351,8 +1297,8 @@ pub async fn get_user_configs(
         .unwrap_or_default();
 
     HttpResponse::Ok().json(json!({
-        "blizzard_client_id": client_id,
-        "has_blizzard_client_secret": has_secret,
+        "blizzard_client_id": "",
+        "has_blizzard_client_secret": false,
         "sim_threads": sim_threads,
         "max_gear_combinations": max_gear_combinations,
         "simc_download_channel": simc_download_channel,
@@ -1373,9 +1319,7 @@ pub async fn set_user_config(
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
 
-    if body.key != "blizzard_client_id"
-        && body.key != "blizzard_client_secret"
-        && body.key != "sim_threads"
+    if body.key != "sim_threads"
         && body.key != "max_gear_combinations"
         && body.key != "simc_download_channel"
         && body.key != "simc_sim_channel"
@@ -1398,12 +1342,19 @@ pub struct SystemConfigUpdate {
 
 pub async fn set_system_blizzard_creds(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
     body: web::Json<SystemConfigUpdate>,
 ) -> HttpResponse {
-    store.set_user_config("system", "blizzard_client_id", &body.client_id);
-    store.set_user_config("system", "blizzard_client_secret", &body.client_secret);
-
-    HttpResponse::Ok().json(json!({"status": "system credentials updated"}))
+    save_blizzard_credential_profile(
+        store,
+        secrets,
+        web::Json(SaveBlizzardCredentialProfileRequest {
+            name: Some("Main credentials".to_string()),
+            client_id: body.client_id.clone(),
+            client_secret: body.client_secret.clone(),
+        }),
+    )
+    .await
 }
 
 pub async fn clear_user_configs(
@@ -1429,9 +1380,9 @@ pub struct TestBlizzardCreds {
 }
 
 pub async fn test_blizzard_creds(
-    req: HttpRequest,
+    _req: HttpRequest,
     state: web::Data<Arc<BlizzardAuthState>>,
-    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    _store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     body: web::Json<TestBlizzardCreds>,
 ) -> HttpResponse {
     let client_id = body.client_id.trim().to_string();
@@ -1445,10 +1396,7 @@ pub async fn test_blizzard_creds(
         .as_ref()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
-        .or_else(|| {
-            let claims = verify_jwt(&req, &state.jwt_secret)?;
-            store.get_user_config(&claims.sub, "blizzard_client_secret")
-        });
+        .or_else(|| state.client_secret.clone());
 
     let client_secret = match client_secret {
         Some(v) => v,
@@ -1506,7 +1454,7 @@ mod tests {
     fn make_jwt_with_exp(sub: &str, access_token: &str, secret: &str, exp: usize) -> String {
         let claims = Claims {
             sub: sub.to_string(),
-            access_token: access_token.to_string(),
+            session_id: access_token.to_string(),
             exp,
         };
         encode(
@@ -1552,25 +1500,13 @@ mod tests {
         );
         let store = MemoryStorage::new();
         let secrets = MemoryBlizzardCredentialSecretStore::default();
-        store.set_user_config("system", "blizzard_client_id", "sys-id");
-        store.set_user_config("system", "blizzard_client_secret", "sys-secret");
-
-        let query_id = Some("query-id".to_string());
-        let query_secret = Some("query-secret".to_string());
         assert_eq!(
-            get_effective_creds(
-                &state,
-                &store,
-                &secrets,
-                query_id.as_ref(),
-                query_secret.as_ref(),
-                None
-            ),
-            Ok(Some(("query-id".to_string(), "query-secret".to_string())))
+            get_effective_creds(&state, &store, &secrets, None),
+            Ok(Some(("env-id".to_string(), "env-secret".to_string())))
         );
 
         assert_eq!(
-            get_effective_creds(&state, &store, &secrets, None, None, None),
+            get_effective_creds(&state, &store, &secrets, None),
             Ok(Some(("env-id".to_string(), "env-secret".to_string())))
         );
 
@@ -1581,13 +1517,26 @@ mod tests {
             "jwt".to_string(),
         );
         assert_eq!(
-            get_effective_creds(&no_env_state, &store, &secrets, None, None, None),
-            Ok(Some(("sys-id".to_string(), "sys-secret".to_string())))
+            get_effective_creds(&no_env_state, &store, &secrets, None),
+            Ok(None)
         );
     }
 
+    #[test]
+    fn production_jwt_secret_must_be_strong_and_non_default() {
+        assert!(validate_jwt_secret(None, false).is_ok());
+        assert!(validate_jwt_secret(Some("short".to_string()), true).is_err());
+        assert!(validate_jwt_secret(Some("dev-secret-key-123".to_string()), true).is_err());
+        assert!(validate_jwt_secret(Some("a".repeat(32)), true).is_err());
+        assert!(validate_jwt_secret(
+            Some("a-secure-secret-with-more-than-32-bytes".to_string()),
+            true
+        )
+        .is_ok());
+    }
+
     #[actix_web::test]
-    async fn get_credentials_status_reports_env_and_system_configuration() {
+    async fn get_credentials_status_reports_env_and_saved_profile_configuration() {
         let empty = get_credentials_status(auth_state(), test_store()).await;
         assert_eq!(
             body_json(empty).await.get("globally_configured"),
@@ -1603,7 +1552,7 @@ mod tests {
             body_json(system_configured)
                 .await
                 .get("globally_configured"),
-            Some(&Value::Bool(true))
+            Some(&Value::Bool(false))
         );
 
         let env_state = web::Data::new(Arc::new(BlizzardAuthState::new(
@@ -1622,9 +1571,11 @@ mod tests {
     #[actix_web::test]
     async fn set_system_blizzard_creds_persists_global_credentials() {
         let store = test_store();
+        let secrets = test_secret_store();
 
         let saved = set_system_blizzard_creds(
             store.clone(),
+            secrets.clone(),
             web::Json(SystemConfigUpdate {
                 client_id: "system-id".to_string(),
                 client_secret: "system-secret".to_string(),
@@ -1632,12 +1583,13 @@ mod tests {
         )
         .await;
         assert_eq!(saved.status(), 200);
+        assert!(store
+            .get_user_config("system", "blizzard_client_secret")
+            .is_none());
+        let profiles = load_blizzard_credential_profiles(&***store);
+        assert_eq!(profiles.len(), 1);
         assert_eq!(
-            store.get_user_config("system", "blizzard_client_id"),
-            Some("system-id".to_string())
-        );
-        assert_eq!(
-            store.get_user_config("system", "blizzard_client_secret"),
+            secrets.get_secret(&profiles[0].id).unwrap(),
             Some("system-secret".to_string())
         );
 
@@ -1848,8 +1800,6 @@ mod tests {
             store.clone(),
             secrets,
             web::Query(LoginQuery {
-                client_id: None,
-                client_secret: None,
                 credential_id: Some(profile_id),
                 flow_id: Some("flow-123".to_string()),
             }),
@@ -1892,8 +1842,6 @@ mod tests {
             store.clone(),
             secrets,
             web::Query(LoginQuery {
-                client_id: None,
-                client_secret: None,
                 credential_id: Some("profile-id".to_string()),
                 flow_id: Some("flow-123".to_string()),
             }),
@@ -1933,8 +1881,6 @@ mod tests {
             store,
             secrets,
             web::Query(LoginQuery {
-                client_id: None,
-                client_secret: None,
                 credential_id: Some("profile-id".to_string()),
                 flow_id: Some("flow-123".to_string()),
             }),
@@ -1963,8 +1909,6 @@ mod tests {
             store,
             test_secret_store(),
             web::Query(LoginQuery {
-                client_id: None,
-                client_secret: None,
                 credential_id: None,
                 flow_id: None,
             }),
@@ -1975,16 +1919,16 @@ mod tests {
         let payload = body_json(resp).await;
         assert_eq!(
             payload.get("error").and_then(Value::as_str),
-            Some("Blizzard API Client ID not configured globally and not provided in request.")
+            Some("Blizzard API Client ID is not configured. Save a credential profile or configure the server environment.")
         );
     }
 
     #[actix_web::test]
-    async fn bnet_login_with_query_creds_sets_flow_cache_and_redirect() {
-        let req = TestRequest::default().to_http_request();
+    async fn bnet_login_does_not_accept_credentials_from_query_parameters() {
+        let req = TestRequest::with_uri("/?client_id=query-id&client_secret=query-secret")
+            .to_http_request();
         let state = auth_state();
         let store = test_store();
-        let flow_id = "flow-123".to_string();
 
         let resp = bnet_login(
             req,
@@ -1992,37 +1936,16 @@ mod tests {
             store.clone(),
             test_secret_store(),
             web::Query(LoginQuery {
-                client_id: Some("query-id".to_string()),
-                client_secret: Some("query-secret".to_string()),
                 credential_id: None,
-                flow_id: Some(flow_id.clone()),
+                flow_id: Some("flow-123".to_string()),
             }),
         )
         .await;
 
-        assert_eq!(resp.status(), 302);
-        let location = resp
-            .headers()
-            .get(header::LOCATION)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or_default()
-            .to_string();
-        assert!(location.contains("https://oauth.battle.net/authorize"));
-        assert!(location.contains("client_id=query-id"));
-        assert!(location.contains("state=flow-123"));
-
-        assert_eq!(
-            store.get_cache("login_flow_status_flow-123"),
-            Some("started".to_string())
-        );
-        assert_eq!(
-            store.get_cache("login_flow_client_id_flow-123"),
-            Some("query-id".to_string())
-        );
-        assert_eq!(
-            store.get_cache("login_flow_client_secret_flow-123"),
-            Some("query-secret".to_string())
-        );
+        assert_eq!(resp.status(), 400);
+        assert!(store
+            .get_cache("login_flow_client_secret_flow-123")
+            .is_none());
     }
 
     #[actix_web::test]
@@ -2258,6 +2181,18 @@ mod tests {
         .await;
         assert_eq!(invalid.status(), 400);
 
+        let credential_rejected = set_user_config(
+            req.clone(),
+            state.clone(),
+            store.clone(),
+            web::Json(UserConfigUpdate {
+                key: "blizzard_client_secret".to_string(),
+                value: "must-not-be-persisted".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(credential_rejected.status(), 400);
+
         let valid = set_user_config(
             req,
             state,
@@ -2276,7 +2211,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn user_configs_require_session_and_redact_secret_values() {
+    async fn user_configs_require_session_and_exclude_credential_values() {
         let state = auth_state();
         let store = test_store();
 
@@ -2303,13 +2238,13 @@ mod tests {
         let payload = body_json(resp).await;
         assert_eq!(
             payload.get("blizzard_client_id").and_then(Value::as_str),
-            Some("client-id")
+            Some("")
         );
         assert_eq!(
             payload
                 .get("has_blizzard_client_secret")
                 .and_then(Value::as_bool),
-            Some(true)
+            Some(false)
         );
         assert!(payload.get("blizzard_client_secret").is_none());
         assert_eq!(

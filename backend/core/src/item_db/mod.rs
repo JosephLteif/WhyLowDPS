@@ -26,6 +26,9 @@ pub use upgrades::*;
 // ---- Load ----
 
 pub fn load(data_dir: &Path) {
+    let _load_guard = state::LOAD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     loader::load_classes(data_dir);
     loader::load_items(data_dir);
     loader::derive_class_profiles_from_items();

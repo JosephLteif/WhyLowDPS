@@ -7,7 +7,7 @@ import {
   isDesktop,
   isNetworkUnavailableError,
   saveBlizzardCredentialProfile,
-  TOKEN_KEY,
+  setSessionToken,
 } from '../lib/api';
 
 interface AuthContextType {
@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       if (lightMode) {
-        localStorage.removeItem(TOKEN_KEY);
+        setSessionToken(null);
         setUser(null);
         setLoading(false);
         return;
@@ -80,9 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error('Auth check failed:', err);
         }
         // If 401/error, consider user logged out
-        if (typeof window !== 'undefined' && localStorage.getItem(TOKEN_KEY)) {
-          localStorage.removeItem(TOKEN_KEY);
-        }
+        setSessionToken(null);
         setUser(null);
       } finally {
         setLoading(false);
@@ -108,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const enableLightMode = useCallback(() => {
     localStorage.setItem(LIGHT_MODE_KEY, '1');
-    localStorage.removeItem(TOKEN_KEY);
+    setSessionToken(null);
     setUser(null);
     setLightMode(true);
     setLoading(false);
@@ -141,12 +139,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const flowId = crypto.randomUUID();
       let url = `${API_URL}/api/auth/bnet/login?flow_id=${flowId}`;
 
-      if (credentialId) {
-        url += `&credential_id=${encodeURIComponent(credentialId)}`;
-      } else if (clientId && clientSecret) {
-        url += `&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(
-          clientSecret,
-        )}`;
+      let selectedCredentialId = credentialId;
+      if (!selectedCredentialId && clientId && clientSecret) {
+        const profile = await saveBlizzardCredentialProfile({
+          name: 'Login credentials',
+          client_id: clientId,
+          client_secret: clientSecret,
+        });
+        selectedCredentialId = profile.id;
+      }
+      if (selectedCredentialId) {
+        url += `&credential_id=${encodeURIComponent(selectedCredentialId)}`;
       }
 
       if (isDesktop) {
@@ -154,8 +157,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         void (async () => {
           try {
             const { invoke } = await import('@tauri-apps/api/core');
-            console.log('Opening isolated auth window:', url);
-
             // Pass raw URL; desktop command encodes once for Blizzard logout ref.
             await invoke('open_auth_window', { url });
           } catch (err) {
@@ -172,7 +173,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      console.log('Initiating login redirect to:', url);
       window.location.assign(url);
     },
     [],
@@ -186,7 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const { token } = payload as { token?: string };
           if (token) {
-            localStorage.setItem(TOKEN_KEY, token);
+            setSessionToken(token);
             clearInterval(interval);
             // Refresh user state
             const data = await fetchJson<{ battletag: string }>(`${API_URL}/api/auth/me`);
@@ -211,7 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     const performLocalLogout = () => {
-      localStorage.removeItem(TOKEN_KEY);
+      setSessionToken(null);
       setUser(null);
       window.location.href = '/';
     };

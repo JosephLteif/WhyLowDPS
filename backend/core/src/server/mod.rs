@@ -29,7 +29,15 @@ mod upgrade_compare;
 #[cfg(feature = "web")]
 use actix_cors::Cors;
 #[cfg(feature = "web")]
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::body::MessageBody;
+#[cfg(feature = "web")]
+use actix_web::dev::{ServiceRequest, ServiceResponse};
+#[cfg(feature = "web")]
+use actix_web::http::Method;
+#[cfg(feature = "web")]
+use actix_web::middleware::{self, Next};
+#[cfg(feature = "web")]
+use actix_web::{web, App, Error, HttpResponse, HttpServer};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 #[cfg(all(feature = "desktop", feature = "web"))]
@@ -43,17 +51,197 @@ use system_handlers::*;
 #[cfg(feature = "web")]
 use types::FrontendDir;
 
+pub fn is_loopback_bind(host: &str) -> bool {
+    matches!(
+        host.trim().trim_matches(['[', ']']),
+        "localhost" | "127.0.0.1" | "::1"
+    )
+}
+
+pub fn external_bind_allowed(configured: Option<&str>) -> bool {
+    configured
+        .map(|value| value.trim().eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+fn public_security_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/health"
+            | "/api/auth/bnet/login"
+            | "/api/auth/bnet/login-success"
+            | "/api/auth/bnet/callback"
+            | "/api/auth/poll"
+            | "/api/auth/bnet/credentials-status"
+            | "/api/auth/me"
+            | "/api/data/status"
+    )
+}
+
+fn same_origin_request(req: &ServiceRequest) -> bool {
+    let host = req.connection_info().host().to_string();
+    ["origin", "referer"].iter().any(|header_name| {
+        req.headers()
+            .get(*header_name)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| {
+                let (scheme, authority_and_path) = value.split_once("://")?;
+                if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
+                    return None;
+                }
+                let authority = authority_and_path.split(['/', '?', '#']).next()?;
+                (!authority.contains('@')).then_some(authority)
+            })
+            .map(|authority| authority.eq_ignore_ascii_case(&host))
+            .unwrap_or(false)
+    })
+}
+
+async fn enforce_security<B>(
+    req: ServiceRequest,
+    next: Next<B>,
+    require_auth: bool,
+) -> Result<ServiceResponse<B>, Error>
+where
+    B: MessageBody + 'static,
+{
+    if !require_auth || public_security_path(req.path()) {
+        return next.call(req).await;
+    }
+
+    if req.path() == "/api/auth/bnet/credential-profiles" && *req.method() == Method::POST {
+        if !same_origin_request(&req) {
+            return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
+        }
+        return next.call(req).await;
+    }
+
+    let auth_state = req
+        .app_data::<web::Data<Arc<auth_handlers::BlizzardAuthState>>>()
+        .ok_or_else(|| actix_web::error::ErrorInternalServerError("auth state unavailable"))?;
+    if auth_handlers::verify_jwt(req.request(), &auth_state.jwt_secret).is_none() {
+        return Err(actix_web::error::ErrorUnauthorized(
+            "authentication required",
+        ));
+    }
+
+    let state_changing = matches!(
+        *req.method(),
+        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+    );
+    let has_bearer = req
+        .headers()
+        .get(actix_web::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("Bearer "));
+    if state_changing && !has_bearer && !same_origin_request(&req) {
+        return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
+    }
+
+    next.call(req).await
+}
+
 #[cfg(test)]
 #[cfg(feature = "web")]
 #[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use actix_web::body::to_bytes;
-    use actix_web::test::TestRequest;
+    use actix_web::test::{init_service, try_call_service, TestRequest};
     use serde_json::Value;
 
     fn test_store() -> web::Data<Arc<dyn JobStorage>> {
         web::Data::new(Arc::new(crate::storage::MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    #[test]
+    fn external_bind_requires_explicit_opt_in() {
+        assert!(is_loopback_bind("127.0.0.1"));
+        assert!(is_loopback_bind("[::1]"));
+        assert!(!is_loopback_bind("0.0.0.0"));
+        assert!(!external_bind_allowed(Some("false")));
+        assert!(external_bind_allowed(Some("TRUE")));
+    }
+
+    #[actix_web::test]
+    async fn external_security_middleware_rejects_protected_routes_without_auth() {
+        let state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
+            None,
+            None,
+            "http://localhost/callback".to_string(),
+            "a-secure-secret-with-more-than-32-bytes".to_string(),
+        )));
+        let app = init_service(
+            App::new()
+                .app_data(state)
+                .wrap(middleware::from_fn(|req, next| {
+                    enforce_security(req, next, true)
+                }))
+                .route(
+                    "/api/protected",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                ),
+        )
+        .await;
+
+        let error =
+            try_call_service(&app, TestRequest::get().uri("/api/protected").to_request()).await;
+        assert_eq!(
+            error
+                .expect_err("request should be rejected")
+                .as_response_error()
+                .status_code(),
+            actix_web::http::StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[actix_web::test]
+    async fn external_security_middleware_requires_same_origin_for_cookie_mutations() {
+        let secret = "a-secure-secret-with-more-than-32-bytes";
+        let state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
+            None,
+            None,
+            "http://localhost/callback".to_string(),
+            secret.to_string(),
+        )));
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &auth_handlers::Claims {
+                sub: "Tester#1".to_string(),
+                session_id: "session-1".to_string(),
+                exp: (chrono::Utc::now().timestamp() + 3600) as usize,
+            },
+            &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
+        )
+        .expect("jwt");
+        let app = init_service(
+            App::new()
+                .app_data(state)
+                .wrap(middleware::from_fn(|req, next| {
+                    enforce_security(req, next, true)
+                }))
+                .route(
+                    "/api/protected",
+                    web::post().to(|| async { HttpResponse::Ok().finish() }),
+                ),
+        )
+        .await;
+
+        let error = try_call_service(
+            &app,
+            TestRequest::post()
+                .uri("/api/protected")
+                .cookie(actix_web::cookie::Cookie::new("bnet_session", token))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(
+            error
+                .expect_err("request should be rejected")
+                .as_response_error()
+                .status_code(),
+            actix_web::http::StatusCode::FORBIDDEN
+        );
     }
 
     #[actix_web::test]
@@ -215,6 +403,15 @@ pub async fn start_with_storage_bind(
 ) -> (actix_web::dev::Server, u16) {
     #[cfg(feature = "web")]
     {
+        let externally_reachable = !is_loopback_bind(bind_host);
+        if externally_reachable
+            && !external_bind_allowed(std::env::var("ALLOW_EXTERNAL_BIND").ok().as_deref())
+        {
+            panic!(
+                "external bind to {bind_host} is disabled; set ALLOW_EXTERNAL_BIND=true and configure a strong JWT_SECRET"
+            );
+        }
+
         let store_data = web::Data::new(storage);
         let simc_data = web::Data::new(simc_path);
         let log_data = web::Data::new(Arc::new(LogBuffer::new()));
@@ -237,8 +434,11 @@ pub async fn start_with_storage_bind(
                 "http://localhost:3000/api/auth/bnet/callback".to_string()
             }
         });
-        let jwt_secret =
-            std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-key-123".to_string());
+        let jwt_secret = auth_handlers::validate_jwt_secret(
+            std::env::var("JWT_SECRET").ok(),
+            externally_reachable,
+        )
+        .unwrap_or_else(|error| panic!("unsafe JWT configuration: {error}"));
 
         let client_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
         let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
@@ -262,12 +462,19 @@ pub async fn start_with_storage_bind(
         let blizzard_state_for_background = blizzard_state.get_ref().clone();
         let store_for_background = store_data.get_ref().clone();
         let data_dir_for_background = data.clone();
+        let configured_web_origin = std::env::var("WEB_ORIGIN")
+            .ok()
+            .filter(|origin| !origin.trim().is_empty());
 
         let server = HttpServer::new(move || {
+            let configured_web_origin = configured_web_origin.clone();
             let cors = Cors::default()
-                .allowed_origin_fn(|origin, _req_head| {
+                .allowed_origin_fn(move |origin, _req_head| {
                     let origin_str = origin.to_str().unwrap_or("");
-                    origin_str == "http://localhost:3000"
+                    configured_web_origin
+                        .as_deref()
+                        .is_some_and(|configured| configured == origin_str)
+                        || origin_str == "http://localhost:3000"
                         || origin_str == "tauri://localhost"
                         || origin_str == "https://tauri.localhost"
                         || origin_str == "http://tauri.localhost"
@@ -292,6 +499,9 @@ pub async fn start_with_storage_bind(
                     .into()
                 }))
                 .wrap(cors)
+                .wrap(middleware::from_fn(move |req, next| {
+                    enforce_security(req, next, externally_reachable)
+                }))
                 .app_data(store_data.clone())
                 .app_data(simc_data.clone())
                 .app_data(log_data.clone())

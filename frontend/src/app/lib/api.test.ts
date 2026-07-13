@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchJson, fetchJsonCached, isDesktopRuntime, isNetworkUnavailableError, TOKEN_KEY } from './api';
+import {
+  fetchJson,
+  fetchJsonCached,
+  isDesktopRuntime,
+  isNetworkUnavailableError,
+  setSessionToken,
+} from './api';
 
 const jsonResponse = (body: unknown, init?: ResponseInit) =>
   new Response(JSON.stringify(body), {
@@ -11,6 +17,7 @@ const jsonResponse = (body: unknown, init?: ResponseInit) =>
 describe('api helpers', () => {
   beforeEach(() => {
     localStorage.clear();
+    setSessionToken(null);
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -20,7 +27,7 @@ describe('api helpers', () => {
   });
 
   it('adds auth, default JSON content type, and credentials to mutating requests', async () => {
-    localStorage.setItem(TOKEN_KEY, 'token-123');
+    setSessionToken('token-123');
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -33,6 +40,17 @@ describe('api helpers', () => {
     expect(init.credentials).toBe('include');
     expect(init.headers.Authorization).toBe('Bearer token-123');
     expect(init.headers['Content-Type']).toBe('application/json');
+  });
+
+  it('keeps the session token out of localStorage', async () => {
+    setSessionToken('memory-only-token');
+    expect(localStorage.length).toBe(0);
+
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ ok: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    await fetchJson('/api/test');
+
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer memory-only-token');
   });
 
   it('returns undefined for empty successful responses and surfaces server detail/error fields', async () => {

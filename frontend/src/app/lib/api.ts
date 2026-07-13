@@ -35,7 +35,11 @@ if (typeof window !== 'undefined') {
 
 export const API_URL = isDesktop ? 'http://localhost:17384' : '';
 
-export const TOKEN_KEY = 'whylowdps_auth_token';
+let sessionToken: string | null = null;
+
+export function setSessionToken(token: string | null): void {
+  sessionToken = token;
+}
 const DEFAULT_FETCH_TIMEOUT_MS = 8000;
 const GET_RETRY_ATTEMPTS = 2;
 const GET_RETRY_DELAY_MS = 300;
@@ -75,11 +79,8 @@ export async function fetchJson<T>(url: string, init?: FetchJsonInit): Promise<T
   const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, ...requestInit } = init || {};
   const headers = { ...requestInit.headers } as Record<string, string>;
 
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
+  if (sessionToken) {
+    headers['Authorization'] = `Bearer ${sessionToken}`;
   }
 
   // Default to application/json for mutating requests if not specified.

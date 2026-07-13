@@ -2841,9 +2841,9 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "10.3.0"
+version = "10.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0529410abe238729a60b108898784df8984c87f6054c9c4fcacc47e4803c1ce1"
+checksum = "eba32bfb4ffdeaca3e34431072faf01745c9b26d25504aa7a6cf5684334fc4fc"
 dependencies = [
  "base64 0.22.1",
  "ed25519-dalek",
@@ -2860,6 +2860,7 @@ dependencies = [
  "sha2",
  "signature",
  "simple_asn1",
+ "zeroize",
 ]
 
 [[package]]
@@ -6743,7 +6744,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "whylowdps-core"
-version = "3.4.2"
+version = "3.5.0"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -6772,7 +6773,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-desktop"
-version = "3.4.2"
+version = "3.5.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -6795,7 +6796,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-server"
-version = "3.4.2"
+version = "3.5.0"
 dependencies = [
  "tokio",
  "whylowdps-core",

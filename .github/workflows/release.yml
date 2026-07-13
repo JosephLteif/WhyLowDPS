@@ -3,16 +3,16 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       source_ref:
-        description: 'Git ref to release from (tag, branch, or commit SHA)'
+        description: "Release source branch (must be master)"
         required: true
         default: master
         type: string
       release_type:
-        description: 'Semantic version bump type'
+        description: "Semantic version bump type"
         required: true
         default: patch
         type: choice
@@ -35,11 +35,22 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
+      - name: Require master release source
+        shell: bash
+        env:
+          SOURCE_REF: ${{ github.event.inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${SOURCE_REF}" != "master" ]]; then
+            echo "Stable releases must be created from master."
+            exit 1
+          fi
+
       - name: Setup node
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: |
             package-lock.json
             frontend/package-lock.json
@@ -60,6 +71,9 @@ jobs:
           npm install --package-lock-only
           npm install --package-lock-only --prefix frontend
           echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate synchronized release version
+        run: npm run verify:release -- "${{ steps.bump.outputs.new_version }}"
 
       - name: Commit and tag release
         shell: bash
@@ -85,9 +99,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: 'windows'
-            os: 'windows-latest'
-            args: '--config src-tauri/tauri.conf.json --bundles nsis'
+          - platform: "windows"
+            os: "windows-latest"
+            args: "--config src-tauri/tauri.conf.json --bundles nsis"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -97,19 +111,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: |
             package-lock.json
             frontend/package-lock.json
 
       - name: install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
 
       - name: install dependencies
         run: npm ci && npm ci --prefix frontend
 
-      - name: Sync version from VERSION file
-        run: npm run sync:version
+      - name: Validate release version from tag
+        shell: bash
+        run: npm run verify:release -- "${GITHUB_REF_NAME#v}"
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -156,7 +173,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "WhyLowDps ${{ github.ref_name }}"
           releaseBody: "Release assets uploaded. Checksums will be added automatically."
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
@@ -207,6 +224,13 @@ jobs:
             --output "${NOTES_FILE}"
 
           gh release edit "${TAG}" --notes-file "${NOTES_FILE}"
+
+      - name: Publish completed release
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false
 
       - name: Notify Discord release channel
         if: matrix.platform == 'windows'

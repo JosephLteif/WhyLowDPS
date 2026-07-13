@@ -53,6 +53,13 @@ gains reputation or is code-signed.
 
 WhyLowDPS currently supports **Windows only**. There are no current plans to support additional platforms.
 
+## Development and deployment
+
+The supported development and release path is the Windows desktop application.
+Use the setup and validation commands in [CONTRIBUTING.md](CONTRIBUTING.md).
+The project site is deployed to GitHub Pages; there is no supported Docker or
+web-server deployment for the application.
+
 ## Pictures
 
 <img width="2560" height="1392" alt="image" src="https://github.com/user-attachments/assets/ef8c994b-3992-4cf9-a35a-dd2b6d884271" />

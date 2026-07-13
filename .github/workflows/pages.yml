@@ -1,6 +1,10 @@
 name: Project Page (GitHub Pages)
 
 on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
   push:
     branches:
       - master
@@ -19,7 +23,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate:
+    name: Validate project site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate local site assets and links
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s docs/index.html
+          test -s docs/styles.css
+          test -s docs/site.webmanifest
+          test -f docs/favicon.ico
+          test -d docs/assets
+
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const docsRoot = path.resolve('docs');
+          const html = fs.readFileSync(path.join(docsRoot, 'index.html'), 'utf8');
+          const targets = [...html.matchAll(/(?:href|src)="([^"]+)"/g)]
+            .map((match) => match[1])
+            .filter((target) => !/^(?:https?:|mailto:|tel:|javascript:|#)/i.test(target));
+
+          for (const target of targets) {
+            const relativePath = target.split('#', 1)[0].split('?', 1)[0];
+            const resolved = path.resolve(docsRoot, relativePath);
+            if (!resolved.startsWith(`${docsRoot}${path.sep}`)) {
+              throw new Error(`Site link escapes docs/: ${target}`);
+            }
+            if (!fs.existsSync(resolved)) {
+              throw new Error(`Missing site asset: ${target}`);
+            }
+          }
+
+          console.log(`Validated ${targets.length} local site references.`);
+          NODE
+
   deploy:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: validate
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

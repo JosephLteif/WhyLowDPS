@@ -30,17 +30,22 @@ jobs:
           filters: |
             frontend:
               - 'frontend/**'
-              - '.github/workflows/checks.yml'
+              - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - 'frontend/package-lock.json'
+              - '.nvmrc'
+              - 'rust-toolchain.toml'
             backend:
               - 'backend/**'
               - 'scripts/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
-              - '.github/workflows/checks.yml'
+              - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+              - '.nvmrc'
+              - 'rust-toolchain.toml'
             tauri:
               - 'desktop/**'
               - 'frontend/**'
@@ -48,10 +53,12 @@ jobs:
               - 'scripts/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
-              - '.github/workflows/checks.yml'
+              - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
               - 'frontend/package-lock.json'
+              - '.nvmrc'
+              - 'rust-toolchain.toml'
 
   frontend_quality:
     name: Frontend Quality
@@ -75,7 +82,7 @@ jobs:
         run: npm ci && npm ci --prefix frontend
 
       - name: Frontend checks
-        run: npm run typecheck:frontend && npm run lint:frontend
+        run: npm run typecheck:frontend && npm run lint:frontend && npm run test:frontend
 
       - name: Build frontend
         run: npm run build:frontend
@@ -96,6 +103,9 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+          components: rustfmt, clippy
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -107,7 +117,7 @@ jobs:
         run: cargo test -p whylowdps-core -p whylowdps-server && node --test scripts/tests/*.test.js
 
   tauri_build_check:
-    if: github.event_name == 'push' && needs.changes.outputs.tauri == 'true' && !startsWith(github.event.head_commit.message, 'chore(release):')
+    if: (github.event_name == 'pull_request' || github.event_name == 'push') && needs.changes.outputs.tauri == 'true' && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
     needs: changes
     name: Tauri Build Check
     runs-on: windows-latest
@@ -126,6 +136,9 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+          components: rustfmt, clippy
 
       - name: Ensure Tauri resource paths exist
         shell: bash
@@ -139,3 +152,34 @@ jobs:
 
       - name: Run Tauri build check
         run: npm run tauri:build:check
+
+      - name: Check desktop Rust formatting
+        run: cargo fmt --manifest-path desktop/src-tauri/Cargo.toml -- --check
+
+      - name: Run desktop tests
+        run: cargo test --manifest-path desktop/src-tauri/Cargo.toml app_logic::tests
+
+  lifecycle_checks:
+    if: always()
+    needs:
+      - changes
+      - frontend_quality
+      - backend_quality
+      - tauri_build_check
+    name: Lifecycle Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail when a workflow job failed or was cancelled
+        if: >-
+          needs.changes.result == 'failure' ||
+          needs.changes.result == 'cancelled' ||
+          needs.frontend_quality.result == 'failure' ||
+          needs.frontend_quality.result == 'cancelled' ||
+          needs.backend_quality.result == 'failure' ||
+          needs.backend_quality.result == 'cancelled' ||
+          needs.tauri_build_check.result == 'failure' ||
+          needs.tauri_build_check.result == 'cancelled'
+        run: exit 1
+
+      - name: Report lifecycle checks
+        run: echo "All applicable lifecycle checks completed successfully or were not applicable."

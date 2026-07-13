@@ -1,7 +1,7 @@
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub(crate) fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path) {
     if !bundled_data_dir.exists() {
@@ -51,6 +51,43 @@ pub(crate) struct AppClosePreferences {
 pub(crate) struct AppClosePreferencesState {
     pub(crate) prefs: Mutex<AppClosePreferences>,
     pub(crate) path: PathBuf,
+    pub(crate) simc_runtime: SimcRuntimeCoordinator,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) enum SimcReadiness {
+    Missing,
+    Downloading,
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SimcRuntimeCoordinator {
+    pub(crate) update_lock: Arc<tokio::sync::Mutex<()>>,
+    readiness: Arc<Mutex<SimcReadiness>>,
+}
+
+impl SimcRuntimeCoordinator {
+    pub(crate) fn new(initial: SimcReadiness) -> Self {
+        Self {
+            update_lock: Arc::new(tokio::sync::Mutex::new(())),
+            readiness: Arc::new(Mutex::new(initial)),
+        }
+    }
+
+    pub(crate) fn set_readiness(&self, readiness: SimcReadiness) {
+        if let Ok(mut current) = self.readiness.lock() {
+            *current = readiness;
+        }
+    }
+
+    pub(crate) fn readiness(&self) -> SimcReadiness {
+        self.readiness
+            .lock()
+            .map(|current| current.clone())
+            .unwrap_or(SimcReadiness::Failed)
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -486,6 +523,19 @@ pub(crate) fn parse_track_sims_payload(payload: &str) -> TrackSimsPayloadParseRe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn simc_runtime_coordinator_tracks_startup_states() {
+        let coordinator = SimcRuntimeCoordinator::new(SimcReadiness::Missing);
+        assert_eq!(coordinator.readiness(), SimcReadiness::Missing);
+
+        coordinator.set_readiness(SimcReadiness::Downloading);
+        assert_eq!(coordinator.readiness(), SimcReadiness::Downloading);
+        coordinator.set_readiness(SimcReadiness::Ready);
+        assert_eq!(coordinator.readiness(), SimcReadiness::Ready);
+        coordinator.set_readiness(SimcReadiness::Failed);
+        assert_eq!(coordinator.readiness(), SimcReadiness::Failed);
+    }
     use serde_json::json;
     use std::fs;
 
@@ -619,6 +669,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
         set_simc_runtime_version_internal(&state, Some("weekly-202606230100")).unwrap();
@@ -641,6 +692,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
         set_simc_update_channel_internal(&state, "nightly").unwrap();
@@ -668,6 +720,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
         set_close_behavior_preference_internal(&state, true).unwrap();

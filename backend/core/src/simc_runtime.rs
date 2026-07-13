@@ -197,6 +197,42 @@ pub fn current_platform() -> &'static str {
     }
 }
 
+fn promote_simc_binary(staged: &Path, target: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::Storage::FileSystem::{
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        };
+
+        let staged_w = staged
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        let target_w = target
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>();
+        unsafe {
+            MoveFileExW(
+                PCWSTR(staged_w.as_ptr()),
+                PCWSTR(target_w.as_ptr()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+            .map_err(|error| format!("Failed to promote SimC binary: {error}"))?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(windows))]
+    {
+        fs::rename(staged, target).map_err(|error| format!("Failed to promote SimC binary: {error}"))
+    }
+}
+
 pub fn read_cached_metadata(path: &Path) -> Option<SimcCachedMetadata> {
     let raw = fs::read_to_string(path).ok()?;
     serde_json::from_str(&raw).ok()
@@ -286,11 +322,7 @@ where
         .join(format!("{}.next", simc_binary_name()));
     fs::copy(&staged_simc, &next_simc).map_err(|e| format!("Failed to stage SimC binary: {e}"))?;
 
-    if cached_path.exists() {
-        fs::remove_file(&cached_path).map_err(|e| format!("Failed to replace SimC binary: {e}"))?;
-    }
-    fs::rename(&next_simc, &cached_path)
-        .map_err(|e| format!("Failed to promote SimC binary: {e}"))?;
+    promote_simc_binary(&next_simc, &cached_path)?;
 
     let metadata = SimcCachedMetadata {
         channel: manifest.channel.clone(),
@@ -478,6 +510,20 @@ mod tests {
             Some(value) => std::env::set_var("SIMC_RUNTIME_MANIFEST_BASE_URL", value),
             None => std::env::remove_var("SIMC_RUNTIME_MANIFEST_BASE_URL"),
         }
+    }
+
+    #[test]
+    fn staged_simc_binary_replaces_existing_target_without_a_missing_path_window() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let staged = dir.path().join("simc.next");
+        let target = dir.path().join(simc_binary_name());
+        fs::write(&staged, b"new binary").expect("staged binary");
+        fs::write(&target, b"old binary").expect("old binary");
+
+        promote_simc_binary(&staged, &target).expect("promote binary");
+
+        assert_eq!(fs::read(&target).expect("target binary"), b"new binary");
+        assert!(!staged.exists());
     }
 
     #[test]

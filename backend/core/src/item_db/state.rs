@@ -17,13 +17,14 @@ pub const TRACK_RANKS: &[&str] = &[
 ];
 
 use std::sync::Arc;
-#[cfg(test)]
 use std::sync::Mutex;
 
 // ---- Static Data Stores ----
 
 pub static ITEMS: Lazy<RwLock<Arc<HashMap<u64, GameItem>>>> =
     Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
+/// Serializes complete reloads so one file repair cannot interleave with another reload.
+pub static LOAD_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 pub static ENCHANTS: Lazy<RwLock<Arc<HashMap<u64, EnchantData>>>> =
     Lazy::new(|| RwLock::new(Arc::new(HashMap::new())));
 pub static ENCHANTS_BY_ITEM_ID: Lazy<RwLock<Arc<HashMap<u64, EnchantData>>>> =

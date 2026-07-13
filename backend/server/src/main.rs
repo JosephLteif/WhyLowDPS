@@ -34,6 +34,21 @@ where
     port
 }
 
+fn validate_bind_configuration(
+    bind_host: &str,
+    allow_external: Option<&str>,
+    jwt_secret: Option<String>,
+) -> Result<(), String> {
+    let external = !server::is_loopback_bind(bind_host);
+    if external && !server::external_bind_allowed(allow_external) {
+        return Err(
+            "external binding is disabled; set ALLOW_EXTERNAL_BIND=true to expose the web server"
+                .to_string(),
+        );
+    }
+    server::auth_handlers::validate_jwt_secret(jwt_secret, external).map(|_| ())
+}
+
 #[tokio::main]
 async fn main() {
     let base_dir = choose_base_dir(std::path::Path::new("backend/resources").exists());
@@ -61,7 +76,13 @@ async fn main() {
         },
     };
 
-    let bind_host = env_or("BIND_HOST", "0.0.0.0");
+    let bind_host = env_or("BIND_HOST", "127.0.0.1");
+    validate_bind_configuration(
+        &bind_host,
+        std::env::var("ALLOW_EXTERNAL_BIND").ok().as_deref(),
+        std::env::var("JWT_SECRET").ok(),
+    )
+    .unwrap_or_else(|error| panic!("invalid server security configuration: {error}"));
 
     let env_port: u16 = env_or("PORT", "8000")
         .parse()
@@ -152,6 +173,22 @@ mod tests {
         unsafe {
             env::remove_var(key);
         }
+    }
+
+    #[test]
+    fn external_bind_requires_opt_in_and_strong_secret() {
+        assert!(validate_bind_configuration("127.0.0.1", None, None).is_ok());
+        assert!(validate_bind_configuration("0.0.0.0", None, None).is_err());
+        assert!(
+            validate_bind_configuration("0.0.0.0", Some("true"), Some("short".to_string()))
+                .is_err()
+        );
+        assert!(validate_bind_configuration(
+            "0.0.0.0",
+            Some("true"),
+            Some("a-secure-secret-with-more-than-32-bytes".to_string())
+        )
+        .is_ok());
     }
 
     #[test]

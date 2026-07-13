@@ -13,9 +13,34 @@ pub struct SqliteStorage {
 
 impl SqliteStorage {
     pub fn new(path: &str) -> Self {
-        let conn = Connection::open(path).expect("Failed to open SQLite database");
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS jobs (
+        let mut conn = Connection::open(path).expect("Failed to open SQLite database");
+        initialize_schema(&mut conn).expect("Failed to initialize SQLite schema");
+
+        let max_jobs = conn
+            .query_row(
+                "SELECT value FROM settings WHERE key = 'max_jobs'",
+                [],
+                |row| {
+                    let s: String = row.get(0)?;
+                    Ok(s.parse::<usize>().unwrap_or(*super::MAX_JOBS))
+                },
+            )
+            .unwrap_or(*super::MAX_JOBS);
+
+        Self {
+            conn: Mutex::new(conn),
+            max_jobs: Mutex::new(max_jobs),
+        }
+    }
+}
+
+const SQLITE_SCHEMA_VERSION: i64 = 1;
+
+fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
+    let tx = conn.transaction()?;
+    let current_version: i64 = tx.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY,
                 status TEXT NOT NULL DEFAULT 'pending',
                 sim_type TEXT NOT NULL,
@@ -70,44 +95,42 @@ impl SqliteStorage {
                 simc_input TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );",
-        )
-        .expect("Failed to create tables");
+    )?;
 
-        // Migrate: add columns if missing
-        let _ = conn.execute_batch(
-            "ALTER TABLE jobs ADD COLUMN html_report TEXT;
-             ALTER TABLE jobs ADD COLUMN text_output TEXT;",
-        );
-        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN raw_json TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN options TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN batch_id TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_region TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_realm TEXT;");
-        let _ = conn.execute_batch("ALTER TABLE jobs ADD COLUMN linked_name TEXT;");
-        let _ =
-            conn.execute_batch("ALTER TABLE jobs ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;");
-        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN level INTEGER;");
-        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN pull_count INTEGER;");
-        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN timer_seconds INTEGER;");
-        let _ = conn.execute_batch("ALTER TABLE dungeon_routes ADD COLUMN affixes TEXT;");
-
-        let max_jobs = conn
-            .query_row(
-                "SELECT value FROM settings WHERE key = 'max_jobs'",
-                [],
-                |row| {
-                    let s: String = row.get(0)?;
-                    Ok(s.parse::<usize>().unwrap_or(*super::MAX_JOBS))
-                },
-            )
-            .unwrap_or(*super::MAX_JOBS);
-
-        Self {
-            conn: Mutex::new(conn),
-            max_jobs: Mutex::new(max_jobs),
+    if current_version < SQLITE_SCHEMA_VERSION {
+        for (table, column, definition) in [
+            ("jobs", "html_report", "TEXT"),
+            ("jobs", "text_output", "TEXT"),
+            ("jobs", "raw_json", "TEXT"),
+            ("jobs", "options", "TEXT"),
+            ("jobs", "batch_id", "TEXT"),
+            ("jobs", "linked_region", "TEXT"),
+            ("jobs", "linked_realm", "TEXT"),
+            ("jobs", "linked_name", "TEXT"),
+            ("jobs", "pinned", "INTEGER NOT NULL DEFAULT 0"),
+            ("dungeon_routes", "level", "INTEGER"),
+            ("dungeon_routes", "pull_count", "INTEGER"),
+            ("dungeon_routes", "timer_seconds", "INTEGER"),
+            ("dungeon_routes", "affixes", "TEXT"),
+        ] {
+            let mut columns = tx.prepare(&format!("PRAGMA table_info({table})"))?;
+            let exists = columns
+                .query_map([], |row| row.get::<_, String>(1))?
+                .any(|column_name| column_name.as_deref() == Ok(column));
+            drop(columns);
+            if !exists {
+                tx.execute_batch(&format!(
+                    "ALTER TABLE {table} ADD COLUMN {column} {definition};"
+                ))?;
+            }
         }
     }
 
+    tx.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
+    tx.commit()
+}
+
+impl SqliteStorage {
     fn status_to_str(status: &JobStatus) -> &'static str {
         match status {
             JobStatus::Pending => "pending",
@@ -700,6 +723,45 @@ mod tests {
         let path = dir.path().join("whylowdps-tests.db");
         let storage = SqliteStorage::new(path.to_string_lossy().as_ref());
         (dir, storage)
+    }
+
+    #[test]
+    fn sqlite_schema_migration_is_versioned_and_transactional() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("legacy.db");
+        let conn = Connection::open(&path).expect("open legacy db");
+        conn.execute_batch(
+            "CREATE TABLE jobs (
+                id TEXT PRIMARY KEY, status TEXT NOT NULL, sim_type TEXT NOT NULL,
+                simc_input TEXT NOT NULL, options TEXT, result_json TEXT,
+                combo_metadata_json TEXT, error_message TEXT, progress_pct INTEGER NOT NULL,
+                progress_stage TEXT, progress_detail TEXT, stages_completed TEXT NOT NULL,
+                iterations INTEGER NOT NULL, fight_style TEXT NOT NULL, target_error REAL NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE dungeon_routes (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL, dungeon TEXT NOT NULL,
+                route_data TEXT NOT NULL, created_at TEXT NOT NULL
+            );
+            PRAGMA user_version = 0;",
+        )
+        .expect("create legacy schema");
+        drop(conn);
+
+        let _storage = SqliteStorage::new(path.to_string_lossy().as_ref());
+        let conn = Connection::open(path).expect("reopen migrated db");
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .expect("schema version");
+        let html_column: String = conn
+            .query_row(
+                "SELECT name FROM pragma_table_info('jobs') WHERE name = 'html_report'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("migrated html column");
+        assert_eq!(version, SQLITE_SCHEMA_VERSION);
+        assert_eq!(html_column, "html_report");
     }
 
     fn make_job(

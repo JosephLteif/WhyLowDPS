@@ -44,27 +44,10 @@ impl BlizzardState {
         auth_state: Option<&BlizzardAuthState>,
         store: &dyn crate::storage::JobStorage,
     ) -> Option<(String, String)> {
-        // 1. Try system credentials (local app config)
-        if let (Some(id), Some(sec)) = (
-            store.get_user_config("system", "blizzard_client_id"),
-            store.get_user_config("system", "blizzard_client_secret"),
-        ) {
-            return Some((id, sec));
-        }
-
-        // 2. Try logged in user credentials
-        if let Some(auth) = auth_state {
-            if let Some(claims) = verify_jwt(req, &auth.jwt_secret) {
-                if let (Some(id), Some(sec)) = (
-                    store.get_user_config(&claims.sub, "blizzard_client_id"),
-                    store.get_user_config(&claims.sub, "blizzard_client_secret"),
-                ) {
-                    return Some((id, sec));
-                }
-            }
-        }
-
-        // 3. Try global config (env vars)
+        let _ = (req, store);
+        // Credentials are either configured through the process environment or
+        // used for the current OAuth session. Legacy plaintext user-config
+        // values are intentionally no longer accepted.
         if let Some(auth) = auth_state {
             if let (Some(id), Some(sec)) = (&auth.client_id, &auth.client_secret) {
                 return Some((id.clone(), sec.clone()));
@@ -83,12 +66,10 @@ pub async fn get_effective_token(
 ) -> Option<String> {
     // Priority 1: Check for an active user session token (direct access)
     if let Some(auth) = auth_state {
-        if let Some(_claims) = verify_jwt(req, &auth.jwt_secret) {
-            // If the user is logged in via OAuth, we might have their access token directly.
-            // However, Blizzard user tokens expire. For proxying, we often prefer client_credentials
-            // using their configured keys, or just use their user token if it's fresh.
-            // For now, we continue to prioritize client_credentials for proxying as it's more stable.
-            // But we COULD return claims.access_token here if we wanted.
+        if let Some(claims) = verify_jwt(req, &auth.jwt_secret) {
+            if let Some(token) = auth.oauth_token(&claims.session_id) {
+                return Some(token);
+            }
         }
     }
 
@@ -240,7 +221,7 @@ mod tests {
     fn make_jwt(sub: &str, access_token: &str, secret: &str) -> String {
         let claims = Claims {
             sub: sub.to_string(),
-            access_token: access_token.to_string(),
+            session_id: access_token.to_string(),
             exp: (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("system time")
@@ -327,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn get_effective_credentials_prefers_system_over_global() {
+    fn get_effective_credentials_ignores_legacy_system_plaintext() {
         let req = TestRequest::default().to_http_request();
         let store = MemoryStorage::new();
         store.set_user_config("system", "blizzard_client_id", "system-id");
@@ -343,7 +324,7 @@ mod tests {
         let creds = BlizzardState::get_effective_credentials(&req, Some(&auth), &store);
         assert_eq!(
             creds,
-            Some(("system-id".to_string(), "system-secret".to_string()))
+            Some(("global-id".to_string(), "global-secret".to_string()))
         );
     }
 
@@ -366,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn get_effective_credentials_uses_logged_in_user_before_global_config() {
+    fn get_effective_credentials_ignores_legacy_user_plaintext() {
         let token = make_jwt("Tester#9999", "access-token", "jwt-secret");
         let req = TestRequest::default()
             .cookie(Cookie::new("bnet_session", token))
@@ -385,12 +366,12 @@ mod tests {
         let creds = BlizzardState::get_effective_credentials(&req, Some(&auth), &store);
         assert_eq!(
             creds,
-            Some(("user-id".to_string(), "user-secret".to_string()))
+            Some(("global-id".to_string(), "global-secret".to_string()))
         );
     }
 
     #[test]
-    fn get_effective_credentials_prefers_system_over_logged_in_user() {
+    fn get_effective_credentials_ignores_legacy_user_and_system_plaintext() {
         let token = make_jwt("Tester#9999", "access-token", "jwt-secret");
         let req = TestRequest::default()
             .cookie(Cookie::new("bnet_session", token))
@@ -411,7 +392,7 @@ mod tests {
         let creds = BlizzardState::get_effective_credentials(&req, Some(&auth), &store);
         assert_eq!(
             creds,
-            Some(("system-id".to_string(), "system-secret".to_string()))
+            Some(("global-id".to_string(), "global-secret".to_string()))
         );
     }
 

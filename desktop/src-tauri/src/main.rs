@@ -118,6 +118,7 @@ struct SimcRuntimeStatusResponse {
     version: String,
     updated: bool,
     simc_path: String,
+    readiness: SimcReadiness,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -212,9 +213,12 @@ fn set_simc_runtime_version(
 #[tauri::command]
 async fn update_simc_runtime(
     app: tauri::AppHandle,
+    state: tauri::State<'_, AppClosePreferencesState>,
     channel: String,
     version: Option<String>,
 ) -> Result<SimcRuntimeStatusResponse, String> {
+    let _runtime_guard = state.simc_runtime.update_lock.lock().await;
+    state.simc_runtime.set_readiness(SimcReadiness::Downloading);
     let app_data_dir = app
         .path()
         .app_data_dir()
@@ -280,9 +284,11 @@ async fn update_simc_runtime(
                     message: Some(err.clone()),
                 },
             );
+            state.simc_runtime.set_readiness(SimcReadiness::Failed);
             return Err(err);
         }
     };
+    state.simc_runtime.set_readiness(SimcReadiness::Ready);
     let _ = app.emit(
         "whylowdps-simc-runtime-progress",
         SimcRuntimeProgressEvent {
@@ -308,7 +314,13 @@ async fn update_simc_runtime(
         version: resolution.version,
         updated: resolution.updated,
         simc_path: resolution.simc_path.to_string_lossy().to_string(),
+        readiness: state.simc_runtime.readiness(),
     })
+}
+
+#[tauri::command]
+fn get_simc_runtime_status(state: tauri::State<'_, AppClosePreferencesState>) -> SimcReadiness {
+    state.simc_runtime.readiness()
 }
 
 #[tauri::command]
@@ -631,6 +643,7 @@ fn main() {
             get_simc_runtime_version,
             set_simc_runtime_version,
             update_simc_runtime,
+            get_simc_runtime_status,
             apply_close_behavior_choice,
             restart_app,
             quit_app_now,
@@ -657,6 +670,7 @@ fn main() {
             app.manage(AppClosePreferencesState {
                 prefs: std::sync::Mutex::new(close_prefs),
                 path: close_prefs_path,
+                simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
             });
 
             let app_handle = app.handle().clone();
@@ -818,47 +832,69 @@ fn main() {
             let db_path = app_data_dir.join("whylowdps.db");
             let db_path_str = db_path.to_string_lossy().to_string();
 
+            let simc_runtime = app.state::<AppClosePreferencesState>().simc_runtime.clone();
             tauri::async_runtime::spawn({
                 let simc_dir = simc_dir.clone();
                 let simc_channel = simc_channel.clone();
                 let simc_runtime_version = simc_runtime_version.clone();
+                let simc_bin = simc_bin.clone();
+                let app_handle = app_handle.clone();
                 async move {
+                    let _runtime_guard = simc_runtime.update_lock.lock().await;
+                    simc_runtime.set_readiness(SimcReadiness::Downloading);
                     let simc_config =
                         SimcRuntimeConfig::new(SimcChannel::parse(&simc_channel), simc_dir)
                             .with_release_tag(simc_runtime_version);
-                    match resolve_simc_runtime(&simc_config).await {
+                    let resolved_simc = match resolve_simc_runtime(&simc_config).await {
                         Ok(resolution) => {
+                            simc_runtime.set_readiness(SimcReadiness::Ready);
                             println!(
                                 "Using SimC {} channel version {} at {:?}",
                                 resolution.channel, resolution.version, resolution.simc_path
                             );
+                            resolution.simc_path
                         }
                         Err(err) => {
+                            simc_runtime.set_readiness(SimcReadiness::Failed);
                             eprintln!("Failed to update SimC runtime: {err}");
+                            let _ = app_handle.emit(
+                                "whylowdps-simc-runtime-progress",
+                                SimcRuntimeProgressEvent {
+                                    status: "error".to_string(),
+                                    channel: simc_channel,
+                                    downloaded_bytes: 0,
+                                    total_bytes: None,
+                                    elapsed_ms: 0,
+                                    speed_bytes_per_sec: 0,
+                                    eta_seconds: None,
+                                    version: None,
+                                    updated: None,
+                                    message: Some(err),
+                                },
+                            );
+                            simc_bin
                         }
-                    }
+                    };
+
+                    println!("Loading game data from {:?}", data_dir);
+                    game_data::load(&data_dir);
+
+                    println!("Using SQLite database at {}", db_path_str);
+
+                    let storage: Arc<dyn JobStorage> = Arc::new(SqliteStorage::new(&db_path_str));
+
+                    let (server, _actual_port) = server::start_with_storage_bind(
+                        storage,
+                        resolved_simc,
+                        "127.0.0.1",
+                        17384,
+                        None,
+                        Some(data_dir),
+                    )
+                    .await;
+
+                    server.await.expect("Server error");
                 }
-            });
-
-            tauri::async_runtime::spawn(async move {
-                println!("Loading game data from {:?}", data_dir);
-                game_data::load(&data_dir);
-
-                println!("Using SQLite database at {}", db_path_str);
-
-                let storage: Arc<dyn JobStorage> = Arc::new(SqliteStorage::new(&db_path_str));
-
-                let (server, _actual_port) = server::start_with_storage_bind(
-                    storage,
-                    simc_bin,
-                    "127.0.0.1",
-                    17384,
-                    None,
-                    Some(data_dir),
-                )
-                .await;
-
-                server.await.expect("Server error");
             });
 
             Ok(())

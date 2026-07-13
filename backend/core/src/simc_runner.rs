@@ -3,12 +3,13 @@ use regex::Regex;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tempfile::TempDir;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
+use tokio::sync::Semaphore;
 
 use crate::error::{AppError, Result};
 use crate::types::simc::SimcOutput;
@@ -25,6 +26,34 @@ static RUNNING_PROCESSES: Lazy<Mutex<HashMap<String, u32>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static CANCELLED_JOBS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 static SYSINFO: Lazy<Mutex<System>> = Lazy::new(|| Mutex::new(System::new_all()));
+static SIMC_ADMISSION: Lazy<Arc<Semaphore>> = Lazy::new(|| {
+    let default_limit = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+        .max(1);
+    let limit = std::env::var("MAX_CONCURRENT_SIMULATIONS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default_limit);
+    Arc::new(Semaphore::new(limit))
+});
+
+struct CancellationGuard<'a> {
+    job_id: &'a str,
+}
+
+impl<'a> CancellationGuard<'a> {
+    fn new(job_id: &'a str) -> Self {
+        Self { job_id }
+    }
+}
+
+impl Drop for CancellationGuard<'_> {
+    fn drop(&mut self) {
+        cleanup_cancelled_job(self.job_id);
+    }
+}
 
 pub fn get_process_stats(job_id: &str) -> Option<(f32, u64)> {
     let pid_u32 = RUNNING_PROCESSES.lock().unwrap().get(job_id).copied()?;
@@ -101,7 +130,20 @@ fn set_process_affinity(pid: u32, threads: u32) {
     }
 }
 
-const SIMC_TIMEOUT_SECS: u64 = 600;
+const SIMC_IDLE_TIMEOUT_SECS: u64 = 600;
+const SIMC_TOTAL_TIMEOUT_SECS: u64 = 1800;
+
+fn timeout_for_next_output(now: Instant, total_deadline: Instant) -> Duration {
+    Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS).min(total_deadline.saturating_duration_since(now))
+}
+
+async fn acquire_simc_slot() -> Result<tokio::sync::OwnedSemaphorePermit> {
+    SIMC_ADMISSION
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| AppError::SimcError("simulation admission is unavailable".into()))
+}
 
 fn resolve_threads(options: &Value) -> u32 {
     let max = std::thread::available_parallelism()
@@ -397,9 +439,15 @@ async fn run_simc_subprocess(
 
     let mut out_collected = Vec::new();
     let mut err_collected = Vec::new();
+    let total_deadline = Instant::now() + Duration::from_secs(SIMC_TOTAL_TIMEOUT_SECS);
 
     loop {
-        match tokio::time::timeout(Duration::from_secs(SIMC_TIMEOUT_SECS), rx.recv()).await {
+        match tokio::time::timeout(
+            timeout_for_next_output(Instant::now(), total_deadline),
+            rx.recv(),
+        )
+        .await
+        {
             Ok(Some((is_err, line))) => {
                 on_l(&line);
                 if let Some(caps) = patterns::PROGRESS_RE.captures(&line) {
@@ -421,15 +469,26 @@ async fn run_simc_subprocess(
             Err(_) => {
                 let _ = child.kill().await;
                 RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+                let timeout_kind = if Instant::now() >= total_deadline {
+                    "total"
+                } else {
+                    "idle-output"
+                };
                 return Err(AppError::SimcError(format!(
-                    "simc timed out after {}s",
-                    SIMC_TIMEOUT_SECS
+                    "simc {} timeout (idle={}s total={}s)",
+                    timeout_kind, SIMC_IDLE_TIMEOUT_SECS, SIMC_TOTAL_TIMEOUT_SECS
                 )));
             }
         }
     }
 
-    let status = child.wait().await.map_err(AppError::IoError)?;
+    let status = match child.wait().await {
+        Ok(status) => status,
+        Err(error) => {
+            RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+            return Err(AppError::IoError(error));
+        }
+    };
     RUNNING_PROCESSES.lock().unwrap().remove(job_id);
 
     if !status.success() {
@@ -545,6 +604,8 @@ pub async fn run_simc(
     on_p: impl Fn(usize, usize),
     on_l: impl Fn(&str),
 ) -> Result<SimcOutput> {
+    let _admission = acquire_simc_slot().await?;
+    let _cancellation = CancellationGuard::new(job_id);
     let f = options
         .get("fight_style")
         .and_then(|v| v.as_str())
@@ -643,6 +704,8 @@ pub async fn run_simc_staged(
     on_sc: impl Fn(&str),
     on_l: impl Fn(&str) + Clone,
 ) -> Result<SimcOutput> {
+    let _admission = acquire_simc_slot().await?;
+    let _cancellation = CancellationGuard::new(job_id);
     let f = options
         .get("fight_style")
         .and_then(|v| v.as_str())
@@ -1141,6 +1204,35 @@ fight_style=Patchwerk
         assert!(CANCELLED_JOBS.lock().unwrap().contains(job_id));
         cleanup_cancelled_job(job_id);
         assert!(!CANCELLED_JOBS.lock().unwrap().contains(job_id));
+    }
+
+    #[test]
+    fn cancellation_guard_clears_marker_when_scope_ends() {
+        let job_id = "guard-cleanup-job";
+        cleanup_cancelled_job(job_id);
+        kill_job(job_id);
+        assert!(CANCELLED_JOBS.lock().unwrap().contains(job_id));
+
+        {
+            let _guard = CancellationGuard::new(job_id);
+            assert!(CANCELLED_JOBS.lock().unwrap().contains(job_id));
+        }
+
+        assert!(!CANCELLED_JOBS.lock().unwrap().contains(job_id));
+    }
+
+    #[test]
+    fn subprocess_timeout_uses_the_earlier_idle_or_total_deadline() {
+        let now = std::time::Instant::now();
+        let total_deadline = now + Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS + 5);
+
+        assert_eq!(
+            timeout_for_next_output(now, total_deadline),
+            Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS)
+        );
+
+        let near_deadline = total_deadline - Duration::from_secs(1);
+        assert!(timeout_for_next_output(near_deadline, total_deadline) <= Duration::from_secs(1));
     }
 
     #[test]

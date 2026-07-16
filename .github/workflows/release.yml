@@ -29,7 +29,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout master
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.source_ref }}
           fetch-depth: 0
@@ -105,7 +105,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: setup node
         uses: actions/setup-node@v6

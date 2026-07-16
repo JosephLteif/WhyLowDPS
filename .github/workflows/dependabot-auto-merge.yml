@@ -5,7 +5,7 @@ on:
     types: [ opened, reopened, synchronize ]
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -14,25 +14,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Request repository owner review
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr edit "$PR_URL" --add-reviewer jlteif
-
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Approve patch and minor updates
+      - name: Enable auto-merge for patch and minor updates
         if: >-
           steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
           steps.metadata.outputs.update-type == 'version-update:semver-minor'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: |
-          gh pr review "$PR_URL" --approve
-          gh pr merge "$PR_URL" --auto --squash
+        run: gh pr merge "$PR_URL" --auto --squash

@@ -32,7 +32,7 @@ const releaseNotes: ReleaseNote[] = [
     body: [
       {
         type: 'paragraph',
-        text: 'Download All Missing now restores verified game data from GitHub first and automatically falls back to Raidbots if needed.',
+        text: 'Download All Missing now restores game data from a verified backup, automatically tries Raidbots if needed, and shows clearer progress while files are repaired.',
       },
     ],
   },
@@ -43,6 +43,26 @@ const releaseNotes: ReleaseNote[] = [
       {
         type: 'paragraph',
         text: 'The Game Data File States view now labels every file as Required or Optional, lets you filter by availability or requirement, and keeps the main recovery actions easier to find.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'A smoother start after updates',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'When a new app version is ready, you see the update first. Once you decide about it, missing-data repair is ready when you need it instead of competing for attention.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'More dependable desktop setup',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Desktop sign-in now uses your saved Blizzard credential profile, and the app can keep using an existing SimC runtime when a newer one cannot be downloaded.',
       },
     ],
   },

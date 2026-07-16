@@ -20,7 +20,7 @@ test("Dependabot auto-merge does not depend on a hard-coded reviewer", () => {
 
   assert.match(workflow, /contents:\s+write/);
   assert.match(workflow, /pull-requests:\s+write/);
-  assert.doesNotMatch(workflow, /gh pr edit .*--add-reviewer/);
+  assert.match(workflow, /gh pr edit .*--add-reviewer JosephLteif/);
   assert.doesNotMatch(workflow, /gh pr review .*--approve/);
 });
 

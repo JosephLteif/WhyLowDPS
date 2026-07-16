@@ -135,7 +135,7 @@ jobs:
             desktop/src-tauri -> target
 
       - name: Cache Next build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: frontend/.next/cache
           key: ${{ runner.os }}-nextjs-release-${{ hashFiles('frontend/package-lock.json', 'frontend/tsconfig.json', 'frontend/tailwind.config.ts', 'frontend/next.config.js', 'frontend/next.config.mjs', 'frontend/next.config.ts') }}

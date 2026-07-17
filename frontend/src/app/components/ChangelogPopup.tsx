@@ -32,7 +32,7 @@ const releaseNotes: ReleaseNote[] = [
     body: [
       {
         type: 'paragraph',
-        text: 'Desktop sign-in now uses the selected saved Blizzard credential profile and brings back the secure credential setup flow when a saved secret is unavailable.',
+        text: 'Desktop sign-in and initial data synchronization now use the selected saved Blizzard credential profile, with the secure credential setup flow available when a saved secret is unavailable.',
       },
     ],
   },

@@ -627,7 +627,24 @@ fn get_effective_creds(
         return Ok(Some((id.clone(), sec.clone())));
     }
 
+    // 3. Use the first saved profile whose secure secret is still available.
+    for profile in load_blizzard_credential_profiles(store) {
+        if let Ok(Some(secret)) = read_profile_secret(secrets, &profile) {
+            return Ok(Some((profile.client_id, secret)));
+        }
+    }
+
     Ok(None)
+}
+
+pub(crate) fn get_available_blizzard_creds(
+    state: &BlizzardAuthState,
+    store: &dyn crate::storage::JobStorage,
+    secrets: &dyn BlizzardCredentialSecretStore,
+) -> Option<(String, String)> {
+    get_effective_creds(state, store, secrets, None)
+        .ok()
+        .flatten()
 }
 
 pub async fn get_credentials_status(
@@ -1528,6 +1545,30 @@ mod tests {
         assert_eq!(
             get_effective_creds(&no_env_state, &store, &secrets, None),
             Ok(None)
+        );
+
+        let saved_store = test_store();
+        let saved_secrets = test_secret_store();
+        save_blizzard_credential_profiles(
+            &***saved_store,
+            &[BlizzardCredentialProfile {
+                id: "saved-profile".to_string(),
+                name: "Main credentials".to_string(),
+                client_id: "saved-client-id".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            }],
+        )
+        .expect("save profile");
+        saved_secrets
+            .set_secret("saved-profile", "saved-client-secret")
+            .expect("save secret");
+        assert_eq!(
+            get_effective_creds(&no_env_state, &***saved_store, &***saved_secrets, None),
+            Ok(Some((
+                "saved-client-id".to_string(),
+                "saved-client-secret".to_string()
+            )))
         );
     }
 

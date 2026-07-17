@@ -10,7 +10,9 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
+use crate::server::auth_handlers::{
+    get_available_blizzard_creds, verify_jwt, BlizzardAuthState, BlizzardCredentialSecretStore,
+};
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
 
@@ -306,6 +308,7 @@ mod tests {
     use super::wowhead_zones::{WowheadZoneMatchQuery, WowheadZonesSummaryQuery};
     use super::*;
     use crate::item_db::state;
+    use crate::server::auth_handlers::MemoryBlizzardCredentialSecretStore;
     use crate::storage::{JobStorage, MemoryStorage};
     use actix_web::body::to_bytes;
     use actix_web::test::TestRequest;
@@ -321,6 +324,11 @@ mod tests {
 
     fn test_store() -> web::Data<Arc<dyn JobStorage>> {
         web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn test_secret_store() -> web::Data<Arc<dyn BlizzardCredentialSecretStore>> {
+        web::Data::new(Arc::new(MemoryBlizzardCredentialSecretStore::default())
+            as Arc<dyn BlizzardCredentialSecretStore>)
     }
 
     fn test_sync_state() -> web::Data<Arc<DataSyncState>> {
@@ -851,8 +859,14 @@ mod tests {
         let state = test_sync_state();
         let store = test_store();
 
-        let missing =
-            get_sync_status(req.clone(), state.clone(), test_auth_state(), store.clone()).await;
+        let missing = get_sync_status(
+            req.clone(),
+            state.clone(),
+            test_auth_state(),
+            store.clone(),
+            test_secret_store(),
+        )
+        .await;
         assert_eq!(missing.status(), 200);
         let missing_body = to_bytes(missing.into_body()).await.expect("status body");
         let missing_payload: Value = serde_json::from_slice(&missing_body).expect("status json");
@@ -867,7 +881,8 @@ mod tests {
             "http://localhost/callback".to_string(),
             "test-secret".to_string(),
         )));
-        let configured = get_sync_status(req, state, configured_auth, store).await;
+        let configured =
+            get_sync_status(req, state, configured_auth, store, test_secret_store()).await;
         let configured_body = to_bytes(configured.into_body())
             .await
             .expect("configured status body");
@@ -875,6 +890,43 @@ mod tests {
             serde_json::from_slice(&configured_body).expect("configured status json");
         assert_eq!(
             configured_payload.get("can_sync").and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let saved_store = test_store();
+        saved_store.set_user_config(
+            "system",
+            "blizzard_credential_profiles",
+            &serde_json::json!([{
+                "id": "saved-profile",
+                "name": "Main credentials",
+                "client_id": "saved-client-id",
+                "created_at": 1,
+                "updated_at": 1
+            }])
+            .to_string(),
+        );
+        let saved_secrets = test_secret_store();
+        (&***saved_secrets)
+            .set_secret("saved-profile", "saved-client-secret")
+            .expect("save secret");
+        let saved_profile = get_sync_status(
+            TestRequest::default().to_http_request(),
+            test_sync_state(),
+            test_auth_state(),
+            saved_store,
+            saved_secrets,
+        )
+        .await;
+        let saved_profile_body = to_bytes(saved_profile.into_body())
+            .await
+            .expect("saved profile status body");
+        let saved_profile_payload: Value =
+            serde_json::from_slice(&saved_profile_body).expect("saved profile status json");
+        assert_eq!(
+            saved_profile_payload
+                .get("can_sync")
+                .and_then(Value::as_bool),
             Some(true)
         );
     }
@@ -889,6 +941,7 @@ mod tests {
             test_auth_state(),
             web::Data::new(Arc::new(BlizzardState::new())),
             test_store(),
+            test_secret_store(),
             web::Data::new(None),
         )
         .await;
@@ -909,6 +962,7 @@ mod tests {
             test_auth_state(),
             web::Data::new(Arc::new(BlizzardState::new())),
             test_store(),
+            test_secret_store(),
             web::Data::new(None),
         )
         .await;
@@ -1767,17 +1821,17 @@ pub async fn download_missing_data_files(
 }
 
 pub async fn get_sync_status(
-    req: actix_web::HttpRequest,
+    _req: actix_web::HttpRequest,
     state: web::Data<Arc<DataSyncState>>,
     auth_state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
 ) -> HttpResponse {
     let status = state.status.lock().await.clone();
     let progress = state.progress.lock().await.clone();
 
     let can_sync =
-        BlizzardState::get_effective_credentials(&req, Some(auth_state.get_ref()), &***store)
-            .is_some();
+        get_available_blizzard_creds(auth_state.get_ref(), &***store, &***secrets).is_some();
 
     HttpResponse::Ok().json(json!({
         "status": status,
@@ -1787,12 +1841,13 @@ pub async fn get_sync_status(
 }
 
 pub async fn trigger_sync(
-    req: actix_web::HttpRequest,
+    _req: actix_web::HttpRequest,
     query: web::Query<SyncQuery>,
     state: web::Data<Arc<DataSyncState>>,
     auth_state: web::Data<Arc<BlizzardAuthState>>,
     blizzard: web::Data<Arc<BlizzardState>>,
     store: web::Data<Arc<dyn JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
     data_dir: web::Data<Option<PathBuf>>,
 ) -> HttpResponse {
     let mut status = state.status.lock().await;
@@ -1800,8 +1855,7 @@ pub async fn trigger_sync(
         return HttpResponse::Conflict().json(json!({"detail": "Sync already in progress"}));
     }
 
-    let creds =
-        BlizzardState::get_effective_credentials(&req, Some(auth_state.get_ref()), &***store);
+    let creds = get_available_blizzard_creds(auth_state.get_ref(), &***store, &***secrets);
     if creds.is_none() {
         *status = SyncStatus::NeedsCredentials;
         return HttpResponse::BadRequest()
@@ -1838,12 +1892,13 @@ pub async fn trigger_sync(
 }
 
 pub async fn trigger_dungeon_sync(
-    req: actix_web::HttpRequest,
+    _req: actix_web::HttpRequest,
     query: web::Query<SyncQuery>,
     state: web::Data<Arc<DataSyncState>>,
     auth_state: web::Data<Arc<BlizzardAuthState>>,
     blizzard: web::Data<Arc<BlizzardState>>,
     store: web::Data<Arc<dyn JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
     data_dir: web::Data<Option<PathBuf>>,
 ) -> HttpResponse {
     let mut status = state.status.lock().await;
@@ -1851,8 +1906,7 @@ pub async fn trigger_dungeon_sync(
         return HttpResponse::Conflict().json(json!({"detail": "Sync already in progress"}));
     }
 
-    let creds =
-        BlizzardState::get_effective_credentials(&req, Some(auth_state.get_ref()), &***store);
+    let creds = get_available_blizzard_creds(auth_state.get_ref(), &***store, &***secrets);
     if creds.is_none() {
         *status = SyncStatus::NeedsCredentials;
         return HttpResponse::BadRequest()

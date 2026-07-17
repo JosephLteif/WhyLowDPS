@@ -28,16 +28,6 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'fix',
-    title: 'Reliable Battle.net sign-in setup',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Desktop sign-in and initial data synchronization now use the selected saved Blizzard credential profile, with the secure credential setup flow available when a saved secret is unavailable.',
-      },
-    ],
-  },
-  {
-    category: 'fix',
     title: 'Reliable missing-data repair',
     body: [
       {

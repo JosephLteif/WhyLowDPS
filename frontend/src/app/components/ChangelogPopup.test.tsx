@@ -18,7 +18,7 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Reliable missing-data repair' })
+      screen.getByRole('heading', { level: 3, name: 'Reliable Battle.net sign-in setup' })
     ).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
 

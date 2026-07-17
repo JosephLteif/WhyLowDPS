@@ -4,7 +4,9 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use super::{perform_sync, SyncStatus};
-use crate::server::auth_handlers::BlizzardAuthState;
+use crate::server::auth_handlers::{
+    get_available_blizzard_creds, BlizzardAuthState, BlizzardCredentialSecretStore,
+};
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
 
@@ -26,13 +28,10 @@ impl DataSyncState {
 
 fn get_background_credentials(
     auth_state: &BlizzardAuthState,
-    _store: &dyn JobStorage,
+    store: &dyn JobStorage,
+    secrets: &dyn BlizzardCredentialSecretStore,
 ) -> Option<(String, String)> {
-    if let (Some(id), Some(sec)) = (&auth_state.client_id, &auth_state.client_secret) {
-        return Some((id.clone(), sec.clone()));
-    }
-
-    None
+    get_available_blizzard_creds(auth_state, store, secrets)
 }
 
 fn is_background_sync_due(data_dir: Option<&Path>, threshold_hours: i64) -> bool {
@@ -67,6 +66,7 @@ pub fn spawn_background_sync_loop(
     auth_state: Arc<BlizzardAuthState>,
     blizzard: Arc<BlizzardState>,
     store: Arc<dyn JobStorage>,
+    secrets: Arc<dyn BlizzardCredentialSecretStore>,
     data_dir: Option<PathBuf>,
 ) {
     tokio::spawn(async move {
@@ -82,7 +82,7 @@ pub fn spawn_background_sync_loop(
 
             if due && !already_syncing {
                 if let Some((client_id, client_secret)) =
-                    get_background_credentials(auth_state.as_ref(), &*store)
+                    get_background_credentials(auth_state.as_ref(), &*store, &*secrets)
                 {
                     {
                         let mut status = state.status.lock().await;
@@ -119,7 +119,7 @@ pub fn spawn_background_sync_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::auth_handlers::BlizzardAuthState;
+    use crate::server::auth_handlers::{BlizzardAuthState, MemoryBlizzardCredentialSecretStore};
     use crate::storage::{JobStorage, MemoryStorage};
     use serde_json::json;
     use std::sync::Arc;
@@ -162,8 +162,9 @@ mod tests {
     }
 
     #[test]
-    fn background_credentials_use_only_auth_state_configuration() {
+    fn background_credentials_prefer_auth_state_configuration() {
         let store = MemoryStorage::new();
+        let secrets = MemoryBlizzardCredentialSecretStore::default();
         store.set_user_config("system", "blizzard_client_id", "system-id");
         store.set_user_config("system", "blizzard_client_secret", "system-secret");
         let auth = BlizzardAuthState::new(
@@ -174,13 +175,13 @@ mod tests {
         );
 
         assert_eq!(
-            get_background_credentials(&auth, &store),
+            get_background_credentials(&auth, &store, &secrets),
             Some(("auth-id".to_string(), "auth-secret".to_string()))
         );
 
         let fallback_store = MemoryStorage::new();
         assert_eq!(
-            get_background_credentials(&auth, &fallback_store),
+            get_background_credentials(&auth, &fallback_store, &secrets),
             Some(("auth-id".to_string(), "auth-secret".to_string()))
         );
     }
@@ -194,9 +195,10 @@ mod tests {
             "jwt-secret".to_string(),
         );
         let store = MemoryStorage::new();
+        let secrets = MemoryBlizzardCredentialSecretStore::default();
         store.set_user_config("system", "blizzard_client_id", "system-id");
 
-        assert_eq!(get_background_credentials(&auth, &store), None);
+        assert_eq!(get_background_credentials(&auth, &store, &secrets), None);
 
         let empty_store: Arc<dyn JobStorage> = Arc::new(MemoryStorage::new());
         let empty_auth = BlizzardAuthState::new(
@@ -206,7 +208,7 @@ mod tests {
             "jwt-secret".to_string(),
         );
         assert_eq!(
-            get_background_credentials(&empty_auth, empty_store.as_ref()),
+            get_background_credentials(&empty_auth, empty_store.as_ref(), &secrets),
             None
         );
     }

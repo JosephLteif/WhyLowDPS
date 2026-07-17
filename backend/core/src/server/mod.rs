@@ -461,6 +461,7 @@ pub async fn start_with_storage_bind(
         let auth_state_for_background = auth_state.get_ref().clone();
         let blizzard_state_for_background = blizzard_state.get_ref().clone();
         let store_for_background = store_data.get_ref().clone();
+        let secrets_for_background = blizzard_credential_secrets.get_ref().clone();
         let data_dir_for_background = data.clone();
         let configured_web_origin = std::env::var("WEB_ORIGIN")
             .ok()
@@ -907,6 +908,7 @@ pub async fn start_with_storage_bind(
             auth_state_for_background,
             blizzard_state_for_background,
             store_for_background,
+            secrets_for_background,
             data_dir_for_background,
         );
 

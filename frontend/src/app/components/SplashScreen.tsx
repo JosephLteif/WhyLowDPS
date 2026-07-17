@@ -308,7 +308,7 @@ export default function SplashScreen({
               <div className="w-full text-center">
                 <p className="mb-6 text-sm font-medium text-zinc-300">Authentication Required</p>
                 <button
-                  onClick={() => login()}
+                  onClick={() => login(undefined, undefined, selectedCredentialId || undefined)}
                   className="flex w-full items-center justify-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
                 >
                   <LogIn className="h-5 w-5" strokeWidth={2.25} />

@@ -633,9 +633,18 @@ fn get_effective_creds(
 pub async fn get_credentials_status(
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
 ) -> HttpResponse {
     let env_configured = state.client_id.is_some() && state.client_secret.is_some();
-    let saved_profile_count = load_blizzard_credential_profiles(&***store).len();
+    let saved_profile_count = load_blizzard_credential_profiles(&***store)
+        .iter()
+        .filter(|profile| {
+            read_profile_secret(&***secrets, profile)
+                .ok()
+                .flatten()
+                .is_some()
+        })
+        .count();
     HttpResponse::Ok().json(json!({
         "globally_configured": env_configured || saved_profile_count > 0,
         "saved_profile_count": saved_profile_count
@@ -1537,9 +1546,28 @@ mod tests {
 
     #[actix_web::test]
     async fn get_credentials_status_reports_env_and_saved_profile_configuration() {
-        let empty = get_credentials_status(auth_state(), test_store()).await;
+        let empty = get_credentials_status(auth_state(), test_store(), test_secret_store()).await;
         assert_eq!(
             body_json(empty).await.get("globally_configured"),
+            Some(&Value::Bool(false))
+        );
+
+        let incomplete_store = test_store();
+        save_blizzard_credential_profiles(
+            &***incomplete_store,
+            &[BlizzardCredentialProfile {
+                id: "missing-secret-profile".to_string(),
+                name: "Main credentials".to_string(),
+                client_id: "client-id".to_string(),
+                created_at: 1,
+                updated_at: 1,
+            }],
+        )
+        .expect("save incomplete profile");
+        let incomplete =
+            get_credentials_status(auth_state(), incomplete_store, test_secret_store()).await;
+        assert_eq!(
+            body_json(incomplete).await.get("globally_configured"),
             Some(&Value::Bool(false))
         );
 
@@ -1547,7 +1575,8 @@ mod tests {
         store.set_user_config("system", "blizzard_client_id", "system-id");
         store.set_user_config("system", "blizzard_client_secret", "system-secret");
 
-        let system_configured = get_credentials_status(auth_state(), store).await;
+        let system_configured =
+            get_credentials_status(auth_state(), store, test_secret_store()).await;
         assert_eq!(
             body_json(system_configured)
                 .await
@@ -1561,7 +1590,8 @@ mod tests {
             "http://localhost/callback".to_string(),
             "jwt".to_string(),
         )));
-        let env_configured = get_credentials_status(env_state, test_store()).await;
+        let env_configured =
+            get_credentials_status(env_state, test_store(), test_secret_store()).await;
         assert_eq!(
             body_json(env_configured).await.get("globally_configured"),
             Some(&Value::Bool(true))
@@ -1593,7 +1623,7 @@ mod tests {
             Some("system-secret".to_string())
         );
 
-        let status = get_credentials_status(auth_state(), store).await;
+        let status = get_credentials_status(auth_state(), store, secrets).await;
         assert_eq!(
             body_json(status).await.get("globally_configured"),
             Some(&Value::Bool(true))

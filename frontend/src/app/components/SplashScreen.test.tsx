@@ -80,6 +80,28 @@ describe('SplashScreen credential flow', () => {
     expect(screen.queryByPlaceholderText('Client Secret')).not.toBeInTheDocument();
   });
 
+  it('passes the saved profile when the configured-auth login screen is shown', async () => {
+    const user = userEvent.setup();
+    apiMocks.listBlizzardCredentialProfiles.mockResolvedValue([
+      {
+        id: 'profile-1',
+        name: 'Main credentials',
+        client_id: 'client-id',
+        created_at: 1,
+        updated_at: 1,
+        has_secret: true,
+      },
+    ]);
+    loginMock.mockResolvedValue(undefined);
+
+    render(<SplashScreen status="unauthenticated" progress="" />);
+
+    await waitFor(() => expect(apiMocks.listBlizzardCredentialProfiles).toHaveBeenCalled());
+    await user.click(screen.getByRole('button', { name: /login with battle\.net/i }));
+
+    expect(loginMock).toHaveBeenCalledWith(undefined, undefined, 'profile-1');
+  });
+
   it('shows repair flow when a saved credential is missing its secure secret', async () => {
     apiMocks.listBlizzardCredentialProfiles.mockResolvedValue([
       {

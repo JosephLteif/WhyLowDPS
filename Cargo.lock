@@ -2523,7 +2523,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.57.0",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -4949,9 +4949,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
  "itoa",
  "memchr",
@@ -6896,7 +6896,7 @@ checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
 
 [[package]]
 name = "whylowdps-core"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "actix-cors",
  "actix-files",
@@ -6925,7 +6925,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-desktop"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -6948,7 +6948,7 @@ dependencies = [
 
 [[package]]
 name = "whylowdps-server"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "tokio",
  "whylowdps-core",

@@ -17,6 +17,8 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 - Existing tracked-character and last-used-character preferences are migrated automatically.
 - Setup status is visible without requiring users to hunt through separate settings panels.
 - Simulation inputs can be rerun directly, and two history records can be compared side by side.
+- Desktop notifications now keep a clickable in-app result action for completed simulations.
+- Desktop launches accept `.simc` and text files through file associations, drag-and-drop, and second-instance handoff.
 
 ## [3.0.1] - 2026-05-19
 

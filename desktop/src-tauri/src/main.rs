@@ -135,6 +135,61 @@ struct SimcRuntimeProgressEvent {
     message: Option<String>,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct FileImportEvent {
+    path: String,
+    content: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SimCompletedEvent {
+    id: String,
+    status: String,
+    sim_type: String,
+    player_name: String,
+}
+
+fn emit_file_imports(app: &tauri::AppHandle, args: &[String]) {
+    for path in importable_file_paths(args) {
+        if let Ok(payload) = read_import_file_path(path) {
+            let _ = app.emit("whylowdps-file-import", payload);
+        }
+    }
+}
+
+fn read_import_file_path(path: PathBuf) -> Result<FileImportEvent, String> {
+    if !is_supported_import_path(&path) {
+        return Err("Only .simc and .txt files can be imported.".to_string());
+    }
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("Unable to inspect file: {e}"))?;
+    if !metadata.is_file() || metadata.len() > 5 * 1024 * 1024 {
+        return Err("The selected file is missing, not a file, or larger than 5 MB.".to_string());
+    }
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| format!("Unable to read file: {e}"))?;
+    Ok(FileImportEvent {
+        path: path.to_string_lossy().to_string(),
+        content,
+    })
+}
+
+#[tauri::command]
+fn read_import_file(path: String) -> Result<FileImportEvent, String> {
+    read_import_file_path(PathBuf::from(path))
+}
+
+fn schedule_startup_file_imports(app: tauri::AppHandle) {
+    let args: Vec<String> = std::env::args().collect();
+    if importable_file_paths(&args).is_empty() {
+        return;
+    }
+
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        emit_file_imports(&app, &args);
+    });
+}
+
 #[tauri::command]
 fn get_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
@@ -571,6 +626,18 @@ async fn run_sim_notification_watcher(
                     }
 
                     let body = build_sim_notification_body(&status, &meta);
+                    let sim_type = resolve_notification_sim_type(&status, &meta).to_string();
+                    let player_name = resolve_notification_player(&status, &meta);
+
+                    let _ = notifier_handle.emit(
+                        "whylowdps-sim-completed",
+                        SimCompletedEvent {
+                            id: id.clone(),
+                            status: status.status.clone(),
+                            sim_type,
+                            player_name,
+                        },
+                    );
 
                     let _ = notifier_handle
                         .notification()
@@ -618,12 +685,13 @@ fn main() {
     enable_high_dpi_awareness();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
+            emit_file_imports(app, &argv);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -634,6 +702,7 @@ fn main() {
             open_auth_window,
             open_external_url,
             open_data_dir,
+            read_import_file,
             get_system_info,
             get_close_behavior_preference,
             set_close_behavior_preference,
@@ -675,6 +744,7 @@ fn main() {
 
             let app_handle = app.handle().clone();
             let notifier_handle = app_handle.clone();
+            schedule_startup_file_imports(app_handle.clone());
 
             let show_item = MenuItemBuilder::with_id("show_app", "Show WhyLowDps").build(app)?;
             let dashboard_item =

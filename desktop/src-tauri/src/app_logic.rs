@@ -3,6 +3,24 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+pub(crate) fn is_supported_import_path(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase())
+            .as_deref(),
+        Some("simc") | Some("txt")
+    )
+}
+
+pub(crate) fn importable_file_paths(args: &[String]) -> Vec<PathBuf> {
+    args.iter()
+        .skip(1)
+        .map(PathBuf::from)
+        .filter(|path| is_supported_import_path(path))
+        .collect()
+}
+
 pub(crate) fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path) {
     if !bundled_data_dir.exists() {
         return;
@@ -839,6 +857,23 @@ mod tests {
 
         assert_eq!(meta.sim_type, "quick");
         assert_eq!(meta.player_name.as_deref(), Some("Player"));
+    }
+
+    #[test]
+    fn importable_file_paths_accept_simc_and_text_files_case_insensitively() {
+        let args = vec![
+            "whylowdps.exe".to_string(),
+            "profile.SIMC".to_string(),
+            "notes.txt".to_string(),
+            "image.png".to_string(),
+        ];
+
+        let paths = importable_file_paths(&args);
+
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("profile.SIMC"), PathBuf::from("notes.txt")]
+        );
     }
 
     #[test]

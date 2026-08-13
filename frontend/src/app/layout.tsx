@@ -14,6 +14,7 @@ import MainScrollShell from './components/MainScrollShell';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
 import { ActiveCharacterProvider } from './components/ActiveCharacterContext';
+import DesktopIntegrationListener from './components/DesktopIntegrationListener';
 import './globals.css';
 import React from 'react';
 
@@ -53,6 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <CloseBehaviorPrompt />
                 <DiscordInvitePrompt />
                 <ChangelogPopup />
+                <DesktopIntegrationListener />
                 <ScrollToTopOnRouteChange />
                 <InitialSidebarRoute />
 

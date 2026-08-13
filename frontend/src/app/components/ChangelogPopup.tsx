@@ -65,6 +65,26 @@ const releaseNotes: ReleaseNote[] = [
   },
   {
     category: 'feature',
+    title: 'Desktop simulation notifications',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'When a desktop simulation finishes, the notification includes a one-click path back to its result.',
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Open SimC files from the desktop',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Open .simc or text files from Explorer, drag them onto the app, or launch a second copy to import the file into Quick Sim.',
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Active character workspace',
     body: [
       {

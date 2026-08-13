@@ -360,6 +360,37 @@ mod tests {
     }
 
     #[test]
+    fn get_instance_drops_uses_bundled_instances_when_loaded_instances_are_empty() {
+        let _state_guard = state::TEST_STATE_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let snapshot = GameDataSnapshot::capture();
+
+        *state::INSTANCES.write().unwrap() = Vec::new();
+        let bundled_instance = get_instances()
+            .into_iter()
+            .find(|instance| instance.get("id").and_then(Value::as_i64) == Some(78))
+            .expect("bundled Firelands instance");
+        let encounter_id = bundled_instance
+            .get("encounters")
+            .and_then(Value::as_array)
+            .and_then(|encounters| encounters.first())
+            .and_then(|encounter| encounter.get("id"))
+            .and_then(Value::as_i64)
+            .expect("bundled encounter");
+
+        *state::DROPS_BY_ENCOUNTER.write().unwrap() = Arc::new(HashMap::from([(
+            encounter_id,
+            vec![game_item(7001, "Bundled Helm", 4, 620, 4, 4, 1)],
+        )]));
+
+        let drops = get_instance_drops(78, None, None).expect("bundled instance drops");
+        assert!(drops.contains_key("Head"));
+
+        snapshot.restore();
+    }
+
+    #[test]
     fn drop_queries_cover_raid_profession_catalyst_and_multi_instance_paths() {
         let _state_guard = state::TEST_STATE_LOCK
             .lock()

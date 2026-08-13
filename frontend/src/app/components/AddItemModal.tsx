@@ -837,19 +837,16 @@ export default function AddItemModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-x-0 bottom-0 top-[var(--app-header-height)] z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
-      <div className="animate-in fade-in zoom-in relative flex h-[90vh] w-full max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl duration-200">
+      <div className="animate-in fade-in zoom-in relative flex h-full max-h-[calc(100dvh-var(--app-header-height)-2rem)] min-h-0 w-full max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl duration-200">
         {/* ── Header ─────────────────────────────────────────── */}
-        <div className="border-b border-border bg-surface/80 px-5 py-4">
+        <div className="relative z-10 shrink-0 border-b border-border bg-surface/80 px-5 py-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-6">
               {/* Title */}
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-white">Loot Browser</h2>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-white">
-                  Expansion 11 • World of Warcraft
-                </p>
               </div>
               {/* Category Switcher */}
               <div className="flex flex-wrap rounded-lg border border-border bg-surface-2 p-0.5">
@@ -945,11 +942,12 @@ export default function AddItemModal({
         </div>
 
         {/* ── Body ────────────────────────────────────────────── */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <AddItemInstanceSidebar
             instances={filteredInstances}
             selectedInstance={craftedSidebarSelectedId}
             onSelect={handleSidebarSelect}
+            currentSeasonName={seasonConfig?.season}
           />
           <div className="scrollbar-thin scrollbar-thumb-white/10 flex-1 overflow-y-auto bg-bg p-6">
             {isDropListLoading ? (

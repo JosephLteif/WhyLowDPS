@@ -83,7 +83,22 @@ fn blizzard_instances_from_content(
             ))
         })
         .collect();
-    let active_season = seasons.last();
+    let active_season = seasons
+        .iter()
+        .find(|season| season.get("active").and_then(Value::as_bool) == Some(true))
+        .or_else(|| {
+            seasons
+                .iter()
+                .filter_map(|season| {
+                    season
+                        .get("startDate")
+                        .and_then(Value::as_str)
+                        .map(|date| (date, season))
+                })
+                .max_by(|(left, _), (right, _)| left.cmp(right))
+                .map(|(_, season)| season)
+        })
+        .or_else(|| seasons.first());
     let active_mplus_journal_ids_ordered: Vec<i64> = active_season
         .and_then(|season| season.get("mythicPlusDungeonIds"))
         .and_then(Value::as_array)
@@ -199,7 +214,9 @@ pub fn get_instance_drops(
     class_name: Option<&str>,
     spec_name: Option<&str>,
 ) -> Option<serde_json::Map<String, Value>> {
-    let instances = item_db::instances();
+    // Keep the detail endpoint consistent with `/api/instances`, which falls
+    // back to the bundled WoW content when app-data instances are unavailable.
+    let instances = get_instances();
     let instance = instances
         .iter()
         .find(|i| i.get("id").and_then(|id| id.as_i64()) == Some(instance_id))?;

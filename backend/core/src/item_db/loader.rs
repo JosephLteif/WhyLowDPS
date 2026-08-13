@@ -230,26 +230,81 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
 }
 
 pub fn load_instances(data_dir: &Path) {
-    let blizzard_instances =
-        crate::game_data::instance_drops::load_instances_from_wow_content(data_dir);
-    if !blizzard_instances.is_empty() {
-        *INSTANCES.write().unwrap() = blizzard_instances;
+    let raidbots_instances = read_json_array(&data_dir.join("instances.json"));
+    let wow_instances = crate::game_data::instance_drops::load_instances_from_wow_content(data_dir);
+    let instances = reconcile_instance_sources(raidbots_instances, wow_instances);
+    if !instances.is_empty() {
+        *INSTANCES.write().unwrap() = instances;
         return;
     }
+}
 
-    let path = data_dir.join("instances.json");
-    if !path.exists() {
-        return;
-    }
-
-    let file = match fs::File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return,
+fn read_json_array(path: &Path) -> Vec<Value> {
+    let Ok(file) = fs::File::open(path) else {
+        return Vec::new();
     };
-    let data: Vec<Value> =
-        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
-    let mut inst = INSTANCES.write().unwrap();
-    *inst = data;
+    serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default()
+}
+
+fn reconcile_instance_sources(primary: Vec<Value>, fallback: Vec<Value>) -> Vec<Value> {
+    let mut fallback_by_id = HashMap::new();
+    let mut fallback_order = Vec::new();
+    for row in fallback {
+        if let Some(id) = row.get("id").and_then(Value::as_i64) {
+            fallback_order.push(id);
+            fallback_by_id.insert(id, row);
+        }
+    }
+
+    let mut rows = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    for row in primary {
+        let Some(id) = row.get("id").and_then(Value::as_i64) else {
+            continue;
+        };
+        seen_ids.insert(id);
+        rows.push(merge_instance_rows(fallback_by_id.remove(&id), row));
+    }
+
+    for id in fallback_order {
+        let Some(row) = fallback_by_id.remove(&id) else {
+            continue;
+        };
+        let Some(id) = row.get("id").and_then(Value::as_i64) else {
+            continue;
+        };
+        if seen_ids.insert(id) {
+            rows.push(row);
+        }
+    }
+
+    rows
+}
+
+fn merge_instance_rows(fallback: Option<Value>, primary: Value) -> Value {
+    let Some(Value::Object(mut fallback)) = fallback else {
+        return primary;
+    };
+    let Some(primary) = primary.as_object() else {
+        return Value::Object(fallback);
+    };
+
+    for (key, value) in primary {
+        if key == "encounters"
+            && value
+                .as_array()
+                .is_some_and(|encounters| encounters.is_empty())
+            && fallback
+                .get(key)
+                .and_then(Value::as_array)
+                .is_some_and(|encounters| !encounters.is_empty())
+        {
+            continue;
+        }
+        fallback.insert(key.clone(), value.clone());
+    }
+    Value::Object(fallback)
 }
 
 pub fn load_encounter_drops() {
@@ -1432,6 +1487,38 @@ mod tests {
                 (678_u64, 1008_u64, 4_u64),
             ),
         ]));
+    }
+
+    #[test]
+    fn reconcile_instance_sources_prefers_raidbots_rows_and_keeps_fallback_rows() {
+        let rows = reconcile_instance_sources(
+            vec![serde_json::json!({
+                "id": 1307,
+                "name": "The Voidspire",
+                "type": "raid",
+                "encounters": []
+            })],
+            vec![
+                serde_json::json!({
+                    "id": 1307,
+                    "name": "Stale Voidspire",
+                    "type": "raid",
+                    "image_url": "/api/data/images/instance/1307",
+                    "encounters": [{"id": 2733}]
+                }),
+                serde_json::json!({
+                    "id": 78,
+                    "name": "Firelands",
+                    "type": "raid"
+                }),
+            ],
+        );
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["name"], "The Voidspire");
+        assert_eq!(rows[0]["image_url"], "/api/data/images/instance/1307");
+        assert_eq!(rows[0]["encounters"][0]["id"], 2733);
+        assert_eq!(rows[1]["id"], 78);
     }
 
     #[test]

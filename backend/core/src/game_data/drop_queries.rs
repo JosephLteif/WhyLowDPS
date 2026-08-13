@@ -3,7 +3,6 @@ use std::collections::{HashMap, HashSet};
 
 use super::catalyst::get_catalyst_drops;
 use super::drops::{finalize_slot_map, merge_drop_map_into};
-use crate::item_db;
 
 pub fn get_drops_by_type(
     instance_type: &str,
@@ -14,7 +13,7 @@ pub fn get_drops_by_type(
         return get_catalyst_drops(class_name, spec_name);
     }
 
-    let instances = item_db::instances();
+    let instances = super::get_instances();
     let mut merged: HashMap<String, HashMap<String, (i64, Value)>> = HashMap::new();
     for inst in instances {
         let itype = inst.get("type").and_then(|t| t.as_str()).unwrap_or("");

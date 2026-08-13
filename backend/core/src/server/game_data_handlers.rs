@@ -403,10 +403,18 @@ pub(super) async fn get_season_config() -> HttpResponse {
     let runtime = crate::item_db::get_runtime_data();
 
     let season = runtime
-        .get("season_name")
+        .get("season_api_data")
+        .and_then(|data| data.get("season_name"))
         .and_then(|s| s.as_str())
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.to_string())
+        .or_else(|| {
+            runtime
+                .get("season_name")
+                .and_then(|s| s.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.to_string())
+        })
         .or_else(|| {
             cfg.get("season")
                 .and_then(|s| s.as_str())

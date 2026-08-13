@@ -8,18 +8,15 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Added
 
-- Repository governance and maintenance docs:
-  - `LICENSE`
-  - `CONTRIBUTING.md`
-  - `SECURITY.md`
-  - `CODE_OF_CONDUCT.md`
-  - `ROADMAP.md`
+- Season-aware Loot Browser grouping by expansion, season, and active dungeon rotation.
+- Resizable Loot Browser instance panel with mouse and keyboard controls.
 
 ### Fixed
 
-- Sidebar now shows `Settings` by default so users do not have to re-add it manually.
-- The in-app changelog popup no longer blocks the Windows title bar controls or window dragging while it is open.
-- Raid buff source badges now explain `Override`, `Manual`, and `Default` on hover.
+- Active dungeon selections stay in the Active Dungeons group instead of jumping to their source expansion.
+- Active dungeons now show a clickable source-expansion link for historical views.
+- Current-season ilvl controls are available for active legacy dungeons and disabled for older expansion and season views.
+- Incomplete instance metadata is reconciled with trusted fallback data when seasonal Raidbots data changes.
 
 ## [3.0.1] - 2026-05-19
 

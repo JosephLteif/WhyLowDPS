@@ -12,6 +12,7 @@ import { SavedRoute } from '../lib/types';
 import { parseCharacterInfo, SimcClipboardInfo } from '@/lib/simc-parser';
 import { convertMdtToSimc, isMdtString, parseMdtString } from '@/lib/mdt-parser';
 import ClipboardBanner from './shared/ClipboardBanner';
+import ActiveCharacterBar from './ActiveCharacterBar';
 import SimcInputEditor from './shared/SimcInputEditor';
 import SimcProfileDropdown from './SimcProfileDropdown';
 import RouteDetailsModal from './RouteDetailsModal';
@@ -377,6 +378,9 @@ export default function SimSharedConfig() {
           </div>
         )}
         {detectedCharacterInfo && <CharacterInfoBar info={detectedCharacterInfo} />}
+        <ActiveCharacterBar
+          detectedCharacter={detectedCharacterInfo?.kind === 'character' ? detectedCharacterInfo : null}
+        />
         {detectedDungeonInfo && (
           <DungeonInfoBar
             info={detectedDungeonInfo}

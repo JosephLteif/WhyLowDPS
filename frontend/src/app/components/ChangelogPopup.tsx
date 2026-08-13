@@ -28,68 +28,68 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
-    title: 'Live Dungeons & Raids',
+    title: 'A clearer first-run setup',
     body: [
       {
         type: 'paragraph',
-        text: 'Dungeons and raids are now organized by expansion and season, with current-season rotation details and Blizzard-provided raid information in one place.',
+        text: 'WhyLowDPS now shows the important setup steps together, so it is easier to see whether game data, Blizzard access, a character profile, and your first simulation are ready.',
       },
       {
         type: 'list',
         items: [
-          'See current dungeon affixes, timers, Mythic+ scores, and encounters.',
-          'Browse raid names, artwork, and encounters, including The Venomous Abyss.',
+          'Refresh setup status directly from the dashboard.',
+          'Jump straight to the settings or workflow that needs attention.',
         ],
       },
     ],
   },
   {
     category: 'feature',
-    title: 'Season-aware Loot Browser',
+    title: 'Active character workspace',
     body: [
       {
         type: 'paragraph',
-        text: 'Loot is now organized by expansion, season, and the current active dungeon rotation, including legacy dungeons that return to the active pool.',
+        text: 'Your selected character now follows you between the dashboard and simulation workspace, while existing tracked-character preferences continue to work.',
       },
     ],
   },
   {
     category: 'improvement',
-    title: 'Accurate item upgrade controls',
+    title: 'Safer character context',
     body: [
       {
         type: 'paragraph',
-        text: 'Current active-season loot keeps its correct ilvl controls, while items from older seasons and expansions no longer expose misleading current-season sliders.',
+        text: 'Importing a SimC profile can make that character the active workspace, helping defaults and follow-up actions stay attached to the right character.',
       },
     ],
   },
   {
     category: 'fix',
-    title: 'Clearer dungeon source navigation',
+    title: 'Existing preferences are preserved',
     body: [
       {
         type: 'paragraph',
-        text: 'Selecting a dungeon in Active Dungeons stays in that group. Its source expansion is shown beside the dungeon and can be opened directly when you want the historical expansion view.',
+        text: 'Older main-character, tracked-character, and last-used profile choices are recognized automatically when the shared active-character state is first loaded.',
       },
     ],
   },
   {
     category: 'feature',
-    title: 'Resizable loot navigation',
+    title: 'More useful simulation context',
     body: [
       {
         type: 'paragraph',
-        text: 'The left instance panel can now be resized by dragging its divider or using the keyboard, making longer expansion and dungeon names easier to read.',
+        text: 'The simulation setup now shows the active character beside the imported profile, with a direct action to use the current import.',
       },
     ],
   },
   {
     category: 'fix',
-    title: 'More resilient seasonal data',
+    title: 'Status without guesswork',
     body: [
       {
         type: 'paragraph',
-        text: 'Loot metadata now reconciles incomplete instance records with trusted fallback data, so new seasons and Raidbots updates continue to resolve to the correct expansion and dungeon.',
+        text: 'The dashboard now gives you a concise view of what is ready and what to do next before starting a simulation.',
       },
     ],
   },

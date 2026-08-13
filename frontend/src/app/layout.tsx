@@ -13,6 +13,7 @@ import InitialSidebarRoute from './components/InitialSidebarRoute';
 import MainScrollShell from './components/MainScrollShell';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
+import { ActiveCharacterProvider } from './components/ActiveCharacterContext';
 import './globals.css';
 import React from 'react';
 
@@ -44,24 +45,26 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }}
       >
         <AuthProvider>
-          <DataGuard>
-            <SimProvider>
-              <TopHeader />
-              <UpdatePrompt />
-              <CloseBehaviorPrompt />
-              <DiscordInvitePrompt />
-              <ChangelogPopup />
-              <ScrollToTopOnRouteChange />
-              <InitialSidebarRoute />
+          <ActiveCharacterProvider>
+            <DataGuard>
+              <SimProvider>
+                <TopHeader />
+                <UpdatePrompt />
+                <CloseBehaviorPrompt />
+                <DiscordInvitePrompt />
+                <ChangelogPopup />
+                <ScrollToTopOnRouteChange />
+                <InitialSidebarRoute />
 
-              <Sidebar />
+                <Sidebar />
 
-              <MainScrollShell>
-                <SimSharedConfig />
-                {children}
-              </MainScrollShell>
-            </SimProvider>
-          </DataGuard>
+                <MainScrollShell>
+                  <SimSharedConfig />
+                  {children}
+                </MainScrollShell>
+              </SimProvider>
+            </DataGuard>
+          </ActiveCharacterProvider>
         </AuthProvider>
       </body>
     </html>

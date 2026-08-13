@@ -18,6 +18,7 @@ import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
 import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
+import LocalBackupSection from './components/LocalBackupSection';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
 import {
@@ -753,17 +754,20 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'data' && (
-        <DataCacheSettingsSection
-          refreshPreset={refreshPreset}
-          setRefreshPreset={setRefreshPreset}
-          setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
-          cacheSyncing={cacheSyncing}
-          refreshDataCache={refreshDataCache}
-          viewDataStates={viewDataStates}
-          syncProgress={syncProgress}
-          syncProgressPct={syncProgressPct}
-          cacheMessage={cacheMessage}
-        />
+        <div className="space-y-6">
+          <DataCacheSettingsSection
+            refreshPreset={refreshPreset}
+            setRefreshPreset={setRefreshPreset}
+            setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
+            cacheSyncing={cacheSyncing}
+            refreshDataCache={refreshDataCache}
+            viewDataStates={viewDataStates}
+            syncProgress={syncProgress}
+            syncProgressPct={syncProgressPct}
+            cacheMessage={cacheMessage}
+          />
+          {isDesktop && <LocalBackupSection />}
+        </div>
       )}
 
       {activeTab === 'updates' && (

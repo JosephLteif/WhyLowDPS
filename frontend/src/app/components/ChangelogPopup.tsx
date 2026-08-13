@@ -85,6 +85,23 @@ const releaseNotes: ReleaseNote[] = [
   },
   {
     category: 'feature',
+    title: 'Local backup and restore',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Desktop users can export simulation history, saved profiles, routes, presets, and safe UI preferences to a versioned ZIP archive, then validate and restore it later.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Credentials, tokens, cache files, and SimC binaries stay out of the archive.',
+          'Restores preserve a recovery copy and apply on the next app restart.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Active character workspace',
     body: [
       {

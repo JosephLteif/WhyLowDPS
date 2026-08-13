@@ -21,6 +21,15 @@ pub(crate) fn importable_file_paths(args: &[String]) -> Vec<PathBuf> {
         .collect()
 }
 
+pub(crate) fn is_sensitive_backup_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase();
+    normalized.starts_with("api_cache_")
+        || normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("credential")
+}
+
 pub(crate) fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path) {
     if !bundled_data_dir.exists() {
         return;
@@ -874,6 +883,14 @@ mod tests {
             paths,
             vec![PathBuf::from("profile.SIMC"), PathBuf::from("notes.txt")]
         );
+    }
+
+    #[test]
+    fn sensitive_backup_keys_exclude_tokens_secrets_and_cache_values() {
+        assert!(is_sensitive_backup_key("api_cache_/api/status"));
+        assert!(is_sensitive_backup_key("session_token"));
+        assert!(is_sensitive_backup_key("blizzard_client_secret"));
+        assert!(!is_sensitive_backup_key("whylowdps_fight_style"));
     }
 
     #[test]

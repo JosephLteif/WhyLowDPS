@@ -19,6 +19,8 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 - Simulation inputs can be rerun directly, and two history records can be compared side by side.
 - Desktop notifications now keep a clickable in-app result action for completed simulations.
 - Desktop launches accept `.simc` and text files through file associations, drag-and-drop, and second-instance handoff.
+- Desktop users can export and restore a versioned local backup of simulation data, profiles, routes, presets, and safe UI preferences.
+- Backup restore validates the archive, excludes credentials/tokens/cache/runtime binaries, preserves a recovery copy, and restarts safely.
 
 ## [3.0.1] - 2026-05-19
 

@@ -6904,7 +6904,9 @@ dependencies = [
 name = "whylowdps-desktop"
 version = "3.6.0"
 dependencies = [
+ "chrono",
  "reqwest 0.12.28",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",

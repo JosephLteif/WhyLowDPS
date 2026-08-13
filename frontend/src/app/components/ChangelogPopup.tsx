@@ -27,42 +27,52 @@ type ReleaseNote = {
 
 const releaseNotes: ReleaseNote[] = [
   {
+    category: 'feature',
+    title: 'Season-aware Loot Browser',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Loot is now organized by expansion, season, and the current active dungeon rotation, including legacy dungeons that return to the active pool.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Accurate item upgrade controls',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Current active-season loot keeps its correct ilvl controls, while items from older seasons and expansions no longer expose misleading current-season sliders.',
+      },
+    ],
+  },
+  {
     category: 'fix',
-    title: 'Reliable missing-data repair',
+    title: 'Clearer dungeon source navigation',
     body: [
       {
         type: 'paragraph',
-        text: 'Download All Missing now restores game data from a verified backup, automatically tries Raidbots if needed, and shows clearer progress while files are repaired.',
+        text: 'Selecting a dungeon in Active Dungeons stays in that group. Its source expansion is shown beside the dungeon and can be opened directly when you want the historical expansion view.',
       },
     ],
   },
   {
-    category: 'improvement',
-    title: 'Clearer game data file states',
+    category: 'feature',
+    title: 'Resizable loot navigation',
     body: [
       {
         type: 'paragraph',
-        text: 'The Game Data File States view now labels every file as Required or Optional, lets you filter by availability or requirement, and keeps the main recovery actions easier to find.',
+        text: 'The left instance panel can now be resized by dragging its divider or using the keyboard, making longer expansion and dungeon names easier to read.',
       },
     ],
   },
   {
-    category: 'improvement',
-    title: 'A smoother start after updates',
+    category: 'fix',
+    title: 'More resilient seasonal data',
     body: [
       {
         type: 'paragraph',
-        text: 'When a new app version is ready, you see the update first. Once you decide about it, missing-data repair is ready when you need it instead of competing for attention.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'More dependable desktop setup',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Desktop sign-in now uses your saved Blizzard credential profile, and the app can keep using an existing SimC runtime when a newer one cannot be downloaded.',
+        text: 'Loot metadata now reconciles incomplete instance records with trusted fallback data, so new seasons and Raidbots updates continue to resolve to the correct expansion and dungeon.',
       },
     ],
   },

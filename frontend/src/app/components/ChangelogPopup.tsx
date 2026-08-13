@@ -101,6 +101,23 @@ const releaseNotes: ReleaseNote[] = [
     ],
   },
   {
+    category: 'improvement',
+    title: 'Command palette and settings repairs',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Press Ctrl+K or Cmd+K to jump to common workflows, open What’s New, or go directly to a Settings area that needs attention.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Settings sections can be linked directly and include a quick-repair overview.',
+          'Shared error feedback now announces failures more clearly to assistive technology.',
+        ],
+      },
+    ],
+  },
+  {
     category: 'feature',
     title: 'Active character workspace',
     body: [

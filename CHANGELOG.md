@@ -11,6 +11,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 - Setup checklist for game data, Blizzard access, SimC profiles, and first simulations.
 - Shared active-character context across the dashboard and simulation workspace.
 - Named local simulation presets for recurring SimC setups.
+- Accessible `Ctrl+K`/`Cmd+K` command palette for common workflows and direct Settings repair areas.
 
 ### Fixed
 
@@ -21,6 +22,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 - Desktop launches accept `.simc` and text files through file associations, drag-and-drop, and second-instance handoff.
 - Desktop users can export and restore a versioned local backup of simulation data, profiles, routes, presets, and safe UI preferences.
 - Backup restore validates the archive, excludes credentials/tokens/cache/runtime binaries, preserves a recovery copy, and restarts safely.
+- Settings now provides a quick-repair overview, URL-addressable sections, clearer feedback semantics, and improved keyboard focus states.
 
 ## [3.0.1] - 2026-05-19
 

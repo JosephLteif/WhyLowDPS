@@ -15,6 +15,7 @@ import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
 import { ActiveCharacterProvider } from './components/ActiveCharacterContext';
 import DesktopIntegrationListener from './components/DesktopIntegrationListener';
+import CommandPalette from './components/CommandPalette';
 import './globals.css';
 import React from 'react';
 
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <DiscordInvitePrompt />
                 <ChangelogPopup />
                 <DesktopIntegrationListener />
+                <CommandPalette />
                 <ScrollToTopOnRouteChange />
                 <InitialSidebarRoute />
 

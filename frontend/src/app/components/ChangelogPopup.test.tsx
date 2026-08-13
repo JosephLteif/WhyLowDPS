@@ -18,9 +18,9 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Live Dungeons & Raids' })
+      screen.getByRole('heading', { level: 3, name: 'A clearer first-run setup' })
     ).toBeInTheDocument();
-    expect(screen.getByText(/The Venomous Abyss/)).toBeInTheDocument();
+    expect(screen.getByText(/important setup steps together/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
@@ -63,11 +63,11 @@ describe('ChangelogPopup', () => {
 
     const firstHeading = screen.getByRole('heading', { level: 3 }).textContent;
     expect(firstHeading).toBeTruthy();
-    expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^Show changelog item 1$/ })).toHaveAttribute(
       'aria-current',
       'true'
     );
-    expect(screen.getByRole('button', { name: /show changelog item 2/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^Show changelog item 2$/ })).toHaveAttribute(
       'aria-current',
       'false'
     );
@@ -75,11 +75,11 @@ describe('ChangelogPopup', () => {
     await user.click(screen.getByRole('button', { name: /next changelog item/i }));
 
     expect(screen.getByRole('heading', { level: 3 }).textContent).not.toBe(firstHeading);
-    expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^Show changelog item 1$/ })).toHaveAttribute(
       'aria-current',
       'false'
     );
-    expect(screen.getByRole('button', { name: /show changelog item 2/i })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: /^Show changelog item 2$/ })).toHaveAttribute(
       'aria-current',
       'true'
     );
@@ -90,7 +90,7 @@ describe('ChangelogPopup', () => {
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /show changelog item 2/i }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 2$/ }));
 
     expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
     expect(document.querySelector('article p, article ul')).not.toBeNull();

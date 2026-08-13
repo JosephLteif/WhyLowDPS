@@ -1,6 +1,10 @@
 import { ChevronDown } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { wowExpansions, wowSeasons } from '../../lib/wow-season-content';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { wowExpansions, wowInstances, wowSeasons } from '../../lib/wow-season-content';
+
+const SIDEBAR_DEFAULT_WIDTH = 208;
+const SIDEBAR_MIN_WIDTH = 184;
+const SIDEBAR_MAX_WIDTH = 380;
 
 interface Instance {
   id: number;
@@ -8,13 +12,18 @@ interface Instance {
   type: string;
   expansion?: number;
   expansion_name?: string;
+  encounters?: Array<{ id: number; name: string }>;
+  active_rotation?: boolean;
 }
 
 interface AddItemInstanceSidebarProps {
   instances: Instance[];
   selectedInstance: number;
   onSelect: (id: number) => void;
+  onSelectExpansion?: (id: number, expansionId: number) => void;
+  focusedExpansionId?: number | null;
   currentSeasonName?: string | null;
+  isDungeonBrowser?: boolean;
 }
 
 interface SeasonGroup {
@@ -37,6 +46,18 @@ interface SeasonDefinition {
   expansionId: number;
   label: string;
   order: number;
+}
+
+const catalogExpansionByInstanceId = new Map(
+  wowInstances.map((instance) => [instance.id, instance.expansionId])
+);
+
+function isActiveDungeonBucket(instance: Instance): boolean {
+  return instance.type === 'mplus-chest' && instance.id < 0;
+}
+
+function displayInstanceName(instance: Instance): string {
+  return isActiveDungeonBucket(instance) ? 'All Active Dungeons' : instance.name;
 }
 
 function currentSeasonLabelFromName(seasonName: string | null | undefined): string | null {
@@ -68,12 +89,22 @@ function seasonKey(label: string): string {
   return label.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 }
 
+function clampSidebarWidth(width: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width));
+}
+
 export default function AddItemInstanceSidebar({
   instances,
   selectedInstance,
   onSelect,
+  onSelectExpansion,
+  focusedExpansionId = null,
   currentSeasonName,
+  isDungeonBrowser = false,
 }: AddItemInstanceSidebarProps) {
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStart = useRef<{ clientX: number; width: number } | null>(null);
   const hasOnlyCraftedFilters =
     instances.length > 0 && instances.every((inst) => inst.type === 'crafted-slot');
 
@@ -100,18 +131,45 @@ export default function AddItemInstanceSidebar({
     }
     return byInstanceId;
   }, []);
-
   const currentSeasonLabel = currentSeasonLabelFromName(currentSeasonName);
   const currentExpansionName = expansionNameFromSeason(currentSeasonName);
   const catalogCurrentExpansionId = wowExpansions.find(
     (expansion) => expansion.name.toLowerCase() === currentExpansionName?.toLowerCase()
   )?.id;
-  const currentExpansionId = catalogCurrentExpansionId ?? latestExpansionId;
+  const currentExpansionId =
+    catalogCurrentExpansionId ??
+    (Number(instances.find((instance) => instance.id >= 0 && instance.expansion)?.expansion) ||
+      latestExpansionId);
   const currentExpansionKey = catalogCurrentExpansionId
     ? `expansion-${catalogCurrentExpansionId}`
-    : currentExpansionName
-      ? 'current-expansion'
-      : `expansion-${latestExpansionId}`;
+      : `expansion-${currentExpansionId}`;
+  const activeDungeonIds = useMemo(() => {
+    const activeBucket = instances.find(isActiveDungeonBucket);
+    return new Set(activeBucket?.encounters?.map((encounter) => encounter.id) || []);
+  }, [instances]);
+  const selectedExpansionId =
+    selectedInstance >= 0
+      ? (() => {
+          const selected = instances.find((instance) => instance.id === selectedInstance);
+          const parsed = Number(selected?.expansion);
+          return Number.isFinite(parsed) && parsed > 0
+            ? parsed
+            : catalogExpansionByInstanceId.get(selectedInstance) || null;
+        })()
+      : null;
+  const selectedExpansionKey = selectedExpansionId
+    ? `expansion-${selectedExpansionId}`
+    : currentExpansionKey;
+  const selectedIsActiveDungeon =
+    isDungeonBrowser &&
+    (instances.find((instance) => instance.id === selectedInstance)?.type === 'mplus-chest' ||
+      activeDungeonIds.has(selectedInstance));
+  const selectedGroupKey =
+    focusedExpansionId != null
+      ? `expansion-${focusedExpansionId}`
+      : selectedIsActiveDungeon
+      ? 'active-dungeons'
+      : selectedExpansionKey;
   const currentSeasonDisplay = currentSeasonLabel
     ? seasonLabelForExpansion(currentSeasonLabel, currentExpansionName || undefined)
     : null;
@@ -123,6 +181,51 @@ export default function AddItemInstanceSidebar({
     if (hasOnlyCraftedFilters) return [];
 
     const groups = new Map<string, ExpansionGroup>();
+
+    if (isDungeonBrowser) {
+      const activeBucket = instances.find(isActiveDungeonBucket);
+      const activeIds = new Set(activeBucket?.encounters?.map((encounter) => encounter.id) || []);
+      const activeDungeons = instances.filter(
+        (instance) => instance.type === 'dungeon' && activeIds.has(instance.id)
+      );
+
+      if (activeBucket && activeDungeons.length > 0) {
+        groups.set('active-dungeons', {
+          key: 'active-dungeons',
+          label: 'Active Dungeons',
+          order: -2_000_000,
+          instances: [activeBucket, ...activeDungeons],
+          seasons: [],
+          ungroupedInstances: [activeBucket, ...activeDungeons],
+        });
+      }
+
+      for (const instance of instances) {
+        if (instance.id < 0 || instance.type !== 'dungeon') continue;
+
+        const parsedExpansionId = Number(instance.expansion);
+        const expansionId =
+          Number.isFinite(parsedExpansionId) && expansionNames.has(parsedExpansionId)
+            ? parsedExpansionId
+            : catalogExpansionByInstanceId.get(instance.id) || currentExpansionId;
+        const expansionLabel = expansionNames.get(expansionId) || 'Current content';
+        const key = `expansion-${expansionId}`;
+        const group = groups.get(key) || {
+          key,
+          label: expansionLabel,
+          order: -expansionId,
+          instances: [],
+          seasons: [],
+          ungroupedInstances: [],
+        };
+        group.instances.push(instance);
+        group.ungroupedInstances.push(instance);
+        groups.set(key, group);
+      }
+
+      return [...groups.values()].sort((left, right) => left.order - right.order);
+    }
+
     const seasonFilterInstances: Instance[] = [];
 
     const getGroup = (expansionId: number, label: string) => {
@@ -148,7 +251,6 @@ export default function AddItemInstanceSidebar({
         seasonFilterInstances.push(instance);
         continue;
       }
-
       const knownSeason = seasonDefinitions.get(instance.id);
       const parsedExpansionId = Number(instance.expansion);
       const catalogExpansionId =
@@ -163,7 +265,6 @@ export default function AddItemInstanceSidebar({
         'Current content';
       const group = getGroup(expansionId, expansionLabel);
       group.instances.push(instance);
-
       const seasonName =
         knownSeason?.label ||
         (expansionId === currentExpansionId ? currentSeasonLabel : null);
@@ -198,27 +299,23 @@ export default function AddItemInstanceSidebar({
       });
     }
 
-    return [...groups.values()]
-      .map((group) => ({
-        ...group,
-        seasons: [...group.seasons].sort((left, right) => left.order - right.order),
-      }))
-      .sort((left, right) => left.order - right.order);
+    return [...groups.values()].sort((left, right) => left.order - right.order);
   }, [
     currentExpansionId,
-    currentExpansionKey,
     currentExpansionName,
+    currentExpansionKey,
     currentSeasonLabel,
     expansionNames,
     hasOnlyCraftedFilters,
     instances,
+    isDungeonBrowser,
     seasonDefinitions,
   ]);
 
   const defaultCollapsedGroups = useMemo(() => {
     const collapsed = new Set<string>();
     for (const group of groupedInstances) {
-      if (group.key !== 'season-filters' && group.key !== currentExpansionKey) {
+      if (group.key !== selectedGroupKey) {
         collapsed.add(group.key);
       }
       for (const season of group.seasons) {
@@ -226,7 +323,7 @@ export default function AddItemInstanceSidebar({
       }
     }
     return collapsed;
-  }, [currentExpansionKey, currentSeasonKey, groupedInstances]);
+  }, [currentSeasonKey, groupedInstances, selectedGroupKey]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(defaultCollapsedGroups);
 
   useEffect(() => {
@@ -242,14 +339,56 @@ export default function AddItemInstanceSidebar({
     });
   };
 
-  const renderInstance = (instance: Instance) => {
+  const handleResizePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeStart.current = { clientX: event.clientX, width: sidebarWidth };
+    setIsResizing(true);
+  };
+
+  const handleResizePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!resizeStart.current) return;
+    setSidebarWidth(
+      clampSidebarWidth(resizeStart.current.width + event.clientX - resizeStart.current.clientX)
+    );
+  };
+
+  const handleResizePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    resizeStart.current = null;
+    setIsResizing(false);
+  };
+
+  const handleResizeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 40 : 16;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      setSidebarWidth((current) =>
+        clampSidebarWidth(current + (event.key === 'ArrowRight' ? step : -step))
+      );
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      setSidebarWidth(event.key === 'Home' ? SIDEBAR_MIN_WIDTH : SIDEBAR_MAX_WIDTH);
+    }
+  };
+
+  const renderInstance = (instance: Instance, showExpansionLink = false) => {
     const isActive = selectedInstance === instance.id;
     const isMeta = instance.id < 0 && instance.type !== 'search';
-    return (
+    const parsedExpansionId = Number(instance.expansion);
+    const expansionId =
+      Number.isFinite(parsedExpansionId) && parsedExpansionId > 0 && expansionNames.has(parsedExpansionId)
+        ? parsedExpansionId
+        : catalogExpansionByInstanceId.get(instance.id);
+    const instanceButton = (
       <button
         key={instance.id}
         onClick={() => onSelect(instance.id)}
-        className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-150 ${
+        className={`group flex min-w-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left transition-all duration-150 ${
+          showExpansionLink ? 'flex-1' : 'w-full'
+        } ${
           isActive
             ? 'border border-gold/20 bg-gold/[0.08] text-gold shadow-sm'
             : 'border border-transparent text-zinc-400 hover:bg-white/[0.03] hover:text-zinc-200'
@@ -269,9 +408,27 @@ export default function AddItemInstanceSidebar({
         <span
           className={`truncate text-xs leading-tight ${isMeta ? 'font-bold' : 'font-semibold'}`}
         >
-          {instance.name}
+          {displayInstanceName(instance)}
         </span>
       </button>
+    );
+
+    if (!showExpansionLink || expansionId == null || onSelectExpansion == null) {
+      return instanceButton;
+    }
+
+    return (
+      <div key={instance.id} className="flex min-w-0 items-center gap-1">
+        {instanceButton}
+        <button
+          type="button"
+          onClick={() => onSelectExpansion(instance.id, expansionId)}
+          className="max-w-[6.5rem] shrink-0 truncate rounded px-1.5 py-1 text-[9px] font-semibold uppercase tracking-wide text-zinc-600 transition-colors hover:bg-gold/[0.08] hover:text-gold"
+          title={`Show ${expansionNames.get(expansionId) || 'source expansion'}`}
+        >
+          {expansionNames.get(expansionId) || 'Expansion'}
+        </button>
+      </div>
     );
   };
 
@@ -293,19 +450,24 @@ export default function AddItemInstanceSidebar({
             />
           </span>
         </button>
-        {!isCollapsed && <div className="space-y-0.5">{season.instances.map(renderInstance)}</div>}
+        {!isCollapsed && (
+          <div className="space-y-0.5">{season.instances.map((instance) => renderInstance(instance))}</div>
+        )}
       </div>
     );
   };
 
   const renderExpansionGroup = (group: ExpansionGroup) => {
     const isCollapsed = collapsedGroups.has(group.key);
+    const isSelected = group.key === selectedGroupKey;
     return (
       <section key={group.key}>
         <button
           type="button"
           onClick={() => toggleGroup(group.key)}
-          className="flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-zinc-500 transition-colors hover:bg-white/[0.03] hover:text-zinc-300"
+          className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-[10px] font-bold uppercase tracking-wider transition-colors hover:bg-white/[0.03] hover:text-zinc-300 ${
+            isSelected ? 'bg-gold/[0.08] text-gold' : 'text-zinc-500'
+          }`}
           aria-expanded={!isCollapsed}
         >
           <span className="truncate">{group.label}</span>
@@ -326,7 +488,9 @@ export default function AddItemInstanceSidebar({
                     Other content
                   </div>
                 )}
-                {group.ungroupedInstances.map(renderInstance)}
+                {group.ungroupedInstances.map((instance) =>
+                  renderInstance(instance, group.key === 'active-dungeons' && instance.type === 'dungeon')
+                )}
               </div>
             )}
           </div>
@@ -336,13 +500,38 @@ export default function AddItemInstanceSidebar({
   };
 
   return (
-    <div className="scrollbar-thin scrollbar-thumb-white/10 w-52 shrink-0 space-y-0.5 overflow-y-auto border-r border-border bg-surface/50 p-1.5">
-      {hasOnlyCraftedFilters
-        ? instances.map(renderInstance)
-        : groupedInstances.map(renderExpansionGroup)}
-      {instances.length === 0 && (
-        <div className="p-6 text-center text-xs italic text-zinc-600">No instances found</div>
-      )}
+    <div className="relative h-full shrink-0" style={{ width: sidebarWidth }}>
+      <div className="scrollbar-thin scrollbar-thumb-white/10 h-full w-full min-w-0 space-y-0.5 overflow-y-auto border-r border-border bg-surface/50 p-1.5">
+        {hasOnlyCraftedFilters
+          ? instances.map((instance) => renderInstance(instance))
+          : groupedInstances.map(renderExpansionGroup)}
+        {instances.length === 0 && (
+          <div className="p-6 text-center text-xs italic text-zinc-600">No instances found</div>
+        )}
+      </div>
+      <div
+        role="separator"
+        aria-label="Resize instance panel"
+        aria-orientation="vertical"
+        aria-valuemin={SIDEBAR_MIN_WIDTH}
+        aria-valuemax={SIDEBAR_MAX_WIDTH}
+        aria-valuenow={sidebarWidth}
+        tabIndex={0}
+        onKeyDown={handleResizeKeyDown}
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={handleResizePointerUp}
+        onPointerCancel={handleResizePointerUp}
+        className={`absolute right-[-5px] top-0 z-20 flex h-full w-2 cursor-col-resize touch-none select-none items-center justify-center outline-none ${
+          isResizing ? 'bg-gold/10' : 'hover:bg-gold/5 focus-visible:bg-gold/10'
+        }`}
+      >
+        <span
+          className={`h-10 w-0.5 rounded-full transition-colors ${
+            isResizing ? 'bg-gold' : 'bg-border hover:bg-gold/70'
+          }`}
+        />
+      </div>
     </div>
   );
 }

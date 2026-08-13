@@ -527,50 +527,14 @@ pub(super) async fn get_multi_instance_drops(query: web::Query<MultiDropsQuery>)
 }
 
 pub async fn get_dungeon_data() -> HttpResponse {
-    use crate::server::dungeon_data::{
-        DungeonAffix, DungeonDataSource, DungeonInfo, DungeonSeasonData,
-    };
+    use crate::server::dungeon_data::DungeonDataSource;
     use crate::server::dungeon_source_blizzard::BlizzardDungeonSource;
 
     let source = BlizzardDungeonSource::new();
 
     match source.get_season_info() {
         Ok(data) => HttpResponse::Ok().json(data),
-        Err(e) => {
-            let fallback_affixes = vec![
-                DungeonAffix {
-                    id: 1,
-                    name: "Tyrannical".to_string(),
-                    description: "Health and damage increased by 15%.".to_string(),
-                    icon: None,
-                    wowhead_url: Some("https://wowhead.com/affix=9".to_string()),
-                    spell_id: Some(409967),
-                },
-                DungeonAffix {
-                    id: 2,
-                    name: "Fortified".to_string(),
-                    description: "Non-boss health increased by 20%.".to_string(),
-                    icon: None,
-                    wowhead_url: Some("https://wowhead.com/affix=10".to_string()),
-                    spell_id: Some(409968),
-                },
-            ];
-
-            let fallback_data = DungeonSeasonData {
-                season_id: 0,
-                season_name: "Unknown Season".to_string(),
-                current_affixes: fallback_affixes,
-                rotation_dungeons: Vec::<DungeonInfo>::new(),
-            };
-
-            HttpResponse::Ok().json(json!({
-                "error": e,
-                "season_id": fallback_data.season_id,
-                "season_name": fallback_data.season_name,
-                "current_affixes": fallback_data.current_affixes,
-                "rotation_dungeons": fallback_data.rotation_dungeons,
-            }))
-        }
+        Err(e) => HttpResponse::ServiceUnavailable().json(json!({ "error": e })),
     }
 }
 

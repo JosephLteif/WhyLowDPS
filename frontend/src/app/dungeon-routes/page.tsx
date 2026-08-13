@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
 import RouteDetailsModal from '../components/RouteDetailsModal';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
-import { normalizeDungeonName } from '../dungeons/shared';
+import { normalizeSourceName } from '../lib/source-navigation';
 
 export default function DungeonRoutesPage() {
   const router = useRouter();
@@ -237,18 +237,18 @@ export default function DungeonRoutesPage() {
     const map = new Map<string, number>();
     for (const instance of availableInstances) {
       if (!instance.name) continue;
-      map.set(normalizeDungeonName(instance.name), instance.id);
+      map.set(normalizeSourceName(instance.name), instance.id);
     }
     return map;
   }, [availableInstances]);
 
   const findMatchedInstanceId = useCallback(
     (dungeonName: string): number | null => {
-      const normalizedRouteName = normalizeDungeonName(dungeonName);
+      const normalizedRouteName = normalizeSourceName(dungeonName);
       const direct = instanceIdByNormalizedName.get(normalizedRouteName);
       if (direct) return direct;
       for (const instance of availableInstances) {
-        const normalizedInstanceName = normalizeDungeonName(instance.name);
+        const normalizedInstanceName = normalizeSourceName(instance.name);
         if (
           normalizedInstanceName.includes(normalizedRouteName) ||
           normalizedRouteName.includes(normalizedInstanceName)
@@ -359,7 +359,7 @@ export default function DungeonRoutesPage() {
                         if (!matchedInstanceId) return null;
                         return (
                           <Link
-                            href={`/dungeons/details/?id=${encodeURIComponent(String(matchedInstanceId))}`}
+                            href="/dungeons"
                             className="text-xs font-semibold text-gold/90 transition-colors hover:text-gold hover:underline"
                           >
                             Open Dungeon

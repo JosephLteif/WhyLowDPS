@@ -18,8 +18,9 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Season-aware Loot Browser' })
+      screen.getByRole('heading', { level: 3, name: 'Live Dungeons & Raids' })
     ).toBeInTheDocument();
+    expect(screen.getByText(/The Venomous Abyss/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));

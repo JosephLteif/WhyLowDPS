@@ -20,6 +20,7 @@ import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import { useAuth } from '../../components/AuthContext';
+import { useSimContext } from '../../components/SimContext';
 import type { StatSnapshot } from '../../lib/stat-snapshot';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import {
@@ -361,6 +362,7 @@ function CollapsibleSection({
 export default function SimResultClient() {
   const router = useRouter();
   const { lightMode } = useAuth();
+  const { setSimcInput } = useSimContext();
   const params = useParams();
   const searchParams = useSearchParams();
   const paramId = params.id as string;
@@ -909,6 +911,17 @@ export default function SimResultClient() {
     router.push(getSimTypeFallbackUrl(job?.sim_type));
   }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
 
+  const handleRerunInput = useCallback(() => {
+    if (!job?.simc_input) return;
+    setSimcInput(job.simc_input);
+    try {
+      sessionStorage.setItem('whylowdps_simc_input', job.simc_input);
+    } catch {
+      // The shared Sim context still receives the input when session storage is unavailable.
+    }
+    router.push(getSimTypeFallbackUrl(job.sim_type));
+  }, [getSimTypeFallbackUrl, job?.sim_type, job?.simc_input, router, setSimcInput]);
+
   const handleCancelled = useCallback(() => {
     const currentSimId = getCurrentSimId();
     if (currentSimId) {
@@ -1033,6 +1046,14 @@ export default function SimResultClient() {
             className="inline-flex items-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white"
           >
             Sim Again
+          </button>
+          <button
+            type="button"
+            onClick={handleRerunInput}
+            disabled={!job.simc_input}
+            className="inline-flex items-center rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Rerun This Input
           </button>
           {!lightMode && (
             <CharacterLinkButton

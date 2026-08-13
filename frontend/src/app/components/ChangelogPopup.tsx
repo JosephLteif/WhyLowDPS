@@ -45,6 +45,26 @@ const releaseNotes: ReleaseNote[] = [
   },
   {
     category: 'feature',
+    title: 'Saved simulation presets',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Save named SimC setups locally and bring them back into the shared simulation workspace whenever you want to rerun a familiar scenario.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Rerun and compare results',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Simulation results now make it easier to rerun the exact imported input, while History can compare two selected records side by side.',
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Active character workspace',
     body: [
       {

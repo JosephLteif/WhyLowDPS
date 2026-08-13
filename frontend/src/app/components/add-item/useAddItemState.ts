@@ -12,6 +12,7 @@ export interface ExternalItem {
   inventory_type: number;
   encounter: string;
   instance_name: string;
+  instance_id?: number;
   source_type?: string;
   is_catalyst?: boolean;
   can_catalyst?: boolean;

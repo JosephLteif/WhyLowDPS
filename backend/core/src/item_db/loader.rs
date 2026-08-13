@@ -302,6 +302,13 @@ fn merge_instance_rows(fallback: Option<Value>, primary: Value) -> Value {
         {
             continue;
         }
+        if value.is_null()
+            && fallback
+                .get(key)
+                .is_some_and(|fallback_value| !fallback_value.is_null())
+        {
+            continue;
+        }
         fallback.insert(key.clone(), value.clone());
     }
     Value::Object(fallback)

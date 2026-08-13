@@ -1,169 +1,251 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { API_URL, DungeonInfo, fetchJsonCached } from '../lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
+import { API_URL, listInstances } from '../lib/api';
+import { wowExpansions } from '../lib/wow-season-content';
 import type { Instance } from '../drop-finder/types';
-import { DungeonCard, WowheadZonesIndexSummary, getLocalInstanceImageUrl, getRaidInstances, normalizeDungeonName, normalizeImageUrl } from '../dungeons/shared';
-import {
-  getRuntimeWowSeasonContent,
-  wowExpansions,
-  wowSeasons,
-  type WowExpansion,
-  type WowSeason,
-} from '../lib/wow-season-content';
-import {
-  filterRaidsByExpansion,
-  getCurrentSeasonExpansionId,
-  listRaidExpansionOptions,
-} from './raid-expansion-filter';
 
-function RaidsPageSkeleton() {
+type RaidEncounter = {
+  id: number;
+  name: string;
+  imageUrl?: string;
+};
+
+const CURRENT_SEASON_RAID_FALLBACK: Instance = {
+  id: 1_000_000_001,
+  name: 'The Venomous Abyss',
+  type: 'raid',
+  expansion: 516,
+  image_url:
+    'https://bnetcmsus-a.akamaihd.net/cms/content_entry_media/X0MQBJPBDS5J1781742460649.png',
+  encounters: [
+    { id: 1_000_000_011, name: "Nek'zali the Soulcoiler" },
+    { id: 1_000_000_012, name: 'Entombed Sentinels' },
+    { id: 1_000_000_013, name: 'Vashnik the Malignant' },
+    { id: 1_000_000_014, name: 'The Lost Explorers' },
+    { id: 1_000_000_015, name: 'Sszorak' },
+    { id: 1_000_000_016, name: 'The Twin Fangs' },
+    { id: 1_000_000_017, name: 'The Coiled Altar' },
+    { id: 1_000_000_018, name: "Ula'tek" },
+  ],
+};
+
+const WORLD_BOSSES_IMAGE_URL =
+  'https://bnetcmsus-a.akamaihd.net/cms/content_entry_media/X0MQBJPBDS5J1781742460649.png';
+
+function normalizeRaidName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/^the\s+/, '');
+}
+
+function resolveAssetUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith('/') ? `${API_URL}${url}` : url;
+}
+
+function normalizeEncounter(raw: unknown): RaidEncounter | null {
+  if (raw && typeof raw === 'object') {
+    const value = raw as Record<string, unknown>;
+    const name = typeof value.name === 'string' ? value.name.trim() : '';
+    const id = Number(value.id);
+    const imageUrl = typeof value.image_url === 'string' ? value.image_url : undefined;
+    if (value.trash === true || id < 0) return null;
+    if (name && Number.isFinite(id)) return { id, name, imageUrl };
+  }
+
+  if (typeof raw === 'string') {
+    const id = Number(raw.match(/\bid=([^;}\s]+)/)?.[1]);
+    const name = raw.match(/\bname=(.*?)(?:; [A-Za-z_][A-Za-z0-9_]*=|}$)/)?.[1]?.trim();
+    if (name && Number.isFinite(id)) return { id, name };
+  }
+
+  return null;
+}
+
+function fallbackRaidImage(raid: Instance): string | undefined {
+  if (normalizeRaidName(raid.name) === 'world bosses') return WORLD_BOSSES_IMAGE_URL;
+  if (normalizeRaidName(raid.name) === 'venomous abyss') {
+    return CURRENT_SEASON_RAID_FALLBACK.image_url;
+  }
+  return undefined;
+}
+
+function RaidArtwork({ raid }: { raid: Instance }) {
+  const apiImageUrl = resolveAssetUrl(raid.image_url);
+  const fallbackImageUrl = fallbackRaidImage(raid);
+  const preferFallback = fallbackImageUrl && apiImageUrl?.includes('/api/data/images/instance/');
+  const [imageUrl, setImageUrl] = useState(
+    preferFallback ? fallbackImageUrl : apiImageUrl || fallbackImageUrl
+  );
+
+  return imageUrl ? (
+    <img
+      src={imageUrl}
+      alt=""
+      className="h-40 w-full object-cover"
+      loading="lazy"
+      onError={() => {
+        if (fallbackImageUrl && imageUrl !== fallbackImageUrl) {
+          setImageUrl(fallbackImageUrl);
+        } else {
+          setImageUrl(undefined);
+        }
+      }}
+    />
+  ) : (
+    <div className="h-40 bg-zinc-800" aria-hidden="true" />
+  );
+}
+
+function RaidCard({ raid }: { raid: Instance }) {
+  const encounters = (Array.isArray(raid.encounters) ? raid.encounters : [])
+    .map(normalizeEncounter)
+    .filter((encounter): encounter is RaidEncounter => Boolean(encounter));
+
   return (
-    <div className="space-y-4" aria-label="Loading raids">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="h-10 w-36 animate-pulse rounded bg-white/10" />
-          <div className="mt-3 h-4 w-32 animate-pulse rounded bg-white/10" />
-        </div>
-        <div className="h-16 w-56 animate-pulse rounded-lg bg-white/10" />
+    <article className="overflow-hidden rounded-xl border border-white/15 bg-zinc-900/80">
+      <RaidArtwork raid={raid} />
+      <div className="p-4">
+        <h2 className="text-xl font-bold text-zinc-100">{raid.name}</h2>
+        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          {encounters.length} encounters
+        </p>
+        {encounters.length > 0 ? (
+          <ul className="mt-4 space-y-2">
+            {encounters.map((encounter) => (
+              <li
+                key={`${raid.id}-${encounter.id}`}
+                className="flex items-center gap-2 text-sm text-zinc-200"
+              >
+                {resolveAssetUrl(encounter.imageUrl) ? (
+                  <img
+                    src={resolveAssetUrl(encounter.imageUrl)}
+                    alt=""
+                    className="h-7 w-7 rounded object-cover"
+                    loading="lazy"
+                  />
+                ) : null}
+                <span>{encounter.name}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-4 text-sm text-zinc-500">No encounter details are available.</p>
+        )}
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {[1, 2, 3, 4, 5, 6].map((idx) => (
-          <div key={`raid-card-skeleton-${idx}`} className="rounded-xl border border-white/15 bg-zinc-900/80 p-4">
-            <div className="mb-3 h-28 w-full animate-pulse rounded-lg bg-white/10" />
-            <div className="h-7 w-2/3 animate-pulse rounded bg-white/10" />
-            <div className="mt-4 h-3 w-24 animate-pulse rounded bg-white/10" />
-            <div className="mt-3 space-y-2">
-              <div className="h-4 w-40 animate-pulse rounded bg-white/10" />
-              <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
-              <div className="h-4 w-36 animate-pulse rounded bg-white/10" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    </article>
   );
 }
 
 export default function RaidsPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [raids, setRaids] = useState<DungeonInfo[]>([]);
-  const [expansions, setExpansions] = useState<WowExpansion[]>(wowExpansions);
-  const [seasons, setSeasons] = useState<WowSeason[]>(wowSeasons);
-  const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(
-    (() => {
-      const fromQuery = searchParams.get('expansion');
-      const parsed = fromQuery ? Number(fromQuery) : NaN;
-      return Number.isFinite(parsed) ? parsed : getCurrentSeasonExpansionId(wowSeasons);
-    })(),
-  );
+  const [instances, setInstances] = useState<Instance[]>([]);
+  const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const [fallbackInstances, runtimeWow, zonesSummaryResp] = await Promise.all([
-          fetchJsonCached<Instance[]>(`${API_URL}/api/instances`, { ttl: 60_000 }).catch(
-            () => [] as Instance[],
-          ),
-          getRuntimeWowSeasonContent().catch(() => null),
-          fetchJsonCached<WowheadZonesIndexSummary>(
-            `${API_URL}/api/data/wowhead-zones-index/summary?kind=raid`,
-            { ttl: 60_000 },
-          ).catch(() => ({ zones: [], raids: [] })),
-        ]);
-        if (!cancelled && runtimeWow) {
-          setExpansions(runtimeWow.expansions);
-          setSeasons(runtimeWow.seasons);
-          setSelectedExpansionId((current) => current ?? getCurrentSeasonExpansionId(runtimeWow.seasons));
-        }
-        const parsedRaids = Array.isArray(zonesSummaryResp?.raids) ? zonesSummaryResp.raids : [];
-        const zonesByName = new Map<string, { id?: number; name?: string; expansion?: number | null; encounters?: string[] }>();
-        for (const zone of parsedRaids) {
-          const n = typeof zone?.name === 'string' ? normalizeDungeonName(zone.name) : '';
-          if (n && !zonesByName.has(n)) zonesByName.set(n, zone);
-        }
-        const fallbackRaidRows: DungeonInfo[] = getRaidInstances(fallbackInstances).map((raid) => {
-          const matchedZone = zonesByName.get(normalizeDungeonName(raid.name));
-          const zid = Number(matchedZone?.id ?? 0);
-          const encounters = (raid.encounters || []).map((e) => String(e?.name || '').trim()).filter((n) => n.length > 0);
-          return {
-            id: raid.id, name: raid.name, description: undefined, zone: raid.zone || 'Raid', slug: undefined, short_name: undefined,
-            wowhead_id: zid > 0 ? zid : null, num_bosses: encounters.length > 0 ? encounters.length : null, expansion: raid.expansion ?? (typeof matchedZone?.expansion === 'number' ? matchedZone.expansion : null), expansion_name: undefined,
-            map_id: null, challenge_mode_id: null, minimum_level: null, keystone_timer_ms: null, keystone_upgrades: [], encounters, blizzard_href: undefined,
-            image_url: normalizeImageUrl(getLocalInstanceImageUrl(raid.id)), linked_code: undefined, blizzard_api_data: null,
-          } as unknown as DungeonInfo;
-        })
-          .filter((raid) => {
-            const name = raid.name.trim().toLowerCase();
-            if (!name) return false;
-            if (name.includes('world boss')) return false;
-            if (name.startsWith('season ')) return false;
-            return (raid.encounters?.length ?? 0) > 0;
-          })
-          .sort((a, b) => a.name.localeCompare(b.name));
-        if (!cancelled) setRaids(fallbackRaidRows);
-      } finally {
+    listInstances()
+      .then((data) => {
+        if (!cancelled) setInstances(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load raids.');
+      })
+      .finally(() => {
         if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (loading) return <RaidsPageSkeleton />;
+  const raids = useMemo(() => {
+    const apiRaids = instances.filter((instance) => instance.type === 'raid' && instance.id > 0);
+    const hasVenomousAbyss = apiRaids.some(
+      (instance) => normalizeRaidName(instance.name) === 'venomous abyss'
+    );
+    const enrichedRaids = apiRaids.map((instance) => {
+      if (normalizeRaidName(instance.name) !== 'venomous abyss') return instance;
+      return {
+        ...instance,
+        expansion: instance.expansion ?? CURRENT_SEASON_RAID_FALLBACK.expansion,
+      };
+    });
+    return hasVenomousAbyss ? enrichedRaids : [...enrichedRaids, CURRENT_SEASON_RAID_FALLBACK];
+  }, [instances]);
+  const expansionIds = useMemo(
+    () =>
+      [
+        ...new Set(raids.map((raid) => raid.expansion).filter((id): id is number => id != null)),
+      ].sort((left, right) => right - left),
+    [raids]
+  );
+  const currentExpansionId = expansionIds[0] ?? null;
+  const effectiveExpansionId = selectedExpansionId ?? currentExpansionId;
+  const visibleRaids = raids.filter(
+    (raid) => effectiveExpansionId == null || raid.expansion === effectiveExpansionId
+  );
+  const expansionNames = new Map(wowExpansions.map((expansion) => [expansion.id, expansion.name]));
 
-  const expansionOptions = listRaidExpansionOptions(raids, expansions);
-  const currentExpansionId = getCurrentSeasonExpansionId(seasons);
-  const filteredRaids = filterRaidsByExpansion(raids, selectedExpansionId);
+  if (loading) {
+    return <div className="h-64 animate-pulse rounded-xl border border-white/10 bg-white/5" />;
+  }
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-lg py-20 text-center">
+        <AlertTriangle className="mx-auto mb-4 h-8 w-8 text-red-400" />
+        <h1 className="text-xl font-bold text-zinc-100">Failed to load raids</h1>
+        <p className="mt-2 text-zinc-500">{error}</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white lg:text-4xl">Raids</h1>
-          {selectedExpansionId === currentExpansionId ? (
-            <p className="mt-2 text-sm font-medium text-zinc-400">Current expansion</p>
-          ) : null}
+          <p className="mt-2 text-base font-semibold text-zinc-300">
+            Blizzard raid names, artwork, and encounters
+          </p>
         </div>
-        {expansionOptions.length > 1 ? (
-          <label className="flex flex-col gap-1 text-sm font-semibold text-zinc-300">
-            Expansion
-            <select
-              value={selectedExpansionId ?? ''}
-              onChange={(event) => {
-                const next = Number(event.target.value);
-                const nextExpansionId = Number.isFinite(next) ? next : null;
-                setSelectedExpansionId(nextExpansionId);
-                const query = new URLSearchParams(searchParams.toString());
-                if (nextExpansionId == null) {
-                  query.delete('expansion');
-                } else {
-                  query.set('expansion', String(nextExpansionId));
-                }
-                router.replace(query.toString() ? `/raids?${query.toString()}` : '/raids', {
-                  scroll: false,
-                });
-              }}
-              className="min-w-56 rounded-lg border border-white/15 bg-zinc-950 px-3 py-2 text-sm font-medium text-zinc-100 outline-none transition-colors hover:border-gold/50 focus:border-gold"
-            >
-              {expansionOptions.map((expansion) => (
-                <option key={expansion.id} value={expansion.id}>
-                  {expansion.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+          Expansion
+          <select
+            value={effectiveExpansionId ?? ''}
+            onChange={(event) => setSelectedExpansionId(Number(event.currentTarget.value) || null)}
+            className="min-w-56 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100"
+          >
+            {expansionIds.map((id) => (
+              <option key={id} value={id}>
+                {expansionNames.get(id) ?? `Expansion ${id}`}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
-      {filteredRaids.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredRaids.map((raid) => <DungeonCard key={`raid-${raid.id}`} dungeon={raid} mplusDetail={null} detailsBasePath="/raids/details" />)}
-        </div>
+
+      <div className="rounded-xl border border-white/10 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+        {visibleRaids.length} raid{visibleRaids.length === 1 ? '' : 's'} available from Blizzard
+        data.
+      </div>
+
+      {visibleRaids.length > 0 ? (
+        <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {visibleRaids.map((raid) => (
+            <RaidCard key={raid.id} raid={raid} />
+          ))}
+        </section>
       ) : (
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-6 text-sm text-zinc-500">No raids available.</div>
+        <div className="rounded-xl border border-white/10 bg-zinc-900/50 p-10 text-center text-zinc-500">
+          No raids are available for this expansion.
+        </div>
       )}
     </div>
   );

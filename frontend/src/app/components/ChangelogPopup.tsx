@@ -28,6 +28,23 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
+    title: 'Live Dungeons & Raids',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Dungeons and raids are now organized by expansion and season, with current-season rotation details and Blizzard-provided raid information in one place.',
+      },
+      {
+        type: 'list',
+        items: [
+          'See current dungeon affixes, timers, Mythic+ scores, and encounters.',
+          'Browse raid names, artwork, and encounters, including The Venomous Abyss.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Season-aware Loot Browser',
     body: [
       {

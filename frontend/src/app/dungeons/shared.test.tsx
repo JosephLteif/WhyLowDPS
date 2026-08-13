@@ -1,11 +1,7 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { DungeonCard, fallbackUpgradeTimers } from './shared';
 import type { DungeonInfo } from '../lib/api';
-
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
-}));
 
 describe('dungeon card timer fallbacks', () => {
   it('derives upgrade timer chips from a base timer', () => {
@@ -16,25 +12,25 @@ describe('dungeon card timer fallbacks', () => {
     ]);
   });
 
-  it('renders Warcraft Logs guide links for supported raid bosses', () => {
-    const raid: DungeonInfo = {
+  it('renders current dungeon score timers and encounters', () => {
+    const dungeon: DungeonInfo = {
       id: 1,
-      name: 'Current Raid',
-      zone: 'Raid',
+      name: 'Current Dungeon',
+      zone: 'Current Zone',
       wowhead_id: null,
-      num_bosses: 3,
-      expansion: 11,
-      encounters: ["Belo'ren, Child of Al'ar", 'Imperator Averzian', 'Unknown Boss'],
+      num_bosses: 2,
+      expansion: null,
+      keystone_timer_ms: 1_980_000,
+      keystone_upgrades: [1, 2, 3],
+      encounters: ['First Boss', 'Final Boss'],
     };
 
-    render(<DungeonCard dungeon={raid} mplusDetail={null} detailsBasePath="/raids/details" />);
+    render(<DungeonCard dungeon={dungeon} mplusDetail={null} />);
 
-    expect(
-      screen.getByRole('link', { name: /warcraft logs guide for belo'ren, child of al'ar/i }),
-    ).toHaveAttribute('href', 'https://www.warcraftlogs.com/guide/beloren-child-of-alar');
-    expect(
-      screen.getByRole('link', { name: /warcraft logs guide for imperator averzian/i }),
-    ).toHaveAttribute('href', 'https://www.warcraftlogs.com/guide/imperator-averzian');
-    expect(screen.queryByRole('link', { name: /warcraft logs guide for unknown boss/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Score +1 (33:00)')).toBeInTheDocument();
+    expect(screen.getByText('Score +2 (26:24)')).toBeInTheDocument();
+    expect(screen.getByText('Score +3 (19:48)')).toBeInTheDocument();
+    expect(screen.getByText('First Boss')).toBeInTheDocument();
+    expect(screen.getByText('Final Boss')).toBeInTheDocument();
   });
 });

@@ -99,12 +99,12 @@ const baseNavItems: NavItem[] = [
   {
     href: '/dungeons',
     label: 'Dungeons & Routes',
-    description: 'Dungeons, raids, and routes.',
+    description: 'Current dungeons and routes.',
     icon: MapIcon,
-    matchPaths: ['/dungeons', '/raids', '/dungeon-routes'],
+    matchPaths: ['/dungeons', '/dungeon-routes', '/raids'],
     children: [
       { href: '/dungeons', label: 'Dungeons', description: 'Rotation and affixes' },
-      { href: '/raids', label: 'Raids', description: 'Raid instances and encounters' },
+      { href: '/raids', label: 'Raids', description: 'Raid names and encounters' },
       {
         href: '/dungeon-routes',
         label: 'Routes',

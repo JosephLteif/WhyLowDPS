@@ -12,6 +12,7 @@ export interface ExternalItem {
   inventory_type: number;
   encounter: string;
   instance_name: string;
+  instance_id?: number;
   source_type?: string;
   is_catalyst?: boolean;
   can_catalyst?: boolean;
@@ -199,7 +200,11 @@ export function useAddItemState(
         setMissives(missiveData);
 
         if (instData.length > 0 && !selectedInstance) {
-          const firstRaid = instData.find((i: any) => i.type.toLowerCase() === 'raid');
+          const firstRaid = instData.find((i: any) => {
+            const type = String(i.type || '').toLowerCase();
+            const name = String(i.name || '').toLowerCase();
+            return type === 'raid' && !name.includes('world boss');
+          });
           if (firstRaid) setSelectedInstance(firstRaid.id);
           else setSelectedInstance(instData[0].id);
         }
@@ -220,41 +225,37 @@ export function useAddItemState(
         const queryString = buildQueryString();
         let data: Record<string, ExternalItem[]>;
         if (category === 'crafted') {
-          const res = await fetch(`${API_URL}/api/instances/type/profession/drops?${queryString}`, {
-            credentials: 'include',
-          });
-          data = await res.json();
+          data = await fetchJson<Record<string, ExternalItem[]>>(
+            `${API_URL}/api/instances/type/profession/drops?${queryString}`
+          );
         } else if (category === 'delves') {
           const [delveRes, preyRes] = await Promise.all([
-            fetch(`${API_URL}/api/instances/type/delve-mid1/drops?${queryString}`, { credentials: 'include' }),
-            fetch(`${API_URL}/api/instances/type/prey-mid1/drops?${queryString}`, { credentials: 'include' }),
+            fetchJson<Record<string, ExternalItem[]>>(
+              `${API_URL}/api/instances/type/delve-mid1/drops?${queryString}`
+            ),
+            fetchJson<Record<string, ExternalItem[]>>(
+              `${API_URL}/api/instances/type/prey-mid1/drops?${queryString}`
+            ),
           ]);
-          const delveData = await delveRes.json();
-          const preyData = await preyRes.json();
-          data = mergeDropMaps(delveData, preyData);
+          data = mergeDropMaps(delveRes, preyRes);
         } else if (category === 'tier') {
-          const res = await fetch(`${API_URL}/api/instances/type/catalyst/drops?${queryString}`, {
-            credentials: 'include',
-          });
-          data = await res.json();
+          data = await fetchJson<Record<string, ExternalItem[]>>(
+            `${API_URL}/api/instances/type/catalyst/drops?${queryString}`
+          );
         } else if (selectedInstance === 0) {
           const [raidRes, dungRes] = await Promise.all([
-            fetch(`${API_URL}/api/instances/type/raid/drops?${queryString}`, {
-              credentials: 'include',
-            }),
-            fetch(`${API_URL}/api/instances/type/dungeon/drops?${queryString}`, {
-              credentials: 'include',
-            }),
+            fetchJson<Record<string, ExternalItem[]>>(
+              `${API_URL}/api/instances/type/raid/drops?${queryString}`
+            ),
+            fetchJson<Record<string, ExternalItem[]>>(
+              `${API_URL}/api/instances/type/dungeon/drops?${queryString}`
+            ),
           ]);
-          const raidData = await raidRes.json();
-          const dungData = await dungRes.json();
-          data = mergeDropMaps(raidData, dungData);
+          data = mergeDropMaps(raidRes, dungRes);
         } else {
-          const res = await fetch(
-            `${API_URL}/api/instances/${selectedInstance}/drops?${queryString}`,
-            { credentials: 'include' }
+          data = await fetchJson<Record<string, ExternalItem[]>>(
+            `${API_URL}/api/instances/${selectedInstance}/drops?${queryString}`
           );
-          data = await res.json();
         }
         if (!cancelled) setDrops(data);
       } catch (e) {

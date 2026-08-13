@@ -90,11 +90,7 @@ export default function RouteDetailsModal({
                   <>
                     <span className="h-1 w-1 rounded-full bg-zinc-800" />
                     <button
-                      onClick={() =>
-                        router.push(
-                          `/dungeons/details/?id=${encodeURIComponent(String(dungeonDetailsId))}`,
-                        )
-                      }
+                      onClick={() => router.push('/dungeons')}
                       className="text-xs font-semibold text-gold transition-colors hover:text-gold/80 hover:underline"
                     >
                       Open Dungeon

@@ -56,10 +56,10 @@ export function findSourceInstance(
 }
 
 export function sourceDetailsPath(item: SourceNavigationItem, instances: Instance[]): string {
+  if (isRaidSource(item)) return '/raids';
   const instance = findSourceInstance(item, instances);
   if (!instance) return sourceListPath(item);
-  const basePath = isRaidSource(item) ? '/raids/details' : '/dungeons/details';
-  return `${basePath}/?id=${encodeURIComponent(String(instance.id))}`;
+  return `/dungeons/?id=${encodeURIComponent(String(instance.id))}`;
 }
 
 export function buildSourceTagLinks(

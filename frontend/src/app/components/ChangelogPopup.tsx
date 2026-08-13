@@ -27,52 +27,69 @@ type ReleaseNote = {
 
 const releaseNotes: ReleaseNote[] = [
   {
+    category: 'feature',
+    title: 'Live Dungeons & Raids',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Dungeons and raids are now organized by expansion and season, with current-season rotation details and Blizzard-provided raid information in one place.',
+      },
+      {
+        type: 'list',
+        items: [
+          'See current dungeon affixes, timers, Mythic+ scores, and encounters.',
+          'Browse raid names, artwork, and encounters, including The Venomous Abyss.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Season-aware Loot Browser',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Loot is now organized by expansion, season, and the current active dungeon rotation, including legacy dungeons that return to the active pool.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Accurate item upgrade controls',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Current active-season loot keeps its correct ilvl controls, while items from older seasons and expansions no longer expose misleading current-season sliders.',
+      },
+    ],
+  },
+  {
     category: 'fix',
-    title: 'Reliable Battle.net sign-in setup',
+    title: 'Clearer dungeon source navigation',
     body: [
       {
         type: 'paragraph',
-        text: 'Desktop sign-in and initial data synchronization now use the selected saved Blizzard credential profile, with the secure credential setup flow available when a saved secret is unavailable.',
+        text: 'Selecting a dungeon in Active Dungeons stays in that group. Its source expansion is shown beside the dungeon and can be opened directly when you want the historical expansion view.',
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Resizable loot navigation',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The left instance panel can now be resized by dragging its divider or using the keyboard, making longer expansion and dungeon names easier to read.',
       },
     ],
   },
   {
     category: 'fix',
-    title: 'Reliable missing-data repair',
+    title: 'More resilient seasonal data',
     body: [
       {
         type: 'paragraph',
-        text: 'Download All Missing now restores game data from a verified backup, automatically tries Raidbots if needed, and shows clearer progress while files are repaired.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Clearer game data file states',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The Game Data File States view now labels every file as Required or Optional, lets you filter by availability or requirement, and keeps the main recovery actions easier to find.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'A smoother start after updates',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'When a new app version is ready, you see the update first. Once you decide about it, missing-data repair is ready when you need it instead of competing for attention.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'More dependable desktop setup',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Desktop sign-in now uses your saved Blizzard credential profile, and the app can keep using an existing SimC runtime when a newer one cannot be downloaded.',
+        text: 'Loot metadata now reconciles incomplete instance records with trusted fallback data, so new seasons and Raidbots updates continue to resolve to the correct expansion and dungeon.',
       },
     ],
   },

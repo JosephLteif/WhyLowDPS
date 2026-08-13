@@ -8,6 +8,11 @@ import { DEFAULT_TRACK_BADGE_CLASS, RAID_TRACK_BY_DIFFICULTY, TRACK_COLORS } fro
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { getWowheadData, QUALITY_COLORS } from '../lib/useItemInfo';
 import {
+  wowExpansions,
+  wowMythicPlusDungeons,
+  wowSeasons,
+} from '../lib/wow-season-content';
+import {
   type GemDisplay,
   isPvpCraftedItem,
   normalizeSlotFilter,
@@ -63,6 +68,123 @@ interface AddItemModalProps {
 }
 
 const UPGRADE_TRACK_MAX_LEVEL = 6;
+
+interface SeasonDescriptor {
+  expansionName: string | null;
+  seasonNumber: number | null;
+  label: string;
+}
+
+function parseSeasonDescriptor(seasonName: string | null | undefined): SeasonDescriptor {
+  const normalized = seasonName?.trim() || '';
+  const match =
+    normalized.match(/\(([^()]+?)\s+Season\s+(\d+)\)\s*$/i) ||
+    normalized.match(/^(?:Mythic\+\s+)?(.+?)\s+Season\s+(\d+)\s*$/i);
+  if (!match) return { expansionName: null, seasonNumber: null, label: normalized };
+  return {
+    expansionName: match[1].trim(),
+    seasonNumber: Number(match[2]),
+    label: `${match[1].trim()} Season ${match[2]}`,
+  };
+}
+
+function buildSeasonByInstanceId() {
+  const byInstanceId = new Map<number, SeasonDescriptor>();
+  for (const season of wowSeasons) {
+    const descriptor = parseSeasonDescriptor(season.name);
+    for (const instanceId of season.raidInstanceIds) {
+      byInstanceId.set(instanceId, descriptor);
+    }
+    for (const mythicPlusId of season.mythicPlusDungeonIds) {
+      const journalInstanceId = wowMythicPlusDungeons.find(
+        (mapping) => mapping.mythicPlusDungeonId === mythicPlusId
+      )?.journalInstanceId;
+      if (journalInstanceId != null) byInstanceId.set(journalInstanceId, descriptor);
+    }
+  }
+  return byInstanceId;
+}
+
+function isSameSeason(left: SeasonDescriptor, right: SeasonDescriptor): boolean {
+  if (left.seasonNumber == null || right.seasonNumber == null) {
+    return left.label.toLowerCase() === right.label.toLowerCase();
+  }
+  return (
+    left.seasonNumber === right.seasonNumber &&
+    left.expansionName?.toLowerCase() === right.expansionName?.toLowerCase()
+  );
+}
+
+function seasonFilterUsesCurrentSeasonUpgradeValues(
+  selectedInstance: number,
+  instances: Array<{ id: number; name?: string }>,
+  currentSeason: SeasonDescriptor
+): boolean | null {
+  if (selectedInstance >= 0 || currentSeason.seasonNumber == null) return null;
+
+  const selectedFilter = instances.find((instance) => instance.id === selectedInstance);
+  const seasonNumber = selectedFilter?.name?.match(/^Season\s+(\d+)\s+Raids$/i)?.[1];
+  if (seasonNumber == null) return null;
+
+  return Number(seasonNumber) === currentSeason.seasonNumber;
+}
+
+function itemUsesCurrentSeasonUpgradeValues(
+  item: ExternalItem,
+  instances: Array<{
+    id: number;
+    name?: string;
+    type?: string;
+    expansion?: number;
+    expansion_name?: string;
+    encounters?: Array<{ id: number }>;
+  }>,
+  selectedInstance: number,
+  seasonByInstanceId: Map<number, SeasonDescriptor>,
+  currentSeason: SeasonDescriptor,
+  expansionNames: Map<number, string>,
+  currentExpansionId: number,
+  useActiveRotationUpgradeValues = true
+): boolean {
+  const selectedInstanceEntry = instances.find((instance) => instance.id === selectedInstance);
+  const activeDungeonBucket = instances.find(
+    (instance) => instance.type === 'mplus-chest' && instance.id < 0
+  );
+  const isActiveDungeonSelection = activeDungeonBucket?.encounters?.some(
+    (encounter) => encounter.id === selectedInstance
+  );
+  if (
+    useActiveRotationUpgradeValues &&
+    (selectedInstanceEntry?.type === 'mplus-chest' || isActiveDungeonSelection)
+  ) {
+    return true;
+  }
+
+  const seasonFilterOverride = seasonFilterUsesCurrentSeasonUpgradeValues(
+    selectedInstance,
+    instances,
+    currentSeason
+  );
+  if (seasonFilterOverride != null) return seasonFilterOverride;
+
+  const instanceId = Number(item.instance_id);
+  if (!Number.isFinite(instanceId) || instanceId < 0) return true;
+
+  const knownSeason = seasonByInstanceId.get(instanceId);
+  if (knownSeason) return isSameSeason(knownSeason, currentSeason);
+
+  const instance = instances.find((candidate) => candidate.id === instanceId);
+  if (!instance) return false;
+
+  const expansionId = Number(instance.expansion);
+  if (Number.isFinite(expansionId) && expansionId > 0 && expansionNames.has(expansionId)) {
+    return expansionId === currentExpansionId;
+  }
+
+  // New Raidbots instances can arrive before the static season catalog knows
+  // their expansion. Treat those rows as current content until metadata catches up.
+  return true;
+}
 
 /**
  * Fixed track tiers for Delves, Prey, and PvP.
@@ -428,6 +550,7 @@ export default function AddItemModal({
   const [rawGems, setRawGems] = useState<RawGem[]>([]);
   const [itemGems, setItemGems] = useState<Record<number, GemDisplay | null>>({});
   const [craftedFilterSlot, setCraftedFilterSlot] = useState<string | null>(null);
+  const [focusedDungeonExpansionId, setFocusedDungeonExpansionId] = useState<number | null>(null);
 
   const inventoryTypeToSlot = INVENTORY_TYPE_TO_SLOT;
 
@@ -468,6 +591,45 @@ export default function AddItemModal({
     [canUseOffhand]
   );
 
+  const expansionNames = useMemo(
+    () => new Map(wowExpansions.map((expansion) => [expansion.id, expansion.name])),
+    []
+  );
+  const seasonByInstanceId = useMemo(() => buildSeasonByInstanceId(), []);
+  const currentSeasonDescriptor = useMemo(
+    () => parseSeasonDescriptor(seasonConfig?.season),
+    [seasonConfig?.season]
+  );
+  const currentExpansionId =
+    wowExpansions.find(
+      (expansion) =>
+        expansion.name.toLowerCase() === currentSeasonDescriptor.expansionName?.toLowerCase()
+    )?.id ?? Math.max(...wowExpansions.map((expansion) => expansion.id), 0);
+
+  const usesCurrentSeasonUpgradeValues = useMemo(
+    () =>
+      (item: ExternalItem) =>
+        itemUsesCurrentSeasonUpgradeValues(
+          item,
+          instances,
+          selectedInstance,
+          seasonByInstanceId,
+          currentSeasonDescriptor,
+          expansionNames,
+          currentExpansionId,
+          focusedDungeonExpansionId == null
+        ),
+    [
+      currentExpansionId,
+      currentSeasonDescriptor,
+      expansionNames,
+      focusedDungeonExpansionId,
+      instances,
+      seasonByInstanceId,
+      selectedInstance,
+    ]
+  );
+
   useEffect(() => {
     if (!canUseOffhand && filterSlot === 'off_hand') {
       setFilterSlot(null);
@@ -506,6 +668,7 @@ export default function AddItemModal({
   });
 
   const handleSidebarSelect = (id: number) => {
+    setFocusedDungeonExpansionId(null);
     if (category === 'crafted') {
       const entry = craftedSidebarFilters.find((opt) => opt.id === id);
       if (entry) {
@@ -515,6 +678,15 @@ export default function AddItemModal({
     }
     setSelectedInstance(id);
   };
+
+  const handleSidebarExpansionSelect = (id: number, expansionId: number) => {
+    setFocusedDungeonExpansionId(expansionId);
+    setSelectedInstance(id);
+  };
+
+  useEffect(() => {
+    setFocusedDungeonExpansionId(null);
+  }, [category]);
 
   const effectiveDifficulty = (category === 'world_bosses' || category === 'pvp' || category === 'crafted') ? 'normal' : selectedDifficulty;
   const isSearchingAcrossCategory = globalSearch.trim().length > 0;
@@ -629,6 +801,7 @@ export default function AddItemModal({
   }, [drops, isOpen, category, embellishmentOptionsByItem]);
 
   const handleAdd = (item: ExternalItem) => {
+    const canSelectIlvl = usesCurrentSeasonUpgradeValues(item);
     const resolvedTier = getEffectiveTier(
       item,
       effectiveDifficulty,
@@ -636,15 +809,16 @@ export default function AddItemModal({
       upgradeTracks,
       category
     );
-    const selectedRawLevel = itemTiers[item.item_id] || resolvedTier?.level || 1;
-    const ascendantLevel = resolvedTier ? resolvedTier.maxLevel + 1 : 0;
+    const effectiveTier = canSelectIlvl ? resolvedTier : null;
+    const selectedRawLevel = itemTiers[item.item_id] || effectiveTier?.level || 1;
+    const ascendantLevel = effectiveTier ? effectiveTier.maxLevel + 1 : 0;
     const ascendantApplied =
-      Boolean(resolvedTier) &&
-      isAscendantEligible(item, resolvedTier) &&
+      Boolean(effectiveTier) &&
+      isAscendantEligible(item, effectiveTier) &&
       selectedRawLevel === ascendantLevel;
     const ascendantBonusIlvl = ascendantApplied ? 9 : 0;
-    const selectedLevel = resolvedTier
-      ? Math.max(resolvedTier.baseLevel || 1, Math.min(resolvedTier.maxLevel, selectedRawLevel))
+    const selectedLevel = effectiveTier
+      ? Math.max(effectiveTier.baseLevel || 1, Math.min(effectiveTier.maxLevel, selectedRawLevel))
       : selectedRawLevel;
     const selectedEmbellishment = itemEmbellishments[item.item_id] || null;
     const selectedGem = itemGems[item.item_id] || null;
@@ -701,6 +875,22 @@ export default function AddItemModal({
     );
     const withCraftingBonuses = (baseBonusIds: number[]) =>
       Array.from(new Set([...baseBonusIds, ...missiveBonusIds]));
+
+    if (!canSelectIlvl) {
+      onAdd(item, effectiveDifficulty, {
+        bonus_ids: withEmbellishment(withCraftingBonuses([])),
+        ilvl: item.ilevel,
+        track_name: '',
+        level: 0,
+        quality: item.quality,
+        crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
+        crafted_selected_bonus_ids: craftedSelectedBonusIds,
+        crafted_variable_bonus_pool: craftedVariableBonusPool,
+        embellishment: embellishmentOverride,
+        gem: gemOverride,
+      });
+      return;
+    }
 
     // Fixed-track categories: resolve from getEffectiveTier directly
     const fixedTracks = getFixedTracksForCategory(category, item);
@@ -778,7 +968,7 @@ export default function AddItemModal({
           ilvl: levelInfo.ilvl + ascendantBonusIlvl,
           track_name: trackName,
           level: selectedLevel,
-          max_level: resolvedTier?.maxLevel,
+          max_level: effectiveTier?.maxLevel,
           quality: levelInfo.quality ?? info?.quality,
           crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
           crafted_selected_bonus_ids: craftedSelectedBonusIds,
@@ -799,7 +989,7 @@ export default function AddItemModal({
             ilvl: info.ilvl,
             track_name: info.track || '',
             level: info.level || 0,
-            max_level: info.max_level || resolvedTier?.maxLevel,
+            max_level: info.max_level || effectiveTier?.maxLevel,
             quality: info.quality,
             crafted_stats: missiveTokens.length > 0 ? missiveTokens : undefined,
             crafted_selected_bonus_ids: craftedSelectedBonusIds,
@@ -837,19 +1027,16 @@ export default function AddItemModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-x-0 bottom-0 top-[var(--app-header-height)] z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
-      <div className="animate-in fade-in zoom-in relative flex h-[90vh] w-full max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl duration-200">
+      <div className="animate-in fade-in zoom-in relative flex h-full max-h-[calc(100dvh-var(--app-header-height)-2rem)] min-h-0 w-full max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl duration-200">
         {/* ── Header ─────────────────────────────────────────── */}
-        <div className="border-b border-border bg-surface/80 px-5 py-4">
+        <div className="relative z-10 shrink-0 border-b border-border bg-surface/80 px-5 py-4">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-6">
               {/* Title */}
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-white">Loot Browser</h2>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-white">
-                  Expansion 11 • World of Warcraft
-                </p>
               </div>
               {/* Category Switcher */}
               <div className="flex flex-wrap rounded-lg border border-border bg-surface-2 p-0.5">
@@ -863,7 +1050,11 @@ export default function AddItemModal({
                         setSelectedInstance(0);
                         return;
                       }
-                      const first = instances.find((i) => instanceMatchesCategory(i, cat.key));
+                      const first =
+                        cat.key === 'dungeon'
+                          ? instances.find((i) => i.type === 'mplus-chest') ||
+                            instances.find((i) => instanceMatchesCategory(i, cat.key))
+                          : instances.find((i) => instanceMatchesCategory(i, cat.key));
                       if (first) setSelectedInstance(first.id);
                     }}
                     className={`rounded-md px-3 py-1.5 text-[11px] font-bold tracking-wide transition-all ${category === cat.key ? 'bg-gold text-black shadow-sm' : 'text-zinc-300 hover:text-white'}`}
@@ -945,11 +1136,15 @@ export default function AddItemModal({
         </div>
 
         {/* ── Body ────────────────────────────────────────────── */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
           <AddItemInstanceSidebar
             instances={filteredInstances}
             selectedInstance={craftedSidebarSelectedId}
             onSelect={handleSidebarSelect}
+            onSelectExpansion={handleSidebarExpansionSelect}
+            focusedExpansionId={category === 'dungeon' ? focusedDungeonExpansionId : null}
+            currentSeasonName={seasonConfig?.season}
+            isDungeonBrowser={category === 'dungeon'}
           />
           <div className="scrollbar-thin scrollbar-thumb-white/10 flex-1 overflow-y-auto bg-bg p-6">
             {isDropListLoading ? (
@@ -986,18 +1181,23 @@ export default function AddItemModal({
                     </div>
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
                       {items.map((item, index) => {
-                        const tier = getEffectiveTier(
-                          item,
-                          effectiveDifficulty,
-                          itemTiers,
-                          upgradeTracks,
-                          category
-                        );
+                        const canSelectIlvl = usesCurrentSeasonUpgradeValues(item);
+                        const tier = canSelectIlvl
+                          ? getEffectiveTier(
+                              item,
+                              effectiveDifficulty,
+                              itemTiers,
+                              upgradeTracks,
+                              category
+                            )
+                          : null;
                         const ascendantEligible = Boolean(tier) && isAscendantEligible(item, tier);
                         const ascendantLevel = tier ? tier.maxLevel + 1 : 0;
                         const rawSliderLevel = tier ? (itemTiers[item.item_id] || tier.level) : 0;
                         const ascendantApplied = Boolean(tier) && ascendantEligible && rawSliderLevel === ascendantLevel;
-                        const currentIlvl = (tier?.ilvl || item.ilevel) + (ascendantApplied ? 9 : 0);
+                        const currentIlvl = canSelectIlvl
+                          ? (tier?.ilvl || item.ilevel) + (ascendantApplied ? 9 : 0)
+                          : item.ilevel;
                         const trackName = tier?.track || '';
                         const tc = trackName ? TRACK_COLORS[trackName] : null;
                         const badgeClass = tc?.badge || DEFAULT_BADGE;
@@ -1194,7 +1394,7 @@ export default function AddItemModal({
                                 </div>
                               </div>
                             )}
-                            {tier && tier.maxLevel > 1 && (
+                            {canSelectIlvl && tier && tier.maxLevel > 1 && (
                               <div className="mt-2 space-y-1">
                                 {(() => {
                                   const sliderMin = tier.baseLevel || 1;

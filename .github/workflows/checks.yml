@@ -104,7 +104,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.95
           components: rustfmt, clippy
 
       - name: Cache Rust build
@@ -137,7 +137,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: 1.94.1
+          toolchain: 1.95
           components: rustfmt, clippy
 
       - name: Ensure Tauri resource paths exist

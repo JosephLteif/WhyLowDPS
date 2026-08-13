@@ -15,7 +15,7 @@ WhyLowDPS is currently Windows-first and desktop-first. Please keep changes focu
 ## Development
 
 The supported development target is the Windows desktop application. Use Node.js
-20 and Rust 1.94.1; the repository includes `.nvmrc` and `rust-toolchain.toml`
+20 and Rust 1.95; the repository includes `.nvmrc` and `rust-toolchain.toml`
 so local tools and CI use the same versions.
 
 Windows is required for full desktop validation. GitHub Pages is the only

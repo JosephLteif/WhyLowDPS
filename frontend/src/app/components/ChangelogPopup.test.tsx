@@ -18,9 +18,11 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'A clearer first-run setup' })
+      screen.getByRole('heading', { level: 3, name: 'Optional Discord Rich Presence' })
     ).toBeInTheDocument();
-    expect(screen.getByText(/important setup steps together/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/current WhyLowDPS workspace and active character/)
+    ).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));

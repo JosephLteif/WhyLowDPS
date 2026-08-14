@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app_logic;
+mod discord_presence;
 
 use std::io::{Read, Seek, Write};
 use std::path::{Path, PathBuf};
@@ -8,6 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use app_logic::*;
+use discord_presence::{
+    DiscordPresenceSettingsResponse, DiscordPresenceState, DiscordPresenceUpdate,
+};
 use rusqlite::{Connection, DatabaseName};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::path::BaseDirectory;
@@ -499,6 +503,33 @@ fn clear_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
 ) -> Result<(), String> {
     clear_close_behavior_preference_internal(&state)
+}
+
+#[tauri::command]
+fn get_discord_presence_settings(
+    preferences: tauri::State<'_, AppClosePreferencesState>,
+    presence: tauri::State<'_, DiscordPresenceState>,
+) -> DiscordPresenceSettingsResponse {
+    presence.settings(&preferences)
+}
+
+#[tauri::command]
+fn set_discord_presence_settings(
+    preferences: tauri::State<'_, AppClosePreferencesState>,
+    presence: tauri::State<'_, DiscordPresenceState>,
+    enabled: bool,
+    client_id: Option<String>,
+) -> Result<DiscordPresenceSettingsResponse, String> {
+    presence.apply_settings(&preferences, enabled, client_id)
+}
+
+#[tauri::command]
+fn update_discord_presence(
+    preferences: tauri::State<'_, AppClosePreferencesState>,
+    presence: tauri::State<'_, DiscordPresenceState>,
+    update: DiscordPresenceUpdate,
+) -> DiscordPresenceSettingsResponse {
+    presence.update(&preferences, update)
 }
 
 #[tauri::command]
@@ -996,6 +1027,9 @@ fn main() {
             set_simc_runtime_version,
             update_simc_runtime,
             get_simc_runtime_status,
+            get_discord_presence_settings,
+            set_discord_presence_settings,
+            update_discord_presence,
             apply_close_behavior_choice,
             restart_app,
             quit_app_now,
@@ -1028,6 +1062,7 @@ fn main() {
                 path: close_prefs_path,
                 simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
             });
+            app.manage(DiscordPresenceState::default());
 
             let app_handle = app.handle().clone();
             let notifier_handle = app_handle.clone();

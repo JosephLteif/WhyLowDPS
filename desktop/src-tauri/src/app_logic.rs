@@ -72,6 +72,10 @@ pub(crate) struct AppClosePreferences {
     pub(crate) simc_update_channel: Option<String>,
     #[serde(default)]
     pub(crate) simc_runtime_version: Option<String>,
+    #[serde(default)]
+    pub(crate) discord_presence_enabled: Option<bool>,
+    #[serde(default)]
+    pub(crate) discord_client_id: Option<String>,
 }
 
 #[derive(Debug)]

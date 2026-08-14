@@ -28,6 +28,23 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
+    title: 'Optional Discord Rich Presence',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Connect a Discord Application ID to share your current WhyLowDPS workspace and active character while Discord is running.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Rich Presence is opt-in and can be enabled from Settings > Integrations.',
+          'Discord being closed never blocks simulations or other app workflows.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'A clearer first-run setup',
     body: [
       {

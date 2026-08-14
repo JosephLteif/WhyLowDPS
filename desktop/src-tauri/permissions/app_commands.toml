@@ -17,5 +17,8 @@ commands.allow = [
     "apply_close_behavior_choice",
     "restart_app",
     "quit_app_now",
-    "download_and_install_release"
+    "download_and_install_release",
+    "get_discord_presence_settings",
+    "set_discord_presence_settings",
+    "update_discord_presence"
 ]

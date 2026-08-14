@@ -1,6 +1,6 @@
 {
   "productName": "WhyLowDps",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",
@@ -42,7 +42,10 @@
     },
     "fileAssociations": [
       {
-        "ext": ["simc", "txt"],
+        "ext": [
+          "simc",
+          "txt"
+        ],
         "mimeType": "text/plain",
         "role": "Editor"
       }

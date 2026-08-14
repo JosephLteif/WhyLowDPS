@@ -62,16 +62,6 @@ const releaseNotes: ReleaseNote[] = [
     ],
   },
   {
-    category: 'feature',
-    title: 'Saved simulation presets',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Save named SimC setups locally and bring them back into the shared simulation workspace whenever you want to rerun a familiar scenario.',
-      },
-    ],
-  },
-  {
     category: 'improvement',
     title: 'Rerun and compare results',
     body: [
@@ -107,7 +97,7 @@ const releaseNotes: ReleaseNote[] = [
     body: [
       {
         type: 'paragraph',
-        text: 'Desktop users can export simulation history, saved profiles, routes, presets, and safe UI preferences to a versioned ZIP archive, then validate and restore it later.',
+        text: 'Desktop users can export simulation history, saved profiles, routes, and safe UI preferences to a versioned ZIP archive, then validate and restore it later.',
       },
       {
         type: 'list',

@@ -95,7 +95,7 @@ export default function LocalBackupSection() {
         <div>
           <h2 className="text-xl font-semibold text-white">Local backup and restore</h2>
           <p className="mt-2 text-sm text-zinc-400">
-            Export SQLite history, saved profiles, routes, presets, desktop preferences, and safe UI preferences to a versioned ZIP archive.
+            Export SQLite history, saved profiles, routes, desktop preferences, and safe UI preferences to a versioned ZIP archive.
           </p>
           <p className="mt-1 text-xs text-zinc-500">Credentials, tokens, cache files, and SimC binaries are never included.</p>
         </div>

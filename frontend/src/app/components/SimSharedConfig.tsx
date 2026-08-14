@@ -13,7 +13,6 @@ import { parseCharacterInfo, SimcClipboardInfo } from '@/lib/simc-parser';
 import { convertMdtToSimc, isMdtString, parseMdtString } from '@/lib/mdt-parser';
 import ClipboardBanner from './shared/ClipboardBanner';
 import ActiveCharacterBar from './ActiveCharacterBar';
-import SimulationPresetBar from './SimulationPresetBar';
 import SimcInputEditor from './shared/SimcInputEditor';
 import SimcProfileDropdown from './SimcProfileDropdown';
 import RouteDetailsModal from './RouteDetailsModal';
@@ -369,7 +368,6 @@ export default function SimSharedConfig() {
           onChange={handleSetSimcInput}
           placeholder="Paste your SimC addon export here..."
         />
-        <SimulationPresetBar simcInput={simcInput} setSimcInput={setSimcInput} />
         {checksumStatus === 'invalid' && (
           <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
             <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" strokeWidth={1.5} />

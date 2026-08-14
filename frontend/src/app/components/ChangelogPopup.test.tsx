@@ -20,9 +20,7 @@ describe('ChangelogPopup', () => {
     expect(
       screen.getByRole('heading', { level: 3, name: 'Optional Discord Rich Presence' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/current WhyLowDPS workspace and active character/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/project Discord Application ID/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));

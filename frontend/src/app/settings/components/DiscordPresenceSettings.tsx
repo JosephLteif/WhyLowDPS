@@ -123,7 +123,7 @@ export default function DiscordPresenceSettings() {
             className="w-full rounded-lg border border-border/50 bg-surface-2 px-4 py-2.5 font-mono text-sm text-white transition-colors focus:border-gold/50 focus:outline-none disabled:opacity-60"
           />
           <p className="text-[12px] leading-relaxed text-zinc-500">
-            Create or select an application in the{' '}
+            The WhyLowDPS application ID is prefilled. You can use a custom application from the{' '}
             <a
               href="https://discord.com/developers/applications"
               target="_blank"

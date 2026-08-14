@@ -32,12 +32,12 @@ const releaseNotes: ReleaseNote[] = [
     body: [
       {
         type: 'paragraph',
-        text: 'Connect a Discord Application ID to share your current WhyLowDPS workspace and active character while Discord is running.',
+        text: 'WhyLowDPS now includes a project Discord Application ID so you can share your current workspace and active character while Discord is running.',
       },
       {
         type: 'list',
         items: [
-          'Rich Presence is opt-in and can be enabled from Settings > Integrations.',
+          'Rich Presence is opt-in and can be enabled from Settings > Integrations without creating another application.',
           'Discord being closed never blocks simulations or other app workflows.',
         ],
       },

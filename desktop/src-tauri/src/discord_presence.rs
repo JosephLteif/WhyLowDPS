@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use crate::app_logic::{save_close_preferences, AppClosePreferencesState};
 
 const MAX_ACTIVITY_TEXT_LENGTH: usize = 128;
+pub(crate) const DEFAULT_DISCORD_CLIENT_ID: &str = "1537723601858469938";
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct DiscordPresenceState {
@@ -39,7 +40,9 @@ impl DiscordPresenceState {
             .as_ref()
             .and_then(|value| value.discord_presence_enabled)
             .unwrap_or(false);
-        let client_id = prefs.and_then(|value| value.discord_client_id.clone());
+        let client_id = prefs
+            .and_then(|value| value.discord_client_id.clone())
+            .or_else(|| Some(DEFAULT_DISCORD_CLIENT_ID.to_string()));
         let connected = self.is_connected();
         let message = if !enabled {
             "Discord Rich Presence is disabled.".to_string()
@@ -70,12 +73,14 @@ impl DiscordPresenceState {
         enabled: bool,
         client_id: Option<String>,
     ) -> Result<DiscordPresenceSettingsResponse, String> {
-        let normalized_client_id = client_id.and_then(normalize_client_id);
-        if enabled && normalized_client_id.is_none() {
-            return Err(
-                "A Discord Application ID is required to enable Rich Presence.".to_string(),
-            );
-        }
+        let normalized_client_id = match client_id {
+            Some(value) if !value.trim().is_empty() => {
+                Some(normalize_client_id(value).ok_or_else(|| {
+                    "Discord Application ID must contain only numbers.".to_string()
+                })?)
+            }
+            _ => Some(DEFAULT_DISCORD_CLIENT_ID.to_string()),
+        };
 
         {
             let mut prefs = preferences

@@ -29,12 +29,14 @@ interface UpgradeCompareSimAgainState {
 // ---- Types ----
 
 interface PrepareCandidate {
+  uid: string;
   slot: string;
   item_id: number;
   bonus_ids: number[];
   ilevel: number;
   target_ilevel: number;
   costs: Record<string, number>;
+  is_equipped: boolean;
 }
 
 interface CurrencyMeta {
@@ -51,6 +53,15 @@ interface PrepareResponse {
 
 // ---- Helpers ----
 
+function getCurrencyIconUrl(iconName: string): string {
+  const raw = String(iconName || '').trim();
+  if (!raw) return getIconUrl('inv_misc_questionmark');
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const noExt = raw.replace(/\.(jpg|jpeg|png|webp)$/i, '');
+  const base = noExt.split('/').pop() || noExt;
+  return `https://wow.zamimg.com/images/wow/icons/large/${base}.jpg`;
+}
+
 function formatCosts(
   costs: Record<string, number>,
   currencies: Record<string, CurrencyMeta>
@@ -63,23 +74,6 @@ function formatCosts(
       return name ? `${name} x${amount}` : `${cid}x${amount}`;
     })
     .join(', ');
-}
-
-function parseEquippedBySlot(simcInput: string): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const rawLine of simcInput.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith('#') || !line.includes('=') || !line.includes('id=')) continue;
-    const eq = line.indexOf('=');
-    if (eq <= 0) continue;
-    const slot = line.slice(0, eq).trim().toLowerCase();
-    if (!slot) continue;
-    const idMatch = line.match(/\bid=(\d+)\b/i);
-    if (!idMatch) continue;
-    const id = Number(idMatch[1]);
-    if (Number.isFinite(id) && id > 0) out[slot] = id;
-  }
-  return out;
 }
 
 // ---- Data Hook (single endpoint) ----
@@ -169,7 +163,6 @@ export default function UpgradeComparePage() {
   }, []);
 
   const candidates = useMemo(() => data?.candidates ?? [], [data]);
-  const equippedBySlot = useMemo(() => parseEquippedBySlot(simcInput), [simcInput]);
   const currencies = useMemo(() => data?.currencies ?? {}, [data]);
   const hasCurrencies = Object.keys(currencies).length > 0;
   const effectiveCurrencies = useMemo(() => {
@@ -335,35 +328,34 @@ export default function UpgradeComparePage() {
           : 'All Regardless';
 
   const toggleGroup = (groupCandidates: PrepareCandidate[]) => {
-    const slots = groupCandidates.map((c) => c.slot);
-    const allSelected = slots.every((s) => selectedSlots.has(s));
+    const itemUids = groupCandidates.map((c) => c.uid);
+    const allSelected = itemUids.every((uid) => selectedSlots.has(uid));
     const next = new Set(selectedSlots);
-    for (const s of slots) {
-      if (allSelected) next.delete(s);
-      else next.add(s);
+    for (const uid of itemUids) {
+      if (allSelected) next.delete(uid);
+      else next.add(uid);
     }
     setSelectedSlots(next);
   };
 
   const toggleAll = () => {
-    const allSlots = candidates.map((c) => c.slot);
-    const anyMissing = allSlots.some((s) => !selectedSlots.has(s));
+    const allItemUids = candidates.map((c) => c.uid);
+    const anyMissing = allItemUids.some((uid) => !selectedSlots.has(uid));
     if (anyMissing) {
-      setSelectedSlots(new Set(allSlots));
+      setSelectedSlots(new Set(allItemUids));
     } else {
       setSelectedSlots(new Set());
     }
   };
 
   const toggleAllEquipped = () => {
-    const equippedSlots = candidates
-      .filter((c) => equippedBySlot[c.slot] === c.item_id)
-      .map((c) => c.slot);
-    const allSelected = equippedSlots.length > 0 && equippedSlots.every((s) => selectedSlots.has(s));
+    const equippedItemUids = candidates.filter((c) => c.is_equipped).map((c) => c.uid);
+    const allSelected =
+      equippedItemUids.length > 0 && equippedItemUids.every((uid) => selectedSlots.has(uid));
     const next = new Set(selectedSlots);
-    for (const s of equippedSlots) {
-      if (allSelected) next.delete(s);
-      else next.add(s);
+    for (const uid of equippedItemUids) {
+      if (allSelected) next.delete(uid);
+      else next.add(uid);
     }
     setSelectedSlots(next);
   };
@@ -395,9 +387,9 @@ export default function UpgradeComparePage() {
       <div className="rounded-lg border border-border/50 bg-surface-2/50 px-4 py-3">
         <p className="text-[15px] leading-relaxed text-zinc-400">
           Find the best way to spend your{' '}
-          <span className="font-medium text-gold/80">Dawncrest upgrade currencies</span>. Select
-          which equipped items to consider, and WhyLowDps will test every valid upgrade combination
-          within your budget to find which gives the most DPS.
+          <span className="font-medium text-gold/80">upgrade currencies</span>. Select
+          which equipped or bag items to consider, and WhyLowDps will test every valid upgrade
+          combination within your budget to find which gives the most DPS.
         </p>
       </div>
 
@@ -481,7 +473,7 @@ export default function UpgradeComparePage() {
                 className="flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-1"
               >
                 <img
-                  src={getIconUrl(c.icon || 'inv_misc_questionmark')}
+                  src={getCurrencyIconUrl(c.icon)}
                   alt=""
                   className="h-4 w-4 shrink-0 rounded-sm"
                 />
@@ -538,7 +530,7 @@ export default function UpgradeComparePage() {
                         className="flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-1"
                       >
                         <img
-                          src={getIconUrl(c.icon || 'inv_misc_questionmark')}
+                          src={getCurrencyIconUrl(c.icon)}
                           alt=""
                           className="h-3.5 w-3.5 shrink-0 rounded-sm"
                         />
@@ -571,21 +563,21 @@ export default function UpgradeComparePage() {
           </div>
         ) : candidates.length === 0 ? (
           <div className="card p-8 text-center">
-            <p className="text-sm text-muted">No upgradeable equipped items found.</p>
+            <p className="text-sm text-muted">No upgradeable items found.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {candidateGroups.map((group) => {
-              const groupSlots = group.candidates.map((c) => c.slot);
+              const groupItemUids = group.candidates.map((c) => c.uid);
               const allSelected =
-                groupSlots.length > 0 && groupSlots.every((s) => selectedSlots.has(s));
+                groupItemUids.length > 0 && groupItemUids.every((uid) => selectedSlots.has(uid));
 
               return (
                 <div key={group.currencyId} className="card space-y-1 p-3.5">
                   <div className="mb-2 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <img
-                        src={getIconUrl(group.currency?.icon || 'inv_misc_questionmark')}
+                        src={getCurrencyIconUrl(group.currency?.icon || '')}
                         alt=""
                         className="h-4 w-4 shrink-0 rounded-sm"
                       />
@@ -605,11 +597,11 @@ export default function UpgradeComparePage() {
                   {group.candidates.map((c) => {
                     const info = itemInfo[c.item_id];
                     const qc = info ? QUALITY_COLORS[info.quality] || '#fff' : '#fff';
-                    const isEquipped = equippedBySlot[c.slot] === c.item_id;
+                    const isEquipped = c.is_equipped;
 
                     return (
                       <GearItemRow
-                        key={c.slot}
+                        key={c.uid}
                         icon={info?.icon || 'inv_misc_questionmark'}
                         name={info?.name || `Item ${c.item_id}`}
                         nameColor={qc}
@@ -627,11 +619,11 @@ export default function UpgradeComparePage() {
                         ]}
                         ilevel={c.ilevel}
                         selectable
-                        checked={selectedSlots.has(c.slot)}
+                        checked={selectedSlots.has(c.uid)}
                         onToggle={() => {
                           const next = new Set(selectedSlots);
-                          if (selectedSlots.has(c.slot)) next.delete(c.slot);
-                          else next.add(c.slot);
+                          if (selectedSlots.has(c.uid)) next.delete(c.uid);
+                          else next.add(c.uid);
                           setSelectedSlots(next);
                         }}
                       />

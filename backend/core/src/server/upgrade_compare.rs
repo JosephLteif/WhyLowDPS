@@ -1,6 +1,6 @@
 use actix_web::{web, HttpResponse};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -75,29 +75,34 @@ fn prepare_upgrade_compare(
     let bonus_re = regex::Regex::new(r"bonus_id=([0-9/:]+)").unwrap();
     let mut upgraded_options_by_slot: HashMap<String, Vec<ResolvedItem>> = HashMap::new();
 
-    for slot in selected_slots {
-        let slot_items = match items_by_slot.get(slot) {
-            Some(items) => items,
-            None => continue,
-        };
+    for selection in selected_slots {
+        // Accept the old slot-based payload for compatibility, but prefer the
+        // stable item UID so bag alternatives in the same slot can be selected
+        // independently.
+        let source = items_by_slot
+            .get(selection)
+            .and_then(|items| {
+                items
+                    .iter()
+                    .find(|it| it.origin == crate::types::ItemOrigin::Equipped)
+            })
+            .or_else(|| {
+                items_by_slot
+                    .values()
+                    .flat_map(|items| items.iter())
+                    .find(|it| it.uid == *selection)
+            });
+        let Some(source) = source else { continue };
 
-        let equipped = match slot_items
-            .iter()
-            .find(|it| it.origin == crate::types::ItemOrigin::Equipped)
-        {
-            Some(e) => e,
-            None => continue,
-        };
-
-        let options = game_data::get_upgrade_options(&equipped.bonus_ids);
+        let options = game_data::get_upgrade_options(&source.bonus_ids);
         if options.is_empty() {
             continue;
         }
 
-        // Find current level
+        // Find the current level from the item's explicit track bonus.
         let current_level = options
             .iter()
-            .filter(|opt| equipped.bonus_ids.contains(&opt.bonus_id))
+            .filter(|opt| source.bonus_ids.contains(&opt.bonus_id))
             .map(|opt| opt.level)
             .next()
             .unwrap_or(0);
@@ -110,10 +115,6 @@ fn prepare_upgrade_compare(
 
         if candidate_opts.is_empty() {
             continue;
-        }
-
-        if upgrade_depth == "highest_only" || upgrade_depth != "all_levels" {
-            candidate_opts = vec![candidate_opts.last().copied().unwrap()];
         }
 
         if budget_mode != "ignore_budget" {
@@ -130,22 +131,32 @@ fn prepare_upgrade_compare(
             });
         }
 
+        // Filter affordability before selecting the highest tier. Otherwise
+        // Highest Affordable picks the unaffordable max tier first and then
+        // drops the item entirely, even when a lower tier is affordable.
+        if upgrade_depth == "highest_only" || upgrade_depth != "all_levels" {
+            candidate_opts = vec![match candidate_opts.last().copied() {
+                Some(option) => option,
+                None => continue,
+            }];
+        }
+
         for opt in candidate_opts {
-            let mut new_bonus_ids = equipped.bonus_ids.clone();
+            let mut new_bonus_ids = source.bonus_ids.clone();
             for bid in &mut new_bonus_ids {
                 if bonuses_in_same_group(*bid, opt.bonus_id) {
                     *bid = opt.bonus_id;
                 }
             }
 
-            let mut upgraded = equipped.clone();
+            let mut upgraded = source.clone();
             upgraded.origin = crate::types::ItemOrigin::Bags; // Marks as not baseline
             upgraded.bonus_ids = new_bonus_ids.clone();
             upgraded.ilevel = opt.ilevel as i64;
             upgraded.upgrade_costs = opt.cumulative_costs.clone();
 
             let new_simc = bonus_re
-                .replace(&equipped.simc_string, |caps: &regex::Captures| {
+                .replace(&source.simc_string, |caps: &regex::Captures| {
                     let raw = &caps[1];
                     let sep = if raw.contains('/') { "/" } else { ":" };
                     format!(
@@ -164,7 +175,10 @@ fn prepare_upgrade_compare(
         }
 
         if !slot_upgrades.is_empty() {
-            upgraded_options_by_slot.insert(slot.clone(), slot_upgrades);
+            upgraded_options_by_slot
+                .entry(source.slot.clone())
+                .or_default()
+                .extend(slot_upgrades);
         }
     }
 
@@ -190,7 +204,7 @@ fn bonuses_in_same_group(a: u64, b: u64) -> bool {
 }
 
 /// Returns everything the frontend needs to render the upgrade-compare UI in one call:
-/// equipped items, upgrade options per slot, currency budget with metadata.
+/// equipped and bag items, upgrade options per slot, currency budget with metadata.
 pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value>) -> HttpResponse {
     let simc_input = req.get("simc_input").and_then(|v| v.as_str()).unwrap_or("");
     if simc_input.len() < 10 {
@@ -206,85 +220,94 @@ pub(super) async fn get_upgrade_compare_prepare(req: web::Json<serde_json::Value
     let items_by_slot = resolve_to_items_by_slot(&resolved);
 
     let mut candidates: Vec<Value> = Vec::new();
+    let mut currency_ids: HashSet<u64> = upgrade_currency_ids;
+    let mut seen_candidate_items: HashSet<String> = HashSet::new();
 
     for slot in crate::types::class_data::GEAR_SLOTS {
         let slot_items = match items_by_slot.get(*slot) {
             Some(items) => items,
             None => continue,
         };
-        let equipped = match slot_items
-            .iter()
-            .find(|it| it.origin == crate::types::ItemOrigin::Equipped)
-        {
-            Some(e) => e,
-            None => continue,
-        };
-
-        if equipped.bonus_ids.is_empty() {
-            continue;
-        }
-
-        let options = game_data::get_upgrade_options(&equipped.bonus_ids);
-        if options.is_empty() {
-            continue;
-        }
-
-        // Find current level and its cumulative cost
-        let mut current_level: u64 = 0;
-        let mut current_cumulative: HashMap<u64, u64> = HashMap::new();
-        for opt in &options {
-            if equipped.bonus_ids.contains(&opt.bonus_id) {
-                current_level = opt.level;
-                current_cumulative = opt.cumulative_costs.clone();
-                break;
+        for item in slot_items {
+            if item.bonus_ids.is_empty() {
+                continue;
             }
-        }
 
-        // Filter to upgrades that cost our currencies
-        let upgrades: Vec<&game_data::UpgradeOption> = options
-            .iter()
-            .filter(|o| {
-                if o.level <= current_level {
-                    return false;
+            // Rings and trinkets can resolve into both paired slots. Keep one
+            // row for the same item variant instead of rendering it twice;
+            // different bonus IDs remain distinct upgrade candidates.
+            let mut candidate_bonus_ids = item.bonus_ids.clone();
+            candidate_bonus_ids.sort_unstable();
+            let candidate_key = format!("{}:{candidate_bonus_ids:?}", item.item_id);
+            if !seen_candidate_items.insert(candidate_key) {
+                continue;
+            }
+
+            let options = game_data::get_upgrade_options(&item.bonus_ids);
+            if options.is_empty() {
+                continue;
+            }
+
+            // Find current level and its cumulative cost from the item's
+            // explicit track bonus. Items without a recognized track are not
+            // upgrade candidates; this avoids inferring previous seasons from
+            // item level alone.
+            let mut current_level: u64 = 0;
+            let mut current_cumulative: HashMap<u64, u64> = HashMap::new();
+            for opt in &options {
+                if item.bonus_ids.contains(&opt.bonus_id) {
+                    current_level = opt.level;
+                    current_cumulative = opt.cumulative_costs.clone();
+                    break;
                 }
-                o.cumulative_costs
-                    .keys()
-                    .any(|k| upgrade_currency_ids.contains(k))
-            })
-            .collect();
-
-        if upgrades.is_empty() {
-            continue;
-        }
-
-        let max_upgrade = upgrades.last().unwrap();
-        let target_ilevel = max_upgrade.ilevel;
-
-        // Delta cost = target cumulative - current cumulative
-        let mut delta_costs: HashMap<String, u64> = HashMap::new();
-        for (cid, &target_amt) in &max_upgrade.cumulative_costs {
-            let current_amt = current_cumulative.get(cid).copied().unwrap_or(0);
-            let delta = target_amt.saturating_sub(current_amt);
-            if delta > 0 {
-                delta_costs.insert(cid.to_string(), delta);
             }
-        }
-        let costs = json!(delta_costs);
 
-        candidates.push(json!({
-            "slot": slot,
-            "item_id": equipped.item_id,
-            "bonus_ids": equipped.bonus_ids,
-            "ilevel": equipped.ilevel,
-            "target_ilevel": target_ilevel,
-            "costs": costs,
-        }));
+            // Show every upgradeable item, including items whose currency is
+            // not present in this export. Those currencies are rendered with
+            // a zero budget so the user can override them or use an
+            // unrestricted mode.
+            let upgrades: Vec<&game_data::UpgradeOption> = options
+                .iter()
+                .filter(|o| o.level > current_level && !o.cumulative_costs.is_empty())
+                .collect();
+
+            if upgrades.is_empty() {
+                continue;
+            }
+
+            let max_upgrade = upgrades.last().unwrap();
+            let target_ilevel = max_upgrade.ilevel;
+
+            // Delta cost = target cumulative - current cumulative
+            let mut delta_costs: HashMap<String, u64> = HashMap::new();
+            for (cid, &target_amt) in &max_upgrade.cumulative_costs {
+                currency_ids.insert(*cid);
+                let current_amt = current_cumulative.get(cid).copied().unwrap_or(0);
+                let delta = target_amt.saturating_sub(current_amt);
+                if delta > 0 {
+                    delta_costs.insert(cid.to_string(), delta);
+                }
+            }
+            let costs = json!(delta_costs);
+
+            candidates.push(json!({
+                "uid": item.uid,
+                "slot": slot,
+                "item_id": item.item_id,
+                "bonus_ids": item.bonus_ids,
+                "ilevel": item.ilevel,
+                "target_ilevel": target_ilevel,
+                "costs": costs,
+                "is_equipped": item.origin == crate::types::ItemOrigin::Equipped,
+            }));
+        }
     }
 
     // Build currency info
     let mut currency_info: HashMap<String, Value> = HashMap::new();
-    for (cid, amount) in &upgrade_budget {
-        let meta = game_data::get_currency_info(*cid);
+    for cid in currency_ids {
+        let amount = upgrade_budget.get(&cid).copied().unwrap_or(0);
+        let meta = game_data::get_currency_info(cid);
         currency_info.insert(
             cid.to_string(),
             json!({
@@ -606,6 +629,18 @@ mod tests {
                     ..Default::default()
                 },
             ),
+            (
+                103_u64,
+                BonusData {
+                    upgrade: Some(BonusUpgrade {
+                        full_name: Some("Hero 3/4".to_string()),
+                        group: Some(77),
+                        level: Some(3),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                },
+            ),
         ]));
         *state::UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::from([
             (
@@ -616,11 +651,15 @@ mod tests {
                 ("Hero".to_string(), 2_u64, 4_u64),
                 (626_u64, 102_u64, 4_u64),
             ),
+            (
+                ("Hero".to_string(), 3_u64, 4_u64),
+                (629_u64, 103_u64, 4_u64),
+            ),
         ]));
-        *state::UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([(
-            102_u64,
-            HashMap::from([(3008_u64, 15_u64)]),
-        )]));
+        *state::UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([
+            (102_u64, HashMap::from([(3008_u64, 15_u64)])),
+            (103_u64, HashMap::from([(3008_u64, 20_u64)])),
+        ]));
 
         let req = parse_upgrade_compare_req(json!({
             "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# upgrade_currencies = c:3008:25\n",
@@ -694,15 +733,24 @@ mod tests {
         ]));
         *state::UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(HashMap::from([(
             102_u64,
-            HashMap::from([(3008_u64, 15_u64)]),
+            HashMap::from([(3009_u64, 15_u64)]),
         )]));
-        *state::CURRENCY_INFO.write().unwrap() = Arc::new(HashMap::from([(
-            3008_u64,
-            ("Crests".to_string(), "inv_currency_crests".to_string()),
-        )]));
+        *state::CURRENCY_INFO.write().unwrap() = Arc::new(HashMap::from([
+            (
+                3008_u64,
+                ("Crests".to_string(), "inv_currency_crests".to_string()),
+            ),
+            (
+                3009_u64,
+                (
+                    "New Crests".to_string(),
+                    "inv_currency_new_crests".to_string(),
+                ),
+            ),
+        ]));
 
         let resp = get_upgrade_compare_prepare(web::Json(json!({
-            "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# upgrade_currencies = c:3008:25\n"
+            "simc_input": "warrior=\"Tester\"\nspec=fury\nhead=equipped,id=1000,bonus_id=101\n# Bag Head (600)\n# head=id=2000,bonus_id=101\n# upgrade_currencies = c:3008:25\n"
         })))
         .await;
         assert_eq!(resp.status(), 200);
@@ -714,7 +762,17 @@ mod tests {
             .get("candidates")
             .and_then(Value::as_array)
             .expect("candidates array");
-        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.get("is_equipped") == Some(&Value::Bool(true))));
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.get("is_equipped") == Some(&Value::Bool(false))));
+        assert!(candidates.iter().all(|candidate| candidate
+            .get("uid")
+            .and_then(Value::as_str)
+            .is_some_and(|uid| !uid.is_empty())));
         assert_eq!(
             candidates[0].get("slot").and_then(Value::as_str),
             Some("head")
@@ -726,7 +784,7 @@ mod tests {
         assert_eq!(
             candidates[0]
                 .get("costs")
-                .and_then(|costs| costs.get("3008"))
+                .and_then(|costs| costs.get("3009"))
                 .and_then(Value::as_u64),
             Some(15)
         );
@@ -748,6 +806,20 @@ mod tests {
                 .and_then(|value| value.get("icon"))
                 .and_then(Value::as_str),
             Some("inv_currency_crests")
+        );
+        assert_eq!(
+            currencies
+                .get("3009")
+                .and_then(|value| value.get("name"))
+                .and_then(Value::as_str),
+            Some("New Crests")
+        );
+        assert_eq!(
+            currencies
+                .get("3009")
+                .and_then(|value| value.get("amount"))
+                .and_then(Value::as_u64),
+            Some(0)
         );
 
         *state::BONUSES.write().unwrap() = prev_bonuses;

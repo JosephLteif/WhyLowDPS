@@ -174,11 +174,9 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
 
     for (group_id_str, entries) in &bus_raw {
         let group_id: u64 = group_id_str.parse().unwrap_or(0);
-        if let Some(ref ag) = active_groups {
-            if !ag.contains(&group_id) {
-                continue;
-            }
-        }
+        let is_active_group = active_groups
+            .as_ref()
+            .is_none_or(|groups| groups.contains(&group_id));
         for entry in entries {
             let name = entry.get("name").and_then(|n| n.as_str()).unwrap_or("");
             let level = entry.get("level").and_then(|l| l.as_u64()).unwrap_or(0);
@@ -191,7 +189,10 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
                 .and_then(|b| b.quality)
                 .unwrap_or(4);
 
-            if !name.is_empty() && level > 0 && max_level > 0 && ilvl > 0 {
+            // Keep the shared track index scoped to the active season. Other
+            // consumers use it for current-season item generation, while the
+            // upgrade comparer resolves item-specific values from BONUSES.
+            if is_active_group && !name.is_empty() && level > 0 && max_level > 0 && ilvl > 0 {
                 tracks.insert(
                     (name.to_string(), level, max_level),
                     (ilvl, bonus_id, quality),
@@ -219,6 +220,39 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
                         });
                     }
                 }
+            }
+        }
+    }
+
+    // Keep currency metadata available even when a data version omits the
+    // legacy entry.currency object from bonus-upgrade-sets.
+    let currency_types_path = data_dir.join("currency-types.json");
+    if let Ok(file) = fs::File::open(currency_types_path) {
+        let currency_types: HashMap<String, Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
+        for (id, entry) in currency_types {
+            let Ok(cid) = id.parse::<u64>() else {
+                continue;
+            };
+            let name = entry
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let icon = entry
+                .get("icon")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() && icon.is_empty() {
+                continue;
+            }
+            let metadata = currencies.entry(cid).or_default();
+            if metadata.0.is_empty() {
+                metadata.0 = name;
+            }
+            if metadata.1.is_empty() {
+                metadata.1 = icon;
             }
         }
     }
@@ -1420,8 +1454,8 @@ pub fn hydrate_runtime_metadata(runtime_path: &Path) {
 mod tests {
     use super::*;
     use crate::item_db::state::{
-        BONUSES, CRAFTING_LIMIT_CATS, CURRENT_SEASON_ID, ITEM_LIMIT_CATS, RUNTIME_DATA,
-        UPGRADE_TRACKS,
+        BONUSES, CRAFTING_LIMIT_CATS, CURRENCY_INFO, CURRENT_SEASON_ID, ITEM_LIMIT_CATS,
+        RUNTIME_DATA, UPGRADE_STEP_COSTS, UPGRADE_TRACKS,
     };
     use crate::types::BonusData;
     use std::sync::Arc;
@@ -1433,6 +1467,8 @@ mod tests {
         crafting_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
         item_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
         upgrade_tracks: UpgradeTracks,
+        upgrade_step_costs: Arc<HashMap<u64, HashMap<u64, u64>>>,
+        currency_info: Arc<HashMap<u64, (String, String)>>,
         current_season_id: u64,
         runtime_data: Value,
     }
@@ -1444,6 +1480,8 @@ mod tests {
                 crafting_limit_cats: CRAFTING_LIMIT_CATS.read().unwrap().clone(),
                 item_limit_cats: ITEM_LIMIT_CATS.read().unwrap().clone(),
                 upgrade_tracks: UPGRADE_TRACKS.read().unwrap().clone(),
+                upgrade_step_costs: UPGRADE_STEP_COSTS.read().unwrap().clone(),
+                currency_info: CURRENCY_INFO.read().unwrap().clone(),
                 current_season_id: *CURRENT_SEASON_ID.read().unwrap(),
                 runtime_data: RUNTIME_DATA.read().unwrap().clone(),
             }
@@ -1454,6 +1492,8 @@ mod tests {
             *CRAFTING_LIMIT_CATS.write().unwrap() = self.crafting_limit_cats;
             *ITEM_LIMIT_CATS.write().unwrap() = self.item_limit_cats;
             *UPGRADE_TRACKS.write().unwrap() = self.upgrade_tracks;
+            *UPGRADE_STEP_COSTS.write().unwrap() = self.upgrade_step_costs;
+            *CURRENCY_INFO.write().unwrap() = self.currency_info;
             *CURRENT_SEASON_ID.write().unwrap() = self.current_season_id;
             *RUNTIME_DATA.write().unwrap() = self.runtime_data;
         }
@@ -1566,6 +1606,99 @@ mod tests {
         assert_eq!(
             read_active_season_metadata(dir.path()),
             (Some("Active".to_string()), Some(2222), Some(9))
+        );
+
+        snapshot.restore();
+    }
+
+    #[test]
+    fn load_bus_keeps_upgrade_costs_and_currencies_for_all_seasons() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        fs::write(
+            dir.path().join("bonus-upgrade-sets.json"),
+            serde_json::to_string(&json!({
+                "100": [{
+                    "name": "Hero",
+                    "level": 1,
+                    "max": 4,
+                    "itemLevel": 600,
+                    "bonusId": 1001,
+                    "currency": {
+                        "id": 3008,
+                        "amount": 10,
+                        "name": "Old Crest",
+                        "icon": "old_crest"
+                    }
+                }],
+                "200": [{
+                    "name": "Hero",
+                    "level": 1,
+                    "max": 8,
+                    "itemLevel": 700,
+                    "bonusId": 2001,
+                    "currency": {
+                        "id": 4000,
+                        "amount": 12,
+                        "name": "New Crest",
+                        "icon": "new_crest"
+                    }
+                }]
+            }))
+            .expect("upgrade sets json"),
+        )
+        .expect("write upgrade sets");
+        fs::write(
+            dir.path().join("seasons.json"),
+            serde_json::to_string(&vec![json!({
+                "active": true,
+                "bonusListGroups": [100]
+            })])
+            .expect("seasons json"),
+        )
+        .expect("write seasons");
+        fs::write(
+            dir.path().join("currency-types.json"),
+            serde_json::to_string(&json!({
+                "4001": {
+                    "name": "Catalog Crest",
+                    "icon": "inv_121_crest_catalog"
+                }
+            }))
+            .expect("currency types json"),
+        )
+        .expect("write currency types");
+
+        load_bus_and_seasons(dir.path());
+
+        assert!(UPGRADE_TRACKS
+            .read()
+            .unwrap()
+            .contains_key(&("Hero".to_string(), 1, 4)));
+        assert!(!UPGRADE_TRACKS
+            .read()
+            .unwrap()
+            .contains_key(&("Hero".to_string(), 1, 8)));
+        assert_eq!(
+            UPGRADE_STEP_COSTS
+                .read()
+                .unwrap()
+                .get(&2001)
+                .and_then(|costs| costs.get(&4000)),
+            Some(&12)
+        );
+        assert_eq!(
+            CURRENCY_INFO.read().unwrap().get(&4000),
+            Some(&("New Crest".to_string(), "new_crest".to_string()))
+        );
+        assert_eq!(
+            CURRENCY_INFO.read().unwrap().get(&4001),
+            Some(&(
+                "Catalog Crest".to_string(),
+                "inv_121_crest_catalog".to_string()
+            ))
         );
 
         snapshot.restore();

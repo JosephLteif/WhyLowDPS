@@ -13,6 +13,10 @@ import InitialSidebarRoute from './components/InitialSidebarRoute';
 import MainScrollShell from './components/MainScrollShell';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
+import { ActiveCharacterProvider } from './components/ActiveCharacterContext';
+import DesktopIntegrationListener from './components/DesktopIntegrationListener';
+import DesktopRichPresence from './components/DesktopRichPresence';
+import CommandPalette from './components/CommandPalette';
 import './globals.css';
 import React from 'react';
 
@@ -44,24 +48,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         }}
       >
         <AuthProvider>
-          <DataGuard>
-            <SimProvider>
-              <TopHeader />
-              <UpdatePrompt />
-              <CloseBehaviorPrompt />
-              <DiscordInvitePrompt />
-              <ChangelogPopup />
-              <ScrollToTopOnRouteChange />
-              <InitialSidebarRoute />
+          <ActiveCharacterProvider>
+            <DataGuard>
+              <SimProvider>
+                <TopHeader />
+                <UpdatePrompt />
+                <CloseBehaviorPrompt />
+                <DiscordInvitePrompt />
+                <ChangelogPopup />
+                <DesktopIntegrationListener />
+                <DesktopRichPresence />
+                <CommandPalette />
+                <ScrollToTopOnRouteChange />
+                <InitialSidebarRoute />
 
-              <Sidebar />
+                <Sidebar />
 
-              <MainScrollShell>
-                <SimSharedConfig />
-                {children}
-              </MainScrollShell>
-            </SimProvider>
-          </DataGuard>
+                <MainScrollShell>
+                  <SimSharedConfig />
+                  {children}
+                </MainScrollShell>
+              </SimProvider>
+            </DataGuard>
+          </ActiveCharacterProvider>
         </AuthProvider>
       </body>
     </html>

@@ -28,68 +28,150 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
-    title: 'Live Dungeons & Raids',
+    title: 'Optional Discord Rich Presence',
     body: [
       {
         type: 'paragraph',
-        text: 'Dungeons and raids are now organized by expansion and season, with current-season rotation details and Blizzard-provided raid information in one place.',
+        text: 'WhyLowDPS now shows a richer Discord activity card with a branded icon, your current workflow, and active character while Discord is running.',
       },
       {
         type: 'list',
         items: [
-          'See current dungeon affixes, timers, Mythic+ scores, and encounters.',
-          'Browse raid names, artwork, and encounters, including The Venomous Abyss.',
+          'Discord can show Dashboard, Quick Sim, Top Gear, Drop Finder, History, or a simulation result with a session timer.',
+          'Rich Presence is opt-in and can be enabled from Settings > Integrations without creating another application.',
+          'Discord being closed never blocks simulations or other app workflows.',
         ],
       },
     ],
   },
   {
     category: 'feature',
-    title: 'Season-aware Loot Browser',
+    title: 'A clearer first-run setup',
     body: [
       {
         type: 'paragraph',
-        text: 'Loot is now organized by expansion, season, and the current active dungeon rotation, including legacy dungeons that return to the active pool.',
+        text: 'WhyLowDPS now shows the important setup steps together, so it is easier to see whether game data, Blizzard access, a character profile, and your first simulation are ready.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Refresh setup status directly from the dashboard.',
+          'Jump straight to the settings or workflow that needs attention.',
+        ],
       },
     ],
   },
   {
     category: 'improvement',
-    title: 'Accurate item upgrade controls',
+    title: 'Rerun and compare results',
     body: [
       {
         type: 'paragraph',
-        text: 'Current active-season loot keeps its correct ilvl controls, while items from older seasons and expansions no longer expose misleading current-season sliders.',
-      },
-    ],
-  },
-  {
-    category: 'fix',
-    title: 'Clearer dungeon source navigation',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Selecting a dungeon in Active Dungeons stays in that group. Its source expansion is shown beside the dungeon and can be opened directly when you want the historical expansion view.',
+        text: 'Simulation results now make it easier to rerun the exact imported input, while History can compare two selected records side by side.',
       },
     ],
   },
   {
     category: 'feature',
-    title: 'Resizable loot navigation',
+    title: 'Desktop simulation notifications',
     body: [
       {
         type: 'paragraph',
-        text: 'The left instance panel can now be resized by dragging its divider or using the keyboard, making longer expansion and dungeon names easier to read.',
+        text: 'When a desktop simulation finishes, the notification includes a one-click path back to its result.',
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Open SimC files from the desktop',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Open .simc or text files from Explorer, drag them onto the app, or launch a second copy to import the file into Quick Sim.',
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Local backup and restore',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Desktop users can export simulation history, saved profiles, routes, and safe UI preferences to a versioned ZIP archive, then validate and restore it later.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Credentials, tokens, cache files, and SimC binaries stay out of the archive.',
+          'Restores preserve a recovery copy and apply on the next app restart.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Command palette and settings repairs',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Press Ctrl+K or Cmd+K to jump to common workflows, open What’s New, or go directly to a Settings area that needs attention.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Settings sections can be linked directly and include a quick-repair overview.',
+          'Shared error feedback now announces failures more clearly to assistive technology.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Active character workspace',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Your selected character now follows you between the dashboard and simulation workspace, while existing tracked-character preferences continue to work.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Safer character context',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Importing a SimC profile can make that character the active workspace, helping defaults and follow-up actions stay attached to the right character.',
       },
     ],
   },
   {
     category: 'fix',
-    title: 'More resilient seasonal data',
+    title: 'Existing preferences are preserved',
     body: [
       {
         type: 'paragraph',
-        text: 'Loot metadata now reconciles incomplete instance records with trusted fallback data, so new seasons and Raidbots updates continue to resolve to the correct expansion and dungeon.',
+        text: 'Older main-character, tracked-character, and last-used profile choices are recognized automatically when the shared active-character state is first loaded.',
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'More useful simulation context',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The simulation setup now shows the active character beside the imported profile, with a direct action to use the current import.',
+      },
+    ],
+  },
+  {
+    category: 'fix',
+    title: 'Status without guesswork',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The dashboard now gives you a concise view of what is ready and what to do next before starting a simulation.',
       },
     ],
   },

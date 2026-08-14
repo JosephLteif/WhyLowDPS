@@ -8,15 +8,21 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Added
 
-- Season-aware Loot Browser grouping by expansion, season, and active dungeon rotation.
-- Resizable Loot Browser instance panel with mouse and keyboard controls.
+- Rich Discord Presence with a branded icon, workflow labels for Dashboard, Quick Sim, Top Gear, Drop Finder, History, and simulation results, plus active-character and session context.
+- Setup checklist for game data, Blizzard access, SimC profiles, and first simulations.
+- Shared active-character context across the dashboard and simulation workspace.
+- Accessible `Ctrl+K`/`Cmd+K` command palette for common workflows and direct Settings repair areas.
 
 ### Fixed
 
-- Active dungeon selections stay in the Active Dungeons group instead of jumping to their source expansion.
-- Active dungeons now show a clickable source-expansion link for historical views.
-- Current-season ilvl controls are available for active legacy dungeons and disabled for older expansion and season views.
-- Incomplete instance metadata is reconciled with trusted fallback data when seasonal Raidbots data changes.
+- Existing tracked-character and last-used-character preferences are migrated automatically.
+- Setup status is visible without requiring users to hunt through separate settings panels.
+- Simulation inputs can be rerun directly, and two history records can be compared side by side.
+- Desktop notifications now keep a clickable in-app result action for completed simulations.
+- Desktop launches accept `.simc` and text files through file associations, drag-and-drop, and second-instance handoff.
+- Desktop users can export and restore a versioned local backup of simulation data, profiles, routes, and safe UI preferences.
+- Backup restore validates the archive, excludes credentials/tokens/cache/runtime binaries, preserves a recovery copy, and restarts safely.
+- Settings now provides a quick-repair overview, URL-addressable sections, clearer feedback semantics, and improved keyboard focus states.
 
 ## [3.0.1] - 2026-05-19
 

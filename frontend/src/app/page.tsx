@@ -46,6 +46,8 @@ import { characterHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
 import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 import { useDismissOnOutside } from './lib/useDismissOnOutside';
+import { useActiveCharacter } from './components/ActiveCharacterContext';
+import OnboardingChecklist from './components/OnboardingChecklist';
 
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
@@ -384,6 +386,7 @@ export default function Home() {
   const router = useRouter();
   const { setSimcInput } = useSimContext();
   const { lightMode } = useAuth();
+  const { setCharacter: setActiveCharacter } = useActiveCharacter();
   const [sims, setSims] = useState<SimSummary[]>([]);
   const [historyStats, setHistoryStats] = useState<HistoryStats | null>(null);
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
@@ -596,6 +599,7 @@ export default function Home() {
 
         const selected = parsedTracked[Math.min(activeTrackedIndex, parsedTracked.length - 1)];
         const { region, realm, name } = selected;
+        setActiveCharacter({ region, realm, name });
 
         const shouldRefresh = pendingTrackedRefreshRef.current;
         const query = `?region=${region}${shouldRefresh ? '&refresh=true' : ''}`;
@@ -675,7 +679,7 @@ export default function Home() {
       }
     };
     void loadMainCharacter();
-  }, [activeTrackedIndex, lightMode, trackedRefreshToken]);
+  }, [activeTrackedIndex, lightMode, setActiveCharacter, trackedRefreshToken]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1216,6 +1220,8 @@ export default function Home() {
           </button>
         </div>
       </div>
+
+      <OnboardingChecklist />
 
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">

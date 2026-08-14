@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { BlizzardCredentialProfile } from '../../lib/api';
+import DiscordPresenceSettings from './DiscordPresenceSettings';
 
 type BlizzardMessage = { type: 'success' | 'error'; text: string } | null;
 
@@ -276,6 +277,8 @@ export default function IntegrationsSettingsSection({
             {blizzardMessage.text}
           </div>
         )}
+
+        <DiscordPresenceSettings />
       </div>
     </section>
   );

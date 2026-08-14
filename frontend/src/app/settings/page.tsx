@@ -18,6 +18,7 @@ import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
 import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
+import LocalBackupSection from './components/LocalBackupSection';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
 import {
@@ -170,6 +171,13 @@ export default function SettingsPage() {
         setPageLoading(false);
       });
   }, [authLoading, user, router, setMaxCombinations, setThreads]);
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab') as SettingsTab | null;
+    if (requestedTab && ['simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user || !isDesktop) return;
@@ -537,6 +545,11 @@ export default function SettingsPage() {
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
   );
 
+  const selectSettingsTab = (tab: SettingsTab) => {
+    setActiveTab(tab);
+    router.replace(`/settings?tab=${tab}`, { scroll: false });
+  };
+
   if (authLoading || pageLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -552,7 +565,7 @@ export default function SettingsPage() {
         <p className="mt-2 text-zinc-400">Manage your account and integrations.</p>
       </header>
 
-      <div className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-2">
         {[
           { id: 'simulation', label: 'Simulation' },
           { id: 'integrations', label: 'Integrations' },
@@ -562,7 +575,10 @@ export default function SettingsPage() {
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as SettingsTab)}
+            onClick={() => selectSettingsTab(tab.id as SettingsTab)}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`settings-panel-${tab.id}`}
             className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
               activeTab === tab.id
                 ? 'border-gold/40 bg-gold/15 text-gold'
@@ -574,7 +590,35 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {activeTab === 'simulation' && <DefaultOptionsSettingsCard />}
+      <section id="settings-panel-overview" aria-labelledby="settings-overview-title" className="rounded-xl border border-border/50 bg-surface/30 p-4 backdrop-blur-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="settings-overview-title" className="text-sm font-semibold text-zinc-100">Quick repairs</h2>
+            <p className="mt-1 text-xs text-zinc-500">Jump directly to the settings area that needs attention.</p>
+          </div>
+          <span className="text-[11px] text-zinc-600">Use Ctrl K to search these actions</span>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { tab: 'simulation' as const, label: 'Simulation setup', status: threads > 0 ? 'Ready' : 'Review defaults' },
+            { tab: 'integrations' as const, label: 'Blizzard access', status: hasSecret || clientId ? 'Configured' : 'Needs attention' },
+            { tab: 'data' as const, label: 'Game data and backups', status: 'Refresh or restore' },
+            { tab: 'updates' as const, label: 'App and SimC updates', status: isDesktop ? 'Desktop controls' : 'Release notes' },
+          ].map((item) => (
+            <button
+              key={item.tab}
+              type="button"
+              onClick={() => selectSettingsTab(item.tab)}
+              className="rounded-lg border border-border/70 bg-surface-2/60 px-3 py-3 text-left transition-colors hover:border-gold/30 hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-gold/40"
+            >
+              <span className="block text-xs font-semibold text-zinc-200">{item.label}</span>
+              <span className="mt-1 block text-[11px] text-zinc-500">{item.status}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {activeTab === 'simulation' && <div id="settings-panel-simulation"><DefaultOptionsSettingsCard /></div>}
 
       {activeTab === 'integrations' && (
         <IntegrationsSettingsSection
@@ -753,17 +797,20 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'data' && (
-        <DataCacheSettingsSection
-          refreshPreset={refreshPreset}
-          setRefreshPreset={setRefreshPreset}
-          setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
-          cacheSyncing={cacheSyncing}
-          refreshDataCache={refreshDataCache}
-          viewDataStates={viewDataStates}
-          syncProgress={syncProgress}
-          syncProgressPct={syncProgressPct}
-          cacheMessage={cacheMessage}
-        />
+        <div className="space-y-6">
+          <DataCacheSettingsSection
+            refreshPreset={refreshPreset}
+            setRefreshPreset={setRefreshPreset}
+            setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
+            cacheSyncing={cacheSyncing}
+            refreshDataCache={refreshDataCache}
+            viewDataStates={viewDataStates}
+            syncProgress={syncProgress}
+            syncProgressPct={syncProgressPct}
+            cacheMessage={cacheMessage}
+          />
+          {isDesktop && <LocalBackupSection />}
+        </div>
       )}
 
       {activeTab === 'updates' && (

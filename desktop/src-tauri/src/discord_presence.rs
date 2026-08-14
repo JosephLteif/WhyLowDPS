@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use crate::app_logic::{save_close_preferences, AppClosePreferencesState};
 
 const MAX_ACTIVITY_TEXT_LENGTH: usize = 128;
+const DISCORD_LARGE_IMAGE_KEY: &str = "whylowdps_logo_v2";
 pub(crate) const DEFAULT_DISCORD_CLIENT_ID: &str = "1537723601858469938";
 
 #[derive(Clone, Debug, Default)]
@@ -28,6 +29,7 @@ pub(crate) struct DiscordPresenceUpdate {
     pub(crate) route: String,
     pub(crate) character_name: Option<String>,
     pub(crate) realm: Option<String>,
+    pub(crate) started_at: Option<i64>,
 }
 
 impl DiscordPresenceState {
@@ -101,6 +103,7 @@ impl DiscordPresenceState {
                     route: "/".to_string(),
                     character_name: None,
                     realm: None,
+                    started_at: None,
                 },
             );
         }
@@ -222,22 +225,33 @@ fn build_activity(update: &DiscordPresenceUpdate) -> activity::Activity<'static>
         _ => "Exploring the app".to_string(),
     };
 
-    activity::Activity::new()
+    let mut activity = activity::Activity::new()
         .name("WhyLowDPS")
         .details(details)
         .state(truncate_activity_text(state))
+        .assets(
+            activity::Assets::new()
+                .large_image(DISCORD_LARGE_IMAGE_KEY)
+                .large_text("WhyLowDPS"),
+        );
+
+    if let Some(started_at) = update.started_at.filter(|value| *value > 0) {
+        activity = activity.timestamps(activity::Timestamps::new().start(started_at * 1000));
+    }
+
+    activity
 }
 
 fn route_label(route: &str) -> String {
     let route = route.split('?').next().unwrap_or(route);
     if route.starts_with("/sim/") {
-        return "Watching a simulation".to_string();
+        return "Reviewing a simulation result".to_string();
     }
     match route {
         "/" => "Checking the dashboard".to_string(),
-        "/quick-sim" => "Preparing a Quick Sim".to_string(),
-        "/top-gear" => "Optimizing gear".to_string(),
-        "/drop-finder" => "Finding upgrades".to_string(),
+        "/quick-sim" => "Running a Quick Sim".to_string(),
+        "/top-gear" => "Optimizing with Top Gear".to_string(),
+        "/drop-finder" => "Finding upgrades in Drop Finder".to_string(),
         "/upgrade-compare" => "Comparing upgrades".to_string(),
         "/history" => "Reviewing simulation history".to_string(),
         "/dungeons" | "/dungeon-routes" => "Planning dungeon routes".to_string(),
@@ -264,7 +278,10 @@ fn truncate_activity_text(value: String) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_client_id, route_label, truncate_activity_text};
+    use super::{
+        build_activity, normalize_client_id, route_label, truncate_activity_text,
+        DiscordPresenceUpdate,
+    };
 
     #[test]
     fn client_id_accepts_public_numeric_application_ids_only() {
@@ -280,8 +297,10 @@ mod tests {
     fn route_labels_are_user_facing() {
         assert_eq!(
             route_label("/quick-sim?source=history"),
-            "Preparing a Quick Sim"
+            "Running a Quick Sim"
         );
+        assert_eq!(route_label("/top-gear"), "Optimizing with Top Gear");
+        assert_eq!(route_label("/sim/abc123"), "Reviewing a simulation result");
         assert_eq!(route_label("/unknown"), "Exploring WhyLowDPS");
     }
 
@@ -290,5 +309,22 @@ mod tests {
         let text = truncate_activity_text("a".repeat(200));
         assert_eq!(text.chars().count(), 128);
         assert!(text.ends_with('…'));
+    }
+
+    #[test]
+    fn activity_includes_branded_asset_and_session_timestamp() {
+        let payload = serde_json::to_value(build_activity(&DiscordPresenceUpdate {
+            route: "/top-gear".to_string(),
+            character_name: Some("Sylph".to_string()),
+            realm: Some("Aegwynn".to_string()),
+            started_at: Some(1_700_000_000),
+        }))
+        .expect("activity should serialize");
+
+        assert_eq!(payload["assets"]["large_image"], "whylowdps_logo_v2");
+        assert_eq!(payload["assets"]["large_text"], "WhyLowDPS");
+        assert_eq!(payload["timestamps"]["start"], 1_700_000_000_000i64);
+        assert_eq!(payload["details"], "Optimizing with Top Gear");
+        assert_eq!(payload["state"], "Playing Sylph on Aegwynn");
     }
 }

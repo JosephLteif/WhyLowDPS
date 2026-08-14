@@ -8,7 +8,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Added
 
-- Optional Discord Rich Presence for sharing the current WhyLowDPS workspace and active character, with the project application ID ready to use.
+- Rich Discord Presence with a branded icon, workflow labels for Dashboard, Quick Sim, Top Gear, Drop Finder, History, and simulation results, plus active-character and session context.
 - Setup checklist for game data, Blizzard access, SimC profiles, and first simulations.
 - Shared active-character context across the dashboard and simulation workspace.
 - Named local simulation presets for recurring SimC setups.

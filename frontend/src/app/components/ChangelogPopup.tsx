@@ -32,11 +32,12 @@ const releaseNotes: ReleaseNote[] = [
     body: [
       {
         type: 'paragraph',
-        text: 'WhyLowDPS now includes a project Discord Application ID so you can share your current workspace and active character while Discord is running.',
+        text: 'WhyLowDPS now shows a richer Discord activity card with a branded icon, your current workflow, and active character while Discord is running.',
       },
       {
         type: 'list',
         items: [
+          'Discord can show Dashboard, Quick Sim, Top Gear, Drop Finder, History, or a simulation result with a session timer.',
           'Rich Presence is opt-in and can be enabled from Settings > Integrations without creating another application.',
           'Discord being closed never blocks simulations or other app workflows.',
         ],

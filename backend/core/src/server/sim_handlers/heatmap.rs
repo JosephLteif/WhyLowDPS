@@ -117,13 +117,7 @@ pub(super) fn item_specs_match_role_pools(
     let class_entries: Vec<u64> = specs
         .iter()
         .copied()
-        .filter(|id| {
-            if known_class_ids.is_empty() {
-                *id <= 13
-            } else {
-                known_class_ids.contains(id)
-            }
-        })
+        .filter(|id| (*id >= 1 && *id <= 13) || known_class_ids.contains(id))
         .collect();
     if class_entries.is_empty() {
         return true;
@@ -156,13 +150,7 @@ pub(super) fn item_specs_match_active_spec(
     let class_entries: Vec<u64> = specs
         .iter()
         .copied()
-        .filter(|id| {
-            if known_class_ids.is_empty() {
-                *id <= 13
-            } else {
-                known_class_ids.contains(id)
-            }
-        })
+        .filter(|id| (*id >= 1 && *id <= 13) || known_class_ids.contains(id))
         .collect();
     if class_entries.is_empty() {
         return true;

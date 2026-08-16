@@ -22,7 +22,7 @@ import { useSimContext } from '../components/SimContext';
 
 interface JobSummary {
   id: string;
-  status: 'pending' | 'running' | 'done' | 'failed';
+  status: 'pending' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled';
   sim_type: string;
   created_at: string;
   fight_style: string;
@@ -42,6 +42,7 @@ interface JobSummary {
 const STATUS_COLORS: Record<string, string> = {
   done: 'bg-emerald-500',
   running: 'bg-amber-500',
+  paused: 'bg-sky-500',
   failed: 'bg-red-500',
   pending: 'bg-zinc-500',
   cancelled: 'bg-zinc-600',
@@ -265,7 +266,11 @@ function SimRow({
             </span>
           ) : (
             <span className={`block truncate text-zinc-500 ${compact ? 'text-xs' : 'text-sm'}`}>
-              {sim.status === 'running' ? 'Simulating...' : 'Pending...'}
+              {sim.status === 'running'
+                ? 'Simulating...'
+                : sim.status === 'paused'
+                  ? 'Paused'
+                  : 'Pending...'}
             </span>
           )}
         </div>

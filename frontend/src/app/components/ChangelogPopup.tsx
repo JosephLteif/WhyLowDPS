@@ -28,6 +28,23 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
+    title: 'Pause and resume simulations',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Pause a simulation from its result screen and resume it later without restarting the SimC process. Queued and staged simulations keep their current place, and cancellation remains available while paused.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Pause and resume controls work independently for each scenario in a batch.',
+          'If the backend restarts, rerun the saved input to continue the simulation.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Unified notification center',
     body: [
       {

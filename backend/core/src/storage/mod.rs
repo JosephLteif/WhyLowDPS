@@ -45,6 +45,7 @@ pub trait JobStorage: Send + Sync {
         pinned_only: bool,
     ) -> Vec<JobSummary>;
     fn update_status(&self, id: &str, status: JobStatus);
+    fn transition_status(&self, id: &str, from: JobStatus, to: JobStatus) -> bool;
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str);
     fn complete_stage(&self, id: &str, summary: &str);
     fn set_result(&self, id: &str, result: String, raw_json: Option<String>);

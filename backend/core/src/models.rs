@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub enum JobStatus {
     Pending,
     Running,
+    Paused,
     Done,
     Failed,
     Cancelled,
@@ -374,6 +375,10 @@ mod tests {
             "\"running\""
         );
         assert_eq!(
+            serde_json::to_string(&JobStatus::Paused).expect("serialize paused"),
+            "\"paused\""
+        );
+        assert_eq!(
             serde_json::to_string(&JobStatus::Done).expect("serialize done"),
             "\"done\""
         );
@@ -393,6 +398,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<JobStatus>("\"running\"").expect("deserialize running"),
             JobStatus::Running
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"paused\"").expect("deserialize paused"),
+            JobStatus::Paused
         );
         assert_eq!(
             serde_json::from_str::<JobStatus>("\"done\"").expect("deserialize done"),

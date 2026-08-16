@@ -391,6 +391,30 @@ pub(super) fn inject_realm(parsed: &mut Value, simc_input: &str) {
 }
 
 /// Spawn a staged (top-gear / droptimizer) simulation in a background task.
+pub(super) async fn prepare_job_run(store: &Arc<dyn JobStorage>, job_id: &str) -> bool {
+    loop {
+        let Some(job) = store.get(job_id) else {
+            return false;
+        };
+
+        match job.status {
+            JobStatus::Pending => {
+                if store.transition_status(job_id, JobStatus::Pending, JobStatus::Running) {
+                    simc_runner::start_job_control(job_id);
+                    return true;
+                }
+            }
+            JobStatus::Paused => {
+                if simc_runner::wait_until_resumed(job_id).await.is_err() {
+                    return false;
+                }
+            }
+            JobStatus::Running => return true,
+            JobStatus::Done | JobStatus::Failed | JobStatus::Cancelled => return false,
+        }
+    }
+}
+
 pub(super) fn spawn_staged_sim(
     store: Arc<dyn JobStorage>,
     simc: PathBuf,
@@ -400,8 +424,13 @@ pub(super) fn spawn_staged_sim(
     combo_count: usize,
     log_buffer: Arc<LogBuffer>,
 ) {
+    simc_runner::register_job_control(&job_id);
     tokio::spawn(async move {
-        store.update_status(&job_id, JobStatus::Running);
+        if !prepare_job_run(&store, &job_id).await {
+            simc_runner::cleanup_job_control(&job_id);
+            log_buffer.remove(&job_id);
+            return;
+        }
         let store_progress = store.clone();
         let store_stages = store.clone();
         let jid_progress = job_id.clone();

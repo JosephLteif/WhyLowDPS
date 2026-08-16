@@ -65,6 +65,8 @@ interface JobData {
   linked_realm?: string;
   linked_name?: string;
   batch_id?: string | null;
+  pause_available?: boolean;
+  resume_available?: boolean;
 }
 
 interface TimelinePoint {
@@ -402,6 +404,7 @@ export default function SimResultClient() {
   const [rerunning, setRerunning] = useState(false);
   const activeStageNameRef = useRef<string | null>(null);
   const activeStageStartedAtRef = useRef<number | null>(null);
+  const activeStageAccumulatedRef = useRef(0);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -707,7 +710,8 @@ export default function SimResultClient() {
     const siblingList = toolbarScenarios;
     const maxPolledSiblings = 40;
     const limitedSiblings = siblingList.slice(0, maxPolledSiblings);
-    const currentIsActive = job?.status === 'pending' || job?.status === 'running';
+    const currentIsActive =
+      job?.status === 'pending' || job?.status === 'running' || job?.status === 'paused';
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
@@ -758,7 +762,10 @@ export default function SimResultClient() {
       try {
         const data = await fetchJson<JobData>(`${API_URL}/api/sim/${activeScenarioId}`);
         if (active) setJob(data);
-        if (active && (data.status === 'pending' || data.status === 'running')) {
+        if (
+          active &&
+          (data.status === 'pending' || data.status === 'running' || data.status === 'paused')
+        ) {
           timer = setTimeout(poll, 2000);
         }
       } catch (err) {
@@ -807,17 +814,33 @@ export default function SimResultClient() {
   useEffect(() => {
     if (!job) return;
     const isActive = job.status === 'running' || job.status === 'pending';
+    const isPaused = job.status === 'paused';
     const stage = job.progress_stage?.trim();
     const now = Date.now();
 
-    if (!isActive) {
+    if (!isActive && !isPaused) {
       if (activeStageNameRef.current && activeStageStartedAtRef.current) {
-        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        const elapsed =
+          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
         appendStageTiming(activeStageNameRef.current, elapsed);
       }
       activeStageNameRef.current = null;
       activeStageStartedAtRef.current = null;
+      activeStageAccumulatedRef.current = 0;
       setActiveStageElapsed(0);
+      if (stageTickRef.current) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+      return;
+    }
+
+    if (isPaused) {
+      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
+        activeStageAccumulatedRef.current += (now - activeStageStartedAtRef.current) / 1000;
+        activeStageStartedAtRef.current = null;
+        setActiveStageElapsed(activeStageAccumulatedRef.current);
+      }
       if (stageTickRef.current) {
         clearInterval(stageTickRef.current);
         stageTickRef.current = null;
@@ -830,26 +853,36 @@ export default function SimResultClient() {
     if (!activeStageNameRef.current) {
       activeStageNameRef.current = stage;
       activeStageStartedAtRef.current = now;
+      activeStageAccumulatedRef.current = 0;
       setActiveStageElapsed(0);
     } else if (activeStageNameRef.current !== stage) {
       if (activeStageStartedAtRef.current) {
-        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        const elapsed =
+          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
         appendStageTiming(activeStageNameRef.current, elapsed);
       }
       activeStageNameRef.current = stage;
       activeStageStartedAtRef.current = now;
+      activeStageAccumulatedRef.current = 0;
       setActiveStageElapsed(0);
+    } else if (!activeStageStartedAtRef.current) {
+      activeStageStartedAtRef.current = now;
     }
 
+    setActiveStageElapsed(
+      activeStageAccumulatedRef.current +
+        (activeStageStartedAtRef.current ? (now - activeStageStartedAtRef.current) / 1000 : 0)
+    );
     if (!stageTickRef.current) {
       stageTickRef.current = setInterval(() => {
-        if (!activeStageStartedAtRef.current) return;
-        setActiveStageElapsed((Date.now() - activeStageStartedAtRef.current) / 1000);
+        const startedAt = activeStageStartedAtRef.current;
+        if (!startedAt) return;
+        setActiveStageElapsed(activeStageAccumulatedRef.current + (Date.now() - startedAt) / 1000);
       }, 1000);
     }
 
     return () => {
-      if (stageTickRef.current && !isActive) {
+      if (stageTickRef.current) {
         clearInterval(stageTickRef.current);
         stageTickRef.current = null;
       }
@@ -895,6 +928,7 @@ export default function SimResultClient() {
     if (isCurrent) return 'text-gold';
     if (status === 'running') return 'text-blue-300';
     if (status === 'pending') return 'text-zinc-300';
+    if (status === 'paused') return 'text-sky-300';
     if (status === 'done') return 'text-emerald-300';
     if (status === 'failed' || status === 'cancelled') return 'text-red-300';
     return 'text-zinc-300';
@@ -1043,13 +1077,15 @@ export default function SimResultClient() {
                         ? 'In Progress'
                         : status === 'pending'
                           ? 'Pending'
-                          : status === 'done'
-                            ? 'Done'
-                            : status === 'failed'
-                              ? 'Failed'
-                              : status === 'cancelled'
-                                ? 'Cancelled'
-                                : ''}
+                          : status === 'paused'
+                            ? 'Paused'
+                            : status === 'done'
+                              ? 'Done'
+                              : status === 'failed'
+                                ? 'Failed'
+                                : status === 'cancelled'
+                                  ? 'Cancelled'
+                                  : ''}
                     </span>
                   </span>
                 </button>
@@ -1097,7 +1133,7 @@ export default function SimResultClient() {
     </div>
   );
 
-  if (job.status === 'pending' || job.status === 'running') {
+  if (job.status === 'pending' || job.status === 'running' || job.status === 'paused') {
     return (
       <div className="space-y-4">
         {scenarioToolbar}
@@ -1112,6 +1148,14 @@ export default function SimResultClient() {
           activeStageElapsed={activeStageElapsed}
           jobId={activeScenarioId}
           onCancelled={handleCancelled}
+          onStatusChange={(status) =>
+            setJob((previous) => (previous ? { ...previous, status } : previous))
+          }
+          resumeAvailable={
+            job.status === 'paused' ? job.resume_available !== false : job.pause_available !== false
+          }
+          onRerun={handleRerunInput}
+          rerunning={rerunning}
           logLines={logLines}
           showLogs={showLogs}
           onToggleLogs={handleToggleLogs}

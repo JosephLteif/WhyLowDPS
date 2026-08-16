@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, ScrollText } from 'lucide-react';
-import { API_URL } from '../lib/api';
+import { Check, Pause, Play, ScrollText } from 'lucide-react';
+import { API_URL, pauseSim, resumeSim } from '../lib/api';
 import { formatElapsedCompact, formatEta, formatMegabytes } from '../lib/format';
 
 interface StageTiming {
@@ -21,6 +21,10 @@ interface SimStatusProps {
   activeStageElapsed?: number;
   jobId?: string;
   onCancelled?: () => void;
+  onStatusChange?: (status: 'pending' | 'running' | 'paused') => void;
+  resumeAvailable?: boolean;
+  onRerun?: () => void;
+  rerunning?: boolean;
   logLines?: string[];
   showLogs?: boolean;
   onToggleLogs?: () => void;
@@ -173,6 +177,10 @@ export default function SimStatus({
   activeStageElapsed,
   jobId,
   onCancelled,
+  onStatusChange,
+  resumeAvailable = true,
+  onRerun,
+  rerunning = false,
   logLines,
   showLogs,
   onToggleLogs,
@@ -187,10 +195,13 @@ export default function SimStatus({
 }: SimStatusProps) {
   const isRunning = status === 'running';
   const isPending = status === 'pending';
+  const isPaused = status === 'paused';
   const [cancelling, setCancelling] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const displayProgress = useSmoothedProgress(progress);
-  const title = progressStage || (isPending ? 'Queued' : 'Simulating');
+  const title = isPaused ? 'Paused' : progressStage || (isPending ? 'Queued' : 'Simulating');
   const hasStages = stagesCompleted && stagesCompleted.length > 0;
   const phaseLogInfo = parseLatestPhaseLog(logLines);
   const remainingSeconds = phaseLogInfo?.remainingSeconds ?? null;
@@ -242,15 +253,49 @@ export default function SimStatus({
     }
   }
 
+  async function handlePause() {
+    if (!jobId || transitioning || !resumeAvailable) return;
+    setActionError('');
+    setTransitioning(true);
+    try {
+      await pauseSim(jobId);
+      onStatusChange?.('paused');
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to pause simulation');
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
+  async function handleResume() {
+    if (!jobId || transitioning || !resumeAvailable) return;
+    setActionError('');
+    setTransitioning(true);
+    try {
+      const response = await resumeSim(jobId);
+      onStatusChange?.(response.status);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to resume simulation');
+    } finally {
+      setTransitioning(false);
+    }
+  }
+
   const runningStageElapsed =
     activeStageElapsed != null ? Math.max(0, activeStageElapsed) : elapsedSeconds;
 
   return (
     <div className="flex w-full flex-col items-center space-y-6 py-16">
       <div className="relative">
-        <div className="h-12 w-12 animate-spin rounded-full border-2 border-zinc-800 border-t-gold" />
+        <div
+          className={`h-12 w-12 rounded-full border-2 border-zinc-800 border-t-gold ${isPaused ? '' : 'animate-spin'}`}
+        />
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="h-2 w-2 animate-pulse rounded-full bg-gold/60" />
+          {isPaused ? (
+            <Pause className="h-4 w-4 text-gold" />
+          ) : (
+            <div className="h-2 w-2 animate-pulse rounded-full bg-gold/60" />
+          )}
         </div>
       </div>
 
@@ -411,8 +456,36 @@ export default function SimStatus({
         )}
       </div>
 
-      {jobId && (isRunning || isPending) && (
+      {jobId && (isRunning || isPending || isPaused) && (
         <div className="flex items-center gap-3">
+          {isPaused ? (
+            <button
+              onClick={handleResume}
+              disabled={transitioning || !resumeAvailable}
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400/30 bg-emerald-500/[0.08] px-2.5 py-1 text-[12px] font-semibold text-emerald-200 transition-all hover:border-emerald-300/50 hover:bg-emerald-500/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+              title={
+                resumeAvailable
+                  ? 'Resume this simulation'
+                  : 'Resume unavailable after backend restart'
+              }
+            >
+              <Play className="h-3.5 w-3.5" />
+              {transitioning
+                ? 'Resuming...'
+                : resumeAvailable
+                  ? 'Resume Sim'
+                  : 'Resume Unavailable'}
+            </button>
+          ) : (
+            <button
+              onClick={handlePause}
+              disabled={transitioning || !resumeAvailable}
+              className="inline-flex items-center gap-1.5 rounded-md border border-sky-400/30 bg-sky-500/[0.08] px-2.5 py-1 text-[12px] font-semibold text-sky-200 transition-all hover:border-sky-300/50 hover:bg-sky-500/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Pause className="h-3.5 w-3.5" />
+              {transitioning ? 'Pausing...' : 'Pause Sim'}
+            </button>
+          )}
           <button
             onClick={handleCancel}
             disabled={cancelling}
@@ -420,6 +493,15 @@ export default function SimStatus({
           >
             {cancelling ? 'Cancelling...' : 'Cancel Sim'}
           </button>
+          {isPaused && !resumeAvailable && onRerun && (
+            <button
+              onClick={onRerun}
+              disabled={rerunning}
+              className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-[12px] font-semibold text-zinc-300 transition-all hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {rerunning ? 'Rerunning...' : 'Rerun Input'}
+            </button>
+          )}
           {onToggleLogs && (
             <button
               onClick={onToggleLogs}
@@ -430,6 +512,12 @@ export default function SimStatus({
             </button>
           )}
         </div>
+      )}
+
+      {actionError && (
+        <p className="text-xs text-red-300" role="alert">
+          {actionError}
+        </p>
       )}
 
       {hasStages && (
@@ -451,14 +539,18 @@ export default function SimStatus({
           {progressStage && (
             <div className="flex items-center gap-2">
               <div className="flex h-3 w-3 shrink-0 items-center justify-center">
-                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-gold" />
+                <div
+                  className={`h-1.5 w-1.5 rounded-full bg-gold ${isPaused ? '' : 'animate-pulse'}`}
+                />
               </div>
               <span className="text-sm text-zinc-300">
                 {progressStage}
-                <span className="text-gray-500">
-                  {' '}
-                  - {formatElapsedCompact(runningStageElapsed)}
-                </span>
+                {!isPaused && (
+                  <span className="text-gray-500">
+                    {' '}
+                    - {formatElapsedCompact(runningStageElapsed)}
+                  </span>
+                )}
                 {displayedProgressDetail && (
                   <span className="text-zinc-300"> - {displayedProgressDetail}</span>
                 )}

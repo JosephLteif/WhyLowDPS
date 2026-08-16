@@ -135,6 +135,7 @@ impl SqliteStorage {
         match status {
             JobStatus::Pending => "pending",
             JobStatus::Running => "running",
+            JobStatus::Paused => "paused",
             JobStatus::Done => "done",
             JobStatus::Failed => "failed",
             JobStatus::Cancelled => "cancelled",
@@ -144,6 +145,7 @@ impl SqliteStorage {
     fn str_to_status(s: &str) -> JobStatus {
         match s {
             "running" => JobStatus::Running,
+            "paused" => JobStatus::Paused,
             "done" => JobStatus::Done,
             "failed" => JobStatus::Failed,
             "cancelled" => JobStatus::Cancelled,
@@ -383,6 +385,16 @@ impl JobStorage for SqliteStorage {
             params![Self::status_to_str(&status), id],
         )
         .ok();
+    }
+
+    fn transition_status(&self, id: &str, from: JobStatus, to: JobStatus) -> bool {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE jobs SET status = ?1 WHERE id = ?2 AND status = ?3",
+            params![Self::status_to_str(&to), id, Self::status_to_str(&from)],
+        )
+        .map(|changed| changed == 1)
+        .unwrap_or(false)
     }
 
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str) {
@@ -803,6 +815,7 @@ mod tests {
     fn sqlite_status_string_conversion_covers_all_known_and_unknown_values() {
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Pending), "pending");
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Running), "running");
+        assert_eq!(SqliteStorage::status_to_str(&JobStatus::Paused), "paused");
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Done), "done");
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Failed), "failed");
         assert_eq!(
@@ -812,6 +825,7 @@ mod tests {
 
         assert_eq!(SqliteStorage::str_to_status("pending"), JobStatus::Pending);
         assert_eq!(SqliteStorage::str_to_status("running"), JobStatus::Running);
+        assert_eq!(SqliteStorage::str_to_status("paused"), JobStatus::Paused);
         assert_eq!(SqliteStorage::str_to_status("done"), JobStatus::Done);
         assert_eq!(SqliteStorage::str_to_status("failed"), JobStatus::Failed);
         assert_eq!(
@@ -959,6 +973,10 @@ mod tests {
             false,
         ));
 
+        assert!(storage.transition_status("job-1", JobStatus::Pending, JobStatus::Paused));
+        assert!(!storage.transition_status("job-1", JobStatus::Pending, JobStatus::Running));
+        assert_eq!(storage.get("job-1").unwrap().status, JobStatus::Paused);
+        assert!(storage.transition_status("job-1", JobStatus::Paused, JobStatus::Running));
         storage.update_status("job-1", JobStatus::Running);
         storage.update_progress("job-1", 55, "simulating", "stage-2");
         storage.complete_stage("job-1", "parsed profile");

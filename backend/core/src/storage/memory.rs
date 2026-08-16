@@ -147,6 +147,18 @@ impl JobStorage for MemoryStorage {
         }
     }
 
+    fn transition_status(&self, id: &str, from: JobStatus, to: JobStatus) -> bool {
+        let mut jobs = self.jobs.lock().unwrap();
+        let Some(job) = jobs.get_mut(id) else {
+            return false;
+        };
+        if job.status != from {
+            return false;
+        }
+        job.status = to;
+        true
+    }
+
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
             job.progress_pct = pct;
@@ -486,7 +498,12 @@ mod tests {
             false,
             None,
         ));
+        storage.update_status("job-1", JobStatus::Pending);
 
+        assert!(storage.transition_status("job-1", JobStatus::Pending, JobStatus::Paused));
+        assert!(!storage.transition_status("job-1", JobStatus::Pending, JobStatus::Running));
+        assert_eq!(storage.get("job-1").unwrap().status, JobStatus::Paused);
+        assert!(storage.transition_status("job-1", JobStatus::Paused, JobStatus::Running));
         storage.update_status("job-1", JobStatus::Running);
         storage.update_progress("job-1", 55, "simulating", "stage-2");
         storage.complete_stage("job-1", "parsed profile");

@@ -254,6 +254,21 @@ export async function deleteSim(id: string): Promise<void> {
   });
 }
 
+export async function pauseSim(id: string): Promise<{ status: 'paused' }> {
+  return fetchJson<{ status: 'paused' }>(`${API_URL}/api/sim/${id}/pause`, {
+    method: 'POST',
+  });
+}
+
+export async function resumeSim(
+  id: string,
+): Promise<{ status: 'pending' | 'running' | 'paused' }> {
+  return fetchJson<{ status: 'pending' | 'running' | 'paused' }>(
+    `${API_URL}/api/sim/${id}/resume`,
+    { method: 'POST' },
+  );
+}
+
 export async function setSimPinned(id: string, pinned: boolean): Promise<void> {
   await fetchJson(`${API_URL}/api/sim/${id}/pin`, {
     method: 'POST',

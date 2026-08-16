@@ -18,11 +18,11 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Unified notification center' })
+      screen.getByRole('heading', { level: 3, name: 'Pause and resume simulations' })
     ).toBeInTheDocument();
-    expect(screen.getByText(/unread counts/)).toBeInTheDocument();
+    expect(screen.getByText(/without restarting the SimC process/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 4$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 5$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

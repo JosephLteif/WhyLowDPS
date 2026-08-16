@@ -20,7 +20,6 @@ import SimTimelineAnalyzer from '../../components/SimTimelineAnalyzer';
 import { calculateAverageIlevel } from '../../lib/ilevel';
 import CharacterLinkButton from '../../components/CharacterLinkButton';
 import { useAuth } from '../../components/AuthContext';
-import { useSimContext } from '../../components/SimContext';
 import type { StatSnapshot } from '../../lib/stat-snapshot';
 import type { ResultItem, TopGearResult } from '../../lib/types';
 import {
@@ -45,6 +44,7 @@ interface JobData {
   status: string;
   sim_type?: string;
   simc_input?: string;
+  options?: Record<string, unknown> | null;
   created_at?: string;
   progress: number;
   progress_stage?: string;
@@ -362,7 +362,6 @@ function CollapsibleSection({
 export default function SimResultClient() {
   const router = useRouter();
   const { lightMode } = useAuth();
-  const { setSimcInput } = useSimContext();
   const params = useParams();
   const searchParams = useSearchParams();
   const paramId = params.id as string;
@@ -399,6 +398,8 @@ export default function SimResultClient() {
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
   const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
   const [activeStageElapsed, setActiveStageElapsed] = useState(0);
+  const [rerunError, setRerunError] = useState('');
+  const [rerunning, setRerunning] = useState(false);
   const activeStageNameRef = useRef<string | null>(null);
   const activeStageStartedAtRef = useRef<number | null>(null);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -911,16 +912,34 @@ export default function SimResultClient() {
     router.push(getSimTypeFallbackUrl(job?.sim_type));
   }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
 
-  const handleRerunInput = useCallback(() => {
-    if (!job?.simc_input) return;
-    setSimcInput(job.simc_input);
+  const handleRerunInput = useCallback(async () => {
+    const input = job?.simc_input;
+    if (!input || rerunning) return;
+
+    setRerunError('');
+    setRerunning(true);
     try {
-      sessionStorage.setItem('whylowdps_simc_input', job.simc_input);
-    } catch {
-      // The shared Sim context still receives the input when session storage is unavailable.
+      const storedOptions = job.options && typeof job.options === 'object' ? job.options : {};
+      const response = await fetchJson<{ id?: string }>(`${API_URL}/api/sim`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ...storedOptions,
+          simc_input: input,
+          sim_type: job.sim_type || storedOptions.sim_type || 'quick',
+          iterations: job.iterations ?? storedOptions.iterations ?? 10000,
+          fight_style: job.fight_style || storedOptions.fight_style || 'Patchwerk',
+        }),
+      });
+      if (!response?.id) throw new Error('The simulation could not be started.');
+      router.push(simResultHref(response.id));
+    } catch (error: unknown) {
+      setRerunError(
+        error instanceof Error ? error.message : 'The simulation could not be started.'
+      );
+    } finally {
+      setRerunning(false);
     }
-    router.push(getSimTypeFallbackUrl(job.sim_type));
-  }, [getSimTypeFallbackUrl, job?.sim_type, job?.simc_input, router, setSimcInput]);
+  }, [job, rerunning, router]);
 
   const handleCancelled = useCallback(() => {
     const currentSimId = getCurrentSimId();
@@ -1050,10 +1069,10 @@ export default function SimResultClient() {
           <button
             type="button"
             onClick={handleRerunInput}
-            disabled={!job.simc_input}
+            disabled={!job.simc_input || rerunning}
             className="inline-flex items-center rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Rerun This Input
+            {rerunning ? 'Rerunning…' : 'Rerun This Input'}
           </button>
           {!lightMode && (
             <CharacterLinkButton
@@ -1062,6 +1081,11 @@ export default function SimResultClient() {
               currentLinkedRealm={job.linked_realm}
               currentLinkedRegion={job.linked_region}
             />
+          )}
+          {rerunError && (
+            <span role="alert" className="text-xs text-red-300">
+              {rerunError}
+            </span>
           )}
         </div>
       ) : (

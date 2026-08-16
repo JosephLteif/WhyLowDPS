@@ -54,6 +54,16 @@ const releaseNotes: ReleaseNote[] = [
       },
     ],
   },
+  {
+    category: 'feature',
+    title: 'One-click simulation reruns',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Rerun This Input now submits the saved simulation input directly and opens the new result without returning to the simulator form first.',
+      },
+    ],
+  },
 ];
 
 const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {

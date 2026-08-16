@@ -22,9 +22,7 @@ describe('ChangelogPopup', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/unread counts/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(
-      screen.queryByRole('button', { name: /^Show changelog item 3$/ })
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 3$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

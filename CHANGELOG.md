@@ -9,6 +9,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 ### Added
 
 - Shared notification center with persistent local history, unread counts, read-state controls, and direct actions for simulation results and app updates.
+- One-click reruns that submit the saved simulation input directly and open the new result.
 
 ### Fixed
 

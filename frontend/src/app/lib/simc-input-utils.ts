@@ -30,11 +30,7 @@ function looksLikeSimcInput(input: string): boolean {
 
   const lines = text.split(/\r?\n/).map((line) => line.trim());
   const hasChecksum = lines.some((line) => /^#\s*Checksum:/i.test(line));
-  const hasSimcKeyValue = lines.some((line) =>
-    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name|server|region|spec|talents)\s*=/i.test(
-      line
-    )
-  );
+  const hasSimcKeyValue = lines.some((line) => /^[a-z_][a-z0-9_]*\s*=/i.test(line));
   const hasArmoryLine = lines.some((line) => /^armory\s*=/i.test(line));
   const hasCharacterHeader = lines.some((line) => /^\w+="[^"]+"/.test(line));
   const hasDungeonRoute = lines.some((line) =>

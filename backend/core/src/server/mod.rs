@@ -810,6 +810,10 @@ pub async fn start_with_storage_bind(
                     "/api/season-config",
                     web::get().to(game_data_handlers::get_season_config),
                 )
+                .route(
+                    "/api/game-context",
+                    web::get().to(game_data_handlers::get_game_context),
+                )
                 // Saved dungeon routes
                 .route("/api/routes", web::post().to(route_handlers::save_route))
                 .route("/api/routes", web::get().to(route_handlers::list_routes))

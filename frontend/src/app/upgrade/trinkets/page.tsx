@@ -9,6 +9,7 @@ import { useSimContext } from '../../components/SimContext';
 import { API_URL } from '../../lib/api';
 import { getIconUrl, getWowheadData, getWowheadUrl, useItemInfo } from '../../lib/useItemInfo';
 import { useSimSubmit } from '../../lib/useSimSubmit';
+import { useGameContext } from '../../lib/useGameContext';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
 import { consumeSimAgainState, consumeSimReturnNotice, type SimReturnNotice as SimReturnNoticeType } from '../../lib/sim-return';
 
@@ -207,6 +208,7 @@ function itemSpecsMatchActiveSpec(
   specs: number[] | undefined,
   activeSpecId: number,
   ignoreSpec: boolean,
+  specToClassId: Map<number, number> = SPEC_TO_CLASS_ID,
 ) {
   if (ignoreSpec) return true;
   if (!specs || specs.length === 0) return true;
@@ -214,7 +216,7 @@ function itemSpecsMatchActiveSpec(
   if (specEntries.length > 0) return activeSpecId > 0 && specEntries.includes(activeSpecId);
   const classEntries = specs.filter((id) => id >= 1 && id <= 13);
   if (classEntries.length === 0) return true;
-  const classId = SPEC_TO_CLASS_ID.get(activeSpecId) || 0;
+  const classId = specToClassId.get(activeSpecId) || 0;
   return classId > 0 && classEntries.includes(classId);
 }
 
@@ -286,11 +288,26 @@ function normalizeUpgradeTracks(input: unknown): Record<string, TrackRow[]> {
 
 export default function UpgradeTrinketsPage() {
   const { simcInput } = useSimContext();
+  const gameContext = useGameContext();
   const { className, specName } = useMemo(() => parseClassAndSpec(simcInput), [simcInput]);
   const activeSpecId = useMemo(() => {
     if (!className || !specName) return 0;
+    const runtimeClass = gameContext?.classes?.find(
+      (entry) => entry.name === className || entry.aliases?.includes(className),
+    );
+    const runtimeSpec = runtimeClass?.specs?.find((spec) => normalizeSpec(spec.name) === specName);
+    if (runtimeSpec?.id) return runtimeSpec.id;
     return CLASS_SPEC_ID_FALLBACK[className]?.[specName] || 0;
-  }, [className, specName]);
+  }, [className, specName, gameContext]);
+
+  const specToClassId = useMemo(() => {
+    const map = new Map(SPEC_TO_CLASS_ID);
+    for (const runtimeClass of gameContext?.classes || []) {
+      if (!runtimeClass.wow_id) continue;
+      for (const spec of runtimeClass.specs || []) map.set(spec.id, runtimeClass.wow_id);
+    }
+    return map;
+  }, [gameContext]);
 
   const [targetIlevel, setTargetIlevel] = useState(289);
   const [selectedTier, setSelectedTier] = useState<string>('all');
@@ -488,13 +505,13 @@ export default function UpgradeTrinketsPage() {
       for (const item of dropsBySource[source] || []) {
         if (!item?.item_id) continue;
         if (source === 'dungeon' && item.mplus_rotation === false) continue;
-        if (!itemSpecsMatchActiveSpec(item.specs, activeSpecId, ignoreSpecRestrictions)) continue;
+        if (!itemSpecsMatchActiveSpec(item.specs, activeSpecId, ignoreSpecRestrictions, specToClassId)) continue;
         if (!ignoreSpecRestrictions && !itemSpecsMatchRole(item.specs, selectedRoles)) continue;
         if (!byItem.has(item.item_id)) byItem.set(item.item_id, item);
       }
     }
     return [...byItem.values()];
-  }, [selectedSources, dropsBySource, activeSpecId, ignoreSpecRestrictions, selectedRoles]);
+  }, [selectedSources, dropsBySource, activeSpecId, ignoreSpecRestrictions, selectedRoles, specToClassId]);
 
   const ilvlTrackHints = useMemo(() => {
     const map = new Map<number, Set<string>>();

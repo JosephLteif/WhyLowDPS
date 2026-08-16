@@ -44,6 +44,7 @@ import CharacterQuickLinks from './components/character/CharacterQuickLinks';
 import VaultRewardsGrid, { type VaultRewardItem } from './components/VaultRewardsGrid';
 import { characterHref } from './lib/routes';
 import { CLASS_COLORS, type SimSummary } from './lib/types';
+import { MYTHIC_VAULT_THRESHOLDS, RAID_VAULT_THRESHOLDS } from './lib/game-rules';
 import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 import { useDismissOnOutside } from './lib/useDismissOnOutside';
 import { useActiveCharacter } from './components/ActiveCharacterContext';
@@ -1749,7 +1750,7 @@ export default function Home() {
                             <div
                               className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
                             >
-                              {[1, 4, 8].map((threshold, idx) => {
+                              {MYTHIC_VAULT_THRESHOLDS.map((threshold, idx) => {
                                 const current = mainVault?.mplusRuns ?? 0;
                                 const unlocked = current >= threshold;
                                 const progress = Math.min(1, current / threshold);
@@ -1796,7 +1797,7 @@ export default function Home() {
                             <div
                               className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
                             >
-                              {[2, 4, 6].map((threshold, idx) => {
+                              {RAID_VAULT_THRESHOLDS.map((threshold, idx) => {
                                 const current = mainVault?.raidKills ?? 0;
                                 const unlocked = current >= threshold;
                                 const progress = Math.min(1, current / threshold);

@@ -143,6 +143,23 @@ pub fn set_class_wow_ids(map: HashMap<String, u64>) {
     *CLASS_WOW_IDS.write().unwrap() = map;
 }
 
+pub fn known_wow_class_ids() -> std::collections::HashSet<u64> {
+    let mut ids: std::collections::HashSet<u64> = CLASS_WOW_IDS
+        .read()
+        .unwrap()
+        .values()
+        .copied()
+        .collect();
+    ids.extend(
+        CLASSES
+            .read()
+            .unwrap()
+            .iter()
+            .filter_map(|class| class_wow_id(&class.name)),
+    );
+    ids
+}
+
 pub fn set_spec_to_wow_class(map: HashMap<u64, u64>) {
     *SPEC_TO_WOW_CLASS.write().unwrap() = map;
 }
@@ -178,23 +195,39 @@ fn normalize_spec_name(raw: &str) -> String {
         _ => n,
     };
 
-    for suffix in [
-        "_death_knight",
-        "_demon_hunter",
-        "_demonhunter",
-        "_hunter",
-        "_mage",
-        "_monk",
-        "_paladin",
-        "_priest",
-        "_rogue",
-        "_shaman",
-        "_warlock",
-        "_warrior",
-        "_druid",
-        "_evoker",
-    ] {
-        if let Some(stripped) = n.strip_suffix(suffix) {
+    // Keep compatibility with the legacy class-qualified names, but also
+    // derive suffixes from the currently loaded Raidbots class catalog so a
+    // newly introduced class does not need a code change.
+    let mut suffixes: Vec<String> = CLASSES
+        .read()
+        .unwrap()
+        .iter()
+        .flat_map(|class| {
+            let canonical = format!("_{}", class.name);
+            std::iter::once(canonical)
+                .chain(class.aliases.iter().map(|alias| format!("_{}", alias)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    suffixes.extend([
+        "_death_knight".to_string(),
+        "_demon_hunter".to_string(),
+        "_demonhunter".to_string(),
+        "_hunter".to_string(),
+        "_mage".to_string(),
+        "_monk".to_string(),
+        "_paladin".to_string(),
+        "_priest".to_string(),
+        "_rogue".to_string(),
+        "_shaman".to_string(),
+        "_warlock".to_string(),
+        "_warrior".to_string(),
+        "_druid".to_string(),
+        "_evoker".to_string(),
+    ]);
+
+    for suffix in suffixes {
+        if let Some(stripped) = n.strip_suffix(&suffix) {
             n = stripped.to_string();
             break;
         }

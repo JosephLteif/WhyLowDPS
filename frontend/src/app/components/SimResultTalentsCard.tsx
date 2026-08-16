@@ -4,22 +4,26 @@ import { useMemo } from 'react';
 import Link from 'next/link';
 import TalentTree from './TalentTree';
 import { decodeHeader } from '../lib/talentDecode';
-import { SPEC_ID_TO_NAME, specDisplayName } from '../lib/types';
+import { specDisplayName } from '../lib/types';
+import { useGameContext } from '../lib/useGameContext';
 
 interface SimResultTalentsCardProps {
   talentString: string;
 }
 
 export default function SimResultTalentsCard({ talentString }: SimResultTalentsCardProps) {
+  const gameContext = useGameContext();
   const specLabel = useMemo(() => {
     try {
       const specId = decodeHeader(talentString).specId;
-      const specName = SPEC_ID_TO_NAME[specId];
+      const specName = gameContext?.classes
+        ?.flatMap((entry) => entry.specs || [])
+        .find((spec) => spec.id === specId)?.name;
       return specName ? specDisplayName(specName) : null;
     } catch {
       return null;
     }
-  }, [talentString]);
+  }, [gameContext, talentString]);
 
   return (
     <div className="card overflow-hidden">

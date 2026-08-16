@@ -470,6 +470,11 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   return (
     <>
       {content}
+      {dataStatus?.degraded && !isSettingsPage && (
+        <div className="fixed bottom-3 left-1/2 z-[180] w-[min(92vw,760px)] -translate-x-1/2 rounded-lg border border-amber-400/30 bg-amber-950/90 px-3 py-2 text-xs text-amber-100 shadow-xl backdrop-blur">
+          Using the last validated game-data snapshot. New seasonal data is temporarily degraded; simulations and unrelated browsing remain available.
+        </div>
+      )}
       {shouldShowMissingFilesPopup && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
           <div className="w-full max-w-lg rounded-xl border border-amber-500/30 bg-[#1a1306] p-5 shadow-2xl">

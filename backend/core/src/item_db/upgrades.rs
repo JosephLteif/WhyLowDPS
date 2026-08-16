@@ -4,6 +4,9 @@ use std::collections::HashMap;
 
 pub fn encounter_upgrade_level(encounter_id: i64) -> Option<u64> {
     let cfg = super::season_cfg();
+    if cfg.get("upgradeRulesAvailable").and_then(Value::as_bool) == Some(false) {
+        return None;
+    }
 
     // Current config shape: explicit encounter -> upgrade level map.
     if let Some(map) = cfg.get("encounterUpgradeLevel").and_then(|v| v.as_object()) {
@@ -33,6 +36,9 @@ pub fn encounter_upgrade_level(encounter_id: i64) -> Option<u64> {
 
 pub fn difficulty_track_name(difficulty: &str) -> Option<String> {
     let cfg = super::season_cfg();
+    if cfg.get("upgradeRulesAvailable").and_then(Value::as_bool) == Some(false) {
+        return None;
+    }
     let raid_diffs = cfg.get("raidDifficulties")?.as_array()?;
     for diff in raid_diffs {
         let key = diff.get("key").and_then(|n| n.as_str());
@@ -53,7 +59,7 @@ pub fn dungeon_normal_ilvl() -> u64 {
         .and_then(|v| v.get("ilvl"))
         .and_then(|v| v.as_u64())
         .or_else(|| cfg.get("dungeonNormalIlvl").and_then(|v| v.as_u64()))
-        .unwrap_or(214)
+        .unwrap_or(0)
 }
 
 pub fn dungeon_normal_quality() -> u64 {
@@ -66,6 +72,13 @@ pub fn dungeon_normal_quality() -> u64 {
 }
 
 pub fn get_upgrade_tracks() -> Value {
+    if super::season_cfg()
+        .get("upgradeRulesAvailable")
+        .and_then(Value::as_bool)
+        == Some(false)
+    {
+        return json!([]);
+    }
     let tracks = UPGRADE_TRACKS.read().unwrap();
     let mut result = Vec::new();
     let mut tracks_vec: Vec<_> = tracks.iter().collect();

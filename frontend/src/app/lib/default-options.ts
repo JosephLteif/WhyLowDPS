@@ -543,3 +543,36 @@ export function resetCharacterAppDefaultOptions(characterKey?: string | null): v
 export function resetAllAppDefaultOptions(): void {
   writeStore({ global: {}, characters: {} });
 }
+
+export function reconcileConsumableDefaults(
+  validTokens: Partial<Record<'flask' | 'food' | 'potion' | 'augmentation' | 'temporaryEnchant', string[]>>,
+  characterKey?: string | null,
+): string[] {
+  const store = readStore();
+  const removed: string[] = [];
+  const tokenKeys: Array<[AppDefaultKey, keyof typeof validTokens]> = [
+    ['consumable.flask', 'flask'],
+    ['consumable.food', 'food'],
+    ['consumable.potion', 'potion'],
+    ['consumable.augmentation', 'augmentation'],
+    ['consumable.temporaryEnchant', 'temporaryEnchant'],
+  ];
+  const clearUnavailable = (overrides: DefaultOverrideMap) => {
+    for (const [optionKey, family] of tokenKeys) {
+      const value = overrides[optionKey];
+      const allowed = new Set(validTokens[family] || []);
+      if (typeof value === 'string' && value && !allowed.has(value)) {
+        delete overrides[optionKey];
+        removed.push(optionKey);
+      }
+    }
+  };
+  clearUnavailable(store.global);
+  const normalizedCharacterKey = normalizeCharacterKey(characterKey);
+  if (normalizedCharacterKey) {
+    const overrides = store.characters[normalizedCharacterKey];
+    if (overrides) clearUnavailable(overrides);
+  }
+  if (removed.length > 0) writeStore(store);
+  return [...new Set(removed)];
+}

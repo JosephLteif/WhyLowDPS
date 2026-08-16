@@ -513,7 +513,7 @@ export function ConsumablesAndRaidBuffsOptions() {
     lockSingleConsumableOptions,
   } = useSimContext();
 
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions();
   const raidBuffBindings = useMemo(
     (): Record<string, { checked: boolean; setChecked: (v: boolean) => void }> => ({
       bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },

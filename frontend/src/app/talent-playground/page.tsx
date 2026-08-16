@@ -10,6 +10,7 @@ import { encodeTalentString } from '../lib/talentEncode';
 import type { TalentLoadoutParsed } from '../lib/types';
 import { CLASS_SPECS, parseTalentLoadouts, SPEC_ID_TO_NAME, SPEC_NAME_TO_ID, specDisplayName } from '../lib/types';
 import { useTalentTree } from '../lib/useTalentTree';
+import { useGameContext } from '../lib/useGameContext';
 
 type SavedBuild = {
   id: string;
@@ -136,8 +137,15 @@ export default function TalentPlaygroundPage() {
   const [buildContextMenu, setBuildContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [renameDialog, setRenameDialog] = useState<{ id: string; value: string } | null>(null);
   const [buildsHydrated, setBuildsHydrated] = useState(false);
+  const gameContext = useGameContext();
 
-  const blankSpecId = useMemo(() => SPEC_NAME_TO_ID[blankSpecName] || null, [blankSpecName]);
+  const selectedRuntimeClass = gameContext?.classes?.find(
+    (entry) => normalizeClassKey(entry.name) === selectedClassKey || entry.aliases?.some((alias) => normalizeClassKey(alias) === selectedClassKey)
+  );
+  const blankSpecId = useMemo(
+    () => selectedRuntimeClass?.specs?.find((spec) => spec.name === blankSpecName)?.id || SPEC_NAME_TO_ID[blankSpecName] || null,
+    [blankSpecName, selectedRuntimeClass]
+  );
   const blankTree = useTalentTree(blankSpecId);
 
   useEffect(() => {
@@ -204,9 +212,9 @@ export default function TalentPlaygroundPage() {
   }, [searchParams]);
 
   const classOptions = useMemo(() => {
-    const keys = Object.keys(CLASS_SPECS).filter((key) => !['deathknight', 'demonhunter'].includes(key));
+    const keys = gameContext?.classes?.map((entry) => normalizeClassKey(entry.name)) || Object.keys(CLASS_SPECS);
     return keys.sort((a, b) => prettyLabel(a).localeCompare(prettyLabel(b)));
-  }, []);
+  }, [gameContext]);
 
   useEffect(() => {
     const selectedCharacter = characters.find((char) => char.key === selectedCharacterKey) || null;
@@ -336,12 +344,12 @@ export default function TalentPlaygroundPage() {
     if (!editorTalentString) return null;
     try {
       const specId = decodeHeader(editorTalentString).specId;
-      const specName = SPEC_ID_TO_NAME[specId];
+      const specName = gameContext?.classes?.flatMap((entry) => entry.specs || []).find((spec) => spec.id === specId)?.name || SPEC_ID_TO_NAME[specId];
       return specName ? specDisplayName(specName) : `Spec ${specId}`;
     } catch {
       return null;
     }
-  }, [editorTalentString]);
+  }, [editorTalentString, gameContext]);
 
   const updateScopeBuilds = useCallback((updater: (prev: SavedBuild[]) => SavedBuild[]) => {
     setBuildsByScope((prev) => ({ ...prev, [scopeKey]: updater(prev[scopeKey] || []) }));
@@ -496,9 +504,9 @@ export default function TalentPlaygroundPage() {
   );
 
   const specChoices = useMemo(() => {
-    const specs = CLASS_SPECS[selectedClassKey] || [];
+    const specs = selectedRuntimeClass?.specs?.map((spec) => spec.name) || CLASS_SPECS[selectedClassKey] || [];
     return specs.map((spec) => ({ key: spec, label: specDisplayName(spec) }));
-  }, [selectedClassKey]);
+  }, [selectedClassKey, selectedRuntimeClass]);
 
   useEffect(() => {
     if (!specChoices.some((spec) => spec.key === blankSpecName)) {

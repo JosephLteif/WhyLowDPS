@@ -98,6 +98,42 @@ pub(super) fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
     Ok(parsed.files.into_iter().map(DataFileEntry::from).collect())
 }
 
+/// Metadata is the upstream file index. Keep repair tolerant of new files by
+/// deriving entries from it instead of requiring a static manifest edit for
+/// every Raidbots addition.
+pub(super) fn metadata_derived_raidbots_entries(root: &Path) -> Vec<DataFileEntry> {
+    let Ok(content) = std::fs::read_to_string(root.join("metadata.json")) else {
+        return Vec::new();
+    };
+    let Ok(file_re) = regex::Regex::new(r#"\"([^\"]+\.(?:json|txt|lua))\""#) else {
+        return Vec::new();
+    };
+    let mut seen = std::collections::HashSet::new();
+    file_re
+        .captures_iter(&content)
+        .filter_map(|capture| capture.get(1).map(|match_| match_.as_str().to_string()))
+        .filter(|file| {
+            let path = Path::new(file);
+            !file.is_empty()
+                && path.components().all(|component| {
+                    matches!(component, std::path::Component::Normal(_))
+                })
+        })
+        .filter(|file| seen.insert(file.clone()))
+        .map(|file| DataFileEntry {
+            key: format!("raidbots:{file}"),
+            label: file.clone(),
+            section: "Raidbots (discovered)".to_string(),
+            source: DataFileSource::Raidbots,
+            remote_path: Some(file.clone()),
+            local_path: file,
+            required: false,
+            entry_type: DataFileEntryType::File,
+            bundled_path: None,
+        })
+        .collect()
+}
+
 pub(super) fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
     let runtime = root.join(&entry.local_path);
     for candidate in path_variants_with_json_alias(&runtime) {

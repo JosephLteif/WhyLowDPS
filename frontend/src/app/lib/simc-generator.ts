@@ -57,7 +57,7 @@ export function generateSimcString(
     character.race?.name?.toLowerCase().replace(/\s+/g, '_') ||
     character.race?.toLowerCase().replace(/\s+/g, '_') ||
     'human';
-  const level = character.level?.value || character.level || 80;
+  const level = character.level?.value || character.level;
   const dateStr = new Date().toISOString().split('T')[0];
 
   // Header comments (official addon style)
@@ -68,7 +68,9 @@ export function generateSimcString(
   lines.push(``);
 
   lines.push(`${playerClass}="${name}"`);
-  lines.push(`level=${level}`);
+  if (level != null && String(level).trim() !== '') {
+    lines.push(`level=${level}`);
+  }
   lines.push(`race=${race.replace(/\s+/g, '_')}`);
   lines.push(`region=${region.toString().toLowerCase()}`);
   lines.push(`server=${realm.toString().toLowerCase().replace(/\s+/g, '_')}`);
@@ -83,11 +85,6 @@ export function generateSimcString(
     }
   }
 
-  // Role detection
-  const casters = ['warlock', 'mage', 'priest', 'druid', 'shaman']; // Simple caster check
-  const isCaster = casters.includes(playerClass);
-  lines.push(`role=${isCaster ? 'spell' : 'damager'}`);
-
   if (specName) {
     lines.push(`spec=${specName.toLowerCase().replace(/\s+/g, '_')}`);
   }
@@ -96,14 +93,8 @@ export function generateSimcString(
     lines.push(`talents=${talents}`);
   }
 
-  // Pre-combat actions for accurate sims (best-in-slot TWW consumables)
-  lines.push(``);
-  lines.push(`# Consumables`);
-  lines.push(`actions.precombat+=/flask=temptation_of_the_broken_shore_3`);
-  lines.push(`actions.precombat+=/food=feast_of_the_midnight_masquerade`);
-  lines.push(`actions.precombat+=/potion=tempted_fate_3`);
-  lines.push(`actions.precombat+=/augmentation=crystallized_augmentation`);
-
+  // Consumables are supplied by the selected simulation options. Do not
+  // inject season-specific tokens into API-generated profiles.
   lines.push(``);
 
   const items = equipment.equipped_items || [];

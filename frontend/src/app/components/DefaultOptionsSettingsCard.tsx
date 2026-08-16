@@ -22,6 +22,7 @@ import {
   resetCharacterAppDefaultOptions,
   resetGlobalAppDefaultOptions,
   resetAllAppDefaultOptions,
+  reconcileConsumableDefaults,
   setAppDefaultOption,
   setLastActiveCharacterDefaultsKey,
   type AppDefaultKey,
@@ -39,7 +40,7 @@ interface BnetCharacter {
 export default function DefaultOptionsSettingsCard() {
   const { simcInput } = useSimContext();
   const { lightMode } = useAuth();
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions();
   const activeCharacterKey = getCharacterDefaultsKeyFromSimcInput(simcInput);
   const rememberedCharacterKey = getLastActiveCharacterDefaultsKey();
   const [selectedCharacterKey, setSelectedCharacterKey] = useState<string | null>(
@@ -172,6 +173,23 @@ export default function DefaultOptionsSettingsCard() {
     () => buildQualityMaxByFamily([flasks, potions, augments, tempEnchants]),
     [flasks, potions, augments, tempEnchants]
   );
+
+  useEffect(() => {
+    const removed = reconcileConsumableDefaults(
+      {
+        flask: flasks.map((option) => option.token).filter((token): token is string => !!token),
+        food: foods.map((option) => option.token).filter((token): token is string => !!token),
+        potion: potions.map((option) => option.token).filter((token): token is string => !!token),
+        augmentation: augments.map((option) => option.token).filter((token): token is string => !!token),
+        temporaryEnchant: tempEnchants.map((option) => option.token).filter((token): token is string => !!token),
+      },
+      characterKey,
+    );
+    if (removed.length > 0) {
+      refreshDefaults();
+      setSavedNotice(true);
+    }
+  }, [flasks, foods, potions, augments, tempEnchants, characterKey, refreshDefaults]);
 
   const raidBuffBindings: Array<{ key: AppDefaultKey; label: string; icon: string; spellId: number }> =
     useMemo(

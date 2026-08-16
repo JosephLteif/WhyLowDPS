@@ -11,6 +11,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 - Shared notification center with persistent local history, unread counts, read-state controls, and direct actions for simulation results and app updates.
 - One-click reruns that submit the saved simulation input directly and open the new result.
 
+### Changed
+
+- Running simulation status now uses the available page width with clearer profileset progress and stats grouping.
+
 ### Fixed
 
 - Desktop simulation notifications are deduplicated and keep a clickable in-app result action for completed simulations.

@@ -64,6 +64,16 @@ const releaseNotes: ReleaseNote[] = [
       },
     ],
   },
+  {
+    category: 'improvement',
+    title: 'Clearer running simulation status',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Running simulation details now use the available page width, with profileset progress, current-profile metrics, and overall stats arranged for easier reading.',
+      },
+    ],
+  },
 ];
 
 const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {

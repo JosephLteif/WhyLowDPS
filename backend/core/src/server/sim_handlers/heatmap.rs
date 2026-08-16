@@ -113,11 +113,11 @@ pub(super) fn item_specs_match_role_pools(
             .any(|sid| selected_pools.contains(&spec_id_to_role_pool(*sid)));
     }
 
-    const KNOWN_CLASS_IDS: &[u64] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+    let known_class_ids = crate::types::class_data::known_wow_class_ids();
     let class_entries: Vec<u64> = specs
         .iter()
         .copied()
-        .filter(|id| KNOWN_CLASS_IDS.contains(id))
+        .filter(|id| (*id >= 1 && *id <= 13) || known_class_ids.contains(id))
         .collect();
     if class_entries.is_empty() {
         return true;
@@ -146,11 +146,11 @@ pub(super) fn item_specs_match_active_spec(
         return active_spec_id.is_some_and(|id| spec_entries.contains(&id));
     }
 
-    const KNOWN_CLASS_IDS: &[u64] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+    let known_class_ids = crate::types::class_data::known_wow_class_ids();
     let class_entries: Vec<u64> = specs
         .iter()
         .copied()
-        .filter(|id| KNOWN_CLASS_IDS.contains(id))
+        .filter(|id| (*id >= 1 && *id <= 13) || known_class_ids.contains(id))
         .collect();
     if class_entries.is_empty() {
         return true;

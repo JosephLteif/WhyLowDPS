@@ -61,7 +61,7 @@ const baseNavItems: NavItem[] = [
     matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade'],
     children: [
       { href: '/drop-finder', label: 'Drop Finder', description: 'Sim raid & dungeon loot' },
-      { href: '/upgrade-compare', label: 'Crest Upgrades', description: 'Best Dawncrest path' },
+      { href: '/upgrade-compare', label: 'Crest Upgrades', description: 'Best upgrade path' },
     ],
   },
   {

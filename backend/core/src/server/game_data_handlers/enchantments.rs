@@ -149,30 +149,22 @@ pub(super) fn list_enchants_for_slot_from_files(
     )
 }
 
-pub(super) fn current_season_label() -> String {
-    crate::item_db::season_cfg()
-        .get("season")
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .or_else(|| {
-            crate::item_db::get_runtime_data()
-                .get("season_name")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-        })
-        .unwrap_or_default()
-}
-
 pub(super) fn slot_has_active_expansion_enchants(query: &EnchantOptionsQuery) -> bool {
     let normalized = query.slot.trim().to_ascii_lowercase();
-    let season_label = current_season_label().to_ascii_lowercase();
-
-    if season_label.contains("midnight") && matches!(normalized.as_str(), "back" | "wrist") {
-        return false;
+    let context = crate::item_db::game_context();
+    if let Some(slots) = context
+        .get("rules")
+        .and_then(|rules| rules.get("dps_enchant_slots"))
+        .and_then(|slots| slots.as_array())
+    {
+        let slots: std::collections::HashSet<String> = slots
+            .iter()
+            .filter_map(|slot| slot.as_str())
+            .map(|slot| slot.to_ascii_lowercase())
+            .collect();
+        if !slots.is_empty() {
+            return slots.contains(&normalized);
+        }
     }
 
     true

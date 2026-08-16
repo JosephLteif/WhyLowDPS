@@ -334,6 +334,25 @@ mod tests {
         assert!(rows
             .iter()
             .any(|row| row.get("name").and_then(Value::as_str) == Some("AppData Raid")));
+        let appdata_raid = rows
+            .iter()
+            .find(|row| row.get("name").and_then(Value::as_str) == Some("AppData Raid"))
+            .expect("appdata raid");
+        assert_eq!(
+            appdata_raid.get("current_season").and_then(Value::as_bool),
+            Some(false)
+        );
+
+        let appdata_dungeon = rows
+            .iter()
+            .find(|row| row.get("name").and_then(Value::as_str) == Some("AppData Dungeon"))
+            .expect("appdata dungeon");
+        assert_eq!(
+            appdata_dungeon
+                .get("current_season")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
 
         let mplus_bucket = rows
             .iter()

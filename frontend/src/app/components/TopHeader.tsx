@@ -8,8 +8,10 @@ import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
 import { API_URL, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
+import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 import { CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
+import NotificationCenter from './shared/NotificationCenter';
 
 type SearchCharacter = {
   realm: string;
@@ -20,6 +22,116 @@ type RealmOption = {
   slug: string;
   name: string;
 };
+
+type RecentCharacterSearch = {
+  name: string;
+  realm: string;
+  region: string;
+  realmName?: string;
+};
+
+const CHARACTER_SEARCH_HISTORY_STORAGE_KEY = 'whylowdps_character_search_history_v1';
+const MAX_CHARACTER_SEARCH_HISTORY = 8;
+
+function recentCharacterSearchKey(search: RecentCharacterSearch): string {
+  return `${search.region}|${search.realm}|${search.name}`.toLowerCase();
+}
+
+function parseRecentCharacterSearch(value: unknown): RecentCharacterSearch | null {
+  if (!value || typeof value !== 'object') return null;
+  const raw = value as Record<string, unknown>;
+  const name = String(raw.name ?? '').trim();
+  const realm = String(raw.realm ?? '')
+    .trim()
+    .toLowerCase();
+  const region = String(raw.region ?? '')
+    .trim()
+    .toLowerCase();
+  const realmName = String(raw.realmName ?? '').trim();
+  if (!name || !realm || !region) return null;
+  return { name, realm, region, ...(realmName ? { realmName } : {}) };
+}
+
+function readRecentCharacterSearches(): RecentCharacterSearch[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(CHARACTER_SEARCH_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const seen = new Set<string>();
+    return parsed
+      .map(parseRecentCharacterSearch)
+      .filter((search): search is RecentCharacterSearch => {
+        if (!search) return false;
+        const key = recentCharacterSearchKey(search);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, MAX_CHARACTER_SEARCH_HISTORY);
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentCharacterSearches(searches: RecentCharacterSearch[]): void {
+  try {
+    window.localStorage.setItem(
+      CHARACTER_SEARCH_HISTORY_STORAGE_KEY,
+      JSON.stringify(searches.slice(0, MAX_CHARACTER_SEARCH_HISTORY))
+    );
+  } catch {
+    // Storage can be unavailable in privacy-restricted webviews.
+  }
+}
+
+function RecentCharacterSearchDropdown({
+  searches,
+  query,
+  onSelect,
+}: {
+  searches: RecentCharacterSearch[];
+  query: string;
+  onSelect: (search: RecentCharacterSearch) => void;
+}) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleSearches = searches.filter((search) => {
+    if (!normalizedQuery) return true;
+    return `${search.name} ${search.realm} ${search.realmName || ''}`
+      .toLowerCase()
+      .includes(normalizedQuery);
+  });
+
+  if (visibleSearches.length === 0) return null;
+
+  return (
+    <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-lg border border-border bg-surface-2 shadow-2xl">
+      <div className="border-b border-border px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+        Recent characters
+      </div>
+      <div className="p-1">
+        {visibleSearches.map((search) => (
+          <button
+            key={recentCharacterSearchKey(search)}
+            type="button"
+            onClick={() => onSelect(search)}
+            className="flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left transition-colors hover:bg-white/10"
+            aria-label={`Go to ${search.name} on ${search.realmName || search.realm} (${search.region.toUpperCase()})`}
+          >
+            <span className="min-w-0 truncate text-[13px] font-medium text-zinc-200">
+              {search.name}
+            </span>
+            <span className="ml-3 shrink-0 text-[11px] text-zinc-500">
+              {search.realmName || search.realm} · {search.region.toUpperCase()}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function TopHeader() {
   const router = useRouter();
@@ -32,6 +144,16 @@ export default function TopHeader() {
   const [characterRegion, setCharacterRegion] = useState('us');
   const [characterRealm, setCharacterRealm] = useState('');
   const [realmOptions, setRealmOptions] = useState<RealmOption[]>([]);
+  const [recentCharacterSearches, setRecentCharacterSearches] = useState<RecentCharacterSearch[]>(
+    []
+  );
+  const [isRecentSearchOpen, setIsRecentSearchOpen] = useState(false);
+
+  useDismissOnOutside(headerRef, isRecentSearchOpen, () => setIsRecentSearchOpen(false));
+
+  useEffect(() => {
+    setRecentCharacterSearches(readRecentCharacterSearches());
+  }, []);
 
   const handleLoginClick = async () => {
     const status = await checkCredentialsStatus();
@@ -145,7 +267,34 @@ export default function TopHeader() {
     const trimmedName = characterName.trim();
     const trimmedRealm = characterRealm.trim();
     if (!trimmedName || !trimmedRealm) return;
+
+    const search = {
+      name: trimmedName,
+      realm: trimmedRealm,
+      region: characterRegion,
+      realmName:
+        realmOptions.find((realm) => realm.slug.toLowerCase() === trimmedRealm.toLowerCase())
+          ?.name || trimmedRealm,
+    };
+    const nextSearches = [
+      search,
+      ...recentCharacterSearches.filter(
+        (recentSearch) =>
+          recentCharacterSearchKey(recentSearch) !== recentCharacterSearchKey(search)
+      ),
+    ].slice(0, MAX_CHARACTER_SEARCH_HISTORY);
+    setRecentCharacterSearches(nextSearches);
+    writeRecentCharacterSearches(nextSearches);
+    setIsRecentSearchOpen(false);
     router.push(characterHref(characterRegion, trimmedRealm, trimmedName));
+  };
+
+  const handleRecentCharacterSearch = (search: RecentCharacterSearch) => {
+    setCharacterName(search.name);
+    setCharacterRegion(search.region);
+    setCharacterRealm(search.realm);
+    setIsRecentSearchOpen(false);
+    router.push(characterHref(search.region, search.realm, search.name));
   };
 
   return (
@@ -185,12 +334,13 @@ export default function TopHeader() {
             <form
               data-tauri-drag-region="false"
               onSubmit={handleCharacterSearch}
-              className="mx-auto hidden w-full max-w-[560px] items-center gap-1.5 xl:flex"
+              className="relative mx-auto hidden w-full max-w-[560px] items-center gap-1.5 xl:flex"
             >
               <input
                 type="text"
                 value={characterName}
                 onChange={(e) => setCharacterName(e.target.value)}
+                onFocus={() => setIsRecentSearchOpen(true)}
                 placeholder="Character"
                 className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
                 aria-label="Character name"
@@ -228,10 +378,18 @@ export default function TopHeader() {
               >
                 Go
               </button>
+              {isRecentSearchOpen && (
+                <RecentCharacterSearchDropdown
+                  searches={recentCharacterSearches}
+                  query={characterName}
+                  onSelect={handleRecentCharacterSearch}
+                />
+              )}
             </form>
           )}
 
           <div data-tauri-drag-region="false" className="flex items-center gap-3 justify-self-end">
+            <NotificationCenter />
             <button
               type="button"
               onClick={handleWhatsNew}
@@ -289,12 +447,13 @@ export default function TopHeader() {
           <form
             data-tauri-drag-region="false"
             onSubmit={handleCharacterSearch}
-            className="flex items-center gap-1.5 border-t border-white/5 px-3 py-2 md:px-5 xl:hidden"
+            className="relative flex items-center gap-1.5 border-t border-white/5 px-3 py-2 md:px-5 xl:hidden"
           >
             <input
               type="text"
               value={characterName}
               onChange={(e) => setCharacterName(e.target.value)}
+              onFocus={() => setIsRecentSearchOpen(true)}
               placeholder="Character"
               className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
               aria-label="Character name"
@@ -332,6 +491,13 @@ export default function TopHeader() {
             >
               Go
             </button>
+            {isRecentSearchOpen && (
+              <RecentCharacterSearchDropdown
+                searches={recentCharacterSearches}
+                query={characterName}
+                onSelect={handleRecentCharacterSearch}
+              />
+            )}
           </form>
         )}
       </header>

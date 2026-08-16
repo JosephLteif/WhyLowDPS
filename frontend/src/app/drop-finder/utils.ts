@@ -91,52 +91,6 @@ export function encodeInstanceSelectionIds(ids: string[]): string {
 
 export const FALLBACK_SEASON_CONFIG: SeasonConfigResponse = {
   season: '',
-  raid_difficulties: [
-    { key: 'lfr', label: 'Raid Finder', track: 'Veteran', level: 1, sortOrder: 1 },
-    { key: 'normal', label: 'Normal', track: 'Champion', level: 2, sortOrder: 2 },
-    { key: 'heroic', label: 'Heroic', track: 'Hero', level: 3, sortOrder: 3 },
-    { key: 'mythic', label: 'Mythic', track: 'Myth', level: 4, sortOrder: 4 },
-  ],
-  dungeon_categories: [
-    {
-      key: 'mplus',
-      label: 'Mythic+',
-      poolInstanceId: -1,
-      defaultDifficulty: 'mythic+10',
-      difficulties: [
-        { key: 'heroic', label: 'Heroic', track: 'Adventurer', level: 2, sortOrder: 1 },
-        { key: 'mythic', label: 'Mythic 0', track: 'Champion', level: 1, sortOrder: 2 },
-        { key: 'mythic+2', label: '+2', track: 'Champion', level: 2, sortOrder: 3 },
-        { key: 'mythic+3', label: '+3', track: 'Champion', level: 2, sortOrder: 4 },
-        { key: 'mythic+4', label: '+4', track: 'Champion', level: 3, sortOrder: 5 },
-        { key: 'mythic+5', label: '+5', track: 'Champion', level: 4, sortOrder: 6 },
-        { key: 'mythic+6', label: '+6', track: 'Champion', level: 5, sortOrder: 7 },
-        { key: 'mythic+7', label: '+7', track: 'Hero', level: 1, sortOrder: 8 },
-        { key: 'mythic+8', label: '+8', track: 'Hero', level: 2, sortOrder: 9 },
-        { key: 'mythic+9', label: '+9', track: 'Hero', level: 2, sortOrder: 10 },
-        { key: 'mythic+10', label: '+10', track: 'Hero', level: 3, sortOrder: 11 },
-        { key: 'vault+7-9', label: 'Vault +7-9', track: 'Hero', level: 4, sortOrder: 12 },
-        { key: 'vault+10', label: 'Vault +10', track: 'Myth', level: 1, sortOrder: 13 },
-      ],
-    },
-    {
-      key: 'normal-dungeons',
-      label: 'Dungeons',
-      poolInstanceId: -32,
-      defaultDifficulty: 'heroic',
-      difficulties: [
-        {
-          key: 'normal',
-          label: 'Normal',
-          track: null,
-          level: 0,
-          sortOrder: 1,
-          fixedIlvl: 214,
-          fixedQuality: 3,
-        },
-        { key: 'heroic', label: 'Heroic', track: 'Adventurer', level: 2, sortOrder: 2 },
-        { key: 'mythic', label: 'Mythic', track: 'Champion', level: 1, sortOrder: 3 },
-      ],
-    },
-  ],
+  raid_difficulties: [],
+  dungeon_categories: [],
 };

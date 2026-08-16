@@ -17,6 +17,7 @@ type ConsumableOptionsResponse = {
   potions?: OptionEntry[];
   augments?: OptionEntry[];
   temp_enchants?: OptionEntry[];
+  resolved_expansion?: number | null;
 };
 
 function dedupeOptions(options: OptionEntry[]): OptionEntry[] {
@@ -47,9 +48,9 @@ function normalizeQuality(options: OptionEntry[]): OptionEntry[] {
   return options.map((opt) => ({ ...opt, craftingQuality: inferQuality(opt) }));
 }
 
-export function useConsumableOptions(expansion = 11) {
+export function useConsumableOptions(expansion?: number) {
   const filterByExpansion = useCallback((options: OptionEntry[]): OptionEntry[] => {
-    if (!Number.isFinite(expansion) || expansion <= 0) return options;
+    if (typeof expansion !== 'number' || !Number.isFinite(expansion) || expansion <= 0) return options;
     return options.filter((opt) => {
       const optionExpansion = opt.expansion;
       if (typeof optionExpansion !== 'number' || !Number.isFinite(optionExpansion)) return false;
@@ -70,7 +71,7 @@ export function useConsumableOptions(expansion = 11) {
   useEffect(() => {
     let canceled = false;
     const query =
-      Number.isFinite(expansion) && expansion > 0
+      Number.isFinite(expansion) && (expansion || 0) > 0
         ? `?expansion=${encodeURIComponent(String(expansion))}`
         : '';
     fetch(`${API_URL}/api/gear/consumable-options${query}`)
@@ -80,19 +81,19 @@ export function useConsumableOptions(expansion = 11) {
       })
       .then((data: ConsumableOptionsResponse) => {
         if (canceled) return;
-        if (Array.isArray(data.flasks) && data.flasks.length) {
+        if (Array.isArray(data.flasks)) {
           setFlasks(filterByExpansion(dedupeOptions(normalizeQuality(data.flasks))));
         }
-        if (Array.isArray(data.foods) && data.foods.length) {
+        if (Array.isArray(data.foods)) {
           setFoods(filterByExpansion(dedupeOptions(normalizeQuality(data.foods))));
         }
-        if (Array.isArray(data.potions) && data.potions.length) {
+        if (Array.isArray(data.potions)) {
           setPotions(filterByExpansion(dedupeOptions(normalizeQuality(data.potions))));
         }
-        if (Array.isArray(data.augments) && data.augments.length) {
+        if (Array.isArray(data.augments)) {
           setAugments(filterByExpansion(dedupeOptions(normalizeQuality(data.augments))));
         }
-        if (Array.isArray(data.temp_enchants) && data.temp_enchants.length) {
+        if (Array.isArray(data.temp_enchants)) {
           setTempEnchants(filterByExpansion(dedupeOptions(normalizeQuality(data.temp_enchants))));
         }
       })

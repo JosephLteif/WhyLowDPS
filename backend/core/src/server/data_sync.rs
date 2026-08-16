@@ -42,7 +42,7 @@ use image_sources::{
     journal_instance_id_from_names_with_token, media_url_from_media_href,
     runtime_dungeon_name_candidates,
 };
-use raidbots::{raidbots_file_progress, stage_raidbots_files};
+use raidbots::{raidbots_file_progress, stage_raidbots_files, validate_raidbots_snapshot};
 pub use wowhead_zones::{
     get_wowhead_zone_match, get_wowhead_zones_index, get_wowhead_zones_index_summary,
 };
@@ -115,6 +115,33 @@ pub enum SyncStatus {
 #[derive(Debug, Deserialize)]
 pub struct SyncQuery {
     pub force: Option<bool>,
+    #[serde(default)]
+    pub region: Option<String>,
+}
+
+fn normalize_blizzard_region(raw: &str) -> &'static str {
+    let normalized = raw.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "eu" => "eu",
+        "kr" => "kr",
+        "tw" => "tw",
+        _ => "us",
+    }
+}
+
+fn blizzard_api_host(region: &str) -> &'static str {
+    match region {
+        "eu" => "eu.api.blizzard.com",
+        "kr" => "kr.api.blizzard.com",
+        "tw" => "tw.api.blizzard.com",
+        _ => "us.api.blizzard.com",
+    }
+}
+
+fn has_validated_snapshot(data_dir: &Option<PathBuf>) -> bool {
+    data_dir
+        .as_deref()
+        .is_some_and(|root| validate_raidbots_snapshot(root).is_ok())
 }
 
 #[derive(Debug, Deserialize)]
@@ -936,7 +963,7 @@ mod tests {
         let state = test_sync_state();
         let resp = trigger_sync(
             TestRequest::default().to_http_request(),
-            web::Query(SyncQuery { force: None }),
+            web::Query(SyncQuery { force: None, region: None }),
             state.clone(),
             test_auth_state(),
             web::Data::new(Arc::new(BlizzardState::new())),
@@ -957,7 +984,7 @@ mod tests {
 
         let resp = trigger_dungeon_sync(
             TestRequest::default().to_http_request(),
-            web::Query(SyncQuery { force: None }),
+            web::Query(SyncQuery { force: None, region: None }),
             state.clone(),
             test_auth_state(),
             web::Data::new(Arc::new(BlizzardState::new())),
@@ -1610,7 +1637,7 @@ pub async fn download_data_file(
 ) -> HttpResponse {
     let _operation = state.operation_lock.lock().await;
     let key = path.into_inner();
-    let catalog = match data_file_catalog() {
+    let mut catalog = match data_file_catalog() {
         Ok(entries) => entries,
         Err(err) => {
             return HttpResponse::InternalServerError().json(json!({
@@ -1621,6 +1648,13 @@ pub async fn download_data_file(
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
+    let static_paths: std::collections::HashSet<String> =
+        catalog.iter().map(|entry| entry.local_path.clone()).collect();
+    catalog.extend(
+        catalog::metadata_derived_raidbots_entries(&root)
+            .into_iter()
+            .filter(|entry| !static_paths.contains(&entry.local_path)),
+    );
 
     let Some(entry) = catalog.iter().find(|e| e.key == key) else {
         return HttpResponse::NotFound().json(json!({"detail": "Unknown data file key"}));
@@ -1711,7 +1745,7 @@ pub async fn download_missing_data_files(
     state: web::Data<Arc<DataSyncState>>,
 ) -> HttpResponse {
     let _operation = state.operation_lock.lock().await;
-    let catalog = match data_file_catalog() {
+    let mut catalog = match data_file_catalog() {
         Ok(entries) => entries,
         Err(err) => {
             return HttpResponse::InternalServerError().json(json!({
@@ -1722,6 +1756,13 @@ pub async fn download_missing_data_files(
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
+    let static_paths: std::collections::HashSet<String> =
+        catalog.iter().map(|entry| entry.local_path.clone()).collect();
+    catalog.extend(
+        catalog::metadata_derived_raidbots_entries(&root)
+            .into_iter()
+            .filter(|entry| !static_paths.contains(&entry.local_path)),
+    );
 
     let missing_entries: Vec<_> = catalog
         .into_iter()
@@ -1829,6 +1870,7 @@ pub async fn get_sync_status(
 ) -> HttpResponse {
     let status = state.status.lock().await.clone();
     let progress = state.progress.lock().await.clone();
+    let degraded = progress.starts_with("Degraded:");
 
     let can_sync =
         get_available_blizzard_creds(auth_state.get_ref(), &***store, &***secrets).is_some();
@@ -1836,6 +1878,7 @@ pub async fn get_sync_status(
     HttpResponse::Ok().json(json!({
         "status": status,
         "progress": progress,
+        "degraded": degraded,
         "can_sync": can_sync,
     }))
 }
@@ -1867,7 +1910,9 @@ pub async fn trigger_sync(
     let state_clone = state.get_ref().clone();
     let blizzard_clone = blizzard.get_ref().clone();
     let data_dir_clone = data_dir.get_ref().clone();
+    let status_data_dir = data_dir_clone.clone();
     let force_refresh = query.force.unwrap_or(false);
+    let region = query.region.clone().unwrap_or_else(|| "us".to_string());
 
     tokio::spawn(async move {
         if let Err(e) = perform_sync(
@@ -1877,11 +1922,17 @@ pub async fn trigger_sync(
             client_secret,
             data_dir_clone,
             force_refresh,
+            region,
         )
         .await
         {
             let mut s = state_clone.status.lock().await;
-            *s = SyncStatus::Error(e);
+            if has_validated_snapshot(&status_data_dir) {
+                *state_clone.progress.lock().await = format!("Degraded:{e}");
+                *s = SyncStatus::Ready;
+            } else {
+                *s = SyncStatus::Error(e);
+            }
         } else {
             let mut s = state_clone.status.lock().await;
             *s = SyncStatus::Ready;
@@ -1918,7 +1969,9 @@ pub async fn trigger_dungeon_sync(
     let state_clone = state.get_ref().clone();
     let blizzard_clone = blizzard.get_ref().clone();
     let data_dir_clone = data_dir.get_ref().clone();
+    let status_data_dir = data_dir_clone.clone();
     let force_refresh = query.force.unwrap_or(false);
+    let region = query.region.clone().unwrap_or_else(|| "us".to_string());
 
     tokio::spawn(async move {
         if let Err(e) = perform_dungeon_sync(
@@ -1928,11 +1981,17 @@ pub async fn trigger_dungeon_sync(
             client_secret,
             data_dir_clone,
             force_refresh,
+            region,
         )
         .await
         {
             let mut s = state_clone.status.lock().await;
-            *s = SyncStatus::Error(e);
+            if has_validated_snapshot(&status_data_dir) {
+                *state_clone.progress.lock().await = format!("Degraded:{e}");
+                *s = SyncStatus::Ready;
+            } else {
+                *s = SyncStatus::Error(e);
+            }
         } else {
             let mut s = state_clone.status.lock().await;
             *s = SyncStatus::Ready;
@@ -1949,6 +2008,7 @@ async fn perform_sync(
     client_secret: String,
     data_dir: Option<PathBuf>,
     force_refresh: bool,
+    region: String,
 ) -> Result<(), String> {
     let _operation = state.operation_lock.lock().await;
     let request_timeout = Duration::from_secs(15);
@@ -2059,10 +2119,24 @@ async fn perform_sync(
     if !skip_raidbots {
         // Extract all file names ending in .json, .txt, or .lua
         let re = regex::Regex::new(r#""([^"]*\.(json|txt|lua))""#).unwrap();
-        let files: Vec<String> = re
+        let mut seen_files = std::collections::HashSet::new();
+        let mut files = Vec::new();
+        for file_name in re
             .captures_iter(&metadata_text)
             .filter_map(|cap| cap.get(1).map(|m| m.as_str().to_string()))
-            .collect();
+        {
+            let path = std::path::Path::new(&file_name);
+            if file_name.is_empty()
+                || !path.components().all(|component| {
+                    matches!(component, std::path::Component::Normal(_))
+                })
+            {
+                return Err(format!("Unsafe Raidbots metadata path: {file_name}"));
+            }
+            if seen_files.insert(file_name.clone()) {
+                files.push(file_name);
+            }
+        }
 
         let total_files = files.len();
         if let Some(dir) = &data_dir {
@@ -2124,6 +2198,7 @@ async fn perform_sync(
                 let mut p = state.progress.lock().await;
                 *p = "Applying staged Raidbots data...".to_string();
             }
+            validate_raidbots_snapshot(&staging_path)?;
             stage_raidbots_files(&staging_path, dir, &files, &metadata_text)?;
         }
     }
@@ -2154,7 +2229,12 @@ async fn perform_sync(
     }
 
     if !skip_blizzard {
-        let season_index_url = "https://us.api.blizzard.com/data/wow/mythic-keystone/season/index?namespace=dynamic-us&locale=en_US";
+        let region = normalize_blizzard_region(&region);
+        let host = blizzard_api_host(region);
+        let namespace = format!("dynamic-{region}");
+        let season_index_url = format!(
+            "https://{host}/data/wow/mythic-keystone/season/index?namespace={namespace}&locale=en_US"
+        );
         let token =
             BlizzardState::get_token_with_creds(&blizzard.client, &client_id, &client_secret)
                 .await
@@ -2179,7 +2259,9 @@ async fn perform_sync(
             *p = format!("Fetching details for Season {}...", current_season_id);
         }
 
-        let season_url = format!("https://us.api.blizzard.com/data/wow/mythic-keystone/season/{}?namespace=dynamic-us&locale=en_US", current_season_id);
+        let season_url = format!(
+            "https://{host}/data/wow/mythic-keystone/season/{current_season_id}?namespace={namespace}&locale=en_US"
+        );
         let res = blizzard
             .client
             .get(&season_url)
@@ -2188,6 +2270,39 @@ async fn perform_sync(
             .await
             .map_err(|e| e.to_string())?;
         let season_data: Value = res.json().await.map_err(|e| e.to_string())?;
+
+        let mut period_details = Vec::new();
+        if let Some(periods) = season_data.get("periods").and_then(Value::as_array) {
+            for period in periods.iter().take(8) {
+                let period_id = period
+                    .get("id")
+                    .and_then(Value::as_i64)
+                    .or_else(|| {
+                        period
+                            .get("key")
+                            .and_then(|key| key.get("href"))
+                            .and_then(Value::as_str)
+                            .and_then(|href| href.split("/period/").nth(1))
+                            .and_then(|tail| tail.split('?').next())
+                            .and_then(|id| id.parse::<i64>().ok())
+                    });
+                let Some(period_id) = period_id else { continue };
+                let period_url = format!(
+                    "https://{host}/data/wow/mythic-keystone/period/{period_id}?namespace={namespace}&locale=en_US"
+                );
+                if let Ok(response) = blizzard
+                    .client
+                    .get(period_url)
+                    .bearer_auth(&token)
+                    .send()
+                    .await
+                {
+                    if let Ok(detail) = response.json::<Value>().await {
+                        period_details.push(detail);
+                    }
+                }
+            }
+        }
 
         let mut rotation_dungeons = Vec::new();
         let mut dungeon_details: Vec<Value> = Vec::new();
@@ -2248,8 +2363,7 @@ async fn perform_sync(
                         }
                     } else {
                         format!(
-                            "https://us.api.blizzard.com/data/wow/mythic-keystone/dungeon/{}?namespace=dynamic-us&locale=en_US",
-                            dungeon_id
+                            "https://{host}/data/wow/mythic-keystone/dungeon/{dungeon_id}?namespace={namespace}&locale=en_US"
                         )
                     };
 
@@ -2423,13 +2537,34 @@ async fn perform_sync(
 
         if let Some(dir) = &data_dir {
             let runtime_file = dir.join("blizzard-runtime-data.json");
+            let previous = std::fs::read_to_string(&runtime_file)
+                .ok()
+                .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+                .unwrap_or_else(|| json!({}));
+            let previous_rotation = previous
+                .get("mplus_rotation")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let previous_last_sync = previous.get("last_sync").cloned();
+            let effective_rotation = if rotation_dungeons.is_empty() {
+                previous_rotation
+            } else {
+                rotation_dungeons.into_iter().map(Value::from).collect()
+            };
+            let last_sync = if effective_rotation.is_empty() && dungeon_details.is_empty() {
+                previous_last_sync.unwrap_or(Value::Null)
+            } else {
+                json!(chrono::Utc::now().to_rfc3339())
+            };
             let runtime_data = json!({
                 "current_season_id": current_season_id,
                 "season_name": season_name,
                 "season_api_data": season_data,
-                "mplus_rotation": rotation_dungeons,
+                "period_details": period_details,
+                "mplus_rotation": effective_rotation,
                 "dungeon_details": dungeon_details,
-                "last_sync": chrono::Utc::now().to_rfc3339(),
+                "last_sync": last_sync,
             });
             std::fs::write(
                 &runtime_file,
@@ -2467,6 +2602,7 @@ async fn perform_dungeon_sync(
     client_secret: String,
     data_dir: Option<PathBuf>,
     force_refresh: bool,
+    region: String,
 ) -> Result<(), String> {
     let _operation = state.operation_lock.lock().await;
     {
@@ -2498,7 +2634,12 @@ async fn perform_dungeon_sync(
     }
 
     if !skip_blizzard {
-        let season_index_url = "https://us.api.blizzard.com/data/wow/mythic-keystone/season/index?namespace=dynamic-us&locale=en_US";
+        let region = normalize_blizzard_region(&region);
+        let host = blizzard_api_host(region);
+        let namespace = format!("dynamic-{region}");
+        let season_index_url = format!(
+            "https://{host}/data/wow/mythic-keystone/season/index?namespace={namespace}&locale=en_US"
+        );
         let token =
             BlizzardState::get_token_with_creds(&blizzard.client, &client_id, &client_secret)
                 .await
@@ -2524,8 +2665,7 @@ async fn perform_dungeon_sync(
         }
 
         let season_url = format!(
-            "https://us.api.blizzard.com/data/wow/mythic-keystone/season/{}?namespace=dynamic-us&locale=en_US",
-            current_season_id
+            "https://{host}/data/wow/mythic-keystone/season/{current_season_id}?namespace={namespace}&locale=en_US"
         );
         let res = blizzard
             .client
@@ -2592,8 +2732,7 @@ async fn perform_dungeon_sync(
                         }
                     } else {
                         format!(
-                            "https://us.api.blizzard.com/data/wow/mythic-keystone/dungeon/{}?namespace=dynamic-us&locale=en_US",
-                            dungeon_id
+                            "https://{host}/data/wow/mythic-keystone/dungeon/{dungeon_id}?namespace={namespace}&locale=en_US"
                         )
                     };
 
@@ -2765,13 +2904,38 @@ async fn perform_dungeon_sync(
 
         if let Some(dir) = &data_dir {
             let runtime_file = dir.join("blizzard-runtime-data.json");
+            let previous = std::fs::read_to_string(&runtime_file)
+                .ok()
+                .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+                .unwrap_or_else(|| json!({}));
+            let previous_rotation = previous
+                .get("mplus_rotation")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let previous_last_sync = previous.get("last_sync").cloned();
+            let previous_period_details = previous
+                .get("period_details")
+                .cloned()
+                .unwrap_or_else(|| json!([]));
+            let effective_rotation = if rotation_dungeons.is_empty() {
+                previous_rotation
+            } else {
+                rotation_dungeons.into_iter().map(Value::from).collect()
+            };
+            let last_sync = if effective_rotation.is_empty() && dungeon_details.is_empty() {
+                previous_last_sync.unwrap_or(Value::Null)
+            } else {
+                json!(chrono::Utc::now().to_rfc3339())
+            };
             let runtime_data = json!({
                 "current_season_id": current_season_id,
                 "season_name": season_name,
                 "season_api_data": season_data,
-                "mplus_rotation": rotation_dungeons,
+                "period_details": previous_period_details,
+                "mplus_rotation": effective_rotation,
                 "dungeon_details": dungeon_details,
-                "last_sync": chrono::Utc::now().to_rfc3339(),
+                "last_sync": last_sync,
             });
             std::fs::write(
                 &runtime_file,

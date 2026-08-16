@@ -7,7 +7,7 @@ import ErrorAlert from '../components/ErrorAlert';
 import { useSimContext } from '../components/SimContext';
 import SimReturnNotice from '../components/shared/SimReturnNotice';
 import ToggleOptionCard from '../components/shared/ToggleOptionCard';
-import { API_URL, fetchJson } from '../lib/api';
+import { API_URL, fetchJson, getGameContext, type GameContext } from '../lib/api';
 import { slotFromInventoryType, slotLabelToSimSlot } from '../lib/gear-utils';
 import { TRACK_COLORS } from '../lib/loot-track';
 import { useSimSubmit } from '../lib/useSimSubmit';
@@ -43,6 +43,7 @@ import {
   getClassId,
   getClassSpecs,
   getSpecId,
+  type RuntimeClassInfo,
   getTrackInfo,
   itemMatchesActiveLootSpec,
   resolveUpgrade,
@@ -102,9 +103,25 @@ export default function DropFinderPage() {
     if (parsedCharacter?.kind !== 'character' || parsedCharacter.spec === 'unknown') return null;
     return parsedCharacter.spec.trim().toLowerCase().replace(/[\s-]+/g, '_');
   }, [simcInput, parsedCharacter]);
+  const [runtimeClasses, setRuntimeClasses] = useState<RuntimeClassInfo[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getGameContext()
+      .then((context: GameContext) => {
+        if (!cancelled) setRuntimeClasses((context.classes || []) as RuntimeClassInfo[]);
+      })
+      .catch(() => {
+        // Static class metadata remains available when the runtime snapshot is offline.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const allSpecs = useMemo(
-    () => (detectedClass ? getClassSpecs(detectedClass) : []),
-    [detectedClass]
+    () => (detectedClass ? getClassSpecs(detectedClass, runtimeClasses) : []),
+    [detectedClass, runtimeClasses]
   );
   const [activeSpecs, setActiveSpecs] = useState<Set<string>>(new Set());
 
@@ -112,23 +129,23 @@ export default function DropFinderPage() {
     () =>
       detectedClass
         ? [...activeSpecs]
-            .map((spec) => getSpecId(detectedClass, spec))
+            .map((spec) => getSpecId(detectedClass, spec, runtimeClasses))
             .filter((id): id is number => id != null)
         : [],
-    [detectedClass, activeSpecs]
+    [detectedClass, activeSpecs, runtimeClasses]
   );
   const classSpecIds = useMemo(
     () =>
       detectedClass
-        ? getClassSpecs(detectedClass)
-            .map((spec) => getSpecId(detectedClass, spec))
+        ? getClassSpecs(detectedClass, runtimeClasses)
+            .map((spec) => getSpecId(detectedClass, spec, runtimeClasses))
             .filter((id): id is number => id != null)
         : [],
-    [detectedClass]
+    [detectedClass, runtimeClasses]
   );
   const classId = useMemo(
-    () => (detectedClass ? getClassId(detectedClass) : null),
-    [detectedClass]
+    () => (detectedClass ? getClassId(detectedClass, runtimeClasses) : null),
+    [detectedClass, runtimeClasses]
   );
 
   function toggleSpec(spec: string) {
@@ -283,9 +300,14 @@ export default function DropFinderPage() {
   const activeInstances = isRaid ? raids : dungeonInstances;
   const hasImages = activeInstances.some((i) => i.id > 0 || !!i.image_url?.trim());
 
+  const dungeonPoolId = activeDungeonCat?.cat.poolInstanceId;
+  const hasDungeonPool =
+    dungeonPoolId != null && instances.some((instance) => instance.id === dungeonPoolId);
   const allKey = isRaid
-    ? 'type:raid'
-    : String(activeDungeonCat?.cat.poolInstanceId ?? 'type:dungeon');
+    ? encodeInstanceSelectionIds(raids.map((instance) => String(instance.id)))
+    : hasDungeonPool
+      ? String(dungeonPoolId)
+      : encodeInstanceSelectionIds(dungeonInstances.map((instance) => String(instance.id)));
 
   const selectedDungeonIds = useMemo(() => {
     if (!isDungeon) return new Set<string>();

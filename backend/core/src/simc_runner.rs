@@ -25,6 +25,8 @@ mod patterns {
 static RUNNING_PROCESSES: Lazy<Mutex<HashMap<String, u32>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static CANCELLED_JOBS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
+static JOB_CONTROLS: Lazy<Mutex<HashMap<String, Arc<SimulationControl>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 static SYSINFO: Lazy<Mutex<System>> = Lazy::new(|| Mutex::new(System::new_all()));
 static SIMC_ADMISSION: Lazy<Arc<Semaphore>> = Lazy::new(|| {
     let default_limit = std::thread::available_parallelism()
@@ -38,6 +40,286 @@ static SIMC_ADMISSION: Lazy<Arc<Semaphore>> = Lazy::new(|| {
         .unwrap_or(default_limit);
     Arc::new(Semaphore::new(limit))
 });
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobControlState {
+    Pending,
+    Running,
+    Paused,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InternalControlState {
+    Pending,
+    Running,
+    Paused,
+    Finished,
+    Cancelled,
+}
+
+struct ControlInner {
+    state: InternalControlState,
+    execution_started: bool,
+    paused_from: JobControlState,
+    pid: Option<u32>,
+    paused_at: Option<Instant>,
+    paused_duration: Duration,
+}
+
+struct SimulationControl {
+    inner: Mutex<ControlInner>,
+    notify: tokio::sync::Notify,
+}
+
+impl SimulationControl {
+    fn new(job_id: &str) -> Self {
+        let cancelled = CANCELLED_JOBS.lock().unwrap().contains(job_id);
+        Self {
+            inner: Mutex::new(ControlInner {
+                state: if cancelled {
+                    InternalControlState::Cancelled
+                } else {
+                    InternalControlState::Pending
+                },
+                execution_started: false,
+                paused_from: JobControlState::Pending,
+                pid: None,
+                paused_at: None,
+                paused_duration: Duration::ZERO,
+            }),
+            notify: tokio::sync::Notify::new(),
+        }
+    }
+
+    fn public_state(&self) -> Option<JobControlState> {
+        let inner = self.inner.lock().unwrap();
+        match inner.state {
+            InternalControlState::Pending => Some(JobControlState::Pending),
+            InternalControlState::Running => Some(JobControlState::Running),
+            InternalControlState::Paused => Some(JobControlState::Paused),
+            InternalControlState::Finished | InternalControlState::Cancelled => None,
+        }
+    }
+
+    fn is_paused(&self) -> bool {
+        self.inner.lock().unwrap().state == InternalControlState::Paused
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.inner.lock().unwrap().state == InternalControlState::Cancelled
+    }
+
+    fn paused_duration(&self) -> Duration {
+        let inner = self.inner.lock().unwrap();
+        inner.paused_duration
+            + inner
+                .paused_at
+                .map(|started| started.elapsed())
+                .unwrap_or(Duration::ZERO)
+    }
+
+    fn start_execution(&self) -> bool {
+        let mut inner = self.inner.lock().unwrap();
+        match inner.state {
+            InternalControlState::Pending => {
+                inner.execution_started = true;
+                inner.state = InternalControlState::Running;
+                true
+            }
+            InternalControlState::Running => true,
+            InternalControlState::Paused
+            | InternalControlState::Finished
+            | InternalControlState::Cancelled => false,
+        }
+    }
+
+    fn pause(&self) -> std::result::Result<(), String> {
+        let mut inner = self.inner.lock().unwrap();
+        let previous = match inner.state {
+            InternalControlState::Pending | InternalControlState::Running => {
+                let previous = if inner.execution_started {
+                    JobControlState::Running
+                } else {
+                    JobControlState::Pending
+                };
+                inner.paused_from = previous;
+                inner.state = InternalControlState::Paused;
+                inner.paused_at = Some(Instant::now());
+                previous
+            }
+            InternalControlState::Paused => return Err("Job is already paused".to_string()),
+            InternalControlState::Finished => return Err("Job is no longer running".to_string()),
+            InternalControlState::Cancelled => return Err("Job has been cancelled".to_string()),
+        };
+
+        if let Some(pid) = inner.pid {
+            if let Err(error) = suspend_process(pid) {
+                inner.state = match previous {
+                    JobControlState::Pending => InternalControlState::Pending,
+                    JobControlState::Running => InternalControlState::Running,
+                    JobControlState::Paused => InternalControlState::Paused,
+                };
+                inner.paused_at = None;
+                return Err(error);
+            }
+        }
+        drop(inner);
+        self.notify.notify_waiters();
+        Ok(())
+    }
+
+    fn resume(&self) -> std::result::Result<JobControlState, String> {
+        let mut inner = self.inner.lock().unwrap();
+        if inner.state != InternalControlState::Paused {
+            return Err("Job is not paused".to_string());
+        }
+        let target = inner.paused_from;
+
+        if let Some(pid) = inner.pid {
+            if let Err(error) = resume_process(pid) {
+                return Err(error);
+            }
+        }
+
+        if let Some(started) = inner.paused_at.take() {
+            inner.paused_duration += started.elapsed();
+        }
+        inner.state = match target {
+            JobControlState::Pending => InternalControlState::Pending,
+            JobControlState::Running => InternalControlState::Running,
+            JobControlState::Paused => InternalControlState::Paused,
+        };
+        drop(inner);
+        self.notify.notify_waiters();
+        Ok(target)
+    }
+
+    fn attach_process(&self, pid: u32) -> ProcessAttachAction {
+        let mut inner = self.inner.lock().unwrap();
+        inner.pid = Some(pid);
+        match inner.state {
+            InternalControlState::Paused => ProcessAttachAction::Suspend,
+            InternalControlState::Cancelled => ProcessAttachAction::Cancel,
+            InternalControlState::Pending | InternalControlState::Running => {
+                inner.state = InternalControlState::Running;
+                ProcessAttachAction::Continue
+            }
+            InternalControlState::Finished => ProcessAttachAction::Cancel,
+        }
+    }
+
+    fn detach_process(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.pid = None;
+        if inner.state == InternalControlState::Running {
+            inner.state = InternalControlState::Pending;
+        }
+    }
+
+    fn cancel(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.state = InternalControlState::Cancelled;
+        self.notify.notify_waiters();
+    }
+
+    fn finish(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.state = InternalControlState::Finished;
+        inner.pid = None;
+        self.notify.notify_waiters();
+    }
+
+    async fn wait_until_runnable(&self) -> std::result::Result<(), String> {
+        loop {
+            let notified = self.notify.notified();
+            let state = self.inner.lock().unwrap().state;
+            match state {
+                InternalControlState::Pending | InternalControlState::Running => return Ok(()),
+                InternalControlState::Paused => notified.await,
+                InternalControlState::Cancelled => return Err("Job cancelled".to_string()),
+                InternalControlState::Finished => {
+                    return Err("Job is no longer running".to_string())
+                }
+            }
+        }
+    }
+}
+
+enum ProcessAttachAction {
+    Continue,
+    Suspend,
+    Cancel,
+}
+
+struct JobControlGuard {
+    job_id: String,
+}
+
+impl Drop for JobControlGuard {
+    fn drop(&mut self) {
+        cleanup_job_control(&self.job_id);
+    }
+}
+
+fn get_or_register_job_control(job_id: &str) -> Arc<SimulationControl> {
+    let mut controls = JOB_CONTROLS.lock().unwrap();
+    controls
+        .entry(job_id.to_string())
+        .or_insert_with(|| Arc::new(SimulationControl::new(job_id)))
+        .clone()
+}
+
+pub fn register_job_control(job_id: &str) {
+    let _ = get_or_register_job_control(job_id);
+}
+
+pub fn control_status(job_id: &str) -> Option<JobControlState> {
+    JOB_CONTROLS
+        .lock()
+        .unwrap()
+        .get(job_id)
+        .and_then(|control| control.public_state())
+}
+
+pub fn start_job_control(job_id: &str) -> bool {
+    get_or_register_job_control(job_id).start_execution()
+}
+
+pub async fn wait_until_resumed(job_id: &str) -> std::result::Result<(), String> {
+    let control = JOB_CONTROLS
+        .lock()
+        .unwrap()
+        .get(job_id)
+        .cloned()
+        .ok_or_else(|| "Job control is unavailable".to_string())?;
+    control.wait_until_runnable().await
+}
+
+pub fn pause_job(job_id: &str) -> std::result::Result<(), String> {
+    JOB_CONTROLS
+        .lock()
+        .unwrap()
+        .get(job_id)
+        .cloned()
+        .ok_or_else(|| "Job control is unavailable".to_string())?
+        .pause()
+}
+
+pub fn resume_job(job_id: &str) -> std::result::Result<JobControlState, String> {
+    JOB_CONTROLS
+        .lock()
+        .unwrap()
+        .get(job_id)
+        .cloned()
+        .ok_or_else(|| "Job control is unavailable".to_string())?
+        .resume()
+}
+
+pub fn cleanup_job_control(job_id: &str) {
+    if let Some(control) = JOB_CONTROLS.lock().unwrap().remove(job_id) {
+        control.finish();
+    }
+}
 
 struct CancellationGuard<'a> {
     job_id: &'a str,
@@ -73,6 +355,9 @@ pub fn cleanup_cancelled_job(job_id: &str) {
 
 pub fn kill_job(job_id: &str) -> bool {
     CANCELLED_JOBS.lock().unwrap().insert(job_id.to_string());
+    if let Some(control) = JOB_CONTROLS.lock().unwrap().get(job_id).cloned() {
+        control.cancel();
+    }
     if let Some(pid_u32) = RUNNING_PROCESSES.lock().unwrap().remove(job_id) {
         let mut sys = SYSINFO.lock().unwrap();
         let pid = Pid::from_u32(pid_u32);
@@ -106,10 +391,91 @@ pub fn kill_job(job_id: &str) -> bool {
 }
 
 #[cfg(windows)]
+#[link(name = "kernel32")]
 extern "system" {
     fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
     fn SetProcessAffinityMask(h: *mut std::ffi::c_void, mask: usize) -> i32;
     fn CloseHandle(h: *mut std::ffi::c_void) -> i32;
+}
+
+#[cfg(windows)]
+#[link(name = "ntdll")]
+extern "system" {
+    fn NtSuspendProcess(h: *mut std::ffi::c_void) -> i32;
+    fn NtResumeProcess(h: *mut std::ffi::c_void) -> i32;
+}
+
+#[cfg(windows)]
+fn suspend_process(pid: u32) -> std::result::Result<(), String> {
+    const PROCESS_SUSPEND_RESUME: u32 = 0x0800;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    unsafe {
+        let handle = OpenProcess(
+            PROCESS_SUSPEND_RESUME | PROCESS_QUERY_LIMITED_INFORMATION,
+            0,
+            pid,
+        );
+        if handle.is_null() {
+            return Err(format!("Unable to open SimC process {pid} for pause"));
+        }
+        let status = NtSuspendProcess(handle);
+        CloseHandle(handle);
+        if status < 0 {
+            Err(format!(
+                "Unable to pause SimC process {pid} (status {status})"
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(windows)]
+fn resume_process(pid: u32) -> std::result::Result<(), String> {
+    const PROCESS_SUSPEND_RESUME: u32 = 0x0800;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    unsafe {
+        let handle = OpenProcess(
+            PROCESS_SUSPEND_RESUME | PROCESS_QUERY_LIMITED_INFORMATION,
+            0,
+            pid,
+        );
+        if handle.is_null() {
+            return Err(format!("Unable to open SimC process {pid} for resume"));
+        }
+        let status = NtResumeProcess(handle);
+        CloseHandle(handle);
+        if status < 0 {
+            Err(format!(
+                "Unable to resume SimC process {pid} (status {status})"
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(unix)]
+fn signal_process(pid: u32, signal: &str, action: &str) -> std::result::Result<(), String> {
+    let status = std::process::Command::new("kill")
+        .args([signal, &pid.to_string()])
+        .status()
+        .map_err(|error| format!("Unable to {action} SimC process {pid}: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("Unable to {action} SimC process {pid}"))
+    }
+}
+
+#[cfg(unix)]
+fn suspend_process(pid: u32) -> std::result::Result<(), String> {
+    signal_process(pid, "-STOP", "pause")
+}
+
+#[cfg(unix)]
+fn resume_process(pid: u32) -> std::result::Result<(), String> {
+    signal_process(pid, "-CONT", "resume")
 }
 
 #[cfg(windows)]
@@ -362,6 +728,34 @@ async fn run_simc_subprocess(
     on_p: impl Fn(usize, usize),
     on_l: impl Fn(&str),
 ) -> Result<SimcOutput> {
+    let control = get_or_register_job_control(job_id);
+    loop {
+        control
+            .wait_until_runnable()
+            .await
+            .map_err(AppError::SimcError)?;
+        if control.start_execution() {
+            break;
+        }
+    }
+
+    let _admission = loop {
+        control
+            .wait_until_runnable()
+            .await
+            .map_err(AppError::SimcError)?;
+        let permit = acquire_simc_slot().await?;
+        if control.is_paused() {
+            drop(permit);
+            continue;
+        }
+        if control.is_cancelled() {
+            drop(permit);
+            return Err(AppError::SimcError("Job cancelled".into()));
+        }
+        break permit;
+    };
+
     let suffix = if stage_name.is_empty() {
         String::new()
     } else {
@@ -421,10 +815,22 @@ async fn run_simc_subprocess(
             .lock()
             .unwrap()
             .insert(job_id.to_string(), pid);
-        if CANCELLED_JOBS.lock().unwrap().contains(job_id) {
-            let _ = child.kill().await;
-            RUNNING_PROCESSES.lock().unwrap().remove(job_id);
-            return Err(AppError::SimcError("Job cancelled".into()));
+        match control.attach_process(pid) {
+            ProcessAttachAction::Continue => {}
+            ProcessAttachAction::Suspend => {
+                if let Err(error) = suspend_process(pid) {
+                    let _ = child.kill().await;
+                    RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+                    control.detach_process();
+                    return Err(AppError::SimcError(error));
+                }
+            }
+            ProcessAttachAction::Cancel => {
+                let _ = child.kill().await;
+                RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+                control.detach_process();
+                return Err(AppError::SimcError("Job cancelled".into()));
+            }
         }
         #[cfg(windows)]
         set_process_affinity(pid, threads);
@@ -439,16 +845,43 @@ async fn run_simc_subprocess(
 
     let mut out_collected = Vec::new();
     let mut err_collected = Vec::new();
-    let total_deadline = Instant::now() + Duration::from_secs(SIMC_TOTAL_TIMEOUT_SECS);
+    let pause_baseline = control.paused_duration();
+    let active_started = Instant::now();
 
     loop {
-        match tokio::time::timeout(
-            timeout_for_next_output(Instant::now(), total_deadline),
-            rx.recv(),
-        )
-        .await
-        {
-            Ok(Some((is_err, line))) => {
+        if control.is_paused() {
+            if let Err(error) = control.wait_until_runnable().await {
+                let _ = child.kill().await;
+                RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+                control.detach_process();
+                return Err(AppError::SimcError(error));
+            }
+        }
+        if control.is_cancelled() {
+            let _ = child.kill().await;
+            RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+            control.detach_process();
+            return Err(AppError::SimcError("Job cancelled".into()));
+        }
+
+        let paused_since_start = control.paused_duration().saturating_sub(pause_baseline);
+        let active_elapsed = active_started.elapsed().saturating_sub(paused_since_start);
+        let total_remaining =
+            Duration::from_secs(SIMC_TOTAL_TIMEOUT_SECS).saturating_sub(active_elapsed);
+        let now = Instant::now();
+        let timeout = timeout_for_next_output(now, now + total_remaining);
+        let notified = control.notify.notified();
+        tokio::pin!(notified);
+        notified.as_mut().enable();
+        if control.is_paused() || control.is_cancelled() {
+            continue;
+        }
+        let sleep = tokio::time::sleep(timeout);
+        tokio::pin!(sleep);
+
+        tokio::select! {
+            maybe_line = rx.recv() => match maybe_line {
+            Some((is_err, line)) => {
                 on_l(&line);
                 if let Some(caps) = patterns::PROGRESS_RE.captures(&line) {
                     if let (Ok(curr), Ok(total)) =
@@ -465,11 +898,22 @@ async fn run_simc_subprocess(
                     out_collected.push(line);
                 }
             }
-            Ok(None) => break,
-            Err(_) => {
+            None => break,
+            },
+            _ = &mut notified => {
+                if control.is_cancelled() {
+                    let _ = child.kill().await;
+                    RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+                    control.detach_process();
+                    return Err(AppError::SimcError("Job cancelled".into()));
+                }
+                continue;
+            }
+            _ = &mut sleep => {
                 let _ = child.kill().await;
                 RUNNING_PROCESSES.lock().unwrap().remove(job_id);
-                let timeout_kind = if Instant::now() >= total_deadline {
+                control.detach_process();
+                let timeout_kind = if total_remaining <= Duration::from_secs(SIMC_IDLE_TIMEOUT_SECS) {
                     "total"
                 } else {
                     "idle-output"
@@ -486,10 +930,12 @@ async fn run_simc_subprocess(
         Ok(status) => status,
         Err(error) => {
             RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+            control.detach_process();
             return Err(AppError::IoError(error));
         }
     };
     RUNNING_PROCESSES.lock().unwrap().remove(job_id);
+    control.detach_process();
 
     if !status.success() {
         let msg = if !err_collected.is_empty() {
@@ -604,7 +1050,9 @@ pub async fn run_simc(
     on_p: impl Fn(usize, usize),
     on_l: impl Fn(&str),
 ) -> Result<SimcOutput> {
-    let _admission = acquire_simc_slot().await?;
+    let _control_guard = JobControlGuard {
+        job_id: job_id.to_string(),
+    };
     let _cancellation = CancellationGuard::new(job_id);
     let f = options
         .get("fight_style")
@@ -704,7 +1152,9 @@ pub async fn run_simc_staged(
     on_sc: impl Fn(&str),
     on_l: impl Fn(&str) + Clone,
 ) -> Result<SimcOutput> {
-    let _admission = acquire_simc_slot().await?;
+    let _control_guard = JobControlGuard {
+        job_id: job_id.to_string(),
+    };
     let _cancellation = CancellationGuard::new(job_id);
     let f = options
         .get("fight_style")
@@ -852,6 +1302,97 @@ mod tests {
     use serde_json::json;
     use std::path::{Path, PathBuf};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn job_control_pauses_and_resumes_pending_and_running_jobs() {
+        let pending_id = "control-pending-test";
+        cleanup_job_control(pending_id);
+        cleanup_cancelled_job(pending_id);
+        register_job_control(pending_id);
+        assert_eq!(control_status(pending_id), Some(JobControlState::Pending));
+
+        pause_job(pending_id).expect("pending job should pause");
+        assert_eq!(control_status(pending_id), Some(JobControlState::Paused));
+        assert_eq!(
+            resume_job(pending_id).expect("pending job should resume"),
+            JobControlState::Pending
+        );
+        cleanup_job_control(pending_id);
+
+        let running_id = "control-running-test";
+        cleanup_job_control(running_id);
+        cleanup_cancelled_job(running_id);
+        register_job_control(running_id);
+        assert!(start_job_control(running_id));
+        pause_job(running_id).expect("running job should pause");
+        assert_eq!(
+            resume_job(running_id).expect("running job should resume"),
+            JobControlState::Running
+        );
+        cleanup_job_control(running_id);
+    }
+
+    #[tokio::test]
+    async fn paused_subprocess_keeps_the_same_process_until_resumed() {
+        let job_id = "control-subprocess-test";
+        cleanup_job_control(job_id);
+        cleanup_cancelled_job(job_id);
+        register_job_control(job_id);
+        assert!(start_job_control(job_id));
+
+        let script = fake_simc_script("control-subprocess", "pause");
+        let task = tokio::spawn(async move {
+            run_simc_subprocess(
+                &script,
+                job_id,
+                "warrior=\"Tester\"\n",
+                "Patchwerk",
+                0.2,
+                100,
+                1,
+                1,
+                300,
+                false,
+                None,
+                true,
+                true,
+                "",
+                false,
+                |_, _| {},
+                |_| {},
+            )
+            .await
+        });
+
+        let pid = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                if let Some(pid) = RUNNING_PROCESSES.lock().unwrap().get(job_id).copied() {
+                    break pid;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .expect("fake SimC process should start");
+
+        pause_job(job_id).expect("running subprocess should pause");
+        assert_eq!(control_status(job_id), Some(JobControlState::Paused));
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        assert_eq!(
+            RUNNING_PROCESSES.lock().unwrap().get(job_id).copied(),
+            Some(pid)
+        );
+
+        assert_eq!(
+            resume_job(job_id).expect("paused subprocess should resume"),
+            JobControlState::Running
+        );
+        task.await
+            .expect("subprocess task should join")
+            .expect("fake SimC should finish after resume");
+        assert!(!RUNNING_PROCESSES.lock().unwrap().contains_key(job_id));
+        cleanup_job_control(job_id);
+    }
 
     #[test]
     fn should_apply_default_overrides_follows_sim_type_and_customization() {
@@ -1551,6 +2092,19 @@ fight_style=Patchwerk
                 exit 0
                 "#
                 }
+                "pause" => {
+                    r#"#!/usr/bin/env bash
+                for arg in "$@"; do
+                  case "$arg" in
+                    json2=*) out="${arg#json2=}" ;;
+                  esac
+                done
+                echo "1/2"
+                sleep 2
+                echo '{"ok":true}' > "$out"
+                exit 0
+                "#
+                }
                 other => panic!("unknown fake simc mode: {other}"),
             };
 
@@ -1653,6 +2207,22 @@ fight_style=Patchwerk
                 goto loop
                 :done
                 echo {"sim":{"profilesets":{"results":[{"name":"Combo 1","mean":100.0}]}}}>"%out%"
+                exit /b 0
+                "#
+                }
+                "pause" => {
+                    r#"@echo off
+                set "out="
+                :loop
+                if "%~1"=="" goto wait
+                set "arg=%~1"
+                if "%arg:~0,6%"=="json2=" set "out=%arg:~6%"
+                shift
+                goto loop
+                :wait
+                echo 1/2
+                timeout /t 2 /nobreak >nul
+                echo {"ok":true}>"%out%"
                 exit /b 0
                 "#
                 }

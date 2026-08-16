@@ -673,6 +673,14 @@ pub async fn start_with_storage_bind(
                     "/api/sim/{id}/cancel",
                     web::post().to(job_handlers::cancel_sim),
                 )
+                .route(
+                    "/api/sim/{id}/pause",
+                    web::post().to(job_handlers::pause_sim),
+                )
+                .route(
+                    "/api/sim/{id}/resume",
+                    web::post().to(job_handlers::resume_sim),
+                )
                 .route("/api/sim/{id}/link", web::post().to(job_handlers::link_sim))
                 .route("/api/sim/{id}/pin", web::post().to(job_handlers::pin_sim))
                 .route(
@@ -809,6 +817,10 @@ pub async fn start_with_storage_bind(
                 .route(
                     "/api/season-config",
                     web::get().to(game_data_handlers::get_season_config),
+                )
+                .route(
+                    "/api/game-context",
+                    web::get().to(game_data_handlers::get_game_context),
                 )
                 // Saved dungeon routes
                 .route("/api/routes", web::post().to(route_handlers::save_route))

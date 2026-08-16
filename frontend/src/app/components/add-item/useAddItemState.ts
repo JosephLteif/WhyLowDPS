@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { API_URL, fetchJson } from '../../lib/api';
+import { API_URL, fetchJson, getGameContext, type GameContext } from '../../lib/api';
 import type { SeasonConfigResponse } from '../../lib/types';
 
 export interface ExternalItem {
@@ -149,6 +149,7 @@ export function useAddItemState(
   const [globalSearch, setGlobalSearch] = useState('');
   const [localSearch, setLocalSearch] = useState('');
   const [seasonConfig, setSeasonConfig] = useState<SeasonConfigResponse | null>(null);
+  const [gameContext, setGameContext] = useState<GameContext | null>(null);
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('heroic');
   const [filterSlot, setFilterSlot] = useState<string | null>(null);
   const [category, setCategory] = useState<AddItemCategory>('raid');
@@ -188,22 +189,34 @@ export function useAddItemState(
     if (!isOpen) return;
     const fetchInitial = async () => {
       try {
-        const [instData, seasonData, tracksData, missiveData] = await Promise.all([
+        const [instData, seasonData, tracksData, missiveData, contextData] = await Promise.all([
           fetchJson<any[]>(`${API_URL}/api/instances`),
           fetchJson<any>(`${API_URL}/api/season-config`),
           fetchJson<any>(`${API_URL}/api/upgrade-tracks`),
           fetchJson<any[]>(`${API_URL}/api/data/missives`),
+          getGameContext().catch(() => null),
         ]);
         setInstances(instData);
         setSeasonConfig(seasonData);
         setUpgradeTracks(normalizeUpgradeTracks(tracksData));
         setMissives(missiveData);
+        setGameContext(contextData);
 
         if (instData.length > 0 && !selectedInstance) {
+          const activeRaidPool = contextData?.pools?.raids;
+          const activeRaidIds = new Set(
+            instData
+              .find((instance: any) => instance.id === activeRaidPool)
+              ?.encounters?.map((encounter: any) => encounter.id) ?? [],
+          );
           const firstRaid = instData.find((i: any) => {
             const type = String(i.type || '').toLowerCase();
             const name = String(i.name || '').toLowerCase();
-            return type === 'raid' && !name.includes('world boss');
+            return (
+              type === 'raid' &&
+              !name.includes('world boss') &&
+              (activeRaidIds.size === 0 || activeRaidIds.has(i.id))
+            );
           });
           if (firstRaid) setSelectedInstance(firstRaid.id);
           else setSelectedInstance(instData[0].id);
@@ -214,6 +227,17 @@ export function useAddItemState(
     };
     fetchInitial();
   }, [isOpen, selectedInstance]);
+
+  const fetchPoolDrops = useCallback(
+    async (poolIds: Array<number | undefined>) => {
+      const ids = poolIds.filter((id): id is number => Number.isFinite(id));
+      if (ids.length === 0) return {};
+      return fetchJson<Record<string, ExternalItem[]>>(
+        `${API_URL}/api/instances/drops?ids=${encodeURIComponent(ids.join(','))}&${buildQueryString()}`
+      );
+    },
+    [buildQueryString]
+  );
 
   useEffect(() => {
     if (!isOpen || selectedInstance === null) return;
@@ -229,19 +253,12 @@ export function useAddItemState(
             `${API_URL}/api/instances/type/profession/drops?${queryString}`
           );
         } else if (category === 'delves') {
-          const [delveRes, preyRes] = await Promise.all([
-            fetchJson<Record<string, ExternalItem[]>>(
-              `${API_URL}/api/instances/type/delve-mid1/drops?${queryString}`
-            ),
-            fetchJson<Record<string, ExternalItem[]>>(
-              `${API_URL}/api/instances/type/prey-mid1/drops?${queryString}`
-            ),
+          data = await fetchPoolDrops([
+            gameContext?.pools?.delves,
+            gameContext?.pools?.prey,
           ]);
-          data = mergeDropMaps(delveRes, preyRes);
         } else if (category === 'tier') {
-          data = await fetchJson<Record<string, ExternalItem[]>>(
-            `${API_URL}/api/instances/type/catalyst/drops?${queryString}`
-          );
+          data = await fetchPoolDrops([gameContext?.pools?.catalyst]);
         } else if (selectedInstance === 0) {
           const [raidRes, dungRes] = await Promise.all([
             fetchJson<Record<string, ExternalItem[]>>(
@@ -270,7 +287,7 @@ export function useAddItemState(
       // The next category/source request owns the UI now; ignore late responses.
       cancelled = true;
     };
-  }, [isOpen, selectedInstance, category, buildQueryString]);
+  }, [isOpen, selectedInstance, category, buildQueryString, fetchPoolDrops, gameContext]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -286,27 +303,40 @@ export function useAddItemState(
             `${API_URL}/api/instances/type/profession/drops?${queryString}`
           );
         } else if (category === 'delves') {
-          const [delveData, preyData] = await Promise.all([
-            fetchJson<Record<string, ExternalItem[]>>(
-              `${API_URL}/api/instances/type/delve-mid1/drops?${queryString}`
-            ),
-            fetchJson<Record<string, ExternalItem[]>>(
-              `${API_URL}/api/instances/type/prey-mid1/drops?${queryString}`
-            ),
+          data = await fetchPoolDrops([
+            gameContext?.pools?.delves,
+            gameContext?.pools?.prey,
           ]);
-          data = mergeDropMaps(delveData, preyData);
         } else if (category === 'tier') {
-          data = await fetchJson<Record<string, ExternalItem[]>>(
-            `${API_URL}/api/instances/type/catalyst/drops?${queryString}`
-          );
+          data = await fetchPoolDrops([gameContext?.pools?.catalyst]);
         } else if (category === 'raid' || category === 'dungeon' || category === 'pvp' || category === 'world_bosses') {
+          const poolIds =
+            category === 'raid'
+              ? [gameContext?.pools?.raids]
+              : category === 'dungeon'
+                ? [gameContext?.pools?.mplus, gameContext?.pools?.normal_dungeons]
+                : [];
+          const poolInstanceIds = new Set(
+            poolIds
+              .flatMap((poolId) => instances.find((instance) => instance.id === poolId)?.encounters ?? [])
+              .map((encounter: any) => encounter.id),
+          );
           const ids = instances
             .filter((inst) => {
               const type = String(inst.type || '').toLowerCase();
               const name = String(inst.name || '').toLowerCase();
-              if (category === 'raid') return type === 'raid' && !name.includes('world boss');
+              if (category === 'raid') {
+                return (
+                  type === 'raid' &&
+                  !name.includes('world boss') &&
+                  (poolInstanceIds.size === 0 || poolInstanceIds.has(inst.id))
+                );
+              }
               if (category === 'dungeon') {
-                return type === 'dungeon' || type === 'expansion-dungeon' || type === 'mplus-chest';
+                return (
+                  (type === 'dungeon' || type === 'expansion-dungeon' || type === 'mplus-chest') &&
+                  (poolInstanceIds.size === 0 || poolInstanceIds.has(inst.id))
+                );
               }
               if (category === 'pvp') return type.includes('pvp');
               if (category === 'world_bosses') {
@@ -336,7 +366,7 @@ export function useAddItemState(
     return () => {
       cancelled = true;
     };
-  }, [isOpen, category, instances, buildQueryString]);
+  }, [isOpen, category, instances, buildQueryString, fetchPoolDrops, gameContext]);
 
   return {
     instances,
@@ -353,6 +383,7 @@ export function useAddItemState(
     setLocalSearch,
     seasonConfig,
     setSeasonConfig,
+    gameContext,
     selectedDifficulty,
     setSelectedDifficulty,
     filterSlot,

@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub enum JobStatus {
     Pending,
     Running,
+    Paused,
     Done,
     Failed,
     Cancelled,
@@ -166,19 +167,26 @@ pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) ->
 
     // If player_name not in result yet, extract from simc input
     if summary.player_name.is_none() {
-        // Match line like: deathknight="Name" OR player="Name" OR name="Name" OR armory=us,realm,Name
-        let re = Regex::new(
-            r#"(?i)^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name)\s*=\s*"?([^"\s,]+)"?"#
-        ).unwrap();
+        // Match any SimC profile declaration so newly added classes do not
+        // require a parser release. Reserved scalar settings are ignored.
+        let re = Regex::new(r#"(?i)^([a-z_][a-z0-9_]*)\s*=\s*"([^"]+)""#).unwrap();
+        let name_re = Regex::new(r#"(?i)^(?:name|player)\s*=\s*([^\s]+)"#).unwrap();
         let armory_re = Regex::new(r#"(?i)^armory=[^,]+,[^,]+,([^,\s]+)"#).unwrap();
 
         for line in simc_input.lines() {
             let trimmed = line.trim();
             if let Some(caps) = re.captures(trimmed) {
+                let key = caps[1].to_ascii_lowercase();
+                if !matches!(key.as_str(), "server" | "region" | "spec" | "talents" | "race") {
+                    summary.player_name = Some(caps[2].to_string());
+                    break;
+                }
+            }
+            if let Some(caps) = armory_re.captures(trimmed) {
                 summary.player_name = Some(caps[1].to_string());
                 break;
             }
-            if let Some(caps) = armory_re.captures(trimmed) {
+            if let Some(caps) = name_re.captures(trimmed) {
                 summary.player_name = Some(caps[1].to_string());
                 break;
             }
@@ -367,6 +375,10 @@ mod tests {
             "\"running\""
         );
         assert_eq!(
+            serde_json::to_string(&JobStatus::Paused).expect("serialize paused"),
+            "\"paused\""
+        );
+        assert_eq!(
             serde_json::to_string(&JobStatus::Done).expect("serialize done"),
             "\"done\""
         );
@@ -386,6 +398,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<JobStatus>("\"running\"").expect("deserialize running"),
             JobStatus::Running
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"paused\"").expect("deserialize paused"),
+            JobStatus::Paused
         );
         assert_eq!(
             serde_json::from_str::<JobStatus>("\"done\"").expect("deserialize done"),

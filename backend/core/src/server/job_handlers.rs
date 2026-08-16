@@ -92,6 +92,7 @@ pub(super) async fn get_sim_status(
     let status_str = match job.status {
         JobStatus::Pending => "pending",
         JobStatus::Running => "running",
+        JobStatus::Paused => "paused",
         JobStatus::Done => "done",
         JobStatus::Failed => "failed",
         JobStatus::Cancelled => "cancelled",
@@ -151,6 +152,8 @@ pub(super) async fn get_sim_status(
         }
     }
 
+    let control_available = simc_runner::control_status(&job_id).is_some();
+
     HttpResponse::Ok().json(json!({
         "id": job.id,
         "status": status_str,
@@ -172,10 +175,83 @@ pub(super) async fn get_sim_status(
         "cpu_pct": cpu_pct,
         "mem_bytes": mem_bytes,
         "cpu_cores": cpu_cores,
+        "pause_available": control_available && matches!(job.status, JobStatus::Pending | JobStatus::Running),
+        "resume_available": control_available && job.status == JobStatus::Paused,
         "linked_region": job.linked_region,
         "linked_realm": job.linked_realm,
         "linked_name": job.linked_name,
     }))
+}
+
+pub(super) async fn pause_sim(
+    path: web::Path<String>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let job_id = path.into_inner();
+    let Some(job) = store.get(&job_id) else {
+        return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
+    };
+    if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
+        return HttpResponse::BadRequest().json(json!({"detail": "Job is not running"}));
+    }
+    if simc_runner::control_status(&job_id).is_none() {
+        return HttpResponse::Conflict().json(json!({
+            "detail": "This simulation is no longer available for pause/resume control."
+        }));
+    }
+
+    if let Err(error) = simc_runner::pause_job(&job_id) {
+        return HttpResponse::Conflict().json(json!({"detail": error}));
+    }
+    if !store.transition_status(&job_id, job.status, JobStatus::Paused) {
+        let _ = simc_runner::resume_job(&job_id);
+        return HttpResponse::Conflict().json(json!({
+            "detail": "The simulation changed state before it could be paused."
+        }));
+    }
+
+    HttpResponse::Ok().json(json!({"status": "paused"}))
+}
+
+pub(super) async fn resume_sim(
+    path: web::Path<String>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let job_id = path.into_inner();
+    let Some(job) = store.get(&job_id) else {
+        return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
+    };
+    if job.status != JobStatus::Paused {
+        return HttpResponse::BadRequest().json(json!({"detail": "Job is not paused"}));
+    }
+    if simc_runner::control_status(&job_id).is_none() {
+        return HttpResponse::Conflict().json(json!({
+            "detail": "This paused simulation cannot be resumed after the backend restarted."
+        }));
+    }
+
+    let target = match simc_runner::resume_job(&job_id) {
+        Ok(target) => target,
+        Err(error) => return HttpResponse::Conflict().json(json!({"detail": error})),
+    };
+    let target_status = match target {
+        simc_runner::JobControlState::Pending => JobStatus::Pending,
+        simc_runner::JobControlState::Running => JobStatus::Running,
+        simc_runner::JobControlState::Paused => JobStatus::Paused,
+    };
+    if !store.transition_status(&job_id, JobStatus::Paused, target_status.clone()) {
+        let _ = simc_runner::pause_job(&job_id);
+        return HttpResponse::Conflict().json(json!({
+            "detail": "The simulation changed state before it could be resumed."
+        }));
+    }
+
+    let status = match target_status {
+        JobStatus::Pending => "pending",
+        JobStatus::Running => "running",
+        _ => "paused",
+    };
+    HttpResponse::Ok().json(json!({"status": status}))
 }
 
 pub(super) async fn get_sim_logs(
@@ -202,9 +278,12 @@ pub(super) async fn cancel_sim(
     };
 
     match job.status {
-        JobStatus::Pending | JobStatus::Running => {
+        JobStatus::Pending | JobStatus::Running | JobStatus::Paused => {
             // Mark as cancelled first so the error handler doesn't overwrite
-            store.update_status(&job_id, JobStatus::Cancelled);
+            if !store.transition_status(&job_id, job.status, JobStatus::Cancelled) {
+                return HttpResponse::Conflict()
+                    .json(json!({"detail": "Job changed state before cancellation"}));
+            }
             // Kill the simc process if running
             simc_runner::kill_job(&job_id);
             HttpResponse::Ok().json(json!({"status": "cancelled"}))
@@ -378,6 +457,7 @@ pub(super) async fn delete_sim(
 ) -> HttpResponse {
     let id = path.into_inner();
     store.delete(&id);
+    crate::simc_runner::cleanup_job_control(&id);
     crate::simc_runner::cleanup_cancelled_job(&id);
     HttpResponse::Ok().json(json!({"status": "deleted"}))
 }
@@ -600,6 +680,138 @@ mod tests {
                 .and_then(Value::as_u64),
             Some(0)
         );
+    }
+
+    #[actix_web::test]
+    async fn pause_and_resume_handlers_preserve_pending_and_running_control_states() {
+        let store = test_store();
+        let pending_id = "pause-handler-pending";
+        store.insert(make_job(
+            pending_id,
+            JobStatus::Pending,
+            "2026-01-01T00:00:00Z",
+        ));
+        simc_runner::register_job_control(pending_id);
+
+        assert_eq!(
+            pause_sim(web::Path::from(pending_id.to_string()), store.clone())
+                .await
+                .status(),
+            200
+        );
+        assert_eq!(
+            store.get(pending_id).expect("pending job").status,
+            JobStatus::Paused
+        );
+        assert_eq!(
+            resume_sim(web::Path::from(pending_id.to_string()), store.clone())
+                .await
+                .status(),
+            200
+        );
+        assert_eq!(
+            store.get(pending_id).expect("resumed job").status,
+            JobStatus::Pending
+        );
+        simc_runner::cleanup_job_control(pending_id);
+
+        let running_id = "pause-handler-running";
+        store.insert(make_job(
+            running_id,
+            JobStatus::Running,
+            "2026-01-02T00:00:00Z",
+        ));
+        simc_runner::register_job_control(running_id);
+        assert!(simc_runner::start_job_control(running_id));
+
+        assert_eq!(
+            pause_sim(web::Path::from(running_id.to_string()), store.clone())
+                .await
+                .status(),
+            200
+        );
+        assert_eq!(
+            resume_sim(web::Path::from(running_id.to_string()), store.clone())
+                .await
+                .status(),
+            200
+        );
+        assert_eq!(
+            store.get(running_id).expect("running job").status,
+            JobStatus::Running
+        );
+        simc_runner::cleanup_job_control(running_id);
+    }
+
+    #[actix_web::test]
+    async fn resume_handler_rejects_persisted_paused_jobs_without_live_control() {
+        let store = test_store();
+        let id = "pause-handler-unavailable";
+        store.insert(make_job(id, JobStatus::Paused, "2026-01-03T00:00:00Z"));
+
+        let response = resume_sim(web::Path::from(id.to_string()), store).await;
+        assert_eq!(response.status(), 409);
+    }
+
+    #[actix_web::test]
+    async fn pause_handler_rejects_terminal_jobs_and_missing_controls() {
+        let store = test_store();
+        store.insert(make_job("pause-done", JobStatus::Done, "2026-01-04T00:00:00Z"));
+        assert_eq!(
+            pause_sim(web::Path::from("pause-done".to_string()), store.clone())
+                .await
+                .status(),
+            400
+        );
+
+        store.insert(make_job(
+            "pause-missing-control",
+            JobStatus::Running,
+            "2026-01-05T00:00:00Z",
+        ));
+        assert_eq!(
+            pause_sim(
+                web::Path::from("pause-missing-control".to_string()),
+                store,
+            )
+            .await
+            .status(),
+            409
+        );
+    }
+
+    #[actix_web::test]
+    async fn pausing_one_control_does_not_change_a_sibling_control() {
+        let store = test_store();
+        let first = "pause-sibling-first";
+        let second = "pause-sibling-second";
+        store.insert(make_job(first, JobStatus::Running, "2026-01-06T00:00:00Z"));
+        store.insert(make_job(second, JobStatus::Running, "2026-01-07T00:00:00Z"));
+        simc_runner::register_job_control(first);
+        simc_runner::register_job_control(second);
+        assert!(simc_runner::start_job_control(first));
+        assert!(simc_runner::start_job_control(second));
+
+        assert_eq!(
+            pause_sim(web::Path::from(first.to_string()), store.clone())
+                .await
+                .status(),
+            200
+        );
+        assert_eq!(
+            store.get(first).expect("first sibling").status,
+            JobStatus::Paused
+        );
+        assert_eq!(
+            simc_runner::control_status(second),
+            Some(simc_runner::JobControlState::Running)
+        );
+        assert_eq!(
+            store.get(second).expect("second sibling").status,
+            JobStatus::Running
+        );
+        simc_runner::cleanup_job_control(first);
+        simc_runner::cleanup_job_control(second);
     }
 
     #[actix_web::test]

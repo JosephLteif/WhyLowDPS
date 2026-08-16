@@ -1,7 +1,6 @@
 import { characterHref } from './routes';
 import type { CharacterRunMember, MythicPlusPayload, MythicRun, RaidEncountersPayload } from './character-domain-types';
-
-const MYTHIC_VAULT_THRESHOLDS = [1, 4, 8] as const;
+import { MYTHIC_VAULT_THRESHOLDS } from './game-rules';
 
 function isRunLike(value: unknown): value is MythicRun {
   return (
@@ -63,7 +62,33 @@ export function normalizeRealmSlug(value: unknown): string {
     .trim();
 }
 
-export function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
+function periodTimestampMs(value: unknown): number {
+  if (typeof value === 'number' || (typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value))) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 0;
+}
+
+export function getWeeklyResetStartMs(
+  regionRaw: string | null | undefined,
+  now = new Date(),
+  periods?: Array<Record<string, unknown>>,
+): number {
+  const nowMs = now.getTime();
+  const periodStarts = (periods ?? [])
+    .map((period) =>
+      periodTimestampMs(
+        period.start_time ?? period.startTime ?? period.period_start ?? period.start,
+      ),
+    )
+    .filter((start) => start > 0 && start <= nowMs);
+  if (periodStarts.length > 0) return Math.max(...periodStarts);
+
   const region = String(regionRaw || 'us').toLowerCase();
   const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2;
   const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
@@ -82,7 +107,8 @@ export function getWeeklyResetStartMs(regionRaw: string | null | undefined, now 
 
 export function computeMythicVaultProgress(
   mythicPlus: MythicPlusPayload,
-  region?: string
+  region?: string,
+  periods?: Array<Record<string, unknown>>,
 ): {
   runsForVault: number;
   slotThresholds: number[];
@@ -106,7 +132,7 @@ export function computeMythicVaultProgress(
   const allRuns = collectRuns(mythicPlus).filter((run) => getRunLevel(run) > 0);
   const recentSource = Array.isArray(mythicPlus?.recent_runs) ? mythicPlus.recent_runs : allRuns;
   const recentRuns = [...recentSource].sort((a, b) => getRunTimestamp(b) - getRunTimestamp(a)).slice(0, 20);
-  const weekStart = getWeeklyResetStartMs(region);
+  const weekStart = getWeeklyResetStartMs(region, new Date(), periods);
   const recentWeekCount = recentRuns.filter((run) => {
     const ts = getRunTimestamp(run);
     const tsMs = ts > 0 && ts < 1_000_000_000_000 ? ts * 1000 : ts;
@@ -138,13 +164,7 @@ export function isCurrentExpansionPlaceholder(value: unknown): boolean {
 
 export function isLikelyCurrentExpansionLabel(value: unknown): boolean {
   const lower = String(value ?? '').trim().toLowerCase();
-  if (!lower) return false;
-  return (
-    lower === 'midnight' ||
-    lower.startsWith('the war within') ||
-    lower.startsWith('11.') ||
-    lower.startsWith('12.')
-  );
+  return lower === 'current season' || lower === 'current expansion';
 }
 
 function normalizeRaidKey(value: unknown): string {
@@ -156,10 +176,11 @@ function normalizeRaidKey(value: unknown): string {
 
 export function computeWeeklyRaidBossKills(
   raidEncounters: RaidEncountersPayload,
-  region?: string
+  region?: string,
+  periods?: Array<Record<string, unknown>>,
 ): number {
   const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
-  const weekStart = getWeeklyResetStartMs(region);
+  const weekStart = getWeeklyResetStartMs(region, new Date(), periods);
   const killedBosses = new Set<string>();
 
   for (const expansion of expansions) {

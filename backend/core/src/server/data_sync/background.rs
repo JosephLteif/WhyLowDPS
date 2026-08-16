@@ -100,6 +100,7 @@ pub fn spawn_background_sync_loop(
                         client_secret,
                         data_dir.clone(),
                         false,
+                        "us".to_string(),
                     )
                     .await;
 

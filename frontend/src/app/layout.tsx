@@ -17,6 +17,7 @@ import { ActiveCharacterProvider } from './components/ActiveCharacterContext';
 import DesktopIntegrationListener from './components/DesktopIntegrationListener';
 import DesktopRichPresence from './components/DesktopRichPresence';
 import CommandPalette from './components/CommandPalette';
+import { NotificationProvider } from './components/shared/NotificationSystem';
 import './globals.css';
 import React from 'react';
 
@@ -47,31 +48,33 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           ['--app-header-height' as string]: '3rem',
         }}
       >
-        <AuthProvider>
-          <ActiveCharacterProvider>
-            <DataGuard>
-              <SimProvider>
-                <TopHeader />
-                <UpdatePrompt />
-                <CloseBehaviorPrompt />
-                <DiscordInvitePrompt />
-                <ChangelogPopup />
-                <DesktopIntegrationListener />
-                <DesktopRichPresence />
-                <CommandPalette />
-                <ScrollToTopOnRouteChange />
-                <InitialSidebarRoute />
+        <NotificationProvider>
+          <AuthProvider>
+            <ActiveCharacterProvider>
+              <DataGuard>
+                <SimProvider>
+                  <TopHeader />
+                  <UpdatePrompt />
+                  <CloseBehaviorPrompt />
+                  <DiscordInvitePrompt />
+                  <ChangelogPopup />
+                  <DesktopIntegrationListener />
+                  <DesktopRichPresence />
+                  <CommandPalette />
+                  <ScrollToTopOnRouteChange />
+                  <InitialSidebarRoute />
 
-                <Sidebar />
+                  <Sidebar />
 
-                <MainScrollShell>
-                  <SimSharedConfig />
-                  {children}
-                </MainScrollShell>
-              </SimProvider>
-            </DataGuard>
-          </ActiveCharacterProvider>
-        </AuthProvider>
+                  <MainScrollShell>
+                    <SimSharedConfig />
+                    {children}
+                  </MainScrollShell>
+                </SimProvider>
+              </DataGuard>
+            </ActiveCharacterProvider>
+          </AuthProvider>
+        </NotificationProvider>
       </body>
     </html>
   );

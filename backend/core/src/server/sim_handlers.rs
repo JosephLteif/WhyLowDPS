@@ -151,6 +151,7 @@ pub(super) async fn create_sim(
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
     store.insert(job);
+    simc_runner::register_job_control(&job_id);
 
     // Spawn background task
     let store_clone = store.get_ref().clone();
@@ -159,7 +160,11 @@ pub(super) async fn create_sim(
     let jid_logs = job_id.clone();
 
     tokio::spawn(async move {
-        store_clone.update_status(&job_id_clone, JobStatus::Running);
+        if !prepare_job_run(&store_clone, &job_id_clone).await {
+            simc_runner::cleanup_job_control(&job_id_clone);
+            logs.remove(&jid_logs);
+            return;
+        }
         store_clone.update_progress(&job_id_clone, 20, "Simulating", "");
         let logs_cb = logs.clone();
         let jid_cb = jid_logs.clone();

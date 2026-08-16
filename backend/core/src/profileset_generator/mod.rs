@@ -749,7 +749,7 @@ pub fn generate_upgrade_compare_input(
     slots.sort();
     if slots.is_empty() {
         return Err(crate::error::AppError::SimcError(
-            "No upgradeable equipped items were selected.".to_string(),
+            "No upgradeable items were selected.".to_string(),
         ));
     }
 

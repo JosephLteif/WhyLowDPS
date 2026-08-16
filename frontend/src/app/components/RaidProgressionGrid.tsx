@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { getWarcraftLogsGuideUrl } from '../lib/warcraft-logs-guides';
+import { RAID_VAULT_THRESHOLDS } from '../lib/game-rules';
+import { getWeeklyResetStartMs } from '../lib/character-panel-utils';
 
 type DifficultyKey = 'lfr' | 'normal' | 'heroic' | 'mythic';
 
@@ -33,27 +35,6 @@ type RaidProgression = {
 type DifficultyTotals = Record<DifficultyKey, number>;
 
 const DIFFICULTIES: DifficultyKey[] = ['lfr', 'normal', 'heroic', 'mythic'];
-const CURRENT_TIER_GROUP_KEY = 'midnight_s1_group';
-const CURRENT_TIER_LABEL = 'VS / TD / MOQ';
-const CURRENT_TIER_CODES = new Set(['VS', 'TD', 'MOQ']);
-
-function getWeeklyResetStartMs(regionRaw: string | null | undefined, now = new Date()): number {
-  const region = String(regionRaw || 'us').toLowerCase();
-  const resetDayUtc = region === 'eu' ? 3 : region === 'asia' ? 4 : 2;
-  const resetHourUtc = region === 'eu' ? 4 : region === 'us' ? 15 : 7;
-  const current = new Date(now);
-  const todayReset = new Date(
-    Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate(), resetHourUtc, 0, 0, 0),
-  );
-  const dayDiff = (current.getUTCDay() - resetDayUtc + 7) % 7;
-  const reset = new Date(todayReset);
-  reset.setUTCDate(reset.getUTCDate() - dayDiff);
-  if (current.getUTCDay() === resetDayUtc && current.getUTCHours() < resetHourUtc) {
-    reset.setUTCDate(reset.getUTCDate() - 7);
-  }
-  return reset.getTime();
-}
-
 function toTimestampMs(input: unknown): number {
   const value = Number(input ?? 0);
   if (!Number.isFinite(value) || value <= 0) return 0;
@@ -95,10 +76,6 @@ function parseNumber(input: unknown): number {
 function raidAcronym(name: string): string {
   const cleaned = String(name || '').trim();
   if (!cleaned) return '';
-  const lowered = cleaned.toLowerCase();
-  if (lowered.includes('voidspire')) return 'VS';
-  if (lowered.includes('dusk') || lowered.includes('dread')) return 'TD';
-  if (lowered.includes('march') || lowered.includes("quel'danas") || lowered.includes('quel?')) return 'MOQ';
   const words = cleaned
     .split(/[\s'’-]+/)
     .map((w) => w.trim())
@@ -121,25 +98,31 @@ function getProgressionBossKey(bosses: BossProgress[]): string | null {
   return sorted[0]?.key ?? null;
 }
 
-function parseRaidData(raidEncounters: any): {
+function parseRaidData(raidEncounters: any, activeRaidInstanceIds?: number[]): {
   raids: RaidProgression[];
   totalsByExpansion: Record<string, DifficultyTotals>;
+  expansionOrder: string[];
 } {
   const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
   const raids = new Map<string, RaidProgression>();
   const totalsByExpansion: Record<string, DifficultyTotals> = {};
+  const expansionOrder: string[] = [];
+  const activeIds = activeRaidInstanceIds ? new Set(activeRaidInstanceIds) : null;
 
   for (const expansion of expansions) {
     const rawExpansion =
       expansion?.expansion?.name || expansion?.expansion_name || expansion?.label || expansion?.name;
     const expansionLabel = normalizeExpansionLabel(rawExpansion);
     const expansionKey = normalizeSlug(expansionLabel) || 'unknown-expansion';
+    if (!expansionOrder.includes(expansionKey)) expansionOrder.push(expansionKey);
     if (!totalsByExpansion[expansionKey]) {
       totalsByExpansion[expansionKey] = { lfr: 0, normal: 0, heroic: 0, mythic: 0 };
     }
 
     const instances = Array.isArray(expansion?.instances) ? expansion.instances : [];
     for (const instance of instances) {
+      const instanceId = Number(instance?.instance?.id ?? instance?.id ?? 0);
+      if (activeIds && !activeIds.has(instanceId)) continue;
       const raidName = String(instance?.instance?.name || instance?.name || 'Raid').trim() || 'Raid';
       const raidKey = `${expansionKey}::${normalizeSlug(raidName)}`;
 
@@ -233,23 +216,31 @@ function parseRaidData(raidEncounters: any): {
   return {
     raids: Array.from(raids.values()).sort((a, b) => b.lastKillTs - a.lastKillTs),
     totalsByExpansion,
+    expansionOrder,
   };
 }
 
 export default function RaidProgressionGrid({
   raidEncounters,
   region,
+  periods,
+  activeRaidInstanceIds,
   selectedExpansion,
   selectedRaidName,
   onActiveRaidNameChange,
 }: {
   raidEncounters: any;
   region?: string;
+  periods?: Array<Record<string, unknown>>;
+  activeRaidInstanceIds?: number[];
   selectedExpansion: string;
   selectedRaidName?: string;
   onActiveRaidNameChange?: (raidName: string | null) => void;
 }) {
-  const parsed = useMemo(() => parseRaidData(raidEncounters), [raidEncounters]);
+  const parsed = useMemo(
+    () => parseRaidData(raidEncounters, activeRaidInstanceIds),
+    [activeRaidInstanceIds, raidEncounters],
+  );
   const [selectedRaidGroup, setSelectedRaidGroup] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'overall' | 'weekly'>('overall');
 
@@ -260,13 +251,14 @@ export default function RaidProgressionGrid({
 
   const groupOptions = useMemo(() => {
     const raidCodes = Array.from(new Set(visibleRaids.map((r) => raidAcronym(r.name)).filter(Boolean)));
-    const hasCurrentTier = raidCodes.some((code) => CURRENT_TIER_CODES.has(code));
-    const standalone = raidCodes
-      .filter((code) => !CURRENT_TIER_CODES.has(code))
-      .sort((a, b) => a.localeCompare(b));
-    const options = ['all', ...(hasCurrentTier ? [CURRENT_TIER_GROUP_KEY] : []), ...standalone];
+    const currentExpansionKey = parsed.expansionOrder[0];
+    const currentExpansion = visibleRaids.find((raid) => raid.expansionKey === currentExpansionKey);
+    const hasCurrentTier = visibleRaids.filter((raid) => raid.expansionKey === currentExpansionKey).length > 1;
+    const currentGroupKey = currentExpansion ? `expansion:${currentExpansionKey}` : null;
+    const options = ['all', ...(hasCurrentTier && currentGroupKey ? [currentGroupKey] : []), ...raidCodes]
+      .filter((value, index, values) => values.indexOf(value) === index);
     return options;
-  }, [visibleRaids]);
+  }, [parsed.expansionOrder, visibleRaids]);
 
   useEffect(() => {
     if (selectedRaidGroup === 'all') return;
@@ -277,13 +269,13 @@ export default function RaidProgressionGrid({
 
   const groupedRaids = useMemo(() => {
     if (selectedRaidGroup === 'all') return visibleRaids;
-    if (selectedRaidGroup === CURRENT_TIER_GROUP_KEY) {
-      return visibleRaids.filter((raid) => CURRENT_TIER_CODES.has(raidAcronym(raid.name)));
+    if (selectedRaidGroup.startsWith('expansion:')) {
+      return visibleRaids.filter((raid) => `expansion:${raid.expansionKey}` === selectedRaidGroup);
     }
     return visibleRaids.filter((raid) => raidAcronym(raid.name) === selectedRaidGroup);
   }, [visibleRaids, selectedRaidGroup]);
 
-  const weekCutoffTs = getWeeklyResetStartMs(region);
+  const weekCutoffTs = getWeeklyResetStartMs(region, new Date(), periods);
 
   useEffect(() => {
     if (!onActiveRaidNameChange) return;
@@ -315,7 +307,7 @@ export default function RaidProgressionGrid({
     const weeklyBossKills = allBosses.filter((boss) =>
       DIFFICULTIES.some((diff) => boss.byDifficulty[diff].lastKillTs >= weekCutoffTs),
     ).length;
-    const slotThresholds = [2, 4, 6];
+    const slotThresholds = [...RAID_VAULT_THRESHOLDS];
     const slots = slotThresholds.map((threshold, i) => {
       const unlocked = weeklyBossKills >= threshold;
       return {
@@ -366,8 +358,8 @@ export default function RaidProgressionGrid({
             <option key={group} value={group}>
               {group === 'all'
                 ? 'All raid groups'
-                : group === CURRENT_TIER_GROUP_KEY
-                  ? CURRENT_TIER_LABEL
+                : group.startsWith('expansion:')
+                  ? visibleRaids.find((raid) => `expansion:${raid.expansionKey}` === group)?.expansionLabel || group
                   : group}
             </option>
           ))}

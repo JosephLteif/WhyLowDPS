@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import {
   getDungeonData,
+  getGameContext,
   getMythicKeystoneDungeonDetail,
   listInstances,
   type DungeonSeasonData,
   type DungeonInfo,
+  type GameContext,
   type MythicKeystoneDungeonDetail,
 } from '../lib/api';
 import type { Instance } from '../drop-finder/types';
@@ -16,6 +18,8 @@ import {
   getStaticWowSeasonContent,
   wowExpansions,
   type WowExpansion,
+  type WowInstance,
+  type WowInstanceType,
   type WowSeasonContent,
 } from '../lib/wow-season-content';
 import { AffixCard, type DisplayAffix, DungeonCard } from './shared';
@@ -73,6 +77,62 @@ function toApiDungeonInfo(instance: Instance): DungeonInfo {
     linked_code: undefined,
     blizzard_api_data: null,
   };
+}
+
+function synthesizeCurrentSeasonContent(
+  existing: WowSeasonContent[],
+  context: GameContext | null,
+  instances: Instance[],
+): WowSeasonContent[] {
+  if (!context?.active_season?.name) return existing;
+  const active = context.active_season;
+
+  const instanceById = new Map(instances.map((instance) => [instance.id, instance]));
+  const expansionId = context.current_expansion?.number ?? 0;
+  const expansion = wowExpansions.find((entry) => entry.id === expansionId);
+  const fromPool = (poolKey: string, type: WowInstanceType): WowInstance[] => {
+    const poolId = context.pools?.[poolKey];
+    const pool = poolId == null ? undefined : instanceById.get(poolId);
+    return (pool?.encounters ?? [])
+      .map((entry) => instanceById.get(entry.id))
+      .filter((instance): instance is Instance => Boolean(instance))
+      .map((instance) => ({
+        id: instance.id,
+        name: instance.name,
+        type,
+        expansionId: instance.expansion ?? expansionId,
+        slug: undefined,
+        encounterIds: instance.encounters?.map((encounter) => encounter.id),
+        encounters: instance.encounters?.map((encounter) => ({
+          id: encounter.id,
+          name: encounter.name,
+          instanceId: instance.id,
+        })),
+        imageUrl: instance.image_url,
+      }));
+  };
+
+  const current: WowSeasonContent = {
+    season: {
+      slug: active.short_name || `season-${active.id ?? 'current'}`,
+      name: active.name || 'Current Season',
+      expansionId,
+      expansion,
+      raidInstanceIds: fromPool('raids', 'raid').map((instance) => instance.id),
+      mythicPlusDungeonIds: fromPool('mplus', 'dungeon').map((instance) => instance.id),
+      raidInstances: fromPool('raids', 'raid'),
+      mythicPlusDungeons: fromPool('mplus', 'dungeon'),
+      source: { gameContext: true },
+    },
+    raids: fromPool('raids', 'raid'),
+    dungeons: fromPool('mplus', 'dungeon'),
+  };
+
+  const normalizedName = normalized(current.season.name);
+  return [
+    current,
+    ...existing.filter((entry) => normalized(entry.season.name) !== normalizedName),
+  ];
 }
 
 function normalized(value: string | undefined): string {
@@ -144,21 +204,20 @@ export default function DungeonsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getRuntimeWowSeasonContent().then((runtimeWow) => {
-      if (cancelled || runtimeWow.result.content.length === 0) return;
-      setSeasonContent(runtimeWow.result.content);
-      if (runtimeWow.expansions.length > 0) setExpansions(runtimeWow.expansions);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    listInstances()
-      .then((instances) => {
-        if (!cancelled) setApiInstances(instances);
+    Promise.all([
+      getRuntimeWowSeasonContent(),
+      listInstances().catch(() => []),
+      getGameContext().catch(() => null),
+    ])
+      .then(([runtimeWow, instances, context]) => {
+        if (cancelled) return;
+        setApiInstances(instances);
+        if (runtimeWow.expansions.length > 0) setExpansions(runtimeWow.expansions);
+        if (runtimeWow.result.content.length > 0) {
+          setSeasonContent(
+            synthesizeCurrentSeasonContent(runtimeWow.result.content, context, instances),
+          );
+        }
       })
       .catch(() => {});
 
@@ -180,6 +239,10 @@ export default function DungeonsPage() {
   }, []);
 
   const currentSeasonSlug = useMemo(() => {
+    const contextSeason = seasonContent.find(
+      (content) => content.season.source?.gameContext === true,
+    );
+    if (contextSeason) return contextSeason.season.slug;
     const apiSeasonName = normalized(data?.season_name);
     const matchingContent = seasonContent.find(
       (content) => normalized(content.season.name) === apiSeasonName
@@ -246,9 +309,8 @@ export default function DungeonsPage() {
       return data.rotation_dungeons;
     }
 
-    // Midnight's current season payload does not include the legacy `dungeons`
-    // array. The Blizzard content snapshot still exposes the active pool as
-    // the Mythic+ Dungeons instance; use only that pool, never the full catalog.
+    // Some Blizzard season payloads expose periods but omit the legacy dungeons
+    // array; use the authoritative active Mythic+ pool instead of the full catalog.
     const pool = apiInstances.find((instance) => instance.id === -1);
     if (!pool) return [];
     const instancesById = new Map(apiInstances.map((instance) => [instance.id, instance]));

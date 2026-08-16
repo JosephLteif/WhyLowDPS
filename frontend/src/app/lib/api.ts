@@ -254,6 +254,21 @@ export async function deleteSim(id: string): Promise<void> {
   });
 }
 
+export async function pauseSim(id: string): Promise<{ status: 'paused' }> {
+  return fetchJson<{ status: 'paused' }>(`${API_URL}/api/sim/${id}/pause`, {
+    method: 'POST',
+  });
+}
+
+export async function resumeSim(
+  id: string,
+): Promise<{ status: 'pending' | 'running' | 'paused' }> {
+  return fetchJson<{ status: 'pending' | 'running' | 'paused' }>(
+    `${API_URL}/api/sim/${id}/resume`,
+    { method: 'POST' },
+  );
+}
+
 export async function setSimPinned(id: string, pinned: boolean): Promise<void> {
   await fetchJson(`${API_URL}/api/sim/${id}/pin`, {
     method: 'POST',
@@ -431,6 +446,43 @@ export async function deleteCharacterProfile(id: string): Promise<void> {
 
 export async function listInstances(): Promise<Instance[]> {
   return fetchJson<Instance[]>(`${API_URL}/api/instances`);
+}
+
+export type GameContextCapability = {
+  status: 'ready' | 'degraded' | 'unavailable' | string;
+  reason?: string;
+};
+
+export type GameContext = {
+  schema_version: number;
+  active_season?: {
+    id?: number;
+    name?: string;
+    short_name?: string;
+    periods?: Array<Record<string, unknown>>;
+  };
+  pools?: Record<string, number>;
+  pool_members?: Record<string, number[]>;
+  current_expansion?: { number?: number | null };
+  classes?: Array<{
+    name: string;
+    aliases?: string[];
+    wow_id?: number | null;
+    specs?: Array<{ name: string; id: number }>;
+  }>;
+  rules?: {
+    catalyst_currency_id?: number;
+    item_conversion_id?: number | null;
+    dps_enchant_slots?: string[];
+    upgrade_track_fingerprint?: string[];
+  };
+  source?: Record<string, unknown>;
+  capabilities?: Record<string, GameContextCapability>;
+  warnings?: string[];
+};
+
+export async function getGameContext(): Promise<GameContext> {
+  return fetchJson<GameContext>(`${API_URL}/api/game-context`);
 }
 
 export interface DungeonAffix {

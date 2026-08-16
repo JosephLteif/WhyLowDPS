@@ -9,6 +9,8 @@ export interface Instance {
   image_background?: string;
   image_button?: string;
   image_button_small?: string;
+  current_season?: boolean;
+  active_rotation?: boolean;
   encounters: { id: number; name: string; image_url?: string }[];
 }
 
@@ -150,16 +152,18 @@ export function resolveUpgrade(
 }
 
 export function detectClass(simcInput: string): string | null {
-  const classRe =
-    /^(warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|demon_hunter|demonhunter|druid|evoker)\s*=/i;
+  const reserved = new Set([
+    'player', 'name', 'server', 'region', 'spec', 'talents', 'level', 'race', 'role',
+    'professions', 'armory', 'dungeon', 'instance', 'fight_style',
+  ]);
 
   for (const raw of simcInput.split('\n')) {
     const line = raw
       .trim()
       .replace(/^[\uFEFF\u200B\u200E\u200F]+/, '')
       .toLowerCase();
-    const m = line.match(classRe);
-    if (!m) continue;
+    const m = line.match(/^([a-z_][a-z0-9_]*)\s*=/i);
+    if (!m || reserved.has(m[1])) continue;
     const klass = m[1];
     if (klass === 'deathknight') return 'death_knight';
     if (klass === 'demonhunter') return 'demon_hunter';
@@ -207,8 +211,23 @@ const CLASS_SPECS: Record<string, string[]> = {
   evoker: ['devastation', 'preservation', 'augmentation'],
 };
 
-export function getClassSpecs(className: string): string[] {
-  return CLASS_SPECS[className] ?? [];
+export type RuntimeClassInfo = {
+  name: string;
+  aliases?: string[];
+  wow_id?: number | null;
+  specs?: Array<{ name: string; id: number }>;
+};
+
+function runtimeClass(className: string, classes?: RuntimeClassInfo[]): RuntimeClassInfo | undefined {
+  const normalized = className.toLowerCase().replace(/[\s-]+/g, '_');
+  return classes?.find((entry) =>
+    [entry.name, ...(entry.aliases || [])].some((name) => name.toLowerCase() === normalized)
+  );
+}
+
+export function getClassSpecs(className: string, classes?: RuntimeClassInfo[]): string[] {
+  const dynamic = runtimeClass(className, classes)?.specs?.map((spec) => spec.name);
+  return dynamic?.length ? dynamic : CLASS_SPECS[className] ?? [];
 }
 
 const SPEC_IDS: Record<string, number> = {
@@ -271,7 +290,11 @@ const CLASS_IDS: Record<string, number> = {
   evoker: 13,
 };
 
-export function getSpecId(className: string, specName: string): number | null {
+export function getSpecId(className: string, specName: string, classes?: RuntimeClassInfo[]): number | null {
+  const dynamic = runtimeClass(className, classes)?.specs?.find(
+    (spec) => spec.name.toLowerCase().replace(/[\s-]+/g, '_') === specName.toLowerCase().replace(/[\s-]+/g, '_')
+  );
+  if (dynamic) return dynamic.id;
   // Handle ambiguous spec names using class context
   const key = (() => {
     switch (specName) {
@@ -290,8 +313,8 @@ export function getSpecId(className: string, specName: string): number | null {
   return SPEC_IDS[key] ?? null;
 }
 
-export function getClassId(className: string): number | null {
-  return CLASS_IDS[className] ?? null;
+export function getClassId(className: string, classes?: RuntimeClassInfo[]): number | null {
+  return runtimeClass(className, classes)?.wow_id ?? CLASS_IDS[className] ?? null;
 }
 
 export function itemMatchesActiveLootSpec(

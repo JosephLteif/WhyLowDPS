@@ -93,9 +93,12 @@ export function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
       };
     }
 
+    const currentSeasonInstances = instances.filter(
+      (instance) => instance.id <= 0 || instance.current_season === true
+    );
     const poolMap = new Map<number, Set<number>>();
     for (const cat of seasonConfig.dungeon_categories) {
-      const meta = instances.find((instance) => instance.id === cat.poolInstanceId);
+      const meta = currentSeasonInstances.find((instance) => instance.id === cat.poolInstanceId);
       if (meta) {
         poolMap.set(cat.poolInstanceId, new Set(meta.encounters.map((encounter) => encounter.id)));
       }
@@ -105,7 +108,7 @@ export function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
     const dcList: { cat: DungeonCategory; instances: Instance[] }[] =
       seasonConfig.dungeon_categories.map((cat) => ({ cat, instances: [] }));
 
-    for (const instance of instances) {
+    for (const instance of currentSeasonInstances) {
       if (instance.type === 'raid' && instance.id > 0) {
         raidList.push(instance);
       } else if (instance.type === 'dungeon') {
@@ -117,10 +120,20 @@ export function useDropFinderData(simcInput: string, activeSpecs: Set<string>) {
             placed = true;
           }
         }
-        if (!placed && dcList.length > 0) {
+        if (!placed && dcList.length > 0 && instance.id > 0) {
           dcList[dcList.length - 1].instances.push(instance);
         }
       }
+    }
+
+    // Older data snapshots do not contain the synthetic -32 normal-dungeon
+    // pool. Keep that tab useful by showing the current-season dungeon set
+    // directly instead of falling back to every historical dungeon.
+    const normalDungeonCategory = dcList.find((dc) => dc.cat.key === 'normal-dungeons');
+    if (normalDungeonCategory && !poolMap.has(normalDungeonCategory.cat.poolInstanceId)) {
+      normalDungeonCategory.instances = currentSeasonInstances.filter(
+        (instance) => instance.type === 'dungeon' && instance.id > 0
+      );
     }
 
     raidList.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));

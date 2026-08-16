@@ -45,6 +45,18 @@
       "compact_mode": "fields"
     },
     {
+      "key": "seasons",
+      "label": "Seasons",
+      "section": "Metadata",
+      "local_path": "seasons.json",
+      "required": true,
+      "source": "raidbots",
+      "entry_type": "file",
+      "remote_path": "seasons.json",
+      "compact_fields": null,
+      "compact_mode": "copy"
+    },
+    {
       "key": "equippable_items_full",
       "label": "Equippable Items (Full)",
       "section": "Items",

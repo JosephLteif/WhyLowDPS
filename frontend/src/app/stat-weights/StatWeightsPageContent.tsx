@@ -48,7 +48,7 @@ interface StatWeightsPageContentProps {
 
 export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentProps = {}) {
   const { simcInput, setLockSingleConsumableOptions } = useSimContext();
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions();
 
   const [mode, setMode] = useState<StatWeightsMode>(forcedMode ?? 'stat_weights');
 

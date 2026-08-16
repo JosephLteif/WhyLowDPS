@@ -165,7 +165,7 @@ export default function TopGearPage() {
   const comboRequestSeqRef = useRef(0);
   const resolveRequestSeqRef = useRef(0);
   const [forceResolveSignal, setForceResolveSignal] = useState(0);
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions();
   const hasConsumableMatrix = compareConsumables
     && (matrixFlasks.length > 0
       || matrixFoods.length > 0

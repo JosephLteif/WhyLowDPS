@@ -111,7 +111,7 @@ export interface SavedRoute {
 
 export interface SimSummary {
   id: string;
-  status: 'pending' | 'running' | 'done' | 'failed' | 'cancelled';
+  status: 'pending' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled';
   sim_type: string;
   created_at: string;
   fight_style: string;

@@ -53,8 +53,7 @@ function extractSimcIdentity(
   let realm = '';
   let region = 'us';
 
-  const classLine =
-    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name)\s*=\s*"?([^"\s,]+)"?/i;
+  const classLine = /^([a-z_][a-z0-9_]*)\s*=\s*"?([^"\s,]+)"?/i;
   const armoryLine = /^armory\s*=\s*([^,\s]+)\s*,\s*([^,\s]+)\s*,\s*([^,\s]+)\s*$/i;
 
   for (const raw of lines) {
@@ -71,7 +70,7 @@ function extractSimcIdentity(
 
     if (!name) {
       const cls = line.match(classLine);
-      if (cls) name = cls[1];
+      if (cls && !['server', 'region', 'spec', 'talents', 'level', 'race', 'role'].includes(cls[1].toLowerCase())) name = cls[2];
     }
     if (!realm && line.toLowerCase().startsWith('server=')) {
       realm = line.slice(7).trim().replace(/^"|"$/g, '');

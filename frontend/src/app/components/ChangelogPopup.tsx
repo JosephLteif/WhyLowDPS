@@ -28,150 +28,83 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
-    title: 'Optional Discord Rich Presence',
+    title: 'Recent character search history',
     body: [
       {
         type: 'paragraph',
-        text: 'WhyLowDPS now shows a richer Discord activity card with a branded icon, your current workflow, and active character while Discord is running.',
+        text: 'The character search bar now remembers your eight most recent searches locally so you can return to a character quickly.',
       },
       {
         type: 'list',
         items: [
-          'Discord can show Dashboard, Quick Sim, Top Gear, Drop Finder, History, or a simulation result with a session timer.',
-          'Rich Presence is opt-in and can be enabled from Settings > Integrations without creating another application.',
-          'Discord being closed never blocks simulations or other app workflows.',
+          'Focus the character field to open recent searches, or type to filter them.',
+          'Select a recent character to navigate directly to its page.',
         ],
       },
     ],
   },
   {
     category: 'feature',
-    title: 'A clearer first-run setup',
+    title: 'Pause and resume simulations',
     body: [
       {
         type: 'paragraph',
-        text: 'WhyLowDPS now shows the important setup steps together, so it is easier to see whether game data, Blizzard access, a character profile, and your first simulation are ready.',
+        text: 'Pause a simulation from its result screen and resume it later without restarting the SimC process. Queued and staged simulations keep their current place, and cancellation remains available while paused.',
       },
       {
         type: 'list',
         items: [
-          'Refresh setup status directly from the dashboard.',
-          'Jump straight to the settings or workflow that needs attention.',
+          'Pause and resume controls work independently for each scenario in a batch.',
+          'If the backend restarts, rerun the saved input to continue the simulation.',
         ],
       },
     ],
   },
   {
-    category: 'improvement',
-    title: 'Rerun and compare results',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Simulation results now make it easier to rerun the exact imported input, while History can compare two selected records side by side.',
-      },
-    ],
-  },
-  {
     category: 'feature',
-    title: 'Desktop simulation notifications',
+    title: 'Unified notification center',
     body: [
       {
         type: 'paragraph',
-        text: 'When a desktop simulation finishes, the notification includes a one-click path back to its result.',
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Open SimC files from the desktop',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Open .simc or text files from Explorer, drag them onto the app, or launch a second copy to import the file into Quick Sim.',
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Local backup and restore',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Desktop users can export simulation history, saved profiles, routes, and safe UI preferences to a versioned ZIP archive, then validate and restore it later.',
+        text: 'Simulation results and app updates now share one notification system, with a header history, unread counts, and clear read-state controls.',
       },
       {
         type: 'list',
         items: [
-          'Credentials, tokens, cache files, and SimC binaries stay out of the archive.',
-          'Restores preserve a recovery copy and apply on the next app restart.',
+          'Click a notification to reopen its simulation result or update flow.',
+          'Mark notifications as read, mark everything as read, or clear the history.',
+          'Notification history is preserved locally so important actions remain available later.',
         ],
       },
     ],
   },
   {
     category: 'improvement',
-    title: 'Command palette and settings repairs',
+    title: 'Cleaner desktop updates and results',
     body: [
       {
         type: 'paragraph',
-        text: 'Press Ctrl+K or Cmd+K to jump to common workflows, open What’s New, or go directly to a Settings area that needs attention.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Settings sections can be linked directly and include a quick-repair overview.',
-          'Shared error feedback now announces failures more clearly to assistive technology.',
-        ],
+        text: 'Desktop simulation notifications remain clickable without duplicating events, while app updates now use the existing updater popup as their single live control surface.',
       },
     ],
   },
   {
     category: 'feature',
-    title: 'Active character workspace',
+    title: 'One-click simulation reruns',
     body: [
       {
         type: 'paragraph',
-        text: 'Your selected character now follows you between the dashboard and simulation workspace, while existing tracked-character preferences continue to work.',
+        text: 'Rerun This Input now submits the saved simulation input directly and opens the new result without returning to the simulator form first.',
       },
     ],
   },
   {
     category: 'improvement',
-    title: 'Safer character context',
+    title: 'Clearer running simulation status',
     body: [
       {
         type: 'paragraph',
-        text: 'Importing a SimC profile can make that character the active workspace, helping defaults and follow-up actions stay attached to the right character.',
-      },
-    ],
-  },
-  {
-    category: 'fix',
-    title: 'Existing preferences are preserved',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Older main-character, tracked-character, and last-used profile choices are recognized automatically when the shared active-character state is first loaded.',
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'More useful simulation context',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The simulation setup now shows the active character beside the imported profile, with a direct action to use the current import.',
-      },
-    ],
-  },
-  {
-    category: 'fix',
-    title: 'Status without guesswork',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The dashboard now gives you a concise view of what is ready and what to do next before starting a simulation.',
+        text: 'Running simulation details now use the available page width, with profileset progress, current-profile metrics, and overall stats arranged for easier reading.',
       },
     ],
   },

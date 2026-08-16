@@ -46,9 +46,6 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
   const specMatch = input.match(/^spec=(\w+)/m);
   const characterLevelMatch = input.match(/^level=(.+)$/m);
   const raceMatch = input.match(/^race=(.+)$/m);
-  const classKeyMatch = input.match(
-    /^(warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker)\s*=\s*"?([^"\n,]+)"?/im
-  );
   const realmMatch = input.match(/^server=(.+)$/m);
   const regionMatch = input.match(/^region=(.+)$/m);
   const roleMatch = input.match(/^role=(.+)$/m);
@@ -77,10 +74,10 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
   const titleMatch = input.match(/^#\s*(.+)$/m);
   const dungeonTitleMatch = input.match(/^#\s*(?:dungeon|route|mythic\s*\+)\s*[:\-]\s*(.+)$/im);
 
-  if (nameMatch && classKeyMatch) {
+  if (nameMatch) {
     return {
       kind: 'character',
-      className: classKeyMatch[1],
+      className: nameMatch[1],
       name: nameMatch[2],
       spec: specMatch?.[1] || 'unknown',
       level: characterLevelMatch?.[1] || null,

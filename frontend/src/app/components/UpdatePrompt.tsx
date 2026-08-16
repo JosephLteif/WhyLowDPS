@@ -9,26 +9,20 @@ import {
   formatEta,
   formatTransferSpeed,
 } from '../lib/format';
-import {
-  readStoredUpdateChannel,
-  type UpdateChannel,
-} from '../lib/update-channel';
+import { readStoredUpdateChannel, type UpdateChannel } from '../lib/update-channel';
 import {
   fetchManifestVersion,
   isRemoteNewerForSelectedChannel,
   resolveCurrentVersion,
 } from '../lib/updater-release';
+import { useNotifications } from './shared/NotificationSystem';
 
-type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'handoff' | 'error';
+type UpdateState =
+  'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'handoff' | 'error';
 type CacheRefreshState = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
 type SimcRuntimeState = 'idle' | 'checking' | 'downloading' | 'downloaded' | 'error';
 type UpdaterStatusEvent =
-  | 'checking'
-  | 'available'
-  | 'none'
-  | 'error'
-  | 'downloading'
-  | 'downloaded';
+  'checking' | 'available' | 'none' | 'error' | 'downloading' | 'downloaded';
 
 type UpdateDetails = {
   version: string;
@@ -103,7 +97,6 @@ function emitUpdaterStatus(status: UpdaterStatusEvent, message?: string) {
   window.dispatchEvent(new CustomEvent(UPDATE_STATUS_EVENT, { detail: { status, message } }));
 }
 
-
 async function getCurrentAppVersion(): Promise<string | null> {
   try {
     const appModule = (await import('@tauri-apps/api/app')) as {
@@ -116,30 +109,33 @@ async function getCurrentAppVersion(): Promise<string | null> {
 }
 
 async function listenToDirectInstallProgress(
-  callback: (detail: DirectInstallProgressEvent) => void,
+  callback: (detail: DirectInstallProgressEvent) => void
 ): Promise<() => void> {
   const eventModule = (await import('@tauri-apps/api/event')) as {
     listen: (
       event: string,
-      handler: (event: { payload: DirectInstallProgressEvent }) => void,
+      handler: (event: { payload: DirectInstallProgressEvent }) => void
     ) => Promise<() => void>;
   };
-  return eventModule.listen(DIRECT_INSTALL_PROGRESS_EVENT, (event) => callback(event.payload || {}));
+  return eventModule.listen(DIRECT_INSTALL_PROGRESS_EVENT, (event) =>
+    callback(event.payload || {})
+  );
 }
 
 async function listenToSimcRuntimeProgress(
-  callback: (detail: SimcRuntimeProgressEvent) => void,
+  callback: (detail: SimcRuntimeProgressEvent) => void
 ): Promise<() => void> {
   const eventModule = (await import('@tauri-apps/api/event')) as {
     listen: (
       event: string,
-      handler: (event: { payload: SimcRuntimeProgressEvent }) => void,
+      handler: (event: { payload: SimcRuntimeProgressEvent }) => void
     ) => Promise<() => void>;
   };
   return eventModule.listen(SIMC_RUNTIME_PROGRESS_EVENT, (event) => callback(event.payload || {}));
 }
 
 export default function UpdatePrompt() {
+  const { notify } = useNotifications();
   const [state, setState] = useState<UpdateState>('idle');
   const [cacheState, setCacheState] = useState<CacheRefreshState>('idle');
   const [simcState, setSimcState] = useState<SimcRuntimeState>('idle');
@@ -182,7 +178,11 @@ export default function UpdatePrompt() {
   const totalBytesRef = useRef<number | undefined>(undefined);
 
   const isUpdateToastVisible = useMemo(() => {
-    if (backgroundMode && (state === 'downloading' || state === 'downloaded' || state === 'handoff')) return false;
+    if (
+      backgroundMode &&
+      (state === 'downloading' || state === 'downloaded' || state === 'handoff')
+    )
+      return false;
     if (dismissed && state !== 'downloading') return false;
     return (
       state === 'available' ||
@@ -211,14 +211,14 @@ export default function UpdatePrompt() {
     if (!cacheProgress.totalBytes || cacheProgress.totalBytes <= 0) return null;
     return Math.min(
       100,
-      Math.round((cacheProgress.downloadedBytes / cacheProgress.totalBytes) * 100),
+      Math.round((cacheProgress.downloadedBytes / cacheProgress.totalBytes) * 100)
     );
   }, [cacheProgress]);
   const simcProgressPercent = useMemo(() => {
     if (!simcProgress.totalBytes || simcProgress.totalBytes <= 0) return null;
     return Math.min(
       100,
-      Math.round((simcProgress.downloadedBytes / simcProgress.totalBytes) * 100),
+      Math.round((simcProgress.downloadedBytes / simcProgress.totalBytes) * 100)
     );
   }, [simcProgress]);
 
@@ -267,64 +267,72 @@ export default function UpdatePrompt() {
     });
   }, []);
 
-  const handleInstall = useCallback(async (options?: { background?: boolean }) => {
-    if (installInFlightRef.current) return;
-    installInFlightRef.current = true;
-    const runInBackground = Boolean(options?.background);
-    setState('downloading');
-    setErrorText('');
-    setBackgroundMode(runInBackground);
-    setDismissed(runInBackground);
-    resetSpeedTracking();
-    setProgress({ downloadedBytes: 0, totalBytes: undefined, speedBytesPerSec: 0, etaSeconds: null });
-    emitUpdaterStatus(
-      'downloading',
-      runInBackground ? 'Downloading update in background...' : 'Downloading update...',
-    );
-
-    try {
-      if (window.electronAPI) {
-        const unsubscribe =
-          window.electronAPI.onDownloadProgress?.((percent) => {
-            if (typeof percent === 'number' && Number.isFinite(percent)) {
-              applyProgressSample(Math.max(0, Math.round(percent)), 100);
-            }
-          }) ?? (() => {});
-        await window.electronAPI.downloadAndInstall();
-        unsubscribe();
-      } else {
-        const update = updateRef.current;
-        if (!update) {
-          setState('idle');
-          return;
-        }
-        let downloaded = 0;
-        await update.downloadAndInstall((event: TauriDownloadEvent) => {
-          if (event.event === 'Started') {
-            resetSpeedTracking();
-            applyProgressSample(0, event.data.contentLength);
-          } else if (event.event === 'Progress') {
-            downloaded += event.data.chunkLength;
-            applyProgressSample(downloaded);
-          }
-        });
-      }
-
-      setState('downloaded');
+  const handleInstall = useCallback(
+    async (options?: { background?: boolean }) => {
+      if (installInFlightRef.current) return;
+      installInFlightRef.current = true;
+      const runInBackground = Boolean(options?.background);
+      setState('downloading');
+      setErrorText('');
       setBackgroundMode(runInBackground);
       setDismissed(runInBackground);
-      emitUpdaterStatus('downloaded', 'Update installed. Restart app to apply.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to install update.';
-      setState('error');
-      setErrorText(message);
-      setBackgroundMode(false);
-      setDismissed(false);
-      emitUpdaterStatus('error', message);
-    } finally {
-      installInFlightRef.current = false;
-    }
-  }, [applyProgressSample, resetSpeedTracking]);
+      resetSpeedTracking();
+      setProgress({
+        downloadedBytes: 0,
+        totalBytes: undefined,
+        speedBytesPerSec: 0,
+        etaSeconds: null,
+      });
+      emitUpdaterStatus(
+        'downloading',
+        runInBackground ? 'Downloading update in background...' : 'Downloading update...'
+      );
+
+      try {
+        if (window.electronAPI) {
+          const unsubscribe =
+            window.electronAPI.onDownloadProgress?.((percent) => {
+              if (typeof percent === 'number' && Number.isFinite(percent)) {
+                applyProgressSample(Math.max(0, Math.round(percent)), 100);
+              }
+            }) ?? (() => {});
+          await window.electronAPI.downloadAndInstall();
+          unsubscribe();
+        } else {
+          const update = updateRef.current;
+          if (!update) {
+            setState('idle');
+            return;
+          }
+          let downloaded = 0;
+          await update.downloadAndInstall((event: TauriDownloadEvent) => {
+            if (event.event === 'Started') {
+              resetSpeedTracking();
+              applyProgressSample(0, event.data.contentLength);
+            } else if (event.event === 'Progress') {
+              downloaded += event.data.chunkLength;
+              applyProgressSample(downloaded);
+            }
+          });
+        }
+
+        setState('downloaded');
+        setBackgroundMode(runInBackground);
+        setDismissed(runInBackground);
+        emitUpdaterStatus('downloaded', 'Update installed. Restart app to apply.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to install update.';
+        setState('error');
+        setErrorText(message);
+        setBackgroundMode(false);
+        setDismissed(false);
+        emitUpdaterStatus('error', message);
+      } finally {
+        installInFlightRef.current = false;
+      }
+    },
+    [applyProgressSample, resetSpeedTracking]
+  );
 
   const startInstallFromDetails = useCallback(
     async (snapshot: UpdateDetails | null) => {
@@ -345,7 +353,12 @@ export default function UpdatePrompt() {
         setDismissed(false);
         setBackgroundMode(false);
         resetSpeedTracking();
-        setProgress({ downloadedBytes: 0, totalBytes: undefined, speedBytesPerSec: 0, etaSeconds: null });
+        setProgress({
+          downloadedBytes: 0,
+          totalBytes: undefined,
+          speedBytesPerSec: 0,
+          etaSeconds: null,
+        });
         emitUpdaterStatus('downloading', 'Downloading and installing update...');
         try {
           const { invoke } = await import('@tauri-apps/api/core');
@@ -361,7 +374,7 @@ export default function UpdatePrompt() {
       }
       await handleInstall();
     },
-    [handleInstall, resetSpeedTracking],
+    [handleInstall, resetSpeedTracking]
   );
 
   const handleRestart = useCallback(async () => {
@@ -380,147 +393,209 @@ export default function UpdatePrompt() {
     }
   }, []);
 
-  const checkForUpdates = useCallback(async (channelOverride?: UpdateChannel, installIfAvailable = false) => {
-    if (!isDesktopRuntime() || isCheckingRef.current) return;
-    const selectedChannel = channelOverride ?? readStoredUpdateChannel();
-    isCheckingRef.current = true;
-    setState('checking');
-    setErrorText('');
-    emitUpdaterStatus('checking');
+  const checkForUpdates = useCallback(
+    async (channelOverride?: UpdateChannel, installIfAvailable = false) => {
+      if (!isDesktopRuntime() || isCheckingRef.current) return;
+      const selectedChannel = channelOverride ?? readStoredUpdateChannel();
+      isCheckingRef.current = true;
+      setState('checking');
+      setErrorText('');
+      emitUpdaterStatus('checking');
 
-    try {
-      if (window.electronAPI) {
-        const result = await window.electronAPI.checkForUpdate();
-        const currentVersion = resolveCurrentVersion(await getCurrentAppVersion());
-        if (
-          !result ||
-          !isRemoteNewerForSelectedChannel(currentVersion, result.version, selectedChannel)
-        ) {
+      try {
+        if (window.electronAPI) {
+          const result = await window.electronAPI.checkForUpdate();
+          const currentVersion = resolveCurrentVersion(await getCurrentAppVersion());
+          if (
+            !result ||
+            !isRemoteNewerForSelectedChannel(currentVersion, result.version, selectedChannel)
+          ) {
+            setState('idle');
+            emitUpdaterStatus(
+              'none',
+              currentVersion
+                ? `You are on the latest version (${currentVersion}).`
+                : 'You are on the latest version.'
+            );
+            return;
+          }
+          updateRef.current = null;
+          setDetails({ version: result.version, channel: selectedChannel });
+          setDismissed(false);
+          setBackgroundMode(false);
+          setState('available');
+          emitUpdaterStatus('available', `Update ${result.version} is available.`);
+          if (installIfAvailable) {
+            await startInstallFromDetails({ version: result.version, channel: selectedChannel });
+          }
+          return;
+        }
+
+        const updaterModule = (await import('@tauri-apps/plugin-updater')) as {
+          check: () => Promise<any>;
+        };
+
+        const tauriVersion = await getCurrentAppVersion();
+        const currentVersion = resolveCurrentVersion(tauriVersion);
+        const canUseNativeUpdater = selectedChannel === 'stable';
+        const update = canUseNativeUpdater ? await updaterModule.check() : null;
+        if (!update) {
+          const manifest = await fetchManifestVersion(selectedChannel);
+          if (installIfAvailable && manifest) {
+            const updateSnapshot = {
+              version: String(manifest.version),
+              notes: manifest.notes,
+              currentVersion: currentVersion ?? undefined,
+              manualDownloadUrl: manifest.downloadUrl,
+              fallbackOnly: true,
+              channel: selectedChannel,
+            } satisfies UpdateDetails;
+            setDetails(updateSnapshot);
+            setDismissed(false);
+            setBackgroundMode(false);
+            setState('available');
+            emitUpdaterStatus(
+              'available',
+              `${selectedChannel[0].toUpperCase()}${selectedChannel.slice(1)} build ${manifest.version} selected.`
+            );
+            await startInstallFromDetails(updateSnapshot);
+            return;
+          }
+          const hasNewerManifest =
+            manifest &&
+            isRemoteNewerForSelectedChannel(
+              currentVersion,
+              String(manifest.version),
+              selectedChannel
+            );
+
+          if (hasNewerManifest) {
+            setDismissed(false);
+            setBackgroundMode(false);
+            setState('available');
+            const updateSnapshot = {
+              version: String(manifest.version),
+              notes: manifest.notes,
+              currentVersion: currentVersion ?? undefined,
+              manualDownloadUrl: manifest.downloadUrl,
+              fallbackOnly: true,
+              channel: selectedChannel,
+            } satisfies UpdateDetails;
+            setDetails(updateSnapshot);
+            emitUpdaterStatus(
+              'available',
+              `${selectedChannel[0].toUpperCase()}${selectedChannel.slice(1)} update ${manifest.version} is available (current ${currentVersion}).`
+            );
+            if (installIfAvailable) {
+              await startInstallFromDetails(updateSnapshot);
+            }
+            return;
+          }
+
           setState('idle');
           emitUpdaterStatus(
             'none',
             currentVersion
               ? `You are on the latest version (${currentVersion}).`
-              : 'You are on the latest version.',
+              : 'You are on the latest version.'
           );
           return;
         }
-        updateRef.current = null;
-        setDetails({ version: result.version, channel: selectedChannel });
+
+        updateRef.current = update;
+        const version = String(update.version ?? update.versionName ?? 'latest');
+        if (!isRemoteNewerForSelectedChannel(currentVersion, version, selectedChannel)) {
+          setState('idle');
+          emitUpdaterStatus(
+            'none',
+            currentVersion
+              ? `You are on the latest version (${currentVersion}).`
+              : 'You are on the latest version.'
+          );
+          return;
+        }
+        const notes = typeof update.body === 'string' ? update.body : undefined;
+        const updateSnapshot = {
+          version,
+          notes,
+          currentVersion: currentVersion ?? undefined,
+          fallbackOnly: false,
+          channel: selectedChannel,
+        } satisfies UpdateDetails;
+        setDetails(updateSnapshot);
         setDismissed(false);
         setBackgroundMode(false);
         setState('available');
-        emitUpdaterStatus('available', `Update ${result.version} is available.`);
+        emitUpdaterStatus('available', `Update ${version} is available.`);
         if (installIfAvailable) {
-          await startInstallFromDetails({ version: result.version, channel: selectedChannel });
-        }
-        return;
-      }
-
-      const updaterModule = (await import('@tauri-apps/plugin-updater')) as {
-        check: () => Promise<any>;
-      };
-
-      const tauriVersion = await getCurrentAppVersion();
-      const currentVersion = resolveCurrentVersion(tauriVersion);
-      const canUseNativeUpdater = selectedChannel === 'stable';
-      const update = canUseNativeUpdater ? await updaterModule.check() : null;
-      if (!update) {
-        const manifest = await fetchManifestVersion(selectedChannel);
-        if (installIfAvailable && manifest) {
-          const updateSnapshot = {
-            version: String(manifest.version),
-            notes: manifest.notes,
-            currentVersion: currentVersion ?? undefined,
-            manualDownloadUrl: manifest.downloadUrl,
-            fallbackOnly: true,
-            channel: selectedChannel,
-          } satisfies UpdateDetails;
-          setDetails(updateSnapshot);
-          setDismissed(false);
-          setBackgroundMode(false);
-          setState('available');
-          emitUpdaterStatus(
-            'available',
-            `${selectedChannel[0].toUpperCase()}${selectedChannel.slice(1)} build ${manifest.version} selected.`,
-          );
           await startInstallFromDetails(updateSnapshot);
-          return;
         }
-        const hasNewerManifest =
-          manifest &&
-          isRemoteNewerForSelectedChannel(currentVersion, String(manifest.version), selectedChannel);
-
-        if (hasNewerManifest) {
-          setDismissed(false);
-          setBackgroundMode(false);
-          setState('available');
-          const updateSnapshot = {
-            version: String(manifest.version),
-            notes: manifest.notes,
-            currentVersion: currentVersion ?? undefined,
-            manualDownloadUrl: manifest.downloadUrl,
-            fallbackOnly: true,
-            channel: selectedChannel,
-          } satisfies UpdateDetails;
-          setDetails(updateSnapshot);
-          emitUpdaterStatus(
-            'available',
-            `${selectedChannel[0].toUpperCase()}${selectedChannel.slice(1)} update ${manifest.version} is available (current ${currentVersion}).`,
-          );
-          if (installIfAvailable) {
-            await startInstallFromDetails(updateSnapshot);
-          }
-          return;
-        }
-
-        setState('idle');
-        emitUpdaterStatus(
-          'none',
-          currentVersion
-            ? `You are on the latest version (${currentVersion}).`
-            : 'You are on the latest version.',
-        );
-        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to check for updates.';
+        setState('error');
+        setErrorText(message);
+        emitUpdaterStatus('error', message);
+      } finally {
+        isCheckingRef.current = false;
       }
+    },
+    [startInstallFromDetails]
+  );
 
-      updateRef.current = update;
-      const version = String(update.version ?? update.versionName ?? 'latest');
-      if (!isRemoteNewerForSelectedChannel(currentVersion, version, selectedChannel)) {
-        setState('idle');
-        emitUpdaterStatus(
-          'none',
-          currentVersion
-            ? `You are on the latest version (${currentVersion}).`
-            : 'You are on the latest version.',
-        );
-        return;
-      }
-      const notes = typeof update.body === 'string' ? update.body : undefined;
-      const updateSnapshot = {
-        version,
-        notes,
-        currentVersion: currentVersion ?? undefined,
-        fallbackOnly: false,
-        channel: selectedChannel,
-      } satisfies UpdateDetails;
-      setDetails(updateSnapshot);
-      setDismissed(false);
-      setBackgroundMode(false);
-      setState('available');
-      emitUpdaterStatus('available', `Update ${version} is available.`);
-      if (installIfAvailable) {
-        await startInstallFromDetails(updateSnapshot);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to check for updates.';
-      setState('error');
-      setErrorText(message);
-      emitUpdaterStatus('error', message);
-    } finally {
-      isCheckingRef.current = false;
+  useEffect(() => {
+    if (state === 'available' && details) {
+      notify({
+        title: 'App update available',
+        description: `${details.channel ? `${details.channel[0].toUpperCase()}${details.channel.slice(1)} ` : ''}version ${details.version} is ready to install.`,
+        variant: 'info',
+        durationMs: 9000,
+        dedupeKey: `app-update-available:${details.version}`,
+        historyOnly: true,
+        action: {
+          label: 'View update',
+          onClick: () => {
+            setDismissed(false);
+            setBackgroundMode(false);
+          },
+        },
+      });
+      return;
     }
-  }, [startInstallFromDetails]);
+
+    if (state === 'downloaded' && details) {
+      notify({
+        title: 'Update ready',
+        description: `Version ${details.version} is installed and ready to apply.`,
+        variant: 'success',
+        durationMs: 0,
+        dedupeKey: `app-update-ready:${details.version}`,
+        historyOnly: true,
+        action: {
+          label: 'Restart app',
+          onClick: () => handleRestart(),
+        },
+      });
+      return;
+    }
+
+    if (state === 'error') {
+      notify({
+        title: 'App update failed',
+        description: errorText || 'The update could not be completed.',
+        variant: 'error',
+        durationMs: 9000,
+        dedupeKey: `app-update-error:${details?.version ?? 'unknown'}:${errorText || 'unknown'}`,
+        historyOnly: true,
+        action: {
+          label: 'Retry update',
+          onClick: () => {
+            setDismissed(false);
+            void checkForUpdates(details?.channel);
+          },
+        },
+      });
+    }
+  }, [checkForUpdates, details, errorText, handleRestart, notify, state]);
 
   useEffect(() => {
     void checkForUpdates();
@@ -594,7 +669,10 @@ export default function UpdatePrompt() {
         applyProgressSample(Math.max(0, downloaded), total);
         setState('handoff');
         installInFlightRef.current = false;
-        emitUpdaterStatus('downloaded', detail.message || 'Installer launched. Finish setup to complete update.');
+        emitUpdaterStatus(
+          'downloaded',
+          detail.message || 'Installer launched. Finish setup to complete update.'
+        );
         return;
       }
       if (status === 'error') {
@@ -675,7 +753,7 @@ export default function UpdatePrompt() {
           detail.message ||
             (detail.updated
               ? `SimC ${channel} runtime downloaded.`
-              : `SimC ${channel} runtime is already up to date.`),
+              : `SimC ${channel} runtime is already up to date.`)
         );
         setSimcErrorText('');
         return;
@@ -783,7 +861,6 @@ export default function UpdatePrompt() {
     };
   }, []);
 
-
   return (
     <>
       {isUpdateToastVisible && (
@@ -791,12 +868,19 @@ export default function UpdatePrompt() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-white">
-                {state === 'error' ? 'Update Failed' : state === 'downloaded' ? 'Update Ready' : 'App Update'}
+                {state === 'error'
+                  ? 'Update Failed'
+                  : state === 'downloaded'
+                    ? 'Update Ready'
+                    : 'App Update'}
               </p>
               {details && (
                 <p className="mt-1 text-xs text-zinc-300">
-                  {details.channel ? `${details.channel[0].toUpperCase()}${details.channel.slice(1)} ` : ''}
-                  version <span className="font-semibold text-gold">{details.version}</span> is available.
+                  {details.channel
+                    ? `${details.channel[0].toUpperCase()}${details.channel.slice(1)} `
+                    : ''}
+                  version <span className="font-semibold text-gold">{details.version}</span> is
+                  available.
                 </p>
               )}
             </div>
@@ -823,10 +907,12 @@ export default function UpdatePrompt() {
                 Downloading update{progressPercent != null ? `... ${progressPercent}%` : '...'}
               </p>
               <p className="text-[11px] text-zinc-500">
-                Speed: {formatTransferSpeed(progress.speedBytesPerSec)} | ETA: {formatEta(progress.etaSeconds)}
+                Speed: {formatTransferSpeed(progress.speedBytesPerSec)} | ETA:{' '}
+                {formatEta(progress.etaSeconds)}
               </p>
               <p className="text-[11px] text-zinc-500">
-                {formatBytesDecimal(progress.downloadedBytes)} / {formatBytesDecimal(progress.totalBytes)}
+                {formatBytesDecimal(progress.downloadedBytes)} /{' '}
+                {formatBytesDecimal(progress.totalBytes)}
               </p>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
                 {progressPercent != null ? (
@@ -891,7 +977,10 @@ export default function UpdatePrompt() {
                 <button onClick={dismissUpdatePrompt} className="btn-outline px-3 py-1.5 text-xs">
                   Later
                 </button>
-                <button onClick={() => void handleRestart()} className="btn-primary px-3 py-1.5 text-xs">
+                <button
+                  onClick={() => void handleRestart()}
+                  className="btn-primary px-3 py-1.5 text-xs"
+                >
                   Restart App
                 </button>
               </>
@@ -922,7 +1011,8 @@ export default function UpdatePrompt() {
             {formatTransferSpeed(progress.speedBytesPerSec)} | ETA {formatEta(progress.etaSeconds)}
           </p>
           <p className="mt-1 text-[11px] text-zinc-500">
-            {formatBytesDecimal(progress.downloadedBytes)} / {formatBytesDecimal(progress.totalBytes)}
+            {formatBytesDecimal(progress.downloadedBytes)} /{' '}
+            {formatBytesDecimal(progress.totalBytes)}
           </p>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
             {progressPercent != null ? (
@@ -962,7 +1052,10 @@ export default function UpdatePrompt() {
             >
               Later
             </button>
-            <button onClick={() => void handleRestart()} className="btn-primary px-3 py-1.5 text-xs">
+            <button
+              onClick={() => void handleRestart()}
+              className="btn-primary px-3 py-1.5 text-xs"
+            >
               Restart App
             </button>
           </div>
@@ -972,9 +1065,7 @@ export default function UpdatePrompt() {
       {backgroundMode && state === 'handoff' && (
         <div className="fixed bottom-4 right-4 z-[85] w-80 rounded-lg border border-emerald-500/20 bg-surface px-4 py-3 shadow-xl">
           <p className="text-sm font-semibold text-white">Installer Launched</p>
-          <p className="mt-1 text-xs text-zinc-300">
-            Finish setup, then reopen WhyLowDps.
-          </p>
+          <p className="mt-1 text-xs text-zinc-300">Finish setup, then reopen WhyLowDps.</p>
           <div className="mt-3 flex justify-end gap-2">
             <button
               onClick={() => {
@@ -1161,7 +1252,6 @@ export default function UpdatePrompt() {
           </button>
         </div>
       )}
-
     </>
   );
 }

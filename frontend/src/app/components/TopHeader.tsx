@@ -10,6 +10,7 @@ import { API_URL, fetchJsonCached } from '../lib/api';
 import { characterHref } from '../lib/routes';
 import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 import { CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
+import NotificationCenter from './shared/NotificationCenter';
 
 type SearchCharacter = {
   realm: string;
@@ -232,6 +233,7 @@ export default function TopHeader() {
           )}
 
           <div data-tauri-drag-region="false" className="flex items-center gap-3 justify-self-end">
+            <NotificationCenter />
             <button
               type="button"
               onClick={handleWhatsNew}

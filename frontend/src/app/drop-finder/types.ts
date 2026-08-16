@@ -9,6 +9,8 @@ export interface Instance {
   image_background?: string;
   image_button?: string;
   image_button_small?: string;
+  current_season?: boolean;
+  active_rotation?: boolean;
   encounters: { id: number; name: string; image_url?: string }[];
 }
 

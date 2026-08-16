@@ -266,7 +266,12 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
 pub fn load_instances(data_dir: &Path) {
     let raidbots_instances = read_json_array(&data_dir.join("instances.json"));
     let wow_instances = crate::game_data::instance_drops::load_instances_from_wow_content(data_dir);
-    let instances = reconcile_instance_sources(raidbots_instances, wow_instances);
+    let active_season_name = read_active_season_metadata(data_dir).0;
+    let instances = reconcile_instance_sources(
+        raidbots_instances,
+        wow_instances,
+        active_season_name.as_deref(),
+    );
     if !instances.is_empty() {
         *INSTANCES.write().unwrap() = instances;
         return;
@@ -280,7 +285,13 @@ fn read_json_array(path: &Path) -> Vec<Value> {
     serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default()
 }
 
-fn reconcile_instance_sources(primary: Vec<Value>, fallback: Vec<Value>) -> Vec<Value> {
+fn reconcile_instance_sources(
+    primary: Vec<Value>,
+    fallback: Vec<Value>,
+    active_season_name: Option<&str>,
+) -> Vec<Value> {
+    let (mplus_ids, normal_dungeon_ids, raid_ids) =
+        primary_current_instance_pools(&primary, active_season_name);
     let mut fallback_by_id = HashMap::new();
     let mut fallback_order = Vec::new();
     for row in fallback {
@@ -298,7 +309,12 @@ fn reconcile_instance_sources(primary: Vec<Value>, fallback: Vec<Value>) -> Vec<
             continue;
         };
         seen_ids.insert(id);
-        rows.push(merge_instance_rows(fallback_by_id.remove(&id), row));
+        rows.push(apply_primary_season_metadata(
+            merge_instance_rows(fallback_by_id.remove(&id), row),
+            &mplus_ids,
+            &normal_dungeon_ids,
+            &raid_ids,
+        ));
     }
 
     for id in fallback_order {
@@ -309,11 +325,144 @@ fn reconcile_instance_sources(primary: Vec<Value>, fallback: Vec<Value>) -> Vec<
             continue;
         };
         if seen_ids.insert(id) {
-            rows.push(row);
+            rows.push(apply_primary_season_metadata(
+                row,
+                &mplus_ids,
+                &normal_dungeon_ids,
+                &raid_ids,
+            ));
         }
     }
 
     rows
+}
+
+fn instance_pool_ids(primary: &[Value], pool_id: i64) -> HashSet<i64> {
+    let Some(pool) = primary
+        .iter()
+        .find(|row| row.get("id").and_then(Value::as_i64) == Some(pool_id))
+    else {
+        return HashSet::new();
+    };
+
+    pool.get("encounters")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+        .collect()
+}
+
+fn primary_current_instance_pools(
+    primary: &[Value],
+    active_season_name: Option<&str>,
+) -> (HashSet<i64>, HashSet<i64>, HashSet<i64>) {
+    let mplus_ids = instance_pool_ids(primary, -1);
+    let normal_dungeon_ids = instance_pool_ids(primary, -32);
+
+    let active_raid_encounter_ids = active_season_name
+        .and_then(|season_name| {
+            let season_name = season_name.to_ascii_lowercase();
+            primary.iter().find_map(|row| {
+                let name = row.get("name").and_then(Value::as_str)?;
+                let pool_name = name.strip_suffix(" Raids")?;
+                if season_name.contains(&pool_name.to_ascii_lowercase()) {
+                    Some(
+                        row.get("encounters")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+                            .collect::<HashSet<_>>(),
+                    )
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or_default();
+
+    let mut raid_ids: HashSet<i64> = primary
+        .iter()
+        .filter(|row| {
+            row.get("id")
+                .and_then(Value::as_i64)
+                .is_some_and(|id| id > 0)
+                && row.get("type").and_then(Value::as_str) == Some("raid")
+        })
+        .filter(|row| {
+            row.get("encounters")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .any(|encounter| {
+                    encounter
+                        .get("id")
+                        .and_then(Value::as_i64)
+                        .is_some_and(|id| active_raid_encounter_ids.contains(&id))
+                })
+        })
+        .filter_map(|row| row.get("id").and_then(Value::as_i64))
+        .collect();
+
+    if raid_ids.is_empty() {
+        raid_ids.extend(primary.iter().filter_map(|row| {
+            let id = row.get("id").and_then(Value::as_i64)?;
+            if id > 0
+                && row.get("type").and_then(Value::as_str) == Some("raid")
+                && row.get("current_season").and_then(Value::as_bool) == Some(true)
+            {
+                Some(id)
+            } else {
+                None
+            }
+        }));
+    }
+
+    (mplus_ids, normal_dungeon_ids, raid_ids)
+}
+
+fn apply_primary_season_metadata(
+    mut row: Value,
+    mplus_ids: &HashSet<i64>,
+    normal_dungeon_ids: &HashSet<i64>,
+    raid_ids: &HashSet<i64>,
+) -> Value {
+    let Some(id) = row.get("id").and_then(Value::as_i64) else {
+        return row;
+    };
+    if id <= 0 {
+        return row;
+    }
+
+    let Some(obj) = row.as_object_mut() else {
+        return row;
+    };
+    match obj.get("type").and_then(Value::as_str) {
+        Some("dungeon") if !mplus_ids.is_empty() || !normal_dungeon_ids.is_empty() => {
+            obj.insert(
+                "active_rotation".to_string(),
+                json!(mplus_ids.contains(&id)),
+            );
+            obj.insert(
+                "current_season".to_string(),
+                json!(mplus_ids.contains(&id) || normal_dungeon_ids.contains(&id)),
+            );
+        }
+        Some("raid") if !raid_ids.is_empty() => {
+            let is_current_world_boss =
+                obj.get("name").and_then(Value::as_str).is_some_and(|name| {
+                    name.to_ascii_lowercase().contains("world boss")
+                        && obj.get("current_season").and_then(Value::as_bool) == Some(true)
+                });
+            obj.insert(
+                "current_season".to_string(),
+                json!(raid_ids.contains(&id) || is_current_world_boss),
+            );
+        }
+        _ => {}
+    }
+    row
 }
 
 fn merge_instance_rows(fallback: Option<Value>, primary: Value) -> Value {
@@ -1559,6 +1708,7 @@ mod tests {
                     "type": "raid"
                 }),
             ],
+            None,
         );
 
         assert_eq!(rows.len(), 2);
@@ -1566,6 +1716,105 @@ mod tests {
         assert_eq!(rows[0]["image_url"], "/api/data/images/instance/1307");
         assert_eq!(rows[0]["encounters"][0]["id"], 2733);
         assert_eq!(rows[1]["id"], 78);
+    }
+
+    #[test]
+    fn reconcile_instance_sources_uses_active_primary_season_pools() {
+        let primary = vec![
+            serde_json::json!({
+                "id": -1,
+                "name": "Mythic+ Dungeons",
+                "encounters": [{"id": 20}]
+            }),
+            serde_json::json!({
+                "id": -32,
+                "name": "Normal Dungeons",
+                "encounters": [{"id": 21}]
+            }),
+            serde_json::json!({
+                "id": -102,
+                "name": "Season 2 Raids",
+                "encounters": [{"id": 100}]
+            }),
+            serde_json::json!({
+                "id": 20,
+                "name": "Current M+ Dungeon",
+                "type": "dungeon"
+            }),
+            serde_json::json!({
+                "id": 21,
+                "name": "Current Normal Dungeon",
+                "type": "dungeon"
+            }),
+            serde_json::json!({
+                "id": 22,
+                "name": "Historical Dungeon",
+                "type": "dungeon"
+            }),
+            serde_json::json!({
+                "id": 30,
+                "name": "Current Raid",
+                "type": "raid",
+                "encounters": [{"id": 100}]
+            }),
+            serde_json::json!({
+                "id": 31,
+                "name": "Historical Raid",
+                "type": "raid",
+                "encounters": [{"id": 200}]
+            }),
+        ];
+        let fallback = vec![
+            serde_json::json!({
+                "id": 20,
+                "name": "Current M+ Dungeon",
+                "type": "dungeon",
+                "current_season": true,
+                "active_rotation": false
+            }),
+            serde_json::json!({
+                "id": 21,
+                "name": "Current Normal Dungeon",
+                "type": "dungeon",
+                "current_season": false,
+                "active_rotation": false
+            }),
+            serde_json::json!({
+                "id": 22,
+                "name": "Historical Dungeon",
+                "type": "dungeon",
+                "current_season": true,
+                "active_rotation": true
+            }),
+            serde_json::json!({
+                "id": 30,
+                "name": "Current Raid",
+                "type": "raid",
+                "current_season": false
+            }),
+            serde_json::json!({
+                "id": 31,
+                "name": "Historical Raid",
+                "type": "raid",
+                "current_season": true
+            }),
+        ];
+
+        let rows = reconcile_instance_sources(primary, fallback, Some("Midnight Season 2"));
+        let row = |id| {
+            rows.iter()
+                .find(|row| row["id"] == id)
+                .expect("instance row")
+        };
+
+        assert_eq!(row(20)["current_season"], true);
+        assert_eq!(row(20)["active_rotation"], true);
+        assert_eq!(row(21)["current_season"], true);
+        assert_eq!(row(21)["active_rotation"], false);
+        assert_eq!(row(22)["current_season"], false);
+        assert_eq!(row(22)["active_rotation"], false);
+        assert_eq!(row(30)["current_season"], true);
+        assert_eq!(row(31)["current_season"], false);
     }
 
     #[test]

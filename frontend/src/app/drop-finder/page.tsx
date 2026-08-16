@@ -283,9 +283,14 @@ export default function DropFinderPage() {
   const activeInstances = isRaid ? raids : dungeonInstances;
   const hasImages = activeInstances.some((i) => i.id > 0 || !!i.image_url?.trim());
 
+  const dungeonPoolId = activeDungeonCat?.cat.poolInstanceId;
+  const hasDungeonPool =
+    dungeonPoolId != null && instances.some((instance) => instance.id === dungeonPoolId);
   const allKey = isRaid
-    ? 'type:raid'
-    : String(activeDungeonCat?.cat.poolInstanceId ?? 'type:dungeon');
+    ? encodeInstanceSelectionIds(raids.map((instance) => String(instance.id)))
+    : hasDungeonPool
+      ? String(dungeonPoolId)
+      : encodeInstanceSelectionIds(dungeonInstances.map((instance) => String(instance.id)));
 
   const selectedDungeonIds = useMemo(() => {
     if (!isDungeon) return new Set<string>();

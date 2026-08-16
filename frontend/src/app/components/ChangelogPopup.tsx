@@ -28,6 +28,23 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
+    title: 'Recent character search history',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The character search bar now remembers your eight most recent searches locally so you can return to a character quickly.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Focus the character field to open recent searches, or type to filter them.',
+          'Select a recent character to navigate directly to its page.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Pause and resume simulations',
     body: [
       {

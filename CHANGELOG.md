@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Added
 
+- Recent character search history in the header, persisted locally with filtering and one-click navigation.
 - Pause and resume simulations from the result screen while preserving queued, running, and staged progress as long as the backend remains alive.
 - Shared notification center with persistent local history, unread counts, read-state controls, and direct actions for simulation results and app updates.
 - One-click reruns that submit the saved simulation input directly and open the new result.

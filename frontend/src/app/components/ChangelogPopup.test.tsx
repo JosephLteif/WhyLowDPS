@@ -18,11 +18,13 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Pause and resume simulations' })
+      screen.getByRole('heading', { level: 3, name: 'Recent character search history' })
     ).toBeInTheDocument();
-    expect(screen.getByText(/without restarting the SimC process/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/remembers your eight most recent searches locally/)
+    ).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 5$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 6$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

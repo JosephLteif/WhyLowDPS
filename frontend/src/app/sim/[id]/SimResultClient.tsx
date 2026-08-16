@@ -750,6 +750,8 @@ export default function SimResultClient() {
     setTimelineFallback(null);
     setAplFallback(null);
     setTimelineLoading(false);
+    setLogLines([]);
+    logCursorRef.current = 0;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
@@ -770,9 +772,10 @@ export default function SimResultClient() {
     };
   }, [activeScenarioId]);
 
-  // Poll logs only when the log console is expanded and the sim is active
+  // Keep polling while active so the stats card can show the current phase ETA
+  // even when the log console is collapsed.
   useEffect(() => {
-    if (!showLogs || !activeScenarioId || activeScenarioId === '_') return;
+    if (!activeScenarioId || activeScenarioId === '_') return;
     if (job?.status !== 'pending' && job?.status !== 'running') return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -799,7 +802,7 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [showLogs, activeScenarioId, job?.status]);
+  }, [activeScenarioId, job?.status]);
 
   useEffect(() => {
     if (!job) return;

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ScrollText } from 'lucide-react';
 import { API_URL } from '../lib/api';
-import { formatElapsedCompact, formatMegabytes } from '../lib/format';
+import { formatElapsedCompact, formatEta, formatMegabytes } from '../lib/format';
 
 interface StageTiming {
   name: string;
@@ -34,6 +34,19 @@ interface SimStatusProps {
   fightStyle?: string;
 }
 
+export interface PhaseLogInfo {
+  phase: 'Profileset' | 'Baseline';
+  name: string;
+  profilesetCompleted?: number;
+  profilesetTotal?: number;
+  simulationCompleted?: number;
+  simulationTotal?: number;
+  simulationPercent?: number;
+  mean?: number;
+  errorPercent?: number;
+  remainingSeconds: number | null;
+}
+
 function useSmoothedProgress(serverProgress: number): number {
   const [display, setDisplay] = useState(serverProgress);
 
@@ -60,6 +73,51 @@ function classifyLine(line: string): string {
     return 'text-gray-300';
   if (/^\s+\d+\.\d+\s*:\s*Combo\s/.test(line)) return 'text-zinc-300';
   return 'text-zinc-300';
+}
+
+export function parseLatestPhaseLog(lines: string[] = []): PhaseLogInfo | null {
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    const header = line.match(/^Generating (Profileset|Baseline):\s*(.*?)(?:\s+\|\s+|$)/);
+    if (!header) continue;
+
+    const remainingMatch = line.match(/\((?:(\d+)m\s*,?\s*)?(\d+(?:\.\d+)?)s\)\s*$/i);
+    const progressMatch = line.match(
+      /\|\s+([^[]+?)\s+\[[^\]]*\]\s+(\d+)\/(\d+)\s+([\d.]+)\s+Mean=([-+\d.]+)\s+Error=([-+\d.]+)%\s+(\S+)/
+    );
+    const profilesetCount = progressMatch?.[1].match(/(\d+)\/(\d+)/);
+
+    const remainingSeconds = remainingMatch
+      ? Number(remainingMatch[1] || 0) * 60 + Number(remainingMatch[2])
+      : null;
+
+    return {
+      phase: header[1] as PhaseLogInfo['phase'],
+      name: header[2].trim(),
+      ...(progressMatch
+        ? {
+            ...(profilesetCount
+              ? {
+                  profilesetCompleted: Number(profilesetCount[1]),
+                  profilesetTotal: Number(profilesetCount[2]),
+                }
+              : {}),
+            simulationCompleted: Number(progressMatch[2]),
+            simulationTotal: Number(progressMatch[3]),
+            simulationPercent: Number(progressMatch[4]),
+            mean: Number(progressMatch[5]),
+            errorPercent: Number(progressMatch[6]),
+          }
+        : {}),
+      remainingSeconds: Number.isFinite(remainingSeconds) ? remainingSeconds : null,
+    };
+  }
+
+  return null;
+}
+
+export function extractLatestPhaseRemainingSeconds(lines: string[] = []): number | null {
+  return parseLatestPhaseLog(lines)?.remainingSeconds ?? null;
 }
 
 function LogConsole({ lines }: { lines: string[] }) {
@@ -134,6 +192,24 @@ export default function SimStatus({
   const displayProgress = useSmoothedProgress(progress);
   const title = progressStage || (isPending ? 'Queued' : 'Simulating');
   const hasStages = stagesCompleted && stagesCompleted.length > 0;
+  const phaseLogInfo = parseLatestPhaseLog(logLines);
+  const remainingSeconds = phaseLogInfo?.remainingSeconds ?? null;
+  const hasServerProfilesetProgress = (profilesetsTotal ?? 0) > 0;
+  const displayedProfilesetsCompleted = hasServerProfilesetProgress
+    ? profilesetsCompleted
+    : phaseLogInfo?.profilesetCompleted;
+  const displayedProfilesetsTotal = hasServerProfilesetProgress
+    ? profilesetsTotal
+    : phaseLogInfo?.profilesetTotal;
+  const displayedIterationsCompleted = phaseLogInfo?.simulationCompleted ?? iterationsCompleted;
+  const displayedIterationsTotal = phaseLogInfo?.simulationTotal ?? iterations;
+  const parsedProfilesetProgress =
+    phaseLogInfo?.profilesetCompleted !== undefined && phaseLogInfo.profilesetTotal !== undefined
+      ? `${phaseLogInfo.profilesetCompleted}/${phaseLogInfo.profilesetTotal} profilesets`
+      : null;
+  const displayedProgressDetail = parsedProfilesetProgress
+    ? progressDetail?.split('·').slice(1).join('·').trim() || undefined
+    : progressDetail;
 
   useEffect(() => {
     if (!createdAt || !isRunning) {
@@ -170,7 +246,7 @@ export default function SimStatus({
     activeStageElapsed != null ? Math.max(0, activeStageElapsed) : elapsedSeconds;
 
   return (
-    <div className="flex flex-col items-center justify-center space-y-6 py-16">
+    <div className="flex w-full flex-col items-center space-y-6 py-16">
       <div className="relative">
         <div className="h-12 w-12 animate-spin rounded-full border-2 border-zinc-800 border-t-gold" />
         <div className="absolute inset-0 flex items-center justify-center">
@@ -180,10 +256,12 @@ export default function SimStatus({
 
       <div className="text-center">
         <p className="text-sm font-semibold text-zinc-100">{title}</p>
-        {progressDetail && <p className="mt-1 text-sm text-zinc-300">{progressDetail}</p>}
+        {displayedProgressDetail && (
+          <p className="mt-1 text-sm text-zinc-300">{displayedProgressDetail}</p>
+        )}
       </div>
 
-      <div className="w-80">
+      <div className="w-full max-w-2xl px-4 sm:px-6">
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
           <div
             className="h-full rounded-full bg-gradient-to-r from-gold-dark to-gold transition-all duration-700"
@@ -192,76 +270,146 @@ export default function SimStatus({
         </div>
         <div className="mt-3 flex items-center justify-between">
           <p className="font-mono text-[13px] font-medium text-gold">{displayProgress}%</p>
-          {profilesetsTotal ? (
+          {displayedProfilesetsTotal ? (
             <p className="text-[12px] text-zinc-400">
-              <span className="font-medium text-zinc-200">{profilesetsCompleted || 0}</span> /{' '}
-              {profilesetsTotal} combos
+              <span className="font-medium text-zinc-200">
+                {displayedProfilesetsCompleted || 0}
+              </span>{' '}
+              / {displayedProfilesetsTotal} profilesets
             </p>
-          ) : iterations && iterationsCompleted !== undefined ? (
+          ) : displayedIterationsTotal && displayedIterationsCompleted !== undefined ? (
             <p className="text-[12px] text-zinc-400">
-              <span className="font-medium text-zinc-200">{iterationsCompleted}</span> /{' '}
-              {iterations} iterations
+              <span className="font-medium text-zinc-200">{displayedIterationsCompleted}</span> /{' '}
+              {displayedIterationsTotal} iterations
             </p>
           ) : null}
         </div>
       </div>
 
-      {isRunning && (
-        <div className="flex w-80 flex-wrap justify-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sm">
-          <div className="flex flex-col items-center">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-              Elapsed
-            </span>
-            <span className="mt-1 font-mono text-[13px] text-zinc-200">
-              {formatElapsedCompact(elapsedSeconds)}
-            </span>
+      <div className="grid w-full max-w-4xl gap-4 px-4 sm:px-6 md:grid-cols-2">
+        {phaseLogInfo && (
+          <div className="min-w-0 rounded-xl border border-border bg-surface p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                Current {phaseLogInfo.phase}
+              </span>
+              <span
+                className="truncate text-right text-[13px] text-zinc-200"
+                title={phaseLogInfo.name}
+              >
+                {phaseLogInfo.name}
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+              {phaseLogInfo.simulationCompleted !== undefined &&
+                phaseLogInfo.simulationTotal !== undefined &&
+                phaseLogInfo.simulationPercent !== undefined && (
+                  <div className="col-span-2 flex flex-col items-center">
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                      SimC Progress
+                    </span>
+                    <span className="mt-1 whitespace-nowrap font-mono text-[12px] text-zinc-200">
+                      {`${phaseLogInfo.simulationCompleted}/${phaseLogInfo.simulationTotal} (${phaseLogInfo.simulationPercent.toFixed(3)}%)`}
+                    </span>
+                  </div>
+                )}
+              {phaseLogInfo.mean !== undefined && (
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                    Mean
+                  </span>
+                  <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                    {Math.round(phaseLogInfo.mean).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {phaseLogInfo.errorPercent !== undefined && (
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                    Error
+                  </span>
+                  <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                    {phaseLogInfo.errorPercent.toFixed(3)}%
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-          {cpuPct !== undefined && cpuPct > 0 && (
+        )}
+
+        {isRunning && (
+          <div
+            className={`flex w-full min-w-0 flex-wrap justify-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface p-4 shadow-sm ${phaseLogInfo ? '' : 'md:col-span-2'}`}
+          >
             <div className="flex flex-col items-center">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                CPU Usage
-              </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">{cpuPct.toFixed(1)}%</span>
-            </div>
-          )}
-          {cpuCores !== undefined && cpuCores > 0 && (
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                Cores
-              </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">{cpuCores}</span>
-            </div>
-          )}
-          {memBytes !== undefined && memBytes > 0 && (
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                Memory
+                Elapsed
               </span>
               <span className="mt-1 font-mono text-[13px] text-zinc-200">
-                {formatMegabytes(memBytes)}
+                {formatElapsedCompact(elapsedSeconds)}
               </span>
             </div>
-          )}
-          {iterations && (
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                Iterations
-              </span>
-              <span className="mt-1 font-mono text-[13px] text-zinc-200">
-                {(iterations / 1000).toFixed(0)}k
-              </span>
-            </div>
-          )}
-          {fightStyle && (
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
-                Style
-              </span>
-              <span className="mt-1 text-[13px] text-zinc-200">{fightStyle}</span>
-            </div>
-          )}
-        </div>
-      )}
+            {remainingSeconds !== null && (
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Remaining
+                </span>
+                <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                  {formatEta(remainingSeconds)}
+                </span>
+              </div>
+            )}
+            {cpuPct !== undefined && cpuPct > 0 && (
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  CPU Usage
+                </span>
+                <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                  {cpuPct.toFixed(1)}%
+                </span>
+              </div>
+            )}
+            {cpuCores !== undefined && cpuCores > 0 && (
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Cores
+                </span>
+                <span className="mt-1 font-mono text-[13px] text-zinc-200">{cpuCores}</span>
+              </div>
+            )}
+            {memBytes !== undefined && memBytes > 0 && (
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Memory
+                </span>
+                <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                  {formatMegabytes(memBytes)}
+                </span>
+              </div>
+            )}
+            {displayedIterationsTotal && (
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Iterations
+                </span>
+                <span className="mt-1 font-mono text-[13px] text-zinc-200">
+                  {phaseLogInfo?.simulationTotal !== undefined
+                    ? displayedIterationsTotal.toLocaleString()
+                    : `${(displayedIterationsTotal / 1000).toFixed(0)}k`}
+                </span>
+              </div>
+            )}
+            {fightStyle && (
+              <div className="flex flex-col items-center">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Style
+                </span>
+                <span className="mt-1 text-[13px] text-zinc-200">{fightStyle}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {jobId && (isRunning || isPending) && (
         <div className="flex items-center gap-3">
@@ -285,7 +433,7 @@ export default function SimStatus({
       )}
 
       {hasStages && (
-        <div className="w-72 space-y-1 pt-2">
+        <div className="w-full max-w-4xl space-y-1 px-4 pt-2 sm:px-6">
           {stagesCompleted!.map((stage, i) => (
             <div key={i} className="flex items-center gap-2">
               <Check className="h-3 w-3 shrink-0 text-emerald-500" strokeWidth={2.5} />
@@ -307,15 +455,24 @@ export default function SimStatus({
               </div>
               <span className="text-sm text-zinc-300">
                 {progressStage}
-                <span className="text-gray-500"> - {formatElapsedCompact(runningStageElapsed)}</span>
-                {progressDetail && <span className="text-zinc-300"> - {progressDetail}</span>}
+                <span className="text-gray-500">
+                  {' '}
+                  - {formatElapsedCompact(runningStageElapsed)}
+                </span>
+                {displayedProgressDetail && (
+                  <span className="text-zinc-300"> - {displayedProgressDetail}</span>
+                )}
               </span>
             </div>
           )}
         </div>
       )}
 
-      {showLogs && logLines && logLines.length > 0 && <LogConsole lines={logLines} />}
+      {showLogs && logLines && logLines.length > 0 && (
+        <div className="w-full max-w-6xl px-4 sm:px-6">
+          <LogConsole lines={logLines} />
+        </div>
+      )}
     </div>
   );
 }

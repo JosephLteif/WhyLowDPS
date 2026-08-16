@@ -27,7 +27,12 @@ export default function OnboardingChecklist() {
 
   const refresh = useCallback(async () => {
     if (lightMode) {
-      setState({ dataReady: true, credentialsReady: true, profileReady: false, simulationReady: false });
+      setState({
+        dataReady: true,
+        credentialsReady: true,
+        profileReady: false,
+        simulationReady: false,
+      });
       setLoading(false);
       return;
     }
@@ -57,10 +62,30 @@ export default function OnboardingChecklist() {
   if (loading || completed === 4) return null;
 
   const items = [
-    { done: state.dataReady, label: 'Game data is ready', href: '/settings', icon: Database },
-    { done: state.credentialsReady, label: 'Connect Blizzard for character data', href: '/settings', icon: KeyRound },
-    { done: state.profileReady, label: 'Import a SimC character profile', href: '/quick-sim', icon: UserRound },
-    { done: state.simulationReady, label: 'Run your first simulation', href: '/quick-sim', icon: Play },
+    {
+      done: state.dataReady,
+      label: 'Game data is ready',
+      href: '/settings?tab=data',
+      icon: Database,
+    },
+    {
+      done: state.credentialsReady,
+      label: 'Connect Blizzard for character data',
+      href: '/settings?tab=integrations',
+      icon: KeyRound,
+    },
+    {
+      done: state.profileReady,
+      label: 'Import a SimC character profile',
+      href: '/quick-sim',
+      icon: UserRound,
+    },
+    {
+      done: state.simulationReady,
+      label: 'Run your first simulation',
+      href: '/quick-sim',
+      icon: Play,
+    },
   ];
 
   return (
@@ -71,14 +96,26 @@ export default function OnboardingChecklist() {
           <h2 className="mt-1 text-lg font-semibold text-zinc-100">Finish setting up WhyLowDPS</h2>
           <p className="mt-1 text-sm text-zinc-400">{completed} of 4 steps complete.</p>
         </div>
-        <button type="button" onClick={() => void refresh()} className="text-xs font-semibold text-zinc-400 hover:text-white">
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className="text-xs font-semibold text-zinc-400 hover:text-white"
+        >
           Refresh status
         </button>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {items.map(({ done, label, href, icon: Icon }) => (
-          <Link key={label} href={href} className="flex items-center gap-2 rounded-lg border border-border bg-surface-2/70 px-3 py-2.5 text-sm transition-colors hover:border-gold/30 hover:bg-surface-2">
-            {done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" /> : <Circle className="h-4 w-4 shrink-0 text-zinc-500" />}
+          <Link
+            key={label}
+            href={href}
+            className="flex items-center gap-2 rounded-lg border border-border bg-surface-2/70 px-3 py-2.5 text-sm transition-colors hover:border-gold/30 hover:bg-surface-2"
+          >
+            {done ? (
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+            ) : (
+              <Circle className="h-4 w-4 shrink-0 text-zinc-500" />
+            )}
             <Icon className="h-4 w-4 shrink-0 text-zinc-400" strokeWidth={1.8} />
             <span className={done ? 'text-zinc-500 line-through' : 'text-zinc-200'}>{label}</span>
           </Link>

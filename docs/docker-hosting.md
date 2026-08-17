@@ -4,13 +4,20 @@ The hosted deployment is a private, single-instance Linux container. It runs
 its own Linux SimulationCraft runtime; it does not connect to the Windows
 desktop app's SimC process or data directory.
 
+This is a self-hosted private instance, not a shared WhyLowDPS service. The
+recommended installation uses the prebuilt release image. Building from source
+is only needed for development or contributors.
+
 ## Production
 
-1. Use a Linux host with Docker Engine and Compose.
-2. Point DNS for the chosen domain at the host.
-3. Copy `.env.docker.example` to `.env.docker` and set the domain and a strong
-   `JWT_SECRET`. Blizzard client credentials are optional.
-4. Register the exact callback URL in the Blizzard developer portal. The hosted
+1. Use an amd64 Linux host with Docker Engine and Compose.
+2. Download `compose.yaml` and `.env.docker.example` from the desired GitHub
+   release, or clone the repository for the current configuration.
+3. Point DNS for the chosen domain at the host.
+4. Copy `.env.docker.example` to `.env.docker`, pin `WHYLOWDPS_VERSION` to the
+   release version, and set the domain and a strong `JWT_SECRET`. Blizzard
+   client credentials are optional.
+5. Register the exact callback URL in the Blizzard developer portal. The hosted
    UI also displays these values under the credential form:
 
    - **Redirect URLs:** `https://<host-name>/api/auth/bnet/callback`
@@ -21,19 +28,38 @@ desktop app's SimC process or data directory.
    `https://192-168-100-125.nip.io/api/auth/bnet/callback` and
    `192-168-100-125.nip.io`. Use the hostname and scheme that your own host
    actually serves; the redirect must match exactly.
-5. Ensure the `weekly` or `nightly` release manifest in the companion
+6. Ensure the `weekly` or `nightly` release manifest in the companion
    `whylowdps-simc-runtime` repository contains a `linux-x64` asset. Its
    publisher now builds and validates that CLI runtime from SimulationCraft
    source.
-6. Start the stack:
+7. Start the stack:
 
-```text
-docker compose up -d --build
+```shell
+docker compose --env-file .env.docker pull
+docker compose --env-file .env.docker up -d
 ```
 
 Caddy terminates HTTPS and proxies the same origin to the WhyLowDPS app. The
 SQLite database, synchronized data, caches, and downloaded SimC runtime live
 in the Docker-managed `whylowdps-data` volume.
+
+To update an existing instance, back up the data volume, change
+`WHYLOWDPS_VERSION` to the new release, then run:
+
+```shell
+docker compose --env-file .env.docker pull
+docker compose --env-file .env.docker up -d
+docker compose --env-file .env.docker ps
+```
+
+To roll back, set `WHYLOWDPS_VERSION` back to the previous release and repeat
+the same commands. Do not remove the `whylowdps-data` volume during an update.
+
+For local source development, use:
+
+```shell
+docker compose --env-file .env.docker -f compose.yaml -f compose.source.yaml up -d --build
+```
 
 ### Blizzard developer portal setup
 

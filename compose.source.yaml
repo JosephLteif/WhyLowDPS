@@ -1,0 +1,6 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        WHYLOWDPS_DEPLOYMENT: hosted-private

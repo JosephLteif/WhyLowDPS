@@ -1,9 +1,6 @@
 services:
   app:
-    build:
-      context: .
-      args:
-        WHYLOWDPS_DEPLOYMENT: hosted-private
+    image: ${WHYLOWDPS_IMAGE:-ghcr.io/josephlteif/whylowdps}:${WHYLOWDPS_VERSION:-stable}
     env_file:
       - path: .env.docker
         required: false

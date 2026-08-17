@@ -74,6 +74,11 @@ function buildReleaseNotes({ version, assetNames, checksumEntries, recommended }
     "- Unsigned build may show SmartScreen warning",
     "- Requires user-provided Battle.net API credentials",
     "",
+    "## Private Docker hosting",
+    "",
+    `- Image: ghcr.io/josephlteif/whylowdps:${version}`,
+    "- Download compose.yaml and docker-hosting.md for private self-hosting",
+    "",
   ].join("\n");
 }
 

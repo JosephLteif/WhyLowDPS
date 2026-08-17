@@ -186,8 +186,132 @@ jobs:
           set -euo pipefail
           gh release upload "${GITHUB_REF_NAME}" backend/resources/zones-encounters-index.json --clobber
 
+  publish-container:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_digest: ${{ steps.digest.outputs.image_digest }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate container tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/josephlteif/whylowdps
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=stable
+
+      - name: Build private-hosting image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            WHYLOWDPS_DEPLOYMENT=hosted-private
+
+      - name: Smoke test container
+        shell: bash
+        env:
+          IMAGE: ghcr.io/josephlteif/whylowdps:${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          CONTAINER="whylowdps-release-smoke"
+          cleanup() {
+            docker logs "${CONTAINER}" 2>&1 || true
+            docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach \
+            --name "${CONTAINER}" \
+            --publish 127.0.0.1:18000:8000 \
+            --env ALLOW_EXTERNAL_BIND=true \
+            --env JWT_SECRET=release-smoke-secret-012345678901234567890123 \
+            --env WHYLOWDPS_SECURE_COOKIES=false \
+            "${IMAGE}"
+
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:18000/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "Container did not become healthy"
+          exit 1
+
+      - name: Push release image tags
+        shell: bash
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r IMAGE; do
+            [[ -z "${IMAGE}" ]] || docker push "${IMAGE}"
+          done <<< "${IMAGE_TAGS}"
+
+      - name: Record published image digest
+        id: digest
+        shell: bash
+        env:
+          IMAGE: ghcr.io/josephlteif/whylowdps:${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          DIGEST="$(docker buildx imagetools inspect "${IMAGE}" | awk '/Digest:/ {print $2; exit}')"
+          if [[ -z "${DIGEST}" ]]; then
+            echo "Unable to determine published image digest"
+            exit 1
+          fi
+          echo "image_digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
+
+  finalize-release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [publish, publish-container]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Upload private-hosting release bundle
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_DIGEST: ${{ needs.publish-container.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          BUNDLE_DIR="$(mktemp -d)"
+          cp compose.yaml "${BUNDLE_DIR}/compose.yaml"
+          sed "s/^WHYLOWDPS_VERSION=.*/WHYLOWDPS_VERSION=${VERSION}/" \
+            .env.docker.example > "${BUNDLE_DIR}/.env.docker.example"
+          cp docs/docker-hosting.md "${BUNDLE_DIR}/docker-hosting.md"
+          printf 'ghcr.io/josephlteif/whylowdps:%s\n' "${VERSION}" > "${BUNDLE_DIR}/docker-image.txt"
+          printf 'ghcr.io/josephlteif/whylowdps@%s\n' "${IMAGE_DIGEST}" >> "${BUNDLE_DIR}/docker-image.txt"
+          gh release upload "${TAG}" \
+            "${BUNDLE_DIR}/compose.yaml" \
+            "${BUNDLE_DIR}/.env.docker.example" \
+            "${BUNDLE_DIR}/docker-hosting.md" \
+            "${BUNDLE_DIR}/docker-image.txt" \
+            --clobber
+
       - name: Generate release checksums and notes
-        if: matrix.platform == 'windows'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -226,14 +350,12 @@ jobs:
           gh release edit "${TAG}" --notes-file "${NOTES_FILE}"
 
       - name: Publish completed release
-        if: matrix.platform == 'windows'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${GITHUB_REF_NAME}" --draft=false
 
       - name: Notify Discord release channel
-        if: matrix.platform == 'windows'
         shell: bash
         env:
           CHANNEL: stable

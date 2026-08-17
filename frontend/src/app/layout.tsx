@@ -20,6 +20,7 @@ import CommandPalette from './components/CommandPalette';
 import LanSessionLifecycle from './components/LanSessionLifecycle';
 import PwaRegistration from './components/PwaRegistration';
 import PwaUpdatePrompt from './components/PwaUpdatePrompt';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
 import { NotificationProvider } from './components/shared/NotificationSystem';
 import './globals.css';
 import React from 'react';
@@ -68,6 +69,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <UpdatePrompt />
                   <PwaRegistration />
                   <PwaUpdatePrompt />
+                  <PwaInstallPrompt />
                   <CloseBehaviorPrompt />
                   <DiscordInvitePrompt />
                   <ChangelogPopup />

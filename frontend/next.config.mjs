@@ -20,7 +20,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || (process.env.DESKTOP_BUILD ? 'http://localhost:17384' : 'http://localhost:8000')}/api/:path*`,
+        destination: `${process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || (process.env.DESKTOP_BUILD ? 'http://localhost:17384' : 'http://127.0.0.1:8000')}/api/:path*`,
       },
     ];
   },

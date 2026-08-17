@@ -38,6 +38,7 @@ There are also additional modes and features that are not fully listed here yet,
 - The app does not have a custom backend for user data outside what is already running on your machine.
 - Simulations run locally using SimulationCraft.
 - Network requests are used for Blizzard APIs, GitHub updates/data, and documented external data sources.
+- Optional LAN sharing is disabled by default. When enabled from the desktop Settings page, a one-time pairing link can mirror the PC's current account session to a phone on the same trusted private network; no internet exposure or port forwarding is supported.
 - You can build the app yourself from source.
 - Data about the current season are downloaded from raidbot once on startup and refreshed occasionally (manually or on
   schedule set from the settings page)

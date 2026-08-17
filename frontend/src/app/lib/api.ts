@@ -4,8 +4,10 @@ import { Instance } from '../drop-finder/types';
 export function isDesktopRuntime(): boolean {
   const desktopBuild =
     process.env.DESKTOP_BUILD === 'true' || process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true';
-  if (desktopBuild) return true;
-  if (typeof window === 'undefined') return false;
+  // Keep the build flag for server rendering, but let the browser decide from
+  // its actual runtime. A desktop export can also be opened by a phone from
+  // the PC's LAN address, where Tauri APIs and localhost are not available.
+  if (typeof window === 'undefined') return desktopBuild;
   const isDesktopDevFrontend =
     window.location.protocol === 'http:' &&
     (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
@@ -160,7 +162,7 @@ function cleanupLegacyLocalStorageCache() {
 }
 
 async function readPersistentCache(
-  cacheKey: string,
+  cacheKey: string
 ): Promise<{ data: any; expiry: number } | null> {
   if (typeof window === 'undefined' || !('caches' in window)) return null;
   try {
@@ -260,12 +262,10 @@ export async function pauseSim(id: string): Promise<{ status: 'paused' }> {
   });
 }
 
-export async function resumeSim(
-  id: string,
-): Promise<{ status: 'pending' | 'running' | 'paused' }> {
+export async function resumeSim(id: string): Promise<{ status: 'pending' | 'running' | 'paused' }> {
   return fetchJson<{ status: 'pending' | 'running' | 'paused' }>(
     `${API_URL}/api/sim/${id}/resume`,
-    { method: 'POST' },
+    { method: 'POST' }
   );
 }
 
@@ -278,7 +278,7 @@ export async function setSimPinned(id: string, pinned: boolean): Promise<void> {
 
 export async function listBlizzardCredentialProfiles(): Promise<BlizzardCredentialProfile[]> {
   const data = await fetchJson<{ profiles?: BlizzardCredentialProfile[] }>(
-    `${API_URL}/api/auth/bnet/credential-profiles`,
+    `${API_URL}/api/auth/bnet/credential-profiles`
   );
   return Array.isArray(data?.profiles) ? data.profiles : [];
 }
@@ -293,21 +293,21 @@ export async function saveBlizzardCredentialProfile(input: {
     {
       method: 'POST',
       body: JSON.stringify(input),
-    },
+    }
   );
   return data.profile;
 }
 
 export async function renameBlizzardCredentialProfile(
   id: string,
-  name: string,
+  name: string
 ): Promise<BlizzardCredentialProfile> {
   const data = await fetchJson<{ profile: BlizzardCredentialProfile }>(
     `${API_URL}/api/auth/bnet/credential-profiles/${encodeURIComponent(id)}`,
     {
       method: 'PATCH',
       body: JSON.stringify({ name }),
-    },
+    }
   );
   return data.profile;
 }
@@ -420,7 +420,7 @@ export async function listCharacterProfiles(options?: {
   if (options?.region) params.set('region', options.region);
   const query = params.toString();
   return fetchJson<SavedCharacterProfile[]>(
-    `${API_URL}/api/character-profiles${query ? '?' + query : ''}`,
+    `${API_URL}/api/character-profiles${query ? '?' + query : ''}`
   );
 }
 
@@ -554,18 +554,18 @@ export async function getDungeonData(): Promise<DungeonSeasonData> {
 }
 
 export async function getMythicKeystoneDungeonIndex(
-  region = 'us',
+  region = 'us'
 ): Promise<MythicKeystoneDungeonIndexResponse> {
   return fetchJson<MythicKeystoneDungeonIndexResponse>(
-    `${API_URL}/api/blizzard/mythic-keystone/dungeon/index?region=${encodeURIComponent(region)}`,
+    `${API_URL}/api/blizzard/mythic-keystone/dungeon/index?region=${encodeURIComponent(region)}`
   );
 }
 
 export async function getMythicKeystoneDungeonDetail(
   dungeonId: number,
-  region = 'us',
+  region = 'us'
 ): Promise<MythicKeystoneDungeonDetail> {
   return fetchJson<MythicKeystoneDungeonDetail>(
-    `${API_URL}/api/blizzard/mythic-keystone/dungeon/${encodeURIComponent(String(dungeonId))}?region=${encodeURIComponent(region)}`,
+    `${API_URL}/api/blizzard/mythic-keystone/dungeon/${encodeURIComponent(String(dungeonId))}?region=${encodeURIComponent(region)}`
   );
 }

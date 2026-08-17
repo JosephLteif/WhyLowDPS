@@ -53,6 +53,10 @@ type SimcRuntimeStatusResponse = {
   version?: string | null;
   updated?: boolean | null;
 };
+type LanAccessInfo = {
+  enabled: boolean;
+  addresses: string[];
+};
 
 type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
 
@@ -115,6 +119,14 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [lanSharingEnabled, setLanSharingEnabled] = useState(false);
+  const [lanSharingLoading, setLanSharingLoading] = useState(false);
+  const [lanSharingMessage, setLanSharingMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [lanPairingUrl, setLanPairingUrl] = useState('');
+  const [lanQrCodeDataUrl, setLanQrCodeDataUrl] = useState('');
   const [selectedSimcChannel, setSelectedSimcChannelState] = useState<SimcUpdateChannel>('weekly');
   const [selectedSimcRuntimeVersion, setSelectedSimcRuntimeVersionState] = useState<string | null>(
     null
@@ -173,8 +185,13 @@ export default function SettingsPage() {
   }, [authLoading, user, router, setMaxCombinations, setThreads]);
 
   useEffect(() => {
-    const requestedTab = new URLSearchParams(window.location.search).get('tab') as SettingsTab | null;
-    if (requestedTab && ['simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)) {
+    const requestedTab = new URLSearchParams(window.location.search).get(
+      'tab'
+    ) as SettingsTab | null;
+    if (
+      requestedTab &&
+      ['simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)
+    ) {
       setActiveTab(requestedTab);
     }
   }, []);
@@ -235,6 +252,32 @@ export default function SettingsPage() {
       } catch {
       } finally {
         if (!cancelled) setCloseBehaviorLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const info = await invoke<LanAccessInfo>('get_lan_access_info');
+        if (!cancelled) setLanSharingEnabled(info.enabled);
+      } catch (err: any) {
+        if (!cancelled) {
+          setLanSharingEnabled(false);
+          const detail = err?.message || err?.toString?.() || '';
+          if (/command not found|not allowed/i.test(detail)) {
+            setLanSharingMessage({
+              type: 'error',
+              text: 'LAN sharing needs the latest desktop runtime. Close and reopen the latest WhyLowDPS build.',
+            });
+          }
+        }
       }
     })();
     return () => {
@@ -404,6 +447,89 @@ export default function SettingsPage() {
     } finally {
       setCloseBehaviorLoading(false);
     }
+  };
+
+  const updateLanSharing = async (enabled: boolean) => {
+    if (!isDesktop) return;
+    setLanSharingLoading(true);
+    setLanSharingMessage(null);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('set_lan_sharing_enabled', { enabled });
+      setLanSharingEnabled(enabled);
+      setLanPairingUrl('');
+      setLanQrCodeDataUrl('');
+      setLanSharingMessage({
+        type: 'success',
+        text: 'Saved. Restart WhyLowDPS to apply this change.',
+      });
+    } catch (err: any) {
+      const detail = err?.message || err?.toString?.() || '';
+      setLanSharingMessage({
+        type: 'error',
+        text: /command not found|not allowed/i.test(detail)
+          ? 'LAN sharing needs the latest desktop runtime. Close and reopen the latest WhyLowDPS build, then try again.'
+          : detail || 'Failed to update LAN sharing.',
+      });
+    } finally {
+      setLanSharingLoading(false);
+    }
+  };
+
+  const createLanPairingLink = async () => {
+    if (!isDesktop || !lanSharingEnabled) return;
+    setLanSharingLoading(true);
+    setLanSharingMessage(null);
+    try {
+      const pairing = await fetchJson<{ path: string }>(`${API_URL}/api/lan/pairing`, {
+        method: 'POST',
+      });
+      const { invoke } = await import('@tauri-apps/api/core');
+      const info = await invoke<LanAccessInfo>('get_lan_access_info');
+      const address = info.addresses[0];
+      if (!address) {
+        throw new Error('No private IPv4 address was detected on this PC.');
+      }
+
+      const url = `http://${address}:17384${pairing.path}`;
+      setLanPairingUrl(url);
+      const { toDataURL } = await import('qrcode');
+      setLanQrCodeDataUrl(
+        await toDataURL(url, {
+          errorCorrectionLevel: 'M',
+          margin: 2,
+          width: 240,
+          color: { dark: '#111111', light: '#ffffff' },
+        })
+      );
+      try {
+        await navigator.clipboard.writeText(url);
+        setLanSharingMessage({
+          type: 'success',
+          text: 'Phone link copied. It expires after five minutes and works once.',
+        });
+      } catch {
+        setLanSharingMessage({
+          type: 'success',
+          text: 'Phone link created. Copy it to your phone within five minutes.',
+        });
+      }
+    } catch (err: any) {
+      setLanSharingMessage({
+        type: 'error',
+        text:
+          err?.message ||
+          err?.toString?.() ||
+          'Could not create a phone link. Restart WhyLowDPS after enabling LAN sharing.',
+      });
+    } finally {
+      setLanSharingLoading(false);
+    }
+  };
+
+  const restartForLanSharing = async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('restart_app');
   };
 
   const loadSimcRuntimeInfo = async (
@@ -590,20 +716,40 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      <section id="settings-panel-overview" aria-labelledby="settings-overview-title" className="rounded-xl border border-border/50 bg-surface/30 p-4 backdrop-blur-sm">
+      <section
+        id="settings-panel-overview"
+        aria-labelledby="settings-overview-title"
+        className="rounded-xl border border-border/50 bg-surface/30 p-4 backdrop-blur-sm"
+      >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 id="settings-overview-title" className="text-sm font-semibold text-zinc-100">Quick repairs</h2>
-            <p className="mt-1 text-xs text-zinc-500">Jump directly to the settings area that needs attention.</p>
+            <h2 id="settings-overview-title" className="text-sm font-semibold text-zinc-100">
+              Quick repairs
+            </h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Jump directly to the settings area that needs attention.
+            </p>
           </div>
           <span className="text-[11px] text-zinc-600">Use Ctrl K to search these actions</span>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { tab: 'simulation' as const, label: 'Simulation setup', status: threads > 0 ? 'Ready' : 'Review defaults' },
-            { tab: 'integrations' as const, label: 'Blizzard access', status: hasSecret || clientId ? 'Configured' : 'Needs attention' },
+            {
+              tab: 'simulation' as const,
+              label: 'Simulation setup',
+              status: threads > 0 ? 'Ready' : 'Review defaults',
+            },
+            {
+              tab: 'integrations' as const,
+              label: 'Blizzard access',
+              status: hasSecret || clientId ? 'Configured' : 'Needs attention',
+            },
             { tab: 'data' as const, label: 'Game data and backups', status: 'Refresh or restore' },
-            { tab: 'updates' as const, label: 'App and SimC updates', status: isDesktop ? 'Desktop controls' : 'Release notes' },
+            {
+              tab: 'updates' as const,
+              label: 'App and SimC updates',
+              status: isDesktop ? 'Desktop controls' : 'Release notes',
+            },
           ].map((item) => (
             <button
               key={item.tab}
@@ -618,7 +764,11 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      {activeTab === 'simulation' && <div id="settings-panel-simulation"><DefaultOptionsSettingsCard /></div>}
+      {activeTab === 'simulation' && (
+        <div id="settings-panel-simulation">
+          <DefaultOptionsSettingsCard />
+        </div>
+      )}
 
       {activeTab === 'integrations' && (
         <IntegrationsSettingsSection
@@ -790,6 +940,123 @@ export default function SettingsPage() {
                 }`}
               >
                 {closeBehaviorMessage.text}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      )}
+
+      {activeTab === 'simulation' && isDesktop && (
+        <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <h2 className="mb-3 text-xl font-semibold text-white">Share over LAN</h2>
+          <p className="mb-5 max-w-2xl text-sm text-zinc-400">
+            Open WhyLowDPS from your phone on the same private Wi-Fi network. Anyone with the
+            pairing link can operate this local app and use the PC&apos;s current account session.
+            Changes take effect after restarting the desktop app.
+          </p>
+
+          <div className="max-w-2xl space-y-4">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-zinc-200">Share this app over LAN</p>
+                <p className="text-[13px] text-zinc-500">
+                  Keep this off unless the network is trusted. No internet or port-forwarding access
+                  is supported.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={lanSharingLoading}
+                onClick={() => void updateLanSharing(!lanSharingEnabled)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  lanSharingEnabled ? 'bg-gold' : 'border border-border bg-surface'
+                }`}
+                aria-label="Share this app over LAN"
+                aria-pressed={lanSharingEnabled}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+                    lanSharingEnabled ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {lanSharingEnabled && (
+              <div className="space-y-3 rounded-lg border border-gold/20 bg-gold/5 p-4">
+                <p className="text-xs text-gold">
+                  Restart required before phone access is available.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void restartForLanSharing()}
+                    className="rounded-lg bg-gold px-3 py-2 text-xs font-semibold text-black transition-colors hover:bg-gold/90"
+                  >
+                    Restart WhyLowDPS
+                  </button>
+                  <button
+                    type="button"
+                    disabled={lanSharingLoading}
+                    onClick={() => void createLanPairingLink()}
+                    className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-gold/40 hover:text-white disabled:opacity-50"
+                  >
+                    Create phone link
+                  </button>
+                </div>
+                {lanPairingUrl && (
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                    {lanQrCodeDataUrl && (
+                      <div className="shrink-0 space-y-2">
+                        <div className="w-fit rounded-xl bg-white p-3">
+                          <img
+                            src={lanQrCodeDataUrl}
+                            alt="Scan this QR code to open WhyLowDPS on your phone"
+                            width={240}
+                            height={240}
+                            className="h-48 w-48 sm:h-56 sm:w-56"
+                          />
+                        </div>
+                        <p className="max-w-60 text-center text-[11px] text-zinc-500">
+                          Scan with your phone camera while both devices are on the same Wi-Fi.
+                        </p>
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <label
+                        className="block text-xs font-medium text-zinc-400"
+                        htmlFor="lan-pairing-url"
+                      >
+                        One-time phone link
+                      </label>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          id="lan-pairing-url"
+                          readOnly
+                          value={lanPairingUrl}
+                          className="min-w-0 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs text-zinc-200 focus:border-gold/50 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void navigator.clipboard.writeText(lanPairingUrl)}
+                          className="w-fit rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-gold/40 hover:text-white"
+                        >
+                          Copy link
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {lanSharingMessage ? (
+              <p
+                className={`text-xs ${
+                  lanSharingMessage.type === 'success' ? 'text-emerald-300' : 'text-red-300'
+                }`}
+              >
+                {lanSharingMessage.text}
               </p>
             ) : null}
           </div>

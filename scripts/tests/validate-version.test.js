@@ -39,6 +39,36 @@ function writeFixture({ frontendVersion = "3.4.2" } = {}) {
     path.join(rootDir, "backend/Cargo.toml"),
     '[workspace.package]\nversion = "3.4.2"\n',
   );
+  fs.writeFileSync(
+    path.join(rootDir, "Cargo.lock"),
+    [
+      '[[package]]',
+      'name = "whylowdps-core"',
+      'version = "3.4.2"',
+      '',
+      '[[package]]',
+      'name = "whylowdps-server"',
+      'version = "3.4.2"',
+      '',
+      '[[package]]',
+      'name = "whylowdps-desktop"',
+      'version = "3.4.2"',
+      '',
+    ].join('\n'),
+  );
+  fs.writeFileSync(
+    path.join(rootDir, "backend/Cargo.lock"),
+    [
+      '[[package]]',
+      'name = "whylowdps-core"',
+      'version = "3.4.2"',
+      '',
+      '[[package]]',
+      'name = "whylowdps-server"',
+      'version = "3.4.2"',
+      '',
+    ].join('\n'),
+  );
   writeJson(rootDir, "desktop/src-tauri/tauri.conf.json", { version: "3.4.2" });
   writeJson(rootDir, "desktop/src-tauri/tauri.docker.conf.json", {
     version: "3.4.2",

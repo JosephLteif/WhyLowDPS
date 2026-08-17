@@ -58,8 +58,8 @@ WhyLowDPS currently supports **Windows only**. There are no current plans to sup
 
 The supported development and release path is the Windows desktop application.
 Use the setup and validation commands in [CONTRIBUTING.md](CONTRIBUTING.md).
-The project site is deployed to GitHub Pages; there is no supported Docker or
-web-server deployment for the application.
+The project site is deployed to GitHub Pages. A private Docker deployment for
+the hosted web app is documented separately in [docs/docker-hosting.md](docs/docker-hosting.md).
 
 ## Pictures
 

@@ -115,9 +115,9 @@ pub(super) fn metadata_derived_raidbots_entries(root: &Path) -> Vec<DataFileEntr
         .filter(|file| {
             let path = Path::new(file);
             !file.is_empty()
-                && path.components().all(|component| {
-                    matches!(component, std::path::Component::Normal(_))
-                })
+                && path
+                    .components()
+                    .all(|component| matches!(component, std::path::Component::Normal(_)))
         })
         .filter(|file| seen.insert(file.clone()))
         .map(|file| DataFileEntry {
@@ -154,9 +154,8 @@ pub(super) fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBu
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         {
-            if let Some(file_name) = Path::new(bundled_path).file_name() {
-                let exe_bundled = exe_dir.join("resources").join(file_name);
-                for candidate in path_variants_with_json_alias(&exe_bundled) {
+            for packaged_path in packaged_resource_candidates(&exe_dir, Path::new(bundled_path)) {
+                for candidate in path_variants_with_json_alias(&packaged_path) {
                     if candidate.exists() {
                         return candidate;
                     }
@@ -191,11 +190,30 @@ fn resolve_bundled_path(entry: &DataFileEntry) -> Option<PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))?;
-    let file_name = Path::new(bundled_path).file_name()?;
-    let exe_bundled = exe_dir.join("resources").join(file_name);
-    path_variants_with_json_alias(&exe_bundled)
+    packaged_resource_candidates(&exe_dir, Path::new(bundled_path))
         .into_iter()
+        .flat_map(|path| path_variants_with_json_alias(&path))
         .find(|candidate| candidate.exists())
+}
+
+fn packaged_resource_candidates(exe_dir: &Path, bundled_path: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    // Keep supporting older bundles that flattened resources beside the binary.
+    if let Some(file_name) = bundled_path.file_name() {
+        candidates.push(exe_dir.join("resources").join(file_name));
+    }
+
+    // Docker packages resources at /app/resources while the binary is at
+    // /app/bin/whylowdps-server. Preserve the subdirectory from the manifest
+    // instead of looking only for its basename.
+    if let Ok(relative_path) = bundled_path.strip_prefix(Path::new("../resources")) {
+        if let Some(app_dir) = exe_dir.parent() {
+            candidates.push(app_dir.join("resources").join(relative_path));
+        }
+    }
+
+    candidates
 }
 
 pub(super) fn restore_local_file_from_bundle(
@@ -336,5 +354,18 @@ mod tests {
             )
             .expect("source manifest")
         );
+    }
+
+    #[test]
+    fn packaged_resource_candidates_preserve_resource_subdirectories() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let resource = temp.path().join("resources").join("wow");
+        fs::create_dir_all(&resource).expect("resource dir");
+        let bundled = Path::new("../resources/wow/wow-expansions.json");
+        let expected = resource.join("wow-expansions.json");
+
+        let candidates = packaged_resource_candidates(&temp.path().join("bin"), bundled);
+
+        assert!(candidates.contains(&expected));
     }
 }

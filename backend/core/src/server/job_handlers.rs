@@ -756,7 +756,11 @@ mod tests {
     #[actix_web::test]
     async fn pause_handler_rejects_terminal_jobs_and_missing_controls() {
         let store = test_store();
-        store.insert(make_job("pause-done", JobStatus::Done, "2026-01-04T00:00:00Z"));
+        store.insert(make_job(
+            "pause-done",
+            JobStatus::Done,
+            "2026-01-04T00:00:00Z",
+        ));
         assert_eq!(
             pause_sim(web::Path::from("pause-done".to_string()), store.clone())
                 .await
@@ -770,12 +774,9 @@ mod tests {
             "2026-01-05T00:00:00Z",
         ));
         assert_eq!(
-            pause_sim(
-                web::Path::from("pause-missing-control".to_string()),
-                store,
-            )
-            .await
-            .status(),
+            pause_sim(web::Path::from("pause-missing-control".to_string()), store,)
+                .await
+                .status(),
             409
         );
     }

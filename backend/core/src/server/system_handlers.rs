@@ -64,10 +64,17 @@ pub(super) async fn health_check() -> HttpResponse {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
+    let mode = if crate::server::auth_handlers::hosted_private_deployment() {
+        "hosted"
+    } else if cfg!(feature = "desktop") {
+        "desktop"
+    } else {
+        "web"
+    };
     HttpResponse::Ok().json(json!({
         "status": "ok",
         "threads": threads,
-        "mode": "desktop",
+        "mode": mode,
     }))
 }
 
@@ -254,7 +261,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn health_check_reports_ok_desktop_mode_and_threads() {
+    async fn health_check_reports_ok_mode_and_threads() {
         let health = health_check().await;
 
         assert_eq!(health.status(), 200);
@@ -262,7 +269,12 @@ mod tests {
         let payload = response_json(health).await;
 
         assert_eq!(payload["status"].as_str(), Some("ok"));
-        assert_eq!(payload["mode"].as_str(), Some("desktop"));
+        let expected_mode = if cfg!(feature = "desktop") {
+            "desktop"
+        } else {
+            "web"
+        };
+        assert_eq!(payload["mode"].as_str(), Some(expected_mode));
         assert!(payload["threads"].as_u64().unwrap_or(0) >= 1);
     }
 

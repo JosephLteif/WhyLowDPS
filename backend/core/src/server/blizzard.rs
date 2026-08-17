@@ -1,4 +1,4 @@
-use crate::server::auth_handlers::{verify_jwt, BlizzardAuthState};
+use crate::server::auth_handlers::BlizzardAuthState;
 use actix_web::{web, HttpResponse};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -66,7 +66,7 @@ pub async fn get_effective_token(
 ) -> Option<String> {
     // Priority 1: Check for an active user session token (direct access)
     if let Some(auth) = auth_state {
-        if let Some(claims) = verify_jwt(req, &auth.jwt_secret) {
+        if let Some(claims) = crate::server::auth_handlers::verify_jwt_for_state(req, auth) {
             if let Some(token) = auth.oauth_token(&claims.session_id) {
                 return Some(token);
             }
@@ -222,6 +222,7 @@ mod tests {
         let claims = Claims {
             sub: sub.to_string(),
             session_id: access_token.to_string(),
+            session_epoch: None,
             exp: (SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("system time")

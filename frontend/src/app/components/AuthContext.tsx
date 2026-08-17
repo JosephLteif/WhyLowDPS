@@ -5,6 +5,7 @@ import {
   API_URL,
   fetchJson,
   isDesktop,
+  isHostedPrivate,
   isNetworkUnavailableError,
   saveBlizzardCredentialProfile,
   setSessionToken,
@@ -61,6 +62,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [lightMode, setLightMode] = useState(false);
 
   useEffect(() => {
+    if (isHostedPrivate) {
+      localStorage.removeItem(LIGHT_MODE_KEY);
+      setLightMode(false);
+      return;
+    }
     setLightMode(localStorage.getItem(LIGHT_MODE_KEY) === '1');
   }, []);
 
@@ -211,6 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     const performLocalLogout = () => {
+      navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_USER_CACHE' });
       setSessionToken(null);
       setUser(null);
       window.location.href = '/';

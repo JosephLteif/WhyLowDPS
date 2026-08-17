@@ -447,7 +447,11 @@ pub(super) async fn get_season_config() -> HttpResponse {
         .filter(|s| !s.trim().is_empty())
         .map(str::to_string)
         .or(runtime_season)
-        .or_else(|| cfg.get("season").and_then(|s| s.as_str()).map(str::to_string))
+        .or_else(|| {
+            cfg.get("season")
+                .and_then(|s| s.as_str())
+                .map(str::to_string)
+        })
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| {
             let season_id = crate::item_db::current_season_id();

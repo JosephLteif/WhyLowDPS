@@ -9,6 +9,7 @@ import {
   deleteBlizzardCredentialProfile,
   fetchJson,
   isDesktop,
+  isHostedPrivate,
   listBlizzardCredentialProfiles,
   renameBlizzardCredentialProfile,
   saveBlizzardCredentialProfile,
@@ -831,7 +832,11 @@ export default function SettingsPage() {
             {
               tab: 'integrations' as const,
               label: 'Blizzard access',
-              status: hasSecret || clientId ? 'Configured' : 'Needs attention',
+              status: isHostedPrivate
+                ? 'Hosted server configuration'
+                : hasSecret || clientId
+                  ? 'Configured'
+                  : 'Needs attention',
             },
             { tab: 'data' as const, label: 'Game data and backups', status: 'Refresh or restore' },
             {
@@ -860,25 +865,35 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'integrations' && (
-        <IntegrationsSettingsSection
-          clientId={clientId}
-          setClientId={setClientId}
-          clientSecret={clientSecret}
-          setClientSecret={setClientSecret}
-          credentialName={credentialName}
-          setCredentialName={setCredentialName}
-          credentialProfiles={credentialProfiles}
-          renameSavedCredential={renameSavedCredential}
-          deleteSavedCredential={deleteSavedCredential}
-          secretTouched={secretTouched}
-          setSecretTouched={setSecretTouched}
-          hasSecret={hasSecret}
-          blizzardTesting={blizzardTesting}
-          blizzardSaving={blizzardSaving}
-          testBlizzardCredentials={testBlizzardCredentials}
-          saveBlizzardSettings={saveBlizzardSettings}
-          blizzardMessage={blizzardMessage}
-        />
+        isHostedPrivate ? (
+          <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+            <h2 className="mb-3 text-xl font-semibold text-white">API Integrations</h2>
+            <p className="max-w-2xl text-sm leading-relaxed text-zinc-400">
+              Blizzard API access is configured by the hosted server administrator. Client secrets
+              are not entered or stored in this browser.
+            </p>
+          </section>
+        ) : (
+          <IntegrationsSettingsSection
+            clientId={clientId}
+            setClientId={setClientId}
+            clientSecret={clientSecret}
+            setClientSecret={setClientSecret}
+            credentialName={credentialName}
+            setCredentialName={setCredentialName}
+            credentialProfiles={credentialProfiles}
+            renameSavedCredential={renameSavedCredential}
+            deleteSavedCredential={deleteSavedCredential}
+            secretTouched={secretTouched}
+            setSecretTouched={setSecretTouched}
+            hasSecret={hasSecret}
+            blizzardTesting={blizzardTesting}
+            blizzardSaving={blizzardSaving}
+            testBlizzardCredentials={testBlizzardCredentials}
+            saveBlizzardSettings={saveBlizzardSettings}
+            blizzardMessage={blizzardMessage}
+          />
+        )
       )}
 
       {activeTab === 'simulation' && (

@@ -26,6 +26,7 @@ export function isDesktopRuntime(): boolean {
 }
 
 export const isDesktop = isDesktopRuntime();
+export const isHostedPrivate = process.env.NEXT_PUBLIC_DEPLOYMENT_MODE === 'hosted-private';
 
 if (typeof window !== 'undefined') {
   console.log('[WhyLowDps] Mode:', isDesktop ? 'Desktop' : 'Web');

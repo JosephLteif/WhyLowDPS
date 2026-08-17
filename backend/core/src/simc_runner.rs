@@ -943,6 +943,7 @@ async fn run_simc_subprocess(
         } else {
             out_collected.join("\n")
         };
+        let msg = format_simc_failure_message(msg);
         return Err(AppError::SimcError(format!(
             "simc failed (exit {:?}): {}",
             status.code(),
@@ -1002,6 +1003,16 @@ fn spawn_reader<R: AsyncReadExt + Unpin + Send + 'static>(
             let _ = tx.send((is_err, trim)).await;
         }
     });
+}
+
+fn format_simc_failure_message(message: String) -> String {
+    if message.contains("Implementation Not Yet Verified:") {
+        return format!(
+            "SimulationCraft cannot model one of the selected item effects yet. Remove the affected item or install a newer SimC runtime. Details: {message}"
+        );
+    }
+
+    message
 }
 
 fn get_profileset_results(raw: &Value) -> Vec<Value> {
@@ -1426,6 +1437,17 @@ mod tests {
         assert!(is_dungeon_route_input("fight_style=\"DungeonRoute\"\n"));
         assert!(!is_dungeon_route_input("fight_style=Patchwerk\n"));
         assert!(!is_dungeon_route_input("fight_style = DungeonRoute\n"));
+    }
+
+    #[test]
+    fn unsupported_item_effect_failure_explains_the_recovery_action() {
+        let message = format_simc_failure_message(
+            "Implementation Not Yet Verified: Emberwing Feather".to_string(),
+        );
+
+        assert!(message.contains("Remove the affected item"));
+        assert!(message.contains("newer SimC runtime"));
+        assert!(message.contains("Emberwing Feather"));
     }
 
     #[test]

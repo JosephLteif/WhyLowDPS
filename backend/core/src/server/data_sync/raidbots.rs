@@ -1,7 +1,7 @@
+use serde_json::Value;
 use std::io;
 use std::path::Path;
 use std::time::Duration;
-use serde_json::Value;
 
 pub(super) fn raidbots_file_progress(
     index: usize,
@@ -84,6 +84,14 @@ fn read_snapshot_json(root: &Path, name: &str) -> Result<Value, String> {
         .map_err(|err| format!("Invalid JSON in Raidbots file {name}: {err}"))
 }
 
+fn is_mythic_plus_pool(instance: &Value) -> bool {
+    instance.get("id").and_then(Value::as_i64) == Some(-1)
+        && matches!(
+            instance.get("type").and_then(Value::as_str),
+            Some("dungeon") | Some("mplus-chest")
+        )
+}
+
 /// Validate the cross-file invariants needed before replacing the last good
 /// snapshot. The checks intentionally stay structural so a new season can
 /// continue working without embedding season-specific IDs.
@@ -115,16 +123,19 @@ pub(super) fn validate_raidbots_snapshot(staging_root: &Path) -> Result<(), Stri
         .as_array()
         .or_else(|| instances.get("instances").and_then(Value::as_array))
         .ok_or_else(|| "Raidbots instances.json is not an array".to_string())?;
-    if !instances.iter().any(|instance| {
-        instance.get("id").and_then(Value::as_i64) == Some(-1)
-            && instance.get("type").and_then(Value::as_str) == Some("dungeon")
-    }) {
+    if !instances.iter().any(is_mythic_plus_pool) {
         return Err("Raidbots snapshot is missing the Mythic+ pool".to_string());
     }
     if !instances.iter().any(|instance| {
         let id = instance.get("id").and_then(Value::as_i64).unwrap_or(0);
-        let type_name = instance.get("type").and_then(Value::as_str).unwrap_or_default();
-        let name = instance.get("name").and_then(Value::as_str).unwrap_or_default();
+        let type_name = instance
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let name = instance
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         id < 0
             && format!("{type_name} {name}")
                 .to_ascii_lowercase()
@@ -144,15 +155,17 @@ pub(super) fn validate_raidbots_snapshot(staging_root: &Path) -> Result<(), Stri
         }
     }
 
-    let conversion_id = active[0]
-        .get("itemConversionId")
-        .and_then(Value::as_u64);
+    let conversion_id = active[0].get("itemConversionId").and_then(Value::as_u64);
     if conversion_id.is_some() && !staging_root.join("item-conversions.json").exists() {
         return Err("Active season has no item-conversions.json payload".to_string());
     }
     if let Ok(conversions) = read_snapshot_json(staging_root, "item-conversions.json") {
-        let nonempty = conversions.as_array().is_some_and(|items| !items.is_empty())
-            || conversions.as_object().is_some_and(|object| !object.is_empty());
+        let nonempty = conversions
+            .as_array()
+            .is_some_and(|items| !items.is_empty())
+            || conversions
+                .as_object()
+                .is_some_and(|object| !object.is_empty());
         if !nonempty {
             return Err("Raidbots item-conversions.json is empty".to_string());
         }
@@ -163,7 +176,9 @@ pub(super) fn validate_raidbots_snapshot(staging_root: &Path) -> Result<(), Stri
                 .and_then(|object| object.get(&key))
                 .and_then(Value::as_object)
             else {
-                return Err(format!("Active season conversion group is missing: {conversion_id}"));
+                return Err(format!(
+                    "Active season conversion group is missing: {conversion_id}"
+                ));
             };
             if !group
                 .get("bonusIds")
@@ -235,5 +250,24 @@ mod tests {
         std::fs::write(temp.path().join("seasons.json"), "[]").expect("seasons");
         let error = validate_raidbots_snapshot(temp.path()).expect_err("snapshot should fail");
         assert!(error.contains("exactly one active season"));
+    }
+
+    #[test]
+    fn accepts_current_and_legacy_mythic_plus_pool_types() {
+        assert!(is_mythic_plus_pool(&serde_json::json!({
+            "id": -1,
+            "type": "mplus-chest",
+            "name": "Mythic+ Dungeons"
+        })));
+        assert!(is_mythic_plus_pool(&serde_json::json!({
+            "id": -1,
+            "type": "dungeon",
+            "name": "Mythic+ Dungeons"
+        })));
+        assert!(!is_mythic_plus_pool(&serde_json::json!({
+            "id": -1,
+            "type": "raid",
+            "name": "Season 2 Raids"
+        })));
     }
 }

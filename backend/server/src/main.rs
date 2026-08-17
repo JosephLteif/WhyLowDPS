@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use whylowdps_core::game_data;
@@ -16,6 +17,55 @@ fn choose_base_dir(has_backend_resources: bool) -> &'static str {
     } else {
         "resources"
     }
+}
+
+fn copy_missing_seed_tree(source: &Path, target: &Path) -> Result<(), String> {
+    fs::create_dir_all(target).map_err(|error| {
+        format!(
+            "failed to create data directory {}: {error}",
+            target.display()
+        )
+    })?;
+
+    for entry in fs::read_dir(source)
+        .map_err(|error| format!("failed to read data seed {}: {error}", source.display()))?
+    {
+        let entry = entry.map_err(|error| format!("failed to read data seed entry: {error}"))?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("failed to inspect {}: {error}", source_path.display()))?;
+
+        if file_type.is_dir() {
+            copy_missing_seed_tree(&source_path, &target_path)?;
+        } else if file_type.is_file() && !target_path.exists() {
+            fs::copy(&source_path, &target_path).map_err(|error| {
+                format!(
+                    "failed to seed {} from {}: {error}",
+                    target_path.display(),
+                    source_path.display()
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+fn bootstrap_data_dir(seed_dir: Option<&Path>, data_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(data_dir).map_err(|error| {
+        format!(
+            "failed to create data directory {}: {error}",
+            data_dir.display()
+        )
+    })?;
+
+    if let Some(seed_dir) = seed_dir.filter(|path| path.exists()) {
+        copy_missing_seed_tree(seed_dir, data_dir)?;
+    }
+
+    Ok(())
 }
 
 fn resolve_port<I>(args: I, env_port: u16) -> u16
@@ -55,6 +105,7 @@ async fn main() {
 
     let data_dir_default = format!("{}/data", base_dir);
     let data_dir = PathBuf::from(env_or("DATA_DIR", &data_dir_default));
+    let data_seed_dir = std::env::var("DATA_SEED_DIR").ok().map(PathBuf::from);
     let frontend_dir = std::env::var("FRONTEND_DIR").ok().map(PathBuf::from);
     let simc_runtime_dir = PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime"));
     let simc_channel = SimcChannel::parse(&env_or("SIMC_CHANNEL", "weekly"));
@@ -88,6 +139,9 @@ async fn main() {
         .parse()
         .expect("PORT must be a number");
     let port = resolve_port(std::env::args().skip(1), env_port);
+
+    bootstrap_data_dir(data_seed_dir.as_deref(), &data_dir)
+        .unwrap_or_else(|error| panic!("failed to bootstrap data directory: {error}"));
 
     println!("Loading game data from {:?}", data_dir);
     game_data::load(&data_dir);
@@ -135,6 +189,25 @@ mod tests {
     fn choose_base_dir_prefers_backend_resources_when_present() {
         assert_eq!(choose_base_dir(true), "backend/resources");
         assert_eq!(choose_base_dir(false), "resources");
+    }
+
+    #[test]
+    fn bootstrap_data_dir_copies_missing_seed_files_without_overwriting_existing_data() {
+        let seed = tempfile::tempdir().expect("seed temp dir");
+        let data = tempfile::tempdir().expect("data temp dir");
+        fs::write(seed.path().join("seed.json"), "seed").expect("write seed");
+        fs::write(data.path().join("existing.json"), "keep").expect("write existing");
+
+        bootstrap_data_dir(Some(seed.path()), data.path()).expect("bootstrap data");
+
+        assert_eq!(
+            fs::read_to_string(data.path().join("seed.json")).expect("read seeded file"),
+            "seed"
+        );
+        assert_eq!(
+            fs::read_to_string(data.path().join("existing.json")).expect("read existing file"),
+            "keep"
+        );
     }
 
     #[test]

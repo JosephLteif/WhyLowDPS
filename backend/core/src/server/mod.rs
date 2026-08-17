@@ -122,7 +122,11 @@ async fn enforce_security<B>(
 where
     B: MessageBody + 'static,
 {
-    if !require_auth || public_security_path(req.path()) || is_loopback_peer(&req) {
+    if !require_auth
+        || !req.path().starts_with("/api/")
+        || public_security_path(req.path())
+        || is_loopback_peer(&req)
+    {
         return next.call(req).await;
     }
 
@@ -165,7 +169,7 @@ where
     let auth_state = req
         .app_data::<web::Data<Arc<auth_handlers::BlizzardAuthState>>>()
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("auth state unavailable"))?;
-    if auth_handlers::verify_jwt(req.request(), &auth_state.jwt_secret).is_none() {
+    if auth_handlers::verify_jwt_for_state(req.request(), auth_state.get_ref()).is_none() {
         return Err(actix_web::error::ErrorUnauthorized(
             "authentication required",
         ));
@@ -296,6 +300,7 @@ mod tests {
             &auth_handlers::Claims {
                 sub: "Tester#1".to_string(),
                 session_id: "session-1".to_string(),
+                session_epoch: None,
                 exp: (chrono::Utc::now().timestamp() + 3600) as usize,
             },
             &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
@@ -339,7 +344,15 @@ mod tests {
         let body = to_bytes(resp.into_body()).await.expect("health body");
         let payload: Value = serde_json::from_slice(&body).expect("health json");
         assert_eq!(payload.get("status").and_then(Value::as_str), Some("ok"));
-        assert_eq!(payload.get("mode").and_then(Value::as_str), Some("desktop"));
+        let expected_mode = if cfg!(feature = "desktop") {
+            "desktop"
+        } else {
+            "web"
+        };
+        assert_eq!(
+            payload.get("mode").and_then(Value::as_str),
+            Some(expected_mode)
+        );
         assert!(payload
             .get("threads")
             .and_then(Value::as_u64)
@@ -550,9 +563,6 @@ pub async fn start_with_storage_bind_options(
         let bind_addr = format!("{}:{}", bind_host, port);
 
         let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
-        let blizzard_credential_secrets = web::Data::new(
-            auth_handlers::create_blizzard_credential_secret_store(store_data.get_ref().clone()),
-        );
 
         let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI").unwrap_or_else(|_| {
             if port == 17384 || cfg!(feature = "desktop") {
@@ -567,8 +577,18 @@ pub async fn start_with_storage_bind_options(
         )
         .unwrap_or_else(|error| panic!("unsafe JWT configuration: {error}"));
 
-        let client_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
-        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
+        let blizzard_credential_secrets =
+            web::Data::new(auth_handlers::create_blizzard_credential_secret_store(
+                store_data.get_ref().clone(),
+                &jwt_secret,
+            ));
+
+        let client_id = std::env::var("BLIZZARD_CLIENT_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
 
         println!("Configured Blizzard Redirect URI: {}", bnet_redirect);
 

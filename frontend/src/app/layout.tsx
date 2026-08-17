@@ -18,6 +18,8 @@ import DesktopIntegrationListener from './components/DesktopIntegrationListener'
 import DesktopRichPresence from './components/DesktopRichPresence';
 import CommandPalette from './components/CommandPalette';
 import LanSessionLifecycle from './components/LanSessionLifecycle';
+import PwaRegistration from './components/PwaRegistration';
+import PwaUpdatePrompt from './components/PwaUpdatePrompt';
 import { NotificationProvider } from './components/shared/NotificationSystem';
 import './globals.css';
 import React from 'react';
@@ -25,11 +27,19 @@ import React from 'react';
 export const metadata: Metadata = {
   title: 'WhyLowDps',
   description: 'Run SimulationCraft simulations from your browser',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: '/icon.png',
     shortcut: '/icon.png',
     apple: '/icon.png',
   },
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#09090b',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -56,6 +66,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <SimProvider>
                   <TopHeader />
                   <UpdatePrompt />
+                  <PwaRegistration />
+                  <PwaUpdatePrompt />
                   <CloseBehaviorPrompt />
                   <DiscordInvitePrompt />
                   <ChangelogPopup />

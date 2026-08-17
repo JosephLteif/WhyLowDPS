@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
@@ -57,8 +57,23 @@ type LanAccessInfo = {
   enabled: boolean;
   addresses: string[];
 };
+type LanDevice = {
+  id: string;
+  name: string;
+  paired_at: number;
+  last_seen_at?: number | null;
+  active: boolean;
+};
 
 type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
+
+function formatLanDeviceDate(timestamp?: number | null): string {
+  if (!timestamp) return 'Never';
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(timestamp * 1000));
+}
 
 export default function SettingsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -127,6 +142,9 @@ export default function SettingsPage() {
   } | null>(null);
   const [lanPairingUrl, setLanPairingUrl] = useState('');
   const [lanQrCodeDataUrl, setLanQrCodeDataUrl] = useState('');
+  const [lanDevices, setLanDevices] = useState<LanDevice[]>([]);
+  const [lanDevicesLoading, setLanDevicesLoading] = useState(false);
+  const [lanDeviceActionId, setLanDeviceActionId] = useState<string | null>(null);
   const [selectedSimcChannel, setSelectedSimcChannelState] = useState<SimcUpdateChannel>('weekly');
   const [selectedSimcRuntimeVersion, setSelectedSimcRuntimeVersionState] = useState<string | null>(
     null
@@ -258,6 +276,29 @@ export default function SettingsPage() {
       cancelled = true;
     };
   }, []);
+
+  const refreshLanDevices = useCallback(async () => {
+    if (!isDesktop) return;
+    setLanDevicesLoading(true);
+    try {
+      const devices = await fetchJson<LanDevice[]>(`${API_URL}/api/lan/devices`);
+      setLanDevices(devices);
+    } catch {
+      setLanDevices([]);
+    } finally {
+      setLanDevicesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !lanSharingEnabled) {
+      setLanDevices([]);
+      return;
+    }
+    void refreshLanDevices();
+    const interval = window.setInterval(() => void refreshLanDevices(), 10_000);
+    return () => window.clearInterval(interval);
+  }, [lanSharingEnabled, refreshLanDevices]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -476,12 +517,13 @@ export default function SettingsPage() {
     }
   };
 
-  const createLanPairingLink = async () => {
+  const createLanPairingLink = async (deviceId?: string) => {
     if (!isDesktop || !lanSharingEnabled) return;
     setLanSharingLoading(true);
     setLanSharingMessage(null);
     try {
-      const pairing = await fetchJson<{ path: string }>(`${API_URL}/api/lan/pairing`, {
+      const query = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : '';
+      const pairing = await fetchJson<{ path: string }>(`${API_URL}/api/lan/pairing${query}`, {
         method: 'POST',
       });
       const { invoke } = await import('@tauri-apps/api/core');
@@ -524,6 +566,53 @@ export default function SettingsPage() {
       });
     } finally {
       setLanSharingLoading(false);
+    }
+  };
+
+  const renameLanDevice = async (device: LanDevice) => {
+    const name = window.prompt('Name this paired device', device.name)?.trim();
+    if (!name || name === device.name) return;
+
+    setLanDeviceActionId(device.id);
+    setLanSharingMessage(null);
+    try {
+      await fetchJson(`${API_URL}/api/lan/devices/${encodeURIComponent(device.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      await refreshLanDevices();
+      setLanSharingMessage({ type: 'success', text: 'Device name updated.' });
+    } catch (err: any) {
+      setLanSharingMessage({
+        type: 'error',
+        text: err?.message || 'Failed to rename the device.',
+      });
+    } finally {
+      setLanDeviceActionId(null);
+    }
+  };
+
+  const removeLanDevice = async (device: LanDevice) => {
+    if (!window.confirm(`Remove ${device.name}? Its current phone session will stop working.`)) {
+      return;
+    }
+
+    setLanDeviceActionId(device.id);
+    setLanSharingMessage(null);
+    try {
+      await fetchJson(`${API_URL}/api/lan/devices/${encodeURIComponent(device.id)}`, {
+        method: 'DELETE',
+      });
+      await refreshLanDevices();
+      setLanSharingMessage({ type: 'success', text: `${device.name} no longer has LAN access.` });
+    } catch (err: any) {
+      setLanSharingMessage({
+        type: 'error',
+        text: err?.message || 'Failed to remove the device.',
+      });
+    } finally {
+      setLanDeviceActionId(null);
     }
   };
 
@@ -1001,7 +1090,7 @@ export default function SettingsPage() {
                     onClick={() => void createLanPairingLink()}
                     className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-gold/40 hover:text-white disabled:opacity-50"
                   >
-                    Create phone link
+                    New pairing link
                   </button>
                 </div>
                 {lanPairingUrl && (
@@ -1047,6 +1136,91 @@ export default function SettingsPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {lanSharingEnabled && (
+              <div className="space-y-3 rounded-lg border border-border/60 bg-surface-2/40 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-200">Paired devices</h3>
+                    <p className="text-xs text-zinc-500">
+                      Connected sessions expire after 24 hours and are invalidated when the app
+                      restarts.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={lanDevicesLoading}
+                    onClick={() => void refreshLanDevices()}
+                    className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-gold/40 hover:text-white disabled:opacity-50"
+                  >
+                    {lanDevicesLoading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                </div>
+
+                {lanDevices.length === 0 && !lanDevicesLoading ? (
+                  <p className="rounded-lg border border-dashed border-border/70 px-3 py-4 text-xs text-zinc-500">
+                    No phones or browsers have been paired yet. Create a new phone link above to add
+                    one.
+                  </p>
+                ) : null}
+
+                <div className="space-y-2">
+                  {lanDevices.map((device) => (
+                    <div
+                      key={device.id}
+                      className="flex flex-col gap-3 rounded-lg border border-border/60 bg-surface/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-medium text-zinc-200">
+                            {device.name}
+                          </p>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                              device.active
+                                ? 'bg-emerald-400/10 text-emerald-300'
+                                : 'bg-zinc-700/40 text-zinc-500'
+                            }`}
+                          >
+                            {device.active ? 'Connected' : 'Offline'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          Paired {formatLanDeviceDate(device.paired_at)} · Last seen{' '}
+                          {formatLanDeviceDate(device.last_seen_at)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          disabled={lanSharingLoading || lanDeviceActionId === device.id}
+                          onClick={() => void createLanPairingLink(device.id)}
+                          className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-gold/40 hover:text-white disabled:opacity-50"
+                        >
+                          New link
+                        </button>
+                        <button
+                          type="button"
+                          disabled={lanDeviceActionId === device.id}
+                          onClick={() => void renameLanDevice(device)}
+                          className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-gold/40 hover:text-white disabled:opacity-50"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          disabled={lanDeviceActionId === device.id}
+                          onClick={() => void removeLanDevice(device)}
+                          className="rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-xs font-semibold text-red-300 hover:border-red-300/60 hover:text-red-200 disabled:opacity-50"
+                        >
+                          Remove access
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 

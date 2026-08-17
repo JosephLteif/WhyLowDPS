@@ -85,6 +85,7 @@ fn public_security_path(path: &str) -> bool {
             | "/api/auth/me"
             | "/api/data/status"
             | "/api/lan/pair"
+            | "/api/lan/pair/consume"
     )
 }
 
@@ -532,8 +533,18 @@ pub async fn start_with_storage_bind_options(
         let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
         let frontend = frontend_dir.clone();
         let data = data_dir.clone();
-        let lan_access =
-            lan_pairing.then(|| web::Data::new(Arc::new(lan_access::LanAccessState::new())));
+        let lan_device_store = lan_pairing
+            .then(|| {
+                data.as_ref()
+                    .and_then(|data_dir| data_dir.parent())
+                    .map(|app_data_dir| app_data_dir.join("lan_devices.json"))
+            })
+            .flatten();
+        let lan_access = lan_pairing.then(|| {
+            web::Data::new(Arc::new(lan_access::LanAccessState::with_device_store(
+                lan_device_store.clone(),
+            )))
+        });
 
         let bind_addr = format!("{}:{}", bind_host, port);
 
@@ -633,7 +644,20 @@ pub async fn start_with_storage_bind_options(
                         "/api/lan/pairing",
                         web::post().to(lan_access::create_pairing),
                     )
-                    .route("/api/lan/pair", web::get().to(lan_access::consume_pairing));
+                    .route("/api/lan/pair", web::get().to(lan_access::show_pairing))
+                    .route(
+                        "/api/lan/pair/consume",
+                        web::get().to(lan_access::consume_pairing),
+                    )
+                    .route("/api/lan/devices", web::get().to(lan_access::list_devices))
+                    .route(
+                        "/api/lan/devices/{id}",
+                        web::patch().to(lan_access::rename_device),
+                    )
+                    .route(
+                        "/api/lan/devices/{id}",
+                        web::delete().to(lan_access::remove_device),
+                    );
             }
 
             app = app

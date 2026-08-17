@@ -71,11 +71,16 @@ the backend on `127.0.0.1:8000`.
 
 For an installed desktop build, enable **Settings > Simulation > Share over
 LAN**, restart WhyLowDPS, and create a phone link. Scan the displayed QR code
-with the phone camera or copy the URL manually. The link is one-time and
-expires after five minutes. It grants access to the local app using the PC's
+with the phone camera or copy the URL manually. If a third-party QR scanner
+opens the link in an embedded preview, use its **Open in Safari** or **Open in
+Browser** action before tapping Continue. The link is one-time and expires
+after five minutes. It grants access to the local app using the PC's
 current account session, so share it only with someone on the trusted private
-network. Turn the setting off and restart the app to return to loopback-only
-behavior.
+network. The Paired devices list keeps device names and last-seen times across
+restarts, while phone sessions themselves are invalidated whenever the desktop
+app restarts. Use New pairing link to create another QR/link, Rename to label a
+device, or Remove access to revoke it immediately. Turn the setting off and
+restart the app to return to loopback-only behavior.
 
 Run the focused checks used by the repository:
 

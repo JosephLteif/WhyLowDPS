@@ -17,6 +17,7 @@ import { ActiveCharacterProvider } from './components/ActiveCharacterContext';
 import DesktopIntegrationListener from './components/DesktopIntegrationListener';
 import DesktopRichPresence from './components/DesktopRichPresence';
 import CommandPalette from './components/CommandPalette';
+import LanSessionLifecycle from './components/LanSessionLifecycle';
 import { NotificationProvider } from './components/shared/NotificationSystem';
 import './globals.css';
 import React from 'react';
@@ -61,6 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <DesktopIntegrationListener />
                   <DesktopRichPresence />
                   <CommandPalette />
+                  <LanSessionLifecycle />
                   <ScrollToTopOnRouteChange />
                   <InitialSidebarRoute />
 

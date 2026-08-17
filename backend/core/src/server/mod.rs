@@ -147,7 +147,8 @@ where
             .get(actix_web::http::header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
             .is_some_and(|value| value.starts_with("Bearer "));
-        if state_changing && !has_bearer && !same_origin_request(&req) {
+        let is_disconnect = req.path() == "/api/lan/disconnect" && *req.method() == Method::POST;
+        if state_changing && !has_bearer && !is_disconnect && !same_origin_request(&req) {
             return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
         }
 
@@ -648,6 +649,11 @@ pub async fn start_with_storage_bind_options(
                     .route(
                         "/api/lan/pair/consume",
                         web::get().to(lan_access::consume_pairing),
+                    )
+                    .route("/api/lan/presence", web::get().to(lan_access::presence))
+                    .route(
+                        "/api/lan/disconnect",
+                        web::post().to(lan_access::disconnect),
                     )
                     .route("/api/lan/devices", web::get().to(lan_access::list_devices))
                     .route(

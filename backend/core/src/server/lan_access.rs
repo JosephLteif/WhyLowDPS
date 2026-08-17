@@ -2,6 +2,7 @@ use actix_web::cookie::{Cookie, SameSite};
 use actix_web::http::header;
 use actix_web::{web, HttpRequest, HttpResponse};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -9,7 +10,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PAIRING_TOKEN_TTL: Duration = Duration::from_secs(5 * 60);
 const ACCESS_TOKEN_TTL: Duration = Duration::from_secs(24 * 60 * 60);
-const CONNECTED_WINDOW_SECS: u64 = 5 * 60;
+const CONNECTED_WINDOW_SECS: u64 = 90;
 const MAX_DEVICE_NAME_LENGTH: usize = 64;
 
 #[derive(Debug)]
@@ -31,6 +32,10 @@ struct StoredDevice {
     name: String,
     paired_at: u64,
     last_seen_at: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    access_token_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    access_expires_at: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -119,6 +124,8 @@ impl LanAccessState {
             name: default_device_name(user_agent),
             paired_at: now,
             last_seen_at: Some(now),
+            access_token_hash: None,
+            access_expires_at: None,
         };
         self.devices
             .lock()
@@ -149,6 +156,19 @@ impl LanAccessState {
 
     fn create_access_token(&self, device_id: &str) -> String {
         let token = uuid::Uuid::new_v4().to_string();
+        let expires_at = unix_now().saturating_add(ACCESS_TOKEN_TTL.as_secs());
+        let token_hash = hash_access_token(&token);
+        if let Some(device) = self
+            .devices
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get_mut(device_id)
+        {
+            device.access_token_hash = Some(token_hash);
+            device.access_expires_at = Some(expires_at);
+            device.last_seen_at = Some(unix_now());
+        }
+        self.persist_devices();
         self.active
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -163,7 +183,7 @@ impl LanAccessState {
     }
 
     fn touch_access(&self, token: &str) -> bool {
-        let device_id = {
+        let active_device_id = {
             let mut active = self
                 .active
                 .lock()
@@ -172,6 +192,35 @@ impl LanAccessState {
             active.retain(|_, access| access.expires_at > now);
             active.get(token).map(|access| access.device_id.clone())
         };
+
+        let device_id = active_device_id.or_else(|| {
+            let token_hash = hash_access_token(token);
+            let now = unix_now();
+            let (device, expires_at) = self
+                .devices
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .values()
+                .find_map(|device| {
+                    let expires_at = device.access_expires_at?;
+                    (device.access_token_hash.as_deref() == Some(token_hash.as_str())
+                        && expires_at > now)
+                        .then(|| (device.clone(), expires_at))
+                })?;
+
+            self.active
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(
+                    token.to_string(),
+                    ActiveAccess {
+                        device_id: device.id.clone(),
+                        expires_at: Instant::now()
+                            + Duration::from_secs(expires_at.saturating_sub(now)),
+                    },
+                );
+            Some(device.id)
+        });
 
         let Some(device_id) = device_id else {
             return false;
@@ -263,6 +312,13 @@ impl LanAccessState {
         true
     }
 
+    fn disconnect_access(&self, token: &str) {
+        self.active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(token);
+    }
+
     fn persist_devices(&self) {
         let Some(path) = self.device_store.as_deref() else {
             return;
@@ -306,6 +362,10 @@ fn unix_now() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or_default()
+}
+
+fn hash_access_token(token: &str) -> String {
+    format!("{:x}", Sha256::digest(token.as_bytes()))
 }
 
 fn normalize_device_name(name: &str) -> Option<String> {
@@ -533,6 +593,20 @@ pub async fn remove_device(
     }
 }
 
+pub async fn presence() -> HttpResponse {
+    HttpResponse::NoContent().finish()
+}
+
+pub async fn disconnect(
+    req: HttpRequest,
+    state: web::Data<std::sync::Arc<LanAccessState>>,
+) -> HttpResponse {
+    if let Some(cookie) = req.cookie("lan_access") {
+        state.disconnect_access(cookie.value());
+    }
+    HttpResponse::NoContent().finish()
+}
+
 pub fn has_valid_access(req: &actix_web::dev::ServiceRequest, state: &LanAccessState) -> bool {
     req.cookie("lan_access")
         .is_some_and(|cookie| state.touch_access(cookie.value()))
@@ -583,16 +657,53 @@ mod tests {
     }
 
     #[test]
-    fn restarted_state_rejects_old_access_tokens() {
+    fn disconnecting_access_marks_the_device_offline_without_unpairing_it() {
         let state = LanAccessState::new();
         let device_id = state.register_device(Some("iPhone"));
         let token = state.create_access_token(&device_id);
-        let restarted_state = LanAccessState::new();
+
+        assert!(state.list_devices()[0].active);
+        state.disconnect_access(&token);
+
+        let devices = state.list_devices();
+        assert_eq!(devices.len(), 1);
+        assert!(!devices[0].active);
+        assert!(state.has_device(&device_id));
+    }
+
+    #[actix_web::test]
+    async fn disconnect_endpoint_marks_the_device_offline() {
+        let state = std::sync::Arc::new(LanAccessState::new());
+        let device_id = state.register_device(Some("iPhone"));
+        let token = state.create_access_token(&device_id);
+
+        let response = disconnect(
+            actix_web::test::TestRequest::post()
+                .cookie(Cookie::new("lan_access", token))
+                .to_http_request(),
+            web::Data::new(state.clone()),
+        )
+        .await;
+
+        assert_eq!(response.status(), actix_web::http::StatusCode::NO_CONTENT);
+        assert!(!state.list_devices()[0].active);
+    }
+
+    #[test]
+    fn restarted_state_accepts_persisted_access_tokens() {
+        let dir = tempfile::tempdir().expect("device store dir");
+        let path = dir.path().join("lan_devices.json");
+        let state = LanAccessState::with_device_store(Some(path.clone()));
+        let device_id = state.register_device(Some("iPhone"));
+        let token = state.create_access_token(&device_id);
+        drop(state);
+
+        let restarted_state = LanAccessState::with_device_store(Some(path));
         let request = actix_web::test::TestRequest::default()
             .cookie(Cookie::new("lan_access", token))
             .to_srv_request();
 
-        assert!(!has_valid_access(&request, &restarted_state));
+        assert!(has_valid_access(&request, &restarted_state));
     }
 
     #[test]

@@ -1145,8 +1145,8 @@ export default function SettingsPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-zinc-200">Paired devices</h3>
                     <p className="text-xs text-zinc-500">
-                      Connected sessions expire after 24 hours and are invalidated when the app
-                      restarts.
+                      Paired sessions survive app restarts. Phones send presence while open and are
+                      marked offline when closed or unreachable.
                     </p>
                   </div>
                   <button

@@ -18,11 +18,11 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Share WhyLowDPS over your LAN' })
+      screen.getByRole('heading', { level: 3, name: 'Use hosted Light mode without signing in' })
     ).toBeInTheDocument();
-    expect(screen.getByText(/same trusted private network/)).toBeInTheDocument();
+    expect(screen.getByText(/without a Battle.net session/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 7$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 5$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -72,6 +72,9 @@ describe('ChangelogPopup', () => {
       'aria-current',
       'false'
     );
+    expect(
+      screen.queryByRole('heading', { level: 3, name: 'Pause and resume simulations' })
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /next changelog item/i }));
 

@@ -28,7 +28,58 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
-    title: 'Share WhyLowDPS over your LAN',
+    title: 'Use hosted Light mode without signing in',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Hosted users can now continue in Light mode and use simulations, shared game-data catalogs, results, and raid expansion browsing without a Battle.net session.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Account-specific features remain protected and still require authentication.',
+          'The Raids page now includes expansion filtering and public artwork fallbacks when hosted image data is unavailable.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Install WhyLowDPS as an app',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The hosted web app can now be installed as a PWA, with an offline shell, update notifications, and install guidance shown when you open the app.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Use the native Install button when your browser provides it. Otherwise, follow the browser-menu or iOS Share > Add to Home Screen instructions.',
+          'The prompt stays out of the Windows desktop app and installed PWAs, and calls out when trusted HTTPS is required for native installation.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Run a private Docker-hosted instance',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'WhyLowDPS now has a prebuilt amd64 Docker deployment for private, single-instance hosting, with the web app, backend, and SimulationCraft runtime packaged together.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Use the release Compose files and persistent data volume to keep synchronized data and simulations across upgrades.',
+          'Pin a release image for reproducible updates and rollbacks; hosted Battle.net sign-in uses the configured HTTPS callback URL.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Share the desktop app over your trusted LAN',
     body: [
       {
         type: 'paragraph',
@@ -37,91 +88,19 @@ const releaseNotes: ReleaseNote[] = [
       {
         type: 'list',
         items: [
-          'Enable Settings > Simulation > Share over LAN, restart the desktop app, and create a five-minute pairing link.',
-          'Review paired devices, rename them, or remove access from Settings. Device names and last-seen times persist, while active phone sessions are cleared when the desktop app restarts.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Recent character search history',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The character search bar now remembers your eight most recent searches locally so you can return to a character quickly.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Focus the character field to open recent searches, or type to filter them.',
-          'Select a recent character to navigate directly to its page.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Pause and resume simulations',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Pause a simulation from its result screen and resume it later without restarting the SimC process. Queued and staged simulations keep their current place, and cancellation remains available while paused.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Pause and resume controls work independently for each scenario in a batch.',
-          'If the backend restarts, rerun the saved input to continue the simulation.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Unified notification center',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Simulation results and app updates now share one notification system, with a header history, unread counts, and clear read-state controls.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Click a notification to reopen its simulation result or update flow.',
-          'Mark notifications as read, mark everything as read, or clear the history.',
-          'Notification history is preserved locally so important actions remain available later.',
+          'Review paired devices, rename them, or remove access from Settings. Device names and last-seen times persist.',
+          'Active phone sessions are cleared when the desktop app restarts, and no internet exposure or port forwarding is supported.',
         ],
       },
     ],
   },
   {
     category: 'improvement',
-    title: 'Cleaner desktop updates and results',
+    title: 'Safer season rollovers',
     body: [
       {
         type: 'paragraph',
-        text: 'Desktop simulation notifications remain clickable without duplicating events, while app updates now use the existing updater popup as their single live control surface.',
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'One-click simulation reruns',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Rerun This Input now submits the saved simulation input directly and opens the new result without returning to the simulator form first.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Clearer running simulation status',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Running simulation details now use the available page width, with profileset progress, current-profile metrics, and overall stats arranged for easier reading.',
+        text: 'Game-data and SimulationCraft runtime refreshes now adapt to season changes with staged validation and last-known-good fallback when a refresh is incomplete or degraded.',
       },
     ],
   },

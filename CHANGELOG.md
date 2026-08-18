@@ -8,31 +8,14 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Added
 
-- Optional LAN sharing for phones on the same trusted private network, with one-time QR/link pairing and persistent paired-device management from Settings.
-- Recent character search history in the header, persisted locally with filtering and one-click navigation.
-- Pause and resume simulations from the result screen while preserving queued, running, and staged progress as long as the backend remains alive.
-- Shared notification center with persistent local history, unread counts, read-state controls, and direct actions for simulation results and app updates.
-- One-click reruns that submit the saved simulation input directly and open the new result.
+- Hosted Light mode now supports simulations, shared game-data catalogs, results, and raid expansion browsing without a Battle.net session; account-specific features remain protected.
+- Installable PWA support for the hosted web app, including a manifest, service worker, offline shell, update prompt, and install guidance for native browser prompts, browser menus, and iOS.
+- Private, single-instance Docker hosting with an amd64 Compose deployment, prebuilt GHCR images, and a persistent data volume for repeatable upgrades and rollbacks.
+- Optional LAN sharing for phones on the same trusted private network, with one-time QR/link pairing, persistent paired-device management, presence tracking, and restart invalidation.
 
 ### Changed
 
-- Running simulation status now uses the available page width with clearer profileset progress and stats grouping.
-
-### Fixed
-
-- Desktop simulation notifications are deduplicated and keep a clickable in-app result action for completed simulations.
-- App updates are recorded in notification history while the existing updater popup remains the single live install and restart flow.
-
-## [3.0.1] - 2026-05-19
-
-### Changed
-
-- Release workflow now generates structured release notes with:
-  - recommended download
-  - SHA256 checksums for every attached asset
-  - explicit Windows/SmartScreen/Battle.net credential notes
-
-### Added
-
-- First-launch Discord invite popup with local dismiss persistence
-- Sidebar quick links for Discord and website access
+- The hosted Raids page now lists cataloged expansions, fills missing current-expansion metadata, and uses public artwork fallbacks when image endpoints have no source.
+- Docker hosting documentation derives the web origin and Battle.net callback from the machine's current LAN or DNS host instead of a fixed example IP.
+- Tagged releases now health-check and publish versioned, minor, and stable Docker images, then attach hosting configuration, documentation, checksums, and the image digest.
+- Hosted deployments use configurable HTTPS Battle.net callback and web-origin settings, while game-data and SimulationCraft runtime refreshes validate staged data and retain the last-known-good state during degraded season rollovers.

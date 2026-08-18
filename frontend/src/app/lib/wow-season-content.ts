@@ -253,7 +253,7 @@ export function getStaticWowSeasonContent(): WowSeasonContentResult {
 
 async function fetchDataFileArray<T>(key: string): Promise<T[]> {
   const response = await fetchJsonCached<DataFileContentResponse>(
-    `${API_URL}/api/data/files/${key}`,
+    `${API_URL}/api/data/files/${key}/content`,
     { ttl: 60_000 },
   );
   const parsed = JSON.parse(response.content);

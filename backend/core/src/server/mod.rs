@@ -89,6 +89,70 @@ fn public_security_path(path: &str) -> bool {
     )
 }
 
+fn public_light_mode_request(req: &ServiceRequest) -> bool {
+    let path = req.path();
+    let method = req.method();
+    let is_read = matches!(*method, Method::GET | Method::OPTIONS);
+    let is_write = *method == Method::POST;
+
+    if path == "/api/sim" {
+        return is_write || *method == Method::OPTIONS;
+    }
+
+    if let Some(suffix) = path.strip_prefix("/api/sim/") {
+        let mut segments = suffix.split('/');
+        let _id = segments.next();
+        let action = segments.next();
+        return is_read
+            || (is_write
+                && matches!(action, Some("cancel" | "pause" | "resume"))
+                && segments.next().is_none());
+    }
+
+    if is_read
+        && (matches!(
+            path,
+            "/api/sims"
+                | "/api/history/stats"
+                | "/api/history/characters"
+                | "/api/config"
+                | "/api/dungeons"
+                | "/api/game-context"
+                | "/api/game-data/state"
+                | "/api/instances"
+                | "/api/season-config"
+                | "/api/upgrade-options"
+                | "/api/upgrade-tracks"
+        ) || path.starts_with("/api/data/images/")
+            || path.starts_with("/api/data/instance-images/")
+            || path.starts_with("/api/data/files/")
+            || path.starts_with("/api/data/static/")
+            || path.starts_with("/api/data/wowhead-zones-index")
+            || path.starts_with("/api/enchant-info/")
+            || path.starts_with("/api/gem-info/")
+            || path.starts_with("/api/instances/")
+            || path.starts_with("/api/item-info/")
+            || path.starts_with("/api/talent-tree/")
+            || path.starts_with("/api/gear/"))
+    {
+        return true;
+    }
+
+    is_write
+        && matches!(
+            path,
+            "/api/droptimizer/sim"
+                | "/api/item-info/batch"
+                | "/api/max-upgrade-ilevels"
+                | "/api/top-gear/combo-count"
+                | "/api/top-gear/sim"
+                | "/api/upgrade-compare/combo-count"
+                | "/api/upgrade-compare/prepare"
+                | "/api/upgrade-compare/sim"
+        )
+        || path.starts_with("/api/gear/")
+}
+
 fn is_loopback_peer(req: &ServiceRequest) -> bool {
     req.peer_addr()
         .is_some_and(|address| address.ip().is_loopback())
@@ -127,6 +191,17 @@ where
         || public_security_path(req.path())
         || is_loopback_peer(&req)
     {
+        return next.call(req).await;
+    }
+
+    if public_light_mode_request(&req) {
+        let state_changing = matches!(
+            *req.method(),
+            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+        );
+        if state_changing && !same_origin_request(&req) {
+            return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
+        }
         return next.call(req).await;
     }
 
@@ -241,6 +316,73 @@ mod tests {
                 .expect_err("request should be rejected")
                 .as_response_error()
                 .status_code(),
+            actix_web::http::StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[actix_web::test]
+    async fn external_security_allows_light_mode_simulation_routes_without_auth() {
+        let state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
+            None,
+            None,
+            "http://localhost/callback".to_string(),
+            "a-secure-secret-with-more-than-32-bytes".to_string(),
+        )));
+        let app = init_service(
+            App::new()
+                .app_data(state)
+                .wrap(middleware::from_fn(|req, next| {
+                    enforce_security(req, next, true, false)
+                }))
+                .route(
+                    "/api/sim",
+                    web::post().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
+                    "/api/sim/{id}",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
+                    "/api/data/files/{key}/content",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
+                    "/api/protected",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                ),
+        )
+        .await;
+
+        let create_response = call_service(
+            &app,
+            TestRequest::post()
+                .uri("/api/sim")
+                .insert_header(("host", "localhost"))
+                .insert_header(("origin", "http://localhost"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(create_response.status(), actix_web::http::StatusCode::OK);
+
+        let status_response =
+            call_service(&app, TestRequest::get().uri("/api/sim/job-1").to_request()).await;
+        assert_eq!(status_response.status(), actix_web::http::StatusCode::OK);
+
+        let data_file_response = call_service(
+            &app,
+            TestRequest::get()
+                .uri("/api/data/files/wow_expansions/content")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(data_file_response.status(), actix_web::http::StatusCode::OK);
+
+        let protected_error =
+            try_call_service(&app, TestRequest::get().uri("/api/protected").to_request())
+                .await
+                .expect_err("protected route should still require authentication");
+        assert_eq!(
+            protected_error.as_response_error().status_code(),
             actix_web::http::StatusCode::UNAUTHORIZED
         );
     }

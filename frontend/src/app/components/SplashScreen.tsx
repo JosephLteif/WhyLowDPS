@@ -6,7 +6,6 @@ import {
   API_URL,
   type BlizzardCredentialProfile,
   isDesktop,
-  isHostedPrivate,
   listBlizzardCredentialProfiles,
 } from '../lib/api';
 import { useAuth } from './AuthContext';
@@ -326,14 +325,12 @@ export default function SplashScreen({
                   <LogIn className="h-5 w-5" strokeWidth={2.25} />
                   Login with Battle.net
                 </button>
-                {!isHostedPrivate && (
-                  <button
-                    onClick={enableLightMode}
-                    className="mt-3 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
-                  >
-                    Continue in Light mode
-                  </button>
-                )}
+                <button
+                  onClick={enableLightMode}
+                  className="mt-3 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                >
+                  Continue in Light mode
+                </button>
               </div>
             ) : status === 'unauthenticated_needs_keys' ? (
               <div className="w-full space-y-4 text-center">
@@ -473,14 +470,12 @@ export default function SplashScreen({
                     </>
                   )}
                 </button>
-                {!isHostedPrivate && (
-                  <button
-                    onClick={enableLightMode}
-                    className="flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
-                  >
-                    Continue in Light mode
-                  </button>
-                )}
+                <button
+                  onClick={enableLightMode}
+                  className="flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                >
+                  Continue in Light mode
+                </button>
               </div>
             ) : isError ? (
               <div className="w-full text-left">

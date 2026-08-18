@@ -3,14 +3,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { API_URL, getGameContext, listInstances } from '../lib/api';
-import { wowExpansions } from '../lib/wow-season-content';
+import { wowExpansions, wowInstances } from '../lib/wow-season-content';
 import type { Instance } from '../drop-finder/types';
 
 type RaidEncounter = {
   id: number;
   name: string;
-  imageUrl?: string;
 };
+
+const FALLBACK_RAID_IMAGES: Record<string, string> = {
+  'the tidebound grotto':
+    'https://bnetcmsus-a.akamaihd.net/cms/blog_header/7t/7TRTKV368HRY1785353626933.jpg',
+  'the venomous abyss':
+    'https://bnetcmsus-a.akamaihd.net/cms/content_entry_media/SSA6NR4LD1VX1785170429186.png',
+};
+
+function normalizeRaidName(value: string): string {
+  return value.trim().toLowerCase();
+}
 
 function resolveAssetUrl(url?: string): string | undefined {
   if (!url) return undefined;
@@ -22,9 +32,8 @@ function normalizeEncounter(raw: unknown): RaidEncounter | null {
     const value = raw as Record<string, unknown>;
     const name = typeof value.name === 'string' ? value.name.trim() : '';
     const id = Number(value.id);
-    const imageUrl = typeof value.image_url === 'string' ? value.image_url : undefined;
     if (value.trash === true || id < 0) return null;
-    if (name && Number.isFinite(id)) return { id, name, imageUrl };
+    if (name && Number.isFinite(id)) return { id, name };
   }
 
   if (typeof raw === 'string') {
@@ -36,9 +45,21 @@ function normalizeEncounter(raw: unknown): RaidEncounter | null {
   return null;
 }
 
+function fallbackRaidImage(raid: Instance): string | undefined {
+  return (
+    wowInstances.find((instance) => instance.id === raid.id)?.imageUrl ??
+    FALLBACK_RAID_IMAGES[normalizeRaidName(raid.name)]
+  );
+}
+
 function RaidArtwork({ raid }: { raid: Instance }) {
   const apiImageUrl = resolveAssetUrl(raid.image_url);
-  const [imageUrl, setImageUrl] = useState(apiImageUrl);
+  const fallbackImageUrl = fallbackRaidImage(raid);
+  const [imageUrl, setImageUrl] = useState(
+    apiImageUrl && !apiImageUrl.includes('/api/data/images/')
+      ? apiImageUrl
+      : (fallbackImageUrl ?? apiImageUrl)
+  );
 
   return imageUrl ? (
     <img
@@ -47,7 +68,9 @@ function RaidArtwork({ raid }: { raid: Instance }) {
       className="h-40 w-full object-cover"
       loading="lazy"
       onError={() => {
-        setImageUrl(undefined);
+        setImageUrl((current) =>
+          fallbackImageUrl && current !== fallbackImageUrl ? fallbackImageUrl : undefined
+        );
       }}
     />
   ) : (
@@ -75,14 +98,6 @@ function RaidCard({ raid }: { raid: Instance }) {
                 key={`${raid.id}-${encounter.id}`}
                 className="flex items-center gap-2 text-sm text-zinc-200"
               >
-                {resolveAssetUrl(encounter.imageUrl) ? (
-                  <img
-                    src={resolveAssetUrl(encounter.imageUrl)}
-                    alt=""
-                    className="h-7 w-7 rounded object-cover"
-                    loading="lazy"
-                  />
-                ) : null}
                 <span>{encounter.name}</span>
               </li>
             ))}
@@ -97,7 +112,7 @@ function RaidCard({ raid }: { raid: Instance }) {
 
 export default function RaidsPage() {
   const [instances, setInstances] = useState<Instance[]>([]);
-  const [activeRaidPoolId, setActiveRaidPoolId] = useState<number | null>(null);
+  const [currentExpansionId, setCurrentExpansionId] = useState<number | null>(null);
   const [selectedExpansionId, setSelectedExpansionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +123,12 @@ export default function RaidsPage() {
       .then(([data, context]) => {
         if (cancelled) return;
         setInstances(data);
-        setActiveRaidPoolId(context?.pools?.raids ?? null);
+        const seasonName = context?.active_season?.name?.toLocaleLowerCase();
+        setCurrentExpansionId(
+          wowExpansions.find((expansion) =>
+            seasonName?.includes(expansion.name.toLocaleLowerCase())
+          )?.id ?? null
+        );
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load raids.');
@@ -124,16 +144,12 @@ export default function RaidsPage() {
 
   const raids = useMemo(() => {
     const apiRaids = instances.filter((instance) => instance.type === 'raid' && instance.id > 0);
-    if (activeRaidPoolId == null) return [];
-    const activePool = instances.find((instance) => instance.id === activeRaidPoolId);
-    if (!activePool) return [];
-    const activeEncounterIds = new Set(
-      (activePool?.encounters ?? []).map((encounter) => encounter.id)
+    return apiRaids.map((raid) =>
+      raid.expansion == null && currentExpansionId != null
+        ? { ...raid, expansion: currentExpansionId }
+        : raid
     );
-    return apiRaids.filter((raid) =>
-      raid.encounters.some((encounter) => activeEncounterIds.has(encounter.id))
-    );
-  }, [activeRaidPoolId, instances]);
+  }, [currentExpansionId, instances]);
   const expansionIds = useMemo(
     () =>
       [
@@ -141,8 +157,7 @@ export default function RaidsPage() {
       ].sort((left, right) => right - left),
     [raids]
   );
-  const currentExpansionId = expansionIds[0] ?? null;
-  const effectiveExpansionId = selectedExpansionId ?? currentExpansionId;
+  const effectiveExpansionId = selectedExpansionId ?? currentExpansionId ?? expansionIds[0] ?? null;
   const visibleRaids = raids.filter(
     (raid) => effectiveExpansionId == null || raid.expansion === effectiveExpansionId
   );

@@ -28,29 +28,32 @@ type DungeonDataResponse = DungeonSeasonData & { error?: string };
 
 const initialSeasonContent = getStaticWowSeasonContent().content;
 
-function toCatalogDungeons(content: WowSeasonContent) {
-  return content.dungeons.map((dungeon) => ({
-    id: dungeon.id,
-    name: dungeon.name,
-    description: undefined,
-    zone: null,
-    slug: dungeon.slug ?? null,
-    short_name: null,
-    wowhead_id: null,
-    num_bosses: null,
-    expansion: dungeon.expansionId,
-    expansion_name: content.season.expansion?.name ?? null,
-    map_id: null,
-    challenge_mode_id: dungeon.mythicPlusDungeonId ?? null,
-    minimum_level: null,
-    keystone_timer_ms: null,
-    keystone_upgrades: [],
-    encounters: [],
-    blizzard_href: null,
-    image_url: dungeon.imageUrl,
-    linked_code: undefined,
-    blizzard_api_data: null,
-  }));
+function toCatalogDungeons(content: WowSeasonContent): DungeonInfo[] {
+  return content.dungeons.map((dungeon) => {
+    const encounters = dungeon.encounters ?? [];
+    return {
+      id: dungeon.id,
+      name: dungeon.name,
+      description: undefined,
+      zone: null,
+      slug: dungeon.slug ?? null,
+      short_name: null,
+      wowhead_id: null,
+      num_bosses: encounters.length || null,
+      expansion: dungeon.expansionId,
+      expansion_name: content.season.expansion?.name ?? null,
+      map_id: null,
+      challenge_mode_id: dungeon.mythicPlusDungeonId ?? null,
+      minimum_level: null,
+      keystone_timer_ms: null,
+      keystone_upgrades: [],
+      encounters: encounters.map((encounter) => encounter.name),
+      blizzard_href: null,
+      image_url: dungeon.imageUrl,
+      linked_code: undefined,
+      blizzard_api_data: null,
+    };
+  });
 }
 
 function toApiDungeonInfo(instance: Instance): DungeonInfo {
@@ -485,7 +488,8 @@ export default function DungeonsPage() {
           </p>
           <p className="mt-2 text-2xl font-extrabold text-white">{displayedDungeons.length}</p>
           <p className="text-sm font-medium text-zinc-300">
-            Current affixes, timers, scores, and encounters are shown only for the active season.
+            Current affixes, timers, and scores are shown only for the active season. Historical
+            encounters are included when available.
           </p>
         </section>
       )}
@@ -519,7 +523,7 @@ export default function DungeonsPage() {
               <DungeonCard
                 key={`${dungeon.id}-${dungeon.name}-${index}`}
                 dungeon={dungeon}
-                showDetails={isCurrentSeason}
+                showDetails={isCurrentSeason || Boolean(dungeon.encounters?.length)}
                 mplusDetail={
                   isCurrentSeason
                     ? mplusDetailsLoaded

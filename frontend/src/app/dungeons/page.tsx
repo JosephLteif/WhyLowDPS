@@ -84,12 +84,14 @@ function synthesizeCurrentSeasonContent(
   context: GameContext | null,
   instances: Instance[],
 ): WowSeasonContent[] {
-  if (!context?.active_season?.name) return existing;
+  if (!context?.active_season?.name) return uniqueSeasonContent(existing);
   const active = context.active_season;
 
   const instanceById = new Map(instances.map((instance) => [instance.id, instance]));
-  const expansionId = context.current_expansion?.number ?? 0;
-  const expansion = wowExpansions.find((entry) => entry.id === expansionId);
+  const expansion = wowExpansions.find((entry) =>
+    normalized(active.name).includes(normalized(entry.name)),
+  );
+  const expansionId = expansion?.id ?? context.current_expansion?.number ?? 0;
   const fromPool = (poolKey: string, type: WowInstanceType): WowInstance[] => {
     const poolId = context.pools?.[poolKey];
     const pool = poolId == null ? undefined : instanceById.get(poolId);
@@ -129,10 +131,20 @@ function synthesizeCurrentSeasonContent(
   };
 
   const normalizedName = normalized(current.season.name);
-  return [
+  return uniqueSeasonContent([
     current,
     ...existing.filter((entry) => normalized(entry.season.name) !== normalizedName),
-  ];
+  ]);
+}
+
+function uniqueSeasonContent(content: WowSeasonContent[]): WowSeasonContent[] {
+  const seen = new Set<string>();
+  return content.filter((entry) => {
+    const key = entry.season.slug || normalized(entry.season.name);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalized(value: string | undefined): string {
@@ -215,7 +227,11 @@ export default function DungeonsPage() {
         if (runtimeWow.expansions.length > 0) setExpansions(runtimeWow.expansions);
         if (runtimeWow.result.content.length > 0) {
           setSeasonContent(
-            synthesizeCurrentSeasonContent(runtimeWow.result.content, context, instances),
+            synthesizeCurrentSeasonContent(
+              [...runtimeWow.result.content, ...initialSeasonContent],
+              context,
+              instances,
+            ),
           );
         }
       })
@@ -298,10 +314,13 @@ export default function DungeonsPage() {
           (content) =>
             selectedExpansionId == null || content.season.expansionId === selectedExpansionId
         )
-        .sort((left, right) =>
-          (right.season.startDate || '').localeCompare(left.season.startDate || '')
-        ),
-    [seasonContent, selectedExpansionId]
+        .sort((left, right) => {
+          const leftIsCurrent = left.season.slug === currentSeasonSlug;
+          const rightIsCurrent = right.season.slug === currentSeasonSlug;
+          if (leftIsCurrent !== rightIsCurrent) return leftIsCurrent ? -1 : 1;
+          return (right.season.startDate || '').localeCompare(left.season.startDate || '');
+        }),
+    [currentSeasonSlug, seasonContent, selectedExpansionId]
   );
 
   const currentDungeons = useMemo(() => {
@@ -385,11 +404,6 @@ export default function DungeonsPage() {
     : selectedContent?.season.name || 'Selected Season';
 
   const handleExpansionChange = (value: string) => {
-    if (!value) {
-      setSelectedExpansionId(null);
-      setSelectedSeasonSlug('');
-      return;
-    }
     const expansionId = Number(value);
     const nextSeasons = seasonContent
       .filter((content) => content.season.expansionId === expansionId)
@@ -419,11 +433,10 @@ export default function DungeonsPage() {
           <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
             Expansion
             <select
-              value={selectedExpansionId ?? ''}
+              value={selectedExpansionId ?? currentExpansionId ?? ''}
               onChange={(event) => handleExpansionChange(event.currentTarget.value)}
               className="min-w-48 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100"
             >
-              <option value="">Current active season</option>
               {expansionOptions.map((expansion) => (
                 <option key={expansion.id} value={expansion.id}>
                   {expansion.name}
@@ -438,7 +451,6 @@ export default function DungeonsPage() {
               onChange={(event) => handleSeasonChange(event.currentTarget.value)}
               className="min-w-56 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100"
             >
-              <option value="">Current active season</option>
               {seasonOptions.map((content) => (
                 <option key={content.season.slug} value={content.season.slug}>
                   {content.season.name}

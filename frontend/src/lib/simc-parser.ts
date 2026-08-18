@@ -73,8 +73,11 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
   const seasonMatch = input.match(/^(?:season|dungeon_season)\s*=\s*"?([^"\n,]+)"?/im);
   const titleMatch = input.match(/^#\s*(.+)$/m);
   const dungeonTitleMatch = input.match(/^#\s*(?:dungeon|route|mythic\s*\+)\s*[:\-]\s*(.+)$/im);
+  const isDungeonRoute = Boolean(
+    routeMatch || dungeonMatch || input.toLowerCase().includes('dungeon')
+  );
 
-  if (nameMatch) {
+  if (nameMatch && !isDungeonRoute) {
     return {
       kind: 'character',
       className: nameMatch[1],
@@ -96,7 +99,7 @@ export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
     };
   }
 
-  if (routeMatch || dungeonMatch || input.toLowerCase().includes('dungeon')) {
+  if (isDungeonRoute) {
     const enemyName = enemyMatch?.[1]?.trim() || null;
     const dungeonFromEnemy = enemyName?.match(/^(.+?)\s*-\s*(.+?)\s*\([^)]*\)\s*$/)?.[2] || null;
     const dungeon =

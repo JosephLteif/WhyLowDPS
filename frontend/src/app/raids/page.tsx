@@ -18,6 +18,8 @@ const FALLBACK_RAID_IMAGES: Record<string, string> = {
     'https://bnetcmsus-a.akamaihd.net/cms/content_entry_media/SSA6NR4LD1VX1785170429186.png',
 };
 
+const DEFAULT_RAID_IMAGE = FALLBACK_RAID_IMAGES['the tidebound grotto'];
+
 function normalizeRaidName(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -45,20 +47,21 @@ function normalizeEncounter(raw: unknown): RaidEncounter | null {
   return null;
 }
 
-function fallbackRaidImage(raid: Instance): string | undefined {
-  return (
-    wowInstances.find((instance) => instance.id === raid.id)?.imageUrl ??
-    FALLBACK_RAID_IMAGES[normalizeRaidName(raid.name)]
-  );
+function fallbackRaidImages(raid: Instance): string[] {
+  return [
+    FALLBACK_RAID_IMAGES[normalizeRaidName(raid.name)],
+    wowInstances.find((instance) => instance.id === raid.id)?.imageUrl,
+    DEFAULT_RAID_IMAGE,
+  ].filter((url): url is string => Boolean(url));
 }
 
 function RaidArtwork({ raid }: { raid: Instance }) {
   const apiImageUrl = resolveAssetUrl(raid.image_url);
-  const fallbackImageUrl = fallbackRaidImage(raid);
+  const fallbackImageUrls = fallbackRaidImages(raid);
   const [imageUrl, setImageUrl] = useState(
     apiImageUrl && !apiImageUrl.includes('/api/data/images/')
       ? apiImageUrl
-      : (fallbackImageUrl ?? apiImageUrl)
+      : (fallbackImageUrls[0] ?? apiImageUrl)
   );
 
   return imageUrl ? (
@@ -68,9 +71,10 @@ function RaidArtwork({ raid }: { raid: Instance }) {
       className="h-40 w-full object-cover"
       loading="lazy"
       onError={() => {
-        setImageUrl((current) =>
-          fallbackImageUrl && current !== fallbackImageUrl ? fallbackImageUrl : undefined
-        );
+        setImageUrl((current) => {
+          const nextFallbackIndex = fallbackImageUrls.indexOf(current) + 1;
+          return fallbackImageUrls[nextFallbackIndex] ?? undefined;
+        });
       }}
     />
   ) : (

@@ -440,7 +440,7 @@ export default function SplashScreen({
                       Blizzard Developer Portal
                     </a>
                     .<br />
-                    2. In the portal's <span className="font-bold text-zinc-400">Redirect URLs</span>{' '}
+                    2. In the portal&apos;s <span className="font-bold text-zinc-400">Redirect URLs</span>{' '}
                     field, add this exact value:
                     <br />
                     <code className="mt-1 block break-all text-zinc-300">{redirectUri}</code>

@@ -185,7 +185,7 @@ export default function IntegrationsSettingsSection({
             </a>
             .
             <br />
-            2. In the portal's <span className="font-semibold text-zinc-300">Redirect URLs</span>{' '}
+            2. In the portal&apos;s <span className="font-semibold text-zinc-300">Redirect URLs</span>{' '}
             field, add this exact value:
             <br />
             <code className="mt-1 block break-all text-zinc-300">{redirectUri}</code>

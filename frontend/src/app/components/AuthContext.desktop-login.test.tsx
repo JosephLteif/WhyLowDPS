@@ -14,6 +14,7 @@ vi.mock('../lib/api', () => ({
   API_URL: 'http://localhost:17384',
   fetchJson: mocks.fetchJson,
   isDesktop: true,
+  isHostedPrivate: false,
   isNetworkUnavailableError: vi.fn(() => false),
   saveBlizzardCredentialProfile: mocks.saveBlizzardCredentialProfile,
   setSessionToken: vi.fn(),

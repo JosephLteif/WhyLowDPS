@@ -26,7 +26,7 @@
     "coverage:rust": "node scripts/coverage-rust.js",
     "coverage:frontend": "npm run test:coverage --prefix frontend",
     "build:frontend": "npm run build --prefix frontend",
-    "tauri:build:check": "cargo check --manifest-path desktop/src-tauri/Cargo.toml",
+    "tauri:build:check": "cross-env DESKTOP_BUILD=true NEXT_PUBLIC_DESKTOP_BUILD=true npm run build:frontend && cargo check --manifest-path desktop/src-tauri/Cargo.toml",
     "tauri": "tauri",
     "clean:caches": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$paths=@('target\\\\debug\\\\incremental','backend\\\\target\\\\debug\\\\incremental','desktop\\\\src-tauri\\\\target_desktop\\\\debug\\\\incremental'); foreach($p in $paths){ if(Test-Path $p){ Remove-Item -LiteralPath $p -Recurse -Force } }; Write-Host 'Incremental caches cleaned.'\"",
     "ensure:frontend": "node scripts/ensure-frontend-deps.js",

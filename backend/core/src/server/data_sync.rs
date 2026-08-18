@@ -11,7 +11,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::server::auth_handlers::{
-    get_available_blizzard_creds, verify_jwt, BlizzardAuthState, BlizzardCredentialSecretStore,
+    get_available_blizzard_creds, verify_jwt_for_state, BlizzardAuthState,
+    BlizzardCredentialSecretStore,
 };
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
@@ -139,9 +140,14 @@ fn blizzard_api_host(region: &str) -> &'static str {
 }
 
 fn has_validated_snapshot(data_dir: &Option<PathBuf>) -> bool {
+    snapshot_validation_error(data_dir).is_ok()
+}
+
+fn snapshot_validation_error(data_dir: &Option<PathBuf>) -> Result<(), String> {
     data_dir
         .as_deref()
-        .is_some_and(|root| validate_raidbots_snapshot(root).is_ok())
+        .ok_or_else(|| "Data directory is unavailable".to_string())
+        .and_then(validate_raidbots_snapshot)
 }
 
 #[derive(Debug, Deserialize)]
@@ -963,7 +969,10 @@ mod tests {
         let state = test_sync_state();
         let resp = trigger_sync(
             TestRequest::default().to_http_request(),
-            web::Query(SyncQuery { force: None, region: None }),
+            web::Query(SyncQuery {
+                force: None,
+                region: None,
+            }),
             state.clone(),
             test_auth_state(),
             web::Data::new(Arc::new(BlizzardState::new())),
@@ -984,7 +993,10 @@ mod tests {
 
         let resp = trigger_dungeon_sync(
             TestRequest::default().to_http_request(),
-            web::Query(SyncQuery { force: None, region: None }),
+            web::Query(SyncQuery {
+                force: None,
+                region: None,
+            }),
             state.clone(),
             test_auth_state(),
             web::Data::new(Arc::new(BlizzardState::new())),
@@ -1368,7 +1380,7 @@ pub async fn get_data_image(
                 )
                 .await;
             }
-        } else if let Some(claims) = verify_jwt(&req, &auth_state.jwt_secret) {
+        } else if let Some(claims) = verify_jwt_for_state(&req, auth_state.get_ref()) {
             if let Some(access_token) = auth_state.oauth_token(&claims.session_id) {
                 source_url = fetch_blizzard_mythic_dungeon_image_url_with_token(
                     &blizzard.client,
@@ -1648,8 +1660,10 @@ pub async fn download_data_file(
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
-    let static_paths: std::collections::HashSet<String> =
-        catalog.iter().map(|entry| entry.local_path.clone()).collect();
+    let static_paths: std::collections::HashSet<String> = catalog
+        .iter()
+        .map(|entry| entry.local_path.clone())
+        .collect();
     catalog.extend(
         catalog::metadata_derived_raidbots_entries(&root)
             .into_iter()
@@ -1756,8 +1770,10 @@ pub async fn download_missing_data_files(
     let Some(root) = data_dir.get_ref().clone() else {
         return HttpResponse::BadRequest().json(json!({"detail": "Data directory is unavailable"}));
     };
-    let static_paths: std::collections::HashSet<String> =
-        catalog.iter().map(|entry| entry.local_path.clone()).collect();
+    let static_paths: std::collections::HashSet<String> = catalog
+        .iter()
+        .map(|entry| entry.local_path.clone())
+        .collect();
     catalog.extend(
         catalog::metadata_derived_raidbots_entries(&root)
             .into_iter()
@@ -1931,6 +1947,9 @@ pub async fn trigger_sync(
                 *state_clone.progress.lock().await = format!("Degraded:{e}");
                 *s = SyncStatus::Ready;
             } else {
+                if let Err(validation_error) = snapshot_validation_error(&status_data_dir) {
+                    eprintln!("Validated Raidbots snapshot is unavailable after sync failure: {validation_error}");
+                }
                 *s = SyncStatus::Error(e);
             }
         } else {
@@ -2127,9 +2146,9 @@ async fn perform_sync(
         {
             let path = std::path::Path::new(&file_name);
             if file_name.is_empty()
-                || !path.components().all(|component| {
-                    matches!(component, std::path::Component::Normal(_))
-                })
+                || !path
+                    .components()
+                    .all(|component| matches!(component, std::path::Component::Normal(_)))
             {
                 return Err(format!("Unsafe Raidbots metadata path: {file_name}"));
             }
@@ -2274,18 +2293,15 @@ async fn perform_sync(
         let mut period_details = Vec::new();
         if let Some(periods) = season_data.get("periods").and_then(Value::as_array) {
             for period in periods.iter().take(8) {
-                let period_id = period
-                    .get("id")
-                    .and_then(Value::as_i64)
-                    .or_else(|| {
-                        period
-                            .get("key")
-                            .and_then(|key| key.get("href"))
-                            .and_then(Value::as_str)
-                            .and_then(|href| href.split("/period/").nth(1))
-                            .and_then(|tail| tail.split('?').next())
-                            .and_then(|id| id.parse::<i64>().ok())
-                    });
+                let period_id = period.get("id").and_then(Value::as_i64).or_else(|| {
+                    period
+                        .get("key")
+                        .and_then(|key| key.get("href"))
+                        .and_then(Value::as_str)
+                        .and_then(|href| href.split("/period/").nth(1))
+                        .and_then(|tail| tail.split('?').next())
+                        .and_then(|id| id.parse::<i64>().ok())
+                });
                 let Some(period_id) = period_id else { continue };
                 let period_url = format!(
                     "https://{host}/data/wow/mythic-keystone/period/{period_id}?namespace={namespace}&locale=en_US"

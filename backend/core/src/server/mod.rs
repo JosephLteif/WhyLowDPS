@@ -16,6 +16,8 @@ mod helpers;
 #[cfg(feature = "web")]
 mod job_handlers;
 #[cfg(feature = "web")]
+mod lan_access;
+#[cfg(feature = "web")]
 mod route_handlers;
 #[cfg(feature = "web")]
 mod sim_handlers;
@@ -51,6 +53,13 @@ use system_handlers::*;
 #[cfg(feature = "web")]
 use types::FrontendDir;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ServerSecurityOptions {
+    /// Allow the desktop app to expose a paired LAN listener without using
+    /// the environment-based external-server escape hatch.
+    pub lan_pairing: bool,
+}
+
 pub fn is_loopback_bind(host: &str) -> bool {
     matches!(
         host.trim().trim_matches(['[', ']']),
@@ -75,7 +84,14 @@ fn public_security_path(path: &str) -> bool {
             | "/api/auth/bnet/credentials-status"
             | "/api/auth/me"
             | "/api/data/status"
+            | "/api/lan/pair"
+            | "/api/lan/pair/consume"
     )
+}
+
+fn is_loopback_peer(req: &ServiceRequest) -> bool {
+    req.peer_addr()
+        .is_some_and(|address| address.ip().is_loopback())
 }
 
 fn same_origin_request(req: &ServiceRequest) -> bool {
@@ -101,11 +117,45 @@ async fn enforce_security<B>(
     req: ServiceRequest,
     next: Next<B>,
     require_auth: bool,
+    lan_pairing: bool,
 ) -> Result<ServiceResponse<B>, Error>
 where
     B: MessageBody + 'static,
 {
-    if !require_auth || public_security_path(req.path()) {
+    if !require_auth
+        || !req.path().starts_with("/api/")
+        || public_security_path(req.path())
+        || is_loopback_peer(&req)
+    {
+        return next.call(req).await;
+    }
+
+    if lan_pairing {
+        let lan_access = req
+            .app_data::<web::Data<Arc<lan_access::LanAccessState>>>()
+            .ok_or_else(|| {
+                Error::from(actix_web::error::ErrorInternalServerError(
+                    "LAN access state unavailable",
+                ))
+            })?;
+        if !lan_access::has_valid_access(&req, lan_access.get_ref()) {
+            return Err(actix_web::error::ErrorUnauthorized("LAN pairing required"));
+        }
+
+        let state_changing = matches!(
+            *req.method(),
+            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+        );
+        let has_bearer = req
+            .headers()
+            .get(actix_web::http::header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.starts_with("Bearer "));
+        let is_disconnect = req.path() == "/api/lan/disconnect" && *req.method() == Method::POST;
+        if state_changing && !has_bearer && !is_disconnect && !same_origin_request(&req) {
+            return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
+        }
+
         return next.call(req).await;
     }
 
@@ -119,7 +169,7 @@ where
     let auth_state = req
         .app_data::<web::Data<Arc<auth_handlers::BlizzardAuthState>>>()
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("auth state unavailable"))?;
-    if auth_handlers::verify_jwt(req.request(), &auth_state.jwt_secret).is_none() {
+    if auth_handlers::verify_jwt_for_state(req.request(), auth_state.get_ref()).is_none() {
         return Err(actix_web::error::ErrorUnauthorized(
             "authentication required",
         ));
@@ -147,7 +197,7 @@ where
 mod tests {
     use super::*;
     use actix_web::body::to_bytes;
-    use actix_web::test::{init_service, try_call_service, TestRequest};
+    use actix_web::test::{call_service, init_service, try_call_service, TestRequest};
     use serde_json::Value;
 
     fn test_store() -> web::Data<Arc<dyn JobStorage>> {
@@ -175,7 +225,7 @@ mod tests {
             App::new()
                 .app_data(state)
                 .wrap(middleware::from_fn(|req, next| {
-                    enforce_security(req, next, true)
+                    enforce_security(req, next, true, false)
                 }))
                 .route(
                     "/api/protected",
@@ -196,6 +246,47 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn lan_security_rejects_unpaired_remote_requests_but_keeps_loopback_access() {
+        let lan_access = web::Data::new(Arc::new(lan_access::LanAccessState::new()));
+        let app = init_service(
+            App::new()
+                .app_data(lan_access)
+                .wrap(middleware::from_fn(|req, next| {
+                    enforce_security(req, next, true, true)
+                }))
+                .route(
+                    "/api/protected",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                ),
+        )
+        .await;
+
+        let remote_error = try_call_service(
+            &app,
+            TestRequest::get()
+                .uri("/api/protected")
+                .peer_addr("192.168.1.20:50000".parse().unwrap())
+                .to_request(),
+        )
+        .await
+        .expect_err("unpaired remote request should be rejected");
+        assert_eq!(
+            remote_error.as_response_error().status_code(),
+            actix_web::http::StatusCode::UNAUTHORIZED
+        );
+
+        let loopback_response = call_service(
+            &app,
+            TestRequest::get()
+                .uri("/api/protected")
+                .peer_addr("127.0.0.1:50000".parse().unwrap())
+                .to_request(),
+        )
+        .await;
+        assert_eq!(loopback_response.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[actix_web::test]
     async fn external_security_middleware_requires_same_origin_for_cookie_mutations() {
         let secret = "a-secure-secret-with-more-than-32-bytes";
         let state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
@@ -209,6 +300,7 @@ mod tests {
             &auth_handlers::Claims {
                 sub: "Tester#1".to_string(),
                 session_id: "session-1".to_string(),
+                session_epoch: None,
                 exp: (chrono::Utc::now().timestamp() + 3600) as usize,
             },
             &jsonwebtoken::EncodingKey::from_secret(secret.as_bytes()),
@@ -218,7 +310,7 @@ mod tests {
             App::new()
                 .app_data(state)
                 .wrap(middleware::from_fn(|req, next| {
-                    enforce_security(req, next, true)
+                    enforce_security(req, next, true, false)
                 }))
                 .route(
                     "/api/protected",
@@ -252,7 +344,15 @@ mod tests {
         let body = to_bytes(resp.into_body()).await.expect("health body");
         let payload: Value = serde_json::from_slice(&body).expect("health json");
         assert_eq!(payload.get("status").and_then(Value::as_str), Some("ok"));
-        assert_eq!(payload.get("mode").and_then(Value::as_str), Some("desktop"));
+        let expected_mode = if cfg!(feature = "desktop") {
+            "desktop"
+        } else {
+            "web"
+        };
+        assert_eq!(
+            payload.get("mode").and_then(Value::as_str),
+            Some(expected_mode)
+        );
         assert!(payload
             .get("threads")
             .and_then(Value::as_u64)
@@ -401,10 +501,38 @@ pub async fn start_with_storage_bind(
     frontend_dir: Option<PathBuf>,
     data_dir: Option<PathBuf>,
 ) -> (actix_web::dev::Server, u16) {
+    start_with_storage_bind_options(
+        storage,
+        simc_path,
+        bind_host,
+        port,
+        frontend_dir,
+        data_dir,
+        ServerSecurityOptions::default(),
+    )
+    .await
+}
+
+/// Start the actix-web HTTP server with explicit security behavior.
+///
+/// The regular environment-based external-bind guard remains the default. The
+/// desktop app uses the LAN pairing option so it can expose a trusted, paired
+/// listener without making the backend directly reachable to unpaired clients.
+pub async fn start_with_storage_bind_options(
+    storage: Arc<dyn JobStorage>,
+    simc_path: PathBuf,
+    bind_host: &str,
+    port: u16,
+    frontend_dir: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
+    security: ServerSecurityOptions,
+) -> (actix_web::dev::Server, u16) {
     #[cfg(feature = "web")]
     {
         let externally_reachable = !is_loopback_bind(bind_host);
+        let lan_pairing = externally_reachable && security.lan_pairing;
         if externally_reachable
+            && !lan_pairing
             && !external_bind_allowed(std::env::var("ALLOW_EXTERNAL_BIND").ok().as_deref())
         {
             panic!(
@@ -419,13 +547,22 @@ pub async fn start_with_storage_bind(
         let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
         let frontend = frontend_dir.clone();
         let data = data_dir.clone();
+        let lan_device_store = lan_pairing
+            .then(|| {
+                data.as_ref()
+                    .and_then(|data_dir| data_dir.parent())
+                    .map(|app_data_dir| app_data_dir.join("lan_devices.json"))
+            })
+            .flatten();
+        let lan_access = lan_pairing.then(|| {
+            web::Data::new(Arc::new(lan_access::LanAccessState::with_device_store(
+                lan_device_store.clone(),
+            )))
+        });
 
         let bind_addr = format!("{}:{}", bind_host, port);
 
         let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
-        let blizzard_credential_secrets = web::Data::new(
-            auth_handlers::create_blizzard_credential_secret_store(store_data.get_ref().clone()),
-        );
 
         let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI").unwrap_or_else(|_| {
             if port == 17384 || cfg!(feature = "desktop") {
@@ -436,12 +573,22 @@ pub async fn start_with_storage_bind(
         });
         let jwt_secret = auth_handlers::validate_jwt_secret(
             std::env::var("JWT_SECRET").ok(),
-            externally_reachable,
+            externally_reachable && !lan_pairing,
         )
         .unwrap_or_else(|error| panic!("unsafe JWT configuration: {error}"));
 
-        let client_id = std::env::var("BLIZZARD_CLIENT_ID").ok();
-        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET").ok();
+        let blizzard_credential_secrets =
+            web::Data::new(auth_handlers::create_blizzard_credential_secret_store(
+                store_data.get_ref().clone(),
+                &jwt_secret,
+            ));
+
+        let client_id = std::env::var("BLIZZARD_CLIENT_ID")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
 
         println!("Configured Blizzard Redirect URI: {}", bnet_redirect);
 
@@ -501,7 +648,7 @@ pub async fn start_with_storage_bind(
                 }))
                 .wrap(cors)
                 .wrap(middleware::from_fn(move |req, next| {
-                    enforce_security(req, next, externally_reachable)
+                    enforce_security(req, next, externally_reachable, lan_pairing)
                 }))
                 .app_data(store_data.clone())
                 .app_data(simc_data.clone())
@@ -509,7 +656,37 @@ pub async fn start_with_storage_bind(
                 .app_data(blizzard_state.clone())
                 .app_data(blizzard_credential_secrets.clone())
                 .app_data(auth_state.clone())
-                .app_data(auth_state_opt_data.clone())
+                .app_data(auth_state_opt_data.clone());
+
+            if let Some(lan_access) = lan_access.clone() {
+                app = app
+                    .app_data(lan_access)
+                    .route(
+                        "/api/lan/pairing",
+                        web::post().to(lan_access::create_pairing),
+                    )
+                    .route("/api/lan/pair", web::get().to(lan_access::show_pairing))
+                    .route(
+                        "/api/lan/pair/consume",
+                        web::get().to(lan_access::consume_pairing),
+                    )
+                    .route("/api/lan/presence", web::get().to(lan_access::presence))
+                    .route(
+                        "/api/lan/disconnect",
+                        web::post().to(lan_access::disconnect),
+                    )
+                    .route("/api/lan/devices", web::get().to(lan_access::list_devices))
+                    .route(
+                        "/api/lan/devices/{id}",
+                        web::patch().to(lan_access::rename_device),
+                    )
+                    .route(
+                        "/api/lan/devices/{id}",
+                        web::delete().to(lan_access::remove_device),
+                    );
+            }
+
+            app = app
                 .route(
                     "/api/auth/bnet/login",
                     web::get().to(auth_handlers::bnet_login),

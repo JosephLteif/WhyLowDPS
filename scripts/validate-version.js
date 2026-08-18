@@ -39,6 +39,14 @@ function addVersionCheck(errors, label, actual, expected) {
   }
 }
 
+function cargoLockPackageVersion(content, packageName) {
+  const packageBlock = content
+    .split(/\r?\n(?=\[\[package\]\])/)
+    .find((block) => block.includes(`name = "${packageName}"`));
+  const match = packageBlock && packageBlock.match(/\bversion\s*=\s*"([^"]+)"/);
+  return match ? match[1] : null;
+}
+
 function cargoWorkspaceVersion(content) {
   const match = content.match(
     /\[workspace\.package\][\s\S]*?\bversion\s*=\s*"([^"]+)"/,
@@ -89,6 +97,22 @@ function validateVersion({ rootDir, expectedVersion }) {
         lockfile.packages[""].version,
       version,
     );
+  }
+
+  for (const [relativePath, packageNames] of [
+    ["Cargo.lock", ["whylowdps-core", "whylowdps-server", "whylowdps-desktop"]],
+    ["backend/Cargo.lock", ["whylowdps-core", "whylowdps-server"]],
+  ]) {
+    const lockfile = readText(rootDir, relativePath, errors);
+    if (lockfile === null) continue;
+    for (const packageName of packageNames) {
+      addVersionCheck(
+        errors,
+        `${relativePath} ${packageName}`,
+        cargoLockPackageVersion(lockfile, packageName),
+        version,
+      );
+    }
   }
 
   for (const relativePath of ["Cargo.toml", "backend/Cargo.toml"]) {
@@ -146,6 +170,7 @@ if (require.main === module) {
 
 module.exports = {
   cargoWorkspaceVersion,
+  cargoLockPackageVersion,
   normalizeVersion,
   validateVersion,
 };

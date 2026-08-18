@@ -28,6 +28,23 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
+    title: 'Share WhyLowDPS over your LAN',
+    body: [
+      {
+        type: 'paragraph',
+        text: "Desktop Settings can now share WhyLowDPS with phones on the same trusted private network through one-time QR/link pairing, using the PC's current account session.",
+      },
+      {
+        type: 'list',
+        items: [
+          'Enable Settings > Simulation > Share over LAN, restart the desktop app, and create a five-minute pairing link.',
+          'Review paired devices, rename them, or remove access from Settings. Device names and last-seen times persist, while active phone sessions are cleared when the desktop app restarts.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Recent character search history',
     body: [
       {

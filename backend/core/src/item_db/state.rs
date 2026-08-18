@@ -157,8 +157,7 @@ pub static RUNTIME_DATA: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_js
 /// This is intentionally JSON at the storage boundary: upstream Raidbots
 /// metadata evolves by adding fields, while API consumers only need the
 /// stable semantic subset assembled by the loader.
-pub static GAME_CONTEXT: Lazy<RwLock<Value>> =
-    Lazy::new(|| RwLock::new(serde_json::json!({})));
+pub static GAME_CONTEXT: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_json::json!({})));
 
 pub static EMPTY_SEASON_CONFIG: once_cell::sync::Lazy<Value> =
     once_cell::sync::Lazy::new(|| serde_json::json!({}));

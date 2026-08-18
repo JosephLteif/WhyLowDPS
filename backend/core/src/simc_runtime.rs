@@ -229,8 +229,26 @@ fn promote_simc_binary(staged: &Path, target: &Path) -> Result<(), String> {
 
     #[cfg(not(windows))]
     {
-        fs::rename(staged, target).map_err(|error| format!("Failed to promote SimC binary: {error}"))
+        fs::rename(staged, target)
+            .map_err(|error| format!("Failed to promote SimC binary: {error}"))
     }
+}
+
+#[cfg(unix)]
+fn mark_executable(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .map_err(|error| format!("Failed to inspect SimC binary: {error}"))?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .map_err(|error| format!("Failed to mark SimC binary executable: {error}"))
+}
+
+#[cfg(not(unix))]
+fn mark_executable(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 pub fn read_cached_metadata(path: &Path) -> Option<SimcCachedMetadata> {
@@ -321,6 +339,7 @@ where
         .install_dir
         .join(format!("{}.next", simc_binary_name()));
     fs::copy(&staged_simc, &next_simc).map_err(|e| format!("Failed to stage SimC binary: {e}"))?;
+    mark_executable(&next_simc)?;
 
     promote_simc_binary(&next_simc, &cached_path)?;
 
@@ -524,6 +543,30 @@ mod tests {
 
         assert_eq!(fs::read(&target).expect("target binary"), b"new binary");
         assert!(!staged.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mark_executable_sets_owner_execute_permission() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("simc");
+        fs::write(&path, b"simc").expect("write binary");
+        let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+        permissions.set_mode(0o644);
+        fs::set_permissions(&path, permissions).expect("set initial permissions");
+
+        mark_executable(&path).expect("mark executable");
+
+        assert_ne!(
+            fs::metadata(path)
+                .expect("executable metadata")
+                .permissions()
+                .mode()
+                & 0o100,
+            0
+        );
     }
 
     #[test]

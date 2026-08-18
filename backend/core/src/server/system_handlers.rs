@@ -64,10 +64,17 @@ pub(super) async fn health_check() -> HttpResponse {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
+    let mode = if crate::server::auth_handlers::hosted_private_deployment() {
+        "hosted"
+    } else if cfg!(feature = "desktop") {
+        "desktop"
+    } else {
+        "web"
+    };
     HttpResponse::Ok().json(json!({
         "status": "ok",
         "threads": threads,
-        "mode": "desktop",
+        "mode": mode,
     }))
 }
 
@@ -90,6 +97,11 @@ pub(super) async fn spa_fallback(
     let trimmed = path.trim_start_matches('/').trim_end_matches('/');
 
     if !trimmed.is_empty() {
+        let asset = frontend_dir.0.join(trimmed);
+        if asset.is_file() {
+            return Ok(NamedFile::open(asset)?);
+        }
+
         let folder_index = frontend_dir.0.join(trimmed).join("index.html");
         if folder_index.exists() {
             return Ok(NamedFile::open(folder_index)?);
@@ -249,7 +261,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn health_check_reports_ok_desktop_mode_and_threads() {
+    async fn health_check_reports_ok_mode_and_threads() {
         let health = health_check().await;
 
         assert_eq!(health.status(), 200);
@@ -257,7 +269,12 @@ mod tests {
         let payload = response_json(health).await;
 
         assert_eq!(payload["status"].as_str(), Some("ok"));
-        assert_eq!(payload["mode"].as_str(), Some("desktop"));
+        let expected_mode = if cfg!(feature = "desktop") {
+            "desktop"
+        } else {
+            "web"
+        };
+        assert_eq!(payload["mode"].as_str(), Some(expected_mode));
         assert!(payload["threads"].as_u64().unwrap_or(0) >= 1);
     }
 
@@ -352,6 +369,25 @@ mod tests {
             fs::read_to_string(file.path()).expect("about body"),
             "about"
         );
+    }
+
+    #[actix_web::test]
+    async fn spa_fallback_serves_root_frontend_assets_before_html_fallback() {
+        let dir = tempfile::tempdir().expect("frontend temp dir");
+        let asset_path = dir.path().join("icon.png");
+        let asset_bytes = [0x89, b'P', b'N', b'G'];
+        fs::write(&asset_path, asset_bytes).expect("icon asset");
+
+        let frontend = web::Data::new(FrontendDir(dir.path().to_path_buf()));
+        let file = spa_fallback(
+            TestRequest::with_uri("/icon.png").to_http_request(),
+            frontend,
+        )
+        .await
+        .expect("icon fallback");
+
+        assert_eq!(file.path(), asset_path.as_path());
+        assert_eq!(fs::read(file.path()).expect("icon body"), asset_bytes);
     }
 
     #[actix_web::test]

@@ -268,6 +268,8 @@ test("buildReleaseNotes renders required sections", () => {
   assert.match(notes, /Windows only/);
   assert.match(notes, /Unsigned build may show SmartScreen warning/);
   assert.match(notes, /Requires user-provided Battle\.net API credentials/);
+  assert.match(notes, /## Private Docker hosting/);
+  assert.match(notes, /ghcr\.io\/josephlteif\/whylowdps:3\.0\.1/);
 });
 
 test("buildReleaseNotes uses explicit recommended asset override", () => {
@@ -381,6 +383,11 @@ test("buildReleaseNotes returns stable markdown structure", () => {
       "- Windows only",
       "- Unsigned build may show SmartScreen warning",
       "- Requires user-provided Battle.net API credentials",
+      "",
+      "## Private Docker hosting",
+      "",
+      "- Image: ghcr.io/josephlteif/whylowdps:3.0.1",
+      "- Download compose.yaml and docker-hosting.md for private self-hosting",
       "",
     ].join("\n")
   );

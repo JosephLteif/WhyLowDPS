@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { BlizzardCredentialProfile } from '../../lib/api';
+import { isDesktop, type BlizzardCredentialProfile } from '../../lib/api';
 import DiscordPresenceSettings from './DiscordPresenceSettings';
 
 type BlizzardMessage = { type: 'success' | 'error'; text: string } | null;
@@ -43,6 +43,12 @@ export default function IntegrationsSettingsSection({
   saveBlizzardSettings,
   blizzardMessage,
 }: IntegrationsSettingsSectionProps) {
+  const redirectUri =
+    !isDesktop && typeof window !== 'undefined'
+      ? `${window.location.origin}/api/auth/bnet/callback`
+      : 'http://localhost:17384/api/auth/bnet/callback';
+  const allowedDomain =
+    !isDesktop && typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   const hasUsableSavedCredentials = credentialProfiles.some(
     (profile) => profile.has_secret !== false,
   );
@@ -170,7 +176,7 @@ export default function IntegrationsSettingsSection({
             <br />
             1. Create a client on the{' '}
             <a
-              href="https://develop.battle.net/access/clients"
+              href="https://community.developer.battle.net/access/clients"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gold hover:underline"
@@ -179,9 +185,17 @@ export default function IntegrationsSettingsSection({
             </a>
             .
             <br />
-            2. Add{' '}
-            <code className="text-zinc-300">http://localhost:17384/api/auth/bnet/callback</code> to
-            your Redirect URIs.
+            2. In the portal&apos;s <span className="font-semibold text-zinc-300">Redirect URLs</span>{' '}
+            field, add this exact value:
+            <br />
+            <code className="mt-1 block break-all text-zinc-300">{redirectUri}</code>
+            <br />
+            If the portal asks for an <span className="font-semibold text-zinc-300">Allowed Domain</span>{' '}
+            or service URL, use the hostname only:
+            <br />
+            <code className="mt-1 block break-all text-zinc-300">{allowedDomain}</code>
+            <br />
+            Do not add a trailing slash or the callback path to the domain field.
           </p>
         </div>
 

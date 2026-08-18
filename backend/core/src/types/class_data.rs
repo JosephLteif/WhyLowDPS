@@ -144,12 +144,8 @@ pub fn set_class_wow_ids(map: HashMap<String, u64>) {
 }
 
 pub fn known_wow_class_ids() -> std::collections::HashSet<u64> {
-    let mut ids: std::collections::HashSet<u64> = CLASS_WOW_IDS
-        .read()
-        .unwrap()
-        .values()
-        .copied()
-        .collect();
+    let mut ids: std::collections::HashSet<u64> =
+        CLASS_WOW_IDS.read().unwrap().values().copied().collect();
     ids.extend(
         CLASSES
             .read()

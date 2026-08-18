@@ -1,6 +1,7 @@
 # Environment and Secrets
 .env
 .env.local
+.env.docker
 *.db
 main.key
 main.key.pub

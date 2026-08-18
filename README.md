@@ -38,6 +38,7 @@ There are also additional modes and features that are not fully listed here yet,
 - The app does not have a custom backend for user data outside what is already running on your machine.
 - Simulations run locally using SimulationCraft.
 - Network requests are used for Blizzard APIs, GitHub updates/data, and documented external data sources.
+- Optional LAN sharing is disabled by default. When enabled from the desktop Settings page, one-time QR/link pairing can mirror the PC's current account session to phones on the same trusted private network. If a QR scanner opens an embedded preview, continue in Safari or Chrome before completing pairing. Paired devices can be renamed or removed from Settings; active phone sessions are invalidated on desktop restart. No internet exposure or port forwarding is supported.
 - You can build the app yourself from source.
 - Data about the current season are downloaded from raidbot once on startup and refreshed occasionally (manually or on
   schedule set from the settings page)
@@ -57,8 +58,8 @@ WhyLowDPS currently supports **Windows only**. There are no current plans to sup
 
 The supported development and release path is the Windows desktop application.
 Use the setup and validation commands in [CONTRIBUTING.md](CONTRIBUTING.md).
-The project site is deployed to GitHub Pages; there is no supported Docker or
-web-server deployment for the application.
+The project site is deployed to GitHub Pages. A private Docker deployment for
+the hosted web app is documented separately in [docs/docker-hosting.md](docs/docker-hosting.md).
 
 ## Pictures
 

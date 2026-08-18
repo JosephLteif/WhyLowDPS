@@ -4,6 +4,7 @@ mod app_logic;
 mod discord_presence;
 
 use std::io::{Read, Seek, Write};
+use std::net::{IpAddr, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -714,6 +715,53 @@ fn restart_app(app: tauri::AppHandle) {
     app.restart();
 }
 
+#[derive(Clone, serde::Serialize)]
+struct LanAccessInfo {
+    enabled: bool,
+    addresses: Vec<String>,
+}
+
+fn detected_private_ipv4() -> Vec<String> {
+    let Ok(socket) = UdpSocket::bind("0.0.0.0:0") else {
+        return Vec::new();
+    };
+
+    // Connecting a UDP socket selects the route without sending a packet. The
+    // selected local address is the address another device on the LAN should use.
+    let _ = socket.connect("192.0.2.1:80");
+    let Some(IpAddr::V4(address)) = socket.local_addr().ok().map(|value| value.ip()) else {
+        return Vec::new();
+    };
+
+    if address.is_loopback() || address.is_unspecified() || !address.is_private() {
+        return Vec::new();
+    }
+
+    vec![address.to_string()]
+}
+
+#[tauri::command]
+fn get_lan_access_info(state: tauri::State<'_, AppClosePreferencesState>) -> LanAccessInfo {
+    let enabled = state
+        .prefs
+        .lock()
+        .map(|prefs| prefs.lan_sharing_enabled)
+        .unwrap_or(false);
+
+    LanAccessInfo {
+        enabled,
+        addresses: detected_private_ipv4(),
+    }
+}
+
+#[tauri::command]
+fn set_lan_sharing_enabled(
+    state: tauri::State<'_, AppClosePreferencesState>,
+    enabled: bool,
+) -> Result<(), String> {
+    set_lan_sharing_enabled_internal(&state, enabled)
+}
+
 #[tauri::command]
 fn quit_app_now(app: tauri::AppHandle) {
     app.exit(0);
@@ -1032,6 +1080,8 @@ fn main() {
             update_discord_presence,
             apply_close_behavior_choice,
             restart_app,
+            get_lan_access_info,
+            set_lan_sharing_enabled,
             quit_app_now,
             download_and_install_release
         ])
@@ -1051,6 +1101,7 @@ fn main() {
 
             let close_prefs_path = app_data_dir.join("desktop_prefs.json");
             let close_prefs = load_close_preferences(&close_prefs_path);
+            let lan_sharing_enabled = close_prefs.lan_sharing_enabled;
             let simc_channel = close_prefs
                 .simc_update_channel
                 .clone()
@@ -1196,9 +1247,14 @@ fn main() {
             let bundled_data_dir = resolve_bundled_resource("data", "../../backend/resources/data");
             let bundled_wow_dir =
                 resolve_bundled_resource("data/wow", "../../backend/resources/wow");
+            let bundled_frontend_dir = lan_sharing_enabled
+                .then(|| resolve_bundled_resource("frontend", "../../frontend/out"));
 
             println!("Resolved bundled_data_dir: {:?}", bundled_data_dir);
             println!("Resolved bundled_wow_dir: {:?}", bundled_wow_dir);
+            if let Some(frontend_dir) = &bundled_frontend_dir {
+                println!("Resolved bundled_frontend_dir: {:?}", frontend_dir);
+            }
 
             let app_data_dir = app_handle
                 .path()
@@ -1231,6 +1287,7 @@ fn main() {
                 let simc_runtime_version = simc_runtime_version.clone();
                 let simc_bin = simc_bin.clone();
                 let app_handle = app_handle.clone();
+                let bundled_frontend_dir = bundled_frontend_dir.clone();
                 async move {
                     let _runtime_guard = simc_runtime.update_lock.lock().await;
                     simc_runtime.set_readiness(SimcReadiness::Downloading);
@@ -1275,13 +1332,22 @@ fn main() {
 
                     let storage: Arc<dyn JobStorage> = Arc::new(SqliteStorage::new(&db_path_str));
 
-                    let (server, _actual_port) = server::start_with_storage_bind(
+                    let bind_host = if lan_sharing_enabled {
+                        "0.0.0.0"
+                    } else {
+                        "127.0.0.1"
+                    };
+                    let security = server::ServerSecurityOptions {
+                        lan_pairing: lan_sharing_enabled,
+                    };
+                    let (server, _actual_port) = server::start_with_storage_bind_options(
                         storage,
                         resolved_simc,
-                        "127.0.0.1",
+                        bind_host,
                         17384,
-                        None,
+                        bundled_frontend_dir,
                         Some(data_dir),
+                        security,
                     )
                     .await;
 

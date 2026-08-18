@@ -1,10 +1,20 @@
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::http::header;
 use actix_web::{web, HttpRequest, HttpResponse};
+#[cfg(not(feature = "desktop"))]
+use aes_gcm::aead::{Aead, KeyInit};
+#[cfg(not(feature = "desktop"))]
+use aes_gcm::{Aes256Gcm, Nonce};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+#[cfg(not(feature = "desktop"))]
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+#[cfg(not(feature = "desktop"))]
+use std::fs;
+#[cfg(not(feature = "desktop"))]
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -242,8 +252,139 @@ impl BlizzardCredentialSecretStore for MemoryBlizzardCredentialSecretStore {
     }
 }
 
+#[cfg(not(feature = "desktop"))]
+struct PersistentBlizzardCredentialSecretStore {
+    path: PathBuf,
+    key: [u8; 32],
+    secrets: Mutex<HashMap<String, String>>,
+}
+
+#[cfg(not(feature = "desktop"))]
+impl PersistentBlizzardCredentialSecretStore {
+    fn new(encryption_secret: &str) -> Self {
+        let data_dir = std::env::var("DATA_DIR").unwrap_or_else(|_| ".".to_string());
+        let path = PathBuf::from(data_dir).join(".blizzard-credential-secrets.json");
+        let key = Sha256::digest(
+            format!("WhyLowDPS Blizzard credentials\0{encryption_secret}").as_bytes(),
+        );
+        let mut key_bytes = [0u8; 32];
+        key_bytes.copy_from_slice(&key);
+
+        let secrets = fs::read(&path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<HashMap<String, String>>(&bytes).ok())
+            .map(|encrypted| {
+                encrypted
+                    .into_iter()
+                    .filter_map(|(profile_id, value)| {
+                        Self::decrypt(&key_bytes, &value)
+                            .ok()
+                            .map(|secret| (profile_id, secret))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Self {
+            path,
+            key: key_bytes,
+            secrets: Mutex::new(secrets),
+        }
+    }
+
+    fn encode_hex(bytes: &[u8]) -> String {
+        bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+
+    fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
+        if value.len() % 2 != 0 {
+            return Err("Invalid encrypted secret encoding".to_string());
+        }
+        (0..value.len())
+            .step_by(2)
+            .map(|index| {
+                u8::from_str_radix(&value[index..index + 2], 16)
+                    .map_err(|_| "Invalid encrypted secret encoding".to_string())
+            })
+            .collect()
+    }
+
+    fn encrypt(key: &[u8; 32], secret: &str) -> Result<String, String> {
+        let cipher = Aes256Gcm::new_from_slice(key).map_err(|error| error.to_string())?;
+        let nonce_uuid = uuid::Uuid::new_v4();
+        let nonce_bytes = &nonce_uuid.as_bytes()[..12];
+        let nonce = Nonce::from_slice(nonce_bytes);
+        let mut payload = nonce_bytes.to_vec();
+        payload.extend(
+            cipher
+                .encrypt(nonce, secret.as_bytes())
+                .map_err(|_| "Failed to encrypt Blizzard client secret".to_string())?,
+        );
+        Ok(Self::encode_hex(&payload))
+    }
+
+    fn decrypt(key: &[u8; 32], value: &str) -> Result<String, String> {
+        let payload = Self::decode_hex(value)?;
+        if payload.len() <= 12 {
+            return Err("Invalid encrypted secret payload".to_string());
+        }
+        let cipher = Aes256Gcm::new_from_slice(key).map_err(|error| error.to_string())?;
+        let plaintext = cipher
+            .decrypt(Nonce::from_slice(&payload[..12]), &payload[12..])
+            .map_err(|_| "Failed to decrypt Blizzard client secret".to_string())?;
+        String::from_utf8(plaintext).map_err(|error| error.to_string())
+    }
+
+    fn persist(&self, secrets: &HashMap<String, String>) -> Result<(), String> {
+        let encrypted = secrets
+            .iter()
+            .map(|(profile_id, secret)| {
+                Self::encrypt(&self.key, secret).map(|value| (profile_id.clone(), value))
+            })
+            .collect::<Result<HashMap<_, _>, _>>()?;
+        let payload = serde_json::to_vec(&encrypted).map_err(|error| error.to_string())?;
+        let temporary_path = self.path.with_extension("json.tmp");
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(&temporary_path, payload).map_err(|error| error.to_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&temporary_path, fs::Permissions::from_mode(0o600))
+                .map_err(|error| error.to_string())?;
+        }
+        fs::rename(&temporary_path, &self.path).map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(not(feature = "desktop"))]
+impl BlizzardCredentialSecretStore for PersistentBlizzardCredentialSecretStore {
+    fn set_secret(&self, profile_id: &str, secret: &str) -> Result<(), String> {
+        let mut secrets = self.secrets.lock().map_err(|error| error.to_string())?;
+        secrets.insert(profile_id.to_string(), secret.to_string());
+        self.persist(&secrets)
+    }
+
+    fn get_secret(&self, profile_id: &str) -> Result<Option<String>, String> {
+        Ok(self
+            .secrets
+            .lock()
+            .map_err(|error| error.to_string())?
+            .get(profile_id)
+            .cloned())
+    }
+
+    fn delete_secret(&self, profile_id: &str) -> Result<(), String> {
+        let mut secrets = self.secrets.lock().map_err(|error| error.to_string())?;
+        secrets.remove(profile_id);
+        self.persist(&secrets)
+    }
+}
+
 pub fn create_blizzard_credential_secret_store(
     _store: Arc<dyn crate::storage::JobStorage>,
+    encryption_secret: &str,
 ) -> Arc<dyn BlizzardCredentialSecretStore> {
     #[cfg(feature = "desktop")]
     {
@@ -251,7 +392,9 @@ pub fn create_blizzard_credential_secret_store(
     }
     #[cfg(not(feature = "desktop"))]
     {
-        Arc::new(MemoryBlizzardCredentialSecretStore::default())
+        Arc::new(PersistentBlizzardCredentialSecretStore::new(
+            encryption_secret,
+        ))
     }
 }
 
@@ -260,7 +403,34 @@ pub struct BlizzardAuthState {
     pub client_secret: Option<String>,
     pub redirect_uri: String,
     pub jwt_secret: String,
+    session_epoch: Option<String>,
     oauth_sessions: Mutex<HashMap<String, (String, Instant)>>,
+}
+
+pub fn hosted_private_deployment() -> bool {
+    std::env::var("WHYLOWDPS_DEPLOYMENT")
+        .ok()
+        .is_some_and(|value| value.eq_ignore_ascii_case("hosted-private"))
+}
+
+fn secure_web_cookies() -> bool {
+    hosted_private_deployment()
+        || std::env::var("WHYLOWDPS_SECURE_COOKIES")
+            .ok()
+            .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+}
+
+fn auth_cookie_policy() -> (SameSite, bool) {
+    if cfg!(feature = "desktop") {
+        (SameSite::None, true)
+    } else {
+        (SameSite::Lax, secure_web_cookies())
+    }
+}
+
+fn hosted_credentials_error() -> HttpResponse {
+    HttpResponse::Forbidden()
+        .json(json!({"error": "Hosted mode uses server-configured Blizzard credentials"}))
 }
 
 pub fn validate_jwt_secret(
@@ -296,6 +466,7 @@ impl BlizzardAuthState {
             client_secret,
             redirect_uri,
             jwt_secret,
+            session_epoch: hosted_private_deployment().then(|| uuid::Uuid::new_v4().to_string()),
             oauth_sessions: Mutex::new(HashMap::new()),
         }
     }
@@ -338,6 +509,8 @@ impl BlizzardAuthState {
 pub struct Claims {
     pub sub: String, // BattleTag
     pub session_id: String,
+    #[serde(default)]
+    pub session_epoch: Option<String>,
     pub exp: usize,
 }
 
@@ -559,6 +732,10 @@ pub async fn rename_blizzard_credential_profile(
     secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
     body: web::Json<RenameBlizzardCredentialProfileRequest>,
 ) -> HttpResponse {
+    if hosted_private_deployment() {
+        return hosted_credentials_error();
+    }
+
     let next_name = body.name.trim();
     if next_name.is_empty() {
         return HttpResponse::BadRequest().json(json!({"error": "Missing credential name"}));
@@ -586,6 +763,10 @@ pub async fn delete_blizzard_credential_profile(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
 ) -> HttpResponse {
+    if hosted_private_deployment() {
+        return hosted_credentials_error();
+    }
+
     let profile_id = path.into_inner();
     let mut profiles = load_blizzard_credential_profiles(&***store);
     let removed_client_id = profiles
@@ -617,6 +798,24 @@ fn get_effective_creds(
     secrets: &dyn BlizzardCredentialSecretStore,
     credential_id: Option<&String>,
 ) -> Result<Option<(String, String)>, SavedProfileLookupError> {
+    if hosted_private_deployment() {
+        if let Some(profile_id) = credential_id {
+            return find_saved_profile_creds(store, secrets, profile_id).map(Some);
+        }
+
+        for profile in load_blizzard_credential_profiles(store) {
+            if let Ok(Some(secret)) = read_profile_secret(secrets, &profile) {
+                return Ok(Some((profile.client_id, secret)));
+            }
+        }
+
+        return Ok(state
+            .client_id
+            .as_ref()
+            .zip(state.client_secret.as_ref())
+            .map(|(id, secret)| (id.clone(), secret.clone())));
+    }
+
     // 1. Try a selected saved desktop credential profile
     if let Some(profile_id) = credential_id {
         return find_saved_profile_creds(store, secrets, profile_id).map(Some);
@@ -712,12 +911,13 @@ pub async fn bnet_login(
         .flow_id
         .clone()
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let (same_site, secure) = auth_cookie_policy();
     builder.cookie(
         Cookie::build("bnet_flow_id", flow_id.clone())
             .path("/")
             .http_only(true)
-            .secure(false) // Local dev
-            .same_site(SameSite::Lax)
+            .secure(secure)
+            .same_site(same_site)
             .finish(),
     );
     let flow_status_cache_key = format!("login_flow_status_{}", flow_id);
@@ -772,6 +972,12 @@ pub async fn poll_login(
 }
 
 pub async fn login_success() -> HttpResponse {
+    if hosted_private_deployment() {
+        return HttpResponse::Found()
+            .append_header((header::LOCATION, "/"))
+            .finish();
+    }
+
     let html = r#"
 <!DOCTYPE html>
 <html>
@@ -1019,6 +1225,7 @@ pub async fn bnet_callback(
     let claims = Claims {
         sub: battletag.clone(),
         session_id,
+        session_epoch: state.session_epoch.clone(),
         exp: expiration,
     };
 
@@ -1035,12 +1242,7 @@ pub async fn bnet_callback(
         }
     };
 
-    let same_site = if cfg!(feature = "desktop") {
-        SameSite::None
-    } else {
-        SameSite::Lax
-    };
-    let secure = cfg!(feature = "desktop");
+    let (same_site, secure) = auth_cookie_policy();
 
     let cookie = Cookie::build("bnet_session", token.clone())
         .path("/")
@@ -1095,8 +1297,17 @@ pub fn verify_jwt(req: &HttpRequest, secret: &str) -> Option<Claims> {
     }
 }
 
+pub fn verify_jwt_for_state(req: &HttpRequest, state: &BlizzardAuthState) -> Option<Claims> {
+    let claims = verify_jwt(req, &state.jwt_secret)?;
+    match (&state.session_epoch, &claims.session_epoch) {
+        (Some(expected), Some(actual)) if expected == actual => Some(claims),
+        (Some(_), _) => None,
+        (None, _) => Some(claims),
+    }
+}
+
 pub async fn get_me(req: HttpRequest, state: web::Data<Arc<BlizzardAuthState>>) -> HttpResponse {
-    match verify_jwt(&req, &state.jwt_secret) {
+    match verify_jwt_for_state(&req, state.get_ref()) {
         Some(claims) => HttpResponse::Ok().json(json!({
             "battletag": claims.sub
         })),
@@ -1109,7 +1320,7 @@ pub async fn bnet_logout(
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
-    if let Some(claims) = verify_jwt(&req, &state.jwt_secret) {
+    if let Some(claims) = verify_jwt_for_state(&req, state.get_ref()) {
         state.remove_oauth_session(&claims.session_id);
         store.remove_user_config(&claims.sub, "blizzard_client_id");
         store.remove_user_config(&claims.sub, "blizzard_client_secret");
@@ -1119,12 +1330,7 @@ pub async fn bnet_logout(
     store.remove_user_config("system", "blizzard_client_id");
     store.remove_user_config("system", "blizzard_client_secret");
 
-    let same_site = if cfg!(feature = "desktop") {
-        SameSite::None
-    } else {
-        SameSite::Lax
-    };
-    let secure = cfg!(feature = "desktop");
+    let (same_site, secure) = auth_cookie_policy();
 
     let cookie = Cookie::build("bnet_session", "")
         .path("/")
@@ -1162,7 +1368,7 @@ pub async fn get_characters(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     query: web::Query<RefreshQuery>,
 ) -> HttpResponse {
-    let claims = match verify_jwt(&req, &state.jwt_secret) {
+    let claims = match verify_jwt_for_state(&req, state.get_ref()) {
         Some(c) => c,
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
@@ -1298,7 +1504,7 @@ pub async fn get_user_configs(
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
-    let claims = match verify_jwt(&req, &state.jwt_secret) {
+    let claims = match verify_jwt_for_state(&req, state.get_ref()) {
         Some(c) => c,
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
@@ -1340,7 +1546,7 @@ pub async fn set_user_config(
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     body: web::Json<UserConfigUpdate>,
 ) -> HttpResponse {
-    let claims = match verify_jwt(&req, &state.jwt_secret) {
+    let claims = match verify_jwt_for_state(&req, state.get_ref()) {
         Some(c) => c,
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
@@ -1371,6 +1577,10 @@ pub async fn set_system_blizzard_creds(
     secrets: web::Data<Arc<dyn BlizzardCredentialSecretStore>>,
     body: web::Json<SystemConfigUpdate>,
 ) -> HttpResponse {
+    if hosted_private_deployment() {
+        return hosted_credentials_error();
+    }
+
     save_blizzard_credential_profile(
         store,
         secrets,
@@ -1388,7 +1598,7 @@ pub async fn clear_user_configs(
     state: web::Data<Arc<BlizzardAuthState>>,
     store: web::Data<Arc<dyn crate::storage::JobStorage>>,
 ) -> HttpResponse {
-    let claims = match verify_jwt(&req, &state.jwt_secret) {
+    let claims = match verify_jwt_for_state(&req, state.get_ref()) {
         Some(c) => c,
         None => return HttpResponse::Unauthorized().json(json!({"error": "Not logged in"})),
     };
@@ -1411,6 +1621,10 @@ pub async fn test_blizzard_creds(
     _store: web::Data<Arc<dyn crate::storage::JobStorage>>,
     body: web::Json<TestBlizzardCreds>,
 ) -> HttpResponse {
+    if hosted_private_deployment() {
+        return hosted_credentials_error();
+    }
+
     let client_id = body.client_id.trim().to_string();
     if client_id.is_empty() {
         return HttpResponse::BadRequest()
@@ -1481,6 +1695,7 @@ mod tests {
         let claims = Claims {
             sub: sub.to_string(),
             session_id: access_token.to_string(),
+            session_epoch: None,
             exp,
         };
         encode(
@@ -2114,6 +2329,49 @@ mod tests {
             .insert_header((header::AUTHORIZATION, HeaderValue::from_static("Basic abc")))
             .to_http_request();
         assert!(verify_jwt(&non_bearer, "test-secret").is_none());
+    }
+
+    #[test]
+    fn verify_jwt_for_state_rejects_tokens_from_a_previous_process_epoch() {
+        let state = BlizzardAuthState {
+            client_id: None,
+            client_secret: None,
+            redirect_uri: "http://localhost/callback".to_string(),
+            jwt_secret: "test-secret".to_string(),
+            session_epoch: Some("current-process".to_string()),
+            oauth_sessions: Mutex::new(HashMap::new()),
+        };
+        let claims = Claims {
+            sub: "Tester#9999".to_string(),
+            session_id: "access".to_string(),
+            session_epoch: Some("current-process".to_string()),
+            exp: (now_secs() + 3600) as usize,
+        };
+        let current_token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
+        )
+        .expect("current jwt");
+        let current_request = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", current_token))
+            .to_http_request();
+        assert!(verify_jwt_for_state(&current_request, &state).is_some());
+
+        let stale_claims = Claims {
+            session_epoch: Some("previous-process".to_string()),
+            ..claims
+        };
+        let stale_token = encode(
+            &Header::default(),
+            &stale_claims,
+            &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
+        )
+        .expect("stale jwt");
+        let stale_request = TestRequest::default()
+            .cookie(Cookie::new("bnet_session", stale_token))
+            .to_http_request();
+        assert!(verify_jwt_for_state(&stale_request, &state).is_none());
     }
 
     #[actix_web::test]

@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { LogIn, X } from 'lucide-react';
-import { API_URL, type BlizzardCredentialProfile, isDesktop, listBlizzardCredentialProfiles } from '../lib/api';
+import {
+  API_URL,
+  type BlizzardCredentialProfile,
+  isDesktop,
+  isHostedPrivate,
+  listBlizzardCredentialProfiles,
+} from '../lib/api';
 import { useAuth } from './AuthContext';
 import { invoke } from '@tauri-apps/api/core';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
@@ -38,6 +44,12 @@ export default function SplashScreen({
   retriesTotal = 0,
 }: SplashScreenProps) {
   const { login, setSystemCredentials, enableLightMode } = useAuth();
+  const redirectUri =
+    !isDesktop && typeof window !== 'undefined'
+      ? `${window.location.origin}/api/auth/bnet/callback`
+      : 'http://localhost:17384/api/auth/bnet/callback';
+  const allowedDomain =
+    !isDesktop && typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [credentialProfiles, setCredentialProfiles] = useState<BlizzardCredentialProfile[]>([]);
@@ -314,12 +326,14 @@ export default function SplashScreen({
                   <LogIn className="h-5 w-5" strokeWidth={2.25} />
                   Login with Battle.net
                 </button>
-                <button
-                  onClick={enableLightMode}
-                  className="mt-3 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
-                >
-                  Continue in Light mode
-                </button>
+                {!isHostedPrivate && (
+                  <button
+                    onClick={enableLightMode}
+                    className="mt-3 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                  >
+                    Continue in Light mode
+                  </button>
+                )}
               </div>
             ) : status === 'unauthenticated_needs_keys' ? (
               <div className="w-full space-y-4 text-center">
@@ -419,18 +433,24 @@ export default function SplashScreen({
                     <br />
                     1. Create a client on the{' '}
                     <a
-                      href="https://develop.battle.net/access/clients"
+                      href="https://community.developer.battle.net/access/clients"
                       target="_blank"
                       className="text-gold hover:underline"
                     >
                       Blizzard Developer Portal
                     </a>
                     .<br />
-                    2. Add{' '}
-                    <code className="text-zinc-300">
-                      http://localhost:17384/api/auth/bnet/callback
-                    </code>{' '}
-                    to your **Redirect URIs**.
+                    2. In the portal&apos;s <span className="font-bold text-zinc-400">Redirect URLs</span>{' '}
+                    field, add this exact value:
+                    <br />
+                    <code className="mt-1 block break-all text-zinc-300">{redirectUri}</code>
+                    <br />
+                    If it asks for an <span className="font-bold text-zinc-400">Allowed Domain</span>{' '}
+                    or service URL, use the hostname only:
+                    <br />
+                    <code className="mt-1 block break-all text-zinc-300">{allowedDomain}</code>
+                    <br />
+                    Do not add a trailing slash or the callback path to the domain field.
                   </p>
                 </div>
 
@@ -453,12 +473,14 @@ export default function SplashScreen({
                     </>
                   )}
                 </button>
-                <button
-                  onClick={enableLightMode}
-                  className="flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
-                >
-                  Continue in Light mode
-                </button>
+                {!isHostedPrivate && (
+                  <button
+                    onClick={enableLightMode}
+                    className="flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                  >
+                    Continue in Light mode
+                  </button>
+                )}
               </div>
             ) : isError ? (
               <div className="w-full text-left">

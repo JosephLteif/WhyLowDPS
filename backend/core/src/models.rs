@@ -177,7 +177,10 @@ pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) ->
             let trimmed = line.trim();
             if let Some(caps) = re.captures(trimmed) {
                 let key = caps[1].to_ascii_lowercase();
-                if !matches!(key.as_str(), "server" | "region" | "spec" | "talents" | "race") {
+                if !matches!(
+                    key.as_str(),
+                    "server" | "region" | "spec" | "talents" | "race"
+                ) {
                     summary.player_name = Some(caps[2].to_string());
                     break;
                 }

@@ -1,0 +1,63 @@
+services:
+  app:
+    image: ${WHYLOWDPS_IMAGE:-ghcr.io/josephlteif/whylowdps}:${WHYLOWDPS_VERSION:-stable}
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      ALLOW_EXTERNAL_BIND: "true"
+      BIND_HOST: 0.0.0.0
+      PORT: 8000
+      FRONTEND_DIR: /app/frontend
+      DATA_DIR: /data
+      DATA_SEED_DIR: /app/data-seed
+      DATABASE_URL: /data/whylowdps.db
+      SIMC_RUNTIME_DIR: /data/simc-runtime
+      SIMC_CHANNEL: ${SIMC_CHANNEL:-weekly}
+      WHYLOWDPS_DEPLOYMENT: hosted-private
+      WHYLOWDPS_SECURE_COOKIES: ${WHYLOWDPS_SECURE_COOKIES:-true}
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://localhost}
+      BLIZZARD_REDIRECT_URI: ${BLIZZARD_REDIRECT_URI:-https://localhost/api/auth/bnet/callback}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker or the environment}
+      BLIZZARD_CLIENT_ID: ${BLIZZARD_CLIENT_ID:-}
+      BLIZZARD_CLIENT_SECRET: ${BLIZZARD_CLIENT_SECRET:-}
+      MAX_CONCURRENT_SIMULATIONS: ${MAX_CONCURRENT_SIMULATIONS:-2}
+      MAX_JOBS: ${MAX_JOBS:-200}
+    volumes:
+      - whylowdps-data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+
+  proxy:
+    image: caddy:2-alpine
+    environment:
+      WHYLOWDPS_DOMAIN: ${WHYLOWDPS_DOMAIN:-localhost}
+      WHYLOWDPS_TLS: ${WHYLOWDPS_TLS:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  whylowdps-data:
+  caddy-data:
+  caddy-config:

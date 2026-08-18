@@ -96,7 +96,12 @@ fn runtime_fallback_state() -> GameDataState {
         .and_then(|season| season.get("name"))
         .and_then(Value::as_str)
         .map(ToOwned::to_owned)
-        .or_else(|| runtime.get("season_name").and_then(Value::as_str).map(ToOwned::to_owned))
+        .or_else(|| {
+            runtime
+                .get("season_name")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
         .unwrap_or_else(|| format!("Season {}", season_id));
 
     let active_affixes = runtime
@@ -342,10 +347,12 @@ pub async fn get_game_data_state(
     let region = req
         .uri()
         .query()
-        .and_then(|query| query.split('&').find_map(|pair| {
-            let mut parts = pair.splitn(2, '=');
-            (parts.next() == Some("region")).then(|| parts.next().unwrap_or("us"))
-        }))
+        .and_then(|query| {
+            query.split('&').find_map(|pair| {
+                let mut parts = pair.splitn(2, '=');
+                (parts.next() == Some("region")).then(|| parts.next().unwrap_or("us"))
+            })
+        })
         .unwrap_or("us")
         .to_ascii_lowercase();
     let now = Utc::now();

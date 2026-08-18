@@ -16,6 +16,8 @@ commands.allow = [
     "update_simc_runtime",
     "apply_close_behavior_choice",
     "restart_app",
+    "get_lan_access_info",
+    "set_lan_sharing_enabled",
     "quit_app_now",
     "download_and_install_release",
     "get_discord_presence_settings",

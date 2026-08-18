@@ -18,13 +18,11 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Recent character search history' })
+      screen.getByRole('heading', { level: 3, name: 'Share WhyLowDPS over your LAN' })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/remembers your eight most recent searches locally/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/same trusted private network/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 6$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 7$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

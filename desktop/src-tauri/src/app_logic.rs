@@ -76,6 +76,8 @@ pub(crate) struct AppClosePreferences {
     pub(crate) discord_presence_enabled: Option<bool>,
     #[serde(default)]
     pub(crate) discord_client_id: Option<String>,
+    #[serde(default)]
+    pub(crate) lan_sharing_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -218,6 +220,15 @@ pub(crate) fn clear_close_behavior_preference_internal(
 ) -> Result<(), String> {
     let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
     prefs.minimize_to_tray_on_close = None;
+    save_close_preferences(&state.path, &prefs)
+}
+
+pub(crate) fn set_lan_sharing_enabled_internal(
+    state: &AppClosePreferencesState,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+    prefs.lan_sharing_enabled = enabled;
     save_close_preferences(&state.path, &prefs)
 }
 
@@ -780,6 +791,27 @@ mod tests {
             load_close_preferences(&path).minimize_to_tray_on_close,
             None
         );
+    }
+
+    #[test]
+    fn lan_sharing_preference_defaults_off_and_persists() {
+        let dir = test_temp_dir("prefs");
+        let path = dir.join("prefs.json");
+
+        assert!(!load_close_preferences(&path).lan_sharing_enabled);
+
+        let state = AppClosePreferencesState {
+            prefs: Mutex::new(AppClosePreferences::default()),
+            path: path.clone(),
+            simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
+        };
+
+        set_lan_sharing_enabled_internal(&state, true).unwrap();
+        assert!(state.prefs.lock().unwrap().lan_sharing_enabled);
+        assert!(load_close_preferences(&path).lan_sharing_enabled);
+
+        set_lan_sharing_enabled_internal(&state, false).unwrap();
+        assert!(!load_close_preferences(&path).lan_sharing_enabled);
     }
 
     #[test]

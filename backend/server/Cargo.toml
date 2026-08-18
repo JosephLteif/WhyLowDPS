@@ -11,3 +11,6 @@ web = ["whylowdps-core/web"]
 [dependencies]
 whylowdps-core = { path = "../core" }
 tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"

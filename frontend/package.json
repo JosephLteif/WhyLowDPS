@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:lan": "next dev --webpack --hostname 0.0.0.0 --port 3000",
     "dev:desktop": "cross-env NEXT_PUBLIC_DESKTOP_BUILD=true next dev --webpack --hostname 127.0.0.1 --port 1420",
     "dev:turbo": "next dev --turbo",
     "build": "next build",
@@ -22,17 +23,20 @@
     "lucide-react": "^1.24.0",
     "next": "^16.2.11",
     "pako": "^2.1.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "recharts": "^3.10.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
     "@types/node": "^26.1.1",
     "@types/pako": "^2.0.4",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "^4.1.8",

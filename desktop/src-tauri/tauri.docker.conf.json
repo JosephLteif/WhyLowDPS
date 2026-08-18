@@ -34,7 +34,8 @@
     ],
     "resources": {
       "../../backend/resources/data": "data",
-      "../../backend/resources/wow": "data/wow"
+      "../../backend/resources/wow": "data/wow",
+      "../../frontend/out": "frontend"
     }
   },
   "plugins": {

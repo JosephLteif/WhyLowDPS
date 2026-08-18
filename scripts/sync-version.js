@@ -16,9 +16,38 @@ function syncWorkspacePackageVersion(cargoPath) {
     fs.writeFileSync(cargoPath, updated);
 }
 
+function syncCargoLockPackageVersions(lockPath, packageNames) {
+    if (!fs.existsSync(lockPath)) return;
+
+    const content = fs.readFileSync(lockPath, 'utf8');
+    const packageBlocks = content.split(/(?=\[\[package\]\])/);
+    const updated = packageBlocks.map((block) => {
+        const packageName = packageNames.find((name) =>
+            block.includes(`name = "${name}"`)
+        );
+        if (!packageName) return block;
+
+        return block.replace(
+            new RegExp(`(name = "${packageName}"\\r?\\nversion\\s*=\\s*)"[^"]+"`),
+            `$1"${version}"`
+        );
+    }).join('');
+
+    if (updated !== content) fs.writeFileSync(lockPath, updated);
+}
+
 // 1. Cargo workspace versions
 syncWorkspacePackageVersion(path.join(root, 'Cargo.toml'));
 syncWorkspacePackageVersion(path.join(root, 'backend', 'Cargo.toml'));
+syncCargoLockPackageVersions(path.join(root, 'Cargo.lock'), [
+    'whylowdps-core',
+    'whylowdps-server',
+    'whylowdps-desktop'
+]);
+syncCargoLockPackageVersions(path.join(root, 'backend', 'Cargo.lock'), [
+    'whylowdps-core',
+    'whylowdps-server'
+]);
 
 // 2. package.json files
 const packagePaths = [

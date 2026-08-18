@@ -28,6 +28,17 @@ npm ci
 npm ci --prefix frontend
 ```
 
+Sync a local work branch to the latest release commit before continuing work:
+
+```bash
+git fetch origin master --tags
+git merge --ff-only origin/master
+```
+
+The release action commits synchronized version metadata to `master` before it
+creates the release tag. Keep local changes committed or stashed before this
+fast-forward.
+
 Run the desktop app:
 
 ```bash
@@ -40,6 +51,36 @@ Run the backend directly:
 cd backend
 cargo run -p whylowdps-server
 ```
+
+Run the development frontend for a phone on the same LAN:
+
+```bash
+# Terminal 1, from the repository root
+npm run backend:dev
+
+# Terminal 2, from the repository root
+npm run web:dev:lan
+```
+
+Find the PC's private IPv4 address with `ipconfig`, then open
+`http://<PC-LAN-IP>:3000` on the phone. Both devices must be on the same trusted
+Wi-Fi network. If Windows Firewall prompts, allow Node.js on **Private
+networks**; do not enable a Public-network rule or forward the port to the
+internet. The Next.js development server is the LAN-facing process and keeps
+the backend on `127.0.0.1:8000`.
+
+For an installed desktop build, enable **Settings > Simulation > Share over
+LAN**, restart WhyLowDPS, and create a phone link. Scan the displayed QR code
+with the phone camera or copy the URL manually. If a third-party QR scanner
+opens the link in an embedded preview, use its **Open in Safari** or **Open in
+Browser** action before tapping Continue. The link is one-time and expires
+after five minutes. It grants access to the local app using the PC's
+current account session, so share it only with someone on the trusted private
+network. The Paired devices list keeps device names and last-seen times across
+restarts, while phone sessions themselves are invalidated whenever the desktop
+app restarts. Use New pairing link to create another QR/link, Rename to label a
+device, or Remove access to revoke it immediately. Turn the setting off and
+restart the app to return to loopback-only behavior.
 
 Run the focused checks used by the repository:
 

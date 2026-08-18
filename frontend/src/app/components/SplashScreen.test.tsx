@@ -29,6 +29,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('../lib/api', () => ({
   API_URL: 'http://localhost:17384',
   isDesktop: true,
+  isHostedPrivate: false,
   listBlizzardCredentialProfiles: apiMocks.listBlizzardCredentialProfiles,
 }));
 

@@ -261,7 +261,10 @@ fn apply_verified_archive(
     let mut manifest_files = HashMap::new();
     for file in &manifest.files {
         if manifest_files.insert(file.path.as_str(), file).is_some() {
-            return Err(format!("Recovery manifest contains duplicate path {}", file.path));
+            return Err(format!(
+                "Recovery manifest contains duplicate path {}",
+                file.path
+            ));
         }
     }
     if entries
@@ -745,17 +748,17 @@ mod tests {
         assert_eq!(
             apply_verified_archive(
                 root.path(),
-                &manifest_for(
-                    &archive,
-                    &[("items.json", b"[]"), ("bonuses.json", b"new")]
-                ),
+                &manifest_for(&archive, &[("items.json", b"[]"), ("bonuses.json", b"new")]),
                 &archive,
                 &[entry("items", "items.json")]
             )
             .expect("complete archive restores requested file"),
             vec!["items"]
         );
-        assert_eq!(std::fs::read(root.path().join("items.json")).unwrap(), b"[]");
+        assert_eq!(
+            std::fs::read(root.path().join("items.json")).unwrap(),
+            b"[]"
+        );
         assert!(!root.path().join("bonuses.json").exists());
     }
 

@@ -38,7 +38,8 @@
     "resources": {
       "../../backend/resources/data": "data",
       "../../backend/resources/wow": "data/wow",
-      "../../backend/resources/zones-encounters-index.json": "data/zones-encounters-index.json"
+      "../../backend/resources/zones-encounters-index.json": "data/zones-encounters-index.json",
+      "../../frontend/out": "frontend"
     },
     "fileAssociations": [
       {

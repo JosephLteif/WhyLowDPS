@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-use super::state::*;
 use super::state;
+use super::state::*;
 use crate::types::class_data;
 use crate::types::{class_data::ClassDef, class_data::SpecDef, BonusData, EnchantData, GameItem};
 use std::sync::Arc;
@@ -106,8 +106,8 @@ pub fn load_bonuses(data_dir: &Path) {
         }
     }
 
-    let active_season_id = active_season_value(data_dir)
-        .and_then(|season| season.get("id").and_then(Value::as_u64));
+    let active_season_id =
+        active_season_value(data_dir).and_then(|season| season.get("id").and_then(Value::as_u64));
     *CURRENT_SEASON_ID.write().unwrap() = active_season_id.unwrap_or(max_season_id);
     let mut upgrade_max: HashMap<u64, u64> = HashMap::new();
     for members in groups.values() {

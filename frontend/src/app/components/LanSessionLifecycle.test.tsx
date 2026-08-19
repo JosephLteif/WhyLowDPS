@@ -8,6 +8,10 @@ describe('LanSessionLifecycle', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value: 'visible',
+    });
     Object.defineProperty(navigator, 'sendBeacon', {
       configurable: true,
       value: vi.fn().mockReturnValue(true),
@@ -48,5 +52,19 @@ describe('LanSessionLifecycle', () => {
     });
 
     expect(sendBeacon).toHaveBeenCalledWith('/api/lan/disconnect');
+  });
+
+  it('announces a revoked session when presence returns 401', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('LAN pairing required', { status: 401 })));
+    const revoked = vi.fn();
+    window.addEventListener('whylowdps-lan-access-revoked', revoked);
+
+    render(<LanSessionLifecycle />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(revoked).toHaveBeenCalledOnce();
+    window.removeEventListener('whylowdps-lan-access-revoked', revoked);
   });
 });

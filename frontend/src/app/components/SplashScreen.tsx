@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { formatBytesDecimal, formatElapsedCompact, formatTransferSpeed } from '../lib/format';
 import DesktopWindowTitleBar from './DesktopWindowTitleBar';
+import LanPairingScanner from './LanPairingScanner';
 
 interface SplashScreenProps {
   status: string;
@@ -314,6 +315,15 @@ export default function SplashScreen({
                     </div>
                   )}
                 </div>
+              </div>
+            ) : status === 'lan_access_required' ? (
+              <div className="w-full space-y-4 text-center">
+                <p className="text-sm font-semibold text-zinc-100">Access required</p>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  This phone is not paired with the WhyLowDPS desktop app, or its access was
+                  removed. Scan a new QR code from the desktop app to continue.
+                </p>
+                <LanPairingScanner />
               </div>
             ) : status === 'unauthenticated' ? (
               <div className="w-full text-center">

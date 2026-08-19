@@ -718,6 +718,7 @@ fn restart_app(app: tauri::AppHandle) {
 #[derive(Clone, serde::Serialize)]
 struct LanAccessInfo {
     enabled: bool,
+    restart_required: bool,
     addresses: Vec<String>,
 }
 
@@ -750,6 +751,7 @@ fn get_lan_access_info(state: tauri::State<'_, AppClosePreferencesState>) -> Lan
 
     LanAccessInfo {
         enabled,
+        restart_required: enabled != state.lan_sharing_runtime_enabled,
         addresses: detected_private_ipv4(),
     }
 }
@@ -1111,6 +1113,7 @@ fn main() {
             app.manage(AppClosePreferencesState {
                 prefs: std::sync::Mutex::new(close_prefs),
                 path: close_prefs_path,
+                lan_sharing_runtime_enabled: lan_sharing_enabled,
                 simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
             });
             app.manage(DiscordPresenceState::default());

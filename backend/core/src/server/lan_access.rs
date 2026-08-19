@@ -304,6 +304,10 @@ impl LanAccessState {
             return false;
         }
 
+        self.pending
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|_, pairing| pairing.device_id.as_deref() != Some(id));
         self.active
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -737,6 +741,16 @@ mod tests {
 
         assert!(state.remove_device(&device_id));
         assert!(!has_valid_access(&request, &state));
+    }
+
+    #[test]
+    fn removing_a_device_invalidates_pending_repair_links() {
+        let state = LanAccessState::new();
+        let device_id = state.register_device(Some("Android"));
+        let token = state.create_pending_pairing_for_device(None, Some(device_id.clone()));
+
+        assert!(state.remove_device(&device_id));
+        assert_eq!(state.consume_pending_pairing(&token), None);
     }
 
     #[actix_web::test]

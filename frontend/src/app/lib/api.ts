@@ -27,6 +27,28 @@ export function isDesktopRuntime(): boolean {
 
 export const isDesktop = isDesktopRuntime();
 export const isHostedPrivate = process.env.NEXT_PUBLIC_DEPLOYMENT_MODE === 'hosted-private';
+export const LAN_ACCESS_REVOKED_EVENT = 'whylowdps-lan-access-revoked';
+export const LAN_ACCESS_REQUIRED_STORAGE_KEY = 'whylowdps_lan_access_required';
+
+export function isLanHost(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+  const octets = hostname.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet))) return false;
+  return (
+    octets[0] === 10 ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168)
+  );
+}
+
+export function isLanBrowser(): boolean {
+  if (isDesktop || typeof window === 'undefined') return false;
+  if (window.location.port === '17384') return true;
+  return (
+    isLanHost(window.location.hostname) &&
+    !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+  );
+}
 
 if (typeof window !== 'undefined') {
   console.log('[WhyLowDps] Mode:', isDesktop ? 'Desktop' : 'Web');
@@ -130,12 +152,23 @@ export async function fetchJson<T>(url: string, init?: FetchJsonInit): Promise<T
   }
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    const message = data.detail || data.error || `Server error ${res.status}`;
+    const responseText = await res.text().catch(() => '');
+    let data: any = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      // Actix's default unauthorized response may be plain text.
+    }
+    const message = data.detail || data.error || responseText.trim() || `Server error ${res.status}`;
+    const isLanPairingRequired = message === 'LAN pairing required';
+    if (res.status === 401 && isLanPairingRequired && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));
+    }
     const error = new Error(message) as any;
     error.status = res.status;
     error.detail = data.detail;
     error.error = data.error;
+    if (isLanPairingRequired) error.code = 'LAN_ACCESS_REQUIRED';
     throw error;
   }
   const text = await res.text();

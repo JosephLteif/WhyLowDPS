@@ -84,6 +84,7 @@ pub(crate) struct AppClosePreferences {
 pub(crate) struct AppClosePreferencesState {
     pub(crate) prefs: Mutex<AppClosePreferences>,
     pub(crate) path: PathBuf,
+    pub(crate) lan_sharing_runtime_enabled: bool,
     pub(crate) simc_runtime: SimcRuntimeCoordinator,
 }
 
@@ -711,6 +712,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            lan_sharing_runtime_enabled: false,
             simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
@@ -734,6 +736,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            lan_sharing_runtime_enabled: false,
             simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
@@ -762,6 +765,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            lan_sharing_runtime_enabled: false,
             simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
@@ -803,6 +807,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            lan_sharing_runtime_enabled: false,
             simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 

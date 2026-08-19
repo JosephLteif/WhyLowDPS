@@ -1,28 +1,22 @@
 'use client';
 
 import { useEffect } from 'react';
-import { API_URL, isDesktop } from '../lib/api';
+import { API_URL, isDesktop, isLanBrowser, isLanHost, LAN_ACCESS_REVOKED_EVENT } from '../lib/api';
 
 const PRESENCE_INTERVAL_MS = 30_000;
 const PRESENCE_PATH = `${API_URL}/api/lan/presence`;
 const DISCONNECT_PATH = `${API_URL}/api/lan/disconnect`;
 
-function isLanHost(hostname: string): boolean {
-  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
-  const octets = hostname.split('.').map(Number);
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet))) return false;
-  return (
-    octets[0] === 10 ||
-    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
-    (octets[0] === 192 && octets[1] === 168)
-  );
-}
-
-function sendPresence(): void {
-  void fetch(PRESENCE_PATH, {
-    credentials: 'include',
-    cache: 'no-store',
-  }).catch(() => {});
+async function sendPresence(): Promise<void> {
+  try {
+    const response = await fetch(PRESENCE_PATH, {
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    if (response.status === 401) {
+      window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));
+    }
+  } catch {}
 }
 
 function sendDisconnect(): void {
@@ -36,7 +30,14 @@ function sendDisconnect(): void {
 
 export default function LanSessionLifecycle() {
   useEffect(() => {
-    if (isDesktop || !isLanHost(window.location.hostname)) return;
+    if (
+      isDesktop ||
+      (typeof window !== 'undefined' &&
+        !isLanBrowser() &&
+        !isLanHost(window.location.hostname))
+    ) {
+      return;
+    }
 
     let presenceTimer: number | null = null;
     let disconnectSent = false;

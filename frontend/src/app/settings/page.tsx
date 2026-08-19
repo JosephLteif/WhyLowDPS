@@ -56,6 +56,7 @@ type SimcRuntimeStatusResponse = {
 };
 type LanAccessInfo = {
   enabled: boolean;
+  restart_required: boolean;
   addresses: string[];
 };
 type LanDevice = {
@@ -137,6 +138,7 @@ export default function SettingsPage() {
   } | null>(null);
   const [lanSharingEnabled, setLanSharingEnabled] = useState(false);
   const [lanSharingLoading, setLanSharingLoading] = useState(false);
+  const [lanSharingRestartRequired, setLanSharingRestartRequired] = useState(false);
   const [lanSharingMessage, setLanSharingMessage] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -146,6 +148,7 @@ export default function SettingsPage() {
   const [lanDevices, setLanDevices] = useState<LanDevice[]>([]);
   const [lanDevicesLoading, setLanDevicesLoading] = useState(false);
   const [lanDeviceActionId, setLanDeviceActionId] = useState<string | null>(null);
+  const [lanDeviceRemovalCandidate, setLanDeviceRemovalCandidate] = useState<LanDevice | null>(null);
   const [selectedSimcChannel, setSelectedSimcChannelState] = useState<SimcUpdateChannel>('weekly');
   const [selectedSimcRuntimeVersion, setSelectedSimcRuntimeVersionState] = useState<string | null>(
     null
@@ -284,6 +287,10 @@ export default function SettingsPage() {
     try {
       const devices = await fetchJson<LanDevice[]>(`${API_URL}/api/lan/devices`);
       setLanDevices(devices);
+      if (devices.some((device) => device.active)) {
+        setLanPairingUrl('');
+        setLanQrCodeDataUrl('');
+      }
     } catch {
       setLanDevices([]);
     } finally {
@@ -297,9 +304,12 @@ export default function SettingsPage() {
       return;
     }
     void refreshLanDevices();
-    const interval = window.setInterval(() => void refreshLanDevices(), 10_000);
+    const interval = window.setInterval(
+      () => void refreshLanDevices(),
+      lanPairingUrl ? 2_000 : 10_000
+    );
     return () => window.clearInterval(interval);
-  }, [lanSharingEnabled, refreshLanDevices]);
+  }, [lanPairingUrl, lanSharingEnabled, refreshLanDevices]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -308,7 +318,10 @@ export default function SettingsPage() {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const info = await invoke<LanAccessInfo>('get_lan_access_info');
-        if (!cancelled) setLanSharingEnabled(info.enabled);
+        if (!cancelled) {
+          setLanSharingEnabled(info.enabled);
+          setLanSharingRestartRequired(info.restart_required);
+        }
       } catch (err: any) {
         if (!cancelled) {
           setLanSharingEnabled(false);
@@ -501,9 +514,13 @@ export default function SettingsPage() {
       setLanSharingEnabled(enabled);
       setLanPairingUrl('');
       setLanQrCodeDataUrl('');
+      const info = await invoke<LanAccessInfo>('get_lan_access_info');
+      setLanSharingRestartRequired(info.restart_required);
       setLanSharingMessage({
         type: 'success',
-        text: 'Saved. Restart WhyLowDPS to apply this change.',
+        text: info.restart_required
+          ? 'Saved. Restart WhyLowDPS to apply this change.'
+          : 'LAN sharing is already using this setting.',
       });
     } catch (err: any) {
       const detail = err?.message || err?.toString?.() || '';
@@ -595,10 +612,6 @@ export default function SettingsPage() {
   };
 
   const removeLanDevice = async (device: LanDevice) => {
-    if (!window.confirm(`Remove ${device.name}? Its current phone session will stop working.`)) {
-      return;
-    }
-
     setLanDeviceActionId(device.id);
     setLanSharingMessage(null);
     try {
@@ -616,6 +629,15 @@ export default function SettingsPage() {
       setLanDeviceActionId(null);
     }
   };
+
+  useEffect(() => {
+    if (!lanDeviceRemovalCandidate) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLanDeviceRemovalCandidate(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lanDeviceRemovalCandidate]);
 
   const restartForLanSharing = async () => {
     const { invoke } = await import('@tauri-apps/api/core');
@@ -1056,7 +1078,6 @@ export default function SettingsPage() {
           <p className="mb-5 max-w-2xl text-sm text-zinc-400">
             Open WhyLowDPS from your phone on the same private Wi-Fi network. Anyone with the
             pairing link can operate this local app and use the PC&apos;s current account session.
-            Changes take effect after restarting the desktop app.
           </p>
 
           <div className="max-w-2xl space-y-4">
@@ -1086,27 +1107,33 @@ export default function SettingsPage() {
               </button>
             </div>
 
-            {lanSharingEnabled && (
+            {(lanSharingEnabled || lanSharingRestartRequired) && (
               <div className="space-y-3 rounded-lg border border-gold/20 bg-gold/5 p-4">
-                <p className="text-xs text-gold">
-                  Restart required before phone access is available.
-                </p>
+                {lanSharingRestartRequired && (
+                  <p className="text-xs text-gold">
+                    Restart required before this LAN setting takes effect.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void restartForLanSharing()}
-                    className="rounded-lg bg-gold px-3 py-2 text-xs font-semibold text-black transition-colors hover:bg-gold/90"
-                  >
-                    Restart WhyLowDPS
-                  </button>
-                  <button
-                    type="button"
-                    disabled={lanSharingLoading}
-                    onClick={() => void createLanPairingLink()}
-                    className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-gold/40 hover:text-white disabled:opacity-50"
-                  >
-                    New pairing link
-                  </button>
+                  {lanSharingRestartRequired && (
+                    <button
+                      type="button"
+                      onClick={() => void restartForLanSharing()}
+                      className="rounded-lg bg-gold px-3 py-2 text-xs font-semibold text-black transition-colors hover:bg-gold/90"
+                    >
+                      Restart WhyLowDPS
+                    </button>
+                  )}
+                  {lanSharingEnabled && (
+                    <button
+                      type="button"
+                      disabled={lanSharingLoading}
+                      onClick={() => void createLanPairingLink()}
+                      className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-gold/40 hover:text-white disabled:opacity-50"
+                    >
+                      New pairing link
+                    </button>
+                  )}
                 </div>
                 {lanPairingUrl && (
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
@@ -1227,7 +1254,7 @@ export default function SettingsPage() {
                         <button
                           type="button"
                           disabled={lanDeviceActionId === device.id}
-                          onClick={() => void removeLanDevice(device)}
+                          onClick={() => setLanDeviceRemovalCandidate(device)}
                           className="rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-xs font-semibold text-red-300 hover:border-red-300/60 hover:text-red-200 disabled:opacity-50"
                         >
                           Remove access
@@ -1333,6 +1360,58 @@ export default function SettingsPage() {
         dataFilePreviewLoading={dataFilePreviewLoading}
         dataFilePreviewError={dataFilePreviewError}
       />
+      {lanDeviceRemovalCandidate && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLanDeviceRemovalCandidate(null);
+          }}
+        >
+          <section
+            className="w-full max-w-md rounded-2xl border border-red-400/25 bg-[#171012] p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-lan-device-title"
+            aria-describedby="remove-lan-device-description"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-300/80">
+              Revoke device access
+            </p>
+            <h2 id="remove-lan-device-title" className="mt-2 text-xl font-semibold text-white">
+              Remove {lanDeviceRemovalCandidate.name}?
+            </h2>
+            <p
+              id="remove-lan-device-description"
+              className="mt-3 text-sm leading-relaxed text-zinc-400"
+            >
+              This immediately ends the device&apos;s current session. The device can only reconnect
+              after you create and scan a new pairing QR code.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setLanDeviceRemovalCandidate(null)}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10"
+              >
+                Keep access
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const device = lanDeviceRemovalCandidate;
+                  setLanDeviceRemovalCandidate(null);
+                  void removeLanDevice(device);
+                }}
+                className="rounded-lg bg-red-500 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-400"
+              >
+                Remove access
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

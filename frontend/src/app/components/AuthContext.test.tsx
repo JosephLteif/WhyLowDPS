@@ -41,4 +41,31 @@ describe('AuthContext light mode', () => {
     expect((result.current as any).lightMode).toBe(false);
     expect(localStorage.getItem('whylowdps_light_mode')).toBeNull();
   });
+
+  it('shows the pairing scanner when the backend identifies a revoked LAN session', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('LAN pairing required', { status: 401 })));
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.lanAccessRequired).toBe(true));
+    expect(result.current.lightMode).toBe(false);
+    expect(localStorage.getItem('whylowdps_light_mode')).toBeNull();
+  });
+
+  it('reacts to a direct API 401 without requiring a refresh', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}, { status: 200 }))
+      .mockResolvedValue(new Response('LAN pairing required', { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await fetch('/api/data/status');
+    });
+
+    await waitFor(() => expect(result.current.lanAccessRequired).toBe(true));
+  });
 });

@@ -89,6 +89,10 @@ fn public_security_path(path: &str) -> bool {
     )
 }
 
+fn lan_pairing_public_path(path: &str) -> bool {
+    matches!(path, "/api/lan/pair" | "/api/lan/pair/consume")
+}
+
 fn public_light_mode_request(req: &ServiceRequest) -> bool {
     let path = req.path();
     let method = req.method();
@@ -186,26 +190,11 @@ async fn enforce_security<B>(
 where
     B: MessageBody + 'static,
 {
-    if !require_auth
-        || !req.path().starts_with("/api/")
-        || public_security_path(req.path())
-        || is_loopback_peer(&req)
-    {
+    if !require_auth || !req.path().starts_with("/api/") || is_loopback_peer(&req) {
         return next.call(req).await;
     }
 
-    if public_light_mode_request(&req) {
-        let state_changing = matches!(
-            *req.method(),
-            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
-        );
-        if state_changing && !same_origin_request(&req) {
-            return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
-        }
-        return next.call(req).await;
-    }
-
-    if lan_pairing {
+    if lan_pairing && !lan_pairing_public_path(req.path()) {
         let lan_access = req
             .app_data::<web::Data<Arc<lan_access::LanAccessState>>>()
             .ok_or_else(|| {
@@ -231,6 +220,21 @@ where
             return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
         }
 
+        return next.call(req).await;
+    }
+
+    if public_security_path(req.path()) {
+        return next.call(req).await;
+    }
+
+    if public_light_mode_request(&req) {
+        let state_changing = matches!(
+            *req.method(),
+            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+        );
+        if state_changing && !same_origin_request(&req) {
+            return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
+        }
         return next.call(req).await;
     }
 
@@ -426,6 +430,37 @@ mod tests {
         )
         .await;
         assert_eq!(loopback_response.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn lan_security_does_not_treat_public_auth_routes_as_paired_access() {
+        let lan_access = web::Data::new(Arc::new(lan_access::LanAccessState::new()));
+        let app = init_service(
+            App::new()
+                .app_data(lan_access)
+                .wrap(middleware::from_fn(|req, next| {
+                    enforce_security(req, next, true, true)
+                }))
+                .route(
+                    "/api/auth/me",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                ),
+        )
+        .await;
+
+        let error = try_call_service(
+            &app,
+            TestRequest::get()
+                .uri("/api/auth/me")
+                .peer_addr("192.168.1.20:50000".parse().unwrap())
+                .to_request(),
+        )
+        .await
+        .expect_err("unpaired LAN auth request should be rejected");
+        assert_eq!(
+            error.as_response_error().status_code(),
+            actix_web::http::StatusCode::UNAUTHORIZED
+        );
     }
 
     #[actix_web::test]

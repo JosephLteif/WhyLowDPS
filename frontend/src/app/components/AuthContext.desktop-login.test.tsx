@@ -12,9 +12,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../lib/api', () => ({
   API_URL: 'http://localhost:17384',
+  LAN_ACCESS_REQUIRED_STORAGE_KEY: 'whylowdps_lan_access_required',
+  LAN_ACCESS_REVOKED_EVENT: 'whylowdps-lan-access-revoked',
   fetchJson: mocks.fetchJson,
   isDesktop: true,
   isHostedPrivate: false,
+  isLanBrowser: vi.fn(() => false),
   isNetworkUnavailableError: vi.fn(() => false),
   saveBlizzardCredentialProfile: mocks.saveBlizzardCredentialProfile,
   setSessionToken: vi.fn(),

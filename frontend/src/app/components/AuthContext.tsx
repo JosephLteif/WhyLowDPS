@@ -3,8 +3,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   API_URL,
+  LAN_ACCESS_REQUIRED_STORAGE_KEY,
+  LAN_ACCESS_REVOKED_EVENT,
   fetchJson,
   isDesktop,
+  isLanBrowser,
   isNetworkUnavailableError,
   saveBlizzardCredentialProfile,
   setSessionToken,
@@ -13,6 +16,7 @@ import {
 interface AuthContextType {
   user: { battletag: string } | null;
   loading: boolean;
+  lanAccessRequired: boolean;
   lightMode: boolean;
   enableLightMode: () => void;
   disableLightMode: () => void;
@@ -25,6 +29,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  lanAccessRequired: false,
   lightMode: false,
   enableLightMode: () => {},
   disableLightMode: () => {},
@@ -58,6 +63,7 @@ async function fetchCurrentUserOnce(): Promise<{ battletag: string } | null> {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<{ battletag: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lanAccessRequired, setLanAccessRequired] = useState(false);
   const [lightMode, setLightMode] = useState(false);
 
   useEffect(() => {
@@ -65,16 +71,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1') {
+      setLanAccessRequired(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleLanAccessRevoked = () => {
+      localStorage.removeItem(LIGHT_MODE_KEY);
+      localStorage.setItem(LAN_ACCESS_REQUIRED_STORAGE_KEY, '1');
+      setSessionToken(null);
+      setUser(null);
+      setLightMode(false);
+      setLanAccessRequired(true);
+    };
+
+    window.addEventListener(LAN_ACCESS_REVOKED_EVENT, handleLanAccessRevoked);
+    return () => window.removeEventListener(LAN_ACCESS_REVOKED_EVENT, handleLanAccessRevoked);
+  }, []);
+
+  useEffect(() => {
+    const originalFetch = window.fetch.bind(window);
+    const patchedFetch: typeof window.fetch = async (input, init) => {
+      const response = await originalFetch(input, init);
+      if (response.status === 401) {
+        const requestUrl = new URL(
+          input instanceof Request ? input.url : input.toString(),
+          window.location.href
+        );
+        if (requestUrl.origin === window.location.origin && requestUrl.pathname.startsWith('/api/')) {
+          const responseText = await response.clone().text().catch(() => '');
+          if (responseText.includes('LAN pairing required')) {
+            window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));
+          }
+        }
+      }
+      return response;
+    };
+
+    window.fetch = patchedFetch;
+    return () => {
+      if (window.fetch === patchedFetch) window.fetch = originalFetch;
+    };
+  }, []);
+
+  useEffect(() => {
     const checkAuth = async () => {
-      if (lightMode) {
+      const lanBrowser = isLanBrowser();
+      const storedLanAccessRequired =
+        localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1';
+      if (lightMode && !lanBrowser && !storedLanAccessRequired) {
         setSessionToken(null);
         setUser(null);
+        setLanAccessRequired(false);
         setLoading(false);
         return;
+      }
+      if (lightMode && (lanBrowser || storedLanAccessRequired)) {
+        localStorage.removeItem(LIGHT_MODE_KEY);
+        setLightMode(false);
       }
       try {
         const data = await fetchCurrentUserOnce();
         setUser(data);
+        localStorage.removeItem(LAN_ACCESS_REQUIRED_STORAGE_KEY);
+        setLanAccessRequired(false);
       } catch (err: any) {
         if (err.status !== 401 && !isNetworkUnavailableError(err)) {
           console.error('Auth check failed:', err);
@@ -82,6 +143,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // If 401/error, consider user logged out
         setSessionToken(null);
         setUser(null);
+        const pairingRequired =
+          !isDesktop &&
+          err?.status === 401 &&
+          err?.code === 'LAN_ACCESS_REQUIRED';
+        if (pairingRequired) localStorage.setItem(LAN_ACCESS_REQUIRED_STORAGE_KEY, '1');
+        setLanAccessRequired((current) => current || pairingRequired);
       } finally {
         setLoading(false);
       }
@@ -105,6 +172,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [lightMode]);
 
   const enableLightMode = useCallback(() => {
+    if (
+      isLanBrowser() ||
+      localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1'
+    ) {
+      localStorage.setItem(LAN_ACCESS_REQUIRED_STORAGE_KEY, '1');
+      setLanAccessRequired(true);
+      return;
+    }
     localStorage.setItem(LIGHT_MODE_KEY, '1');
     setSessionToken(null);
     setUser(null);
@@ -230,6 +305,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         loading,
+        lanAccessRequired,
         lightMode,
         enableLightMode,
         disableLightMode,

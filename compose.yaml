@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${WHYLOWDPS_IMAGE:-ghcr.io/josephlteif/whylowdps}:${WHYLOWDPS_VERSION:-stable}
+    image: ${WHYLOWDPS_IMAGE:-ghcr.io/josephlteif/whylowdps}:${WHYLOWDPS_VERSION:-v3.8.0}
     env_file:
       - path: .env.docker
         required: false
@@ -15,9 +15,7 @@ services:
       SIMC_RUNTIME_DIR: /data/simc-runtime
       SIMC_CHANNEL: ${SIMC_CHANNEL:-weekly}
       WHYLOWDPS_DEPLOYMENT: hosted-private
-      WHYLOWDPS_SECURE_COOKIES: ${WHYLOWDPS_SECURE_COOKIES:-true}
-      WEB_ORIGIN: ${WEB_ORIGIN:-https://localhost}
-      BLIZZARD_REDIRECT_URI: ${BLIZZARD_REDIRECT_URI:-https://localhost/api/auth/bnet/callback}
+      WHYLOWDPS_SECURE_COOKIES: ${WHYLOWDPS_SECURE_COOKIES:-false}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker or the environment}
       BLIZZARD_CLIENT_ID: ${BLIZZARD_CLIENT_ID:-}
       BLIZZARD_CLIENT_SECRET: ${BLIZZARD_CLIENT_SECRET:-}
@@ -25,8 +23,8 @@ services:
       MAX_JOBS: ${MAX_JOBS:-200}
     volumes:
       - whylowdps-data:/data
-    expose:
-      - "8000"
+    ports:
+      - "${WHYLOWDPS_HOST_IP:-0.0.0.0}:${WHYLOWDPS_PORT:-8000}:8000"
     restart: unless-stopped
     deploy:
       resources:
@@ -40,24 +38,5 @@ services:
       start_period: 45s
       retries: 3
 
-  proxy:
-    image: caddy:2-alpine
-    environment:
-      WHYLOWDPS_DOMAIN: ${WHYLOWDPS_DOMAIN:-localhost}
-      WHYLOWDPS_TLS: ${WHYLOWDPS_TLS:-}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      app:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
   whylowdps-data:
-  caddy-data:
-  caddy-config:

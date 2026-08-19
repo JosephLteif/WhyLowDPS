@@ -72,7 +72,7 @@ const releaseNotes: ReleaseNote[] = [
         type: 'list',
         items: [
           'Use the release Compose files and persistent data volume to keep synchronized data and simulations across upgrades.',
-          'Pin a release image for reproducible updates and rollbacks; hosted Battle.net sign-in uses the configured HTTPS callback URL.',
+          'Pin a release image for reproducible updates and rollbacks; hosted Battle.net sign-in derives its callback from the address and port you use.',
         ],
       },
     ],

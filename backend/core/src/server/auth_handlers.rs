@@ -414,10 +414,10 @@ pub fn hosted_private_deployment() -> bool {
 }
 
 fn secure_web_cookies() -> bool {
-    hosted_private_deployment()
-        || std::env::var("WHYLOWDPS_SECURE_COOKIES")
-            .ok()
-            .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+    std::env::var("WHYLOWDPS_SECURE_COOKIES")
+        .ok()
+        .map(|value| value.eq_ignore_ascii_case("true"))
+        .unwrap_or_else(|| hosted_private_deployment())
 }
 
 fn auth_cookie_policy() -> (SameSite, bool) {
@@ -452,6 +452,15 @@ pub fn validate_jwt_secret(
         return Err("JWT_SECRET must be at least 32 characters and must not use a development/default value".to_string());
     }
     Ok(secret)
+}
+
+fn request_redirect_uri(req: &HttpRequest) -> String {
+    let connection = req.connection_info();
+    format!(
+        "{}://{}/api/auth/bnet/callback",
+        connection.scheme(),
+        connection.host()
+    )
 }
 
 impl BlizzardAuthState {
@@ -895,17 +904,7 @@ pub async fn bnet_login(
 
     let mut builder = HttpResponse::Found();
 
-    let conn = req.connection_info();
-    let request_host = conn.host().to_string();
-    let request_scheme = conn.scheme().to_string();
-    let request_redirect_uri = format!(
-        "{}://{}/api/auth/bnet/callback",
-        request_scheme, request_host
-    );
-    let redirect_uri_for_flow = std::env::var("BLIZZARD_REDIRECT_URI")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .unwrap_or(request_redirect_uri);
+    let redirect_uri_for_flow = request_redirect_uri(&req);
 
     let flow_id = query
         .flow_id
@@ -1076,7 +1075,7 @@ pub async fn bnet_callback(
     let status_cache_key = format!("login_flow_status_{}", flow_id);
     let redirect_uri_for_exchange = store
         .get_cache(&redirect_cache_key)
-        .unwrap_or_else(|| state.redirect_uri.clone());
+        .unwrap_or_else(|| request_redirect_uri(&req));
 
     if let Some(provider_error) = &query.error {
         let message = format!(
@@ -1689,6 +1688,15 @@ mod tests {
             "http://localhost:3000/api/auth/bnet/callback".to_string(),
             "test-secret".to_string(),
         )))
+    }
+
+    #[test]
+    fn request_redirect_uri_uses_the_client_ip_and_port() {
+        let request = TestRequest::with_uri("http://192.168.100.126:8000/").to_http_request();
+        assert_eq!(
+            request_redirect_uri(&request),
+            "http://192.168.100.126:8000/api/auth/bnet/callback"
+        );
     }
 
     fn make_jwt_with_exp(sub: &str, access_token: &str, secret: &str, exp: usize) -> String {

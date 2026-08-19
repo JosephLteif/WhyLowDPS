@@ -223,6 +223,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             WHYLOWDPS_DEPLOYMENT=hosted-private
+            WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
+            WHYLOWDPS_REVISION=${{ github.sha }}
 
       - name: Smoke test container
         shell: bash

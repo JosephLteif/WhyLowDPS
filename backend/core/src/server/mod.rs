@@ -270,6 +270,36 @@ where
     next.call(req).await
 }
 
+fn static_cache_control(path: &str) -> Option<&'static str> {
+    if path.starts_with("/_next/static/") {
+        Some("public, max-age=31536000, immutable")
+    } else if path == "/sw.js" {
+        Some("no-cache, no-store, must-revalidate")
+    } else if path == "/manifest.webmanifest" {
+        Some("no-cache, must-revalidate")
+    } else {
+        None
+    }
+}
+
+async fn add_static_cache_headers<B>(
+    req: ServiceRequest,
+    next: Next<B>,
+) -> Result<ServiceResponse<B>, Error>
+where
+    B: MessageBody + 'static,
+{
+    let cache_control = static_cache_control(req.path());
+    let mut response = next.call(req).await?;
+    if let Some(cache_control) = cache_control {
+        response.headers_mut().insert(
+            actix_web::http::header::CACHE_CONTROL,
+            actix_web::http::header::HeaderValue::from_static(cache_control),
+        );
+    }
+    Ok(response)
+}
+
 #[cfg(test)]
 #[cfg(feature = "web")]
 #[allow(clippy::items_after_test_module)]
@@ -290,6 +320,23 @@ mod tests {
         assert!(!is_loopback_bind("0.0.0.0"));
         assert!(!external_bind_allowed(Some("false")));
         assert!(external_bind_allowed(Some("TRUE")));
+    }
+
+    #[test]
+    fn static_cache_policy_matches_directly_served_frontend_assets() {
+        assert_eq!(
+            static_cache_control("/_next/static/chunks/app.js"),
+            Some("public, max-age=31536000, immutable")
+        );
+        assert_eq!(
+            static_cache_control("/sw.js"),
+            Some("no-cache, no-store, must-revalidate")
+        );
+        assert_eq!(
+            static_cache_control("/manifest.webmanifest"),
+            Some("no-cache, must-revalidate")
+        );
+        assert_eq!(static_cache_control("/api/health"), None);
     }
 
     #[actix_web::test]
@@ -741,13 +788,7 @@ pub async fn start_with_storage_bind_options(
 
         let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
 
-        let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI").unwrap_or_else(|_| {
-            if port == 17384 || cfg!(feature = "desktop") {
-                format!("http://localhost:{}/api/auth/bnet/callback", port)
-            } else {
-                "http://localhost:3000/api/auth/bnet/callback".to_string()
-            }
-        });
+        let bnet_redirect = format!("http://localhost:{}/api/auth/bnet/callback", port);
         let jwt_secret = auth_handlers::validate_jwt_secret(
             std::env::var("JWT_SECRET").ok(),
             externally_reachable && !lan_pairing,
@@ -767,7 +808,7 @@ pub async fn start_with_storage_bind_options(
             .ok()
             .filter(|value| !value.trim().is_empty());
 
-        println!("Configured Blizzard Redirect URI: {}", bnet_redirect);
+        println!("Blizzard OAuth callback is derived from the request IP and port");
 
         let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
             client_id,
@@ -787,19 +828,11 @@ pub async fn start_with_storage_bind_options(
         let store_for_background = store_data.get_ref().clone();
         let secrets_for_background = blizzard_credential_secrets.get_ref().clone();
         let data_dir_for_background = data.clone();
-        let configured_web_origin = std::env::var("WEB_ORIGIN")
-            .ok()
-            .filter(|origin| !origin.trim().is_empty());
-
         let server = HttpServer::new(move || {
-            let configured_web_origin = configured_web_origin.clone();
             let cors = Cors::default()
-                .allowed_origin_fn(move |origin, _req_head| {
+                .allowed_origin_fn(|origin, _req_head| {
                     let origin_str = origin.to_str().unwrap_or("");
-                    configured_web_origin
-                        .as_deref()
-                        .is_some_and(|configured| configured == origin_str)
-                        || origin_str == "http://localhost:3000"
+                    origin_str == "http://localhost:3000"
                         || origin_str == "tauri://localhost"
                         || origin_str == "https://tauri.localhost"
                         || origin_str == "http://tauri.localhost"
@@ -824,6 +857,7 @@ pub async fn start_with_storage_bind_options(
                     .into()
                 }))
                 .wrap(cors)
+                .wrap(middleware::from_fn(add_static_cache_headers))
                 .wrap(middleware::from_fn(move |req, next| {
                     enforce_security(req, next, externally_reachable, lan_pairing)
                 }))

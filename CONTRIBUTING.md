@@ -18,8 +18,12 @@ The supported development target is the Windows desktop application. Use Node.js
 20 and Rust 1.95; the repository includes `.nvmrc` and `rust-toolchain.toml`
 so local tools and CI use the same versions.
 
-Windows is required for full desktop validation. GitHub Pages is the only
-supported deployment target outside the desktop application.
+End-user installation and Battle.net client setup are documented in
+[Getting started](docs/getting-started.md).
+
+Windows is required for full desktop validation. The project site uses GitHub
+Pages, and the hosted application supports a private, single-instance Docker
+deployment. It is not designed as a public multi-user service.
 
 Install dependencies:
 
@@ -69,18 +73,10 @@ networks**; do not enable a Public-network rule or forward the port to the
 internet. The Next.js development server is the LAN-facing process and keeps
 the backend on `127.0.0.1:8000`.
 
-For an installed desktop build, enable **Settings > Simulation > Share over
-LAN**, restart WhyLowDPS, and create a phone link. Scan the displayed QR code
-with the phone camera or copy the URL manually. If a third-party QR scanner
-opens the link in an embedded preview, use its **Open in Safari** or **Open in
-Browser** action before tapping Continue. The link is one-time and expires
-after five minutes. It grants access to the local app using the PC's
-current account session, so share it only with someone on the trusted private
-network. The Paired devices list keeps device names and last-seen times across
-restarts, while phone sessions themselves are invalidated whenever the desktop
-app restarts. Use New pairing link to create another QR/link, Rename to label a
-device, or Remove access to revoke it immediately. Turn the setting off and
-restart the app to return to loopback-only behavior.
+The installed desktop flow is different from the development server: it is
+opt-in, uses port `17384`, and requires device pairing. Follow
+[Desktop LAN sharing](docs/lan-sharing.md) for enablement, pairing, device
+management, security, and troubleshooting.
 
 Run the focused checks used by the repository:
 

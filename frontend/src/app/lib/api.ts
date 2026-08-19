@@ -65,6 +65,56 @@ let sessionToken: string | null = null;
 export function setSessionToken(token: string | null): void {
   sessionToken = token;
 }
+
+const USER_SCOPE_KEY = 'whylowdps_active_user_scope';
+const USER_SCOPE_PREFIX = 'whylowdps_user_scope:';
+const DEVICE_STORAGE_KEYS = new Set([
+  'whylowdps_lan_access_required',
+  'whylowdps_data_ready',
+  'whylowdps_light_mode',
+  'whylowdps_update_channel',
+]);
+
+/** Swap account-owned browser preferences without changing every feature's storage key. */
+export async function switchBrowserUserScope(nextUserId: string): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const currentUserId = localStorage.getItem(USER_SCOPE_KEY);
+  if (currentUserId === nextUserId) return;
+
+  const accountValues: Record<string, string> = {};
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (
+      !key ||
+      key === USER_SCOPE_KEY ||
+      key.startsWith(USER_SCOPE_PREFIX) ||
+      DEVICE_STORAGE_KEYS.has(key) ||
+      key.startsWith('whylowdps_changelog_seen_')
+    ) {
+      continue;
+    }
+    if (key.startsWith('whylowdps_')) {
+      const value = localStorage.getItem(key);
+      if (value !== null) accountValues[key] = value;
+      localStorage.removeItem(key);
+    }
+  }
+  if (currentUserId) {
+    localStorage.setItem(`${USER_SCOPE_PREFIX}${currentUserId}`, JSON.stringify(accountValues));
+  }
+
+  const saved = localStorage.getItem(`${USER_SCOPE_PREFIX}${nextUserId}`);
+  if (saved) {
+    try {
+      const values = JSON.parse(saved) as Record<string, string>;
+      Object.entries(values).forEach(([key, value]) => localStorage.setItem(key, value));
+    } catch {}
+  }
+  localStorage.setItem(USER_SCOPE_KEY, nextUserId);
+  sessionStorage.clear();
+  Object.keys(memoryCache).forEach((key) => delete memoryCache[key]);
+  if ('caches' in window) await caches.delete(PERSISTENT_CACHE_NAME).catch(() => false);
+}
 const DEFAULT_FETCH_TIMEOUT_MS = 8000;
 const GET_RETRY_ATTEMPTS = 2;
 const GET_RETRY_DELAY_MS = 300;
@@ -81,6 +131,37 @@ export type BlizzardCredentialProfile = {
   updated_at: number;
   has_secret?: boolean;
 };
+
+export type HostedUser = {
+  id: string;
+  provider_subject: string | null;
+  battletag: string;
+  role: 'admin' | 'member';
+  enabled: boolean;
+  created_at: string;
+  last_login_at: string | null;
+};
+
+export function listHostedUsers(): Promise<HostedUser[]> {
+  return fetchJson<HostedUser[]>(`${API_URL}/api/admin/users`);
+}
+
+export function createHostedUser(battletag: string, role: 'admin' | 'member') {
+  return fetchJson<HostedUser>(`${API_URL}/api/admin/users`, {
+    method: 'POST',
+    body: JSON.stringify({ battletag, role }),
+  });
+}
+
+export function updateHostedUser(
+  id: string,
+  update: { role?: 'admin' | 'member'; enabled?: boolean; revoke_sessions?: boolean }
+) {
+  return fetchJson<HostedUser>(`${API_URL}/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(update),
+  });
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -159,7 +240,8 @@ export async function fetchJson<T>(url: string, init?: FetchJsonInit): Promise<T
     } catch {
       // Actix's default unauthorized response may be plain text.
     }
-    const message = data.detail || data.error || responseText.trim() || `Server error ${res.status}`;
+    const message =
+      data.detail || data.error || responseText.trim() || `Server error ${res.status}`;
     const isLanPairingRequired = message === 'LAN pairing required';
     if (res.status === 401 && isLanPairingRequired && typeof window !== 'undefined') {
       window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));

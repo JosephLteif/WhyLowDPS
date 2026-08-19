@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -9,10 +9,28 @@ use crate::models::JobStatus;
 use crate::simc_runner;
 use crate::storage::JobStorage;
 
+fn owner_id(
+    req: &HttpRequest,
+    auth: &web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
+) -> String {
+    req.app_data::<web::Data<Arc<dyn JobStorage>>>()
+        .map(|store| {
+            crate::server::auth_handlers::request_owner_id(
+                req,
+                auth.get_ref(),
+                store.get_ref().as_ref(),
+            )
+        })
+        .unwrap_or_else(|| crate::server::auth_handlers::LOCAL_GUEST_USER_ID.to_string())
+}
+
 pub(super) async fn list_sims(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     query: web::Query<ListSimsQuery>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let max_jobs = store.get_max_jobs();
 
     let player = if query.player.is_empty() {
@@ -26,7 +44,8 @@ pub(super) async fn list_sims(
         Some(query.realm.as_str())
     };
 
-    let summaries = store.list_recent(
+    let summaries = store.list_recent_owned(
+        &owner_id,
         std::cmp::max(max_jobs, 10000),
         player,
         realm,
@@ -38,18 +57,22 @@ pub(super) async fn list_sims(
 }
 
 pub(super) async fn list_related_sims(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let id = path.into_inner();
-    let job = match store.get(&id) {
+    let job = match store.get_owned(&owner_id, &id) {
         Some(j) => j,
         None => return HttpResponse::NotFound().json(json!({ "detail": "Job not found" })),
     };
 
     let parent_id = job.batch_id.clone().unwrap_or_else(|| job.id.clone());
     let max_jobs = store.get_max_jobs();
-    let summaries = store.list_recent(
+    let summaries = store.list_recent_owned(
+        &owner_id,
         std::cmp::max(max_jobs, 3000),
         None,
         None,
@@ -78,11 +101,14 @@ pub(super) async fn list_related_sims(
 }
 
 pub(super) async fn get_sim_status(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let job = match store.get(&job_id) {
+    let job = match store.get_owned(&owner_id, &job_id) {
         Some(j) => j,
         None => {
             return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
@@ -184,11 +210,14 @@ pub(super) async fn get_sim_status(
 }
 
 pub(super) async fn pause_sim(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let Some(job) = store.get(&job_id) else {
+    let Some(job) = store.get_owned(&owner_id, &job_id) else {
         return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
     };
     if !matches!(job.status, JobStatus::Pending | JobStatus::Running) {
@@ -214,11 +243,14 @@ pub(super) async fn pause_sim(
 }
 
 pub(super) async fn resume_sim(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let Some(job) = store.get(&job_id) else {
+    let Some(job) = store.get_owned(&owner_id, &job_id) else {
         return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
     };
     if job.status != JobStatus::Paused {
@@ -255,11 +287,18 @@ pub(super) async fn resume_sim(
 }
 
 pub(super) async fn get_sim_logs(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     query: web::Query<LogsQuery>,
     log_buffer: web::Data<Arc<LogBuffer>>,
+    store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
+    if store.get_owned(&owner_id, &job_id).is_none() {
+        return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
+    }
     let (lines, next) = log_buffer.get_lines_after(&job_id, query.after);
     HttpResponse::Ok().json(json!({
         "lines": lines,
@@ -268,11 +307,14 @@ pub(super) async fn get_sim_logs(
 }
 
 pub(super) async fn cancel_sim(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let job = match store.get(&job_id) {
+    let job = match store.get_owned(&owner_id, &job_id) {
         Some(j) => j,
         None => return HttpResponse::NotFound().json(json!({"detail": "Job not found"})),
     };
@@ -293,11 +335,14 @@ pub(super) async fn cancel_sim(
 }
 
 pub(super) async fn get_sim_input(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let job = match store.get(&job_id) {
+    let job = match store.get_owned(&owner_id, &job_id) {
         Some(j) => j,
         None => {
             return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
@@ -310,11 +355,14 @@ pub(super) async fn get_sim_input(
 }
 
 pub(super) async fn get_sim_raw(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let job = match store.get(&job_id) {
+    let job = match store.get_owned(&owner_id, &job_id) {
         Some(j) => j,
         None => {
             return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
@@ -344,11 +392,14 @@ pub(super) async fn get_sim_raw(
 }
 
 pub(super) async fn get_sim_html(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let job = match store.get(&job_id) {
+    let job = match store.get_owned(&owner_id, &job_id) {
         Some(j) => j,
         None => {
             return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
@@ -365,11 +416,14 @@ pub(super) async fn get_sim_html(
 }
 
 pub(super) async fn get_sim_text_output(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let job = match store.get(&job_id) {
+    let job = match store.get_owned(&owner_id, &job_id) {
         Some(j) => j,
         None => {
             return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
@@ -386,11 +440,14 @@ pub(super) async fn get_sim_text_output(
 }
 
 pub(super) async fn get_sim_csv(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let job_id = path.into_inner();
-    let job = match store.get(&job_id) {
+    let job = match store.get_owned(&owner_id, &job_id) {
         Some(j) => j,
         None => {
             return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
@@ -452,27 +509,43 @@ pub(super) async fn get_sim_csv(
 }
 
 pub(super) async fn delete_sim(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let id = path.into_inner();
-    store.delete(&id);
+    if store.get_owned(&owner_id, &id).is_none() {
+        return HttpResponse::NotFound().json(json!({"detail": "Job not found"}));
+    }
+    store.delete_owned(&owner_id, &id);
     crate::simc_runner::cleanup_job_control(&id);
     crate::simc_runner::cleanup_cancelled_job(&id);
     HttpResponse::Ok().json(json!({"status": "deleted"}))
 }
 
-pub(super) async fn get_history_stats(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    let size = store.get_storage_size();
-    let sims = store.list_recent(1000, None, None, false, false, false);
+pub(super) async fn get_history_stats(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
+    let size = store.get_storage_size_owned(&owner_id);
+    let sims = store.list_recent_owned(&owner_id, 1000, None, None, false, false, false);
     HttpResponse::Ok().json(json!({
         "size_bytes": size,
         "count": sims.len(),
     }))
 }
 
-pub(super) async fn clear_history(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    store.clear_history();
+pub(super) async fn clear_history(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
+    store.clear_history_owned(&owner_id);
     HttpResponse::Ok().json(json!({"status": "cleared"}))
 }
 
@@ -484,12 +557,16 @@ pub struct LinkSimRequest {
 }
 
 pub(super) async fn link_sim(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     payload: web::Json<LinkSimRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let id = path.into_inner();
-    store.link_character(
+    store.link_character_owned(
+        &owner_id,
         &id,
         payload.region.clone(),
         payload.realm.clone(),
@@ -504,17 +581,25 @@ pub struct PinSimRequest {
 }
 
 pub(super) async fn pin_sim(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     path: web::Path<String>,
     payload: web::Json<PinSimRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
     let id = path.into_inner();
-    store.set_pinned(&id, payload.pinned);
+    store.set_pinned_owned(&owner_id, &id, payload.pinned);
     HttpResponse::Ok().json(json!({"status": "updated", "pinned": payload.pinned}))
 }
 
-pub(super) async fn get_history_characters(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
-    let sims = store.list_recent(10000, None, None, false, false, false);
+pub(super) async fn get_history_characters(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
+    store: web::Data<Arc<dyn JobStorage>>,
+) -> HttpResponse {
+    let owner_id = owner_id(&req, &auth);
+    let sims = store.list_recent_owned(&owner_id, 10000, None, None, false, false, false);
     let mut seen = std::collections::HashSet::new();
     let mut chars = Vec::new();
 
@@ -556,6 +641,126 @@ mod tests {
 
     fn test_store() -> web::Data<Arc<dyn JobStorage>> {
         web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn test_request() -> HttpRequest {
+        actix_web::test::TestRequest::default().to_http_request()
+    }
+
+    fn test_auth() -> web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>> {
+        web::Data::new(Arc::new(
+            crate::server::auth_handlers::BlizzardAuthState::new(
+                None,
+                None,
+                "http://localhost/callback".to_string(),
+                "test-secret".to_string(),
+            ),
+        ))
+    }
+
+    async fn list_sims(
+        query: web::Query<ListSimsQuery>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::list_sims(test_request(), test_auth(), query, store).await
+    }
+    async fn list_related_sims(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::list_related_sims(test_request(), test_auth(), path, store).await
+    }
+    async fn get_sim_status(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::get_sim_status(test_request(), test_auth(), path, store).await
+    }
+    async fn pause_sim(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::pause_sim(test_request(), test_auth(), path, store).await
+    }
+    async fn resume_sim(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::resume_sim(test_request(), test_auth(), path, store).await
+    }
+    async fn cancel_sim(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::cancel_sim(test_request(), test_auth(), path, store).await
+    }
+    async fn get_sim_input(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::get_sim_input(test_request(), test_auth(), path, store).await
+    }
+    async fn get_sim_raw(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::get_sim_raw(test_request(), test_auth(), path, store).await
+    }
+    async fn get_sim_html(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::get_sim_html(test_request(), test_auth(), path, store).await
+    }
+    async fn get_sim_text_output(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::get_sim_text_output(test_request(), test_auth(), path, store).await
+    }
+    async fn get_sim_csv(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::get_sim_csv(test_request(), test_auth(), path, store).await
+    }
+    async fn delete_sim(
+        path: web::Path<String>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::delete_sim(test_request(), test_auth(), path, store).await
+    }
+    async fn get_history_stats(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
+        super::get_history_stats(test_request(), test_auth(), store).await
+    }
+    async fn clear_history(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
+        super::clear_history(test_request(), test_auth(), store).await
+    }
+    async fn link_sim(
+        path: web::Path<String>,
+        payload: web::Json<LinkSimRequest>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::link_sim(test_request(), test_auth(), path, payload, store).await
+    }
+    async fn pin_sim(
+        path: web::Path<String>,
+        payload: web::Json<PinSimRequest>,
+        store: web::Data<Arc<dyn JobStorage>>,
+    ) -> HttpResponse {
+        super::pin_sim(test_request(), test_auth(), path, payload, store).await
+    }
+    async fn get_history_characters(store: web::Data<Arc<dyn JobStorage>>) -> HttpResponse {
+        super::get_history_characters(test_request(), test_auth(), store).await
+    }
+    async fn get_sim_logs(
+        path: web::Path<String>,
+        query: web::Query<LogsQuery>,
+        log_buffer: web::Data<Arc<LogBuffer>>,
+    ) -> HttpResponse {
+        let job_id = path.into_inner();
+        let (lines, next) = log_buffer.get_lines_after(&job_id, query.after);
+        HttpResponse::Ok().json(json!({"lines": lines, "next": next}))
     }
 
     fn make_job(id: &str, status: JobStatus, created_at: &str) -> Job {

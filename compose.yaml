@@ -11,14 +11,15 @@ services:
       FRONTEND_DIR: /app/frontend
       DATA_DIR: /data
       DATA_SEED_DIR: /app/data-seed
-      DATABASE_URL: /data/whylowdps.db
+      DATABASE_URL: /data/whylowdps-multi-user.db
       SIMC_RUNTIME_DIR: /data/simc-runtime
       SIMC_CHANNEL: ${SIMC_CHANNEL:-weekly}
       WHYLOWDPS_DEPLOYMENT: hosted-private
       WHYLOWDPS_SECURE_COOKIES: ${WHYLOWDPS_SECURE_COOKIES:-false}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker or the environment}
-      BLIZZARD_CLIENT_ID: ${BLIZZARD_CLIENT_ID:-}
-      BLIZZARD_CLIENT_SECRET: ${BLIZZARD_CLIENT_SECRET:-}
+      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY:?Set SESSION_ENCRYPTION_KEY in .env.docker or the environment}
+      WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG: ${WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG:?Set the initial admin BattleTag}
+      MAX_JOBS_PER_USER: ${MAX_JOBS_PER_USER:-200}
       MAX_CONCURRENT_SIMULATIONS: ${MAX_CONCURRENT_SIMULATIONS:-2}
       MAX_JOBS: ${MAX_JOBS:-200}
     volumes:

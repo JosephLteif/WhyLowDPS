@@ -11,10 +11,18 @@ import {
   isNetworkUnavailableError,
   saveBlizzardCredentialProfile,
   setSessionToken,
+  switchBrowserUserScope,
 } from '../lib/api';
 
+export type AuthUser = {
+  id: string;
+  battletag: string;
+  role: 'admin' | 'member';
+  guest: boolean;
+};
+
 interface AuthContextType {
-  user: { battletag: string } | null;
+  user: AuthUser | null;
   loading: boolean;
   lanAccessRequired: boolean;
   lightMode: boolean;
@@ -34,22 +42,21 @@ const AuthContext = createContext<AuthContextType>({
   enableLightMode: () => {},
   disableLightMode: () => {},
   login: async () => {},
-  logout: () => {
-  },
+  logout: () => {},
   checkCredentialsStatus: async () => ({ globally_configured: false }),
   setSystemCredentials: async () => false,
 });
 
-let authCheckInFlight: Promise<{ battletag: string } | null> | null = null;
+let authCheckInFlight: Promise<AuthUser | null> | null = null;
 const LIGHT_MODE_KEY = 'whylowdps_light_mode';
 
-async function fetchCurrentUserOnce(): Promise<{ battletag: string } | null> {
+async function fetchCurrentUserOnce(): Promise<AuthUser | null> {
   if (!authCheckInFlight) {
     authCheckInFlight = (async () => {
       try {
-        const data = await fetchJson<{ battletag: string }>(`${API_URL}/api/auth/me`);
+        const data = await fetchJson<AuthUser>(`${API_URL}/api/auth/me`);
         if (data?.battletag) {
-          return { battletag: data.battletag };
+          return data;
         }
         return null;
       } finally {
@@ -61,7 +68,7 @@ async function fetchCurrentUserOnce(): Promise<{ battletag: string } | null> {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<{ battletag: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [lanAccessRequired, setLanAccessRequired] = useState(false);
   const [lightMode, setLightMode] = useState(false);
@@ -99,8 +106,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           input instanceof Request ? input.url : input.toString(),
           window.location.href
         );
-        if (requestUrl.origin === window.location.origin && requestUrl.pathname.startsWith('/api/')) {
-          const responseText = await response.clone().text().catch(() => '');
+        if (
+          requestUrl.origin === window.location.origin &&
+          requestUrl.pathname.startsWith('/api/')
+        ) {
+          const responseText = await response
+            .clone()
+            .text()
+            .catch(() => '');
           if (responseText.includes('LAN pairing required')) {
             window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));
           }
@@ -117,10 +130,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const checkAuth = async () => {
+      if (isDesktop) {
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const storedToken = await Promise.race([
+            invoke<string | null>('load_session_token'),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+          ]);
+          if (storedToken) setSessionToken(storedToken);
+        } catch (err) {
+          console.error('Failed to restore desktop session:', err);
+        }
+      }
       const lanBrowser = isLanBrowser();
-      const storedLanAccessRequired =
-        localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1';
+      const storedLanAccessRequired = localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1';
       if (lightMode && !lanBrowser && !storedLanAccessRequired) {
+        await switchBrowserUserScope('local-guest');
         setSessionToken(null);
         setUser(null);
         setLanAccessRequired(false);
@@ -133,7 +158,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const data = await fetchCurrentUserOnce();
-        setUser(data);
+        if (data) await switchBrowserUserScope(data.id);
+        setUser(data?.guest ? null : data);
+        if (data?.guest) {
+          localStorage.setItem(LIGHT_MODE_KEY, '1');
+          setLightMode(true);
+        }
         localStorage.removeItem(LAN_ACCESS_REQUIRED_STORAGE_KEY);
         setLanAccessRequired(false);
       } catch (err: any) {
@@ -144,9 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSessionToken(null);
         setUser(null);
         const pairingRequired =
-          !isDesktop &&
-          err?.status === 401 &&
-          err?.code === 'LAN_ACCESS_REQUIRED';
+          !isDesktop && err?.status === 401 && err?.code === 'LAN_ACCESS_REQUIRED';
         if (pairingRequired) localStorage.setItem(LAN_ACCESS_REQUIRED_STORAGE_KEY, '1');
         setLanAccessRequired((current) => current || pairingRequired);
       } finally {
@@ -172,15 +200,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [lightMode]);
 
   const enableLightMode = useCallback(() => {
-    if (
-      isLanBrowser() ||
-      localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1'
-    ) {
+    if (isLanBrowser() || localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1') {
       localStorage.setItem(LAN_ACCESS_REQUIRED_STORAGE_KEY, '1');
       setLanAccessRequired(true);
       return;
     }
     localStorage.setItem(LIGHT_MODE_KEY, '1');
+    void switchBrowserUserScope('local-guest');
     setSessionToken(null);
     setUser(null);
     setLightMode(true);
@@ -250,7 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       window.location.assign(url);
     },
-    [],
+    []
   );
 
   const startPolling = (flowId: string) => {
@@ -262,10 +288,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const { token } = payload as { token?: string };
           if (token) {
             setSessionToken(token);
+            if (isDesktop) {
+              const { invoke } = await import('@tauri-apps/api/core');
+              await invoke('save_session_token', { token });
+            }
             clearInterval(interval);
             // Refresh user state
-            const data = await fetchJson<{ battletag: string }>(`${API_URL}/api/auth/me`);
-            setUser({ battletag: data.battletag });
+            const data = await fetchJson<AuthUser>(`${API_URL}/api/auth/me`);
+            await switchBrowserUserScope(data.id);
+            setUser(data);
           }
         } else {
           const message =
@@ -284,21 +315,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => clearInterval(interval), 5 * 60 * 1000);
   };
 
-  const logout = useCallback(() => {
-    const performLocalLogout = () => {
-      navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_USER_CACHE' });
-      setSessionToken(null);
-      setUser(null);
-      window.location.href = '/';
-    };
+  const logout = useCallback(
+    (switchAccount = false) => {
+      const performLocalLogout = () => {
+        navigator.serviceWorker?.controller?.postMessage({ type: 'CLEAR_USER_CACHE' });
+        setSessionToken(null);
+        if (isDesktop) {
+          void import('@tauri-apps/api/core').then(({ invoke }) =>
+            invoke('save_session_token', { token: null })
+          );
+        }
+        setUser(null);
+        if (switchAccount) {
+          void login();
+        } else {
+          window.location.href = '/';
+        }
+      };
 
-    fetchJson(`${API_URL}/api/auth/logout`, { method: 'POST' })
-      .then(performLocalLogout)
-      .catch((err) => {
-        console.error('Backend logout failed:', err);
-        performLocalLogout();
-      });
-  }, []);
+      fetchJson(`${API_URL}/api/auth/logout`, { method: 'POST' })
+        .then(performLocalLogout)
+        .catch((err) => {
+          console.error('Backend logout failed:', err);
+          performLocalLogout();
+        });
+    },
+    [login]
+  );
 
   return (
     <AuthContext.Provider

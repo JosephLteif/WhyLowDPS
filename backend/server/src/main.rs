@@ -146,7 +146,7 @@ async fn main() {
     println!("Loading game data from {:?}", data_dir);
     game_data::load(&data_dir);
 
-    let _db_url = env_or("DATABASE_URL", "whylowdps.db");
+    let _db_url = env_or("DATABASE_URL", "whylowdps-multi-user.db");
     println!("Starting WhyLowDps server on {}:{}", bind_host, port);
 
     let storage: Arc<dyn JobStorage> = {

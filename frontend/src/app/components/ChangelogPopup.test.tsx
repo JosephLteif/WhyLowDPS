@@ -18,9 +18,9 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Use hosted Light mode without signing in' })
+      screen.getByRole('heading', { level: 3, name: 'Use separate accounts by default' })
     ).toBeInTheDocument();
-    expect(screen.getByText(/without a Battle.net session/)).toBeInTheDocument();
+    expect(screen.getByText(/keeps each Battle.net user/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
     expect(screen.getByRole('button', { name: /^Show changelog item 5$/ })).toBeInTheDocument();
 

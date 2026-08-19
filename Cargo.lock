@@ -7003,6 +7003,7 @@ version = "3.8.0"
 dependencies = [
  "chrono",
  "discord-rich-presence",
+ "keyring",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
@@ -7018,6 +7019,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "url",
+ "uuid 1.23.5",
  "whylowdps-core",
  "windows 0.58.0",
  "zip 2.4.2",

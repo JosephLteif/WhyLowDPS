@@ -62,6 +62,55 @@ async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), S
     Ok(())
 }
 
+const SESSION_KEYRING_SERVICE: &str = "WhyLowDPS Session";
+const SESSION_KEYRING_ACCOUNT: &str = "active-bnet-session";
+const SESSION_KEYRING_ENCRYPTION_ACCOUNT: &str = "session-encryption-key";
+
+fn install_session_encryption_key() -> Result<(), String> {
+    let entry = keyring::Entry::new(SESSION_KEYRING_SERVICE, SESSION_KEYRING_ENCRYPTION_ACCOUNT)
+        .map_err(|error| error.to_string())?;
+    let key = match entry.get_password() {
+        Ok(key) => key,
+        Err(keyring::Error::NoEntry) => {
+            let key = format!("{}{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+            entry
+                .set_password(&key)
+                .map_err(|error| error.to_string())?;
+            key
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    std::env::set_var("SESSION_ENCRYPTION_KEY", key);
+    Ok(())
+}
+
+#[tauri::command]
+fn load_session_token() -> Result<Option<String>, String> {
+    match keyring::Entry::new(SESSION_KEYRING_SERVICE, SESSION_KEYRING_ACCOUNT)
+        .map_err(|error| error.to_string())?
+        .get_password()
+    {
+        Ok(token) => Ok(Some(token)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_session_token(token: Option<String>) -> Result<(), String> {
+    let entry = keyring::Entry::new(SESSION_KEYRING_SERVICE, SESSION_KEYRING_ACCOUNT)
+        .map_err(|error| error.to_string())?;
+    match token {
+        Some(token) => entry
+            .set_password(&token)
+            .map_err(|error| error.to_string()),
+        None => match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(error.to_string()),
+        },
+    }
+}
+
 #[tauri::command]
 fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     app.opener()
@@ -109,7 +158,7 @@ fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 const BACKUP_FORMAT_VERSION: u32 = 1;
-const BACKUP_DB_FILE: &str = "whylowdps.db";
+const BACKUP_DB_FILE: &str = "whylowdps-multi-user.db";
 const BACKUP_PREFS_FILE: &str = "desktop_prefs.json";
 const BACKUP_FRONTEND_FILE: &str = "frontend-preferences.json";
 const PENDING_DB_FILE: &str = "whylowdps-restore-pending.db";
@@ -1062,6 +1111,8 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             open_auth_window,
+            load_session_token,
+            save_session_token,
             open_external_url,
             open_data_dir,
             read_import_file,
@@ -1088,6 +1139,8 @@ fn main() {
             download_and_install_release
         ])
         .setup(|app| {
+            install_session_encryption_key()
+                .map_err(|error| format!("Failed to initialize session encryption: {error}"))?;
             let app_data_dir = app
                 .path()
                 .app_data_dir()
@@ -1280,7 +1333,7 @@ fn main() {
             let simc_dir = app_data_dir.join("simc");
             let simc_bin = simc_dir.join(simc_binary_name());
 
-            let db_path = app_data_dir.join("whylowdps.db");
+            let db_path = app_data_dir.join(BACKUP_DB_FILE);
             let db_path_str = db_path.to_string_lossy().to_string();
 
             let simc_runtime = app.state::<AppClosePreferencesState>().simc_runtime.clone();

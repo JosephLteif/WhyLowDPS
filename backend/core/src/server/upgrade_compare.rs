@@ -367,11 +367,18 @@ pub(super) async fn get_upgrade_compare_combo_count(
 }
 
 pub(super) async fn create_upgrade_compare_sim(
+    http_req: actix_web::HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     req: web::Json<UpgradeCompareRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
     simc_path: web::Data<PathBuf>,
     log_buffer: web::Data<Arc<LogBuffer>>,
 ) -> HttpResponse {
+    let owner_id = crate::server::auth_handlers::request_owner_id(
+        &http_req,
+        auth.get_ref(),
+        store.get_ref().as_ref(),
+    );
     let simc_input = crate::talent_normalize::normalize_simc_talents(&apply_talent_override(
         &req.simc_input,
         &req.options.talents,
@@ -411,7 +418,7 @@ pub(super) async fn create_upgrade_compare_sim(
 
     let generated_input = inject_expert_fields(&generated_input, &req.options);
 
-    if let Some(resp) = validate_batch(&req.options.batch_id, store.get_ref().as_ref()) {
+    if let Some(resp) = validate_batch(&owner_id, &req.options.batch_id, store.get_ref().as_ref()) {
         return resp;
     }
 
@@ -422,6 +429,7 @@ pub(super) async fn create_upgrade_compare_sim(
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.owner_id = owner_id;
     job.options = Some(req.options.to_json_with_sim_type("top_gear"));
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();
@@ -491,6 +499,30 @@ mod tests {
 
     fn test_store() -> web::Data<Arc<dyn JobStorage>> {
         web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    async fn create_upgrade_compare_sim(
+        req: web::Json<UpgradeCompareRequest>,
+        store: web::Data<Arc<dyn JobStorage>>,
+        simc_path: web::Data<PathBuf>,
+        log_buffer: web::Data<Arc<LogBuffer>>,
+    ) -> HttpResponse {
+        super::create_upgrade_compare_sim(
+            actix_web::test::TestRequest::default().to_http_request(),
+            web::Data::new(Arc::new(
+                crate::server::auth_handlers::BlizzardAuthState::new(
+                    None,
+                    None,
+                    "http://localhost/callback".to_string(),
+                    "test-secret".to_string(),
+                ),
+            )),
+            req,
+            store,
+            simc_path,
+            log_buffer,
+        )
+        .await
     }
 
     fn test_log_buffer() -> web::Data<Arc<LogBuffer>> {

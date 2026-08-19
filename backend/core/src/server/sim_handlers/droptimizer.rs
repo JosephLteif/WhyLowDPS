@@ -1,11 +1,18 @@
 use super::*;
 
 pub(in crate::server) async fn create_droptimizer_sim(
+    http_req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     req: web::Json<DroptimizerRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
     simc_path: web::Data<PathBuf>,
     log_buffer: web::Data<Arc<LogBuffer>>,
 ) -> HttpResponse {
+    let owner_id = crate::server::auth_handlers::request_owner_id(
+        &http_req,
+        auth.get_ref(),
+        store.get_ref().as_ref(),
+    );
     let simc_input = apply_spec_override(
         &apply_talent_override(&req.simc_input, &req.options.talents),
         &req.options.spec_override,
@@ -39,7 +46,7 @@ pub(in crate::server) async fn create_droptimizer_sim(
     };
     generated_input.push_str(&format!("\nthreads={}\n", resolved_threads));
 
-    if let Some(resp) = validate_batch(&req.options.batch_id, store.get_ref().as_ref()) {
+    if let Some(resp) = validate_batch(&owner_id, &req.options.batch_id, store.get_ref().as_ref()) {
         return resp;
     }
 
@@ -50,6 +57,7 @@ pub(in crate::server) async fn create_droptimizer_sim(
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.owner_id = owner_id;
     job.options = Some(req.options.to_json_with_sim_type("droptimizer"));
     let job_id = job.id.clone();
     let created_at = job.created_at.clone();

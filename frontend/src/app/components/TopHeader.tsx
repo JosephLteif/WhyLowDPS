@@ -425,12 +425,26 @@ export default function TopHeader() {
                     >
                       My Characters
                     </Link>
+                    {user.role === 'admin' && (
+                      <Link
+                        href="/admin/users"
+                        className="text-[13px] text-zinc-300 transition-colors hover:text-white"
+                      >
+                        Manage Users
+                      </Link>
+                    )}
                   </div>
                   <button
                     onClick={() => logout(true)}
                     className="text-[14px] font-medium text-zinc-300 transition-colors hover:text-white"
                   >
-                    Logout
+                    Switch account
+                  </button>
+                  <button
+                    onClick={() => logout(false)}
+                    className="text-[14px] font-medium text-zinc-400 transition-colors hover:text-white"
+                  >
+                    Log out
                   </button>
                 </div>
               ) : (

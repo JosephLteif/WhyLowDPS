@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -16,9 +16,16 @@ pub struct SaveProfileRequest {
 }
 
 pub async fn save_character_profile(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     body: web::Json<SaveProfileRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
+    let owner_id = crate::server::auth_handlers::request_owner_id(
+        &req,
+        auth.get_ref(),
+        store.get_ref().as_ref(),
+    );
     // Use deterministic ID based on character identity to avoid duplicates
     let id = format!(
         "{}-{}-{}",
@@ -39,7 +46,7 @@ pub async fn save_character_profile(
         simc_input: body.simc_input.clone(),
         created_at: chrono::Utc::now().to_rfc3339(),
     };
-    store.save_character_profile(profile.clone());
+    store.save_character_profile_owned(&owner_id, profile.clone());
     HttpResponse::Ok().json(profile)
 }
 
@@ -51,10 +58,18 @@ pub struct ListProfilesQuery {
 }
 
 pub async fn list_character_profiles(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     query: web::Query<ListProfilesQuery>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
-    let profiles = store.list_character_profiles(
+    let owner_id = crate::server::auth_handlers::request_owner_id(
+        &req,
+        auth.get_ref(),
+        store.get_ref().as_ref(),
+    );
+    let profiles = store.list_character_profiles_owned(
+        &owner_id,
         query.name.as_deref(),
         query.realm.as_deref(),
         query.region.as_deref(),
@@ -63,10 +78,17 @@ pub async fn list_character_profiles(
 }
 
 pub async fn delete_character_profile(
+    req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     id: web::Path<String>,
     store: web::Data<Arc<dyn JobStorage>>,
 ) -> HttpResponse {
-    store.delete_character_profile(&id);
+    let owner_id = crate::server::auth_handlers::request_owner_id(
+        &req,
+        auth.get_ref(),
+        store.get_ref().as_ref(),
+    );
+    store.delete_character_profile_owned(&owner_id, &id);
     HttpResponse::Ok().json(serde_json::json!({ "status": "deleted" }))
 }
 
@@ -75,10 +97,22 @@ mod tests {
     use super::*;
     use crate::storage::{JobStorage, MemoryStorage};
     use actix_web::body::to_bytes;
+    use actix_web::test::TestRequest;
     use serde_json::Value;
 
     fn test_store() -> web::Data<Arc<dyn JobStorage>> {
         web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn test_auth() -> web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>> {
+        web::Data::new(Arc::new(
+            crate::server::auth_handlers::BlizzardAuthState::new(
+                None,
+                None,
+                "http://localhost/callback".to_string(),
+                "test-secret".to_string(),
+            ),
+        ))
     }
 
     #[actix_web::test]
@@ -93,7 +127,13 @@ mod tests {
             simc_input: "shaman=Thrall".to_string(),
         };
 
-        let resp = save_character_profile(web::Json(req), store.clone()).await;
+        let resp = save_character_profile(
+            TestRequest::default().to_http_request(),
+            test_auth(),
+            web::Json(req),
+            store.clone(),
+        )
+        .await;
         assert_eq!(resp.status(), 200);
         let bytes = to_bytes(resp.into_body()).await.expect("save body");
         let saved: Value = serde_json::from_slice(&bytes).expect("saved json");
@@ -103,6 +143,8 @@ mod tests {
         );
 
         let listed = list_character_profiles(
+            TestRequest::default().to_http_request(),
+            test_auth(),
             web::Query(ListProfilesQuery {
                 name: Some("thrall".to_string()),
                 realm: Some("area 52".to_string()),
@@ -120,10 +162,18 @@ mod tests {
             .expect("saved id")
             .to_string();
 
-        let deleted = delete_character_profile(web::Path::from(id), store.clone()).await;
+        let deleted = delete_character_profile(
+            TestRequest::default().to_http_request(),
+            test_auth(),
+            web::Path::from(id),
+            store.clone(),
+        )
+        .await;
         assert_eq!(deleted.status(), 200);
 
         let listed_after = list_character_profiles(
+            TestRequest::default().to_http_request(),
+            test_auth(),
             web::Query(ListProfilesQuery {
                 name: None,
                 realm: None,
@@ -161,7 +211,13 @@ mod tests {
             simc_input: "mage=Jaina".to_string(),
         };
 
-        let first_resp = save_character_profile(web::Json(first), store.clone()).await;
+        let first_resp = save_character_profile(
+            TestRequest::default().to_http_request(),
+            test_auth(),
+            web::Json(first),
+            store.clone(),
+        )
+        .await;
         let first_bytes = to_bytes(first_resp.into_body()).await.expect("first body");
         let first_saved: Value = serde_json::from_slice(&first_bytes).expect("first json");
         assert_eq!(
@@ -169,10 +225,18 @@ mod tests {
             Some("us-malganis-kael")
         );
 
-        let second_resp = save_character_profile(web::Json(second), store.clone()).await;
+        let second_resp = save_character_profile(
+            TestRequest::default().to_http_request(),
+            test_auth(),
+            web::Json(second),
+            store.clone(),
+        )
+        .await;
         assert_eq!(second_resp.status(), 200);
 
         let listed = list_character_profiles(
+            TestRequest::default().to_http_request(),
+            test_auth(),
             web::Query(ListProfilesQuery {
                 name: None,
                 realm: None,

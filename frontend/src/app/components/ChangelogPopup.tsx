@@ -28,17 +28,18 @@ type ReleaseNote = {
 const releaseNotes: ReleaseNote[] = [
   {
     category: 'feature',
-    title: 'Use hosted Light mode without signing in',
+    title: 'Use separate accounts by default',
     body: [
       {
         type: 'paragraph',
-        text: 'Hosted users can now continue in Light mode and use simulations, shared game-data catalogs, results, and raid expansion browsing without a Battle.net session.',
+        text: 'WhyLowDPS now keeps each Battle.net user’s simulations, routes, profiles, history, and browser state separate in both the desktop app and hosted mode.',
       },
       {
         type: 'list',
         items: [
-          'Account-specific features remain protected and still require authentication.',
-          'The Raids page now includes expansion filtering and public artwork fallbacks when hosted image data is unavailable.',
+          'Switch account signs out the current user and starts a fresh Battle.net login while normal sessions remain signed in across restarts.',
+          'Hosted administrators can allow users by BattleTag, assign administrators, disable access, and revoke active sessions.',
+          'Desktop Light mode remains available as a persistent device-local guest account.',
         ],
       },
     ],

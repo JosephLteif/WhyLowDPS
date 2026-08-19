@@ -1347,6 +1347,7 @@ fn build_heatmap_profileset_input(
 }
 
 pub(super) async fn create_trinket_tier_heatmap_sim(
+    owner_id: String,
     simc_input: String,
     class_name: String,
     matrix_flags: (bool, bool),
@@ -1388,7 +1389,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
     };
     generated_input.push_str(&format!("\nthreads={}\n", resolved_threads));
 
-    if let Some(resp) = validate_batch(&options.batch_id, store.get_ref().as_ref()) {
+    if let Some(resp) = validate_batch(&owner_id, &options.batch_id, store.get_ref().as_ref()) {
         return resp;
     }
 
@@ -1399,6 +1400,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.owner_id = owner_id;
     job.options = Some(options.to_json_with_sim_type("trinket_tier_heatmap"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();

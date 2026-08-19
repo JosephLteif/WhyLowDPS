@@ -41,11 +41,13 @@ published for `linux-x64`.
    - Set `WHYLOWDPS_HOST_IP` to the host's private IPv4 address.
    - Set `WHYLOWDPS_PORT` to the client-facing port, normally `8000`.
    - Replace `JWT_SECRET` with a unique random value of at least 32 characters.
-     Keep it with the deployment and its backups; changing it makes stored
-     hosted credentials unreadable. `openssl rand -hex 32` can generate a
-     suitable value.
+     Keep it with the deployment and its backups; changing it invalidates
+     signed login tokens. `openssl rand -hex 32` can generate a suitable value.
+   - Set a separate stable `SESSION_ENCRYPTION_KEY` and set
+     `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` to the first instance administrator.
    - Leave `WHYLOWDPS_SECURE_COOKIES=false` for the direct LAN HTTP setup.
-   - Optionally set Blizzard credentials now, or enter them in the hosted app.
+   - Blizzard application credentials are entered in the app at runtime; they
+     are not stored in this environment file.
 
 4. Pull and start the pinned release:
 
@@ -66,12 +68,16 @@ published for `linux-x64`.
    ```
 
 6. Open `http://<WHYLOWDPS_HOST_IP>:<WHYLOWDPS_PORT>` from a browser on the
-   trusted LAN. Continue in Light mode, or configure Battle.net using the exact
-   callback shown by the app.
+   trusted LAN and sign in with the bootstrap administrator BattleTag. Add other
+   allowed accounts from **Manage Users**.
 
 The SQLite database, synchronized data, caches, saved encrypted credentials,
 and downloaded SimC runtime live in the Docker-managed `whylowdps-data` volume.
 Do not delete that volume during routine recreation, updates, or rollback.
+
+Multi-user releases use `/data/whylowdps-multi-user.db`. An earlier
+`/data/whylowdps.db` is intentionally left untouched as a legacy backup; old
+personal records are not imported automatically.
 
 ## Configuration reference
 
@@ -81,11 +87,12 @@ Do not delete that volume during routine recreation, updates, or rollback.
 | `WHYLOWDPS_HOST_IP` | Private host address on which Docker publishes the app port. |
 | `WHYLOWDPS_PORT` | Client-facing port; defaults to `8000`. |
 | `JWT_SECRET` | Required encryption/signing secret; use at least 32 random characters and keep it stable. |
+| `SESSION_ENCRYPTION_KEY` | Required encryption key for persistent Battle.net sessions. Keep it stable and backed up. |
+| `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` | BattleTag allowed to create the first administrator when the user table is empty. |
 | `WHYLOWDPS_SECURE_COOKIES` | Use `false` for direct LAN HTTP and `true` only behind trusted HTTPS. |
-| `BLIZZARD_CLIENT_ID` / `BLIZZARD_CLIENT_SECRET` | Optional server-configured Battle.net client. Runtime entry is also supported. |
 | `SIMC_CHANNEL` | Companion runtime channel, normally `weekly` or `nightly`. |
 | `MAX_CONCURRENT_SIMULATIONS` | Maximum simulations running at the same time. |
-| `MAX_JOBS` | Number of job records retained by the hosted service. |
+| `MAX_JOBS_PER_USER` | Number of unpinned job records retained independently for each user. |
 
 ## Updates and rollback
 
@@ -139,23 +146,22 @@ and desktop update behavior.
 
 ## Hosted limitations
 
-This deployment is intentionally single-user and single-replica. The existing
-SQLite schema does not owner-scope jobs, routes, or character profiles, so the
-service must not be opened to multiple accounts without an ownership migration
-and an authenticated-endpoint audit.
+This deployment is intentionally single-replica and supports a small trusted
+group of users. SQLite owner-scopes simulations, routes, character profiles,
+history, and OAuth sessions. Use the administrator page to allow BattleTags,
+disable users, assign roles, or revoke sessions. The default per-user history
+limit is controlled by `MAX_JOBS_PER_USER`.
 
-Hosted mode accepts Blizzard credentials from the initial synchronization form
-or from the optional environment variables. Runtime-entered credentials are
-encrypted with `JWT_SECRET` and stored in `/data/.blizzard-credential-secrets.json`;
-the secret is never returned to the browser. Container restarts invalidate active
-OAuth sessions because access tokens are held in process memory, but saved
-credentials remain available.
+On first launch, enter a Blizzard application client ID and secret in the app.
+The bootstrap administrator can later add, rename, rotate, or remove credential
+profiles from Settings without restarting the container. Secrets are encrypted
+at rest and are never returned to browsers; unauthenticated users can only see
+profile names and public client IDs and select which profile to use. After the
+first user is created, credential changes require an administrator session.
 
-Hosted mode supports credential-free Light mode for simulations, shared game
-data, and simulation results. Account-scoped features such as Battle.net
-characters, wishlist, saved profiles, and settings still require authentication
-and remain unavailable in Light mode. Public Light mode writes are restricted to
-same-origin requests.
+OAuth access tokens are encrypted with `SESSION_ENCRYPTION_KEY` before they are
+stored in SQLite, and active sessions survive container restarts. Hosted Light
+mode is disabled: every hosted user must sign in and be on the allowlist.
 
 Direct LAN HTTP is not a secure browser context on most phones and browsers, so
 secure cookies, service-worker installation, and native PWA installation are not
@@ -167,7 +173,7 @@ An installable PWA requires an HTTPS certificate trusted by the browser and
 phone. The baseline Compose file does not provide a certificate or reverse
 proxy. If the administrator adds a trusted HTTPS proxy:
 
-- Keep the deployment private and single-user.
+- Keep the deployment private and limit access to trusted users.
 - Set `WHYLOWDPS_SECURE_COOKIES=true` and recreate the service.
 - Preserve the browser-facing hostname and HTTPS scheme in the forwarded
   request.

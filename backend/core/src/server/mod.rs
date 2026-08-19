@@ -93,6 +93,35 @@ fn lan_pairing_public_path(path: &str) -> bool {
     matches!(path, "/api/lan/pair" | "/api/lan/pair/consume")
 }
 
+fn runtime_credentials_public_request(req: &ServiceRequest) -> bool {
+    if req.path() != "/api/auth/bnet/credential-profiles" {
+        return false;
+    }
+    if *req.method() == Method::GET {
+        return true;
+    }
+    if *req.method() != Method::POST || !auth_handlers::hosted_private_deployment() {
+        return false;
+    }
+    let has_users = req
+        .app_data::<web::Data<Arc<dyn JobStorage>>>()
+        .is_some_and(|store| !store.list_users().is_empty());
+    !has_users && same_origin_request(req)
+}
+
+fn admin_security_path(path: &str, method: &Method) -> bool {
+    path.starts_with("/api/admin/")
+        || (*method != Method::GET
+            && (path == "/api/config"
+                || path == "/api/system/blizzard/credentials"
+                || path.starts_with("/api/auth/bnet/credential-profiles")
+                || path == "/api/data/sync"
+                || path == "/api/data/sync-dungeons"
+                || path == "/api/data/files/open-directory"
+                || path == "/api/data/files/missing/download"
+                || (path.starts_with("/api/data/files/") && path.ends_with("/download"))))
+}
+
 fn public_light_mode_request(req: &ServiceRequest) -> bool {
     let path = req.path();
     let method = req.method();
@@ -220,6 +249,12 @@ where
             return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
         }
 
+        if public_security_path(req.path()) {
+            return next.call(req).await;
+        }
+    }
+
+    if runtime_credentials_public_request(&req) {
         return next.call(req).await;
     }
 
@@ -227,7 +262,10 @@ where
         return next.call(req).await;
     }
 
-    if public_light_mode_request(&req) {
+    if !lan_pairing
+        && !auth_handlers::hosted_private_deployment()
+        && public_light_mode_request(&req)
+    {
         let state_changing = matches!(
             *req.method(),
             Method::POST | Method::PUT | Method::PATCH | Method::DELETE
@@ -238,20 +276,31 @@ where
         return next.call(req).await;
     }
 
-    if req.path() == "/api/auth/bnet/credential-profiles" && *req.method() == Method::POST {
-        if !same_origin_request(&req) {
-            return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
-        }
-        return next.call(req).await;
-    }
-
     let auth_state = req
         .app_data::<web::Data<Arc<auth_handlers::BlizzardAuthState>>>()
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("auth state unavailable"))?;
-    if auth_handlers::verify_jwt_for_state(req.request(), auth_state.get_ref()).is_none() {
+    let claims = req
+        .app_data::<web::Data<Arc<dyn JobStorage>>>()
+        .and_then(|store| {
+            auth_handlers::verify_active_session(
+                req.request(),
+                auth_state.get_ref(),
+                store.get_ref().as_ref(),
+            )
+        })
+        .or_else(|| {
+            req.app_data::<web::Data<Arc<dyn JobStorage>>>()
+                .is_none()
+                .then(|| auth_handlers::verify_jwt_for_state(req.request(), auth_state.get_ref()))
+                .flatten()
+        });
+    let Some(claims) = claims else {
         return Err(actix_web::error::ErrorUnauthorized(
             "authentication required",
         ));
+    };
+    if admin_security_path(req.path(), req.method()) && claims.role != "admin" {
+        return Err(actix_web::error::ErrorForbidden("admin access required"));
     }
 
     let state_changing = matches!(
@@ -524,6 +573,8 @@ mod tests {
             &auth_handlers::Claims {
                 sub: "Tester#1".to_string(),
                 session_id: "session-1".to_string(),
+                battletag: "Tester#1".to_string(),
+                role: "member".to_string(),
                 session_epoch: None,
                 exp: (chrono::Utc::now().timestamp() + 3600) as usize,
             },
@@ -795,24 +846,21 @@ pub async fn start_with_storage_bind_options(
         )
         .unwrap_or_else(|error| panic!("unsafe JWT configuration: {error}"));
 
+        let credential_encryption_secret = std::env::var("SESSION_ENCRYPTION_KEY")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| jwt_secret.clone());
         let blizzard_credential_secrets =
             web::Data::new(auth_handlers::create_blizzard_credential_secret_store(
                 store_data.get_ref().clone(),
-                &jwt_secret,
+                &credential_encryption_secret,
             ));
-
-        let client_id = std::env::var("BLIZZARD_CLIENT_ID")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
 
         println!("Blizzard OAuth callback is derived from the request IP and port");
 
         let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
-            client_id,
-            client_secret,
+            None,
+            None,
             bnet_redirect,
             jwt_secret,
         )));
@@ -959,6 +1007,18 @@ pub async fn start_with_storage_bind_options(
                 .route(
                     "/api/user/blizzard/test",
                     web::post().to(auth_handlers::test_blizzard_creds),
+                )
+                .route(
+                    "/api/admin/users",
+                    web::get().to(auth_handlers::list_hosted_users),
+                )
+                .route(
+                    "/api/admin/users",
+                    web::post().to(auth_handlers::create_hosted_user),
+                )
+                .route(
+                    "/api/admin/users/{id}",
+                    web::patch().to(auth_handlers::update_hosted_user),
                 )
                 .route(
                     "/api/data/status",

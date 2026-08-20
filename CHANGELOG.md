@@ -26,7 +26,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 - Removing a paired LAN device immediately invalidates its session and redirects that browser to a QR scanner for a new pairing.
 - Docker hosting now derives the web origin and Battle.net callback from the address and port used by the instance; health-check and backup scripts verify operations and produce recoverable archives with SHA-256 hashes.
 - The public site and hosting guides now explain the desktop, hosted, PWA, and trusted-LAN paths more clearly, with responsive layouts for smaller screens.
-- Tagged releases now health-check and publish versioned, minor, stable, and latest Docker images, then attach hosting configuration, documentation, checksums, and image references.
+- Tagged releases now health-check and publish versioned, minor, and latest Docker images, then attach hosting configuration, documentation, checksums, and image references.
 - Hosted deployments use configurable HTTPS Battle.net callback and web-origin settings, while game-data and SimulationCraft runtime refreshes validate staged data and retain the last-known-good state during degraded season rollovers.
 
 ### Fixed

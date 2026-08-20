@@ -23,13 +23,13 @@ test("Docker environment example does not select the image tag", () => {
   assert.match(environment, /^WHYLOWDPS_HOST_IP=/m);
 });
 
-test("release workflow publishes latest and records rollback references", () => {
+test("release workflow publishes latest and versioned tags and records rollback references", () => {
   const workflow = readRepositoryFile(".github/workflows/release.yml");
 
   assert.match(workflow, /type=semver,pattern=\{\{version\}\}/);
   assert.match(workflow, /type=semver,pattern=\{\{major\}\}\.\{\{minor\}\}/);
-  assert.match(workflow, /type=raw,value=stable/);
   assert.match(workflow, /type=raw,value=latest/);
+  assert.doesNotMatch(workflow, /type=raw,value=stable/);
   assert.match(workflow, /WHYLOWDPS_VERSION=\$\{\{ steps\.meta\.outputs\.version \}\}/);
   assert.match(workflow, /cp \.env\.docker\.example "\$\{BUNDLE_DIR\}\/\.env\.docker\.example"/);
   assert.doesNotMatch(workflow, /sed .*WHYLOWDPS_VERSION/);

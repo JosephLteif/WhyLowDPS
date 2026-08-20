@@ -212,7 +212,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=stable
             type=raw,value=latest
 
       - name: Build private-hosting image

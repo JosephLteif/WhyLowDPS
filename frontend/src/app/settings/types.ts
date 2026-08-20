@@ -29,3 +29,9 @@ export type SettingsStatusMessage = {
   type: 'success' | 'error';
   text: string;
 };
+
+export type DeploymentInfo = {
+  mode?: string;
+  version?: string;
+  revision?: string;
+};

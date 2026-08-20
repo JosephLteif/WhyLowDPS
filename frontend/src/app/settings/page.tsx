@@ -148,7 +148,9 @@ export default function SettingsPage() {
   const [lanDevices, setLanDevices] = useState<LanDevice[]>([]);
   const [lanDevicesLoading, setLanDevicesLoading] = useState(false);
   const [lanDeviceActionId, setLanDeviceActionId] = useState<string | null>(null);
-  const [lanDeviceRemovalCandidate, setLanDeviceRemovalCandidate] = useState<LanDevice | null>(null);
+  const [lanDeviceRemovalCandidate, setLanDeviceRemovalCandidate] = useState<LanDevice | null>(
+    null
+  );
   const [selectedSimcChannel, setSelectedSimcChannelState] = useState<SimcUpdateChannel>('weekly');
   const [selectedSimcRuntimeVersion, setSelectedSimcRuntimeVersionState] = useState<string | null>(
     null
@@ -171,6 +173,10 @@ export default function SettingsPage() {
     setSelectedAppVersion,
     loadAppReleases,
     downloadAndInstallLatest,
+    deploymentInfo,
+    dockerReleases,
+    dockerReleaseMetadataStatus,
+    loadDockerReleases,
   } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
 
   useEffect(() => {
@@ -808,7 +814,7 @@ export default function SettingsPage() {
           { id: 'simulation', label: 'Simulation' },
           { id: 'integrations', label: 'Integrations' },
           { id: 'data', label: 'Data Cache' },
-          { id: 'updates', label: 'App Updates' },
+          { id: 'updates', label: isHostedPrivate ? 'Docker Updates' : 'App Updates' },
           { id: 'about', label: 'About' },
         ].map((tab) => (
           <button
@@ -863,8 +869,12 @@ export default function SettingsPage() {
             { tab: 'data' as const, label: 'Game data and backups', status: 'Refresh or restore' },
             {
               tab: 'updates' as const,
-              label: 'App and SimC updates',
-              status: isDesktop ? 'Desktop controls' : 'Release notes',
+              label: isHostedPrivate ? 'Docker image updates' : 'App and SimC updates',
+              status: isHostedPrivate
+                ? 'Latest and versioned images'
+                : isDesktop
+                  ? 'Desktop controls'
+                  : 'Release notes',
             },
           ].map((item) => (
             <button
@@ -886,8 +896,8 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {activeTab === 'integrations' && (
-        isHostedPrivate ? (
+      {activeTab === 'integrations' &&
+        (isHostedPrivate ? (
           <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
             <h2 className="mb-3 text-xl font-semibold text-white">API Integrations</h2>
             <p className="max-w-2xl text-sm leading-relaxed text-zinc-400">
@@ -915,8 +925,7 @@ export default function SettingsPage() {
             saveBlizzardSettings={saveBlizzardSettings}
             blizzardMessage={blizzardMessage}
           />
-        )
-      )}
+        ))}
 
       {activeTab === 'simulation' && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
@@ -1314,14 +1323,19 @@ export default function SettingsPage() {
           downloadSelectedSimcRuntime={downloadSelectedSimcRuntime}
           simcChannelMessage={simcChannelMessage}
           isDesktopRuntime={isDesktop}
+          isHostedPrivateRuntime={isHostedPrivate}
           updateCheckState={updateCheckState}
           appReleases={appReleases}
           appReleaseMetadataStatus={appReleaseMetadataStatus}
+          dockerReleases={dockerReleases}
+          dockerReleaseMetadataStatus={dockerReleaseMetadataStatus}
           selectedAppVersion={selectedAppVersion}
           setSelectedAppVersion={setSelectedAppVersion}
           loadAppReleases={loadAppReleases}
           downloadAndInstallLatest={downloadAndInstallLatest}
           updateMessage={updateMessage}
+          deploymentInfo={deploymentInfo}
+          loadDockerReleases={loadDockerReleases}
         />
       )}
 

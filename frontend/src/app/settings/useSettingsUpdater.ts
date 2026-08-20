@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { API_URL, fetchJson, isDesktop } from '../lib/api';
-import { fetchStableAppReleases, type AppReleaseInfo } from '../lib/updater-release';
-import type { SettingsStatusMessage } from './types';
+import { API_URL, fetchJson, isDesktop, isHostedPrivate } from '../lib/api';
+import {
+  fetchDockerImageReleases,
+  fetchStableAppReleases,
+  type AppReleaseInfo,
+  type DockerImageReleaseInfo,
+} from '../lib/updater-release';
+import type { DeploymentInfo, SettingsStatusMessage } from './types';
 
 type UpdateCheckState = 'idle' | 'checking' | 'installing';
 
@@ -14,9 +19,15 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
   const [updateCheckState, setUpdateCheckState] = useState<UpdateCheckState>('idle');
   const [updateMessage, setUpdateMessage] = useState<SettingsStatusMessage | null>(null);
   const [appReleases, setAppReleases] = useState<AppReleaseInfo[]>([]);
-  const [appReleaseMetadataStatus, setAppReleaseMetadataStatus] =
-    useState<'available' | 'rate_limited' | 'unavailable'>('unavailable');
+  const [appReleaseMetadataStatus, setAppReleaseMetadataStatus] = useState<
+    'available' | 'rate_limited' | 'unavailable'
+  >('unavailable');
   const [selectedAppVersion, setSelectedAppVersion] = useState('');
+  const [deploymentInfo, setDeploymentInfo] = useState<DeploymentInfo | null>(null);
+  const [dockerReleases, setDockerReleases] = useState<DockerImageReleaseInfo[]>([]);
+  const [dockerReleaseMetadataStatus, setDockerReleaseMetadataStatus] = useState<
+    'available' | 'rate_limited' | 'unavailable'
+  >('unavailable');
 
   useEffect(() => {
     const onUpdaterStatus = (event: Event) => {
@@ -83,14 +94,27 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     setSelectedAppVersion((current) =>
       current && releases.some((release) => release.version === current)
         ? current
-        : releases[0]?.version || '',
+        : releases[0]?.version || ''
     );
   }, []);
 
+  const loadDockerReleases = useCallback(async (options?: { forceRefresh?: boolean }) => {
+    const result = await fetchDockerImageReleases(options);
+    setDockerReleases(result.releases);
+    setDockerReleaseMetadataStatus(result.metadataStatus);
+  }, []);
+
   useEffect(() => {
-    if (!isDesktop) return;
-    void loadAppReleases();
-  }, [loadAppReleases]);
+    if (isDesktop) void loadAppReleases();
+    if (isHostedPrivate) void loadDockerReleases();
+  }, [loadAppReleases, loadDockerReleases]);
+
+  useEffect(() => {
+    if (!isHostedPrivate) return;
+    fetchJson<DeploymentInfo>(`${API_URL}/health`)
+      .then(setDeploymentInfo)
+      .catch(() => setDeploymentInfo(null));
+  }, []);
 
   const checkForUpdatesNow = useCallback(() => {
     setUpdateCheckState('checking');
@@ -105,7 +129,8 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
   const downloadAndInstallLatest = useCallback(() => {
     setUpdateCheckState('installing');
     setUpdateMessage(null);
-    const release = appReleases.find((item) => item.version === selectedAppVersion) || appReleases[0];
+    const release =
+      appReleases.find((item) => item.version === selectedAppVersion) || appReleases[0];
     window.dispatchEvent(
       new CustomEvent('whylowdps-updater-install', {
         detail: release
@@ -129,6 +154,10 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     selectedAppVersion,
     setSelectedAppVersion,
     loadAppReleases,
+    deploymentInfo,
+    dockerReleases,
+    dockerReleaseMetadataStatus,
+    loadDockerReleases,
     checkForUpdatesNow,
     downloadAndInstallLatest,
   };

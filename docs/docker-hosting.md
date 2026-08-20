@@ -132,6 +132,12 @@ The production image is defined directly in `compose.yaml` as
 `ghcr.io/josephlteif/whylowdps:latest`. Change that line to an exact version or
 digest when pinning a deployment.
 
+Published Docker releases use the `latest` tag and versioned tags. There is no
+separate `stable` image tag.
+The hosted Settings page only lists versions whose release includes the
+`docker-image.txt` bundle generated after the image was published and its digest
+was recorded.
+
 | Variable | Purpose |
 | --- | --- |
 | `WHYLOWDPS_HOST_IP` | Optional host bind address, for example `192.168.1.20`; defaults to `0.0.0.0`. |

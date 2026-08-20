@@ -27,6 +27,11 @@ function dispatchInstallEvent(outcome: 'accepted' | 'dismissed' = 'accepted') {
 describe('PwaInstallPrompt', () => {
   beforeEach(() => {
     mocks.isDesktopRuntime.mockReset().mockReturnValue(false);
+    localStorage.clear();
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: true,
+    });
   });
 
   it('offers installation when the browser provides an install prompt', async () => {
@@ -44,6 +49,27 @@ describe('PwaInstallPrompt', () => {
     mocks.isDesktopRuntime.mockReturnValue(true);
     render(<PwaInstallPrompt />);
     dispatchInstallEvent();
+
+    expect(screen.queryByRole('dialog', { name: 'Install WhyLowDPS' })).not.toBeInTheDocument();
+  });
+
+  it('does not show the prompt again after a remount', async () => {
+    const { unmount } = render(<PwaInstallPrompt />);
+
+    expect(await screen.findByRole('dialog', { name: 'Install WhyLowDPS' })).toBeInTheDocument();
+    unmount();
+    render(<PwaInstallPrompt />);
+
+    expect(screen.queryByRole('dialog', { name: 'Install WhyLowDPS' })).not.toBeInTheDocument();
+  });
+
+  it('does not show an install prompt on insecure HTTP pages', () => {
+    Object.defineProperty(window, 'isSecureContext', {
+      configurable: true,
+      value: false,
+    });
+
+    render(<PwaInstallPrompt />);
 
     expect(screen.queryByRole('dialog', { name: 'Install WhyLowDPS' })).not.toBeInTheDocument();
   });

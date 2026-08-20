@@ -8,6 +8,8 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
+const installPromptSeenKey = 'whylowdps_pwa_install_prompt_seen';
+
 function isStandaloneDisplayMode() {
   return (
     (typeof window.matchMedia === 'function' &&
@@ -20,18 +22,31 @@ function isIosDevice() {
   return /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 }
 
+function isSecureInstallContext() {
+  const isLocalhost = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(
+    window.location.hostname
+  );
+  return (window.location.protocol === 'https:' || isLocalhost) && window.isSecureContext !== false;
+}
+
 export default function PwaInstallPrompt() {
   const deferredPrompt = useRef<BeforeInstallPromptEvent | null>(null);
   const [available, setAvailable] = useState(false);
   const [open, setOpen] = useState(false);
-  const [secureContext, setSecureContext] = useState<boolean | null>(null);
   const [iosDevice, setIosDevice] = useState(false);
 
   useEffect(() => {
-    if (isDesktopRuntime() || isStandaloneDisplayMode()) return;
+    if (
+      isDesktopRuntime() ||
+      isStandaloneDisplayMode() ||
+      !isSecureInstallContext() ||
+      window.localStorage.getItem(installPromptSeenKey) === '1'
+    ) {
+      return;
+    }
 
+    window.localStorage.setItem(installPromptSeenKey, '1');
     setOpen(true);
-    setSecureContext(window.isSecureContext);
     setIosDevice(isIosDevice());
 
     const onBeforeInstallPrompt = (event: Event) => {
@@ -80,11 +95,9 @@ export default function PwaInstallPrompt() {
 
   const description = available
     ? 'Keep simulations one tap away.'
-    : secureContext === false
-      ? 'Chrome needs a trusted HTTPS connection before it can install this app.'
-      : iosDevice
-        ? 'Tap Share, then Add to Home Screen to install the app.'
-        : 'Use your browser menu and choose Install WhyLowDPS.';
+    : iosDevice
+      ? 'Tap Share, then Add to Home Screen to install the app.'
+      : 'Use your browser menu and choose Install WhyLowDPS.';
 
   return (
     <div

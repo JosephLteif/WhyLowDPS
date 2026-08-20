@@ -42,6 +42,29 @@ describe('AuthContext light mode', () => {
     expect(localStorage.getItem('whylowdps_light_mode')).toBeNull();
   });
 
+  it('keeps full mode selected when the desktop guest account is returned', async () => {
+    localStorage.setItem('whylowdps_light_mode', '1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ id: 'local-guest', battletag: 'Local Guest', role: 'member', guest: true })
+      )
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.lightMode).toBe(true));
+
+    act(() => {
+      result.current.disableLightMode();
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.lightMode).toBe(false);
+    expect(localStorage.getItem('whylowdps_light_mode')).toBeNull();
+    expect(localStorage.getItem('whylowdps_full_mode')).toBe('1');
+  });
+
   it('shows the pairing scanner when the backend identifies a revoked LAN session', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('LAN pairing required', { status: 401 })));
 

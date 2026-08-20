@@ -46,6 +46,23 @@ const releaseNotes: ReleaseNote[] = [
   },
   {
     category: 'feature',
+    title: 'Use hosted Light mode without signing in',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Private hosted instances can now provide Light mode for shared simulations, results, game-data catalogs, and raid browsing without requiring a Battle.net session.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Account-specific features remain protected and still require authentication.',
+          'Raid expansion filters and public artwork fallbacks continue to work when synchronized image data is unavailable.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
     title: 'Install WhyLowDPS as an app',
     body: [
       {
@@ -72,8 +89,9 @@ const releaseNotes: ReleaseNote[] = [
       {
         type: 'list',
         items: [
-          'Use the release Compose files and persistent data volume to keep synchronized data and simulations across upgrades.',
-          'Pin a release image for reproducible updates and rollbacks; hosted Battle.net sign-in derives its callback from the address and port you use.',
+          'Run it directly on a private LAN address and port with the release Compose files; no reverse proxy is required for local access.',
+          'Pin a release image for reproducible updates and rollbacks while the persistent data volume keeps synchronized data and simulations across upgrades.',
+          'Use the included health check and backup scripts to verify the app, data sync, and runtime, or create a timestamped archive with a SHA-256 hash.',
         ],
       },
     ],
@@ -90,7 +108,25 @@ const releaseNotes: ReleaseNote[] = [
         type: 'list',
         items: [
           'Review paired devices, rename them, or remove access from Settings. Device names and last-seen times persist.',
+          'Removing a device immediately ends its session and sends that browser to a scanner for a new pairing QR code.',
           'Active phone sessions are cleared when the desktop app restarts, and no internet exposure or port forwarding is supported.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Browse current and historical dungeons',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The Dungeons page now keeps the active season first while retaining available historical seasons and encounter lists for older content.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Dungeon cards show artwork with catalog and public fallbacks when the API image is missing or unavailable.',
+          'Expansion and season selection remains populated when runtime data is incomplete, so known content does not disappear during refreshes.',
         ],
       },
     ],
@@ -102,6 +138,26 @@ const releaseNotes: ReleaseNote[] = [
       {
         type: 'paragraph',
         text: 'Game-data and SimulationCraft runtime refreshes now adapt to season changes with staged validation and last-known-good fallback when a refresh is incomplete or degraded.',
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Clearer setup guidance',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The public site and hosting guides now make the desktop, hosted, PWA, and trusted-LAN paths easier to choose, with layouts that remain readable on phones.',
+      },
+    ],
+  },
+  {
+    category: 'fix',
+    title: 'Dungeon routes stay on the dungeon flow',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Saved dungeon and Mythic+ route inputs are no longer mistaken for character imports when they also contain name-like lines.',
       },
     ],
   },

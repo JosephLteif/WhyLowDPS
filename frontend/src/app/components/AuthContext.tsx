@@ -49,6 +49,7 @@ const AuthContext = createContext<AuthContextType>({
 
 let authCheckInFlight: Promise<AuthUser | null> | null = null;
 const LIGHT_MODE_KEY = 'whylowdps_light_mode';
+const FULL_MODE_KEY = 'whylowdps_full_mode';
 
 async function fetchCurrentUserOnce(): Promise<AuthUser | null> {
   if (!authCheckInFlight) {
@@ -159,8 +160,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const data = await fetchCurrentUserOnce();
         if (data) await switchBrowserUserScope(data.id);
+        const fullModeRequested = localStorage.getItem(FULL_MODE_KEY) === '1';
+        if (data && !data.guest) localStorage.removeItem(FULL_MODE_KEY);
         setUser(data?.guest ? null : data);
-        if (data?.guest) {
+        if (data?.guest && !fullModeRequested) {
           localStorage.setItem(LIGHT_MODE_KEY, '1');
           setLightMode(true);
         }
@@ -206,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     localStorage.setItem(LIGHT_MODE_KEY, '1');
+    localStorage.removeItem(FULL_MODE_KEY);
     void switchBrowserUserScope('local-guest');
     setSessionToken(null);
     setUser(null);
@@ -215,6 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const disableLightMode = useCallback(() => {
     localStorage.removeItem(LIGHT_MODE_KEY);
+    localStorage.setItem(FULL_MODE_KEY, '1');
     setLightMode(false);
     setLoading(true);
   }, []);

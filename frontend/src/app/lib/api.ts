@@ -72,6 +72,7 @@ const DEVICE_STORAGE_KEYS = new Set([
   'whylowdps_lan_access_required',
   'whylowdps_data_ready',
   'whylowdps_light_mode',
+  'whylowdps_full_mode',
   'whylowdps_update_channel',
 ]);
 

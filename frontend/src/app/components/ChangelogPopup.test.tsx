@@ -22,7 +22,7 @@ describe('ChangelogPopup', () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/keeps each Battle.net user/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 5$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 9$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -98,5 +98,26 @@ describe('ChangelogPopup', () => {
 
     expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
     expect(document.querySelector('article p, article ul')).not.toBeNull();
+  });
+
+  it('includes the new hosted and dungeon improvements', async () => {
+    const user = userEvent.setup();
+    render(<ChangelogPopup />);
+
+    await screen.findByRole('dialog', { name: /what's new/i });
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 2$/ }));
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Use hosted Light mode without signing in' })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 7$/ }));
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Safer season rollovers' })
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 9$/ }));
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Dungeon routes stay on the dungeon flow' })
+    ).toBeInTheDocument();
   });
 });

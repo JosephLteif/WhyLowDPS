@@ -102,9 +102,13 @@ environment values.
 ### First-launch configuration
 
 If the variables are not set, the hosted app's initial setup screen can save a
-credential profile before the first Battle.net login. Hosted secrets are
-encrypted in the persistent `/data` volume using `JWT_SECRET`. Keep the same
-`JWT_SECRET` across updates and restore it together with the data backup.
+credential profile before the first Battle.net login. Login tokens are signed
+with `JWT_SECRET`. OAuth access tokens and saved Blizzard client secrets are
+encrypted using `SESSION_ENCRYPTION_KEY`. These variables are optional: if
+omitted, the server generates both keys and stores them in `/data/.jwt-secret`
+and `/data/.session-encryption-key`. Keep the generated files in the persistent
+`/data` volume, or keep supplied keys stable across updates and restore them
+with the data backup.
 
 For either option, register the exact callback shown by the hosted app. A direct
 LAN example is:

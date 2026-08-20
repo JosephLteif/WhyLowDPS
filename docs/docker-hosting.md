@@ -39,16 +39,62 @@ published for `linux-x64`.
 
    - The downloaded Compose file follows the published `latest` image by
      default.
-   - Set `WHYLOWDPS_HOST_IP` to the host's private IPv4 address.
+   - Set `WHYLOWDPS_HOST_IP` to the host's private IPv4 address, for example
+     `192.168.1.20`. Leave it as `0.0.0.0` to listen on all host interfaces.
    - Set `WHYLOWDPS_PORT` to the client-facing port, normally `8000`.
-   - Replace `JWT_SECRET` with a unique random value of at least 32 characters.
-     Keep it with the deployment and its backups; changing it invalidates
-     signed login tokens. `openssl rand -hex 32` can generate a suitable value.
-   - Set a separate stable `SESSION_ENCRYPTION_KEY` and set
-     `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` to the first instance administrator.
-   - Leave `WHYLOWDPS_SECURE_COOKIES=false` for the direct LAN HTTP setup.
+   - `JWT_SECRET` and `SESSION_ENCRYPTION_KEY` are optional. If you leave them
+     unset, the server generates separate random values on first startup and
+     stores them in `/data/.jwt-secret` and
+     `/data/.session-encryption-key`. The persistent `whylowdps-data` volume
+     must be retained so login tokens and encrypted credentials continue to
+     work after restarts.
+   - If you prefer to supply the values yourself, generate two different
+     random 32-byte values and paste them into `JWT_SECRET` and
+     `SESSION_ENCRYPTION_KEY`:
+
+     ```shell
+     openssl rand -hex 32
+     openssl rand -hex 32
+     ```
+
+     Each output is a 64-character hexadecimal value. The values should look
+     like `4f8c...` and `a19e...`, but must be generated locally rather than
+     copied from documentation. `JWT_SECRET` signs login tokens.
+     `SESSION_ENCRYPTION_KEY` encrypts OAuth tokens and saved Blizzard client
+     secrets. Keep both values stable with the deployment and its backups.
+     If you prefer a browser tool, use the
+     [KuleUI Key Generator](https://www.kuleui.com/tools/dev/key-generator),
+     select **Hex**, set the length to **32 bytes**, generate one value, copy
+     it, and regenerate a second value for the other variable. The tool says
+     it uses the browser's Web Crypto API and does not transmit generated
+     values. Use it only from a trusted device; local OpenSSL or PowerShell
+     generation is preferable for higher-security deployments.
+   - Set `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` to the exact Battle.net
+     BattleTag that will perform the first login, including its discriminator,
+     for example `YourBattleTag#1234`. Quote the value if it contains `#`.
+   - Leave `WHYLOWDPS_SECURE_COOKIES=false` for direct LAN HTTP. Set it to
+     `true` only when the app is accessed through trusted HTTPS.
+   - `SIMC_CHANNEL`, `MAX_CONCURRENT_SIMULATIONS`, and
+     `MAX_JOBS_PER_USER` are optional tuning values; the example shows the
+     normal defaults of `weekly`, `2`, and `200`.
    - Blizzard application credentials are entered in the app at runtime; they
      are not stored in this environment file.
+
+   On Windows PowerShell, the two secrets can also be generated without
+   OpenSSL:
+
+   ```powershell
+   function New-WhyLowDpsSecret {
+     $bytes = New-Object byte[] 32
+     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+     try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+     [BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant()
+   }
+   $jwtSecret = New-WhyLowDpsSecret
+   $sessionEncryptionKey = New-WhyLowDpsSecret
+   "JWT_SECRET=$jwtSecret"
+   "SESSION_ENCRYPTION_KEY=$sessionEncryptionKey"
+   ```
 
 4. Pull and start the latest release:
 
@@ -88,15 +134,15 @@ digest when pinning a deployment.
 
 | Variable | Purpose |
 | --- | --- |
-| `WHYLOWDPS_HOST_IP` | Private host address on which Docker publishes the app port. |
-| `WHYLOWDPS_PORT` | Client-facing port; defaults to `8000`. |
-| `JWT_SECRET` | Required encryption/signing secret; use at least 32 random characters and keep it stable. |
-| `SESSION_ENCRYPTION_KEY` | Required encryption key for persistent Battle.net sessions. Keep it stable and backed up. |
-| `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` | BattleTag allowed to create the first administrator when the user table is empty. |
-| `WHYLOWDPS_SECURE_COOKIES` | Use `false` for direct LAN HTTP and `true` only behind trusted HTTPS. |
-| `SIMC_CHANNEL` | Companion runtime channel, normally `weekly` or `nightly`. |
-| `MAX_CONCURRENT_SIMULATIONS` | Maximum simulations running at the same time. |
-| `MAX_JOBS_PER_USER` | Number of unpinned job records retained independently for each user. |
+| `WHYLOWDPS_HOST_IP` | Optional host bind address, for example `192.168.1.20`; defaults to `0.0.0.0`. |
+| `WHYLOWDPS_PORT` | Optional client-facing port; defaults to `8000`. |
+| `JWT_SECRET` | Optional random 32-byte signing secret, normally 64 hex characters. If omitted, it is generated and stored in `/data/.jwt-secret`. Keep it stable; changing it invalidates login tokens. |
+| `SESSION_ENCRYPTION_KEY` | Optional separate random 32-byte encryption key, normally 64 hex characters. If omitted, it is generated and stored in `/data/.session-encryption-key`. It protects OAuth tokens and saved Blizzard client secrets. Keep it stable. |
+| `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` | BattleTag such as `YourBattleTag#1234`; it is used only to create the first administrator when the user table is empty. |
+| `WHYLOWDPS_SECURE_COOKIES` | `false` for direct LAN HTTP; set `true` only behind trusted HTTPS. |
+| `SIMC_CHANNEL` | Optional runtime channel: `weekly` or `nightly`; defaults to `weekly`. |
+| `MAX_CONCURRENT_SIMULATIONS` | Optional concurrency limit; the Compose example uses `2`. |
+| `MAX_JOBS_PER_USER` | Optional unpinned job-history limit; defaults to `200`. |
 
 ## Updates and rollback
 
@@ -129,8 +175,9 @@ periodically check the registry on its own.
 To roll back, change the `image` line in `compose.yaml` to the exact version
 from `docker-image.txt`, for example
 `ghcr.io/josephlteif/whylowdps:3.8.0`, or to the listed immutable digest. Pull
-and recreate the service again. Preserve `.env.docker`, especially
-`JWT_SECRET`, and the `whylowdps-data` volume.
+and recreate the service again. Preserve `.env.docker` if you supplied keys;
+otherwise preserve the `whylowdps-data` volume, which contains the generated
+keys.
 
 ## Build the hosted image from source
 
@@ -182,8 +229,9 @@ profile names and public client IDs and select which profile to use. After the
 first user is created, credential changes require an administrator session.
 
 OAuth access tokens are encrypted with `SESSION_ENCRYPTION_KEY` before they are
-stored in SQLite, and active sessions survive container restarts. Hosted Light
-mode is disabled: every hosted user must sign in and be on the allowlist.
+stored in SQLite, and saved Blizzard client secrets use the same key. Active
+sessions survive container restarts. Hosted Light mode is disabled: every
+hosted user must sign in and be on the allowlist.
 
 Direct LAN HTTP is not a secure browser context on most phones and browsers, so
 secure cookies, service-worker installation, and native PWA installation are not

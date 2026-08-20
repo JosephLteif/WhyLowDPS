@@ -68,6 +68,66 @@ fn bootstrap_data_dir(seed_dir: Option<&Path>, data_dir: &Path) -> Result<(), St
     Ok(())
 }
 
+fn ensure_persistent_secret(data_dir: &Path, env_key: &str, file_name: &str) -> Result<(), String> {
+    if std::env::var(env_key)
+        .ok()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Ok(());
+    }
+
+    let path = data_dir.join(file_name);
+    let secret = match fs::read_to_string(&path) {
+        Ok(value) => {
+            let value = value.trim().to_string();
+            if value.is_empty() {
+                return Err(format!("generated secret file {} is empty", path.display()));
+            }
+            value
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let value = whylowdps_core::server::auth_handlers::generate_random_secret();
+            let temporary_path = data_dir.join(format!("{file_name}.tmp"));
+            fs::write(&temporary_path, format!("{value}\n")).map_err(|write_error| {
+                format!(
+                    "failed to write generated secret {}: {write_error}",
+                    temporary_path.display()
+                )
+            })?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&temporary_path, fs::Permissions::from_mode(0o600)).map_err(
+                    |permission_error| {
+                        format!(
+                            "failed to protect generated secret {}: {permission_error}",
+                            temporary_path.display()
+                        )
+                    },
+                )?;
+            }
+            fs::rename(&temporary_path, &path).map_err(|rename_error| {
+                format!(
+                    "failed to store generated secret {}: {rename_error}",
+                    path.display()
+                )
+            })?;
+            value
+        }
+        Err(error) => {
+            return Err(format!(
+                "failed to read generated secret {}: {error}",
+                path.display()
+            ));
+        }
+    };
+
+    unsafe {
+        std::env::set_var(env_key, secret);
+    }
+    Ok(())
+}
+
 fn resolve_port<I>(args: I, env_port: u16) -> u16
 where
     I: IntoIterator<Item = String>,
@@ -107,6 +167,18 @@ async fn main() {
     let data_dir = PathBuf::from(env_or("DATA_DIR", &data_dir_default));
     let data_seed_dir = std::env::var("DATA_SEED_DIR").ok().map(PathBuf::from);
     let frontend_dir = std::env::var("FRONTEND_DIR").ok().map(PathBuf::from);
+
+    bootstrap_data_dir(data_seed_dir.as_deref(), &data_dir)
+        .unwrap_or_else(|error| panic!("failed to bootstrap data directory: {error}"));
+    ensure_persistent_secret(&data_dir, "JWT_SECRET", ".jwt-secret")
+        .unwrap_or_else(|error| panic!("failed to initialize JWT secret: {error}"));
+    ensure_persistent_secret(
+        &data_dir,
+        "SESSION_ENCRYPTION_KEY",
+        ".session-encryption-key",
+    )
+    .unwrap_or_else(|error| panic!("failed to initialize session encryption key: {error}"));
+
     let simc_runtime_dir = PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime"));
     let simc_channel = SimcChannel::parse(&env_or("SIMC_CHANNEL", "weekly"));
     let simc_config = SimcRuntimeConfig::new(simc_channel, simc_runtime_dir);
@@ -139,9 +211,6 @@ async fn main() {
         .parse()
         .expect("PORT must be a number");
     let port = resolve_port(std::env::args().skip(1), env_port);
-
-    bootstrap_data_dir(data_seed_dir.as_deref(), &data_dir)
-        .unwrap_or_else(|error| panic!("failed to bootstrap data directory: {error}"));
 
     println!("Loading game data from {:?}", data_dir);
     game_data::load(&data_dir);
@@ -208,6 +277,33 @@ mod tests {
             fs::read_to_string(data.path().join("existing.json")).expect("read existing file"),
             "keep"
         );
+    }
+
+    #[test]
+    fn ensure_persistent_secret_generates_and_reuses_a_data_volume_secret() {
+        let data = tempfile::tempdir().expect("data temp dir");
+        let env_key = "WHYLOWDPS_TEST_PERSISTENT_SECRET";
+        unsafe {
+            env::remove_var(env_key);
+        }
+
+        ensure_persistent_secret(data.path(), env_key, ".test-secret").expect("generate secret");
+        let generated = env::var(env_key).expect("generated environment secret");
+        assert_eq!(generated.len(), 64);
+        assert!(server::auth_handlers::validate_jwt_secret(Some(generated.clone()), true).is_ok());
+
+        unsafe {
+            env::remove_var(env_key);
+        }
+        ensure_persistent_secret(data.path(), env_key, ".test-secret").expect("reuse secret");
+        assert_eq!(
+            env::var(env_key).expect("reused environment secret"),
+            generated
+        );
+
+        unsafe {
+            env::remove_var(env_key);
+        }
     }
 
     #[test]

@@ -448,6 +448,14 @@ pub fn validate_jwt_secret(
     Ok(secret)
 }
 
+pub fn generate_random_secret() -> String {
+    let material = format!("{}{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+    Sha256::digest(material.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 fn request_redirect_uri(req: &HttpRequest) -> String {
     let connection = req.connection_info();
     format!(

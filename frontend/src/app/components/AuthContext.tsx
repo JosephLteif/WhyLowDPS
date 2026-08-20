@@ -13,6 +13,7 @@ import {
   setSessionToken,
   switchBrowserUserScope,
 } from '../lib/api';
+import { createUuid } from '../lib/uuid';
 
 export type AuthUser = {
   id: string;
@@ -259,7 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ) => {
       localStorage.removeItem(LIGHT_MODE_KEY);
       setLightMode(false);
-      const flowId = crypto.randomUUID();
+      const flowId = createUuid();
       let url = `${API_URL}/api/auth/bnet/login?flow_id=${flowId}`;
 
       let selectedCredentialId = credentialId;

@@ -1,7 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
-import { API_URL, isDesktop, isLanBrowser, isLanHost, LAN_ACCESS_REVOKED_EVENT } from '../lib/api';
+import {
+  API_URL,
+  isDesktop,
+  isHostedPrivate,
+  isLanBrowser,
+  isLanHost,
+  LAN_ACCESS_REVOKED_EVENT,
+} from '../lib/api';
 
 const PRESENCE_INTERVAL_MS = 30_000;
 const PRESENCE_PATH = `${API_URL}/api/lan/presence`;
@@ -32,6 +39,7 @@ export default function LanSessionLifecycle() {
   useEffect(() => {
     if (
       isDesktop ||
+      isHostedPrivate ||
       (typeof window !== 'undefined' &&
         !isLanBrowser() &&
         !isLanHost(window.location.hostname))

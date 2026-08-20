@@ -583,7 +583,6 @@ export default function SimResultClient() {
       pushAnchor(job?.id);
       pushAnchor(job?.batch_id || null);
       (siblings || []).forEach((s) => pushAnchor(s.id));
-      (liveRelatedScenarios || []).forEach((s) => pushAnchor(s.id));
 
       if (anchorIds.size === 0) {
         if (active) setLiveRelatedScenarios([]);
@@ -624,7 +623,7 @@ export default function SimResultClient() {
     return () => {
       active = false;
     };
-  }, [activeScenarioId, job?.id, job?.batch_id, siblings, liveRelatedScenarios]);
+  }, [activeScenarioId, job?.id, job?.batch_id, siblings]);
 
   const toolbarScenarios = useMemo(() => {
     const base = siblings || [];

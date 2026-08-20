@@ -37,7 +37,8 @@ published for `linux-x64`.
 
 3. Edit `.env.docker`:
 
-   - Keep `WHYLOWDPS_VERSION` pinned to the version from the release asset.
+   - The downloaded Compose file follows the published `latest` image by
+     default.
    - Set `WHYLOWDPS_HOST_IP` to the host's private IPv4 address.
    - Set `WHYLOWDPS_PORT` to the client-facing port, normally `8000`.
    - Replace `JWT_SECRET` with a unique random value of at least 32 characters.
@@ -49,7 +50,7 @@ published for `linux-x64`.
    - Blizzard application credentials are entered in the app at runtime; they
      are not stored in this environment file.
 
-4. Pull and start the pinned release:
+4. Pull and start the latest release:
 
    ```shell
    docker compose --env-file .env.docker pull
@@ -81,9 +82,12 @@ personal records are not imported automatically.
 
 ## Configuration reference
 
+The production image is defined directly in `compose.yaml` as
+`ghcr.io/josephlteif/whylowdps:latest`. Change that line to an exact version or
+digest when pinning a deployment.
+
 | Variable | Purpose |
 | --- | --- |
-| `WHYLOWDPS_VERSION` | Container image tag. Pin a released version for predictable upgrades and rollback. |
 | `WHYLOWDPS_HOST_IP` | Private host address on which Docker publishes the app port. |
 | `WHYLOWDPS_PORT` | Client-facing port; defaults to `8000`. |
 | `JWT_SECRET` | Required encryption/signing secret; use at least 32 random characters and keep it stable. |
@@ -96,8 +100,7 @@ personal records are not imported automatically.
 
 ## Updates and rollback
 
-Back up the data volume first. Change `WHYLOWDPS_VERSION` to the new release,
-then recreate the service:
+Back up the data volume first, then pull and recreate the service:
 
 ```shell
 docker compose --env-file .env.docker pull
@@ -106,9 +109,28 @@ docker compose --env-file .env.docker ps
 ```
 
 `docker compose restart app` does not apply a new image or changed environment
-values. To roll back, restore the previous `WHYLOWDPS_VERSION` and repeat the
-commands above. Preserve `.env.docker`, especially `JWT_SECRET`, and the
-`whylowdps-data` volume.
+values. Publishing a new `latest` image also does not restart an existing
+container by itself. Configure Portainer or another Docker manager to poll the
+image or receive a registry webhook, then pull and recreate the stack when the
+digest changes.
+
+For a command-line deployment, the update operation is:
+
+```shell
+docker compose --env-file .env.docker pull
+docker compose --env-file .env.docker up -d
+```
+
+For Portainer or a similar manager, use the Compose image
+`ghcr.io/josephlteif/whylowdps:latest` and enable its registry polling or
+webhook-based pull-and-redeploy option. A normal running container does not
+periodically check the registry on its own.
+
+To roll back, change the `image` line in `compose.yaml` to the exact version
+from `docker-image.txt`, for example
+`ghcr.io/josephlteif/whylowdps:3.8.0`, or to the listed immutable digest. Pull
+and recreate the service again. Preserve `.env.docker`, especially
+`JWT_SECRET`, and the `whylowdps-data` volume.
 
 ## Build the hosted image from source
 

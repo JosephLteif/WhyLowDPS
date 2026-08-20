@@ -493,13 +493,13 @@
     <div class="modal-body">
       <ol class="modal-steps">
         <li><strong>Use an amd64 Linux host or Docker Desktop with WSL2.</strong><span>Arm64 is not currently supported because the companion SimulationCraft runtime is published for linux-x64.</span></li>
-        <li><strong>Pin the release and configure the host.</strong><span>Set the private host IP, client-facing port, unique JWT secret, session encryption key, and bootstrap administrator BattleTag. Keep the persistent <code>whylowdps-data</code> volume and secrets backed up.</span></li>
+        <li><strong>Use the latest image and configure the host.</strong><span>The standard Compose file follows <code>ghcr.io/josephlteif/whylowdps:latest</code>. Set the private host IP, client-facing port, unique JWT secret, session encryption key, and bootstrap administrator BattleTag. Keep the persistent <code>whylowdps-data</code> volume and secrets backed up.</span></li>
         <li><strong>Pull and start with the environment file.</strong><span>Use <code>docker compose --env-file .env.docker pull</code>, then <code>docker compose --env-file .env.docker up -d</code>. Open the host address from the trusted LAN and add other allowed users from Manage Users.</span></li>
       </ol>
       <div class="modal-callout">
         <strong>Hosted OAuth and updates</strong>
         <p>Register the exact browser-facing callback: <code>http://&lt;HOST-IP&gt;:&lt;PORT&gt;/api/auth/bnet/callback</code>, or <code>https://&lt;HOSTNAME&gt;/api/auth/bnet/callback</code> behind trusted HTTPS. The scheme, hostname, port, and path must match.</p>
-        <p>Pin a release image for predictable rollback. Recreate the service after changing environment values or the image; <code>docker compose restart app</code> does not apply either change.</p>
+        <p>The standard Compose file follows <code>:latest</code>. Configure Portainer or another Docker manager to pull and recreate the service when the image digest changes. For rollback, replace the Compose image with an exact version or digest; <code>docker compose restart app</code> does not apply either change.</p>
       </div>
       <p class="modal-note">The PWA requires browser-trusted HTTPS. Direct LAN HTTP stays private but does not provide a secure browser context for native installation.</p>
     </div>

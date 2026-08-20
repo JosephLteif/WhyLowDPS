@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${WHYLOWDPS_IMAGE:-ghcr.io/josephlteif/whylowdps}:${WHYLOWDPS_VERSION:-v3.8.0}
+    image: ghcr.io/josephlteif/whylowdps:latest
     env_file:
       - path: .env.docker
         required: false

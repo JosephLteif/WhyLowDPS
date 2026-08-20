@@ -1,7 +1,14 @@
 'use client';
 
 import { Camera, X } from 'lucide-react';
+import jsQR from 'jsqr';
 import { useEffect, useRef, useState } from 'react';
+
+const MAX_CAPTURE_DIMENSION = 2_000;
+
+type QrBarcodeDetector = new (options?: { formats?: string[] }) => {
+  detect(source: HTMLImageElement): Promise<Array<{ rawValue?: string }>>;
+};
 
 export function pairingConsumeUrlFromValue(value: string): string | null {
   try {
@@ -17,6 +24,102 @@ export function pairingConsumeUrlFromValue(value: string): string | null {
     return url.toString();
   } catch {
     return null;
+  }
+}
+
+async function decodeCapturedQr(file: File): Promise<string> {
+  const imageDataUrl = await new Promise<string>((resolve, reject) => {
+    const fileReader = new FileReader();
+    fileReader.onload = () => resolve(String(fileReader.result));
+    fileReader.onerror = () => reject(new Error('Could not read the captured image.'));
+    fileReader.readAsDataURL(file);
+  });
+  const image = new Image();
+  image.decoding = 'async';
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Could not load the captured image.'));
+      image.src = imageDataUrl;
+    });
+
+    const BarcodeDetector = (window as typeof window & { BarcodeDetector?: QrBarcodeDetector })
+      .BarcodeDetector;
+    if (BarcodeDetector) {
+      try {
+        const [result] = await new BarcodeDetector({ formats: ['qr_code'] }).detect(image);
+        if (result?.rawValue) return result.rawValue;
+      } catch {
+        // Fall through to ZXing for browsers without a usable native detector.
+      }
+    }
+
+    const candidates: Array<HTMLImageElement | HTMLCanvasElement> = [];
+
+    const addCenteredCrop = (fraction: number) => {
+      const cropWidth = Math.round(image.naturalWidth * fraction);
+      const cropHeight = Math.round(image.naturalHeight * fraction);
+      if (cropWidth <= 0 || cropHeight <= 0) return;
+
+      const cropScale = MAX_CAPTURE_DIMENSION / Math.max(cropWidth, cropHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(cropWidth * cropScale));
+      canvas.height = Math.max(1, Math.round(cropHeight * cropScale));
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) return;
+      context.drawImage(
+        image,
+        (image.naturalWidth - cropWidth) / 2,
+        (image.naturalHeight - cropHeight) / 2,
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+      candidates.push(canvas);
+    };
+
+    addCenteredCrop(0.6);
+    addCenteredCrop(0.8);
+    addCenteredCrop(1);
+    candidates.push(image);
+
+    for (const candidate of candidates) {
+      if (candidate instanceof HTMLCanvasElement) {
+        try {
+          const context = candidate.getContext('2d', { willReadFrequently: true });
+          const imageData = context?.getImageData(0, 0, candidate.width, candidate.height);
+          if (imageData) {
+            const result = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: 'attemptBoth',
+            });
+            if (result?.data) return result.data;
+          }
+        } catch {}
+      }
+    }
+
+    const { BrowserQRCodeReader } = await import('@zxing/browser');
+    const reader = new BrowserQRCodeReader();
+    let lastError: unknown;
+    for (const candidate of candidates) {
+      try {
+        const result =
+          candidate instanceof HTMLCanvasElement
+            ? reader.decodeFromCanvas(candidate)
+            : await reader.decodeFromImageElement(candidate);
+        return result.getText();
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError ?? new Error('No QR code found.');
+  } finally {
+    image.src = '';
   }
 }
 
@@ -97,17 +200,18 @@ export default function LanPairingScanner() {
   const readCapturedQr = async (file: File) => {
     setError('Reading QR code…');
     try {
-      const { BrowserQRCodeReader } = await import('@zxing/browser');
-      const reader = new BrowserQRCodeReader();
-      const objectUrl = URL.createObjectURL(file);
-      try {
-        const result = await reader.decodeFromImageUrl(objectUrl);
-        finishScan(result.getText());
-      } finally {
-        URL.revokeObjectURL(objectUrl);
-      }
-    } catch {
-      setError('Could not read that image. Point the camera at the desktop QR code and try again.');
+      finishScan(await decodeCapturedQr(file));
+    } catch (error) {
+      console.warn('[WhyLowDPS] QR image decode failed', {
+        error,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+      });
+      const format = file.type || file.name.split('.').pop() || 'unknown format';
+      setError(
+        `Could not read that image (${format}). Point the camera at the desktop QR code and try again.`
+      );
     }
   };
 

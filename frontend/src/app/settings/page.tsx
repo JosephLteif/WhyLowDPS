@@ -557,8 +557,8 @@ export default function SettingsPage() {
       setLanQrCodeDataUrl(
         await toDataURL(url, {
           errorCorrectionLevel: 'M',
-          margin: 2,
-          width: 240,
+          margin: 4,
+          width: 320,
           color: { dark: '#111111', light: '#ffffff' },
         })
       );
@@ -1143,12 +1143,12 @@ export default function SettingsPage() {
                           <img
                             src={lanQrCodeDataUrl}
                             alt="Scan this QR code to open WhyLowDPS on your phone"
-                            width={240}
-                            height={240}
-                            className="h-48 w-48 sm:h-56 sm:w-56"
+                            width={320}
+                            height={320}
+                            className="h-64 w-64 sm:h-80 sm:w-80"
                           />
                         </div>
-                        <p className="max-w-60 text-center text-[11px] text-zinc-500">
+                        <p className="max-w-80 text-center text-[11px] text-zinc-500">
                           Scan with your phone camera while both devices are on the same Wi-Fi.
                         </p>
                       </div>

@@ -84,6 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('lan_paired') === '1') {
+      localStorage.removeItem(LAN_ACCESS_REQUIRED_STORAGE_KEY);
+      url.searchParams.delete('lan_paired');
+      window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+      return;
+    }
     if (localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1') {
       setLanAccessRequired(true);
     }

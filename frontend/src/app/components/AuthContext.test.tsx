@@ -17,6 +17,7 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('AuthContext light mode', () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, { status: 401 })));
   });
@@ -90,5 +91,23 @@ describe('AuthContext light mode', () => {
     });
 
     await waitFor(() => expect(result.current.lanAccessRequired).toBe(true));
+  });
+
+  it('clears the pairing-required marker after a successful pairing redirect', async () => {
+    localStorage.setItem('whylowdps_lan_access_required', '1');
+    window.history.replaceState({}, '', '/?lan_paired=1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ id: 'user-1', battletag: 'Tester#1', role: 'member', guest: false })
+      )
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.lanAccessRequired).toBe(false);
+    expect(localStorage.getItem('whylowdps_lan_access_required')).toBeNull();
+    expect(window.location.search).toBe('');
   });
 });

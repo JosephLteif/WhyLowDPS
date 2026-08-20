@@ -170,6 +170,7 @@ pub(in crate::server) async fn create_top_gear_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth.get_ref().clone(),
         simc_binary,
         req.options.to_json(),
         job_id.clone(),

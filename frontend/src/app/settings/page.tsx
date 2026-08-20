@@ -19,6 +19,7 @@ import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
 import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
+import DiscordWebhookSettings from './components/DiscordWebhookSettings';
 import LocalBackupSection from './components/LocalBackupSection';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
@@ -896,36 +897,40 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {activeTab === 'integrations' &&
-        (isHostedPrivate ? (
-          <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
-            <h2 className="mb-3 text-xl font-semibold text-white">API Integrations</h2>
-            <p className="max-w-2xl text-sm leading-relaxed text-zinc-400">
-              Blizzard API access is configured by the hosted server administrator. Client secrets
-              are not entered or stored in this browser.
-            </p>
-          </section>
-        ) : (
-          <IntegrationsSettingsSection
-            clientId={clientId}
-            setClientId={setClientId}
-            clientSecret={clientSecret}
-            setClientSecret={setClientSecret}
-            credentialName={credentialName}
-            setCredentialName={setCredentialName}
-            credentialProfiles={credentialProfiles}
-            renameSavedCredential={renameSavedCredential}
-            deleteSavedCredential={deleteSavedCredential}
-            secretTouched={secretTouched}
-            setSecretTouched={setSecretTouched}
-            hasSecret={hasSecret}
-            blizzardTesting={blizzardTesting}
-            blizzardSaving={blizzardSaving}
-            testBlizzardCredentials={testBlizzardCredentials}
-            saveBlizzardSettings={saveBlizzardSettings}
-            blizzardMessage={blizzardMessage}
-          />
-        ))}
+      {activeTab === 'integrations' && (
+        <div className="space-y-6">
+          {isHostedPrivate ? (
+            <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+              <h2 className="mb-3 text-xl font-semibold text-white">API Integrations</h2>
+              <p className="max-w-2xl text-sm leading-relaxed text-zinc-400">
+                Blizzard API access is configured by the hosted server administrator. Client secrets
+                are not entered or stored in this browser.
+              </p>
+            </section>
+          ) : (
+            <IntegrationsSettingsSection
+              clientId={clientId}
+              setClientId={setClientId}
+              clientSecret={clientSecret}
+              setClientSecret={setClientSecret}
+              credentialName={credentialName}
+              setCredentialName={setCredentialName}
+              credentialProfiles={credentialProfiles}
+              renameSavedCredential={renameSavedCredential}
+              deleteSavedCredential={deleteSavedCredential}
+              secretTouched={secretTouched}
+              setSecretTouched={setSecretTouched}
+              hasSecret={hasSecret}
+              blizzardTesting={blizzardTesting}
+              blizzardSaving={blizzardSaving}
+              testBlizzardCredentials={testBlizzardCredentials}
+              saveBlizzardSettings={saveBlizzardSettings}
+              blizzardMessage={blizzardMessage}
+            />
+          )}
+          {isHostedPrivate && <DiscordWebhookSettings />}
+        </div>
+      )}
 
       {activeTab === 'simulation' && (
         <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">

@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) async fn create_external_buff_matrix_sim(
     owner_id: String,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc_input: String,
     options: &SimOptions,
     store: web::Data<Arc<dyn JobStorage>>,
@@ -57,6 +58,7 @@ pub(super) async fn create_external_buff_matrix_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth,
         simc_binary,
         options.to_json_with_sim_type("external_buff_matrix"),
         job_id.clone(),
@@ -74,6 +76,7 @@ pub(super) async fn create_external_buff_matrix_sim(
 
 pub(super) async fn create_consumable_matrix_sim(
     owner_id: String,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc_input: String,
     options: &SimOptions,
     store: web::Data<Arc<dyn JobStorage>>,
@@ -128,6 +131,7 @@ pub(super) async fn create_consumable_matrix_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth,
         simc_binary,
         options.to_json_with_sim_type("consumable_matrix"),
         job_id.clone(),

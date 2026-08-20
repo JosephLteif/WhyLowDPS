@@ -18,11 +18,14 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Simpler and safer account controls' })
+      screen.getByRole('heading', {
+        level: 3,
+        name: 'Get Discord notifications for finished sims',
+      })
     ).toBeInTheDocument();
-    expect(screen.getByText(/BattleTag and account actions are now grouped/)).toBeInTheDocument();
+    expect(screen.getByText(/desktop app and Docker-hosted mode/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 10$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 11$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -105,19 +108,41 @@ describe('ChangelogPopup', () => {
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 3$/ }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 4$/ }));
     expect(
       screen.getByRole('heading', { level: 3, name: 'Use hosted Light mode without signing in' })
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 8$/ }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 9$/ }));
     expect(
       screen.getByRole('heading', { level: 3, name: 'Safer season rollovers' })
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 10$/ }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 11$/ }));
     expect(
       screen.getByRole('heading', { level: 3, name: 'Dungeon routes stay on the dungeon flow' })
     ).toBeInTheDocument();
+  });
+
+  it('includes the Discord webhook integration', async () => {
+    const user = userEvent.setup();
+    render(<ChangelogPopup />);
+
+    await screen.findByRole('dialog', { name: /what's new/i });
+    expect(
+      screen.getByRole('heading', {
+        level: 3,
+        name: 'Get Discord notifications for finished sims',
+      })
+    ).toBeInTheDocument();
+    expect(screen.getByText(/desktop app and Docker-hosted mode/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /next changelog item/i }));
+    expect(
+      screen.queryByRole('heading', {
+        level: 3,
+        name: 'Get Discord notifications for finished sims',
+      })
+    ).not.toBeInTheDocument();
   });
 });

@@ -23,6 +23,7 @@ mod matrix;
 mod matrix_handlers;
 mod top_gear;
 
+use super::discord_webhook;
 pub(super) use droptimizer::create_droptimizer_sim;
 use heatmap::*;
 use items::*;
@@ -89,6 +90,7 @@ pub(super) async fn create_sim(
     if req.sim_type == "trinket_tier_heatmap" {
         return create_trinket_tier_heatmap_sim(
             owner_id,
+            auth.get_ref().clone(),
             simc_input,
             class_name.unwrap_or_default(),
             (
@@ -106,6 +108,7 @@ pub(super) async fn create_sim(
     if req.sim_type == "external_buff_matrix" {
         return create_external_buff_matrix_sim(
             owner_id,
+            auth.get_ref().clone(),
             simc_input,
             &req.options,
             store,
@@ -118,6 +121,7 @@ pub(super) async fn create_sim(
     if req.sim_type == "consumable_matrix" {
         return create_consumable_matrix_sim(
             owner_id,
+            auth.get_ref().clone(),
             simc_input,
             &req.options,
             store,
@@ -166,6 +170,7 @@ pub(super) async fn create_sim(
 
     // Spawn background task
     let store_clone = store.get_ref().clone();
+    let auth_clone = auth.get_ref().clone();
     let job_id_clone = job_id.clone();
     let logs = log_buffer.get_ref().clone();
     let jid_logs = job_id.clone();
@@ -224,6 +229,11 @@ pub(super) async fn create_sim(
                 let raw_str = serde_json::to_string(&output.json).ok();
                 store_clone.set_result(&job_id_clone, result_str, raw_str);
                 store_clone.set_report_files(&job_id_clone, output.html_report, output.text_output);
+                discord_webhook::spawn_sim_completion_notification(
+                    store_clone.clone(),
+                    auth_clone.clone(),
+                    job_id_clone.clone(),
+                );
             }
             Err(e) => {
                 let is_cancelled = store_clone
@@ -462,6 +472,7 @@ mod tests {
         let options = default_options();
         let resp = create_external_buff_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -484,6 +495,7 @@ mod tests {
         let options = default_options();
         let resp = create_consumable_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -1282,6 +1294,7 @@ mod tests {
 
         let resp = create_external_buff_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -1309,6 +1322,7 @@ mod tests {
 
         let resp = create_external_buff_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store.clone(),
@@ -1350,6 +1364,7 @@ mod tests {
 
         let resp = create_consumable_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -1377,6 +1392,7 @@ mod tests {
 
         let resp = create_consumable_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store.clone(),
@@ -1434,6 +1450,7 @@ mod tests {
 
         let resp = create_external_buff_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store,
@@ -1474,6 +1491,7 @@ mod tests {
 
         let resp = create_consumable_matrix_sim(
             "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store,

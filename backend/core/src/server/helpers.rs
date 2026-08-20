@@ -417,6 +417,7 @@ pub(super) async fn prepare_job_run(store: &Arc<dyn JobStorage>, job_id: &str) -
 
 pub(super) fn spawn_staged_sim(
     store: Arc<dyn JobStorage>,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc: PathBuf,
     options: Value,
     job_id: String,
@@ -496,6 +497,11 @@ pub(super) fn spawn_staged_sim(
                 let raw_str = serde_json::to_string(&output.json).ok();
                 store.set_result(&job_id, result_str, raw_str);
                 store.set_report_files(&job_id, output.html_report, output.text_output);
+                super::discord_webhook::spawn_sim_completion_notification(
+                    store.clone(),
+                    auth.clone(),
+                    job_id.clone(),
+                );
             }
             Err(e) => {
                 // Don't overwrite cancelled status with a generic error

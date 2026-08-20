@@ -6,6 +6,8 @@ mod character_profile_handlers;
 mod data_provider;
 mod data_sync;
 #[cfg(feature = "web")]
+mod discord_webhook;
+#[cfg(feature = "web")]
 pub mod dungeon_data;
 #[cfg(feature = "web")]
 pub mod dungeon_source_blizzard;
@@ -995,6 +997,18 @@ pub async fn start_with_storage_bind_options(
                 .route(
                     "/api/user/config",
                     web::post().to(auth_handlers::set_user_config),
+                )
+                .route(
+                    "/api/user/discord-webhook",
+                    web::get().to(discord_webhook::get_settings),
+                )
+                .route(
+                    "/api/user/discord-webhook",
+                    web::post().to(discord_webhook::update_settings),
+                )
+                .route(
+                    "/api/user/discord-webhook/test",
+                    web::post().to(discord_webhook::send_test),
                 )
                 .route(
                     "/api/user/blizzard/clear",

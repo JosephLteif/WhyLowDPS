@@ -489,7 +489,7 @@ impl BlizzardAuthState {
         }
     }
 
-    fn encrypt_oauth_token(&self, access_token: &str) -> Result<String, String> {
+    pub(crate) fn encrypt_private_value(&self, value: &str) -> Result<String, String> {
         let cipher = Aes256Gcm::new_from_slice(&self.session_encryption_key)
             .map_err(|error| error.to_string())?;
         let nonce_uuid = uuid::Uuid::new_v4();
@@ -497,13 +497,13 @@ impl BlizzardAuthState {
         let mut payload = nonce_bytes.to_vec();
         payload.extend(
             cipher
-                .encrypt(Nonce::from_slice(nonce_bytes), access_token.as_bytes())
-                .map_err(|_| "Failed to encrypt OAuth token".to_string())?,
+                .encrypt(Nonce::from_slice(nonce_bytes), value.as_bytes())
+                .map_err(|_| "Failed to encrypt private value".to_string())?,
         );
         Ok(payload.iter().map(|byte| format!("{byte:02x}")).collect())
     }
 
-    fn decrypt_oauth_token(&self, encrypted: &str) -> Option<String> {
+    pub(crate) fn decrypt_private_value(&self, encrypted: &str) -> Option<String> {
         if encrypted.len() % 2 != 0 {
             return None;
         }
@@ -519,6 +519,14 @@ impl BlizzardAuthState {
             .decrypt(Nonce::from_slice(&payload[..12]), &payload[12..])
             .ok()?;
         String::from_utf8(plaintext).ok()
+    }
+
+    fn encrypt_oauth_token(&self, access_token: &str) -> Result<String, String> {
+        self.encrypt_private_value(access_token)
+    }
+
+    fn decrypt_oauth_token(&self, encrypted: &str) -> Option<String> {
+        self.decrypt_private_value(encrypted)
     }
 
     fn store_oauth_session(

@@ -455,6 +455,7 @@ pub(super) async fn create_upgrade_compare_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth.get_ref().clone(),
         simc_binary,
         req.options.to_json(),
         job_id.clone(),

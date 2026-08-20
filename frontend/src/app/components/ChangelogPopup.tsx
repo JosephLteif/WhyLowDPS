@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
-export const CHANGELOG_CONTENT_REVISION = 2;
+export const CHANGELOG_CONTENT_REVISION = 3;
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
@@ -27,6 +27,24 @@ type ReleaseNote = {
 };
 
 const releaseNotes: ReleaseNote[] = [
+  {
+    category: 'feature',
+    title: 'Get Discord notifications for finished sims',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'WhyLowDPS can now send rich Discord webhook notifications when your simulations finish in both the desktop app and Docker-hosted mode.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Configure the webhook under Settings > Integrations, then enable or disable notification categories such as Quick Sims, Top Gear, Drop Finder, matrices, and heatmaps.',
+          'Notifications include DPS details, fight configuration, runtime information, upgrade highlights, and colors matched to the simulation type.',
+          'Webhook URLs are stored securely and can be tested, rotated, or removed at any time.',
+        ],
+      },
+    ],
+  },
   {
     category: 'improvement',
     title: 'Simpler and safer account controls',

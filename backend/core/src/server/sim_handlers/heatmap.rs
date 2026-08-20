@@ -1348,6 +1348,7 @@ fn build_heatmap_profileset_input(
 
 pub(super) async fn create_trinket_tier_heatmap_sim(
     owner_id: String,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc_input: String,
     class_name: String,
     matrix_flags: (bool, bool),
@@ -1421,6 +1422,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth,
         simc_binary,
         options.to_json_with_sim_type("trinket_tier_heatmap"),
         job_id.clone(),

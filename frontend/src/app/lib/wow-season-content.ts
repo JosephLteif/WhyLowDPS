@@ -242,6 +242,14 @@ export const wowEncounters = encounters as WowEncounter[];
 export const wowSeasons = seasons as WowSeason[];
 export const wowMythicPlusDungeons = mythicPlusDungeons as MythicPlusDungeonMapping[];
 
+export function getCurrentWowPatch(
+  seasons: WowSeason[] = wowSeasons,
+  now: Date = new Date()
+): string | null {
+  const currentSlug = selectDefaultWowSeasonSlug(seasons, now);
+  return seasons.find((season) => season.slug === currentSlug)?.patch || null;
+}
+
 export function getStaticWowSeasonContent(): WowSeasonContentResult {
   return buildWowSeasonContent({
     seasons: wowSeasons,

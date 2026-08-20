@@ -39,6 +39,38 @@ export type SimcClipboardInfo =
       extras: string[];
     };
 
+function parseWowVersion(version: string | null | undefined): number[] | null {
+  const match = version?.match(/\b(\d+)\.(\d+)(?:\.(\d+))?/);
+  if (match) return [Number(match[1]), Number(match[2]), Number(match[3] || 0)];
+
+  const buildMatch = version?.match(/\b(\d{6})\b/);
+  if (!buildMatch) return null;
+  const build = buildMatch[1];
+  return [Number(build.slice(0, 2)), Number(build.slice(2, 4)), Number(build.slice(4, 6))];
+}
+
+export function normalizeWowVersion(version: unknown): string | null {
+  if (typeof version !== 'string' && typeof version !== 'number') return null;
+  const parsedVersion = parseWowVersion(String(version));
+  return parsedVersion?.join('.') || null;
+}
+
+export function isOlderWowVersion(
+  wowVersion: string | null | undefined,
+  currentWowVersion: string | null | undefined
+): boolean {
+  const parsedWowVersion = parseWowVersion(wowVersion);
+  const parsedCurrentVersion = parseWowVersion(currentWowVersion);
+  if (!parsedWowVersion || !parsedCurrentVersion) return false;
+
+  for (let i = 0; i < parsedCurrentVersion.length; i++) {
+    if (parsedWowVersion[i] !== parsedCurrentVersion[i]) {
+      return parsedWowVersion[i] < parsedCurrentVersion[i];
+    }
+  }
+  return false;
+}
+
 export function parseCharacterInfo(input: string): SimcClipboardInfo | null {
   if (!input) return null;
 

@@ -1856,6 +1856,12 @@ pub async fn update_hosted_user(
     let Some(mut user) = store.get_user(&id) else {
         return HttpResponse::NotFound().json(json!({"error": "User not found"}));
     };
+    if user.id == admin.sub
+        && (body.role.is_some() || body.enabled.is_some() || body.revoke_sessions)
+    {
+        return HttpResponse::Conflict()
+            .json(json!({"error": "You cannot modify your current account from user management"}));
+    }
     let requested_role = body
         .role
         .as_deref()
@@ -1873,10 +1879,6 @@ pub async fn update_hosted_user(
     {
         return HttpResponse::Conflict()
             .json(json!({"error": "The final administrator cannot be disabled or demoted"}));
-    }
-    if user.id == admin.sub && !requested_enabled {
-        return HttpResponse::Conflict()
-            .json(json!({"error": "You cannot disable your current account"}));
     }
     let role_changed = requested_role.is_some_and(|role| role != user.role);
     if let Some(role) = requested_role {

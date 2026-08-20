@@ -3,7 +3,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Menu, Sparkles } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  ChevronDown,
+  LogOut,
+  Menu,
+  Sparkles,
+  UserRound,
+  Users,
+} from 'lucide-react';
 import { useAuth } from './AuthContext';
 import LoginModal from './LoginModal';
 import { API_URL, fetchJsonCached } from '../lib/api';
@@ -138,6 +147,7 @@ export default function TopHeader() {
   const { user, loading, lightMode, disableLightMode, login, logout, checkCredentialsStatus } =
     useAuth();
   const headerRef = useRef<HTMLElement | null>(null);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [characterName, setCharacterName] = useState('');
@@ -148,8 +158,10 @@ export default function TopHeader() {
     []
   );
   const [isRecentSearchOpen, setIsRecentSearchOpen] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
 
   useDismissOnOutside(headerRef, isRecentSearchOpen, () => setIsRecentSearchOpen(false));
+  useDismissOnOutside(accountMenuRef, isAccountMenuOpen, () => setIsAccountMenuOpen(false));
 
   useEffect(() => {
     setRecentCharacterSearches(readRecentCharacterSearches());
@@ -413,39 +425,98 @@ export default function TopHeader() {
                   </button>
                 </div>
               ) : user ? (
-                <div className="flex items-center gap-3">
+                <div ref={accountMenuRef} className="relative flex items-center gap-3">
                   <div className="hidden h-6 w-px bg-border sm:block" />
-                  <div className="hidden min-w-0 flex-col items-end sm:flex">
-                    <span className="truncate text-[13px] font-medium text-gold">
+                  <button
+                    type="button"
+                    onClick={() => setIsAccountMenuOpen((open) => !open)}
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2 transition-colors hover:bg-white/[0.1]"
+                    aria-label={`Account menu for ${user.battletag}`}
+                    aria-expanded={isAccountMenuOpen}
+                    aria-haspopup="menu"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold/20 text-xs font-bold text-gold ring-1 ring-gold/30">
+                      {user.battletag.trim().charAt(0).toUpperCase() || '?'}
+                    </span>
+                    <span className="hidden max-w-32 truncate text-[13px] font-medium text-zinc-200 sm:inline">
                       {user.battletag}
                     </span>
-                    <Link
-                      href="/characters"
-                      className="text-[13px] text-zinc-300 transition-colors hover:text-white"
+                    <ChevronDown
+                      className={`h-4 w-4 text-zinc-400 transition-transform ${isAccountMenuOpen ? 'rotate-180' : ''}`}
+                      strokeWidth={2}
+                    />
+                  </button>
+
+                  {isAccountMenuOpen ? (
+                    <div
+                      role="menu"
+                      aria-label="Account menu"
+                      className="absolute right-0 top-full z-[150] mt-2 w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-border bg-surface shadow-2xl shadow-black/50"
                     >
-                      My Characters
-                    </Link>
-                    {user.role === 'admin' && (
-                      <Link
-                        href="/admin/users"
-                        className="text-[13px] text-zinc-300 transition-colors hover:text-white"
-                      >
-                        Manage Users
-                      </Link>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => logout(true)}
-                    className="text-[14px] font-medium text-zinc-300 transition-colors hover:text-white"
-                  >
-                    Switch account
-                  </button>
-                  <button
-                    onClick={() => logout(false)}
-                    className="text-[14px] font-medium text-zinc-400 transition-colors hover:text-white"
-                  >
-                    Log out
-                  </button>
+                      <div className="border-b border-border px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/20 text-sm font-bold text-gold ring-1 ring-gold/30">
+                            {user.battletag.trim().charAt(0).toUpperCase() || '?'}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+                              BattleTag
+                            </p>
+                            <p className="truncate text-sm font-semibold text-zinc-100">
+                              {user.battletag}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="p-1">
+                        <Link
+                          href="/characters"
+                          role="menuitem"
+                          onClick={() => setIsAccountMenuOpen(false)}
+                          className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-200 transition-colors hover:bg-white/[0.07] hover:text-white"
+                        >
+                          <UserRound className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+                          My Characters
+                        </Link>
+                        {user.role === 'admin' ? (
+                          <Link
+                            href="/admin/users"
+                            role="menuitem"
+                            onClick={() => setIsAccountMenuOpen(false)}
+                            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-zinc-200 transition-colors hover:bg-white/[0.07] hover:text-white"
+                          >
+                            <Users className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+                            Manage Users
+                          </Link>
+                        ) : null}
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIsAccountMenuOpen(false);
+                            logout(true);
+                          }}
+                          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-zinc-200 transition-colors hover:bg-white/[0.07] hover:text-white"
+                        >
+                          <ArrowRightLeft className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+                          Switch account
+                        </button>
+                        <div className="my-1 border-t border-border" />
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIsAccountMenuOpen(false);
+                            logout(false);
+                          }}
+                          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm text-zinc-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                        >
+                          <LogOut className="h-4 w-4" strokeWidth={2} />
+                          Log out
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <button

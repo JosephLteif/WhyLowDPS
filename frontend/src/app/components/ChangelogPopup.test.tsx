@@ -1,10 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
-import ChangelogPopup, { CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
+import ChangelogPopup, { CHANGELOG_CONTENT_REVISION, CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
 import { APP_VERSION } from '../lib/version';
 
-const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
+const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
 describe('ChangelogPopup', () => {
   beforeEach(() => {
@@ -18,11 +18,11 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Use separate accounts by default' })
+      screen.getByRole('heading', { level: 3, name: 'Simpler and safer account controls' })
     ).toBeInTheDocument();
-    expect(screen.getByText(/keeps each Battle.net user/)).toBeInTheDocument();
+    expect(screen.getByText(/BattleTag and account actions are now grouped/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 9$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Show changelog item 10$/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -94,7 +94,7 @@ describe('ChangelogPopup', () => {
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 2$/ }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 3$/ }));
 
     expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
     expect(document.querySelector('article p, article ul')).not.toBeNull();
@@ -105,17 +105,17 @@ describe('ChangelogPopup', () => {
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 2$/ }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 3$/ }));
     expect(
       screen.getByRole('heading', { level: 3, name: 'Use hosted Light mode without signing in' })
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 7$/ }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 8$/ }));
     expect(
       screen.getByRole('heading', { level: 3, name: 'Safer season rollovers' })
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 9$/ }));
+    await user.click(screen.getByRole('button', { name: /^Show changelog item 10$/ }));
     expect(
       screen.getByRole('heading', { level: 3, name: 'Dungeon routes stay on the dungeon flow' })
     ).toBeInTheDocument();

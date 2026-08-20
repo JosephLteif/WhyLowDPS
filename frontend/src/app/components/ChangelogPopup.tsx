@@ -5,8 +5,9 @@ import { useEffect, useState } from 'react';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
+export const CHANGELOG_CONTENT_REVISION = 2;
 
-const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
+const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
 type ReleaseNoteCategory = 'feature' | 'fix' | 'improvement';
 
@@ -26,6 +27,23 @@ type ReleaseNote = {
 };
 
 const releaseNotes: ReleaseNote[] = [
+  {
+    category: 'improvement',
+    title: 'Simpler and safer account controls',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'Your BattleTag and account actions are now grouped under one avatar menu in the header.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Open the avatar menu to reach My Characters, Switch account, and Manage Users without crowding the header.',
+          'User Management protects your own account from being disabled, signed out, demoted, or otherwise modified by admin actions.',
+        ],
+      },
+    ],
+  },
   {
     category: 'feature',
     title: 'Use separate accounts by default',

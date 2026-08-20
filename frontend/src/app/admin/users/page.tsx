@@ -79,42 +79,53 @@ export default function UsersAdminPage() {
                   : ''}
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={entry.role}
-                onChange={async (event) => {
-                  await updateHostedUser(entry.id, {
-                    role: event.target.value as 'admin' | 'member',
-                  });
-                  await refresh();
-                }}
-                className="rounded-md border border-white/10 bg-zinc-950 px-2 py-1.5 text-sm"
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button
-                onClick={async () => {
-                  await updateHostedUser(entry.id, {
-                    enabled: !entry.enabled,
-                    revoke_sessions: entry.enabled,
-                  });
-                  await refresh();
-                }}
-                className="rounded-md border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5"
-              >
-                {entry.enabled ? 'Disable' : 'Enable'}
-              </button>
-              <button
-                onClick={async () => {
-                  await updateHostedUser(entry.id, { revoke_sessions: true });
-                  await refresh();
-                }}
-                className="rounded-md border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5"
-              >
-                Sign out
-              </button>
-            </div>
+            {entry.id === user.id ? (
+              <div className="flex items-center gap-2 text-xs text-emerald-300">
+                <span className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1.5">
+                  Current account protected
+                </span>
+                <span className="text-zinc-500">
+                  {entry.role === 'admin' ? 'Administrator' : 'Member'}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <select
+                  value={entry.role}
+                  onChange={async (event) => {
+                    await updateHostedUser(entry.id, {
+                      role: event.target.value as 'admin' | 'member',
+                    });
+                    await refresh();
+                  }}
+                  className="rounded-md border border-white/10 bg-zinc-950 px-2 py-1.5 text-sm"
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <button
+                  onClick={async () => {
+                    await updateHostedUser(entry.id, {
+                      enabled: !entry.enabled,
+                      revoke_sessions: entry.enabled,
+                    });
+                    await refresh();
+                  }}
+                  className="rounded-md border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5"
+                >
+                  {entry.enabled ? 'Disable' : 'Enable'}
+                </button>
+                <button
+                  onClick={async () => {
+                    await updateHostedUser(entry.id, { revoke_sessions: true });
+                    await refresh();
+                  }}
+                  className="rounded-md border border-white/10 px-3 py-1.5 text-sm hover:bg-white/5"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>

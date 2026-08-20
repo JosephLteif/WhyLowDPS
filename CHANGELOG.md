@@ -20,6 +20,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 ### Changed
 
 - Account switching now revokes the current session and starts a fresh Battle.net login; ordinary sessions persist securely across app and server restarts.
+- Account actions now live under one avatar menu with the BattleTag, My Characters, Switch account, and Manage Users options; the current admin account is protected from self-disable, sign-out, or role changes.
 - The hosted Raids page now works in Light mode, lists cataloged expansions, fills missing current-expansion metadata, and chains catalog and public artwork fallbacks when image endpoints have no source.
 - Dungeon expansion and season selectors retain known content during incomplete runtime refreshes, and dungeon cards fall back through catalog and public artwork sources.
 - Removing a paired LAN device immediately invalidates its session and redirects that browser to a QR scanner for a new pairing.

@@ -28,7 +28,12 @@ interface AuthContextType {
   lightMode: boolean;
   enableLightMode: () => void;
   disableLightMode: () => void;
-  login: (clientId?: string, clientSecret?: string, credentialId?: string) => Promise<void>;
+  login: (
+    clientId?: string,
+    clientSecret?: string,
+    credentialId?: string,
+    forceAccountSelection?: boolean
+  ) => Promise<void>;
   logout: (switchAccount?: boolean) => void;
   checkCredentialsStatus: () => Promise<{ globally_configured: boolean }>;
   setSystemCredentials: (clientId: string, clientSecret: string) => Promise<boolean>;
@@ -239,7 +244,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (clientId?: string, clientSecret?: string, credentialId?: string) => {
+    async (
+      clientId?: string,
+      clientSecret?: string,
+      credentialId?: string,
+      forceAccountSelection = false
+    ) => {
       localStorage.removeItem(LIGHT_MODE_KEY);
       setLightMode(false);
       const flowId = crypto.randomUUID();
@@ -257,6 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (selectedCredentialId) {
         url += `&credential_id=${encodeURIComponent(selectedCredentialId)}`;
       }
+      if (forceAccountSelection) url += '&force_account_selection=true';
 
       if (isDesktop) {
         startPolling(flowId);
@@ -332,7 +343,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         setUser(null);
         if (switchAccount) {
-          void login();
+          void login(undefined, undefined, undefined, true);
         } else {
           window.location.href = '/';
         }

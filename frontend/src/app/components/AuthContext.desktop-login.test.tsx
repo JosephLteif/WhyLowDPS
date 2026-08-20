@@ -83,4 +83,18 @@ describe('AuthContext desktop login', () => {
       });
     });
   });
+
+  it('requests Battle.net account selection when switching accounts', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await result.current.login(undefined, undefined, undefined, true);
+
+    await waitFor(() => {
+      expect(mocks.invoke).toHaveBeenCalledWith('open_auth_window', {
+        url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&force_account_selection=true',
+      });
+    });
+  });
 });

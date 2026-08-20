@@ -599,6 +599,8 @@ struct UserInfoResponse {
 pub struct LoginQuery {
     pub credential_id: Option<String>,
     pub flow_id: Option<String>,
+    #[serde(default)]
+    pub force_account_selection: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -978,12 +980,20 @@ pub async fn bnet_login(
         store.set_cache(&client_secret_cache_key, client_secret);
     }
 
-    let auth_url = format!(
+    let authorize_url = format!(
         "https://oauth.battle.net/authorize?client_id={}&redirect_uri={}&response_type=code&scope=wow.profile%20openid&state={}&prompt=login%20consent&max_age=0",
         client_id,
         urlencoding::encode(&redirect_uri_for_flow),
         flow_id
     );
+    let auth_url = if query.force_account_selection {
+        format!(
+            "https://battle.net/login/logout?ref={}",
+            urlencoding::encode(&authorize_url)
+        )
+    } else {
+        authorize_url
+    };
 
     builder.append_header((header::LOCATION, auth_url)).finish()
 }
@@ -2384,6 +2394,7 @@ mod tests {
             web::Query(LoginQuery {
                 credential_id: Some(profile_id),
                 flow_id: Some("00000000-0000-4000-8000-000000000123".to_string()),
+                force_account_selection: false,
             }),
         )
         .await;
@@ -2397,6 +2408,58 @@ mod tests {
             store.get_cache("login_flow_client_secret_00000000-0000-4000-8000-000000000123"),
             Some("saved-client-secret".to_string())
         );
+    }
+
+    #[actix_web::test]
+    async fn bnet_login_clears_battle_net_sso_before_account_selection() {
+        let req = TestRequest::default().to_http_request();
+        let state = auth_state();
+        let store = test_store();
+        let secrets = test_secret_store();
+
+        let saved = save_blizzard_credential_profile(
+            store.clone(),
+            secrets.clone(),
+            web::Json(SaveBlizzardCredentialProfileRequest {
+                name: Some("Main".to_string()),
+                client_id: "saved-client-id".to_string(),
+                client_secret: "saved-client-secret".to_string(),
+            }),
+        )
+        .await;
+        let profile_id = body_json(saved)
+            .await
+            .get("profile")
+            .and_then(|profile| profile.get("id"))
+            .and_then(Value::as_str)
+            .expect("profile id")
+            .to_string();
+
+        let resp = bnet_login(
+            req,
+            state,
+            store,
+            secrets,
+            web::Query(LoginQuery {
+                credential_id: Some(profile_id),
+                flow_id: Some("flow-switch-account".to_string()),
+                force_account_selection: true,
+            }),
+        )
+        .await;
+
+        let location = resp
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .expect("account selection redirect");
+        assert!(location.starts_with("https://battle.net/login/logout?ref="));
+        let authorize_url = location
+            .split_once("ref=")
+            .and_then(|(_, value)| urlencoding::decode(value).ok())
+            .expect("encoded authorize URL");
+        assert!(authorize_url.starts_with("https://oauth.battle.net/authorize?"));
+        assert!(authorize_url.contains("prompt=login%20consent"));
     }
 
     #[actix_web::test]
@@ -2426,6 +2489,7 @@ mod tests {
             web::Query(LoginQuery {
                 credential_id: Some("profile-id".to_string()),
                 flow_id: Some("00000000-0000-4000-8000-000000000123".to_string()),
+                force_account_selection: false,
             }),
         )
         .await;
@@ -2465,6 +2529,7 @@ mod tests {
             web::Query(LoginQuery {
                 credential_id: Some("profile-id".to_string()),
                 flow_id: Some("flow-123".to_string()),
+                force_account_selection: false,
             }),
         )
         .await;
@@ -2493,6 +2558,7 @@ mod tests {
             web::Query(LoginQuery {
                 credential_id: None,
                 flow_id: None,
+                force_account_selection: false,
             }),
         )
         .await;
@@ -2520,6 +2586,7 @@ mod tests {
             web::Query(LoginQuery {
                 credential_id: None,
                 flow_id: Some("flow-123".to_string()),
+                force_account_selection: false,
             }),
         )
         .await;

@@ -47,5 +47,6 @@ test("release workflow can republish an existing version without bumping it", ()
   assert.match(workflow, /inputs\.release_mode == 'republish'/);
   assert.match(workflow, /git ls-remote --exit-code origin "refs\/tags\/v\$\{EXISTING_VERSION\}"/);
   assert.match(workflow, /ref: \$\{\{ github\.event_name == 'workflow_dispatch' && format\('v\{0\}', inputs\.existing_version\)/);
+  assert.match(workflow, /name: Ensure container resource paths exist[\s\S]*mkdir -p backend\/resources\/data/);
   assert.match(workflow, /RELEASE_TAG#v/);
 });

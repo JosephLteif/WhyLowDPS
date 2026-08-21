@@ -268,6 +268,18 @@ jobs:
             type=semver,pattern={{major}}.{{minor}},value=${{ github.event_name == 'workflow_dispatch' && inputs.existing_version || github.ref_name }}
             type=raw,value=latest
 
+      - name: Ensure container resource paths exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p backend/resources/data
+          if [[ ! -f backend/resources/zones-encounters-index.json ]]; then
+            echo "backend/resources/zones-encounters-index.json is required for container releases"
+            exit 1
+          fi
+          cp backend/resources/zones-encounters-index.json backend/resources/data/zones-encounters-index.json
+          touch backend/resources/data/.keep
+
       - name: Build private-hosting image
         uses: docker/build-push-action@v6
         with:

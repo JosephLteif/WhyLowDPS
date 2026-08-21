@@ -48,7 +48,7 @@
     "eslint-config-next": "^16.2.11",
     "jsdom": "^29.1.1",
     "npm-check-updates": "^23.0.2",
-    "postcss": "^8.5.13",
+    "postcss": "^8.5.23",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^3.4.19",

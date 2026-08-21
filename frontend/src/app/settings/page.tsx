@@ -179,6 +179,8 @@ export default function SettingsPage() {
     dockerReleaseMetadataStatus,
     loadDockerReleases,
   } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
+  const simcRuntimeControlAvailable =
+    isDesktop || (isHostedPrivate && user?.role === 'admin');
 
   useEffect(() => {
     if (authLoading) {
@@ -348,18 +350,28 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!isDesktop) return;
+    if (!simcRuntimeControlAvailable) return;
     let cancelled = false;
     (async () => {
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        const pref = await invoke<SimcUpdateChannelResponse>('get_simc_update_channel');
-        const versionPref = await invoke<SimcRuntimeVersionPreferenceResponse>(
-          'get_simc_runtime_version'
+        if (isDesktop) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const pref = await invoke<SimcUpdateChannelResponse>('get_simc_update_channel');
+          const versionPref = await invoke<SimcRuntimeVersionPreferenceResponse>(
+            'get_simc_runtime_version'
+          );
+          if (cancelled) return;
+          setSelectedSimcChannelState(pref?.channel === 'nightly' ? 'nightly' : 'weekly');
+          setSelectedSimcRuntimeVersionState(versionPref?.version || null);
+          return;
+        }
+
+        const status = await fetchJson<SimcRuntimeStatusResponse>(
+          `${API_URL}/api/admin/simc-runtime`
         );
         if (cancelled) return;
-        setSelectedSimcChannelState(pref?.channel === 'nightly' ? 'nightly' : 'weekly');
-        setSelectedSimcRuntimeVersionState(versionPref?.version || null);
+        setSelectedSimcChannelState(status?.channel === 'nightly' ? 'nightly' : 'weekly');
+        setSelectedSimcRuntimeVersionState(null);
       } catch {
         if (!cancelled) {
           setSelectedSimcChannelState('weekly');
@@ -370,7 +382,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [simcRuntimeControlAvailable]);
 
   useEffect(() => {
     if (dataCacheRefreshMinutes >= 7 * 24 * 60) {
@@ -655,11 +667,30 @@ export default function SettingsPage() {
     channel: SimcUpdateChannel,
     options?: { forceRefresh?: boolean }
   ) => {
-    if (!isDesktop) return;
+    if (!simcRuntimeControlAvailable) return;
     setSimcRuntimeInfoLoading(true);
-    const info = await fetchSimcRuntimeInfo(channel, options);
-    setSimcRuntimeInfo(info);
-    setSimcRuntimeInfoLoading(false);
+    try {
+      if (isDesktop) {
+        const info = await fetchSimcRuntimeInfo(channel, options);
+        setSimcRuntimeInfo(info);
+      } else {
+        const status = await fetchJson<SimcRuntimeStatusResponse>(
+          `${API_URL}/api/admin/simc-runtime`
+        );
+        setSimcRuntimeInfo({
+          channel: status?.channel === 'nightly' ? 'nightly' : 'weekly',
+          version: status?.version || 'Unavailable',
+          metadataStatus: status?.version ? 'available' : 'unavailable',
+        });
+      }
+    } catch (err: any) {
+      setSimcChannelMessage({
+        type: 'error',
+        text: err?.message || err?.toString?.() || 'Failed to load SimC runtime status.',
+      });
+    } finally {
+      setSimcRuntimeInfoLoading(false);
+    }
   };
 
   const loadSimcRuntimeVersions = async () => {
@@ -670,9 +701,9 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (!isDesktop) return;
+    if (!simcRuntimeControlAvailable) return;
     void loadSimcRuntimeInfo(selectedSimcChannel);
-  }, [selectedSimcChannel]);
+  }, [selectedSimcChannel, simcRuntimeControlAvailable]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -691,18 +722,35 @@ export default function SettingsPage() {
   }, []);
 
   const setSelectedSimcChannel = async (nextChannel: SimcUpdateChannel) => {
-    if (!isDesktop) return;
+    if (!simcRuntimeControlAvailable) return;
     const previous = selectedSimcChannel;
     setSelectedSimcChannelState(nextChannel);
     setSimcChannelMessage(null);
-    const { invoke } = await import('@tauri-apps/api/core');
     let savedChannel: SimcUpdateChannel;
     try {
-      const pref = await invoke<SimcUpdateChannelResponse>('set_simc_update_channel', {
-        channel: nextChannel,
-      });
-      await invoke('set_simc_runtime_version', { version: null });
-      savedChannel = pref?.channel === 'nightly' ? 'nightly' : 'weekly';
+      if (isDesktop) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const pref = await invoke<SimcUpdateChannelResponse>('set_simc_update_channel', {
+          channel: nextChannel,
+        });
+        await invoke('set_simc_runtime_version', { version: null });
+        savedChannel = pref?.channel === 'nightly' ? 'nightly' : 'weekly';
+      } else {
+        const status = await fetchJson<SimcRuntimeStatusResponse>(
+          `${API_URL}/api/admin/simc-runtime`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel: nextChannel }),
+          }
+        );
+        savedChannel = status?.channel === 'nightly' ? 'nightly' : 'weekly';
+        setSimcRuntimeInfo({
+          channel: savedChannel,
+          version: status?.version || 'Unavailable',
+          metadataStatus: status?.version ? 'available' : 'unavailable',
+        });
+      }
       setSelectedSimcChannelState(savedChannel);
       setSelectedSimcRuntimeVersionState(null);
     } catch (err: any) {
@@ -716,7 +764,9 @@ export default function SettingsPage() {
 
     setSimcChannelMessage({
       type: 'success',
-      text: `SimC channel saved as ${savedChannel}.`,
+      text: isDesktop
+        ? `SimC channel saved as ${savedChannel}.`
+        : `Docker SimC runtime switched to ${savedChannel}.`,
     });
   };
 
@@ -755,19 +805,36 @@ export default function SettingsPage() {
   };
 
   const downloadSelectedSimcRuntime = async () => {
-    if (!isDesktop || simcRuntimeDownloading) return;
+    if (!simcRuntimeControlAvailable || simcRuntimeDownloading) return;
     const channel = selectedSimcChannel;
     setSimcRuntimeDownloading(true);
     setSimcChannelMessage({
       type: 'success',
       text: `Downloading ${channel} SimC runtime...`,
     });
-    const { invoke } = await import('@tauri-apps/api/core');
     try {
-      const status = await invoke<SimcRuntimeStatusResponse>('update_simc_runtime', {
-        channel,
-        version: selectedSimcRuntimeVersion,
-      });
+      let status: SimcRuntimeStatusResponse;
+      if (isDesktop) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        status = await invoke<SimcRuntimeStatusResponse>('update_simc_runtime', {
+          channel,
+          version: selectedSimcRuntimeVersion,
+        });
+      } else {
+        status = await fetchJson<SimcRuntimeStatusResponse>(
+          `${API_URL}/api/admin/simc-runtime`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel }),
+          }
+        );
+        setSimcRuntimeInfo({
+          channel: status?.channel === 'nightly' ? 'nightly' : 'weekly',
+          version: status?.version || 'Unavailable',
+          metadataStatus: status?.version ? 'available' : 'unavailable',
+        });
+      }
       const version = status?.version ? ` (${status.version})` : '';
       setSimcChannelMessage({
         type: 'success',
@@ -1327,7 +1394,7 @@ export default function SettingsPage() {
           }}
           downloadSelectedSimcRuntime={downloadSelectedSimcRuntime}
           simcChannelMessage={simcChannelMessage}
-          isDesktopRuntime={isDesktop}
+          isDesktopRuntime={simcRuntimeControlAvailable}
           isHostedPrivateRuntime={isHostedPrivate}
           updateCheckState={updateCheckState}
           appReleases={appReleases}

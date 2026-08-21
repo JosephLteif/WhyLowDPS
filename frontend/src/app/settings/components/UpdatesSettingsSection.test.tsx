@@ -235,7 +235,7 @@ describe('UpdatesSettingsSection', () => {
         refreshSimcRuntimeInfo={noop}
         downloadSelectedSimcRuntime={noop}
         simcChannelMessage={null}
-        isDesktopRuntime={false}
+        isDesktopRuntime={true}
         isHostedPrivateRuntime={true}
         updateCheckState="idle"
         appReleases={[]}
@@ -265,6 +265,7 @@ describe('UpdatesSettingsSection', () => {
     expect(screen.getByRole('option', { name: '3.3.0' })).toBeTruthy();
     expect(screen.getByText('3.3.0', { selector: 'code' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Copy update commands' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'SimC channel' })).toBeTruthy();
     expect(screen.queryByText('Stable Version')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Download & Install' })).toBeNull();
   });

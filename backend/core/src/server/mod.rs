@@ -804,6 +804,32 @@ pub async fn start_with_storage_bind_options(
     data_dir: Option<PathBuf>,
     security: ServerSecurityOptions,
 ) -> (actix_web::dev::Server, u16) {
+    start_with_storage_bind_options_and_simc_runtime(
+        storage,
+        simc_path,
+        bind_host,
+        port,
+        frontend_dir,
+        data_dir,
+        security,
+        None,
+    )
+    .await
+}
+
+/// Start the HTTP server with an optional runtime-managed SimC installation.
+/// The runtime controller is used by hosted Docker deployments; desktop and
+/// test callers continue to use the fixed executable path above.
+pub async fn start_with_storage_bind_options_and_simc_runtime(
+    storage: Arc<dyn JobStorage>,
+    simc_path: PathBuf,
+    bind_host: &str,
+    port: u16,
+    frontend_dir: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
+    security: ServerSecurityOptions,
+    simc_runtime: Option<Arc<crate::simc_runtime::SimcRuntimeState>>,
+) -> (actix_web::dev::Server, u16) {
     #[cfg(feature = "web")]
     {
         let externally_reachable = !is_loopback_bind(bind_host);
@@ -819,6 +845,7 @@ pub async fn start_with_storage_bind_options(
 
         let store_data = web::Data::new(storage);
         let simc_data = web::Data::new(simc_path);
+        let simc_runtime_data = simc_runtime.map(web::Data::new);
         let log_data = web::Data::new(Arc::new(LogBuffer::new()));
         #[cfg(feature = "desktop")]
         let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
@@ -918,6 +945,19 @@ pub async fn start_with_storage_bind_options(
                 .app_data(blizzard_credential_secrets.clone())
                 .app_data(auth_state.clone())
                 .app_data(auth_state_opt_data.clone());
+
+            if let Some(simc_runtime_data) = simc_runtime_data.clone() {
+                app = app
+                    .app_data(simc_runtime_data)
+                    .route(
+                        "/api/admin/simc-runtime",
+                        web::get().to(auth_handlers::get_simc_runtime),
+                    )
+                    .route(
+                        "/api/admin/simc-runtime",
+                        web::post().to(auth_handlers::set_simc_runtime),
+                    );
+            }
 
             if let Some(lan_access) = lan_access.clone() {
                 app = app

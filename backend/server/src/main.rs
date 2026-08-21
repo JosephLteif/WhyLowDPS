@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use whylowdps_core::game_data;
 use whylowdps_core::server;
-use whylowdps_core::simc_runtime::{resolve_simc_runtime, SimcChannel, SimcRuntimeConfig};
+use whylowdps_core::simc_runtime::{SimcChannel, SimcRuntimeConfig, SimcRuntimeState};
 use whylowdps_core::storage::JobStorage;
 
 fn env_or(key: &str, default: &str) -> String {
@@ -179,26 +179,6 @@ async fn main() {
     )
     .unwrap_or_else(|error| panic!("failed to initialize session encryption key: {error}"));
 
-    let simc_runtime_dir = PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime"));
-    let simc_channel = SimcChannel::parse(&env_or("SIMC_CHANNEL", "weekly"));
-    let simc_config = SimcRuntimeConfig::new(simc_channel, simc_runtime_dir);
-    let simc_path = match std::env::var("SIMC_PATH") {
-        Ok(path) if !path.trim().is_empty() => PathBuf::from(path),
-        _ => match resolve_simc_runtime(&simc_config).await {
-            Ok(resolution) => {
-                println!(
-                    "Using SimC {} channel version {} at {:?}",
-                    resolution.channel, resolution.version, resolution.simc_path
-                );
-                resolution.simc_path
-            }
-            Err(err) => {
-                eprintln!("Failed to update SimC runtime: {err}");
-                simc_config.simc_path()
-            }
-        },
-    };
-
     let bind_host = env_or("BIND_HOST", "127.0.0.1");
     validate_bind_configuration(
         &bind_host,
@@ -233,13 +213,62 @@ async fn main() {
         }
     };
 
-    let (server, actual_port) = server::start_with_storage_bind(
+    let simc_path_override = std::env::var("SIMC_PATH")
+        .ok()
+        .filter(|path| !path.trim().is_empty());
+    let env_simc_channel = SimcChannel::parse(&env_or("SIMC_CHANNEL", "weekly"));
+    let simc_channel = storage
+        .get_user_config("system", "simc_channel")
+        .and_then(|value| SimcChannel::try_parse(&value))
+        .unwrap_or(env_simc_channel);
+    let simc_runtime = simc_path_override.is_none().then(|| {
+        Arc::new(SimcRuntimeState::new(SimcRuntimeConfig::new(
+            simc_channel,
+            PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime")),
+        )))
+    });
+    let simc_path = match simc_path_override {
+        Some(path) => PathBuf::from(path),
+        None => match simc_runtime
+            .as_ref()
+            .expect("SimC runtime state missing")
+            .update(simc_channel)
+            .await
+        {
+            Ok(status) => {
+                println!(
+                    "Using SimC {} channel version {} at {:?}",
+                    status.channel,
+                    status.version.as_deref().unwrap_or("cached"),
+                    simc_runtime
+                        .as_ref()
+                        .expect("SimC runtime state missing")
+                        .simc_path()
+                );
+                simc_runtime
+                    .as_ref()
+                    .expect("SimC runtime state missing")
+                    .simc_path()
+            }
+            Err(err) => {
+                eprintln!("Failed to update SimC runtime: {err}");
+                simc_runtime
+                    .as_ref()
+                    .expect("SimC runtime state missing")
+                    .simc_path()
+            }
+        },
+    };
+
+    let (server, actual_port) = server::start_with_storage_bind_options_and_simc_runtime(
         storage,
         simc_path,
         &bind_host,
         port,
         frontend_dir,
         Some(data_dir),
+        server::ServerSecurityOptions::default(),
+        simc_runtime,
     )
     .await;
 

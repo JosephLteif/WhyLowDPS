@@ -1,3 +1,4 @@
+use crate::simc_runtime::{SimcChannel, SimcRuntimeState};
 use actix_web::cookie::{Cookie, SameSite};
 use actix_web::http::header;
 use actix_web::{web, HttpRequest, HttpResponse};
@@ -1802,6 +1803,47 @@ fn require_admin(
         Some(claims) if claims.role == "admin" => Ok(claims),
         Some(_) => Err(HttpResponse::Forbidden().json(json!({"error": "Admin access required"}))),
         None => Err(HttpResponse::Unauthorized().json(json!({"error": "Not logged in"}))),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct SimcRuntimeChannelUpdate {
+    pub channel: String,
+}
+
+pub async fn get_simc_runtime(
+    req: HttpRequest,
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    runtime: web::Data<Arc<SimcRuntimeState>>,
+) -> HttpResponse {
+    if let Err(response) = require_admin(&req, state.get_ref(), &***store) {
+        return response;
+    }
+    HttpResponse::Ok().json(runtime.status())
+}
+
+pub async fn set_simc_runtime(
+    req: HttpRequest,
+    state: web::Data<Arc<BlizzardAuthState>>,
+    store: web::Data<Arc<dyn crate::storage::JobStorage>>,
+    runtime: web::Data<Arc<SimcRuntimeState>>,
+    body: web::Json<SimcRuntimeChannelUpdate>,
+) -> HttpResponse {
+    if let Err(response) = require_admin(&req, state.get_ref(), &***store) {
+        return response;
+    }
+    let Some(channel) = SimcChannel::try_parse(&body.channel) else {
+        return HttpResponse::BadRequest()
+            .json(json!({"error": "SimC channel must be weekly or nightly"}));
+    };
+
+    match runtime.update(channel).await {
+        Ok(status) => {
+            store.set_user_config("system", "simc_channel", &status.channel);
+            HttpResponse::Ok().json(status)
+        }
+        Err(error) => HttpResponse::BadGateway().json(json!({"error": error})),
     }
 }
 

@@ -147,16 +147,32 @@ export default function UpdatesSettingsSection({
         {isDesktopRuntime && (
           <div data-update-card className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-zinc-300">SimC Version</span>
-              <SimcVersionDropdown
-                value={selectedSimcVersionValue}
-                selectedChannel={selectedSimcChannel}
-                selectedVersion={selectedSimcRuntimeVersion}
-                weeklyVersions={weeklySimcVersions}
-                nightlyVersions={nightlySimcVersions}
-                onSelectLatest={setSelectedSimcChannel}
-                onSelectVersion={setSelectedSimcRuntimeVersion}
-              />
+              <span className="text-sm font-medium text-zinc-300">
+                {isHostedPrivateRuntime ? 'SimC Channel' : 'SimC Version'}
+              </span>
+              {isHostedPrivateRuntime ? (
+                <select
+                  aria-label="SimC channel"
+                  value={selectedSimcChannel}
+                  onChange={(event) =>
+                    setSelectedSimcChannel(event.target.value as 'weekly' | 'nightly')
+                  }
+                  className="min-w-[180px] rounded border border-gold/35 bg-surface-2 px-3 py-2 text-sm font-semibold text-zinc-100"
+                >
+                  <option value="weekly">Weekly</option>
+                  <option value="nightly">Nightly</option>
+                </select>
+              ) : (
+                <SimcVersionDropdown
+                  value={selectedSimcVersionValue}
+                  selectedChannel={selectedSimcChannel}
+                  selectedVersion={selectedSimcRuntimeVersion}
+                  weeklyVersions={weeklySimcVersions}
+                  nightlyVersions={nightlySimcVersions}
+                  onSelectLatest={setSelectedSimcChannel}
+                  onSelectVersion={setSelectedSimcRuntimeVersion}
+                />
+              )}
               {simcRuntimeVersionsLoading && (
                 <span className="text-xs text-zinc-500">Loading versions...</span>
               )}
@@ -172,7 +188,11 @@ export default function UpdatesSettingsSection({
                 disabled={simcRuntimeDownloading}
                 className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
               >
-                {simcRuntimeDownloading ? 'Downloading...' : 'Download'}
+                {simcRuntimeDownloading
+                  ? 'Downloading...'
+                  : isHostedPrivateRuntime
+                    ? 'Refresh runtime'
+                    : 'Download'}
               </button>
             </div>
             <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">

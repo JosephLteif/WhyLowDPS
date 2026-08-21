@@ -4,8 +4,10 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
 const DEFAULT_MANIFEST_BASE_URL: &str =
     "https://github.com/JosephLteif/whylowdps-simc-runtime/releases/download";
@@ -22,6 +24,14 @@ impl SimcChannel {
         match value.trim().to_ascii_lowercase().as_str() {
             "nightly" => Self::Nightly,
             _ => Self::Weekly,
+        }
+    }
+
+    pub fn try_parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "weekly" => Some(Self::Weekly),
+            "nightly" => Some(Self::Nightly),
+            _ => None,
         }
     }
 
@@ -127,6 +137,69 @@ pub struct SimcRuntimeResolution {
     pub channel: String,
     pub version: String,
     pub updated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SimcRuntimeStatus {
+    pub channel: String,
+    pub version: Option<String>,
+    pub updated: bool,
+}
+
+/// Shared runtime state for hosted deployments. The binary path stays stable
+/// so existing simulation handlers can keep using their current path while a
+/// newly selected channel is downloaded into it.
+pub struct SimcRuntimeState {
+    config: SimcRuntimeConfig,
+    channel: RwLock<SimcChannel>,
+    update_lock: Mutex<()>,
+}
+
+impl SimcRuntimeState {
+    pub fn new(config: SimcRuntimeConfig) -> Self {
+        let channel = config.channel;
+        Self {
+            config,
+            channel: RwLock::new(channel),
+            update_lock: Mutex::new(()),
+        }
+    }
+
+    pub fn channel(&self) -> SimcChannel {
+        *self.channel.read().expect("SimC channel lock poisoned")
+    }
+
+    pub fn simc_path(&self) -> PathBuf {
+        self.config.simc_path()
+    }
+
+    pub fn status(&self) -> SimcRuntimeStatus {
+        let channel = self.channel();
+        let version = read_cached_metadata(&self.config.metadata_path())
+            .filter(|metadata| metadata.channel.eq_ignore_ascii_case(channel.as_str()))
+            .map(|metadata| metadata.version);
+        SimcRuntimeStatus {
+            channel: channel.to_string(),
+            version,
+            updated: false,
+        }
+    }
+
+    pub async fn update(&self, channel: SimcChannel) -> Result<SimcRuntimeStatus, String> {
+        let _guard = self.update_lock.lock().await;
+        let config = SimcRuntimeConfig {
+            channel,
+            ..self.config.clone()
+        };
+        let resolution = resolve_simc_runtime(&config).await?;
+        let resolved_channel = SimcChannel::try_parse(&resolution.channel).unwrap_or(channel);
+        *self.channel.write().expect("SimC channel lock poisoned") = resolved_channel;
+        Ok(SimcRuntimeStatus {
+            channel: resolved_channel.to_string(),
+            version: Some(resolution.version),
+            updated: resolution.updated,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -493,8 +566,31 @@ mod tests {
         assert_eq!(SimcChannel::parse(" WEEKLY "), SimcChannel::Weekly);
         assert_eq!(SimcChannel::parse("stable"), SimcChannel::Weekly);
         assert_eq!(SimcChannel::parse(""), SimcChannel::Weekly);
+        assert_eq!(
+            SimcChannel::try_parse(" NIGHTLY "),
+            Some(SimcChannel::Nightly)
+        );
+        assert_eq!(SimcChannel::try_parse("stable"), None);
         assert_eq!(SimcChannel::Nightly.to_string(), "nightly");
         assert_eq!(SimcChannel::Weekly.to_string(), "weekly");
+    }
+
+    #[test]
+    fn runtime_state_reports_selected_channel_and_matching_cached_version() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = SimcRuntimeConfig::new(SimcChannel::Nightly, dir.path().to_path_buf());
+        fs::write(
+            dir.path().join(MANIFEST_FILE),
+            r#"{"channel":"nightly","version":"nightly-202608210100","sha256":"abc"}"#,
+        )
+        .expect("cached metadata");
+
+        let state = SimcRuntimeState::new(config);
+        assert_eq!(state.status().channel, "nightly");
+        assert_eq!(
+            state.status().version.as_deref(),
+            Some("nightly-202608210100")
+        );
     }
 
     #[test]

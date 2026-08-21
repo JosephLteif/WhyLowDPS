@@ -118,6 +118,12 @@ published for `linux-x64`.
    trusted LAN and sign in with the bootstrap administrator BattleTag. Add other
    allowed accounts from **Manage Users**.
 
+The administrator can switch the Docker-hosted SimulationCraft build at runtime
+from **Settings > Docker Updates > SimC Channel**. Choose **Weekly** or **Nightly**;
+the selected latest build is downloaded immediately and the choice is stored in
+the persistent database volume. Other hosted users can use the runtime but
+cannot change this server-wide setting.
+
 The SQLite database, synchronized data, caches, saved encrypted credentials,
 and downloaded SimC runtime live in the Docker-managed `whylowdps-data` volume.
 Do not delete that volume during routine recreation, updates, or rollback.
@@ -146,7 +152,7 @@ was recorded.
 | `SESSION_ENCRYPTION_KEY` | Optional separate random 32-byte encryption key, normally 64 hex characters. If omitted, it is generated and stored in `/data/.session-encryption-key`. It protects OAuth tokens and saved Blizzard client secrets. Keep it stable. |
 | `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` | BattleTag such as `YourBattleTag#1234`; it is used only to create the first administrator when the user table is empty. |
 | `WHYLOWDPS_SECURE_COOKIES` | `false` for direct LAN HTTP; set `true` only behind trusted HTTPS. |
-| `SIMC_CHANNEL` | Optional runtime channel: `weekly` or `nightly`; defaults to `weekly`. |
+| `SIMC_CHANNEL` | Initial runtime channel: `weekly` or `nightly`; defaults to `weekly`. After an administrator changes the channel in Settings, the persisted setting takes precedence. |
 | `MAX_CONCURRENT_SIMULATIONS` | Optional concurrency limit; the Compose example uses `2`. |
 | `MAX_JOBS_PER_USER` | Optional unpinned job-history limit; defaults to `200`. |
 

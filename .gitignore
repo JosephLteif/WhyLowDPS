@@ -32,7 +32,7 @@ Thumbs.db
 # Project Specific
 .claude/
 .simc-version
-backend/resources/data/
+backend/resources/data/*
 backend/resources/simc/
 backend/resources/frontend/
 !backend/resources/data/.gitkeep

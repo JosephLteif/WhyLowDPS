@@ -6,13 +6,21 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
+      release_mode:
+        description: "Bump to a new version or republish an existing version"
+        required: true
+        default: bump
+        type: choice
+        options:
+          - bump
+          - republish
       source_ref:
-        description: "Release source branch (must be master)"
+        description: "Release source branch for a version bump (must be master)"
         required: true
         default: master
         type: string
       release_type:
-        description: "Semantic version bump type"
+        description: "Semantic version bump type (used for bump mode)"
         required: true
         default: patch
         type: choice
@@ -20,10 +28,15 @@ on:
           - patch
           - minor
           - major
+      existing_version:
+        description: "Existing version to republish, without the v prefix (republish mode)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   bump-version-stable:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -91,8 +104,35 @@ jobs:
           git push origin master
           git push origin "v${{ steps.bump.outputs.new_version }}"
 
+  validate_republish:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate existing release tag
+        shell: bash
+        env:
+          EXISTING_VERSION: ${{ inputs.existing_version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${EXISTING_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Republish requires an existing semantic version such as 4.0.0"
+            exit 1
+          fi
+          if ! git ls-remote --exit-code origin "refs/tags/v${EXISTING_VERSION}" >/dev/null; then
+            echo "Release tag v${EXISTING_VERSION} does not exist"
+            exit 1
+          fi
+
   publish:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      always() &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && needs.validate_republish.result == 'success')
+      )
+    needs: validate_republish
     permissions:
       contents: write
     strategy:
@@ -104,8 +144,12 @@ jobs:
             args: "--config src-tauri/tauri.conf.json --bundles nsis"
 
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
 
       - name: setup node
         uses: actions/setup-node@v7
@@ -126,7 +170,7 @@ jobs:
 
       - name: Validate release version from tag
         shell: bash
-        run: npm run verify:release -- "${GITHUB_REF_NAME#v}"
+        run: npm run verify:release -- "${RELEASE_TAG#v}"
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -170,8 +214,8 @@ jobs:
           NEXT_PUBLIC_DESKTOP_BUILD: true
         with:
           projectPath: desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: "WhyLowDps ${{ github.ref_name }}"
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: "WhyLowDps ${{ env.RELEASE_TAG }}"
           releaseBody: "Release assets uploaded. Checksums will be added automatically."
           releaseDraft: true
           prerelease: false
@@ -184,18 +228,28 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release upload "${GITHUB_REF_NAME}" backend/resources/zones-encounters-index.json --clobber
+          gh release upload "${RELEASE_TAG}" backend/resources/zones-encounters-index.json --clobber
 
   publish-container:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      always() &&
+      (
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && needs.validate_republish.result == 'success')
+      )
+    needs: validate_republish
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
       image_digest: ${{ steps.digest.outputs.image_digest }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -210,8 +264,8 @@ jobs:
         with:
           images: ghcr.io/josephlteif/whylowdps
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}},value=${{ github.event_name == 'workflow_dispatch' && inputs.existing_version || github.ref_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event_name == 'workflow_dispatch' && inputs.existing_version || github.ref_name }}
             type=raw,value=latest
 
       - name: Build private-hosting image
@@ -282,13 +336,19 @@ jobs:
           echo "image_digest=${DIGEST}" >> "${GITHUB_OUTPUT}"
 
   finalize-release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish')
     needs: [publish, publish-container]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
 
       - name: Upload private-hosting release bundle
         shell: bash
@@ -297,7 +357,7 @@ jobs:
           IMAGE_DIGEST: ${{ needs.publish-container.outputs.image_digest }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${RELEASE_TAG}"
           VERSION="${TAG#v}"
           BUNDLE_DIR="$(mktemp -d)"
           cp compose.yaml "${BUNDLE_DIR}/compose.yaml"
@@ -320,7 +380,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${RELEASE_TAG}"
           VERSION="${TAG#v}"
           TMP_DIR="$(mktemp -d)"
           NOTES_FILE="${TMP_DIR}/release-notes.md"
@@ -355,14 +415,14 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "${GITHUB_REF_NAME}" --draft=false
+        run: gh release edit "${RELEASE_TAG}" --draft=false
 
       - name: Notify Discord release channel
         shell: bash
         env:
           CHANNEL: stable
-          TAG: ${{ github.ref_name }}
-          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          TAG: ${{ env.RELEASE_TAG }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }}
           STABLE_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_STABLE }}
         run: |
           set -euo pipefail

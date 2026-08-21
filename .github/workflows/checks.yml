@@ -19,6 +19,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
       tauri: ${{ steps.filter.outputs.tauri }}
+      container: ${{ steps.filter.outputs.container }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -59,6 +60,20 @@ jobs:
               - 'frontend/package-lock.json'
               - '.nvmrc'
               - 'rust-toolchain.toml'
+            container:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'backend/**'
+              - 'frontend/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'backend/Cargo.toml'
+              - 'backend/Cargo.lock'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'frontend/package.json'
+              - 'frontend/package-lock.json'
+              - '.github/workflows/**'
 
   frontend_quality:
     name: Frontend Quality
@@ -159,6 +174,22 @@ jobs:
       - name: Run desktop tests
         run: cargo test --manifest-path desktop/src-tauri/Cargo.toml app_logic::tests
 
+  container_build_check:
+    if: (github.event_name == 'pull_request' || github.event_name == 'push') && needs.changes.outputs.container == 'true' && (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release):'))
+    needs: changes
+    name: Container Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: whylowdps-pr-check:latest
+
   lifecycle_checks:
     if: always()
     needs:
@@ -166,6 +197,7 @@ jobs:
       - frontend_quality
       - backend_quality
       - tauri_build_check
+      - container_build_check
     name: Lifecycle Checks
     runs-on: ubuntu-latest
     steps:
@@ -178,7 +210,9 @@ jobs:
           needs.backend_quality.result == 'failure' ||
           needs.backend_quality.result == 'cancelled' ||
           needs.tauri_build_check.result == 'failure' ||
-          needs.tauri_build_check.result == 'cancelled'
+          needs.tauri_build_check.result == 'cancelled' ||
+          needs.container_build_check.result == 'failure' ||
+          needs.container_build_check.result == 'cancelled'
         run: exit 1
 
       - name: Report lifecycle checks

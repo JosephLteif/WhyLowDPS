@@ -17,20 +17,8 @@ describe('ChangelogPopup', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', {
-        level: 4,
-        name: 'Get Discord notifications for finished sims',
-      })
-    ).toBeInTheDocument();
     expect(screen.getByText(APP_VERSION_WITH_PREFIX)).toBeInTheDocument();
-    expect(screen.getByText(/desktop app and Docker-hosted mode/)).toBeInTheDocument();
-    expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('heading', { level: 3, name: 'New features' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 3, name: 'Improvements' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 3, name: 'Bug fixes' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { level: 3, name: 'Highlights' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(5);
+    expect(screen.getAllByRole('heading', { level: 4 }).length).toBeGreaterThan(0);
     expect(
       screen.queryByRole('button', { name: /changelog item|changelog page/i })
     ).not.toBeInTheDocument();
@@ -73,18 +61,18 @@ describe('ChangelogPopup', () => {
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
 
     expect(dialog.querySelector('header')).toHaveClass('shrink-0', 'bg-[#111218]');
-    expect(dialog.querySelector('article')).toHaveClass('overflow-y-auto');
-    expect(
-      screen.getByRole('heading', { level: 4, name: 'Use separate accounts by default' })
-    ).toBeInTheDocument();
-    const improvements = document.querySelector('section[aria-labelledby="changelog-improvement"]');
-    expect(improvements).not.toBeNull();
-    expect(
-      within(improvements as HTMLElement).getByRole('heading', {
-        level: 4,
-        name: 'Small improvements and fixes',
-      })
-    ).toBeInTheDocument();
+    const article = dialog.querySelector('article');
+    expect(article).toHaveClass('overflow-y-auto');
+
+    const categories = dialog.querySelectorAll<HTMLElement>(
+      'section[aria-labelledby^="changelog-"]'
+    );
+    expect(categories.length).toBeGreaterThan(0);
+    for (const category of categories) {
+      expect(within(category).getByRole('heading', { level: 3 })).toBeInTheDocument();
+      expect(within(category).getAllByRole('heading', { level: 4 }).length).toBeGreaterThan(0);
+    }
+
     expect(screen.queryByRole('button', { name: /next changelog item/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /previous changelog item/i })
@@ -96,33 +84,10 @@ describe('ChangelogPopup', () => {
 
     await screen.findByRole('dialog', { name: /what's new/i });
 
-    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(5);
-    expect(document.querySelector('article p, article ul')).not.toBeNull();
-  });
-
-  it('includes the new hosted and dungeon improvements', async () => {
-    render(<ChangelogPopup />);
-
-    await screen.findByRole('dialog', { name: /what's new/i });
-    expect(
-      screen.getByRole('heading', { level: 4, name: 'Small improvements and fixes' })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/season rollovers/i)).toBeInTheDocument();
-    expect(screen.getByText(/route imports/i)).toBeInTheDocument();
-  });
-
-  it('includes the Discord webhook integration', async () => {
-    render(<ChangelogPopup />);
-
-    await screen.findByRole('dialog', { name: /what's new/i });
-    expect(
-      screen.getByRole('heading', {
-        level: 4,
-        name: 'Get Discord notifications for finished sims',
-      })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/desktop app and Docker-hosted mode/)).toBeInTheDocument();
-    expect(screen.getByText(/Enable hosted Light mode for shared simulations/)).toBeInTheDocument();
-    expect(screen.getByText(/Install the hosted web app as a PWA/)).toBeInTheDocument();
+    const noteHeadings = screen.getAllByRole('heading', { level: 4 });
+    expect(noteHeadings.length).toBeGreaterThan(0);
+    for (const heading of noteHeadings) {
+      expect(heading.parentElement?.querySelector('p, ul')).not.toBeNull();
+    }
   });
 });

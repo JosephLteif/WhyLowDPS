@@ -28,7 +28,9 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 - The public site and hosting guides now explain the desktop, hosted, PWA, and trusted-LAN paths more clearly, with responsive layouts for smaller screens.
 - Tagged releases now health-check and publish versioned, minor, and latest Docker images, then attach hosting configuration, documentation, checksums, and image references.
 - Hosted deployments use configurable HTTPS Battle.net callback and web-origin settings, while game-data and SimulationCraft runtime refreshes validate staged data and retain the last-known-good state during degraded season rollovers.
+- Small workflow improvements now include visible app search with the Ctrl K shortcut, SimC profile persistence and older-patch warnings, hosted SimC channel and update controls, and clearer account, dungeon, setup, PWA, LAN, and Docker flows.
 
 ### Fixed
 
 - Dungeon and Mythic+ route inputs are no longer parsed as character imports when they also contain name-like lines.
+- Fixed related-scenario refresh loops, forced fresh Battle.net account selection when switching users, and improved persistence and publication reliability for hosted Docker secrets and images.

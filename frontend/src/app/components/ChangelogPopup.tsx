@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
-export const CHANGELOG_CONTENT_REVISION = 5;
+export const CHANGELOG_CONTENT_REVISION = 6;
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
@@ -47,17 +47,19 @@ const releaseNotes: ReleaseNote[] = [
   },
   {
     category: 'improvement',
-    title: 'Simpler and safer account controls',
+    title: 'Small improvements and fixes',
     body: [
       {
         type: 'paragraph',
-        text: 'Your BattleTag and account actions are now grouped under one avatar menu in the header.',
+        text: 'A round of smaller usability, reliability, and maintenance updates makes everyday workflows clearer across the app, desktop builds, and hosted deployments.',
       },
       {
         type: 'list',
         items: [
-          'Open the avatar menu to reach My Characters, Switch account, and Manage Users without crowding the header.',
-          'User Management protects your own account from being disabled, signed out, demoted, or otherwise modified by admin actions.',
+          'App search is now visible in the header with a Search icon, an App search label, and a Ctrl K hint, while remaining separate from Character search.',
+          'Pasting SimC exports can save character profiles and warns when an export targets an older WoW patch; hosted Settings also expose SimC channel switching and clearer runtime/image update status.',
+          'Account controls, account switching, dungeon browsing, route imports, season rollovers, and setup guidance are clearer and more resilient.',
+          'PWA install dismissal, related-scenario refreshes, LAN QR/session handoff, and hosted Docker secret/image persistence are more reliable.',
         ],
       },
     ],
@@ -115,53 +117,6 @@ const releaseNotes: ReleaseNote[] = [
           'Removing a device immediately ends its session and sends that browser to a scanner for a new pairing QR code.',
           'Active phone sessions are cleared when the desktop app restarts, and no internet exposure or port forwarding is supported.',
         ],
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Browse current and historical dungeons',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The Dungeons page now keeps the active season first while retaining available historical seasons and encounter lists for older content.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Dungeon cards show artwork with catalog and public fallbacks when the API image is missing or unavailable.',
-          'Expansion and season selection remains populated when runtime data is incomplete, so known content does not disappear during refreshes.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Safer season rollovers',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Game-data and SimulationCraft runtime refreshes now adapt to season changes with staged validation and last-known-good fallback when a refresh is incomplete or degraded.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Clearer setup guidance',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The public site and hosting guides now make the desktop, hosted, PWA, and trusted-LAN paths easier to choose, with layouts that remain readable on phones.',
-      },
-    ],
-  },
-  {
-    category: 'fix',
-    title: 'Dungeon routes stay on the dungeon flow',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Saved dungeon and Mythic+ route inputs are no longer mistaken for character imports when they also contain name-like lines.',
       },
     ],
   },

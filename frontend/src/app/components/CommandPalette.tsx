@@ -26,6 +26,8 @@ const commands: PaletteCommand[] = [
   { id: 'settings-updates', label: 'Settings: Updates', description: 'Check app and SimC runtime updates.', href: '/settings?tab=updates' },
 ];
 
+export const COMMAND_PALETTE_OPEN_EVENT = 'whylowdps:open-command-palette';
+
 export default function CommandPalette() {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,6 +39,12 @@ export default function CommandPalette() {
   const filtered = commands.filter((item) =>
     `${item.label} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase())
   );
+
+  useEffect(() => {
+    const handleOpen = () => setOpen(true);
+    window.addEventListener(COMMAND_PALETTE_OPEN_EVENT, handleOpen);
+    return () => window.removeEventListener(COMMAND_PALETTE_OPEN_EVENT, handleOpen);
+  }, []);
 
   const runCommand = useCallback((item: PaletteCommand) => {
     if (item.id === 'whats-new') {

@@ -28,9 +28,9 @@ describe('ChangelogPopup', () => {
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
     expect(screen.getByRole('heading', { level: 3, name: 'New features' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 3, name: 'Improvements' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { level: 3, name: 'Bug fixes' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3, name: 'Bug fixes' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 3, name: 'Highlights' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(9);
+    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(5);
     expect(
       screen.queryByRole('button', { name: /changelog item|changelog page/i })
     ).not.toBeInTheDocument();
@@ -82,7 +82,7 @@ describe('ChangelogPopup', () => {
     expect(
       within(improvements as HTMLElement).getByRole('heading', {
         level: 4,
-        name: 'Browse current and historical dungeons',
+        name: 'Small improvements and fixes',
       })
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /next changelog item/i })).not.toBeInTheDocument();
@@ -96,7 +96,7 @@ describe('ChangelogPopup', () => {
 
     await screen.findByRole('dialog', { name: /what's new/i });
 
-    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(9);
+    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(5);
     expect(document.querySelector('article p, article ul')).not.toBeNull();
   });
 
@@ -105,12 +105,10 @@ describe('ChangelogPopup', () => {
 
     await screen.findByRole('dialog', { name: /what's new/i });
     expect(
-      screen.getByRole('heading', { level: 4, name: 'Safer season rollovers' })
+      screen.getByRole('heading', { level: 4, name: 'Small improvements and fixes' })
     ).toBeInTheDocument();
-
-    expect(
-      screen.getByRole('heading', { level: 4, name: 'Dungeon routes stay on the dungeon flow' })
-    ).toBeInTheDocument();
+    expect(screen.getByText(/season rollovers/i)).toBeInTheDocument();
+    expect(screen.getByText(/route imports/i)).toBeInTheDocument();
   });
 
   it('includes the Discord webhook integration', async () => {

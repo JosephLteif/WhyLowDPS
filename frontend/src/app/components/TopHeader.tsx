@@ -9,6 +9,7 @@ import {
   ChevronDown,
   LogOut,
   Menu,
+  Search,
   Sparkles,
   UserRound,
   Users,
@@ -20,6 +21,7 @@ import { characterHref } from '../lib/routes';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 import { CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
+import { COMMAND_PALETTE_OPEN_EVENT } from './CommandPalette';
 import NotificationCenter from './shared/NotificationCenter';
 
 type SearchCharacter = {
@@ -192,6 +194,10 @@ export default function TopHeader() {
 
   const handleWhatsNew = () => {
     window.dispatchEvent(new Event(CHANGELOG_OPEN_EVENT));
+  };
+
+  const handleCommandPaletteOpen = () => {
+    window.dispatchEvent(new Event(COMMAND_PALETTE_OPEN_EVENT));
   };
 
   useEffect(() => {
@@ -401,6 +407,20 @@ export default function TopHeader() {
           )}
 
           <div data-tauri-drag-region="false" className="flex items-center gap-3 justify-self-end">
+            <button
+              type="button"
+              onClick={handleCommandPaletteOpen}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+              title="Search app commands (Ctrl K)"
+              aria-label="Search app commands (Ctrl K)"
+              aria-keyshortcuts="Control+K Meta+K"
+            >
+              <Search className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden md:inline">App search</span>
+              <kbd className="hidden rounded border border-white/10 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 xl:inline">
+                Ctrl K
+              </kbd>
+            </button>
             <NotificationCenter />
             <button
               type="button"

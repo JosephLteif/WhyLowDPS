@@ -1047,10 +1047,10 @@ export default function SimResultClient() {
   }
 
   const scenarioToolbar = (
-    <div className="sticky top-[var(--app-header-height)] z-40 flex flex-wrap items-center justify-between gap-4 py-2">
+    <div className="sticky top-[var(--app-header-height)] z-40 flex flex-col items-stretch gap-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       {toolbarScenarios.length > 1 ? (
-        <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="w-full overflow-x-auto rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur sm:w-auto">
+          <div className="flex min-w-max items-center gap-2">
             <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
               Scenarios
             </span>
@@ -1096,11 +1096,11 @@ export default function SimResultClient() {
         <div />
       )}
       {job.status === 'done' ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface-2/90 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface-2/90 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md sm:w-auto sm:gap-3">
           <button
             type="button"
             onClick={handleSimAgain}
-            className="inline-flex items-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white"
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white sm:flex-none"
           >
             Sim Again
           </button>
@@ -1108,7 +1108,7 @@ export default function SimResultClient() {
             type="button"
             onClick={handleRerunInput}
             disabled={!job.simc_input || rerunning}
-            className="inline-flex items-center rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
           >
             {rerunning ? 'Rerunning…' : 'Rerun This Input'}
           </button>
@@ -1338,7 +1338,7 @@ export default function SimResultClient() {
             avgIlevel={avgIlevel}
           >
             {info?.kind === 'dungeon' && (
-              <div className="mt-6 grid grid-cols-3 gap-4 border-t border-white/5 pt-6">
+              <div className="mt-6 grid grid-cols-1 gap-3 border-t border-white/5 pt-6 sm:grid-cols-3 sm:gap-4">
                 <div className="text-center">
                   <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
                     Route HP

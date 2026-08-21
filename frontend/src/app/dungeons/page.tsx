@@ -438,7 +438,7 @@ export default function DungeonsPage() {
             <select
               value={selectedExpansionId ?? currentExpansionId ?? ''}
               onChange={(event) => handleExpansionChange(event.currentTarget.value)}
-              className="min-w-48 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100"
+              className="w-full rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100 sm:w-auto sm:min-w-48"
             >
               {expansionOptions.map((expansion) => (
                 <option key={expansion.id} value={expansion.id}>
@@ -452,7 +452,7 @@ export default function DungeonsPage() {
             <select
               value={effectiveSeasonSlug}
               onChange={(event) => handleSeasonChange(event.currentTarget.value)}
-              className="min-w-56 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100"
+              className="w-full rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100 sm:w-auto sm:min-w-56"
             >
               {seasonOptions.map((content) => (
                 <option key={content.season.slug} value={content.season.slug}>

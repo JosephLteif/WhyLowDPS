@@ -64,7 +64,8 @@ export default function DropSlotList({
   onToggleWishlist,
 }: DropSlotListProps) {
   const [groupMode, setGroupMode] = useState<GroupMode>('slot');
-  const baseButtonClass = 'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors';
+  const baseButtonClass =
+    'min-h-10 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors sm:min-h-0';
   const goldButtonClass = 'border-gold/45 bg-gold/[0.12] text-gold hover:bg-gold/[0.2]';
   const mutedButtonClass =
     'border-zinc-600 bg-zinc-900/70 text-zinc-200 hover:border-zinc-500 hover:bg-zinc-800';
@@ -131,16 +132,16 @@ export default function DropSlotList({
 
   return (
     <div className="space-y-4">
-      <div className="sticky top-[var(--app-header-height)] z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-3 py-2 shadow-md backdrop-blur-sm">
-        <div className="flex items-start justify-between gap-3">
-          <p className="pt-2 text-sm text-white">
+      <div className="sticky top-[var(--app-header-height)] z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-2 py-2 shadow-md backdrop-blur-sm sm:px-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+          <p className="min-w-0 truncate text-sm text-white sm:pt-2">
             {headerLabel} &mdash; {totalItems} items
             {selected.size > 0 && (
               <span className="ml-1.5 text-gold">({selected.size} selected)</span>
             )}
           </p>
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-3">
+          <div className="flex w-full flex-col items-stretch gap-1 sm:w-auto sm:items-end">
+            <div className="flex flex-wrap items-center gap-1.5 sm:justify-end sm:gap-3">
               <div className="flex gap-1.5">
                 {(
                   [
@@ -264,12 +265,13 @@ function DropItemCard({
             upgradeLabel,
           });
         }}
-        className={`absolute right-2 top-2 rounded p-1 transition-colors ${
+        className={`absolute right-1.5 top-1.5 inline-flex h-9 w-9 items-center justify-center rounded p-1 transition-colors ${
           isWishlisted
             ? 'text-rose-300 hover:bg-rose-500/20'
             : 'text-zinc-500 hover:bg-white/10 hover:text-zinc-200'
         }`}
         title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+        aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
       >
         <Heart
           className="h-4 w-4"

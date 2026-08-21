@@ -98,7 +98,7 @@ export default function UpdatesSettingsSection({
               <select
                 value={selectedAppVersion}
                 onChange={(e) => setSelectedAppVersion(e.target.value)}
-                className="min-w-[180px] rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100"
+                className="w-full rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100 sm:w-auto sm:min-w-[180px]"
               >
                 {appReleases.length === 0 ? (
                   <option value="">No releases loaded</option>
@@ -157,7 +157,7 @@ export default function UpdatesSettingsSection({
                   onChange={(event) =>
                     setSelectedSimcChannel(event.target.value as 'weekly' | 'nightly')
                   }
-                  className="min-w-[180px] rounded border border-gold/35 bg-surface-2 px-3 py-2 text-sm font-semibold text-zinc-100"
+                  className="w-full rounded border border-gold/35 bg-surface-2 px-3 py-2 text-sm font-semibold text-zinc-100 sm:w-auto sm:min-w-[180px]"
                 >
                   <option value="weekly">Weekly</option>
                   <option value="nightly">Nightly</option>
@@ -454,7 +454,7 @@ function SimcVersionDropdown({
   };
 
   return (
-    <div ref={rootRef} className="relative min-w-[220px]">
+    <div ref={rootRef} className="relative min-w-0 sm:min-w-[220px]">
       <button
         type="button"
         aria-haspopup="listbox"
@@ -475,7 +475,7 @@ function SimcVersionDropdown({
         <div
           role="listbox"
           aria-label="SimC Version"
-          className="absolute left-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur"
+          className="absolute left-0 top-full z-50 mt-1 w-[min(320px,calc(100vw-2rem))] min-w-0 overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur"
         >
           <div className="flex border-b border-border">
             <button

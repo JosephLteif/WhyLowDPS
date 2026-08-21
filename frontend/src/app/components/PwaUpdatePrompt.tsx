@@ -20,7 +20,7 @@ export default function PwaUpdatePrompt() {
   };
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-[180] mx-auto flex max-w-lg items-center gap-3 rounded-xl border border-gold/30 bg-surface/95 px-4 py-3 text-sm text-zinc-100 shadow-2xl backdrop-blur">
+    <div className="mobile-fixed-bottom fixed inset-x-3 z-[180] mx-auto flex max-w-lg items-center gap-3 rounded-xl border border-gold/30 bg-surface/95 px-4 py-3 text-sm text-zinc-100 shadow-2xl backdrop-blur">
       <span className="min-w-0 flex-1">A new WhyLowDPS version is ready.</span>
       <button
         type="button"

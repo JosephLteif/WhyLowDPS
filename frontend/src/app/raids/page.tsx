@@ -195,7 +195,7 @@ export default function RaidsPage() {
           <select
             value={effectiveExpansionId ?? ''}
             onChange={(event) => setSelectedExpansionId(Number(event.currentTarget.value) || null)}
-            className="min-w-56 rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100"
+            className="w-full rounded-lg border border-white/15 bg-zinc-900 px-3 py-2 text-sm font-medium normal-case tracking-normal text-zinc-100 sm:w-auto sm:min-w-56"
           >
             {expansionIds.map((id) => (
               <option key={id} value={id}>

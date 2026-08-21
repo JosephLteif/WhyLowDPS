@@ -866,7 +866,7 @@ function RaidSectionCard({
             aria-label="Raid expansion"
             value={selectedExpansion}
             onChange={(e) => setSelectedExpansion(e.target.value)}
-            className="input-field h-9 w-[180px] px-2 py-1 text-[11px] text-zinc-100"
+            className="input-field h-9 w-full px-2 py-1 text-[11px] text-zinc-100 sm:w-[180px]"
             style={{ colorScheme: 'dark' }}
           >
             {expansionOptions.map((opt) => (
@@ -1273,7 +1273,7 @@ function TalentsCard({
               <select
                 value={selectedSimcTalent}
                 onChange={(e) => setSelectedSimcTalent(e.target.value)}
-                className="input-field h-8 min-w-[180px] px-2 py-1 text-[11px] font-bold text-zinc-100"
+                className="input-field h-8 w-full min-w-0 px-2 py-1 text-[11px] font-bold text-zinc-100 sm:min-w-[180px] sm:w-auto"
                 style={{ colorScheme: 'dark' }}
               >
                 {simcLoadouts.map((loadout, idx) => (

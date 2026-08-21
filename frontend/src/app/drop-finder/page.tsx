@@ -787,7 +787,7 @@ export default function DropFinderPage() {
       : buttonLabel(`Find Upgrades (${selected.size} items)`);
 
   return (
-    <div className="space-y-6">
+    <div className="mobile-page-bottom space-y-6 pb-28">
       {returnNotice ? (
         <SimReturnNotice
           title={returnNotice.title}
@@ -925,7 +925,7 @@ export default function DropFinderPage() {
       ) : null}
 
       {(isRaid || isDungeon) && selectedId && activeDifficulties.length > 0 && (
-        <div className="card space-y-4 p-6">
+        <div className="card space-y-4 p-4 sm:p-6">
           <div>
             <label className="label-text">Difficulty</label>
             <div className="flex flex-wrap gap-2">
@@ -947,7 +947,7 @@ export default function DropFinderPage() {
                       else setDungeonDiff(d.key);
                       setUpgradeLevel(Math.max(1, d.level || 1));
                     }}
-                    className={`flex min-w-[5.25rem] flex-col items-center rounded-lg border px-3.5 py-2.5 text-center transition-all duration-150 ${
+                    className={`flex min-w-[5rem] flex-col items-center rounded-lg border px-2.5 py-2.5 text-center transition-all duration-150 sm:min-w-[5.25rem] sm:px-3.5 ${
                       isActive && tc
                         ? `${tc.border} ${tc.bg}`
                         : isActive
@@ -997,7 +997,7 @@ export default function DropFinderPage() {
                     showDescription={false}
                   />
                 </div>
-                <div className="mt-1.5 flex items-center justify-between gap-3 text-[13px]">
+                <div className="mt-1.5 flex flex-col gap-1 text-[13px] sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <p className="truncate text-zinc-300">
                     {
                       UPGRADE_SIMULATION_MODE_OPTIONS.find((mode) => mode.value === upgradeSimulationMode)
@@ -1005,7 +1005,7 @@ export default function DropFinderPage() {
                     }
                   </p>
                   {currentTrackInfo?.name && (
-                    <p className="whitespace-nowrap text-zinc-300">{`Track: ${currentTrackInfo.name}`}</p>
+                    <p className="text-zinc-300 sm:whitespace-nowrap">{`Track: ${currentTrackInfo.name}`}</p>
                   )}
                 </div>
               </div>
@@ -1132,7 +1132,7 @@ export default function DropFinderPage() {
 
           <ErrorAlert message={error} />
 
-          <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
+          <div className="mobile-safe-bottom sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6 sm:-mx-6 sm:px-6">
             <button
               onClick={handleSubmit}
               disabled={submitting || selected.size === 0 || !hasCharacter}

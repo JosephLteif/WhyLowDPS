@@ -421,17 +421,17 @@ export default function OptimizeItemModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
 
       <div
         ref={modalRef}
-        className="relative flex h-[70vh] min-h-[540px] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl"
+        className="mobile-modal-shell relative flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl sm:h-[70vh] sm:min-h-[540px] sm:max-h-none"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-6 py-4">
-          <div className="flex items-center gap-4">
-            <div className="relative h-10 w-10">
+        <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-white/[0.02] px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <div className="relative h-9 w-9 shrink-0 sm:h-10 sm:w-10">
               <img
                 src={`https://render.worldofwarcraft.com/icons/56/${item.icon}.jpg`}
                 alt=""
@@ -444,7 +444,7 @@ export default function OptimizeItemModal({
             </div>
             <div>
               <h2
-                className="text-lg font-bold tracking-tight"
+                className="max-w-[min(65vw,28rem)] truncate text-lg font-bold tracking-tight"
                 style={{ color: item.quality_color }}
               >
                 {item.name}
@@ -456,13 +456,14 @@ export default function OptimizeItemModal({
           </div>
           <button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-white/5 hover:text-white"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-white/5 hover:text-white sm:h-8 sm:w-8"
+            aria-label="Close item optimization"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="space-y-8">
             {globalAffixesEnabled && (
               <section>
@@ -742,11 +743,11 @@ export default function OptimizeItemModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-white/5 bg-white/[0.02] px-6 py-4">
+        <div className="mobile-modal-footer flex flex-col items-stretch gap-3 border-t border-white/5 bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
           <p className="text-[11px] text-muted">
             {loading ? 'Loading options...' : 'Changes will create a copy of the item.'}
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-end gap-3">
             <button
               onClick={onClose}
               className="px-4 py-2 text-xs font-bold uppercase tracking-widest text-muted transition-colors hover:text-white"
@@ -756,7 +757,7 @@ export default function OptimizeItemModal({
             <button
               onClick={handleApply}
               disabled={loading}
-              className="rounded-lg bg-gold px-6 py-2 text-xs font-bold uppercase tracking-widest text-black shadow-lg shadow-gold/20 transition-all hover:scale-[1.02] hover:bg-yellow-400 active:scale-[0.98] disabled:opacity-50"
+              className="rounded-lg bg-gold px-6 py-3 text-xs font-bold uppercase tracking-widest text-black shadow-lg shadow-gold/20 transition-all hover:scale-[1.02] hover:bg-yellow-400 active:scale-[0.98] disabled:opacity-50 sm:py-2"
             >
               Apply Optimization
             </button>

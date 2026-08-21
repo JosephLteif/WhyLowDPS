@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
-export const CHANGELOG_CONTENT_REVISION = 6;
+export const CHANGELOG_CONTENT_REVISION = 7;
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
@@ -27,6 +27,24 @@ type ReleaseNote = {
 };
 
 const releaseNotes: ReleaseNote[] = [
+  {
+    category: 'improvement',
+    title: 'Use WhyLowDPS comfortably on mobile',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The app now adapts its navigation, controls, results, and dialogs to smaller touch screens so you can use WhyLowDPS comfortably from your phone.',
+      },
+      {
+        type: 'list',
+        items: [
+          'A compact mobile header and slide-out navigation keep the most important actions within reach without taking over the screen.',
+          'Quick Sim, Top Gear, Drop Finder, and Upgrade Compare keep their actions visible above the phone safe area, while dense results and settings reflow for narrow screens.',
+          'Loot browsing, route selection, item optimization, and simulation results now use touch-friendly controls and full-height mobile dialogs where helpful.',
+        ],
+      },
+    ],
+  },
   {
     category: 'feature',
     title: 'Get Discord notifications for finished sims',

@@ -8,6 +8,15 @@
   body {
     @apply bg-bg text-zinc-100 antialiased;
   }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   ::selection {
     @apply bg-gold/25 text-white;
   }
@@ -88,6 +97,32 @@
   .notification-progress {
     animation: none;
     transform: scaleX(0);
+  }
+}
+
+.app-header-safe-area {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.mobile-safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-fixed-bottom {
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-page-bottom {
+  padding-bottom: max(7rem, calc(6rem + env(safe-area-inset-bottom, 0px)));
+}
+
+@media (max-width: 639px) {
+  .mobile-modal-shell {
+    border-radius: 0;
+  }
+
+  .mobile-modal-footer {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
 }
 

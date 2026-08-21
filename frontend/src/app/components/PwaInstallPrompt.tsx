@@ -103,7 +103,7 @@ export default function PwaInstallPrompt() {
     <div
       role="dialog"
       aria-label="Install WhyLowDPS"
-      className="fixed inset-x-3 bottom-3 z-[180] mx-auto flex max-w-lg items-center gap-3 rounded-xl border border-gold/30 bg-surface/95 px-4 py-3 text-sm text-zinc-100 shadow-2xl backdrop-blur"
+      className="mobile-fixed-bottom fixed inset-x-3 z-[180] mx-auto flex max-w-lg items-center gap-3 rounded-xl border border-gold/30 bg-surface/95 px-4 py-3 text-sm text-zinc-100 shadow-2xl backdrop-blur"
     >
       <div className="min-w-0 flex-1">
         <p className="font-semibold">Install WhyLowDPS as an app</p>

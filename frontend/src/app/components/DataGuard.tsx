@@ -514,7 +514,7 @@ export default function DataGuard({ children }: { children: ReactNode }) {
     <>
       {content}
       {dataStatus?.degraded && !isSettingsPage && (
-        <div className="fixed bottom-3 left-1/2 z-[180] w-[min(92vw,760px)] -translate-x-1/2 rounded-lg border border-amber-400/30 bg-amber-950/90 px-3 py-2 text-xs text-amber-100 shadow-xl backdrop-blur">
+        <div className="mobile-fixed-bottom fixed left-1/2 z-[180] w-[min(92vw,760px)] -translate-x-1/2 rounded-lg border border-amber-400/30 bg-amber-950/90 px-3 py-2 text-xs text-amber-100 shadow-xl backdrop-blur">
           Using the last validated game-data snapshot. New seasonal data is temporarily degraded; simulations and unrelated browsing remain available.
         </div>
       )}

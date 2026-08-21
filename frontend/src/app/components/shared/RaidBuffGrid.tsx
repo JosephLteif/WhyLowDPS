@@ -94,7 +94,7 @@ export default function RaidBuffGrid({ entries, onSelectAll, onClear }: RaidBuff
         {entries.map((entry) => (
           <label
             key={entry.id}
-            className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
+            className={`flex min-w-0 items-center justify-between gap-2 rounded-md border px-2.5 py-2 transition-colors ${
               entry.checked ? 'border-gold/40 bg-gold/[0.08]' : 'border-border bg-surface hover:border-zinc-600'
             }`}
           >

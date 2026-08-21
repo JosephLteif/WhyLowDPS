@@ -9,6 +9,7 @@ import {
   ChevronDown,
   LogOut,
   Menu,
+  MoreHorizontal,
   Search,
   Sparkles,
   UserRound,
@@ -161,9 +162,11 @@ export default function TopHeader() {
   );
   const [isRecentSearchOpen, setIsRecentSearchOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
 
   useDismissOnOutside(headerRef, isRecentSearchOpen, () => setIsRecentSearchOpen(false));
   useDismissOnOutside(accountMenuRef, isAccountMenuOpen, () => setIsAccountMenuOpen(false));
+  useDismissOnOutside(headerRef, isMobileActionsOpen, () => setIsMobileActionsOpen(false));
 
   useEffect(() => {
     setRecentCharacterSearches(readRecentCharacterSearches());
@@ -319,17 +322,17 @@ export default function TopHeader() {
     <>
       <header
         ref={headerRef}
-        className="fixed top-0 z-50 w-full border-b border-white/5 bg-bg/90 backdrop-blur-xl"
+        className="app-header-safe-area fixed top-0 z-50 w-full border-b border-white/5 bg-bg/90 backdrop-blur-xl"
       >
         <DesktopWindowTitleBar />
 
-        <div className="grid h-12 grid-cols-[auto_1fr_auto] items-center gap-3 px-3 md:px-5">
+        <div className="grid h-12 grid-cols-[auto_1fr_auto] items-center gap-2 px-2 sm:gap-3 sm:px-3 md:px-5">
           <div className="flex items-center gap-2">
             <button
               data-tauri-drag-region="false"
               type="button"
               onClick={handleSidebarToggle}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition hover:border-zinc-500 hover:bg-white/5 hover:text-white xl:hidden"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition hover:border-zinc-500 hover:bg-white/5 hover:text-white sm:h-8 sm:w-8 xl:hidden"
               title="Toggle sidebar"
               aria-label="Toggle sidebar"
             >
@@ -339,7 +342,7 @@ export default function TopHeader() {
               data-tauri-drag-region="false"
               type="button"
               onClick={handleBack}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-white/5 hover:text-white"
+              className="inline-flex h-10 items-center gap-2 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-white/5 hover:text-white sm:h-8"
               title="Go back"
               aria-label="Go back"
             >
@@ -347,6 +350,14 @@ export default function TopHeader() {
               <span className="hidden sm:inline">Back</span>
             </button>
           </div>
+
+          <Link
+            href="/"
+            className="inline-flex min-w-0 items-center justify-center gap-1.5 text-center text-[13px] font-semibold tracking-tight text-zinc-200 sm:text-sm xl:hidden"
+          >
+            <img src="/icon.png" alt="WhyLowDps" className="h-6 w-6 shrink-0 object-contain" />
+            <span className="hidden min-[400px]:inline">WhyLowDps</span>
+          </Link>
 
           {!lightMode && (
             <form
@@ -406,31 +417,78 @@ export default function TopHeader() {
             </form>
           )}
 
-          <div data-tauri-drag-region="false" className="flex items-center gap-3 justify-self-end">
-            <button
-              type="button"
-              onClick={handleCommandPaletteOpen}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
-              title="Search app commands (Ctrl K)"
-              aria-label="Search app commands (Ctrl K)"
-              aria-keyshortcuts="Control+K Meta+K"
-            >
-              <Search className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden md:inline">App search</span>
-              <kbd className="hidden rounded border border-white/10 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 xl:inline">
-                Ctrl K
-              </kbd>
-            </button>
+          <div data-tauri-drag-region="false" className="flex items-center gap-1.5 justify-self-end sm:gap-3">
+            <div className="hidden items-center gap-3 md:flex">
+              <button
+                type="button"
+                onClick={handleCommandPaletteOpen}
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                title="Search app commands (Ctrl K)"
+                aria-label="Search app commands (Ctrl K)"
+                aria-keyshortcuts="Control+K Meta+K"
+              >
+                <Search className="h-3.5 w-3.5" strokeWidth={2} />
+                <span className="hidden md:inline">App search</span>
+                <kbd className="hidden rounded border border-white/10 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 xl:inline">
+                  Ctrl K
+                </kbd>
+              </button>
+              <button
+                type="button"
+                onClick={handleWhatsNew}
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
+                title="What's new"
+              >
+                <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+                <span className="hidden md:inline">What&apos;s new</span>
+              </button>
+            </div>
+            <div className="relative md:hidden">
+              <button
+                type="button"
+                onClick={() => setIsMobileActionsOpen((open) => !open)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white sm:h-8 sm:w-8"
+                title="More actions"
+                aria-label="More actions"
+                aria-expanded={isMobileActionsOpen}
+                aria-haspopup="menu"
+              >
+                <MoreHorizontal className="h-4 w-4" strokeWidth={2} />
+              </button>
+              {isMobileActionsOpen ? (
+                <div
+                  role="menu"
+                  aria-label="More actions"
+                  className="absolute right-0 top-full z-[150] mt-2 w-48 overflow-hidden rounded-xl border border-border bg-surface p-1 shadow-2xl shadow-black/50"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsMobileActionsOpen(false);
+                      handleCommandPaletteOpen();
+                    }}
+                    className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-white/[0.07] hover:text-white"
+                  >
+                    <Search className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+                    App search
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsMobileActionsOpen(false);
+                      handleWhatsNew();
+                    }}
+                    className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-white/[0.07] hover:text-white"
+                  >
+                    <Sparkles className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+                    What&apos;s new
+                  </button>
+                </div>
+              ) : null}
+            </div>
             <NotificationCenter />
-            <button
-              type="button"
-              onClick={handleWhatsNew}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
-              title="What's new"
-            >
-              <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
-              <span className="hidden md:inline">What&apos;s new</span>
-            </button>
             {!loading &&
               (lightMode ? (
                 <div className="flex items-center gap-2">
@@ -450,12 +508,12 @@ export default function TopHeader() {
                   <button
                     type="button"
                     onClick={() => setIsAccountMenuOpen((open) => !open)}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2 transition-colors hover:bg-white/[0.1]"
+                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-2 transition-colors hover:bg-white/[0.1] sm:h-9"
                     aria-label={`Account menu for ${user.battletag}`}
                     aria-expanded={isAccountMenuOpen}
                     aria-haspopup="menu"
                   >
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gold/20 text-xs font-bold text-gold ring-1 ring-gold/30">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gold/20 text-xs font-bold text-gold ring-1 ring-gold/30 sm:h-7 sm:w-7">
                       {user.battletag.trim().charAt(0).toUpperCase() || '?'}
                     </span>
                     <span className="hidden max-w-32 truncate text-[13px] font-medium text-zinc-200 sm:inline">
@@ -552,7 +610,7 @@ export default function TopHeader() {
           <form
             data-tauri-drag-region="false"
             onSubmit={handleCharacterSearch}
-            className="relative flex items-center gap-1.5 border-t border-white/5 px-3 py-2 md:px-5 xl:hidden"
+            className="relative flex items-center gap-1.5 border-t border-white/5 px-2 py-2 md:px-5 xl:hidden"
           >
             <input
               type="text"
@@ -560,13 +618,13 @@ export default function TopHeader() {
               onChange={(e) => setCharacterName(e.target.value)}
               onFocus={() => setIsRecentSearchOpen(true)}
               placeholder="Character"
-              className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
+              className="h-10 min-w-0 flex-1 rounded-md border border-border bg-surface-2 px-2.5 text-[13px] text-zinc-200 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none sm:h-8"
               aria-label="Character name"
             />
             <select
               value={characterRegion}
               onChange={(e) => setCharacterRegion(e.target.value)}
-              className="h-8 w-16 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
+              className="h-10 w-14 rounded-md border border-border bg-surface-2 px-1.5 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none sm:h-8 sm:w-16 sm:px-2"
               aria-label="Character region"
             >
               <option value="us">US</option>
@@ -577,7 +635,7 @@ export default function TopHeader() {
             <select
               value={characterRealm}
               onChange={(e) => setCharacterRealm(e.target.value)}
-              className="h-8 w-28 rounded-md border border-border bg-surface-2 px-2 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none"
+              className="h-10 w-24 rounded-md border border-border bg-surface-2 px-1.5 text-[13px] text-zinc-200 focus:border-zinc-500 focus:outline-none sm:h-8 sm:w-28 sm:px-2"
               aria-label="Character realm"
             >
               {realmOptions.length === 0 ? (
@@ -592,7 +650,7 @@ export default function TopHeader() {
             </select>
             <button
               type="submit"
-              className="h-8 rounded-md border border-gold/25 bg-gold/15 px-3 text-[13px] font-semibold text-gold transition-colors hover:bg-gold/25"
+              className="h-10 rounded-md border border-gold/25 bg-gold/15 px-3 text-[13px] font-semibold text-gold transition-colors hover:bg-gold/25 sm:h-8"
             >
               Go
             </button>

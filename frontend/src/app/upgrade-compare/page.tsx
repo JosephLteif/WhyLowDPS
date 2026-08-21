@@ -375,7 +375,7 @@ export default function UpgradeComparePage() {
       : buttonLabel(`Sim Upgrades (${displayComboCount} combos, ${modeLabel})`);
 
   return (
-    <div className="space-y-6">
+    <div className="mobile-page-bottom space-y-6 pb-28">
       {returnNotice ? (
         <SimReturnNotice
           title={returnNotice.title}
@@ -421,7 +421,7 @@ export default function UpgradeComparePage() {
 
       {hasCurrencies && (
         <div className="card space-y-3 p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs font-medium uppercase tracking-widest text-muted">
               Override Budget
             </p>
@@ -638,7 +638,7 @@ export default function UpgradeComparePage() {
 
       <ErrorAlert message={error} />
 
-      <div className="sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
+      <div className="mobile-safe-bottom sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
         <button
           onClick={handleSubmit}
           disabled={submitting || selectedSlots.size === 0 || !hasCurrencies}

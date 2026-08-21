@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import ChangelogPopup, { CHANGELOG_CONTENT_REVISION, CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
-import { APP_VERSION } from '../lib/version';
+import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
@@ -19,13 +19,21 @@ describe('ChangelogPopup', () => {
     expect(dialog).toBeInTheDocument();
     expect(
       screen.getByRole('heading', {
-        level: 3,
+        level: 4,
         name: 'Get Discord notifications for finished sims',
       })
     ).toBeInTheDocument();
+    expect(screen.getByText(APP_VERSION_WITH_PREFIX)).toBeInTheDocument();
     expect(screen.getByText(/desktop app and Docker-hosted mode/)).toBeInTheDocument();
     expect(dialog.querySelector('article p, article ul')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^Show changelog item 11$/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'New features' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Improvements' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Bug fixes' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 3, name: 'Highlights' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(9);
+    expect(
+      screen.queryByRole('button', { name: /changelog item|changelog page/i })
+    ).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -59,90 +67,64 @@ describe('ChangelogPopup', () => {
     expect(overlay).toHaveStyle({ top: 'var(--app-header-height)' });
   });
 
-  it('pages through changelog items with bottom progress dots', async () => {
-    const user = userEvent.setup();
+  it('renders every release note in one categorized scrollable page', async () => {
     render(<ChangelogPopup />);
 
-    await screen.findByRole('dialog', { name: /what's new/i });
+    const dialog = await screen.findByRole('dialog', { name: /what's new/i });
 
-    const firstHeading = screen.getByRole('heading', { level: 3 }).textContent;
-    expect(firstHeading).toBeTruthy();
-    expect(screen.getByRole('button', { name: /^Show changelog item 1$/ })).toHaveAttribute(
-      'aria-current',
-      'true'
-    );
-    expect(screen.getByRole('button', { name: /^Show changelog item 2$/ })).toHaveAttribute(
-      'aria-current',
-      'false'
-    );
+    expect(dialog.querySelector('header')).toHaveClass('shrink-0', 'bg-[#111218]');
+    expect(dialog.querySelector('article')).toHaveClass('overflow-y-auto');
     expect(
-      screen.queryByRole('heading', { level: 3, name: 'Pause and resume simulations' })
+      screen.getByRole('heading', { level: 4, name: 'Use separate accounts by default' })
+    ).toBeInTheDocument();
+    const improvements = document.querySelector('section[aria-labelledby="changelog-improvement"]');
+    expect(improvements).not.toBeNull();
+    expect(
+      within(improvements as HTMLElement).getByRole('heading', {
+        level: 4,
+        name: 'Browse current and historical dungeons',
+      })
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /next changelog item/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /previous changelog item/i })
     ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /next changelog item/i }));
-
-    expect(screen.getByRole('heading', { level: 3 }).textContent).not.toBe(firstHeading);
-    expect(screen.getByRole('button', { name: /^Show changelog item 1$/ })).toHaveAttribute(
-      'aria-current',
-      'false'
-    );
-    expect(screen.getByRole('button', { name: /^Show changelog item 2$/ })).toHaveAttribute(
-      'aria-current',
-      'true'
-    );
   });
 
   it('renders detailed changelog content as rich text', async () => {
-    const user = userEvent.setup();
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 3$/ }));
 
-    expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 4 })).toHaveLength(9);
     expect(document.querySelector('article p, article ul')).not.toBeNull();
   });
 
   it('includes the new hosted and dungeon improvements', async () => {
-    const user = userEvent.setup();
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 4$/ }));
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Use hosted Light mode without signing in' })
+      screen.getByRole('heading', { level: 4, name: 'Safer season rollovers' })
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 9$/ }));
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Safer season rollovers' })
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /^Show changelog item 11$/ }));
-    expect(
-      screen.getByRole('heading', { level: 3, name: 'Dungeon routes stay on the dungeon flow' })
+      screen.getByRole('heading', { level: 4, name: 'Dungeon routes stay on the dungeon flow' })
     ).toBeInTheDocument();
   });
 
   it('includes the Discord webhook integration', async () => {
-    const user = userEvent.setup();
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
     expect(
       screen.getByRole('heading', {
-        level: 3,
+        level: 4,
         name: 'Get Discord notifications for finished sims',
       })
     ).toBeInTheDocument();
     expect(screen.getByText(/desktop app and Docker-hosted mode/)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /next changelog item/i }));
-    expect(
-      screen.queryByRole('heading', {
-        level: 3,
-        name: 'Get Discord notifications for finished sims',
-      })
-    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Enable hosted Light mode for shared simulations/)).toBeInTheDocument();
+    expect(screen.getByText(/Install the hosted web app as a PWA/)).toBeInTheDocument();
   });
 });

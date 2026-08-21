@@ -183,6 +183,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Ensure container resource paths exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p backend/resources/data
+          if [[ ! -f backend/resources/zones-encounters-index.json ]]; then
+            echo "backend/resources/zones-encounters-index.json is required for container builds"
+            exit 1
+          fi
+          cp backend/resources/zones-encounters-index.json backend/resources/data/zones-encounters-index.json
+          touch backend/resources/data/.keep
+
       - name: Build container image
         uses: docker/build-push-action@v6
         with:

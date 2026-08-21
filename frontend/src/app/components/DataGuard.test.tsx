@@ -5,10 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   fetchJson: vi.fn(),
   useAuth: vi.fn(),
+  replace: vi.fn(),
 }));
 
 vi.mock('../lib/api', () => ({
   API_URL: 'http://localhost:17384',
+  LAN_ACCESS_REQUIRED_STORAGE_KEY: 'whylowdps_lan_access_required',
   fetchJson: mocks.fetchJson,
   isDesktop: true,
   isNetworkUnavailableError: vi.fn(() => false),
@@ -20,6 +22,7 @@ vi.mock('./AuthContext', () => ({
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
+  useRouter: () => ({ replace: mocks.replace }),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -36,6 +39,7 @@ describe('DataGuard auth gating', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    mocks.replace.mockReset();
     mocks.fetchJson.mockImplementation((url: string) => {
       if (url.endsWith('/api/data/status')) return Promise.resolve({ status: 'ready' });
       if (url.endsWith('/api/data/files')) return Promise.resolve({ files: [] });
@@ -62,6 +66,43 @@ describe('DataGuard auth gating', () => {
       expect(screen.getByText('App content')).toBeInTheDocument();
     });
     expect(screen.queryByTestId('splash')).not.toBeInTheDocument();
+  });
+
+  it('prioritizes LAN pairing over credential entry and Light mode', () => {
+    mocks.useAuth.mockReturnValue({
+      user: null,
+      loading: false,
+      lanAccessRequired: true,
+      lightMode: true,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: false }),
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+
+    expect(screen.getByTestId('splash')).toHaveTextContent('lan_access_required');
+    expect(screen.queryByText('App content')).not.toBeInTheDocument();
+  });
+
+  it('redirects a revoked LAN session to the resync page', () => {
+    mocks.useAuth.mockReturnValue({
+      user: null,
+      loading: false,
+      lanAccessRequired: true,
+      lightMode: false,
+      checkCredentialsStatus: vi.fn().mockResolvedValue({ globally_configured: false }),
+    });
+
+    render(
+      <DataGuard>
+        <div>App content</div>
+      </DataGuard>
+    );
+
+    expect(mocks.replace).toHaveBeenCalledWith('/lan/resync');
   });
 
   it('keeps missing required data actionable while an app update is available', async () => {

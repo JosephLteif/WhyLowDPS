@@ -1,6 +1,6 @@
 services:
   app:
-    image: ${WHYLOWDPS_IMAGE:-ghcr.io/josephlteif/whylowdps}:${WHYLOWDPS_VERSION:-stable}
+    image: ghcr.io/josephlteif/whylowdps:latest
     env_file:
       - path: .env.docker
         required: false
@@ -11,22 +11,21 @@ services:
       FRONTEND_DIR: /app/frontend
       DATA_DIR: /data
       DATA_SEED_DIR: /app/data-seed
-      DATABASE_URL: /data/whylowdps.db
+      DATABASE_URL: /data/whylowdps-multi-user.db
       SIMC_RUNTIME_DIR: /data/simc-runtime
       SIMC_CHANNEL: ${SIMC_CHANNEL:-weekly}
       WHYLOWDPS_DEPLOYMENT: hosted-private
-      WHYLOWDPS_SECURE_COOKIES: ${WHYLOWDPS_SECURE_COOKIES:-true}
-      WEB_ORIGIN: ${WEB_ORIGIN:-https://localhost}
-      BLIZZARD_REDIRECT_URI: ${BLIZZARD_REDIRECT_URI:-https://localhost/api/auth/bnet/callback}
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.docker or the environment}
-      BLIZZARD_CLIENT_ID: ${BLIZZARD_CLIENT_ID:-}
-      BLIZZARD_CLIENT_SECRET: ${BLIZZARD_CLIENT_SECRET:-}
+      WHYLOWDPS_SECURE_COOKIES: ${WHYLOWDPS_SECURE_COOKIES:-false}
+      JWT_SECRET: ${JWT_SECRET:-}
+      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY:-}
+      WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG: ${WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG:?Set the initial admin BattleTag}
+      MAX_JOBS_PER_USER: ${MAX_JOBS_PER_USER:-200}
       MAX_CONCURRENT_SIMULATIONS: ${MAX_CONCURRENT_SIMULATIONS:-2}
       MAX_JOBS: ${MAX_JOBS:-200}
     volumes:
       - whylowdps-data:/data
-    expose:
-      - "8000"
+    ports:
+      - "${WHYLOWDPS_HOST_IP:-0.0.0.0}:${WHYLOWDPS_PORT:-8000}:8000"
     restart: unless-stopped
     deploy:
       resources:
@@ -40,24 +39,5 @@ services:
       start_period: 45s
       retries: 3
 
-  proxy:
-    image: caddy:2-alpine
-    environment:
-      WHYLOWDPS_DOMAIN: ${WHYLOWDPS_DOMAIN:-localhost}
-      WHYLOWDPS_TLS: ${WHYLOWDPS_TLS:-}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      app:
-        condition: service_healthy
-    restart: unless-stopped
-
 volumes:
   whylowdps-data:
-  caddy-data:
-  caddy-config:

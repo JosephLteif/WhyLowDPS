@@ -23,6 +23,7 @@ describe('dungeon card timer fallbacks', () => {
       keystone_timer_ms: 1_980_000,
       keystone_upgrades: [1, 2, 3],
       encounters: ['First Boss', 'Final Boss'],
+      image_url: 'https://example.com/current-dungeon.jpg',
     };
 
     render(<DungeonCard dungeon={dungeon} mplusDetail={null} />);
@@ -32,5 +33,9 @@ describe('dungeon card timer fallbacks', () => {
     expect(screen.getByText('Score +3 (19:48)')).toBeInTheDocument();
     expect(screen.getByText('First Boss')).toBeInTheDocument();
     expect(screen.getByText('Final Boss')).toBeInTheDocument();
+    expect(document.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://example.com/current-dungeon.jpg'
+    );
   });
 });

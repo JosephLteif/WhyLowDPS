@@ -1,8 +1,10 @@
 import { APP_VERSION } from './version';
 import { classifyReleaseChannel, type UpdateChannel } from './update-channel';
 
-const GITHUB_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
+const GITHUB_RELEASES_API =
+  'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
 const APP_RELEASES_CACHE_KEY = 'whylowdps_app_releases_stable';
+const DOCKER_RELEASES_CACHE_KEY = 'whylowdps_docker_releases';
 const APP_RELEASES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 type ParsedSemver = {
@@ -26,6 +28,17 @@ export type AppReleaseInfo = RemoteReleaseInfo & {
 
 export type AppReleaseListResult = {
   releases: AppReleaseInfo[];
+  metadataStatus: 'available' | 'rate_limited' | 'unavailable';
+};
+
+export type DockerImageReleaseInfo = {
+  version: string;
+  notes?: string;
+  publishedAt?: string;
+};
+
+export type DockerImageReleaseListResult = {
+  releases: DockerImageReleaseInfo[];
   metadataStatus: 'available' | 'rate_limited' | 'unavailable';
 };
 
@@ -59,6 +72,17 @@ function isAppReleaseListResult(value: unknown): value is AppReleaseListResult {
   );
 }
 
+function isDockerImageReleaseListResult(value: unknown): value is DockerImageReleaseListResult {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<DockerImageReleaseListResult>;
+  return (
+    Array.isArray(candidate.releases) &&
+    (candidate.metadataStatus === 'available' ||
+      candidate.metadataStatus === 'rate_limited' ||
+      candidate.metadataStatus === 'unavailable')
+  );
+}
+
 function readCachedAppReleases(): AppReleaseListResult | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -81,7 +105,34 @@ function writeCachedAppReleases(result: AppReleaseListResult) {
       JSON.stringify({
         cachedAt: Date.now(),
         result,
-      }),
+      })
+    );
+  } catch {}
+}
+
+function readCachedDockerImageReleases(): DockerImageReleaseListResult | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DOCKER_RELEASES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedAppReleaseListResult;
+    if (typeof parsed.cachedAt !== 'number') return null;
+    if (Date.now() - parsed.cachedAt > APP_RELEASES_CACHE_TTL_MS) return null;
+    return isDockerImageReleaseListResult(parsed.result) ? parsed.result : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedDockerImageReleases(result: DockerImageReleaseListResult) {
+  if (typeof window === 'undefined' || result.metadataStatus !== 'available') return;
+  try {
+    window.localStorage.setItem(
+      DOCKER_RELEASES_CACHE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        result,
+      })
     );
   } catch {}
 }
@@ -161,7 +212,7 @@ function compareBaseVersions(a: string, b: string): number | null {
 export function isRemoteNewerForSelectedChannel(
   currentVersion: string | null | undefined,
   remoteVersion: string,
-  selectedChannel: UpdateChannel,
+  selectedChannel: UpdateChannel
 ): boolean {
   if (!currentVersion) return true;
 
@@ -203,7 +254,7 @@ function isStableVersion(value: string): boolean {
 }
 
 function pickWindowsAsset(
-  assets: Array<{ browser_download_url?: unknown; name?: unknown; size?: unknown }>,
+  assets: Array<{ browser_download_url?: unknown; name?: unknown; size?: unknown }>
 ): { url: string; name?: string; size?: number } | undefined {
   const urls = (assets || [])
     .map((asset) => ({
@@ -251,7 +302,39 @@ export function parseStableAppReleases(payload: GitHubRelease[]): AppReleaseInfo
     });
 }
 
-async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
+export function parseDockerImageReleases(payload: GitHubRelease[]): DockerImageReleaseInfo[] {
+  return (payload || [])
+    .flatMap((entry) => {
+      if (entry?.draft || entry?.prerelease) return [];
+      const tagRaw =
+        typeof entry.tag_name === 'string'
+          ? entry.tag_name
+          : typeof entry.name === 'string'
+            ? entry.name
+            : '';
+      if (!tagRaw || !isStableVersion(tagRaw)) return [];
+      const hasPublishedImage = (entry.assets || []).some(
+        (asset) => typeof asset.name === 'string' && asset.name.toLowerCase() === 'docker-image.txt'
+      );
+      if (!hasPublishedImage) return [];
+      return [
+        {
+          version: normalizeVersion(tagRaw),
+          notes: typeof entry.body === 'string' ? entry.body : undefined,
+          publishedAt: typeof entry.published_at === 'string' ? entry.published_at : undefined,
+        },
+      ];
+    })
+    .sort((a, b) => {
+      const comparison = compareVersions(a.version, b.version);
+      if (comparison != null && comparison !== 0) return -comparison;
+      return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''));
+    });
+}
+
+async function fetchManifestVersionFromGitHubApi(
+  channel: UpdateChannel
+): Promise<RemoteReleaseInfo | null> {
   try {
     const response = await fetch(GITHUB_RELEASES_API, {
       cache: 'no-store',
@@ -275,12 +358,14 @@ async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promis
   }
 }
 
-export async function fetchManifestVersion(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
+export async function fetchManifestVersion(
+  channel: UpdateChannel
+): Promise<RemoteReleaseInfo | null> {
   return fetchManifestVersionFromGitHubApi(channel);
 }
 
 export async function fetchStableAppReleases(
-  options: FetchStableAppReleasesOptions = {},
+  options: FetchStableAppReleasesOptions = {}
 ): Promise<AppReleaseListResult> {
   if (!options.forceRefresh) {
     const cached = readCachedAppReleases();
@@ -303,6 +388,36 @@ export async function fetchStableAppReleases(
       metadataStatus: 'available' as const,
     };
     writeCachedAppReleases(result);
+    return result;
+  } catch {
+    return { releases: [], metadataStatus: 'unavailable' };
+  }
+}
+
+export async function fetchDockerImageReleases(
+  options: FetchStableAppReleasesOptions = {}
+): Promise<DockerImageReleaseListResult> {
+  if (!options.forceRefresh) {
+    const cached = readCachedDockerImageReleases();
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await fetch(GITHUB_RELEASES_API, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (response.status === 403 || response.status === 429) {
+      return { releases: [], metadataStatus: 'rate_limited' };
+    }
+    if (!response.ok) return { releases: [], metadataStatus: 'unavailable' };
+    const result = {
+      releases: parseDockerImageReleases((await response.json()) as GitHubRelease[]),
+      metadataStatus: 'available' as const,
+    };
+    writeCachedDockerImageReleases(result);
     return result;
   } catch {
     return { releases: [], metadataStatus: 'unavailable' };

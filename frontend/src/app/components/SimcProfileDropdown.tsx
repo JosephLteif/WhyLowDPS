@@ -56,7 +56,7 @@ export default function SimcProfileDropdown({
       <button
         type="button"
         onClick={() => setHistoryDropdownOpen(!historyDropdownOpen)}
-        className="flex min-w-[220px] items-center justify-between gap-3 rounded-md border border-gold/35 bg-surface-2/95 px-3 py-1.5 text-left shadow-sm shadow-black/30 transition-colors hover:border-gold/60 hover:bg-surface"
+        className="flex w-full min-w-0 items-center justify-between gap-3 rounded-md border border-gold/35 bg-surface-2/95 px-3 py-1.5 text-left shadow-sm shadow-black/30 transition-colors hover:border-gold/60 hover:bg-surface sm:min-w-[220px]"
       >
         <div className="min-w-0">
           {selectedProfileMeta?.name && selectedProfileMeta?.classLabel ? (
@@ -84,7 +84,7 @@ export default function SimcProfileDropdown({
         />
       </button>
       {historyDropdownOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 min-w-[320px] overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur">
+        <div className="absolute right-0 top-full z-50 mt-1 w-[min(320px,calc(100vw-2rem))] min-w-0 overflow-hidden rounded-lg border border-border bg-surface/95 shadow-2xl backdrop-blur">
           <div className="flex border-b border-border">
             <button
               type="button"

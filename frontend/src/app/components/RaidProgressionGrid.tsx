@@ -351,7 +351,7 @@ export default function RaidProgressionGrid({
           aria-label="Raid group"
           value={selectedRaidGroup}
           onChange={(e) => setSelectedRaidGroup(e.target.value)}
-          className="input-field h-9 w-[180px] px-2 py-1 text-[11px] text-zinc-100"
+          className="input-field h-9 w-full px-2 py-1 text-[11px] text-zinc-100 sm:w-[180px]"
           style={{ colorScheme: 'dark' }}
         >
           {groupOptions.map((group) => (

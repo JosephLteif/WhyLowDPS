@@ -212,7 +212,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=stable
+            type=raw,value=latest
 
       - name: Build private-hosting image
         uses: docker/build-push-action@v6
@@ -223,6 +223,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             WHYLOWDPS_DEPLOYMENT=hosted-private
+            WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
+            WHYLOWDPS_REVISION=${{ github.sha }}
 
       - name: Smoke test container
         shell: bash
@@ -299,10 +301,10 @@ jobs:
           VERSION="${TAG#v}"
           BUNDLE_DIR="$(mktemp -d)"
           cp compose.yaml "${BUNDLE_DIR}/compose.yaml"
-          sed "s/^WHYLOWDPS_VERSION=.*/WHYLOWDPS_VERSION=${VERSION}/" \
-            .env.docker.example > "${BUNDLE_DIR}/.env.docker.example"
+          cp .env.docker.example "${BUNDLE_DIR}/.env.docker.example"
           cp docs/docker-hosting.md "${BUNDLE_DIR}/docker-hosting.md"
-          printf 'ghcr.io/josephlteif/whylowdps:%s\n' "${VERSION}" > "${BUNDLE_DIR}/docker-image.txt"
+          printf 'ghcr.io/josephlteif/whylowdps:latest\n' > "${BUNDLE_DIR}/docker-image.txt"
+          printf 'ghcr.io/josephlteif/whylowdps:%s\n' "${VERSION}" >> "${BUNDLE_DIR}/docker-image.txt"
           printf 'ghcr.io/josephlteif/whylowdps@%s\n' "${IMAGE_DIGEST}" >> "${BUNDLE_DIR}/docker-image.txt"
           gh release upload "${TAG}" \
             "${BUNDLE_DIR}/compose.yaml" \

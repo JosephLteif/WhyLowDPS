@@ -242,6 +242,14 @@ export const wowEncounters = encounters as WowEncounter[];
 export const wowSeasons = seasons as WowSeason[];
 export const wowMythicPlusDungeons = mythicPlusDungeons as MythicPlusDungeonMapping[];
 
+export function getCurrentWowPatch(
+  seasons: WowSeason[] = wowSeasons,
+  now: Date = new Date()
+): string | null {
+  const currentSlug = selectDefaultWowSeasonSlug(seasons, now);
+  return seasons.find((season) => season.slug === currentSlug)?.patch || null;
+}
+
 export function getStaticWowSeasonContent(): WowSeasonContentResult {
   return buildWowSeasonContent({
     seasons: wowSeasons,
@@ -253,7 +261,7 @@ export function getStaticWowSeasonContent(): WowSeasonContentResult {
 
 async function fetchDataFileArray<T>(key: string): Promise<T[]> {
   const response = await fetchJsonCached<DataFileContentResponse>(
-    `${API_URL}/api/data/files/${key}`,
+    `${API_URL}/api/data/files/${key}/content`,
     { ttl: 60_000 },
   );
   const parsed = JSON.parse(response.content);

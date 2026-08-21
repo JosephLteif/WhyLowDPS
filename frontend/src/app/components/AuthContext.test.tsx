@@ -17,6 +17,7 @@ function wrapper({ children }: { children: ReactNode }) {
 describe('AuthContext light mode', () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({}, { status: 401 })));
   });
@@ -40,5 +41,73 @@ describe('AuthContext light mode', () => {
 
     expect((result.current as any).lightMode).toBe(false);
     expect(localStorage.getItem('whylowdps_light_mode')).toBeNull();
+  });
+
+  it('keeps full mode selected when the desktop guest account is returned', async () => {
+    localStorage.setItem('whylowdps_light_mode', '1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ id: 'local-guest', battletag: 'Local Guest', role: 'member', guest: true })
+      )
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.lightMode).toBe(true));
+
+    act(() => {
+      result.current.disableLightMode();
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.lightMode).toBe(false);
+    expect(localStorage.getItem('whylowdps_light_mode')).toBeNull();
+    expect(localStorage.getItem('whylowdps_full_mode')).toBe('1');
+  });
+
+  it('shows the pairing scanner when the backend identifies a revoked LAN session', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('LAN pairing required', { status: 401 })));
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.lanAccessRequired).toBe(true));
+    expect(result.current.lightMode).toBe(false);
+    expect(localStorage.getItem('whylowdps_light_mode')).toBeNull();
+  });
+
+  it('reacts to a direct API 401 without requiring a refresh', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({}, { status: 200 }))
+      .mockResolvedValue(new Response('LAN pairing required', { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      await fetch('/api/data/status');
+    });
+
+    await waitFor(() => expect(result.current.lanAccessRequired).toBe(true));
+  });
+
+  it('clears the pairing-required marker after a successful pairing redirect', async () => {
+    localStorage.setItem('whylowdps_lan_access_required', '1');
+    window.history.replaceState({}, '', '/?lan_paired=1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({ id: 'user-1', battletag: 'Tester#1', role: 'member', guest: false })
+      )
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.lanAccessRequired).toBe(false);
+    expect(localStorage.getItem('whylowdps_lan_access_required')).toBeNull();
+    expect(window.location.search).toBe('');
   });
 });

@@ -6,6 +6,8 @@ mod character_profile_handlers;
 mod data_provider;
 mod data_sync;
 #[cfg(feature = "web")]
+mod discord_webhook;
+#[cfg(feature = "web")]
 pub mod dungeon_data;
 #[cfg(feature = "web")]
 pub mod dungeon_source_blizzard;
@@ -89,6 +91,103 @@ fn public_security_path(path: &str) -> bool {
     )
 }
 
+fn lan_pairing_public_path(path: &str) -> bool {
+    matches!(path, "/api/lan/pair" | "/api/lan/pair/consume")
+}
+
+fn runtime_credentials_public_request(req: &ServiceRequest) -> bool {
+    if req.path() != "/api/auth/bnet/credential-profiles" {
+        return false;
+    }
+    if *req.method() == Method::GET {
+        return true;
+    }
+    if *req.method() != Method::POST || !auth_handlers::hosted_private_deployment() {
+        return false;
+    }
+    let has_users = req
+        .app_data::<web::Data<Arc<dyn JobStorage>>>()
+        .is_some_and(|store| !store.list_users().is_empty());
+    !has_users && same_origin_request(req)
+}
+
+fn admin_security_path(path: &str, method: &Method) -> bool {
+    path.starts_with("/api/admin/")
+        || (*method != Method::GET
+            && (path == "/api/config"
+                || path == "/api/system/blizzard/credentials"
+                || path.starts_with("/api/auth/bnet/credential-profiles")
+                || path == "/api/data/sync"
+                || path == "/api/data/sync-dungeons"
+                || path == "/api/data/files/open-directory"
+                || path == "/api/data/files/missing/download"
+                || (path.starts_with("/api/data/files/") && path.ends_with("/download"))))
+}
+
+fn public_light_mode_request(req: &ServiceRequest) -> bool {
+    let path = req.path();
+    let method = req.method();
+    let is_read = matches!(*method, Method::GET | Method::OPTIONS);
+    let is_write = *method == Method::POST;
+
+    if path == "/api/sim" {
+        return is_write || *method == Method::OPTIONS;
+    }
+
+    if let Some(suffix) = path.strip_prefix("/api/sim/") {
+        let mut segments = suffix.split('/');
+        let _id = segments.next();
+        let action = segments.next();
+        return is_read
+            || (is_write
+                && matches!(action, Some("cancel" | "pause" | "resume"))
+                && segments.next().is_none());
+    }
+
+    if is_read
+        && (matches!(
+            path,
+            "/api/sims"
+                | "/api/history/stats"
+                | "/api/history/characters"
+                | "/api/config"
+                | "/api/dungeons"
+                | "/api/game-context"
+                | "/api/game-data/state"
+                | "/api/instances"
+                | "/api/season-config"
+                | "/api/upgrade-options"
+                | "/api/upgrade-tracks"
+        ) || path.starts_with("/api/data/images/")
+            || path.starts_with("/api/data/instance-images/")
+            || path.starts_with("/api/data/files/")
+            || path.starts_with("/api/data/static/")
+            || path.starts_with("/api/data/wowhead-zones-index")
+            || path.starts_with("/api/enchant-info/")
+            || path.starts_with("/api/gem-info/")
+            || path.starts_with("/api/instances/")
+            || path.starts_with("/api/item-info/")
+            || path.starts_with("/api/talent-tree/")
+            || path.starts_with("/api/gear/"))
+    {
+        return true;
+    }
+
+    is_write
+        && matches!(
+            path,
+            "/api/droptimizer/sim"
+                | "/api/item-info/batch"
+                | "/api/max-upgrade-ilevels"
+                | "/api/top-gear/combo-count"
+                | "/api/top-gear/sim"
+                | "/api/upgrade-compare/combo-count"
+                | "/api/upgrade-compare/prepare"
+                | "/api/upgrade-compare/sim"
+        )
+        || path.starts_with("/api/gear/")
+}
+
 fn is_loopback_peer(req: &ServiceRequest) -> bool {
     req.peer_addr()
         .is_some_and(|address| address.ip().is_loopback())
@@ -122,15 +221,11 @@ async fn enforce_security<B>(
 where
     B: MessageBody + 'static,
 {
-    if !require_auth
-        || !req.path().starts_with("/api/")
-        || public_security_path(req.path())
-        || is_loopback_peer(&req)
-    {
+    if !require_auth || !req.path().starts_with("/api/") || is_loopback_peer(&req) {
         return next.call(req).await;
     }
 
-    if lan_pairing {
+    if lan_pairing && !lan_pairing_public_path(req.path()) {
         let lan_access = req
             .app_data::<web::Data<Arc<lan_access::LanAccessState>>>()
             .ok_or_else(|| {
@@ -156,11 +251,28 @@ where
             return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
         }
 
+        if public_security_path(req.path()) {
+            return next.call(req).await;
+        }
+    }
+
+    if runtime_credentials_public_request(&req) {
         return next.call(req).await;
     }
 
-    if req.path() == "/api/auth/bnet/credential-profiles" && *req.method() == Method::POST {
-        if !same_origin_request(&req) {
+    if public_security_path(req.path()) {
+        return next.call(req).await;
+    }
+
+    if !lan_pairing
+        && !auth_handlers::hosted_private_deployment()
+        && public_light_mode_request(&req)
+    {
+        let state_changing = matches!(
+            *req.method(),
+            Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+        );
+        if state_changing && !same_origin_request(&req) {
             return Err(actix_web::error::ErrorForbidden("CSRF validation failed"));
         }
         return next.call(req).await;
@@ -169,10 +281,28 @@ where
     let auth_state = req
         .app_data::<web::Data<Arc<auth_handlers::BlizzardAuthState>>>()
         .ok_or_else(|| actix_web::error::ErrorInternalServerError("auth state unavailable"))?;
-    if auth_handlers::verify_jwt_for_state(req.request(), auth_state.get_ref()).is_none() {
+    let claims = req
+        .app_data::<web::Data<Arc<dyn JobStorage>>>()
+        .and_then(|store| {
+            auth_handlers::verify_active_session(
+                req.request(),
+                auth_state.get_ref(),
+                store.get_ref().as_ref(),
+            )
+        })
+        .or_else(|| {
+            req.app_data::<web::Data<Arc<dyn JobStorage>>>()
+                .is_none()
+                .then(|| auth_handlers::verify_jwt_for_state(req.request(), auth_state.get_ref()))
+                .flatten()
+        });
+    let Some(claims) = claims else {
         return Err(actix_web::error::ErrorUnauthorized(
             "authentication required",
         ));
+    };
+    if admin_security_path(req.path(), req.method()) && claims.role != "admin" {
+        return Err(actix_web::error::ErrorForbidden("admin access required"));
     }
 
     let state_changing = matches!(
@@ -189,6 +319,36 @@ where
     }
 
     next.call(req).await
+}
+
+fn static_cache_control(path: &str) -> Option<&'static str> {
+    if path.starts_with("/_next/static/") {
+        Some("public, max-age=31536000, immutable")
+    } else if path == "/sw.js" {
+        Some("no-cache, no-store, must-revalidate")
+    } else if path == "/manifest.webmanifest" {
+        Some("no-cache, must-revalidate")
+    } else {
+        None
+    }
+}
+
+async fn add_static_cache_headers<B>(
+    req: ServiceRequest,
+    next: Next<B>,
+) -> Result<ServiceResponse<B>, Error>
+where
+    B: MessageBody + 'static,
+{
+    let cache_control = static_cache_control(req.path());
+    let mut response = next.call(req).await?;
+    if let Some(cache_control) = cache_control {
+        response.headers_mut().insert(
+            actix_web::http::header::CACHE_CONTROL,
+            actix_web::http::header::HeaderValue::from_static(cache_control),
+        );
+    }
+    Ok(response)
 }
 
 #[cfg(test)]
@@ -211,6 +371,23 @@ mod tests {
         assert!(!is_loopback_bind("0.0.0.0"));
         assert!(!external_bind_allowed(Some("false")));
         assert!(external_bind_allowed(Some("TRUE")));
+    }
+
+    #[test]
+    fn static_cache_policy_matches_directly_served_frontend_assets() {
+        assert_eq!(
+            static_cache_control("/_next/static/chunks/app.js"),
+            Some("public, max-age=31536000, immutable")
+        );
+        assert_eq!(
+            static_cache_control("/sw.js"),
+            Some("no-cache, no-store, must-revalidate")
+        );
+        assert_eq!(
+            static_cache_control("/manifest.webmanifest"),
+            Some("no-cache, must-revalidate")
+        );
+        assert_eq!(static_cache_control("/api/health"), None);
     }
 
     #[actix_web::test]
@@ -241,6 +418,73 @@ mod tests {
                 .expect_err("request should be rejected")
                 .as_response_error()
                 .status_code(),
+            actix_web::http::StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[actix_web::test]
+    async fn external_security_allows_light_mode_simulation_routes_without_auth() {
+        let state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
+            None,
+            None,
+            "http://localhost/callback".to_string(),
+            "a-secure-secret-with-more-than-32-bytes".to_string(),
+        )));
+        let app = init_service(
+            App::new()
+                .app_data(state)
+                .wrap(middleware::from_fn(|req, next| {
+                    enforce_security(req, next, true, false)
+                }))
+                .route(
+                    "/api/sim",
+                    web::post().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
+                    "/api/sim/{id}",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
+                    "/api/data/files/{key}/content",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                )
+                .route(
+                    "/api/protected",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                ),
+        )
+        .await;
+
+        let create_response = call_service(
+            &app,
+            TestRequest::post()
+                .uri("/api/sim")
+                .insert_header(("host", "localhost"))
+                .insert_header(("origin", "http://localhost"))
+                .to_request(),
+        )
+        .await;
+        assert_eq!(create_response.status(), actix_web::http::StatusCode::OK);
+
+        let status_response =
+            call_service(&app, TestRequest::get().uri("/api/sim/job-1").to_request()).await;
+        assert_eq!(status_response.status(), actix_web::http::StatusCode::OK);
+
+        let data_file_response = call_service(
+            &app,
+            TestRequest::get()
+                .uri("/api/data/files/wow_expansions/content")
+                .to_request(),
+        )
+        .await;
+        assert_eq!(data_file_response.status(), actix_web::http::StatusCode::OK);
+
+        let protected_error =
+            try_call_service(&app, TestRequest::get().uri("/api/protected").to_request())
+                .await
+                .expect_err("protected route should still require authentication");
+        assert_eq!(
+            protected_error.as_response_error().status_code(),
             actix_web::http::StatusCode::UNAUTHORIZED
         );
     }
@@ -287,6 +531,37 @@ mod tests {
     }
 
     #[actix_web::test]
+    async fn lan_security_does_not_treat_public_auth_routes_as_paired_access() {
+        let lan_access = web::Data::new(Arc::new(lan_access::LanAccessState::new()));
+        let app = init_service(
+            App::new()
+                .app_data(lan_access)
+                .wrap(middleware::from_fn(|req, next| {
+                    enforce_security(req, next, true, true)
+                }))
+                .route(
+                    "/api/auth/me",
+                    web::get().to(|| async { HttpResponse::Ok().finish() }),
+                ),
+        )
+        .await;
+
+        let error = try_call_service(
+            &app,
+            TestRequest::get()
+                .uri("/api/auth/me")
+                .peer_addr("192.168.1.20:50000".parse().unwrap())
+                .to_request(),
+        )
+        .await
+        .expect_err("unpaired LAN auth request should be rejected");
+        assert_eq!(
+            error.as_response_error().status_code(),
+            actix_web::http::StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[actix_web::test]
     async fn external_security_middleware_requires_same_origin_for_cookie_mutations() {
         let secret = "a-secure-secret-with-more-than-32-bytes";
         let state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
@@ -300,6 +575,8 @@ mod tests {
             &auth_handlers::Claims {
                 sub: "Tester#1".to_string(),
                 session_id: "session-1".to_string(),
+                battletag: "Tester#1".to_string(),
+                role: "member".to_string(),
                 session_epoch: None,
                 exp: (chrono::Utc::now().timestamp() + 3600) as usize,
             },
@@ -527,6 +804,32 @@ pub async fn start_with_storage_bind_options(
     data_dir: Option<PathBuf>,
     security: ServerSecurityOptions,
 ) -> (actix_web::dev::Server, u16) {
+    start_with_storage_bind_options_and_simc_runtime(
+        storage,
+        simc_path,
+        bind_host,
+        port,
+        frontend_dir,
+        data_dir,
+        security,
+        None,
+    )
+    .await
+}
+
+/// Start the HTTP server with an optional runtime-managed SimC installation.
+/// The runtime controller is used by hosted Docker deployments; desktop and
+/// test callers continue to use the fixed executable path above.
+pub async fn start_with_storage_bind_options_and_simc_runtime(
+    storage: Arc<dyn JobStorage>,
+    simc_path: PathBuf,
+    bind_host: &str,
+    port: u16,
+    frontend_dir: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
+    security: ServerSecurityOptions,
+    simc_runtime: Option<Arc<crate::simc_runtime::SimcRuntimeState>>,
+) -> (actix_web::dev::Server, u16) {
     #[cfg(feature = "web")]
     {
         let externally_reachable = !is_loopback_bind(bind_host);
@@ -542,6 +845,7 @@ pub async fn start_with_storage_bind_options(
 
         let store_data = web::Data::new(storage);
         let simc_data = web::Data::new(simc_path);
+        let simc_runtime_data = simc_runtime.map(web::Data::new);
         let log_data = web::Data::new(Arc::new(LogBuffer::new()));
         #[cfg(feature = "desktop")]
         let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
@@ -564,37 +868,28 @@ pub async fn start_with_storage_bind_options(
 
         let blizzard_state = web::Data::new(Arc::new(blizzard::BlizzardState::new()));
 
-        let bnet_redirect = std::env::var("BLIZZARD_REDIRECT_URI").unwrap_or_else(|_| {
-            if port == 17384 || cfg!(feature = "desktop") {
-                format!("http://localhost:{}/api/auth/bnet/callback", port)
-            } else {
-                "http://localhost:3000/api/auth/bnet/callback".to_string()
-            }
-        });
+        let bnet_redirect = format!("http://localhost:{}/api/auth/bnet/callback", port);
         let jwt_secret = auth_handlers::validate_jwt_secret(
             std::env::var("JWT_SECRET").ok(),
             externally_reachable && !lan_pairing,
         )
         .unwrap_or_else(|error| panic!("unsafe JWT configuration: {error}"));
 
+        let credential_encryption_secret = std::env::var("SESSION_ENCRYPTION_KEY")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| jwt_secret.clone());
         let blizzard_credential_secrets =
             web::Data::new(auth_handlers::create_blizzard_credential_secret_store(
                 store_data.get_ref().clone(),
-                &jwt_secret,
+                &credential_encryption_secret,
             ));
 
-        let client_id = std::env::var("BLIZZARD_CLIENT_ID")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-        let client_secret = std::env::var("BLIZZARD_CLIENT_SECRET")
-            .ok()
-            .filter(|value| !value.trim().is_empty());
-
-        println!("Configured Blizzard Redirect URI: {}", bnet_redirect);
+        println!("Blizzard OAuth callback is derived from the request IP and port");
 
         let auth_state = web::Data::new(Arc::new(auth_handlers::BlizzardAuthState::new(
-            client_id,
-            client_secret,
+            None,
+            None,
             bnet_redirect,
             jwt_secret,
         )));
@@ -610,19 +905,11 @@ pub async fn start_with_storage_bind_options(
         let store_for_background = store_data.get_ref().clone();
         let secrets_for_background = blizzard_credential_secrets.get_ref().clone();
         let data_dir_for_background = data.clone();
-        let configured_web_origin = std::env::var("WEB_ORIGIN")
-            .ok()
-            .filter(|origin| !origin.trim().is_empty());
-
         let server = HttpServer::new(move || {
-            let configured_web_origin = configured_web_origin.clone();
             let cors = Cors::default()
-                .allowed_origin_fn(move |origin, _req_head| {
+                .allowed_origin_fn(|origin, _req_head| {
                     let origin_str = origin.to_str().unwrap_or("");
-                    configured_web_origin
-                        .as_deref()
-                        .is_some_and(|configured| configured == origin_str)
-                        || origin_str == "http://localhost:3000"
+                    origin_str == "http://localhost:3000"
                         || origin_str == "tauri://localhost"
                         || origin_str == "https://tauri.localhost"
                         || origin_str == "http://tauri.localhost"
@@ -647,6 +934,7 @@ pub async fn start_with_storage_bind_options(
                     .into()
                 }))
                 .wrap(cors)
+                .wrap(middleware::from_fn(add_static_cache_headers))
                 .wrap(middleware::from_fn(move |req, next| {
                     enforce_security(req, next, externally_reachable, lan_pairing)
                 }))
@@ -657,6 +945,19 @@ pub async fn start_with_storage_bind_options(
                 .app_data(blizzard_credential_secrets.clone())
                 .app_data(auth_state.clone())
                 .app_data(auth_state_opt_data.clone());
+
+            if let Some(simc_runtime_data) = simc_runtime_data.clone() {
+                app = app
+                    .app_data(simc_runtime_data)
+                    .route(
+                        "/api/admin/simc-runtime",
+                        web::get().to(auth_handlers::get_simc_runtime),
+                    )
+                    .route(
+                        "/api/admin/simc-runtime",
+                        web::post().to(auth_handlers::set_simc_runtime),
+                    );
+            }
 
             if let Some(lan_access) = lan_access.clone() {
                 app = app
@@ -738,6 +1039,18 @@ pub async fn start_with_storage_bind_options(
                     web::post().to(auth_handlers::set_user_config),
                 )
                 .route(
+                    "/api/user/discord-webhook",
+                    web::get().to(discord_webhook::get_settings),
+                )
+                .route(
+                    "/api/user/discord-webhook",
+                    web::post().to(discord_webhook::update_settings),
+                )
+                .route(
+                    "/api/user/discord-webhook/test",
+                    web::post().to(discord_webhook::send_test),
+                )
+                .route(
                     "/api/user/blizzard/clear",
                     web::post().to(auth_handlers::clear_user_configs),
                 )
@@ -748,6 +1061,18 @@ pub async fn start_with_storage_bind_options(
                 .route(
                     "/api/user/blizzard/test",
                     web::post().to(auth_handlers::test_blizzard_creds),
+                )
+                .route(
+                    "/api/admin/users",
+                    web::get().to(auth_handlers::list_hosted_users),
+                )
+                .route(
+                    "/api/admin/users",
+                    web::post().to(auth_handlers::create_hosted_user),
+                )
+                .route(
+                    "/api/admin/users/{id}",
+                    web::patch().to(auth_handlers::update_hosted_user),
                 )
                 .route(
                     "/api/data/status",

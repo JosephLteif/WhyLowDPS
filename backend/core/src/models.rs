@@ -2,6 +2,17 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AppUser {
+    pub id: String,
+    pub provider_subject: Option<String>,
+    pub battletag: String,
+    pub role: String,
+    pub enabled: bool,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum JobStatus {
@@ -41,6 +52,8 @@ pub struct SavedCharacterProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: String,
+    #[serde(default = "default_job_owner", skip_serializing)]
+    pub owner_id: String,
     pub status: JobStatus,
     pub sim_type: String,
     pub simc_input: String,
@@ -209,6 +222,7 @@ impl Job {
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
+            owner_id: default_job_owner(),
             status: JobStatus::Pending,
             sim_type,
             simc_input,
@@ -248,6 +262,10 @@ impl Job {
         total += self.text_output.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
         total
     }
+}
+
+fn default_job_owner() -> String {
+    "local-guest".to_string()
 }
 
 #[cfg(test)]

@@ -121,4 +121,10 @@ describe('SplashScreen credential flow', () => {
     expect(screen.getByPlaceholderText('Client ID')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Client Secret')).toBeInTheDocument();
   });
+
+  it('offers a QR scanner when LAN access is required', () => {
+    render(<SplashScreen status="lan_access_required" progress="" />);
+
+    expect(screen.getByRole('button', { name: 'Scan desktop QR code' })).toBeInTheDocument();
+  });
 });

@@ -78,13 +78,9 @@ pub(super) fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
     let manifest_path = data_manifest_path();
     let content = match std::fs::read_to_string(&manifest_path) {
         Ok(content) => content,
-        Err(err) => {
-            // Release bundles don't have the source checkout path; use embedded manifest fallback.
-            eprintln!(
-                "Failed to read data manifest at {}: {}. Falling back to embedded manifest.",
-                manifest_path.display(),
-                err
-            );
+        Err(_) => {
+            // Release bundles do not have the source checkout path; the embedded
+            // manifest is the expected packaged-build fallback.
             EMBEDDED_DATA_MANIFEST.to_string()
         }
     };

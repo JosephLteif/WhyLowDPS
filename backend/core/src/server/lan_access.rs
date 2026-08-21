@@ -304,6 +304,10 @@ impl LanAccessState {
             return false;
         }
 
+        self.pending
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|_, pairing| pairing.device_id.as_deref() != Some(id));
         self.active
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -439,7 +443,15 @@ pub async fn create_pairing(
 
     let bnet_session = req
         .cookie("bnet_session")
-        .map(|cookie| cookie.value().to_string());
+        .map(|cookie| cookie.value().to_string())
+        .or_else(|| {
+            req.headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.strip_prefix("Bearer "))
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        });
     if let Some(device_id) = query.device_id.as_deref() {
         if !state.has_device(device_id) {
             return HttpResponse::NotFound().json(serde_json::json!({
@@ -527,7 +539,7 @@ pub async fn consume_pairing(
 
     let mut response = HttpResponse::Found();
     response
-        .append_header((header::LOCATION, "/"))
+        .append_header((header::LOCATION, "/?lan_paired=1"))
         .cookie(access_cookie);
 
     if let Some(bnet_session) = bnet_session {
@@ -739,6 +751,16 @@ mod tests {
         assert!(!has_valid_access(&request, &state));
     }
 
+    #[test]
+    fn removing_a_device_invalidates_pending_repair_links() {
+        let state = LanAccessState::new();
+        let device_id = state.register_device(Some("Android"));
+        let token = state.create_pending_pairing_for_device(None, Some(device_id.clone()));
+
+        assert!(state.remove_device(&device_id));
+        assert_eq!(state.consume_pending_pairing(&token), None);
+    }
+
     #[actix_web::test]
     async fn pairing_landing_page_does_not_consume_the_token() {
         let state = std::sync::Arc::new(LanAccessState::new());
@@ -778,6 +800,10 @@ mod tests {
         .await;
 
         assert_eq!(response.status(), actix_web::http::StatusCode::FOUND);
+        assert_eq!(
+            response.headers().get(header::LOCATION).unwrap(),
+            "/?lan_paired=1"
+        );
         let cookies: Vec<&str> = response
             .headers()
             .get_all(SET_COOKIE)
@@ -839,5 +865,29 @@ mod tests {
         )
         .await;
         assert_eq!(loopback_response.status(), actix_web::http::StatusCode::OK);
+    }
+
+    #[actix_web::test]
+    async fn creating_pairing_mirrors_a_desktop_bearer_session() {
+        let state = web::Data::new(std::sync::Arc::new(LanAccessState::new()));
+        let response = create_pairing(
+            actix_web::test::TestRequest::post()
+                .peer_addr("127.0.0.1:50000".parse().unwrap())
+                .insert_header((header::AUTHORIZATION, "Bearer desktop-session"))
+                .to_http_request(),
+            web::Query(PairingCreateQuery::default()),
+            state.clone(),
+        )
+        .await;
+        assert_eq!(response.status(), actix_web::http::StatusCode::OK);
+
+        let body = actix_web::body::to_bytes(response.into_body()).await.unwrap();
+        let pairing: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let path = pairing.get("path").and_then(|value| value.as_str()).unwrap();
+        let token = path.split("token=").nth(1).unwrap();
+        assert_eq!(
+            state.consume_pending_pairing(token),
+            Some((Some("desktop-session".to_string()), None))
+        );
     }
 }

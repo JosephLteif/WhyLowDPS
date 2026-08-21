@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchStableAppReleases, parseStableAppReleases } from './updater-release';
+import {
+  fetchStableAppReleases,
+  parseDockerImageReleases,
+  parseStableAppReleases,
+} from './updater-release';
 
 describe('parseStableAppReleases', () => {
   afterEach(() => {
@@ -14,20 +18,38 @@ describe('parseStableAppReleases', () => {
         draft: false,
         prerelease: false,
         published_at: '2026-06-20T00:00:00Z',
-        assets: [{ name: 'WhyLowDPS_3.3.0_x64-setup.exe', browser_download_url: 'https://example.test/330.exe', size: 10 }],
+        assets: [
+          {
+            name: 'WhyLowDPS_3.3.0_x64-setup.exe',
+            browser_download_url: 'https://example.test/330.exe',
+            size: 10,
+          },
+        ],
       },
       {
         tag_name: 'v3.4.0-beta.1',
         draft: false,
         prerelease: false,
-        assets: [{ name: 'WhyLowDPS_3.4.0_x64-setup.exe', browser_download_url: 'https://example.test/beta.exe', size: 20 }],
+        assets: [
+          {
+            name: 'WhyLowDPS_3.4.0_x64-setup.exe',
+            browser_download_url: 'https://example.test/beta.exe',
+            size: 20,
+          },
+        ],
       },
       {
         tag_name: 'v3.3.1',
         draft: false,
         prerelease: false,
         published_at: '2026-06-21T00:00:00Z',
-        assets: [{ name: 'WhyLowDPS_3.3.1_x64-setup.exe', browser_download_url: 'https://example.test/331.exe', size: 30 }],
+        assets: [
+          {
+            name: 'WhyLowDPS_3.3.1_x64-setup.exe',
+            browser_download_url: 'https://example.test/331.exe',
+            size: 30,
+          },
+        ],
       },
     ]);
 
@@ -67,7 +89,7 @@ describe('parseStableAppReleases', () => {
             },
           ],
         },
-      }),
+      })
     );
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -82,12 +104,43 @@ describe('parseStableAppReleases', () => {
   it('reports GitHub rate limits when app releases cannot be read', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ message: 'API rate limit exceeded' }), { status: 403 })),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: 'API rate limit exceeded' }), { status: 403 })
+      )
     );
 
     await expect(fetchStableAppReleases({ forceRefresh: true })).resolves.toEqual({
       metadataStatus: 'rate_limited',
       releases: [],
     });
+  });
+});
+
+describe('parseDockerImageReleases', () => {
+  it('only returns releases with the published Docker image bundle', () => {
+    expect(
+      parseDockerImageReleases([
+        {
+          tag_name: 'v3.4.0',
+          draft: false,
+          prerelease: false,
+          assets: [{ name: 'WhyLowDps_3.4.0_x64-setup.exe' }],
+        },
+        {
+          tag_name: 'v3.3.1',
+          draft: false,
+          prerelease: false,
+          published_at: '2026-06-21T00:00:00Z',
+          assets: [{ name: 'docker-image.txt' }],
+        },
+      ])
+    ).toEqual([
+      {
+        version: '3.3.1',
+        notes: undefined,
+        publishedAt: '2026-06-21T00:00:00Z',
+      },
+    ]);
   });
 });

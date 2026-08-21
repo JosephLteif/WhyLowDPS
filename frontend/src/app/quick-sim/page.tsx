@@ -72,12 +72,12 @@ export default function QuickSimPage() {
         e.preventDefault();
         submit();
       }}
-      className="space-y-6 pb-6"
+      className="mobile-page-bottom space-y-6 pb-6"
     >
       <ErrorAlert message={error} />
 
       {showFloatingSubmit ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 ml-[var(--sidebar-width)] px-3 pb-4 pt-6 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16">
+        <div className="mobile-safe-bottom pointer-events-none fixed inset-x-0 bottom-0 z-50 ml-[var(--sidebar-width)] px-3 pb-4 pt-6 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16">
           <div
             className="mx-auto w-full min-w-0"
             style={{

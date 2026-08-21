@@ -5,32 +5,34 @@
   <meta content="width=device-width, initial-scale=1" name="viewport" />
   <meta content="#09090b" name="theme-color" />
   <meta
-    content="WhyLowDPS is a local-first Windows app for simulating, comparing, and planning World of Warcraft characters with SimulationCraft. Start in Light Mode with no API key, or connect Battle.net for account-aware tools."
+    content="WhyLowDPS is a desktop-first World of Warcraft simulator and character planner with local SimulationCraft, credential-free Light Mode, optional Battle.net context, and private hosted deployment."
     name="description" />
   <meta
-    content="simulator, SimulationCraft, World of Warcraft, WoW, DPS, gear planning, upgrade planning, route planning"
+    content="World of Warcraft simulator, SimulationCraft, WoW DPS, gear planning, upgrade planning, Light Mode, private Docker hosting, PWA"
     name="keywords" />
   <meta content="index,follow" name="robots" />
   <meta content="WhyLowDPS" name="application-name" />
   <meta content="WhyLowDPS" property="og:site_name" />
   <meta content="website" property="og:type" />
   <meta content="https://josephlteif.github.io/WhyLowDPS/" property="og:url" />
-  <meta content="WhyLowDPS | Local-first WoW simulator and planner for Windows" property="og:title" />
+  <meta content="WhyLowDPS | Make better WoW upgrade decisions" property="og:title" />
   <meta
-    content="Run SimulationCraft locally, compare gear and talent choices, plan upgrades, and use Light Mode without an API key."
+    content="Local SimulationCraft, character context, and upgrade planning in one workflow — on Windows, a private Docker host, or your trusted LAN."
     property="og:description" />
   <meta content="https://josephlteif.github.io/WhyLowDPS/assets/og-image.png" property="og:image" />
-  <meta content="WhyLowDPS social preview showing the app dashboard, Light Mode, and local-first Windows desktop positioning."
-        property="og:image:alt" />
-  <meta content="summary_large_image" name="twitter:card" />
-  <meta content="WhyLowDPS | Local-first WoW simulator and planner for Windows" name="twitter:title" />
   <meta
-    content="Run SimulationCraft locally, compare gear and talent choices, plan upgrades, and use Light Mode without an API key."
+    content="WhyLowDPS dashboard showing simulation activity, tracked characters, and vault progress."
+    property="og:image:alt" />
+  <meta content="summary_large_image" name="twitter:card" />
+  <meta content="WhyLowDPS | Make better WoW upgrade decisions" name="twitter:title" />
+  <meta
+    content="Local SimulationCraft, character context, and upgrade planning in one workflow."
     name="twitter:description" />
   <meta content="https://josephlteif.github.io/WhyLowDPS/assets/og-image.png" name="twitter:image" />
-  <meta content="WhyLowDPS social preview showing the app dashboard, Light Mode, and local-first Windows desktop positioning."
-        name="twitter:image:alt" />
-  <title>WhyLowDPS | Local-first WoW simulator and planner for Windows</title>
+  <meta
+    content="WhyLowDPS dashboard showing simulation activity, tracked characters, and vault progress."
+    name="twitter:image:alt" />
+  <title>WhyLowDPS | Make better WoW upgrade decisions</title>
   <link href="https://josephlteif.github.io/WhyLowDPS/" rel="canonical" />
   <link href="./favicon.ico" rel="icon" sizes="any" />
   <link href="./assets/icon.png" rel="icon" sizes="32x32" type="image/png" />
@@ -44,14 +46,15 @@
       "@type": "SoftwareApplication",
       "name": "WhyLowDPS",
       "applicationCategory": "GameApplication",
-      "applicationSubCategory": "Character simulator and planner",
-      "operatingSystem": "Windows",
+      "applicationSubCategory": "World of Warcraft character simulator and planner",
+      "operatingSystem": "Windows, Linux, Web",
       "softwareVersion": "Latest release",
       "url": "https://josephlteif.github.io/WhyLowDPS/",
       "downloadUrl": "https://github.com/JosephLteif/simcraft/releases/latest",
       "image": "https://josephlteif.github.io/WhyLowDPS/assets/og-image.png",
       "screenshot": "https://josephlteif.github.io/WhyLowDPS/assets/screenshots/dashboard.png",
-      "description": "WhyLowDPS is a local-first Windows app for simulating, comparing, and planning World of Warcraft characters with SimulationCraft. It supports a credential-free Light Mode and optional Battle.net connectivity.",
+      "description": "WhyLowDPS brings local SimulationCraft, character context, and upgrade planning into one desktop-first workflow, with credential-free Light Mode and private hosted deployment options.",
+      "featureList": "Local SimulationCraft, Light Mode, gear planning, simulation history, Great Vault tracking, private Docker hosting, installable PWA, trusted-LAN sharing",
       "sameAs": [
         "https://github.com/JosephLteif/simcraft",
         "https://discord.com/invite/ZjxQv5kFxe"
@@ -74,12 +77,10 @@
   </a>
   <nav aria-label="Main navigation" class="nav">
     <a href="#features">Features</a>
-    <a href="#modes">Light Mode</a>
-    <a href="#product-tour">Product tour</a>
-    <a href="#compare">Why it stands out</a>
-    <a href="#faq">FAQ</a>
-    <a href="#setup">Setup</a>
+    <a href="#workflows">Workflows</a>
+    <a href="#ways-to-run">Ways to run</a>
     <a href="#privacy">Privacy</a>
+    <a href="#faq">FAQ</a>
   </nav>
   <a class="button button-primary header-download"
      href="https://github.com/JosephLteif/simcraft/releases/latest"
@@ -89,13 +90,14 @@
 
 <main id="main-content">
   <section class="hero" id="top">
+    <div class="hero-atmosphere" aria-hidden="true"></div>
     <div class="container hero-layout">
       <div class="hero-copy">
-        <p class="eyebrow">Local-first · Windows desktop app</p>
-        <h2>Know what improves your character.</h2>
+        <p class="eyebrow">Simulation · planning · character context</p>
+        <h1>Turn the next upgrade into a decision.</h1>
         <p class="hero-lede">
-          Run SimulationCraft locally, compare results, and plan your next upgrade without
-          stitching together disconnected tools.
+          WhyLowDPS brings local SimulationCraft, character context, and planning tools into
+          one focused World of Warcraft workflow.
         </p>
         <div class="actions">
           <a class="button button-primary"
@@ -103,122 +105,92 @@
              rel="noopener noreferrer"
              target="_blank">Download for Windows</a>
           <a class="button button-secondary"
-             href="https://github.com/JosephLteif/simcraft"
-             rel="noopener noreferrer"
-             target="_blank">View on GitHub</a>
+             href="#ways-to-run">Explore ways to run it</a>
         </div>
         <p class="hero-proof">
-          Free desktop app. Actively maintained on GitHub. Start in Light Mode immediately,
-          then connect Battle.net only if you want account-aware tools.
+          Start in Light Mode with no API key. Connect Battle.net for account-aware tools,
+          or run a private hosted instance when you want access from more than one device.
         </p>
-        <ul aria-label="Platform details" class="hero-details">
-          <li>Windows only</li>
-          <li>Local simulations</li>
-          <li>No API key required in Light Mode</li>
-          <li>Published through GitHub releases</li>
-          <li>Your data stays on your machine</li>
-        </ul>
+        <div aria-label="Product modes" class="hero-tags">
+          <span>Local SimC</span>
+          <span>Credential-free start</span>
+          <span>Private by design</span>
+        </div>
       </div>
 
       <figure class="app-frame hero-frame">
         <div aria-hidden="true" class="frame-bar">
           <span></span><span></span><span></span>
-          <strong>WhyLowDPS</strong>
+          <strong>WhyLowDPS · Simulation Dashboard</strong>
         </div>
         <img
           alt="WhyLowDPS dashboard with tracked characters, vault progress, simulation activity, and system status."
           src="./assets/screenshots/dashboard.png" />
+        <figcaption>Keep the character, the result, and the next decision in view.</figcaption>
       </figure>
     </div>
   </section>
 
-  <section aria-label="Product highlights" class="highlights" id="features">
-    <div class="container highlight-grid">
-      <div><strong>Local SimC</strong><span>Run simulations on your own hardware</span></div>
-      <div><strong>Clear comparisons</strong><span>See DPS changes and result details</span></div>
-      <div><strong>Character planning</strong><span>Turn results into upgrade decisions</span></div>
-      <div><strong>Persistent context</strong><span>Keep profiles, routes, and sim history</span></div>
+  <section aria-label="Product proof points" class="proof-strip">
+    <div class="container proof-grid">
+      <div><strong>Local SimulationCraft</strong><span>Run the work on your own hardware</span></div>
+      <div><strong>Light Mode</strong><span>Start with manual SimC and no API key</span></div>
+      <div><strong>One character workflow</strong><span>Keep history, routes, vault, and goals together</span></div>
+      <div><strong>Open and adaptable</strong><span>Inspect the source and choose your deployment</span></div>
     </div>
   </section>
 
-  <section class="section proof-section">
+  <section class="section" id="features">
     <div class="container">
       <header class="section-heading section-heading-compact">
-        <p class="eyebrow">Why people keep it open</p>
-        <h2>One desktop workflow instead of scattered tabs.</h2>
-      </header>
-      <div class="proof-grid">
-        <article>
-          <strong>Start without setup friction</strong>
-          <p>Light Mode gives you local simulation and planning tools immediately, without making Battle.net credentials a prerequisite.</p>
-        </article>
-        <article>
-          <strong>Keep the work on your machine</strong>
-          <p>SimulationCraft runs locally and your credentials, saved profiles, routes, and planning data stay under your control.</p>
-        </article>
-        <article>
-          <strong>Plan around the content you play</strong>
-          <p>Wishlists, Great Vault tracking, routes, encounters, and upgrade checks stay close to the same character context.</p>
-        </article>
-        <article>
-          <strong>Use a tool that stays current</strong>
-          <p>Releases are published on GitHub, the project is open for inspection, and Discord gives users a direct support path.</p>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="section modes-section" id="modes">
-    <div class="container">
-      <header class="section-heading section-heading-compact">
-        <p class="eyebrow">Use it your way</p>
-        <h2>Start without an API key. Connect when you want more.</h2>
+        <p class="eyebrow">What it helps you answer</p>
+        <h2>More context than a single DPS number.</h2>
         <p>
-          WhyLowDPS does not force a Battle.net login before you can explore its local
-          simulation and planning tools.
+          Use the same character context from the first question to the final upgrade, without
+          rebuilding your setup across disconnected tools.
         </p>
       </header>
-      <div class="mode-grid">
-        <article class="mode-card mode-card-featured">
-          <div class="mode-heading">
-            <span class="mode-badge">No credentials</span>
-            <h3>Credential-free Light Mode</h3>
-          </div>
-          <p>
-            Open the app immediately and use supported manual SimC, analysis, upgrade,
-            dungeon, raid, and route workflows without creating a Battle.net API client.
-          </p>
+      <div class="feature-grid">
+        <article class="feature-card feature-card-accent">
+          <span aria-hidden="true" class="feature-icon">↗</span>
+          <h3>What changed?</h3>
+          <p>Run local sims, follow active jobs, and inspect timelines, breakdowns, profiles, and history.</p>
           <ul class="check-list">
-            <li>Quick Sim from manually supplied SimC data</li>
-            <li>Local simulation history and result analysis</li>
-            <li>Upgrade, encounter, and route reference tools</li>
+            <li>Quick Sim and saved SimC profiles</li>
+            <li>Simulation history and result analysis</li>
+            <li>Stat weights, plots, and action context</li>
           </ul>
         </article>
-        <article class="mode-card">
-          <div class="mode-heading">
-            <span class="mode-badge">Optional connection</span>
-            <h3>Connected Mode</h3>
-          </div>
-          <p>
-            Add your own Battle.net credentials when you want account-aware features and
-            automatic character context.
-          </p>
+        <article class="feature-card">
+          <span aria-hidden="true" class="feature-icon">◇</span>
+          <h3>What should I equip?</h3>
+          <p>Compare realistic combinations before spending gold, crests, or time on a guess.</p>
           <ul class="check-list">
-            <li>Battle.net character roster and saved characters</li>
-            <li>Great Vault and account-backed character data</li>
-            <li>Character wishlists and talent playground</li>
+            <li>Top Gear and upgrade comparisons</li>
+            <li>Drop, trinket, tier, and consumable planning</li>
+            <li>Character-specific wishlists</li>
+          </ul>
+        </article>
+        <article class="feature-card">
+          <span aria-hidden="true" class="feature-icon">⌁</span>
+          <h3>What should I do next?</h3>
+          <p>Carry the season and content you play into the plan that leads to your next run.</p>
+          <ul class="check-list">
+            <li>Dungeon, raid, and encounter references</li>
+            <li>Saved route-specific simulations</li>
+            <li>Great Vault and weekly progress context</li>
           </ul>
         </article>
       </div>
     </div>
   </section>
 
-  <section class="section product-tour" id="product-tour">
+  <section class="section workflows-section" id="workflows">
     <div class="container">
       <header class="section-heading">
         <p class="eyebrow">Product tour</p>
         <h2>From a question to a confident upgrade.</h2>
-        <p>WhyLowDPS keeps the full optimization loop in one desktop workflow.</p>
+        <p>Three parts of the same loop, connected by the character you are trying to improve.</p>
       </header>
 
       <article class="tour-row">
@@ -226,18 +198,13 @@
           <p class="step-label">01 · Simulate and inspect</p>
           <h3>Understand more than the final number.</h3>
           <p>
-            Run simulations locally, review damage breakdowns, inspect action timelines,
-            and compare character profiles without losing the setup behind each result.
+            Run SimulationCraft locally, watch the job progress, and review the actions and
+            stats behind the result while keeping the setup that produced it.
           </p>
-          <ul class="check-list">
-            <li>Simulation history and saved profiles</li>
-            <li>Timeline, action, and stat analysis</li>
-            <li>Side-by-side result context</li>
-          </ul>
+          <a class="inline-link" href="https://github.com/JosephLteif/simcraft/releases/latest" rel="noopener noreferrer" target="_blank">Start with a local sim <span aria-hidden="true">→</span></a>
         </div>
         <figure class="app-frame">
-          <img alt="Simulation timeline showing casts, actions, and damage events."
-               src="./assets/screenshots/sim-timeline.png" />
+          <img alt="Simulation timeline showing casts, actions, and damage events." src="./assets/screenshots/sim-timeline.png" />
           <figcaption>Inspect the actions behind each result.</figcaption>
         </figure>
       </article>
@@ -245,20 +212,15 @@
       <article class="tour-row tour-row-reverse">
         <div class="tour-copy">
           <p class="step-label">02 · Compare and prioritize</p>
-          <h3>Make gear decisions with the delta attached.</h3>
+          <h3>Attach the delta to the decision.</h3>
           <p>
-            Test combinations, rank outcomes, and see which items or talents actually move
-            your character forward before spending gold, crests, or time.
+            Test gear, talents, trinkets, consumables, and upgrade paths before you commit to
+            the option that only looked better at a glance.
           </p>
-          <ul class="check-list">
-            <li>Top Gear and upgrade comparisons</li>
-            <li>Drop, trinket, tier, and consumable planning</li>
-            <li>Wishlists organized by character and source</li>
-          </ul>
+          <a class="inline-link" href="#ways-to-run">Choose a deployment path <span aria-hidden="true">→</span></a>
         </div>
         <figure class="app-frame">
-          <img alt="Top Gear results ranked by DPS with selected item and talent combinations."
-               src="./assets/screenshots/top-gear.png" />
+          <img alt="Top Gear results ranked by DPS with selected item and talent combinations." src="./assets/screenshots/top-gear.png" />
           <figcaption>Rank real combinations, not isolated item levels.</figcaption>
         </figure>
       </article>
@@ -266,225 +228,190 @@
       <article class="tour-row">
         <div class="tour-copy">
           <p class="step-label">03 · Plan in context</p>
-          <h3>Carry dungeon and season context into the sim.</h3>
+          <h3>Bring the content you play into the sim.</h3>
           <p>
-            Save route-aware setups, browse current encounters, and keep the weekly context
-            that shapes your next simulation close to the character it belongs to.
+            Save route-aware setups, browse current encounters, and keep weekly progress close
+            to the character it belongs to.
           </p>
-          <ul class="check-list">
-            <li>Saved routes from SimC strings</li>
-            <li>Dungeon, raid, and encounter references</li>
-            <li>Great Vault and seasonal tracking</li>
-          </ul>
+          <a class="inline-link" href="#lan-sharing">Learn about trusted-LAN access <span aria-hidden="true">→</span></a>
         </div>
         <figure class="app-frame">
-          <img alt="Dungeon route planner showing pulls, route health, timer, and SimulationCraft actions."
-               src="./assets/screenshots/route.png" />
+          <img alt="Dungeon route planner showing pulls, route health, timer, and SimulationCraft actions." src="./assets/screenshots/route.png" />
           <figcaption>Build simulations around the route you will play.</figcaption>
         </figure>
       </article>
     </div>
   </section>
 
-  <section class="section capabilities">
+  <section class="section modes-section" id="ways-to-run">
+    <div class="container">
+      <header class="section-heading section-heading-compact">
+        <p class="eyebrow">Choose your setup</p>
+        <h2>One product, three ways to use it.</h2>
+        <p>
+          Keep the workflow local on Windows, host a private instance, or share the desktop
+          app with a phone on the same trusted network.
+        </p>
+      </header>
+      <div class="mode-grid">
+        <article class="mode-card mode-card-featured" id="desktop-mode">
+          <div class="mode-heading">
+            <span class="mode-badge">Best place to start</span>
+            <h3>Windows desktop</h3>
+          </div>
+          <p>
+            Run the app and SimulationCraft on your own PC. Light Mode is ready immediately;
+            optional Battle.net credentials add connected character context.
+          </p>
+          <ul class="check-list">
+            <li>Credential-free Light Mode</li>
+            <li>Local simulations and data</li>
+            <li>Optional Battle.net roster, vault, and character tools</li>
+          </ul>
+          <div class="mode-actions">
+            <a class="inline-link" href="https://github.com/JosephLteif/simcraft/releases/latest" rel="noopener noreferrer" target="_blank">Download the latest release <span aria-hidden="true">→</span></a>
+            <button class="inline-link modal-trigger" type="button" data-modal-target="desktop-setup-modal" aria-haspopup="dialog">Open desktop setup <span aria-hidden="true">↗</span></button>
+          </div>
+        </article>
+        <article class="mode-card" id="docker-hosting">
+          <div class="mode-heading">
+            <span class="mode-badge">Private deployment</span>
+            <h3>Docker host + PWA</h3>
+          </div>
+          <p>
+            Run a private, single-instance web deployment with the app, backend, and Linux
+            SimulationCraft runtime packaged together.
+          </p>
+          <ul class="check-list">
+            <li>amd64 Docker image with persistent data</li>
+            <li>Installable PWA with update guidance</li>
+            <li>Separate user data and administrator access controls</li>
+          </ul>
+          <button class="inline-link modal-trigger" type="button" data-modal-target="docker-setup-modal" aria-haspopup="dialog">Open private-host setup <span aria-hidden="true">↗</span></button>
+        </article>
+        <article class="mode-card" id="lan-sharing">
+          <div class="mode-heading">
+            <span class="mode-badge">Trusted network</span>
+            <h3>Desktop + phone</h3>
+          </div>
+          <p>
+            Pair a phone from Desktop Settings with a one-time QR or link, using the current
+            desktop session over your private LAN.
+          </p>
+          <ul class="check-list">
+            <li>Opt-in pairing with device management</li>
+            <li>Access cleared when the desktop restarts</li>
+            <li>No internet exposure or port forwarding</li>
+          </ul>
+          <button class="inline-link modal-trigger" type="button" data-modal-target="lan-setup-modal" aria-haspopup="dialog">Open pairing steps <span aria-hidden="true">↗</span></button>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section capabilities-section" id="features-detail">
     <div class="container">
       <header class="section-heading section-heading-compact">
         <p class="eyebrow">Built for repeatable decisions</p>
         <h2>Your character workflow, remembered.</h2>
       </header>
-      <div class="capability-grid feature-group-grid">
+      <div class="capability-grid">
         <article>
-          <span aria-hidden="true">↗</span>
+          <span aria-hidden="true" class="feature-icon">↗</span>
           <h3>Simulation</h3>
           <p>Run locally, follow active jobs, and keep every result available for comparison.</p>
-          <ul class="feature-list">
-            <li>Quick Sim</li>
-            <li>Top Gear</li>
-            <li>Live tracking</li>
-            <li>Simulation history</li>
-          </ul>
+          <ul class="feature-list"><li>Quick Sim</li><li>Top Gear</li><li>Live tracking</li><li>History</li></ul>
         </article>
         <article>
-          <span aria-hidden="true">◇</span>
+          <span aria-hidden="true" class="feature-icon">◇</span>
           <h3>Upgrade planning</h3>
-          <p>Compare realistic upgrade paths before committing currency or farming time.</p>
-          <ul class="feature-list">
-            <li>Drop Finder</li>
-            <li>Crest Upgrades</li>
-            <li>Trinket Matrix</li>
-            <li>Tier Slot Matrix</li>
-          </ul>
+          <p>Compare realistic paths before committing currency or farming time.</p>
+          <ul class="feature-list"><li>Drop Finder</li><li>Crest Upgrades</li><li>Trinkets</li><li>Tier Matrix</li></ul>
         </article>
         <article>
-          <span aria-hidden="true">◎</span>
+          <span aria-hidden="true" class="feature-icon">◎</span>
           <h3>Analysis</h3>
-          <p>Go beyond a DPS total and inspect how stats, actions, and choices affect it.</p>
-          <ul class="feature-list">
-            <li>Quick Weights</li>
-            <li>Stat Plot</li>
-            <li>Consumable Matrix</li>
-            <li>Timelines and breakdowns</li>
-          </ul>
+          <p>Go beyond a total and inspect how stats, actions, and choices affect it.</p>
+          <ul class="feature-list"><li>Quick Weights</li><li>Stat Plot</li><li>Consumables</li><li>Breakdowns</li></ul>
         </article>
         <article>
-          <span aria-hidden="true">▦</span>
+          <span aria-hidden="true" class="feature-icon">▦</span>
           <h3>Character tools</h3>
-          <p>Keep each character's goals, builds, and weekly progress organized together.</p>
-          <ul class="feature-list">
-            <li>Saved SimC profiles</li>
-            <li>Great Vault</li>
-            <li>Wishlists</li>
-            <li>Talent playground</li>
-          </ul>
+          <p>Keep builds, goals, weekly progress, and account context together.</p>
+          <ul class="feature-list"><li>Saved SimC</li><li>Great Vault</li><li>Wishlists</li><li>Talents</li></ul>
         </article>
         <article>
-          <span aria-hidden="true">⌁</span>
+          <span aria-hidden="true" class="feature-icon">⌁</span>
           <h3>PvE planning</h3>
-          <p>Bring current content and the route you intend to play into your preparation.</p>
-          <ul class="feature-list">
-            <li>Dungeon rotation and affixes</li>
-            <li>Raid encounters and guides</li>
-            <li>Saved dungeon routes</li>
-            <li>Route-specific simulations</li>
-          </ul>
+          <p>Bring current content and the route you intend to play into preparation.</p>
+          <ul class="feature-list"><li>Dungeons</li><li>Raids</li><li>Affixes</li><li>Saved routes</li></ul>
         </article>
         <article>
-          <span aria-hidden="true">⌂</span>
-          <h3>Desktop experience</h3>
-          <p>Keep the application, simulation runtime, and working data under your control.</p>
-          <ul class="feature-list">
-            <li>Local-first storage</li>
-            <li>Dashboard customization</li>
-            <li>Runtime updates</li>
-            <li>Stable app updates</li>
-          </ul>
+          <span aria-hidden="true" class="feature-icon">⌂</span>
+          <h3>Current by design</h3>
+          <p>Season and SimulationCraft refreshes validate staged data and retain a last-known-good fallback.</p>
+          <ul class="feature-list"><li>Season rollovers</li><li>Runtime updates</li><li>Data validation</li><li>Safe recovery</li></ul>
         </article>
       </div>
-    </div>
-  </section>
-
-  <section class="section compare-section" id="compare">
-    <div class="container">
-      <header class="section-heading">
-        <p class="eyebrow">Positioning</p>
-        <h2>WhyLowDPS keeps the optimization loop closer to the player.</h2>
-        <p>
-          It is built for players who want the speed of a desktop workflow, local control,
-          and more context than a single simulation result page.
-        </p>
-      </header>
-      <div class="compare-grid">
-        <article class="compare-card compare-card-featured">
-          <h3>WhyLowDPS</h3>
-          <ul class="check-list">
-            <li>Local SimulationCraft runs on your own machine</li>
-            <li>Light Mode works without an API key</li>
-            <li>Routes, wishlists, vault, and history stay in one desktop app</li>
-            <li>Open GitHub releases and visible project source</li>
-          </ul>
-        </article>
-        <article class="compare-card">
-          <h3>Browser-only or split-tool workflows</h3>
-          <ul class="compare-list">
-            <li>Often centered on one simulation job at a time</li>
-            <li>Character context is easier to lose across tabs and services</li>
-            <li>Saved planning state is usually spread across multiple tools</li>
-            <li>Offline and local-first workflows are more limited</li>
-          </ul>
-        </article>
-      </div>
-    </div>
-  </section>
-
-  <section class="section setup-section" id="setup">
-    <div class="container setup-layout">
-      <div>
-        <p class="eyebrow">Quick setup</p>
-        <h2>Start with your own character.</h2>
-        <p class="section-copy">
-          WhyLowDPS is distributed as a Windows desktop app. Start credential-free, or
-          connect your own Battle.net API client for account-aware features.
-        </p>
-      </div>
-      <ol class="steps">
-        <li><span>1</span>
-          <div><strong>Download</strong>
-            <p>Get the latest Windows release from GitHub.</p></div>
-        </li>
-        <li><span>2</span>
-          <div><strong>Choose your mode</strong>
-            <p>Continue in Light Mode, or add your own Battle.net credentials.</p></div>
-        </li>
-        <li><span>3</span>
-          <div><strong>Start comparing</strong>
-            <p>Paste SimC data or import a connected character, then run a simulation.</p></div>
-        </li>
-      </ol>
     </div>
   </section>
 
   <section class="section privacy-section" id="privacy">
     <div class="container privacy-layout">
       <div>
-        <p class="eyebrow">Local by design</p>
-        <h2>Your credentials stay on your machine.</h2>
+        <p class="eyebrow">Control by design</p>
+        <h2>Know where your data lives.</h2>
       </div>
       <div class="privacy-copy">
         <p>
-          Your Battle.net API credentials are stored locally and are not uploaded or shared
-          by WhyLowDPS. There is no custom WhyLowDPS account backend.
+          In the Windows app, credentials, profiles, routes, history, and simulations stay on
+          your machine. Light Mode lets you use supported local workflows without connecting an account.
         </p>
         <p>
-          The app uses Blizzard APIs for game data, GitHub for releases and published data
-          updates, and Raidbots-related data where simulation workflows require it.
+          A private hosted instance keeps each allowed Battle.net user’s data separate on the
+          operator-controlled server. Hosted administrators can allow users, assign administrators,
+          disable access, and revoke active sessions.
+        </p>
+        <p>
+          Network requests are used for Blizzard game data, GitHub releases and published updates,
+          and documented external data sources. WhyLowDPS is independent and is not affiliated with
+          Blizzard Entertainment, SimulationCraft, or Raidbots.
         </p>
       </div>
     </div>
   </section>
 
   <section class="section faq-section" id="faq">
-    <div class="container">
+    <div class="container narrow-container">
       <header class="section-heading section-heading-compact">
         <p class="eyebrow">FAQ</p>
-        <h2>Answers before you download.</h2>
+        <h2>Answers before you choose a setup.</h2>
       </header>
       <div class="faq-list">
-        <div class="faq-item">
-          <details>
-            <summary>Do I need a Battle.net API key to use the app?</summary>
-            <p>No. Light Mode is a first-class workflow and lets you use supported local simulation and planning features without credentials.</p>
-          </details>
-        </div>
-        <div class="faq-item">
-          <details>
-            <summary>What does Light Mode include?</summary>
-            <p>Light Mode supports manual SimC-based workflows, local analysis, saved history, upgrade planning, and route, raid, and dungeon reference tools.</p>
-          </details>
-        </div>
-        <div class="faq-item">
-          <details>
-            <summary>What do credentials unlock if I add them later?</summary>
-            <p>Connected Mode adds Battle.net-backed character context like saved rosters, Great Vault integration, wishlists, and character-aware tooling.</p>
-          </details>
-        </div>
-        <div class="faq-item">
-          <details>
-            <summary>Does WhyLowDPS run simulations locally?</summary>
-            <p>Yes. The app runs SimulationCraft locally on your Windows machine rather than sending your simulation jobs through a separate hosted queue.</p>
-          </details>
-        </div>
-        <div class="faq-item">
-          <details>
-            <summary>Is the app free and Windows-only?</summary>
-            <p>Yes. The landing page and release flow are aimed at Windows desktop users, and the app is distributed through GitHub releases.</p>
-          </details>
-        </div>
-        <div class="faq-item">
-          <details>
-            <summary>Is this affiliated with Blizzard, SimulationCraft, or Raidbots?</summary>
-            <p>No. WhyLowDPS is an independent project and is not affiliated with Blizzard Entertainment, SimulationCraft, or Raidbots.</p>
-          </details>
-        </div>
+        <div class="faq-item"><details>
+          <summary>Do I need a Battle.net API key?</summary>
+          <p>No. Light Mode supports manual SimC, local analysis, history, upgrade planning, and content-reference workflows without credentials.</p>
+        </details></div>
+        <div class="faq-item"><details>
+          <summary>What does connecting Battle.net add?</summary>
+          <p>Connected Mode adds account-aware character context such as rosters, saved characters, Great Vault data, wishlists, and talent tools.</p>
+        </details></div>
+        <div class="faq-item"><details>
+          <summary>Can I run WhyLowDPS as a private web app?</summary>
+          <p>Yes. The release Docker deployment packages the web app, backend, and Linux SimulationCraft runtime for private single-instance hosting. <button class="text-link modal-trigger" type="button" data-modal-target="docker-setup-modal" aria-haspopup="dialog">Open the private-host setup</button> for the deployment steps and callback rules.</p>
+        </details></div>
+        <div class="faq-item"><details>
+          <summary>Can I install the hosted app on my phone?</summary>
+          <p>Yes. The hosted web app can be installed as a PWA when the deployment uses trusted HTTPS. The desktop app can also pair phones directly over a trusted private LAN.</p>
+        </details></div>
+        <div class="faq-item"><details>
+          <summary>Does WhyLowDPS run simulations locally?</summary>
+          <p>The Windows desktop app runs SimulationCraft locally on your machine. A Docker-hosted deployment runs its own Linux SimulationCraft runtime on the private host.</p>
+        </details></div>
+        <div class="faq-item"><details>
+          <summary>Is WhyLowDPS affiliated with Blizzard or Raidbots?</summary>
+          <p>No. WhyLowDPS is an independent project and is not affiliated with Blizzard Entertainment, SimulationCraft, or Raidbots.</p>
+        </details></div>
       </div>
     </div>
   </section>
@@ -492,19 +419,16 @@
   <section class="section final-cta">
     <div class="container cta-panel">
       <p class="eyebrow">Ready to answer “is this better?”</p>
-      <h2>Run the comparison on your own character.</h2>
-      <p>Download WhyLowDPS for Windows and keep the full simulation workflow local, searchable, and under your control.</p>
-      <p class="cta-note">Actively maintained on GitHub with release downloads and Discord support.</p>
+      <h2>Start with the workflow that fits your setup.</h2>
+      <p>Download the Windows app, or bring WhyLowDPS to a private host and keep the full context close to your characters.</p>
       <div class="actions actions-centered">
         <a class="button button-primary"
            href="https://github.com/JosephLteif/simcraft/releases/latest"
            rel="noopener noreferrer"
            target="_blank">Download for Windows</a>
-        <a class="button button-secondary"
-           href="https://discord.com/invite/ZjxQv5kFxe"
-           rel="noopener noreferrer"
-           target="_blank">Join Discord</a>
+        <a class="button button-secondary" href="#ways-to-run">View setup options</a>
       </div>
+      <p class="cta-note">Open source on GitHub · actively maintained · support via Discord</p>
     </div>
   </section>
 </main>
@@ -516,18 +440,125 @@
         <img alt="" src="./assets/icon.png" />
         <span>WhyLowDPS</span>
       </a>
-      <p>Local World of Warcraft simulation and character optimization.</p>
+      <p>World of Warcraft simulation and character optimization with context.</p>
     </div>
     <nav aria-label="Footer navigation" class="footer-links">
       <a href="https://github.com/JosephLteif/simcraft" rel="noopener noreferrer" target="_blank">GitHub</a>
       <a href="https://github.com/JosephLteif/simcraft/releases" rel="noopener noreferrer" target="_blank">Releases</a>
       <a href="https://discord.com/invite/ZjxQv5kFxe" rel="noopener noreferrer" target="_blank">Discord</a>
-      <a href="#compare">Why it stands out</a>
-      <a href="#faq">FAQ</a>
+      <a href="#ways-to-run">Setup options</a>
+      <a href="#docker-hosting">Private hosting</a>
       <a href="#privacy">Privacy</a>
     </nav>
   </div>
   <p class="container legal">Not affiliated with Blizzard Entertainment, SimulationCraft, or Raidbots.</p>
 </footer>
+
+<dialog class="info-modal" id="desktop-setup-modal" aria-labelledby="desktop-setup-title">
+  <form class="modal-panel" method="dialog">
+    <header class="modal-header">
+      <div>
+        <p class="eyebrow">Windows desktop</p>
+        <h2 id="desktop-setup-title">Install and choose your first mode.</h2>
+      </div>
+      <button class="modal-close" type="submit" value="close" aria-label="Close desktop setup">×</button>
+    </header>
+    <div class="modal-body">
+      <ol class="modal-steps">
+        <li><strong>Download the latest completed Windows x64 release.</strong><span>Use the official GitHub release page and verify its checksum if you want to validate the installer.</span></li>
+        <li><strong>Choose Light Mode or connect Battle.net.</strong><span>Light Mode supports manual SimC, local analysis, history, upgrade planning, and shared catalogs. Connected Mode adds rosters, saved characters, Great Vault data, wishlists, and account-aware tools.</span></li>
+        <li><strong>Let the app prepare its data and runtime.</strong><span>Review simulation settings, then start with a small Quick Sim before a larger matrix or route simulation.</span></li>
+      </ol>
+      <div class="modal-callout">
+        <strong>Battle.net callback</strong>
+        <p>For the installed app, register <code>http://localhost:17384/api/auth/bnet/callback</code> in the <a href="https://community.developer.battle.net/access/clients" rel="noopener noreferrer" target="_blank">Battle.net Developer Portal</a>. Use the value labeled Client ID, not the management identifier in the portal URL.</p>
+      </div>
+    </div>
+    <footer class="modal-footer">
+      <a class="button button-primary" href="https://github.com/JosephLteif/simcraft/releases/latest" rel="noopener noreferrer" target="_blank">Open latest release</a>
+      <button class="button button-secondary" type="submit" value="close">Done</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="info-modal" id="docker-setup-modal" aria-labelledby="docker-setup-title">
+  <form class="modal-panel" method="dialog">
+    <header class="modal-header">
+      <div>
+        <p class="eyebrow">Private Docker + PWA</p>
+        <h2 id="docker-setup-title">Run your own private instance.</h2>
+      </div>
+      <button class="modal-close" type="submit" value="close" aria-label="Close private hosting setup">×</button>
+    </header>
+    <div class="modal-body">
+      <ol class="modal-steps">
+        <li><strong>Use an amd64 Linux host or Docker Desktop with WSL2.</strong><span>Arm64 is not currently supported because the companion SimulationCraft runtime is published for linux-x64.</span></li>
+        <li><strong>Use the latest image and configure the host.</strong><span>The standard Compose file follows <code>ghcr.io/josephlteif/whylowdps:latest</code>. Set the private host IP, client-facing port, unique JWT secret, session encryption key, and bootstrap administrator BattleTag. Keep the persistent <code>whylowdps-data</code> volume and secrets backed up.</span></li>
+        <li><strong>Pull and start with the environment file.</strong><span>Use <code>docker compose --env-file .env.docker pull</code>, then <code>docker compose --env-file .env.docker up -d</code>. Open the host address from the trusted LAN and add other allowed users from Manage Users.</span></li>
+      </ol>
+      <div class="modal-callout">
+        <strong>Hosted OAuth and updates</strong>
+        <p>Register the exact browser-facing callback: <code>http://&lt;HOST-IP&gt;:&lt;PORT&gt;/api/auth/bnet/callback</code>, or <code>https://&lt;HOSTNAME&gt;/api/auth/bnet/callback</code> behind trusted HTTPS. The scheme, hostname, port, and path must match.</p>
+        <p>The standard Compose file follows <code>:latest</code>. Configure Portainer or another Docker manager to pull and recreate the service when the image digest changes. For rollback, replace the Compose image with an exact version or digest; <code>docker compose restart app</code> does not apply either change.</p>
+      </div>
+      <p class="modal-note">The PWA requires browser-trusted HTTPS. Direct LAN HTTP stays private but does not provide a secure browser context for native installation.</p>
+    </div>
+    <footer class="modal-footer">
+      <a class="button button-primary" href="https://github.com/JosephLteif/simcraft/releases/latest" rel="noopener noreferrer" target="_blank">Open latest release</a>
+      <button class="button button-secondary" type="submit" value="close">Done</button>
+    </footer>
+  </form>
+</dialog>
+
+<dialog class="info-modal" id="lan-setup-modal" aria-labelledby="lan-setup-title">
+  <form class="modal-panel" method="dialog">
+    <header class="modal-header">
+      <div>
+        <p class="eyebrow">Trusted LAN sharing</p>
+        <h2 id="lan-setup-title">Pair a phone without exposing the app.</h2>
+      </div>
+      <button class="modal-close" type="submit" value="close" aria-label="Close LAN pairing setup">×</button>
+    </header>
+    <div class="modal-body">
+      <ol class="modal-steps">
+        <li><strong>Put the PC and phone on the same trusted private network.</strong><span>Use a Windows Private network profile. Allow TCP port <code>17384</code> on the Private network only; never create a Public-network rule or port-forward it.</span></li>
+        <li><strong>Enable Share over LAN in Desktop Settings.</strong><span>Open Settings &gt; Simulation, enable Share this app over LAN, and restart WhyLowDPS when prompted.</span></li>
+        <li><strong>Create and consume a one-time pairing link.</strong><span>Select New pairing link, scan the QR within five minutes, and choose Continue in Safari, Chrome, or another full browser if the scanner opens an embedded preview.</span></li>
+      </ol>
+      <div class="modal-callout">
+        <strong>Access lifecycle</strong>
+        <p>Keep the desktop app running while the phone is connected. Browser access expires after 24 hours; New link restores a device, Rename identifies it, and Remove access immediately returns it to the QR pairing screen.</p>
+      </div>
+      <p class="modal-note">Desktop LAN sharing is separate from Docker hosting. It uses the current desktop session and does not provide internet-facing access.</p>
+    </div>
+    <footer class="modal-footer">
+      <button class="button button-secondary" type="submit" value="close">Done</button>
+    </footer>
+  </form>
+</dialog>
+
+<script>
+  (() => {
+    const openModal = (modal) => {
+      if (typeof modal.showModal === 'function') modal.showModal();
+      else modal.setAttribute('open', '');
+    };
+    const closeModal = (modal) => {
+      if (typeof modal.close === 'function') modal.close();
+      else modal.removeAttribute('open');
+    };
+    document.querySelectorAll('[data-modal-target]').forEach((trigger) => {
+      trigger.addEventListener('click', () => {
+        const modal = document.getElementById(trigger.dataset.modalTarget);
+        if (modal) openModal(modal);
+      });
+    });
+    document.querySelectorAll('.info-modal').forEach((modal) => {
+      modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeModal(modal);
+      });
+    });
+  })();
+</script>
 </body>
 </html>

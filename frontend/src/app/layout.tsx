@@ -62,6 +62,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <NotificationProvider>
           <AuthProvider>
+            <LanSessionLifecycle />
             <ActiveCharacterProvider>
               <DataGuard>
                 <SimProvider>
@@ -76,7 +77,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <DesktopIntegrationListener />
                   <DesktopRichPresence />
                   <CommandPalette />
-                  <LanSessionLifecycle />
                   <ScrollToTopOnRouteChange />
                   <InitialSidebarRoute />
 

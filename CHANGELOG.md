@@ -8,31 +8,30 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Added
 
-- Optional LAN sharing for phones on the same trusted private network, with one-time QR/link pairing and persistent paired-device management from Settings.
-- Recent character search history in the header, persisted locally with filtering and one-click navigation.
-- Pause and resume simulations from the result screen while preserving queued, running, and staged progress as long as the backend remains alive.
-- Shared notification center with persistent local history, unread counts, read-state controls, and direct actions for simulation results and app updates.
-- One-click reruns that submit the saved simulation input directly and open the new result.
+- Multi-user ownership is now the default in desktop and hosted modes: Battle.net users have separate simulations, routes, profiles, history, and browser state, while desktop Light mode remains a persistent device-local guest account.
+- Hosted user administration now supports a BattleTag allowlist, administrator/member roles, disabling access, and revoking active sessions.
+- Hosted Blizzard application credentials can be added, rotated, selected, or removed at runtime without restarting the deployment.
+- Hosted Light mode can now use shared simulations, results, game-data catalogs, and raid browsing without a Battle.net session; account-specific features remain protected.
+- Installable PWA support for the hosted web app, including a manifest, service worker, offline shell, update prompt, and install guidance for native browser prompts, browser menus, and iOS.
+- Dungeon browsing now keeps the active season first while retaining available historical encounter lists and artwork fallbacks.
+- Private, single-instance Docker hosting with an amd64 Compose deployment, prebuilt GHCR images, direct private-LAN access, and a persistent data volume for repeatable upgrades and rollbacks.
+- Optional LAN sharing for phones on the same trusted private network, with one-time QR/link pairing, persistent paired-device management, presence tracking, and restart invalidation.
 
 ### Changed
 
-- Running simulation status now uses the available page width with clearer profileset progress and stats grouping.
+- Mobile UI layouts now adapt navigation, action bars, dense results, settings, and dialogs for narrow touch screens, including phone safe-area support and full-height mobile flows where useful.
+- Account switching now revokes the current session and starts a fresh Battle.net login; ordinary sessions persist securely across app and server restarts.
+- Account actions now live under one avatar menu with the BattleTag, My Characters, Switch account, and Manage Users options; the current admin account is protected from self-disable, sign-out, or role changes.
+- The hosted Raids page now works in Light mode, lists cataloged expansions, fills missing current-expansion metadata, and chains catalog and public artwork fallbacks when image endpoints have no source.
+- Dungeon expansion and season selectors retain known content during incomplete runtime refreshes, and dungeon cards fall back through catalog and public artwork sources.
+- Removing a paired LAN device immediately invalidates its session and redirects that browser to a QR scanner for a new pairing.
+- Docker hosting now derives the web origin and Battle.net callback from the address and port used by the instance; health-check and backup scripts verify operations and produce recoverable archives with SHA-256 hashes.
+- The public site and hosting guides now explain the desktop, hosted, PWA, and trusted-LAN paths more clearly, with responsive layouts for smaller screens.
+- Tagged releases now health-check and publish versioned, minor, and latest Docker images, then attach hosting configuration, documentation, checksums, and image references.
+- Hosted deployments use configurable HTTPS Battle.net callback and web-origin settings, while game-data and SimulationCraft runtime refreshes validate staged data and retain the last-known-good state during degraded season rollovers.
+- Small workflow improvements now include visible app search with the Ctrl K shortcut, SimC profile persistence and older-patch warnings, hosted SimC channel and update controls, and clearer account, dungeon, setup, PWA, LAN, and Docker flows.
 
 ### Fixed
 
-- Desktop simulation notifications are deduplicated and keep a clickable in-app result action for completed simulations.
-- App updates are recorded in notification history while the existing updater popup remains the single live install and restart flow.
-
-## [3.0.1] - 2026-05-19
-
-### Changed
-
-- Release workflow now generates structured release notes with:
-  - recommended download
-  - SHA256 checksums for every attached asset
-  - explicit Windows/SmartScreen/Battle.net credential notes
-
-### Added
-
-- First-launch Discord invite popup with local dismiss persistence
-- Sidebar quick links for Discord and website access
+- Dungeon and Mythic+ route inputs are no longer parsed as character imports when they also contain name-like lines.
+- Fixed related-scenario refresh loops, forced fresh Battle.net account selection when switching users, and improved persistence and publication reliability for hosted Docker secrets and images.

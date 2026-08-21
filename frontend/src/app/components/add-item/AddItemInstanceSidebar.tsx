@@ -500,37 +500,60 @@ export default function AddItemInstanceSidebar({
   };
 
   return (
-    <div className="relative h-full shrink-0" style={{ width: sidebarWidth }}>
-      <div className="scrollbar-thin scrollbar-thumb-white/10 h-full w-full min-w-0 space-y-0.5 overflow-y-auto border-r border-border bg-surface/50 p-1.5">
-        {hasOnlyCraftedFilters
-          ? instances.map((instance) => renderInstance(instance))
-          : groupedInstances.map(renderExpansionGroup)}
-        {instances.length === 0 && (
-          <div className="p-6 text-center text-xs italic text-zinc-600">No instances found</div>
-        )}
+    <div className="relative h-auto w-full shrink-0 sm:h-full sm:w-auto">
+      <div className="border-b border-border bg-surface/50 p-2 sm:hidden">
+        <label className="label-text mb-1">Loot source</label>
+        <select
+          value={instances.some((instance) => instance.id === selectedInstance) ? selectedInstance : ''}
+          onChange={(event) => onSelect(Number(event.target.value))}
+          className="input-field h-10"
+          aria-label="Loot source"
+          disabled={instances.length === 0}
+        >
+          {instances.length === 0 ? (
+            <option value="">No instances found</option>
+          ) : (
+            instances.map((instance) => (
+              <option key={instance.id} value={instance.id}>
+                {displayInstanceName(instance)}
+              </option>
+            ))
+          )}
+        </select>
       </div>
-      <div
-        role="separator"
-        aria-label="Resize instance panel"
-        aria-orientation="vertical"
-        aria-valuemin={SIDEBAR_MIN_WIDTH}
-        aria-valuemax={SIDEBAR_MAX_WIDTH}
-        aria-valuenow={sidebarWidth}
-        tabIndex={0}
-        onKeyDown={handleResizeKeyDown}
-        onPointerDown={handleResizePointerDown}
-        onPointerMove={handleResizePointerMove}
-        onPointerUp={handleResizePointerUp}
-        onPointerCancel={handleResizePointerUp}
-        className={`absolute right-[-5px] top-0 z-20 flex h-full w-2 cursor-col-resize touch-none select-none items-center justify-center outline-none ${
-          isResizing ? 'bg-gold/10' : 'hover:bg-gold/5 focus-visible:bg-gold/10'
-        }`}
-      >
-        <span
-          className={`h-10 w-0.5 rounded-full transition-colors ${
-            isResizing ? 'bg-gold' : 'bg-border hover:bg-gold/70'
+
+      <div className="hidden h-full sm:block" style={{ width: sidebarWidth }}>
+        <div className="scrollbar-thin scrollbar-thumb-white/10 h-full w-full min-w-0 space-y-0.5 overflow-y-auto border-r border-border bg-surface/50 p-1.5">
+          {hasOnlyCraftedFilters
+            ? instances.map((instance) => renderInstance(instance))
+            : groupedInstances.map(renderExpansionGroup)}
+          {instances.length === 0 && (
+            <div className="p-6 text-center text-xs italic text-zinc-600">No instances found</div>
+          )}
+        </div>
+        <div
+          role="separator"
+          aria-label="Resize instance panel"
+          aria-orientation="vertical"
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={SIDEBAR_MAX_WIDTH}
+          aria-valuenow={sidebarWidth}
+          tabIndex={0}
+          onKeyDown={handleResizeKeyDown}
+          onPointerDown={handleResizePointerDown}
+          onPointerMove={handleResizePointerMove}
+          onPointerUp={handleResizePointerUp}
+          onPointerCancel={handleResizePointerUp}
+          className={`absolute right-[-5px] top-0 z-20 flex h-full w-2 cursor-col-resize touch-none select-none items-center justify-center outline-none ${
+            isResizing ? 'bg-gold/10' : 'hover:bg-gold/5 focus-visible:bg-gold/10'
           }`}
-        />
+        >
+          <span
+            className={`h-10 w-0.5 rounded-full transition-colors ${
+              isResizing ? 'bg-gold' : 'bg-border hover:bg-gold/70'
+            }`}
+          />
+        </div>
       </div>
     </div>
   );

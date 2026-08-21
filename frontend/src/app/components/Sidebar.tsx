@@ -17,6 +17,7 @@ import {
   ScrollText,
   Settings as SettingsIcon,
   Users,
+  X,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
@@ -172,6 +173,7 @@ export default function Sidebar() {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const mobileCloseRef = useRef<HTMLButtonElement | null>(null);
   const dragSourceRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
@@ -291,6 +293,26 @@ export default function Sidebar() {
   }, [isNarrowViewport]);
 
   useEffect(() => {
+    if (!isNarrowViewport || !isMobileOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement;
+    document.body.style.overflow = 'hidden';
+    mobileCloseRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, [isMobileOpen, isNarrowViewport]);
+
+  useEffect(() => {
     const width = isCollapsed ? '5rem' : '18rem';
     const effectiveWidth = isNarrowViewport ? '0rem' : width;
     document.documentElement.style.setProperty('--sidebar-width', effectiveWidth);
@@ -394,12 +416,23 @@ export default function Sidebar() {
         />
       )}
       <aside
-        className={`fixed bottom-0 left-0 z-50 flex flex-col justify-between border-r border-border bg-surface/90 pb-4 pt-3 transition-all duration-200 ${
-          isCollapsed ? 'w-20' : 'w-72'
+        aria-label="App navigation"
+        className={`fixed bottom-0 left-0 z-50 flex flex-col justify-between border-r border-border bg-surface/95 pb-4 pt-3 shadow-2xl transition-all duration-200 ${
+          isCollapsed ? 'w-20' : 'w-[min(18rem,calc(100vw-1rem))] xl:w-72'
         } ${isNarrowViewport ? (isMobileOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
         style={{ top: 'var(--app-header-height)' }}
       >
         <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
+          <button
+            ref={mobileCloseRef}
+            type="button"
+            onClick={() => setIsMobileOpen(false)}
+            className="mb-2 inline-flex min-h-11 items-center justify-between rounded-lg border border-border bg-surface-2 px-3 text-sm font-semibold text-zinc-200 xl:hidden"
+            aria-label="Close navigation"
+          >
+            Close navigation
+            <X className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+          </button>
           {!isCollapsed && (
             <div
               className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}
@@ -632,7 +665,7 @@ export default function Sidebar() {
                               }
                               if (isNarrowViewport) setIsMobileOpen(false);
                             }}
-                            className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
+                            className={`flex min-h-11 flex-col justify-center rounded-md px-3 py-2 transition-colors ${
                               childActive
                                 ? 'text-gold'
                                 : 'text-zinc-200 hover:bg-surface-2 hover:text-white'

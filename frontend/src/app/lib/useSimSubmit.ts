@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
 import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, isDesktop } from './api';
+import { createUuid } from './uuid';
 import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
@@ -237,7 +238,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
       const configs: FightScenario[] =
         scenarios.length > 0 ? scenarios : [{ id: '', fightStyle, targetCount, fightLength }];
 
-      const batchId = scenarios.length > 0 ? crypto.randomUUID() : undefined;
+      const batchId = scenarios.length > 0 ? createUuid() : undefined;
       const baselineLiveStats = await fetchBaselineLiveStats();
 
       const sharedPayload = {

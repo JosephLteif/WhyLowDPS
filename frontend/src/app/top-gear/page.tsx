@@ -839,7 +839,7 @@ export default function TopGearPage() {
   const submitDisabled = submitting || !!pageLevelError || !resolved;
 
   return (
-    <div className="space-y-6 pb-28">
+    <div className="mobile-page-bottom space-y-6 pb-28">
       {returnNotice ? (
         <SimReturnNotice
           title={returnNotice.title}
@@ -847,7 +847,7 @@ export default function TopGearPage() {
           onDismiss={() => setReturnNotice(null)}
         />
       ) : null}
-      <div className="card space-y-4 p-5">
+      <div className="card space-y-4 p-4 sm:p-5">
         <div className="flex justify-end">
           <button
             type="button"
@@ -960,7 +960,7 @@ export default function TopGearPage() {
 
       <ErrorAlert message={pageLevelError || error} />
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 ml-[var(--sidebar-width)] px-3 pb-4 pt-6 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16">
+      <div className="mobile-safe-bottom pointer-events-none fixed inset-x-0 bottom-0 z-50 ml-[var(--sidebar-width)] px-3 pb-4 pt-6 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16">
         <div
           className="mx-auto w-full min-w-0"
           style={{

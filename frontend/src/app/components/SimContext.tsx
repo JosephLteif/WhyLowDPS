@@ -3,6 +3,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { FightScenario } from '../lib/types';
 import { API_URL, fetchJson } from '../lib/api';
+import { createUuid } from '../lib/uuid';
 import {
   getAppDefaultOption,
   getCharacterDefaultsKeyFromSimcInput,
@@ -399,7 +400,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const addScenario = useCallback(() => {
     setScenarios((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), fightStyle, targetCount, fightLength },
+      { id: createUuid(), fightStyle, targetCount, fightLength },
     ]);
   }, [fightStyle, targetCount, fightLength]);
 

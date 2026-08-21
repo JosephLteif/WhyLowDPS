@@ -1,6 +1,15 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, Clock3, Download, Loader2, Map, SlidersHorizontal } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Clock3,
+  Download,
+  Loader2,
+  Map,
+  SlidersHorizontal,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
@@ -8,7 +17,13 @@ import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import { CLASS_COLORS, specDisplayName } from '../lib/types';
 import type { PullInfo } from '@/lib/simc-parser';
-import { parseCharacterInfo } from '@/lib/simc-parser';
+import {
+  isOlderWowVersion,
+  normalizeWowVersion,
+  parseCharacterInfo,
+} from '@/lib/simc-parser';
+import { getCurrentWowPatch } from '../lib/wow-season-content';
+import { useGameContext } from '../lib/useGameContext';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
@@ -80,6 +95,13 @@ export function CharacterInfoBar({
       : null;
 
   const classColor = CLASS_COLORS[info.className.toLowerCase().replace(/\s+/g, '')] || '#fff';
+  const gameContext = useGameContext();
+  const currentWowPatch =
+    normalizeWowVersion(gameContext?.source?.raidbots_build) || getCurrentWowPatch();
+  const hasOldPatch = isOlderWowVersion(info.wowVersion, currentWowPatch);
+  const oldPatchMessage = hasOldPatch
+    ? `This SimC export is from WoW ${info.wowVersion}. Current supported patch: ${currentWowPatch}.`
+    : undefined;
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] transition-all hover:border-white/10 hover:bg-white/[0.05]">
@@ -114,6 +136,17 @@ export function CharacterInfoBar({
         </div>
 
         <div className="flex items-center gap-2">
+          {hasOldPatch && (
+            <span
+              role="status"
+              title={oldPatchMessage}
+              aria-label={oldPatchMessage}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500/35 bg-red-500/15 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-red-300"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Old Patch
+            </span>
+          )}
           {profileUrl && (
             <Link
               href={profileUrl}

@@ -1719,7 +1719,7 @@ export default function Home() {
                           raiderIoUrl={`https://raider.io/characters/${active.region.toLowerCase()}/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
                         />
                         <div
-                          className={`grid gap-2 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
+                          className={`grid gap-2 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
                         >
                           <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
                             Level:{' '}
@@ -1748,7 +1748,7 @@ export default function Home() {
                               Mythic+ Vault
                             </p>
                             <div
-                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
+                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
                             >
                               {MYTHIC_VAULT_THRESHOLDS.map((threshold, idx) => {
                                 const current = mainVault?.mplusRuns ?? 0;
@@ -1795,7 +1795,7 @@ export default function Home() {
                               Raid Vault
                             </p>
                             <div
-                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-3'}`}
+                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
                             >
                               {RAID_VAULT_THRESHOLDS.map((threshold, idx) => {
                                 const current = mainVault?.raidKills ?? 0;

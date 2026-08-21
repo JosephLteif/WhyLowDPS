@@ -8,43 +8,157 @@ This is a self-hosted private instance, not a shared WhyLowDPS service. The
 recommended installation uses the prebuilt release image. Building from source
 is only needed for development or contributors.
 
-## Production
+Desktop **Share over LAN** is a different mode: it exposes the running Windows
+app on port `17384` and requires QR pairing. Docker creates an independent web
+instance on the configured host and does not use desktop pairing.
 
-1. Use an amd64 Linux host with Docker Engine and Compose.
-2. Download `compose.yaml` and `.env.docker.example` from the desired GitHub
-   release, or clone the repository for the current configuration.
-3. Point DNS for the chosen domain at the host.
-4. Copy `.env.docker.example` to `.env.docker`, pin `WHYLOWDPS_VERSION` to the
-   release version, and set the domain and a strong `JWT_SECRET`. Blizzard
-   client credentials are optional.
-5. Register the exact callback URL in the Blizzard developer portal. The hosted
-   UI also displays these values under the credential form:
+## Production requirements
 
-   - **Redirect URLs:** `https://<host-name>/api/auth/bnet/callback`
-   - **Allowed Domain / Service URL (if shown):** `<host-name>` only, without
-     `https://`, a trailing slash, or the callback path.
+- An amd64 Linux host, or Docker Desktop using its WSL2 Linux engine.
+- Docker Engine with the Compose plugin (`docker compose version`).
+- A stable private IPv4 address or DHCP reservation for the host.
+- The selected TCP port allowed only from the trusted private network.
+- A current WhyLowDPS release with a published `linux-x64` SimulationCraft
+  runtime on the selected `SIMC_CHANNEL`.
 
-   For the current LAN example, use:
-   `https://192-168-100-125.nip.io/api/auth/bnet/callback` and
-   `192-168-100-125.nip.io`. Use the hostname and scheme that your own host
-   actually serves; the redirect must match exactly.
-6. Ensure the `weekly` or `nightly` release manifest in the companion
-   `whylowdps-simc-runtime` repository contains a `linux-x64` asset. Its
-   publisher now builds and validates that CLI runtime from SimulationCraft
-   source.
-7. Start the stack:
+Arm64 hosts are not currently supported because the companion runtime is
+published for `linux-x64`.
 
-```shell
-docker compose --env-file .env.docker pull
-docker compose --env-file .env.docker up -d
-```
+## First installation
 
-Caddy terminates HTTPS and proxies the same origin to the WhyLowDPS app. The
-SQLite database, synchronized data, caches, and downloaded SimC runtime live
-in the Docker-managed `whylowdps-data` volume.
+1. Download `compose.yaml` and `.env.docker.example` from the same WhyLowDPS
+   GitHub release. A repository clone can be used for source development.
+2. Put both files in a dedicated directory and create the private environment
+   file:
 
-To update an existing instance, back up the data volume, change
-`WHYLOWDPS_VERSION` to the new release, then run:
+   ```shell
+   cp .env.docker.example .env.docker
+   ```
+
+3. Edit `.env.docker`:
+
+   - The downloaded Compose file follows the published `latest` image by
+     default.
+   - Set `WHYLOWDPS_HOST_IP` to the host's private IPv4 address, for example
+     `192.168.1.20`. Leave it as `0.0.0.0` to listen on all host interfaces.
+   - Set `WHYLOWDPS_PORT` to the client-facing port, normally `8000`.
+   - `JWT_SECRET` and `SESSION_ENCRYPTION_KEY` are optional. If you leave them
+     unset, the server generates separate random values on first startup and
+     stores them in `/data/.jwt-secret` and
+     `/data/.session-encryption-key`. The persistent `whylowdps-data` volume
+     must be retained so login tokens and encrypted credentials continue to
+     work after restarts.
+   - If you prefer to supply the values yourself, generate two different
+     random 32-byte values and paste them into `JWT_SECRET` and
+     `SESSION_ENCRYPTION_KEY`:
+
+     ```shell
+     openssl rand -hex 32
+     openssl rand -hex 32
+     ```
+
+     Each output is a 64-character hexadecimal value. The values should look
+     like `4f8c...` and `a19e...`, but must be generated locally rather than
+     copied from documentation. `JWT_SECRET` signs login tokens.
+     `SESSION_ENCRYPTION_KEY` encrypts OAuth tokens and saved Blizzard client
+     secrets. Keep both values stable with the deployment and its backups.
+     If you prefer a browser tool, use the
+     [KuleUI Key Generator](https://www.kuleui.com/tools/dev/key-generator),
+     select **Hex**, set the length to **32 bytes**, generate one value, copy
+     it, and regenerate a second value for the other variable. The tool says
+     it uses the browser's Web Crypto API and does not transmit generated
+     values. Use it only from a trusted device; local OpenSSL or PowerShell
+     generation is preferable for higher-security deployments.
+   - Set `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` to the exact Battle.net
+     BattleTag that will perform the first login, including its discriminator,
+     for example `YourBattleTag#1234`. Quote the value if it contains `#`.
+   - Leave `WHYLOWDPS_SECURE_COOKIES=false` for direct LAN HTTP. Set it to
+     `true` only when the app is accessed through trusted HTTPS.
+   - `SIMC_CHANNEL`, `MAX_CONCURRENT_SIMULATIONS`, and
+     `MAX_JOBS_PER_USER` are optional tuning values; the example shows the
+     normal defaults of `weekly`, `2`, and `200`.
+   - Blizzard application credentials are entered in the app at runtime; they
+     are not stored in this environment file.
+
+   On Windows PowerShell, the two secrets can also be generated without
+   OpenSSL:
+
+   ```powershell
+   function New-WhyLowDpsSecret {
+     $bytes = New-Object byte[] 32
+     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+     try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+     [BitConverter]::ToString($bytes).Replace('-', '').ToLowerInvariant()
+   }
+   $jwtSecret = New-WhyLowDpsSecret
+   $sessionEncryptionKey = New-WhyLowDpsSecret
+   "JWT_SECRET=$jwtSecret"
+   "SESSION_ENCRYPTION_KEY=$sessionEncryptionKey"
+   ```
+
+4. Pull and start the latest release:
+
+   ```shell
+   docker compose --env-file .env.docker pull
+   docker compose --env-file .env.docker up -d
+   ```
+
+   Always include `--env-file .env.docker`. This prevents unrelated values in
+   a repository `.env` file from being used for the hosted deployment.
+
+5. Confirm that the container is healthy:
+
+   ```shell
+   docker compose --env-file .env.docker ps
+   docker compose --env-file .env.docker logs --tail=100 app
+   curl --fail http://<WHYLOWDPS_HOST_IP>:<WHYLOWDPS_PORT>/health
+   ```
+
+6. Open `http://<WHYLOWDPS_HOST_IP>:<WHYLOWDPS_PORT>` from a browser on the
+   trusted LAN and sign in with the bootstrap administrator BattleTag. Add other
+   allowed accounts from **Manage Users**.
+
+The administrator can switch the Docker-hosted SimulationCraft build at runtime
+from **Settings > Docker Updates > SimC Channel**. Choose **Weekly** or **Nightly**;
+the selected latest build is downloaded immediately and the choice is stored in
+the persistent database volume. Other hosted users can use the runtime but
+cannot change this server-wide setting.
+
+The SQLite database, synchronized data, caches, saved encrypted credentials,
+and downloaded SimC runtime live in the Docker-managed `whylowdps-data` volume.
+Do not delete that volume during routine recreation, updates, or rollback.
+
+Multi-user releases use `/data/whylowdps-multi-user.db`. An earlier
+`/data/whylowdps.db` is intentionally left untouched as a legacy backup; old
+personal records are not imported automatically.
+
+## Configuration reference
+
+The production image is defined directly in `compose.yaml` as
+`ghcr.io/josephlteif/whylowdps:latest`. Change that line to an exact version or
+digest when pinning a deployment.
+
+Published Docker releases use the `latest` tag and versioned tags. There is no
+separate `stable` image tag.
+The hosted Settings page only lists versions whose release includes the
+`docker-image.txt` bundle generated after the image was published and its digest
+was recorded.
+
+| Variable | Purpose |
+| --- | --- |
+| `WHYLOWDPS_HOST_IP` | Optional host bind address, for example `192.168.1.20`; defaults to `0.0.0.0`. |
+| `WHYLOWDPS_PORT` | Optional client-facing port; defaults to `8000`. |
+| `JWT_SECRET` | Optional random 32-byte signing secret, normally 64 hex characters. If omitted, it is generated and stored in `/data/.jwt-secret`. Keep it stable; changing it invalidates login tokens. |
+| `SESSION_ENCRYPTION_KEY` | Optional separate random 32-byte encryption key, normally 64 hex characters. If omitted, it is generated and stored in `/data/.session-encryption-key`. It protects OAuth tokens and saved Blizzard client secrets. Keep it stable. |
+| `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` | BattleTag such as `YourBattleTag#1234`; it is used only to create the first administrator when the user table is empty. |
+| `WHYLOWDPS_SECURE_COOKIES` | `false` for direct LAN HTTP; set `true` only behind trusted HTTPS. |
+| `SIMC_CHANNEL` | Initial runtime channel: `weekly` or `nightly`; defaults to `weekly`. After an administrator changes the channel in Settings, the persisted setting takes precedence. |
+| `MAX_CONCURRENT_SIMULATIONS` | Optional concurrency limit; the Compose example uses `2`. |
+| `MAX_JOBS_PER_USER` | Optional unpinned job-history limit; defaults to `200`. |
+
+## Updates and rollback
+
+Back up the data volume first, then pull and recreate the service:
 
 ```shell
 docker compose --env-file .env.docker pull
@@ -52,21 +166,52 @@ docker compose --env-file .env.docker up -d
 docker compose --env-file .env.docker ps
 ```
 
-To roll back, set `WHYLOWDPS_VERSION` back to the previous release and repeat
-the same commands. Do not remove the `whylowdps-data` volume during an update.
+`docker compose restart app` does not apply a new image or changed environment
+values. Publishing a new `latest` image also does not restart an existing
+container by itself. Configure Portainer or another Docker manager to poll the
+image or receive a registry webhook, then pull and recreate the stack when the
+digest changes.
 
-For local source development, use:
+For a command-line deployment, the update operation is:
+
+```shell
+docker compose --env-file .env.docker pull
+docker compose --env-file .env.docker up -d
+```
+
+For Portainer or a similar manager, use the Compose image
+`ghcr.io/josephlteif/whylowdps:latest` and enable its registry polling or
+webhook-based pull-and-redeploy option. A normal running container does not
+periodically check the registry on its own.
+
+To roll back, change the `image` line in `compose.yaml` to the exact version
+from `docker-image.txt`, for example
+`ghcr.io/josephlteif/whylowdps:3.8.0`, or to the listed immutable digest. Pull
+and recreate the service again. Preserve `.env.docker` if you supplied keys;
+otherwise preserve the `whylowdps-data` volume, which contains the generated
+keys.
+
+## Build the hosted image from source
+
+Contributors can use the source override, which gives the local image a
+separate name from release images:
 
 ```shell
 docker compose --env-file .env.docker -f compose.yaml -f compose.source.yaml up -d --build
 ```
 
-### Blizzard developer portal setup
+Run the same command after source changes; restarting an existing container
+does not rebuild it.
+
+## Blizzard developer portal setup
 
 Open the [Battle.net Developer Portal](https://community.developer.battle.net/access/clients),
 open the client used by this deployment, and add the full callback URL to its
 **Redirect URLs** list. The client ID must be the value labeled **Client ID** in
 the portal; do not copy the client-management UUID from the portal page URL.
+For a LAN deployment, add the exact IP-and-port callback displayed by the
+hosted UI. If the machine's LAN address or port changes, update the portal
+entry and recreate the Compose service before signing in again.
 Changes in the portal may take several minutes to become active.
 
 ## Windows development
@@ -82,25 +227,60 @@ and desktop update behavior.
 
 ## Hosted limitations
 
-This deployment is intentionally single-user and single-replica. The existing
-SQLite schema does not owner-scope jobs, routes, or character profiles, so the
-service must not be opened to multiple accounts without an ownership migration
-and an authenticated-endpoint audit.
+This deployment is intentionally single-replica and supports a small trusted
+group of users. SQLite owner-scopes simulations, routes, character profiles,
+history, and OAuth sessions. Use the administrator page to allow BattleTags,
+disable users, assign roles, or revoke sessions. The default per-user history
+limit is controlled by `MAX_JOBS_PER_USER`.
 
-Hosted mode accepts Blizzard credentials from the initial synchronization form
-or from the optional environment variables. Runtime-entered credentials are
-encrypted with `JWT_SECRET` and stored in `/data/.blizzard-credential-secrets.json`;
-the secret is never returned to the browser. Container restarts invalidate active
-OAuth sessions because access tokens are held in process memory, but saved
-credentials remain available.
+On first launch, enter a Blizzard application client ID and secret in the app.
+The bootstrap administrator can later add, rename, rotate, or remove credential
+profiles from Settings without restarting the container. Secrets are encrypted
+at rest and are never returned to browsers; unauthenticated users can only see
+profile names and public client IDs and select which profile to use. After the
+first user is created, credential changes require an administrator session.
 
-Hosted mode does not offer credential-free Light mode because hosted simulation
-and result endpoints require an authenticated Battle.net session. Light mode
-remains available in the Windows desktop app.
+OAuth access tokens are encrypted with `SESSION_ENCRYPTION_KEY` before they are
+stored in SQLite, and saved Blizzard client secrets use the same key. Active
+sessions survive container restarts. Hosted Light mode is disabled: every
+hosted user must sign in and be on the allowlist.
+
+Direct LAN HTTP is not a secure browser context on most phones and browsers, so
+secure cookies, service-worker installation, and native PWA installation are not
+available. Keep the port restricted to the Windows Private network.
+
+### Optional trusted HTTPS and PWA installation
+
+An installable PWA requires an HTTPS certificate trusted by the browser and
+phone. The baseline Compose file does not provide a certificate or reverse
+proxy. If the administrator adds a trusted HTTPS proxy:
+
+- Keep the deployment private and limit access to trusted users.
+- Set `WHYLOWDPS_SECURE_COOKIES=true` and recreate the service.
+- Preserve the browser-facing hostname and HTTPS scheme in the forwarded
+  request.
+- Register the exact `https://<HOSTNAME>/api/auth/bnet/callback` URL in the
+  Battle.net Developer Portal.
+- Trust the issuing certificate authority on every client if using an internal
+  CA. An untrusted or self-signed certificate does not provide a browser secure
+  context for native installation.
 
 ## Backups and operations
 
-Back up `/data/whylowdps.db` and important synchronized data from the named
-volume. Monitor `/health`, container logs, free volume space, data-sync status,
-and simulation concurrency. Do not place the SQLite volume on OneDrive or a
-network share.
+The repository includes PowerShell helpers for operators working from a clone.
+Run the read-only operational check from the repository root:
+
+```powershell
+.\scripts\check-hosted.ps1
+```
+
+Create a consistent manual full-volume backup with a short app interruption:
+
+```powershell
+.\scripts\backup-hosted.ps1 -Destination 'D:\WhyLowDPSBackups'
+```
+
+The command writes a timestamped archive and SHA-256 hash. Do not place the
+SQLite volume or backup destination on OneDrive or a network share. Before
+trusting a backup, restore it into a disposable Docker volume and start an
+isolated app container against that volume.

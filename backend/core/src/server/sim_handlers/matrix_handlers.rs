@@ -1,6 +1,8 @@
 use super::*;
 
 pub(super) async fn create_external_buff_matrix_sim(
+    owner_id: String,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc_input: String,
     options: &SimOptions,
     store: web::Data<Arc<dyn JobStorage>>,
@@ -24,7 +26,7 @@ pub(super) async fn create_external_buff_matrix_sim(
     };
     generated_input.push_str(&format!("\nthreads={}\n", resolved_threads));
 
-    if let Some(resp) = validate_batch(&options.batch_id, store.get_ref().as_ref()) {
+    if let Some(resp) = validate_batch(&owner_id, &options.batch_id, store.get_ref().as_ref()) {
         return resp;
     }
 
@@ -35,6 +37,7 @@ pub(super) async fn create_external_buff_matrix_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.owner_id = owner_id;
     job.options = Some(options.to_json_with_sim_type("external_buff_matrix"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
@@ -55,6 +58,7 @@ pub(super) async fn create_external_buff_matrix_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth,
         simc_binary,
         options.to_json_with_sim_type("external_buff_matrix"),
         job_id.clone(),
@@ -71,6 +75,8 @@ pub(super) async fn create_external_buff_matrix_sim(
 }
 
 pub(super) async fn create_consumable_matrix_sim(
+    owner_id: String,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc_input: String,
     options: &SimOptions,
     store: web::Data<Arc<dyn JobStorage>>,
@@ -93,7 +99,7 @@ pub(super) async fn create_consumable_matrix_sim(
     };
     generated_input.push_str(&format!("\nthreads={}\n", resolved_threads));
 
-    if let Some(resp) = validate_batch(&options.batch_id, store.get_ref().as_ref()) {
+    if let Some(resp) = validate_batch(&owner_id, &options.batch_id, store.get_ref().as_ref()) {
         return resp;
     }
 
@@ -104,6 +110,7 @@ pub(super) async fn create_consumable_matrix_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.owner_id = owner_id;
     job.options = Some(options.to_json_with_sim_type("consumable_matrix"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
@@ -124,6 +131,7 @@ pub(super) async fn create_consumable_matrix_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth,
         simc_binary,
         options.to_json_with_sim_type("consumable_matrix"),
         job_id.clone(),

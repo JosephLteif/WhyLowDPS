@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { isDesktop, type BlizzardCredentialProfile } from '../../lib/api';
 import DiscordPresenceSettings from './DiscordPresenceSettings';
+import DiscordWebhookSettings from './DiscordWebhookSettings';
 
 type BlizzardMessage = { type: 'success' | 'error'; text: string } | null;
 
@@ -293,6 +294,7 @@ export default function IntegrationsSettingsSection({
         )}
 
         <DiscordPresenceSettings />
+        <DiscordWebhookSettings />
       </div>
     </section>
   );

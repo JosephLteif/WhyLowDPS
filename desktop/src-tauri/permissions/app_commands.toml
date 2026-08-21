@@ -5,6 +5,8 @@ commands.allow = [
     "get_system_info",
     "open_auth_window",
     "open_external_url",
+    "load_session_token",
+    "save_session_token",
     "open_data_dir",
     "get_close_behavior_preference",
     "set_close_behavior_preference",

@@ -20,6 +20,9 @@ RUN cargo build --release -p whylowdps-server --features web
 
 FROM debian:bookworm-slim AS runtime
 
+ARG WHYLOWDPS_VERSION=unknown
+ARG WHYLOWDPS_REVISION=unknown
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl libstdc++6 locales tzdata \
     && localedef -i en_US -f UTF-8 en_US.UTF-8 \
@@ -27,6 +30,10 @@ RUN apt-get update \
     && useradd --system --uid 10001 --create-home --home-dir /home/whylowdps whylowdps \
     && mkdir -p /app/bin /app/frontend /app/resources /app/data-seed /data \
     && chown -R whylowdps:whylowdps /app /data /home/whylowdps
+
+LABEL org.opencontainers.image.version="${WHYLOWDPS_VERSION}" \
+      org.opencontainers.image.revision="${WHYLOWDPS_REVISION}" \
+      org.opencontainers.image.source="https://github.com/josephlteif/whylowdps"
 
 COPY --from=backend-builder /src/target/release/whylowdps-server /app/bin/whylowdps-server
 COPY --from=frontend-builder /src/frontend/out /app/frontend
@@ -39,13 +46,15 @@ ENV BIND_HOST=0.0.0.0 \
     FRONTEND_DIR=/app/frontend \
     DATA_DIR=/data \
     DATA_SEED_DIR=/app/data-seed \
-    DATABASE_URL=/data/whylowdps.db \
+    DATABASE_URL=/data/whylowdps-multi-user.db \
     SIMC_RUNTIME_DIR=/data/simc-runtime \
     SIMC_CHANNEL=weekly \
     LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8 \
     WHYLOWDPS_DEPLOYMENT=hosted-private \
+    WHYLOWDPS_VERSION=${WHYLOWDPS_VERSION} \
+    WHYLOWDPS_REVISION=${WHYLOWDPS_REVISION} \
     WHYLOWDPS_SECURE_COOKIES=true
 
 USER whylowdps

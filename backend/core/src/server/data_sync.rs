@@ -1381,7 +1381,7 @@ pub async fn get_data_image(
                 .await;
             }
         } else if let Some(claims) = verify_jwt_for_state(&req, auth_state.get_ref()) {
-            if let Some(access_token) = auth_state.oauth_token(&claims.session_id) {
+            if let Some(access_token) = auth_state.oauth_token(&***store, &claims.session_id) {
                 source_url = fetch_blizzard_mythic_dungeon_image_url_with_token(
                     &blizzard.client,
                     &access_token,

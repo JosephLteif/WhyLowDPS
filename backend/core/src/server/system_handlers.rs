@@ -64,6 +64,14 @@ pub(super) async fn health_check() -> HttpResponse {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
+    let version = std::env::var("WHYLOWDPS_VERSION")
+        .ok()
+        .filter(|value| !value.trim().is_empty() && value != "unknown")
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned());
+    let revision = std::env::var("WHYLOWDPS_REVISION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
     let mode = if crate::server::auth_handlers::hosted_private_deployment() {
         "hosted"
     } else if cfg!(feature = "desktop") {
@@ -75,6 +83,8 @@ pub(super) async fn health_check() -> HttpResponse {
         "status": "ok",
         "threads": threads,
         "mode": mode,
+        "version": version,
+        "revision": revision,
     }))
 }
 
@@ -276,6 +286,8 @@ mod tests {
         };
         assert_eq!(payload["mode"].as_str(), Some(expected_mode));
         assert!(payload["threads"].as_u64().unwrap_or(0) >= 1);
+        assert!(payload["version"].as_str().is_some_and(|value| !value.is_empty()));
+        assert!(payload["revision"].as_str().is_some_and(|value| !value.is_empty()));
     }
 
     #[cfg(feature = "desktop")]

@@ -1,12 +1,13 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
+export const CHANGELOG_CONTENT_REVISION = 7;
 
-const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
+const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
 type ReleaseNoteCategory = 'feature' | 'fix' | 'improvement';
 
@@ -27,8 +28,101 @@ type ReleaseNote = {
 
 const releaseNotes: ReleaseNote[] = [
   {
+    category: 'improvement',
+    title: 'Use WhyLowDPS comfortably on mobile',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'The app now adapts its navigation, controls, results, and dialogs to smaller touch screens so you can use WhyLowDPS comfortably from your phone.',
+      },
+      {
+        type: 'list',
+        items: [
+          'A compact mobile header and slide-out navigation keep the most important actions within reach without taking over the screen.',
+          'Quick Sim, Top Gear, Drop Finder, and Upgrade Compare keep their actions visible above the phone safe area, while dense results and settings reflow for narrow screens.',
+          'Loot browsing, route selection, item optimization, and simulation results now use touch-friendly controls and full-height mobile dialogs where helpful.',
+        ],
+      },
+    ],
+  },
+  {
     category: 'feature',
-    title: 'Share WhyLowDPS over your LAN',
+    title: 'Get Discord notifications for finished sims',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'WhyLowDPS can now send rich Discord webhook notifications when your simulations finish in both the desktop app and Docker-hosted mode.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Configure the webhook under Settings > Integrations, then enable or disable notification categories such as Quick Sims, Top Gear, Drop Finder, matrices, and heatmaps.',
+          'Notifications include DPS details, fight configuration, runtime information, upgrade highlights, and colors matched to the simulation type.',
+          'Webhook URLs are stored securely and can be tested, rotated, or removed at any time.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'improvement',
+    title: 'Small improvements and fixes',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'A round of smaller usability, reliability, and maintenance updates makes everyday workflows clearer across the app, desktop builds, and hosted deployments.',
+      },
+      {
+        type: 'list',
+        items: [
+          'App search is now visible in the header with a Search icon, an App search label, and a Ctrl K hint, while remaining separate from Character search.',
+          'Pasting SimC exports can save character profiles and warns when an export targets an older WoW patch; hosted Settings also expose SimC channel switching and clearer runtime/image update status.',
+          'Account controls, account switching, dungeon browsing, route imports, season rollovers, and setup guidance are clearer and more resilient.',
+          'PWA install dismissal, related-scenario refreshes, LAN QR/session handoff, and hosted Docker secret/image persistence are more reliable.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Use separate accounts by default',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'WhyLowDPS now keeps each Battle.net user’s simulations, routes, profiles, history, and browser state separate in both the desktop app and hosted mode.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Switch account signs out the current user and starts a fresh Battle.net login while normal sessions remain signed in across restarts.',
+          'Hosted administrators can allow users by BattleTag, assign administrators, disable access, and revoke active sessions.',
+          'Desktop Light mode remains available as a persistent device-local guest account.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Run a private Docker-hosted instance',
+    body: [
+      {
+        type: 'paragraph',
+        text: 'WhyLowDPS now has a prebuilt amd64 Docker deployment for private, single-instance hosting, with the web app, backend, and SimulationCraft runtime packaged together.',
+      },
+      {
+        type: 'list',
+        items: [
+          'Run it directly on a private LAN address and port with the release Compose files; no reverse proxy is required for local access.',
+          'Enable hosted Light mode for shared simulations, results, game-data catalogs, and raid browsing without a Battle.net session; account-specific features remain protected.',
+          'Install the hosted web app as a PWA with an offline shell, update notifications, and browser or iOS installation guidance.',
+          'Pin a release image for reproducible updates and rollbacks while the persistent data volume keeps synchronized data and simulations across upgrades.',
+          'Use the included health check and backup scripts to verify the app, data sync, and runtime, or create a timestamped archive with a SHA-256 hash.',
+        ],
+      },
+    ],
+  },
+  {
+    category: 'feature',
+    title: 'Share the desktop app over your trusted LAN',
     body: [
       {
         type: 'paragraph',
@@ -37,114 +131,31 @@ const releaseNotes: ReleaseNote[] = [
       {
         type: 'list',
         items: [
-          'Enable Settings > Simulation > Share over LAN, restart the desktop app, and create a five-minute pairing link.',
-          'Review paired devices, rename them, or remove access from Settings. Device names and last-seen times persist, while active phone sessions are cleared when the desktop app restarts.',
+          'Review paired devices, rename them, or remove access from Settings. Device names and last-seen times persist.',
+          'Removing a device immediately ends its session and sends that browser to a scanner for a new pairing QR code.',
+          'Active phone sessions are cleared when the desktop app restarts, and no internet exposure or port forwarding is supported.',
         ],
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Recent character search history',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The character search bar now remembers your eight most recent searches locally so you can return to a character quickly.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Focus the character field to open recent searches, or type to filter them.',
-          'Select a recent character to navigate directly to its page.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Pause and resume simulations',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Pause a simulation from its result screen and resume it later without restarting the SimC process. Queued and staged simulations keep their current place, and cancellation remains available while paused.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Pause and resume controls work independently for each scenario in a batch.',
-          'If the backend restarts, rerun the saved input to continue the simulation.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Unified notification center',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Simulation results and app updates now share one notification system, with a header history, unread counts, and clear read-state controls.',
-      },
-      {
-        type: 'list',
-        items: [
-          'Click a notification to reopen its simulation result or update flow.',
-          'Mark notifications as read, mark everything as read, or clear the history.',
-          'Notification history is preserved locally so important actions remain available later.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Cleaner desktop updates and results',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Desktop simulation notifications remain clickable without duplicating events, while app updates now use the existing updater popup as their single live control surface.',
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'One-click simulation reruns',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Rerun This Input now submits the saved simulation input directly and opens the new result without returning to the simulator form first.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Clearer running simulation status',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Running simulation details now use the available page width, with profileset progress, current-profile metrics, and overall stats arranged for easier reading.',
       },
     ],
   },
 ];
 
 const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {
-  feature: 'Features',
-  fix: 'Fixes',
+  feature: 'New features',
+  fix: 'Bug fixes',
   improvement: 'Improvements',
 };
 
+const releaseNoteCategoryOrder: ReleaseNoteCategory[] = ['feature', 'improvement', 'fix'];
+
 export default function ChangelogPopup() {
   const [isOpen, setIsOpen] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const currentNote = releaseNotes[currentIndex];
-  const hasMultipleNotes = releaseNotes.length > 1;
 
   useEffect(() => {
     const seen = localStorage.getItem(seenKey) === '1';
     if (!seen) setIsOpen(true);
 
     const open = () => {
-      setCurrentIndex(0);
       setIsOpen(true);
     };
     window.addEventListener(CHANGELOG_OPEN_EVENT, open);
@@ -167,106 +178,101 @@ export default function ChangelogPopup() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="changelog-title"
-        className="flex max-h-[min(720px,calc(100vh-var(--app-header-height)-3rem))] w-full max-w-xl flex-col rounded-xl border border-white/10 bg-[#111218] shadow-2xl"
+        className="flex max-h-[min(800px,calc(100vh-var(--app-header-height)-3rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/10 bg-[#111218] shadow-2xl"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold">
-              {APP_VERSION_WITH_PREFIX}
-            </p>
-            <h2 id="changelog-title" className="mt-1 text-lg font-semibold text-zinc-100">
-              What&apos;s new
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={dismiss}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
-            aria-label="Close changelog"
-          >
-            <X className="h-4 w-4" strokeWidth={2} />
-          </button>
-        </div>
-
-        <article className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            {releaseNoteCategoryLabels[currentNote.category]}
-          </p>
-          <h3 className="mt-2 text-xl font-semibold text-zinc-100">{currentNote.title}</h3>
-          <div className="mt-4 space-y-3 text-sm leading-6 text-zinc-300">
-            {currentNote.body.map((block, blockIndex) =>
-              block.type === 'paragraph' ? (
-                <p key={`${currentNote.title}-${blockIndex}`}>{block.text}</p>
-              ) : (
-                <ul
-                  key={`${currentNote.title}-${blockIndex}`}
-                  className="list-disc space-y-2 pl-5 marker:text-gold"
-                >
-                  {block.items.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              )
-            )}
-          </div>
-        </article>
-
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-white/10 p-5">
-          <button
-            type="button"
-            onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
-            disabled={currentIndex === 0}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
-            aria-label="Previous changelog item"
-          >
-            <ChevronLeft className="h-4 w-4" strokeWidth={2} />
-          </button>
-
-          {hasMultipleNotes ? (
-            <div className="flex items-center justify-center gap-2" aria-label="Changelog pages">
-              {releaseNotes.map((note, index) => {
-                const isCurrent = index === currentIndex;
-                return (
-                  <button
-                    key={note.title}
-                    type="button"
-                    onClick={() => setCurrentIndex(index)}
-                    aria-label={`Show changelog item ${index + 1}`}
-                    aria-current={isCurrent}
-                    className={`h-2.5 w-2.5 rounded-full border transition-colors ${
-                      isCurrent
-                        ? 'border-gold bg-gold'
-                        : 'border-white/30 bg-transparent hover:border-zinc-200'
-                    }`}
-                  />
-                );
-              })}
+        <header className="relative isolate z-10 shrink-0 overflow-hidden border-b border-white/10 bg-[#111218] px-6 py-8 shadow-[0_8px_20px_-18px_rgba(0,0,0,0.9)] sm:px-8 sm:py-9">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(212,168,67,0.18),transparent_58%)]"
+          />
+          <div className="relative flex items-start justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-gold/40 bg-gold/10 font-mono text-lg font-black tracking-tight text-gold shadow-[0_0_24px_rgba(212,168,67,0.14)]">
+                v
+              </span>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold/75">
+                  What&apos;s new · WhyLowDPS release
+                </p>
+                <p className="mt-0.5 font-mono text-2xl font-black tracking-tight text-gold">
+                  {APP_VERSION_WITH_PREFIX}
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  The latest improvements, features, and fixes.
+                </p>
+              </div>
             </div>
-          ) : (
-            <span />
-          )}
-
-          <div className="flex justify-end gap-2">
-            {currentIndex < releaseNotes.length - 1 ? (
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentIndex((index) => Math.min(releaseNotes.length - 1, index + 1))
-                }
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
-                aria-label="Next changelog item"
-              >
-                <ChevronRight className="h-4 w-4" strokeWidth={2} />
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={dismiss}
-              className="rounded-md border border-gold/35 bg-gold/15 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/25"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+              aria-label="Close changelog"
             >
-              Got it
+              <X className="h-4 w-4" strokeWidth={2} />
             </button>
           </div>
+          <h2 id="changelog-title" className="sr-only">
+            What&apos;s new
+          </h2>
+        </header>
+
+        <article className="relative z-0 min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-6">
+          <div className="space-y-8">
+            {releaseNoteCategoryOrder.map((category) => {
+              const notes = releaseNotes.filter((note) => note.category === category);
+              if (notes.length === 0) return null;
+
+              return (
+                <section key={category} aria-labelledby={`changelog-${category}`}>
+                  <div className="mb-3 flex items-center gap-3">
+                    <h3
+                      id={`changelog-${category}`}
+                      className="text-xs font-bold uppercase tracking-[0.18em] text-gold"
+                    >
+                      {releaseNoteCategoryLabels[category]}
+                    </h3>
+                    <div className="h-px flex-1 bg-gradient-to-r from-gold/25 to-transparent" />
+                  </div>
+                  <div className="space-y-3">
+                    {notes.map((note) => (
+                      <div
+                        key={note.title}
+                        className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4 transition-colors hover:border-gold/25"
+                      >
+                        <h4 className="text-base font-semibold text-zinc-100">{note.title}</h4>
+                        <div className="mt-3 space-y-3 text-sm leading-6 text-zinc-300">
+                          {note.body.map((block, blockIndex) =>
+                            block.type === 'paragraph' ? (
+                              <p key={`${note.title}-${blockIndex}`}>{block.text}</p>
+                            ) : (
+                              <ul
+                                key={`${note.title}-${blockIndex}`}
+                                className="list-disc space-y-2 pl-5 marker:text-gold"
+                              >
+                                {block.items.map((item) => (
+                                  <li key={item}>{item}</li>
+                                ))}
+                              </ul>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </article>
+
+        <div className="flex justify-end border-t border-white/10 p-5 sm:px-6">
+          <button
+            type="button"
+            onClick={dismiss}
+            className="rounded-md border border-gold/35 bg-gold/15 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/25"
+          >
+            Got it
+          </button>
         </div>
       </section>
     </div>

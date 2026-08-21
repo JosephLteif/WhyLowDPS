@@ -1,4 +1,4 @@
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -23,6 +23,7 @@ mod matrix;
 mod matrix_handlers;
 mod top_gear;
 
+use super::discord_webhook;
 pub(super) use droptimizer::create_droptimizer_sim;
 use heatmap::*;
 use items::*;
@@ -57,11 +58,18 @@ fn resolve_simc_binary_for_request(
 }
 
 pub(super) async fn create_sim(
+    http_req: HttpRequest,
+    auth: web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>>,
     req: web::Json<SimRequest>,
     store: web::Data<Arc<dyn JobStorage>>,
     simc_path: web::Data<PathBuf>,
     log_buffer: web::Data<Arc<LogBuffer>>,
 ) -> HttpResponse {
+    let owner_id = crate::server::auth_handlers::request_owner_id(
+        &http_req,
+        auth.get_ref(),
+        store.get_ref().as_ref(),
+    );
     let mut simc_input = if req.max_upgrade {
         game_data::upgrade_simc_input(&req.simc_input)
     } else {
@@ -81,6 +89,8 @@ pub(super) async fn create_sim(
 
     if req.sim_type == "trinket_tier_heatmap" {
         return create_trinket_tier_heatmap_sim(
+            owner_id,
+            auth.get_ref().clone(),
             simc_input,
             class_name.unwrap_or_default(),
             (
@@ -97,6 +107,8 @@ pub(super) async fn create_sim(
 
     if req.sim_type == "external_buff_matrix" {
         return create_external_buff_matrix_sim(
+            owner_id,
+            auth.get_ref().clone(),
             simc_input,
             &req.options,
             store,
@@ -108,6 +120,8 @@ pub(super) async fn create_sim(
 
     if req.sim_type == "consumable_matrix" {
         return create_consumable_matrix_sim(
+            owner_id,
+            auth.get_ref().clone(),
             simc_input,
             &req.options,
             store,
@@ -129,7 +143,7 @@ pub(super) async fn create_sim(
     };
     simc_input.push_str(&format!("\nthreads={}\n", resolved_threads));
 
-    if let Some(resp) = validate_batch(&req.options.batch_id, store.get_ref().as_ref()) {
+    if let Some(resp) = validate_batch(&owner_id, &req.options.batch_id, store.get_ref().as_ref()) {
         return resp;
     }
 
@@ -146,6 +160,7 @@ pub(super) async fn create_sim(
         req.options.fight_style.clone(),
         req.options.target_error,
     );
+    job.owner_id = owner_id;
     job.options = Some(options.clone());
     job.batch_id = req.options.batch_id.clone();
     let job_id = job.id.clone();
@@ -155,6 +170,7 @@ pub(super) async fn create_sim(
 
     // Spawn background task
     let store_clone = store.get_ref().clone();
+    let auth_clone = auth.get_ref().clone();
     let job_id_clone = job_id.clone();
     let logs = log_buffer.get_ref().clone();
     let jid_logs = job_id.clone();
@@ -213,6 +229,11 @@ pub(super) async fn create_sim(
                 let raw_str = serde_json::to_string(&output.json).ok();
                 store_clone.set_result(&job_id_clone, result_str, raw_str);
                 store_clone.set_report_files(&job_id_clone, output.html_report, output.text_output);
+                discord_webhook::spawn_sim_completion_notification(
+                    store_clone.clone(),
+                    auth_clone.clone(),
+                    job_id_clone.clone(),
+                );
             }
             Err(e) => {
                 let is_cancelled = store_clone
@@ -242,6 +263,72 @@ mod tests {
 
     fn test_store() -> web::Data<Arc<dyn JobStorage>> {
         web::Data::new(Arc::new(MemoryStorage::new()) as Arc<dyn JobStorage>)
+    }
+
+    fn test_request() -> HttpRequest {
+        actix_web::test::TestRequest::default().to_http_request()
+    }
+
+    fn test_auth() -> web::Data<Arc<crate::server::auth_handlers::BlizzardAuthState>> {
+        web::Data::new(Arc::new(
+            crate::server::auth_handlers::BlizzardAuthState::new(
+                None,
+                None,
+                "http://localhost/callback".to_string(),
+                "test-secret".to_string(),
+            ),
+        ))
+    }
+
+    async fn create_sim(
+        req: web::Json<SimRequest>,
+        store: web::Data<Arc<dyn JobStorage>>,
+        simc_path: web::Data<PathBuf>,
+        log_buffer: web::Data<Arc<LogBuffer>>,
+    ) -> HttpResponse {
+        super::create_sim(
+            test_request(),
+            test_auth(),
+            req,
+            store,
+            simc_path,
+            log_buffer,
+        )
+        .await
+    }
+
+    async fn create_top_gear_sim(
+        req: web::Json<TopGearRequest>,
+        store: web::Data<Arc<dyn JobStorage>>,
+        simc_path: web::Data<PathBuf>,
+        log_buffer: web::Data<Arc<LogBuffer>>,
+    ) -> HttpResponse {
+        super::create_top_gear_sim(
+            test_request(),
+            test_auth(),
+            req,
+            store,
+            simc_path,
+            log_buffer,
+        )
+        .await
+    }
+
+    async fn create_droptimizer_sim(
+        req: web::Json<DroptimizerRequest>,
+        store: web::Data<Arc<dyn JobStorage>>,
+        simc_path: web::Data<PathBuf>,
+        log_buffer: web::Data<Arc<LogBuffer>>,
+    ) -> HttpResponse {
+        super::create_droptimizer_sim(
+            test_request(),
+            test_auth(),
+            req,
+            store,
+            simc_path,
+            log_buffer,
+        )
+        .await
     }
 
     fn test_log_buffer() -> web::Data<Arc<LogBuffer>> {
@@ -384,6 +471,8 @@ mod tests {
     async fn external_buff_matrix_handler_rejects_empty_selection() {
         let options = default_options();
         let resp = create_external_buff_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -405,6 +494,8 @@ mod tests {
     async fn consumable_matrix_handler_rejects_empty_selection() {
         let options = default_options();
         let resp = create_consumable_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -1202,6 +1293,8 @@ mod tests {
         options.external_buff_power_infusion = true;
 
         let resp = create_external_buff_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -1228,6 +1321,8 @@ mod tests {
         options.batch_id = Some("matrix-meta".to_string());
 
         let resp = create_external_buff_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store.clone(),
@@ -1268,6 +1363,8 @@ mod tests {
         options.consumable_matrix_flasks = vec!["flask_a".to_string()];
 
         let resp = create_consumable_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             test_store(),
@@ -1294,6 +1391,8 @@ mod tests {
         options.batch_id = Some("consumable-meta".to_string());
 
         let resp = create_consumable_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store.clone(),
@@ -1350,6 +1449,8 @@ mod tests {
         options.batch_id = Some("matrix-batch".to_string());
 
         let resp = create_external_buff_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store,
@@ -1389,6 +1490,8 @@ mod tests {
         options.batch_id = Some("consumable-batch".to_string());
 
         let resp = create_consumable_matrix_sim(
+            "local-guest".to_string(),
+            test_auth().get_ref().clone(),
             "warrior=\"Tester\"\nspec=fury\n".to_string(),
             &options,
             store,

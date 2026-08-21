@@ -37,6 +37,53 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   ]);
 }
 
+type BnetCharacter = {
+  name?: string;
+  realm?: string;
+  region?: string;
+};
+
+function normalizeCharacterPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s'-]+/g, '-');
+}
+
+async function saveCharacterProfileFromSimc(input: string, lightMode: boolean): Promise<void> {
+  if (lightMode) return;
+
+  const info = parseCharacterInfo(input);
+  if (info?.kind !== 'character' || !info.name || !info.server) return;
+  const characterName = info.name;
+  const characterServer = info.server;
+
+  const bnetData = await fetchJson<{ characters?: BnetCharacter[] } | BnetCharacter[]>(
+    `${API_URL}/api/bnet/user/characters`
+  );
+  const characters = Array.isArray(bnetData) ? bnetData : bnetData.characters || [];
+  const bnetChar = characters.find(
+    (character) =>
+      !!character.name &&
+      !!character.realm &&
+      normalizeCharacterPart(character.name) === normalizeCharacterPart(characterName) &&
+      normalizeCharacterPart(character.realm) === normalizeCharacterPart(characterServer) &&
+      (!info.region ||
+        !character.region ||
+        character.region.toLowerCase() === info.region.toLowerCase())
+  );
+  if (!bnetChar) return;
+
+  await saveCharacterProfile({
+    name: characterName,
+    realm: characterServer,
+    region: info.region || bnetChar.region || 'us',
+    class: info.className,
+    spec: info.spec,
+    simc_input: input,
+  });
+  console.log('[SimSharedConfig] Saved character profile for:', info.name);
+}
 
 export default function SimSharedConfig() {
   const pathname = usePathname();
@@ -148,6 +195,17 @@ export default function SimSharedConfig() {
     }
   };
 
+  const handleSimcPaste = useCallback(
+    (pastedText: string) => {
+      const profile = splitSimcProfiles(pastedText)[0] || pastedText.trim();
+      if (!profile) return;
+      void saveCharacterProfileFromSimc(profile, lightMode).catch((error) => {
+        console.error('[SimSharedConfig] Failed to save pasted character profile:', error);
+      });
+    },
+    [lightMode]
+  );
+
   const bannerTimerRef = useRef<number | null>(null);
   const lastAppliedClipboardRef = useRef<string>('');
   const simcInputRef = useRef<string>(simcInput);
@@ -252,32 +310,10 @@ export default function SimSharedConfig() {
           setSimcInput(first);
           setBanner({ text: 'Detected and pasted SimC export.', id: Date.now() });
 
-          // Try to save character profile if character is in BNet roster
-          if (!lightMode && info.name && info.server) {
-            try {
-              const bnetData = await fetchJson<{
-                characters: Array<{ name: string; realm: string; region: string }>;
-              }>(`${API_URL}/api/bnet/user/characters`).catch(() => ({ characters: [] }));
-              const characters = bnetData.characters || [];
-              const bnetChar = characters.find(
-                (c: any) =>
-                  c.name.toLowerCase() === info.name?.toLowerCase() &&
-                  c.realm.toLowerCase() === info.server?.toLowerCase(),
-              );
-              if (bnetChar) {
-                await saveCharacterProfile({
-                  name: info.name,
-                  realm: info.server,
-                  region: info.region || 'us',
-                  class: info.className,
-                  spec: info.spec,
-                  simc_input: first,
-                });
-                console.log('[SimSharedConfig] Saved character profile for:', info.name);
-              }
-            } catch (e) {
-              console.error('[SimSharedConfig] Failed to save character profile:', e);
-            }
+          try {
+            await saveCharacterProfileFromSimc(first, lightMode);
+          } catch (e) {
+            console.error('[SimSharedConfig] Failed to save character profile:', e);
           }
         } else {
           console.log(
@@ -366,6 +402,7 @@ export default function SimSharedConfig() {
         <SimcInputEditor
           value={simcInput}
           onChange={handleSetSimcInput}
+          onPaste={handleSimcPaste}
           placeholder="Paste your SimC addon export here..."
         />
         {checksumStatus === 'invalid' && (

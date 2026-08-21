@@ -1027,19 +1027,19 @@ export default function AddItemModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 top-[var(--app-header-height)] z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-x-0 bottom-0 top-[var(--app-header-height)] z-[100] flex items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={onClose} />
-      <div className="animate-in fade-in zoom-in relative flex h-full max-h-[calc(100dvh-var(--app-header-height)-2rem)] min-h-0 w-full max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl duration-200">
+      <div className="mobile-modal-shell animate-in fade-in zoom-in relative flex h-full max-h-[calc(100dvh-var(--app-header-height))] min-h-0 w-full max-w-[88rem] flex-col overflow-hidden rounded-2xl border border-border bg-bg shadow-2xl duration-200 sm:max-h-[calc(100dvh-var(--app-header-height)-2rem)]">
         {/* ── Header ─────────────────────────────────────────── */}
-        <div className="relative z-10 shrink-0 border-b border-border bg-surface/80 px-5 py-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-6">
+        <div className="relative z-10 shrink-0 border-b border-border bg-surface/80 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="mb-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
               {/* Title */}
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-white">Loot Browser</h2>
               </div>
               {/* Category Switcher */}
-              <div className="flex flex-wrap rounded-lg border border-border bg-surface-2 p-0.5">
+              <div className="flex max-w-full overflow-x-auto rounded-lg border border-border bg-surface-2 p-0.5">
                 {LOOT_CATEGORIES.map((cat) => (
                   <button
                     key={cat.key}
@@ -1089,7 +1089,7 @@ export default function AddItemModal({
             </div>
             <div className="flex items-center gap-3">
               {category !== 'crafted' && (
-              <div className="w-48 shrink-0">
+              <div className="w-full shrink-0 sm:w-48">
                 <CustomSelect
                   variant="header"
                   value={normalizeSlotFilter(filterSlot) || ''}
@@ -1104,14 +1104,15 @@ export default function AddItemModal({
               )}
               <button
                 onClick={onClose}
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-zinc-500 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-white"
+                className="flex h-10 w-10 items-center justify-center self-end rounded-lg border border-border bg-surface-2 text-zinc-500 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-white sm:h-8 sm:w-8 sm:self-auto"
+                aria-label="Close loot browser"
               >
                 <X className="h-4 w-4" strokeWidth={2.5} />
               </button>
             </div>
           </div>
           {/* Search + Difficulty */}
-          <div className="relative flex items-center gap-4">
+          <div className="relative flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-4">
             <div className="group relative flex-1">
               <input
                 type="text"
@@ -1136,7 +1137,7 @@ export default function AddItemModal({
         </div>
 
         {/* ── Body ────────────────────────────────────────────── */}
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden sm:flex-row">
           <AddItemInstanceSidebar
             instances={filteredInstances}
             selectedInstance={craftedSidebarSelectedId}

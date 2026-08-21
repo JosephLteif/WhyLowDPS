@@ -281,7 +281,7 @@ jobs:
           touch backend/resources/data/.keep
 
       - name: Build private-hosting image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true

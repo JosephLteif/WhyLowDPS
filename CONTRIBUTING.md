@@ -112,6 +112,19 @@ artifacts and checksum metadata, and publishes the release only after those
 steps complete. If a release step fails, leave the draft unpublished until the
 failure is corrected or the draft is deleted.
 
+If the version bump and tag were already created but a later release step
+failed, recover the same release without incrementing the version again:
+
+1. Open **Actions → Release → Run workflow**.
+2. Set **Release mode** to **republish**.
+3. Enter the existing version without the `v` prefix, such as `4.0.0`.
+4. Run the workflow.
+
+Republish mode verifies that `v<version>` exists, checks out that tag, and
+rebuilds the desktop and hosted Docker artifacts. It does not commit, bump, or
+move the release tag; existing release assets and Docker tags are replaced as
+part of the retry.
+
 ## Pull request guidelines
 
 - Use clear commit messages.

@@ -37,3 +37,15 @@ test("release workflow publishes latest and versioned tags and records rollback 
   assert.match(workflow, /whylowdps:%s.*docker-image\.txt/);
   assert.match(workflow, /whylowdps@%s.*docker-image\.txt/);
 });
+
+test("release workflow can republish an existing version without bumping it", () => {
+  const workflow = readRepositoryFile(".github/workflows/release.yml");
+
+  assert.match(workflow, /release_mode:[\s\S]*?- republish/);
+  assert.match(workflow, /existing_version:[\s\S]*?type: string/);
+  assert.match(workflow, /inputs\.release_mode == 'bump'/);
+  assert.match(workflow, /inputs\.release_mode == 'republish'/);
+  assert.match(workflow, /git ls-remote --exit-code origin "refs\/tags\/v\$\{EXISTING_VERSION\}"/);
+  assert.match(workflow, /ref: \$\{\{ github\.event_name == 'workflow_dispatch' && format\('v\{0\}', inputs\.existing_version\)/);
+  assert.match(workflow, /RELEASE_TAG#v/);
+});

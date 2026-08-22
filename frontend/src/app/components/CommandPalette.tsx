@@ -14,6 +14,7 @@ type PaletteCommand = {
 
 const commands: PaletteCommand[] = [
   { id: 'whats-new', label: "Open What's New", description: 'Review the latest release notes.' },
+  { id: 'changelog', label: 'View Changelog History', description: 'Browse every version and release note.', href: '/changelog' },
   { id: 'dashboard', label: 'Open Dashboard', description: 'Overview of sims and activity.', href: '/' },
   { id: 'quick-sim', label: 'Start Quick Sim', description: 'Run a DPS simulation.', href: '/quick-sim' },
   { id: 'top-gear', label: 'Open Top Gear', description: 'Optimize gear combinations.', href: '/top-gear' },

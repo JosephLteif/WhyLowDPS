@@ -19,6 +19,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- System Health is now an optional dashboard widget available from Customize, instead of taking a fixed block above the dashboard; detailed diagnostics remain in Settings > Health.
 - Mobile UI layouts now adapt navigation, action bars, dense results, settings, and dialogs for narrow touch screens, including phone safe-area support and full-height mobile flows where useful.
 - Account switching now revokes the current session and starts a fresh Battle.net login; ordinary sessions persist securely across app and server restarts.
 - Account actions now live under one avatar menu with the BattleTag, My Characters, Switch account, and Manage Users options; the current admin account is protected from self-disable, sign-out, or role changes.

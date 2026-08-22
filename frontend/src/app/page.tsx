@@ -49,6 +49,8 @@ import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 import { useDismissOnOutside } from './lib/useDismissOnOutside';
 import { useActiveCharacter } from './components/ActiveCharacterContext';
 import OnboardingChecklist from './components/OnboardingChecklist';
+import ReadinessPanel from './components/ReadinessPanel';
+import { fetchReadiness, type ReadinessSnapshot } from './lib/readiness';
 
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
@@ -58,7 +60,12 @@ const LOCAL_DASHBOARD_WIDGET_SIZES_KEY = 'whylowdps_dashboard_widget_sizes';
 const LOCAL_DASHBOARD_STATS_WIDGET_KEY = 'whylowdps_dashboard_stats_cards';
 const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
 
-type DashboardWidgetId = 'stats' | 'activity' | 'quick-links' | 'tracked-characters';
+type DashboardWidgetId =
+  | 'stats'
+  | 'activity'
+  | 'quick-links'
+  | 'tracked-characters'
+  | 'system-health';
 type DashboardWidgetSize = 1 | 2 | 3;
 type StatCardId = 'active' | 'total' | 'history' | 'system';
 
@@ -78,9 +85,12 @@ const DASHBOARD_WIDGETS: {
   { id: 'activity', label: 'Simulation Activity', defaultSize: 2 },
   { id: 'quick-links', label: 'Quick Links', defaultSize: 1 },
   { id: 'tracked-characters', label: 'Tracked Characters', defaultSize: 3 },
+  { id: 'system-health', label: 'System Health', defaultSize: 3 },
 ];
 
-const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetId[] = DASHBOARD_WIDGETS.map(({ id }) => id);
+const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetId[] = DASHBOARD_WIDGETS.filter(
+  ({ id }) => id !== 'system-health'
+).map(({ id }) => id);
 const DEFAULT_DASHBOARD_WIDGET_SIZES: Record<DashboardWidgetId, DashboardWidgetSize> =
   DASHBOARD_WIDGETS.reduce(
     (acc, widget) => {
@@ -393,6 +403,8 @@ export default function Home() {
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessSnapshot | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [trackedCharacters, setTrackedCharacters] = useState<
     { region: string; realm: string; name: string }[]
   >([]);
@@ -494,6 +506,16 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data.');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadReadiness = useCallback(async () => {
+    setReadinessError(null);
+    try {
+      setReadiness(await fetchReadiness());
+    } catch (err) {
+      setReadiness(null);
+      setReadinessError(err instanceof Error ? err.message : 'Failed to read system health.');
     }
   }, []);
 
@@ -1092,21 +1114,24 @@ export default function Home() {
     let active = true;
     (async () => {
       await loadAll();
+      await loadReadiness();
       if (!active) return;
     })();
     return () => {
       active = false;
     };
-  }, [loadAll]);
+  }, [loadAll, loadReadiness]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onFocus = () => {
       void loadAll();
+      void loadReadiness();
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         void loadAll();
+        void loadReadiness();
       }
     };
     window.addEventListener('focus', onFocus);
@@ -1115,7 +1140,7 @@ export default function Home() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [loadAll]);
+  }, [loadAll, loadReadiness]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1283,6 +1308,18 @@ export default function Home() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-flow-row-dense xl:grid-cols-3">
+        {renderWidgetShell(
+          'system-health',
+          <ReadinessPanel
+            snapshot={readiness}
+            loading={!readiness && !readinessError}
+            error={readinessError}
+            authenticated={!lightMode}
+            lightMode={lightMode}
+            onRefresh={() => void loadReadiness()}
+          />
+        )}
+
         {renderWidgetShell(
           'stats',
           <>

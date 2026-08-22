@@ -32,7 +32,9 @@ pub use background::{spawn_background_sync_loop, DataSyncState};
 use catalog::{
     data_file_catalog, restore_local_file_from_bundle, DataFileEntryType, DataFileSource,
 };
-pub use data_files::{get_data_file_content, get_data_file_states};
+pub use data_files::{
+    get_data_file_content, get_data_file_states, summarize_data_files, DataReadinessSummary,
+};
 use image_helpers::{
     best_blizzard_asset_url, content_type_for_extension, image_error_response,
     infer_image_extension, is_allowed_remote_image_url, is_http_url, localized_str,

@@ -13,6 +13,7 @@ import SplashScreen from './SplashScreen';
 import { useAuth } from './AuthContext';
 import { usePathname, useRouter } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
+import { readinessDataMessage } from '../lib/readiness';
 
 const AUTO_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
 
@@ -119,7 +120,17 @@ export default function DataGuard({ children }: { children: ReactNode }) {
     return 'syncing';
   };
 
-  const toSplashProgress = (value: unknown): string => safeText(value, 'Syncing with Blizzard...');
+  const toSplashProgress = (value: unknown): string => {
+    const progress = safeText(value, '').trim();
+    return (
+      progress ||
+      readinessDataMessage(
+        dataStatus?.status,
+        Boolean(dataStatus?.degraded),
+        'Syncing with Blizzard...'
+      )
+    );
+  };
 
   useEffect(() => {
     setIsReady(localStorage.getItem('whylowdps_data_ready') === 'true');

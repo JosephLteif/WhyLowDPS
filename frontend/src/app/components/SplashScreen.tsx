@@ -15,6 +15,7 @@ import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { formatBytesDecimal, formatElapsedCompact, formatTransferSpeed } from '../lib/format';
 import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 import LanPairingScanner from './LanPairingScanner';
+import { readinessDataMessage } from '../lib/readiness';
 
 interface SplashScreenProps {
   status: string;
@@ -204,7 +205,10 @@ export default function SplashScreen({
     };
   };
 
-  const progressData = parseProgress(progress);
+  const progressData = parseProgress(
+    progress ||
+      readinessDataMessage(statusString, statusString === 'degraded', 'Syncing with Blizzard...')
+  );
   const extractedUrls = Array.from(statusString.matchAll(/https?:\/\/[^\s)]+/g)).map((m) => m[0]);
   const primaryFailedUrl = extractedUrls[0] || '';
   const primaryFailedFile = primaryFailedUrl

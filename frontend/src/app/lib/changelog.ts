@@ -19,7 +19,7 @@ export const CHANGELOG_HISTORY_URL = 'https://josephlteif.github.io/WhyLowDPS/ch
 export const LATEST_CHANGELOG_RELEASE: ChangelogRelease = {
   version: 'Unreleased',
   date: '2026-08-24',
-  title: 'A more connected, guided simulation workspace',
+  title: 'A clearer, more reliable simulation workspace',
   entries: [
     {
       category: 'feature',
@@ -44,45 +44,6 @@ export const LATEST_CHANGELOG_RELEASE: ChangelogRelease = {
       ],
     },
     {
-      category: 'feature',
-      title: 'Use separate hosted accounts and admin controls',
-      summary:
-        'Hosted Battle.net users now have isolated app data, while administrators can control access and Blizzard application credentials without restarting the deployment.',
-      items: [
-        'Manage the BattleTag allowlist, member and administrator roles, disabled users, and active sessions.',
-        'Rotate, select, or remove hosted Blizzard credentials at runtime.',
-        'Use hosted Light mode for shared simulations, results, game data, and raid browsing without a Battle.net session.',
-      ],
-    },
-    {
-      category: 'feature',
-      title: 'Host WhyLowDPS privately and share it on your trusted LAN',
-      summary:
-        'Run a private Docker instance and pair phones on the same trusted network with persistent device management and restart-safe sessions.',
-      items: [
-        'Use the prebuilt amd64 Compose deployment with persistent data, health checks, backups, and versioned images.',
-        'Create one-time QR or link pairings from desktop Settings for phone access.',
-        'Track, rename, revoke, and re-pair devices without leaving stale sessions active.',
-      ],
-    },
-    {
-      category: 'feature',
-      title: 'Get Discord notifications for finished simulations',
-      summary:
-        'Send rich Discord webhook notifications when desktop or Docker-hosted simulations finish.',
-      items: [
-        'Configure notification categories under Settings > Integrations.',
-        'Include DPS details, fight configuration, runtime information, and upgrade highlights.',
-        'Test, rotate, or remove webhook URLs while keeping them stored securely.',
-      ],
-    },
-    {
-      category: 'improvement',
-      title: 'Use WhyLowDPS comfortably on mobile and as an installable PWA',
-      summary:
-        'Navigation, action bars, dense results, settings, and dialogs now adapt to narrow touch screens, with install and update guidance for browsers and iOS.',
-    },
-    {
       category: 'improvement',
       title: 'Choose and monitor the managed SimC runtime',
       summary:
@@ -95,42 +56,24 @@ export const LATEST_CHANGELOG_RELEASE: ChangelogRelease = {
     },
     {
       category: 'improvement',
-      title: 'Browse more reliable dungeon and raid content',
+      title: 'Browse the permanent changelog history',
       summary:
-        'Active seasons stay visible while historical encounters, catalog data, and artwork fallbacks remain available during incomplete refreshes.',
+        'The full versioned release archive now lives on the generated GitHub Pages changelog, while the in-app popup stays focused on the latest update.',
       items: [
-        'Use hosted Light mode to browse raid expansions and encounters without a Battle.net session.',
-        'Keep known dungeon selectors and content while season data refreshes or rolls over.',
-        'Use catalog and public artwork fallbacks when an image endpoint has no source.',
+        'Open the archive from View changelog history in the What’s New popup.',
+        'Stable releases remain linked to their original GitHub release tags.',
       ],
     },
     {
       category: 'improvement',
-      title: 'Find workflows and setup help faster',
+      title: 'Keep readiness and runtime updates reliable',
       summary:
-        'The app search control is now visible beside character search, while setup, profile, account, and hosting flows provide clearer guidance and recovery paths.',
+        'Readiness checks, staged data refreshes, managed runtime updates, and release metadata now preserve useful status and the last-known-good state when an update is incomplete.',
       items: [
-        'Open app search from the header or with Ctrl K without confusing it with character search.',
-        'Keep pasted SimC character profiles and receive an older-patch warning when an export needs review.',
-        'Use the public changelog history link to browse the full versioned release archive.',
+        'See the current SimC channel and version in the admin sidebar when runtime controls are available.',
+        'Retry incomplete manifest or release metadata before activating a managed runtime update.',
+        'Validate runtime binaries before they are used for simulations.',
       ],
-    },
-    {
-      category: 'fix',
-      title: 'Keep simulation inputs and sessions reliable',
-      summary:
-        'Routing, account switching, LAN revocation, and related-scenario refreshes now avoid stale state and misclassification.',
-      items: [
-        'Dungeon and Mythic+ route inputs are no longer treated as character imports because of name-like lines.',
-        'Switching Battle.net accounts forces a fresh login, and removing a paired device invalidates its session immediately.',
-        'Related-scenario refreshes no longer loop while content is loading.',
-      ],
-    },
-    {
-      category: 'fix',
-      title: 'Recover more safely from hosted data and update failures',
-      summary:
-        'Game data, Docker secrets, runtime updates, and release metadata now preserve the last-known-good state when a refresh or publication step is incomplete.',
     },
   ],
 };

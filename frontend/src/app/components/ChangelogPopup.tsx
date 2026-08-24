@@ -12,7 +12,7 @@ import {
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
-export const CHANGELOG_CONTENT_REVISION = 10;
+export const CHANGELOG_CONTENT_REVISION = 11;
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 const releaseNotes = LATEST_CHANGELOG_RELEASE.entries;

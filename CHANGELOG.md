@@ -8,6 +8,9 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Added
 
+- Guided tours now cover the dashboard, simulation, upgrade, analysis, and loot workflows, with replay controls from the header help button.
+- Managed SimC runtime controls now expose weekly and nightly channels, available versions, runtime status, and binary validation before use.
+- The public changelog history is now generated and published as a versioned GitHub Pages archive linked from the app.
 - Multi-user ownership is now the default in desktop and hosted modes: Battle.net users have separate simulations, routes, profiles, history, and browser state, while desktop Light mode remains a persistent device-local guest account.
 - Hosted user administration now supports a BattleTag allowlist, administrator/member roles, disabling access, and revoking active sessions.
 - Hosted Blizzard application credentials can be added, rotated, selected, or removed at runtime without restarting the deployment.

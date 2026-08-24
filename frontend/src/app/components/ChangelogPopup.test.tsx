@@ -21,10 +21,6 @@ describe('ChangelogPopup', () => {
     expect(screen.getByText(APP_VERSION_WITH_PREFIX)).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 4 }).length).toBeGreaterThan(0);
     expect(
-      screen.getByRole('heading', { name: 'Make System Health an optional dashboard widget' })
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Use WhyLowDPS comfortably on mobile')).not.toBeInTheDocument();
-    expect(
       screen.queryByRole('button', { name: /changelog item|changelog page/i })
     ).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /changelog history/i })).toHaveAttribute(

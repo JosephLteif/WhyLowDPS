@@ -11,6 +11,7 @@ use std::sync::Mutex;
 
 use super::types::FrontendDir;
 use super::{auth_handlers, data_sync};
+use crate::simc_runtime::validate_simc_binary;
 use crate::storage::{self, JobStorage};
 
 #[cfg(feature = "desktop")]
@@ -158,7 +159,8 @@ pub(super) async fn readiness(
     let credentials_configured =
         auth_handlers::get_available_blizzard_creds(&***auth_state, &***store, &***secrets)
             .is_some();
-    let simulation_available = simc_path.exists();
+    let simulation_error = validate_simc_binary(simc_path.get_ref()).err();
+    let simulation_available = simulation_error.is_none();
     let overall_status =
         overall_readiness_status(simulation_available, data_status, credentials_configured);
     let (mode, version, revision) = app_metadata();
@@ -184,6 +186,7 @@ pub(super) async fn readiness(
         },
         "simulation": {
             "available": simulation_available,
+            "error": simulation_error,
         },
     }))
 }

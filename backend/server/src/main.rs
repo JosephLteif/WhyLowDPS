@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use whylowdps_core::game_data;
 use whylowdps_core::server;
-use whylowdps_core::simc_runtime::{SimcChannel, SimcRuntimeConfig, SimcRuntimeState};
+use whylowdps_core::simc_runtime::{
+    validate_simc_binary, SimcChannel, SimcRuntimeConfig, SimcRuntimeState,
+};
 use whylowdps_core::storage::JobStorage;
 
 fn env_or(key: &str, default: &str) -> String {
@@ -236,7 +238,11 @@ async fn main() {
     )
     .then(|| Arc::new(SimcRuntimeState::new(simc_runtime_config.clone())));
     let simc_path = match (simc_path_override, simc_runtime.as_ref()) {
-        (Some(path), None) => PathBuf::from(path),
+        (Some(path), None) => {
+            let path = PathBuf::from(path);
+            println!("Using fixed SimC path from SIMC_PATH at {:?}", path);
+            path
+        }
         (_, Some(simc_runtime)) => match simc_runtime.update(simc_channel).await {
             Ok(status) => {
                 println!(
@@ -248,12 +254,20 @@ async fn main() {
                 simc_runtime.simc_path()
             }
             Err(err) => {
-                eprintln!("Failed to update SimC runtime: {err}");
-                simc_runtime.simc_path()
+                panic!(
+                    "Failed to initialize SimC runtime at {}: {err}",
+                    simc_runtime.simc_path().display()
+                );
             }
         },
         (None, None) => unreachable!("managed SimC runtime must exist without a path override"),
     };
+
+    if simc_runtime.is_none() {
+        validate_simc_binary(&simc_path).unwrap_or_else(|error| {
+            panic!("SIMC_PATH override is unusable: {error}");
+        });
+    }
 
     let (server, actual_port) = server::start_with_storage_bind_options_and_simc_runtime(
         storage,

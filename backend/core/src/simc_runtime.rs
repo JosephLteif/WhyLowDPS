@@ -4,6 +4,7 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
@@ -260,6 +261,67 @@ pub fn simc_binary_name() -> &'static str {
     }
 }
 
+pub fn validate_simc_binary(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("simc binary not found at: {}", path.display()));
+    }
+    if !path.is_file() {
+        return Err(format!(
+            "simc binary path is not a file: {}",
+            path.display()
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = fs::metadata(path)
+            .map_err(|error| format!("failed to inspect SimC binary {}: {error}", path.display()))?
+            .permissions()
+            .mode();
+        if mode & 0o111 == 0 {
+            return Err(format!(
+                "simc binary is not executable at: {}",
+                path.display()
+            ));
+        }
+    }
+
+    let mut command = Command::new(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+
+        command.creation_flags(0x08000000 | 0x00004000);
+    }
+    let output = command
+        .arg("display_build=2")
+        .output()
+        .map_err(|error| format!("failed to start SimC at {}: {error}", path.display()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+    if detail.is_empty() {
+        Err(format!(
+            "SimC validation failed at {} with status {}",
+            path.display(),
+            output.status
+        ))
+    } else {
+        Err(format!(
+            "SimC validation failed at {} with status {}: {}",
+            path.display(),
+            output.status,
+            detail
+        ))
+    }
+}
+
 pub fn current_platform() -> &'static str {
     if cfg!(windows) {
         "win64"
@@ -354,6 +416,9 @@ where
     let mut manifest = match fetch_manifest(&manifest_url).await {
         Ok(manifest) => manifest,
         Err(err) if cached_path.exists() => {
+            validate_simc_binary(&cached_path).map_err(|validation| {
+                format!("{err}; cached SimC validation failed: {validation}")
+            })?;
             let metadata = cached_metadata.unwrap_or(SimcCachedMetadata {
                 channel: config.channel.as_str().to_string(),
                 version: "cached".to_string(),
@@ -408,6 +473,7 @@ where
             asset,
         )
     {
+        validate_simc_binary(&cached_path)?;
         return Ok(SimcRuntimeResolution {
             simc_path: cached_path,
             channel: manifest.channel,
@@ -441,6 +507,8 @@ where
         .join(format!("{}.next", simc_binary_name()));
     fs::copy(&staged_simc, &next_simc).map_err(|e| format!("Failed to stage SimC binary: {e}"))?;
     mark_executable(&next_simc)?;
+    validate_simc_binary(&next_simc)
+        .map_err(|error| format!("Downloaded SimC binary failed validation: {error}"))?;
 
     promote_simc_binary(&next_simc, &cached_path)?;
 
@@ -720,6 +788,39 @@ mod tests {
     fn current_platform_and_binary_name_are_non_empty() {
         assert!(!current_platform().is_empty());
         assert!(!simc_binary_name().is_empty());
+    }
+
+    #[test]
+    fn validate_simc_binary_reports_missing_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join(simc_binary_name());
+
+        let error = validate_simc_binary(&missing).expect_err("missing binary should fail");
+
+        assert_eq!(
+            error,
+            format!("simc binary not found at: {}", missing.display())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_simc_binary_surfaces_process_errors() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("simc");
+        fs::write(
+            &script,
+            b"#!/bin/sh\nprintf 'loader failure\\n' >&2\nexit 127\n",
+        )
+        .expect("write fake SimC");
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+            .expect("make fake SimC executable");
+
+        let error = validate_simc_binary(&script).expect_err("failed binary should fail");
+
+        assert!(error.contains("loader failure"));
     }
 
     #[test]

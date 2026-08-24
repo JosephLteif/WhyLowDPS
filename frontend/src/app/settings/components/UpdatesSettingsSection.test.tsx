@@ -229,7 +229,13 @@ describe('UpdatesSettingsSection', () => {
         setSelectedSimcRuntimeVersion={noop}
         simcRuntimeVersions={[]}
         simcRuntimeVersionsLoading={false}
-        simcRuntimeInfo={null}
+        simcRuntimeInfo={{
+          channel: 'weekly',
+          version: 'weekly-202606240831',
+          assetName: 'simc-linux-x64.zip',
+          assetSizeBytes: 15055959,
+          metadataStatus: 'available',
+        }}
         simcRuntimeInfoLoading={false}
         simcRuntimeDownloading={false}
         refreshSimcRuntimeInfo={noop}
@@ -264,6 +270,16 @@ describe('UpdatesSettingsSection', () => {
     expect(screen.getByRole('option', { name: 'latest (3.3.1)' })).toBeTruthy();
     expect(screen.getByRole('option', { name: '3.3.0' })).toBeTruthy();
     expect(screen.getByText('3.3.0', { selector: 'code' })).toBeTruthy();
+    const dockerCard = screen.getByText('Docker image').closest('[data-update-card]');
+    const simcCard = screen
+      .getByRole('combobox', { name: 'SimC channel' })
+      .closest('[data-update-card]');
+    const simcVersion = screen.getByText(/2026-06-24 08:31/);
+    const simcAsset = screen.getByText(/simc-linux-x64\.zip/);
+    expect(simcCard?.contains(simcVersion)).toBe(true);
+    expect(simcCard?.contains(simcAsset)).toBe(true);
+    expect(dockerCard?.contains(simcVersion)).toBe(false);
+    expect(dockerCard?.contains(simcAsset)).toBe(false);
     expect(screen.getByRole('button', { name: 'Copy update commands' })).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'SimC channel' })).toBeTruthy();
     expect(screen.queryByText('Stable Version')).toBeNull();

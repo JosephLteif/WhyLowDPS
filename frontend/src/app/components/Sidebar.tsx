@@ -22,9 +22,26 @@ import {
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
+import { API_URL, fetchJson, isHostedPrivate } from '../lib/api';
+import { SIMC_RUNTIME_UPDATED_EVENT } from '../lib/simc-runtime-release';
 
 const DISCORD_INVITE_URL = 'https://discord.gg/ZjxQv5kFxe';
 const APP_WEBSITE_URL = 'https://josephlteif.github.io/WhyLowDPS/';
+
+type SimcRuntimeSidebarStatus = {
+  channel?: string | null;
+  version?: string | null;
+};
+
+function formatSimcSidebarVersion(version: string | null | undefined): string {
+  if (!version) return 'Unavailable';
+  const match = version.match(/^(?:[^-]+-)?(\d{8})(\d{4})?$/);
+  if (!match) return version;
+
+  const [, datePart, timePart] = match;
+  const date = `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}`;
+  return timePart ? `${date} ${timePart.slice(0, 2)}:${timePart.slice(2, 4)}` : date;
+}
 
 interface NavItem {
   href: string;
@@ -183,6 +200,35 @@ export default function Sidebar() {
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const dragOverPosRef = useRef<'before' | 'after'>('before');
   const { user, lightMode } = useAuth();
+  const [simcRuntimeStatus, setSimcRuntimeStatus] = useState<SimcRuntimeSidebarStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSimcRuntimeStatus = () => {
+      if (!isHostedPrivate || user?.role !== 'admin') {
+        setSimcRuntimeStatus(null);
+        return;
+      }
+
+      void fetchJson<SimcRuntimeSidebarStatus>(`${API_URL}/api/admin/simc-runtime`, {
+        cache: 'no-store',
+      })
+        .then((status) => {
+          if (!cancelled) setSimcRuntimeStatus(status);
+        })
+        .catch(() => {
+          if (!cancelled) setSimcRuntimeStatus(null);
+        });
+    };
+
+    loadSimcRuntimeStatus();
+    window.addEventListener(SIMC_RUNTIME_UPDATED_EVENT, loadSimcRuntimeStatus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SIMC_RUNTIME_UPDATED_EVENT, loadSimcRuntimeStatus);
+    };
+  }, [user?.role]);
 
   const navItems = useMemo(() => {
     const items = [...baseNavItems];
@@ -717,6 +763,17 @@ export default function Sidebar() {
           <div className="mt-2 px-2 text-center text-xs text-zinc-400">
             {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
           </div>
+          {!isCollapsed && simcRuntimeStatus && (
+            <div
+              aria-label="SimC runtime status"
+              className="px-2 text-center text-[11px] leading-tight text-zinc-500"
+            >
+              <div className="font-medium text-zinc-300">
+                SimC {simcRuntimeStatus.channel === 'nightly' ? 'Nightly' : 'Weekly'}
+              </div>
+              <div>{formatSimcSidebarVersion(simcRuntimeStatus.version)}</div>
+            </div>
+          )}
           <div className="mx-auto flex items-center gap-2">
             <a
               href={DISCORD_INVITE_URL}

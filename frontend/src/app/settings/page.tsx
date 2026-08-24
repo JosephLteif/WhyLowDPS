@@ -29,6 +29,7 @@ import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 import {
   fetchSimcRuntimeInfo,
   fetchSimcRuntimeVersions,
+  SIMC_RUNTIME_UPDATED_EVENT,
   type SimcRuntimeInfo,
   type SimcRuntimeVersionOption,
 } from '../lib/simc-runtime-release';
@@ -800,6 +801,7 @@ export default function SettingsPage() {
       }
       setSelectedSimcChannelState(savedChannel);
       setSelectedSimcRuntimeVersionState(null);
+      window.dispatchEvent(new Event(SIMC_RUNTIME_UPDATED_EVENT));
     } catch (err: any) {
       setSelectedSimcChannelState(previous);
       setSimcChannelMessage({
@@ -883,6 +885,7 @@ export default function SettingsPage() {
         });
       }
       const version = status?.version ? ` (${status.version})` : '';
+      window.dispatchEvent(new Event(SIMC_RUNTIME_UPDATED_EVENT));
       setSimcChannelMessage({
         type: 'success',
         text: status?.updated

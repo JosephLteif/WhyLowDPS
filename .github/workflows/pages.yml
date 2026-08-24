@@ -61,7 +61,7 @@ jobs:
           for (const { fileName, target } of targets) {
             const relativePath = target.split('#', 1)[0].split('?', 1)[0];
             const resolved = path.resolve(docsRoot, relativePath);
-            if (!resolved.startsWith(`${docsRoot}${path.sep}`)) {
+            if (resolved !== docsRoot && !resolved.startsWith(`${docsRoot}${path.sep}`)) {
               throw new Error(`Site link escapes docs/: ${fileName} -> ${target}`);
             }
             if (!fs.existsSync(resolved)) {

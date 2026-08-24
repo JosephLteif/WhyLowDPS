@@ -12,6 +12,8 @@ use tokio::sync::Mutex;
 const DEFAULT_MANIFEST_BASE_URL: &str =
     "https://github.com/JosephLteif/whylowdps-simc-runtime/releases/download";
 const MANIFEST_FILE: &str = "simc-metadata.json";
+const MANIFEST_PLATFORM_RETRY_ATTEMPTS: usize = 3;
+const MANIFEST_PLATFORM_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimcChannel {
@@ -348,7 +350,8 @@ where
     let cached_metadata = read_cached_metadata(&config.metadata_path());
     let cached_path = config.simc_path();
 
-    let manifest = match fetch_manifest(&config.manifest_url()).await {
+    let manifest_url = config.manifest_url();
+    let mut manifest = match fetch_manifest(&manifest_url).await {
         Ok(manifest) => manifest,
         Err(err) if cached_path.exists() => {
             let metadata = cached_metadata.unwrap_or(SimcCachedMetadata {
@@ -368,9 +371,34 @@ where
     };
 
     let platform = current_platform();
-    let asset = manifest
-        .asset_for_platform(platform)
-        .ok_or_else(|| format!("SimC runtime manifest has no asset for platform {platform}"))?;
+    if manifest.asset_for_platform(platform).is_none() {
+        for attempt in 0..MANIFEST_PLATFORM_RETRY_ATTEMPTS {
+            tokio::time::sleep(MANIFEST_PLATFORM_RETRY_DELAY).await;
+            if let Ok(candidate) = fetch_manifest(&manifest_url).await {
+                let has_platform_asset = candidate.asset_for_platform(platform).is_some();
+                manifest = candidate;
+                if has_platform_asset {
+                    break;
+                }
+            }
+            eprintln!(
+                "SimC manifest has no {platform} asset yet; retrying ({}/{})",
+                attempt + 1,
+                MANIFEST_PLATFORM_RETRY_ATTEMPTS
+            );
+        }
+    }
+    let asset = manifest.asset_for_platform(platform).ok_or_else(|| {
+        let available_platforms = manifest
+            .assets
+            .iter()
+            .map(|asset| asset.platform.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "SimC runtime manifest has no asset for platform {platform} (available: {available_platforms})"
+        )
+    })?;
 
     if cached_path.exists()
         && !needs_update(

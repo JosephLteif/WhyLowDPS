@@ -131,7 +131,7 @@ export default function DropSlotList({
   );
 
   return (
-    <div className="space-y-4">
+    <div data-tour="drop-finder-items" className="space-y-4">
       <div className="sticky top-[var(--app-header-height)] z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-2 py-2 shadow-md backdrop-blur-sm sm:px-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
           <p className="min-w-0 truncate text-sm text-white sm:pt-2">
@@ -162,6 +162,7 @@ export default function DropSlotList({
               </div>
               <button
                 onClick={() => onSelectAll(visibleItemIds)}
+                data-tour-action="drop-finder-item-choice"
                 className={`${baseButtonClass} ${goldButtonClass}`}
               >
                 Select all
@@ -239,6 +240,7 @@ function DropItemCard({
 
   return (
     <div
+      data-tour-action="drop-finder-item-choice"
       onClick={onToggle}
       role="button"
       tabIndex={0}

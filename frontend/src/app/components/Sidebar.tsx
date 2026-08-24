@@ -127,6 +127,10 @@ const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
 const SIDEBAR_VISIBLE_KEY = 'whylowdps_sidebar_visible';
 const SIDEBAR_DEFAULT_VISIBLE_LABELS = new Set(['Settings']);
 
+function navTourTarget(label: string): string {
+  return `nav-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
 function ensureDefaultVisibleLabels(labels: string[], availableLabels: string[]): string[] {
   const next = [...labels];
   for (const label of SIDEBAR_DEFAULT_VISIBLE_LABELS) {
@@ -508,6 +512,7 @@ export default function Sidebar() {
                 <div
                   key={item.label}
                   data-nav-label={item.label}
+                  data-tour={navTourTarget(item.label)}
                   className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
                     dragOverLabel === item.label && draggingLabel !== item.label
                       ? 'bg-gold/[0.04]'

@@ -393,7 +393,7 @@ export default function UpgradeComparePage() {
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div data-tour="upgrade-mode" className="space-y-2">
         <p className="text-[12px] font-medium uppercase tracking-widest text-muted">Upgrade Mode</p>
         <div className="grid gap-2 md:grid-cols-2">
           {[
@@ -487,7 +487,7 @@ export default function UpgradeComparePage() {
       )}
 
       {/* Upgradeable Items */}
-      <div className="space-y-4">
+      <div data-tour="upgrade-items" className="space-y-4">
         <StickyPageHeader
           left={
             <div className="flex flex-wrap items-center gap-4">
@@ -498,6 +498,7 @@ export default function UpgradeComparePage() {
                 <button
                   type="button"
                   onClick={toggleAll}
+                  data-tour-action="upgrade-item-choice"
                   className="text-[11px] font-bold text-gold/80 transition-colors hover:text-gold"
                 >
                   All
@@ -506,6 +507,7 @@ export default function UpgradeComparePage() {
                 <button
                   type="button"
                   onClick={toggleAllEquipped}
+                  data-tour-action="upgrade-item-choice"
                   className="text-[11px] font-bold text-zinc-300 transition-colors hover:text-white"
                 >
                   Equipped
@@ -588,6 +590,7 @@ export default function UpgradeComparePage() {
                     <button
                       type="button"
                       onClick={() => toggleGroup(group.candidates)}
+                      data-tour-action="upgrade-item-choice"
                       className="text-[12px] text-zinc-500 hover:text-zinc-300"
                     >
                       {allSelected ? 'Deselect' : 'Select all'}
@@ -600,33 +603,34 @@ export default function UpgradeComparePage() {
                     const isEquipped = c.is_equipped;
 
                     return (
-                      <GearItemRow
-                        key={c.uid}
-                        icon={info?.icon || 'inv_misc_questionmark'}
-                        name={info?.name || `Item ${c.item_id}`}
-                        nameColor={qc}
-                        details={[
-                          { text: SLOT_LABELS[c.slot] || c.slot },
-                          {
-                            text: isEquipped ? 'Equipped' : 'Not Equipped',
-                            color: isEquipped ? 'text-emerald-300' : 'text-zinc-500',
-                          },
-                          { text: `${c.ilevel} -> ${c.target_ilevel}` },
-                          {
-                            text: formatCosts(c.costs, effectiveCurrencies),
-                            color: 'text-gold/70',
-                          },
-                        ]}
-                        ilevel={c.ilevel}
-                        selectable
-                        checked={selectedSlots.has(c.uid)}
-                        onToggle={() => {
-                          const next = new Set(selectedSlots);
-                          if (selectedSlots.has(c.uid)) next.delete(c.uid);
-                          else next.add(c.uid);
-                          setSelectedSlots(next);
-                        }}
-                      />
+                      <div key={c.uid} data-tour-action="upgrade-item-choice">
+                        <GearItemRow
+                          icon={info?.icon || 'inv_misc_questionmark'}
+                          name={info?.name || `Item ${c.item_id}`}
+                          nameColor={qc}
+                          details={[
+                            { text: SLOT_LABELS[c.slot] || c.slot },
+                            {
+                              text: isEquipped ? 'Equipped' : 'Not Equipped',
+                              color: isEquipped ? 'text-emerald-300' : 'text-zinc-500',
+                            },
+                            { text: `${c.ilevel} -> ${c.target_ilevel}` },
+                            {
+                              text: formatCosts(c.costs, effectiveCurrencies),
+                              color: 'text-gold/70',
+                            },
+                          ]}
+                          ilevel={c.ilevel}
+                          selectable
+                          checked={selectedSlots.has(c.uid)}
+                          onToggle={() => {
+                            const next = new Set(selectedSlots);
+                            if (selectedSlots.has(c.uid)) next.delete(c.uid);
+                            else next.add(c.uid);
+                            setSelectedSlots(next);
+                          }}
+                        />
+                      </div>
                     );
                   })}
                 </div>
@@ -641,6 +645,7 @@ export default function UpgradeComparePage() {
       <div className="mobile-safe-bottom sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6">
         <button
           onClick={handleSubmit}
+          data-tour="upgrade-submit"
           disabled={submitting || selectedSlots.size === 0 || !hasCurrencies}
           className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
         >

@@ -288,7 +288,7 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
         <ErrorAlert message={error} />
 
         {!forcedMode && (
-          <div className="grid gap-4 md:grid-cols-4">
+          <div data-tour="analysis-mode-picker" className="grid gap-4 md:grid-cols-4">
             {[
               ['stat_weights', 'Quick Weights', 'Fast single-point stat values.'],
               ['stat_plot', 'Stat Plot', 'Curve DPS across a stat range.'],
@@ -317,7 +317,10 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
         )}
 
         {mode === 'stat_plot' && (
-          <div className="grid gap-4 rounded-lg border border-border bg-surface-2 p-4 md:grid-cols-2">
+          <div
+            data-tour="stat-plot-options"
+            className="grid gap-4 rounded-lg border border-border bg-surface-2 p-4 md:grid-cols-2"
+          >
             <div className="space-y-2 text-xs text-zinc-400 md:col-span-2">
               <span className="block">Stats to Compare</span>
               <div className="flex flex-wrap gap-2">
@@ -386,7 +389,10 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
         )}
 
         {mode === 'consumable_matrix' && (
-          <div className="space-y-3 rounded-lg border border-border bg-surface-2 p-4 text-xs text-zinc-400">
+          <div
+            data-tour="consumable-matrix-options"
+            className="space-y-3 rounded-lg border border-border bg-surface-2 p-4 text-xs text-zinc-400"
+          >
             <p>Compare selected consumables and raid buffs.</p>
             <div className="grid gap-3 lg:grid-cols-2">
               <ConsumableMatrixSelector
@@ -425,6 +431,7 @@ export function StatWeightsPageContent({ forcedMode }: StatWeightsPageContentPro
 
         <button
           type="submit"
+          data-tour="analysis-submit"
           disabled={submitting || simcInput.trim().length < 10}
           className="btn-primary w-full py-3 text-sm"
         >

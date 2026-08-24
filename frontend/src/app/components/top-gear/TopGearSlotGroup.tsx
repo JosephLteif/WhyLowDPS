@@ -133,6 +133,7 @@ export default function TopGearSlotGroup({
         </div>
         <button
           onClick={() => onAddClick(slots[0])}
+          data-tour="loot-browser-trigger"
           className="flex h-6 w-6 items-center justify-center rounded-full bg-gold/[0.12] text-gold transition-colors hover:bg-gold/[0.2]"
           title={`Add ${label.toLowerCase()}`}
         >

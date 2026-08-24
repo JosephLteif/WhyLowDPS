@@ -827,7 +827,10 @@ export default function UpgradeTrinketsPage() {
         }
       />
 
-      <div className="space-y-4 rounded-xl border border-zinc-700/70 bg-zinc-900/50 p-5 text-sm text-zinc-300">
+      <div
+        data-tour="trinket-settings"
+        className="space-y-4 rounded-xl border border-zinc-700/70 bg-zinc-900/50 p-5 text-sm text-zinc-300"
+      >
         <p>Choose the trinket pool and ilvl target for the heatmap simulation.</p>
 
         <div className="grid gap-3 md:grid-cols-2">
@@ -984,6 +987,7 @@ export default function UpgradeTrinketsPage() {
 
       <button
         type="submit"
+        data-tour="trinket-submit"
         disabled={submitting || simcInput.trim().length < 10}
         className="btn-primary w-full py-3 text-sm"
       >

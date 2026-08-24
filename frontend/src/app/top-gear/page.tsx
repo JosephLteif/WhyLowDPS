@@ -847,7 +847,7 @@ export default function TopGearPage() {
           onDismiss={() => setReturnNotice(null)}
         />
       ) : null}
-      <div className="card space-y-4 p-4 sm:p-5">
+      <div data-tour="top-gear-options" className="card space-y-4 p-4 sm:p-5">
         <div className="flex justify-end">
           <button
             type="button"
@@ -926,37 +926,39 @@ export default function TopGearPage() {
         </div>
       </div>
 
-      {resolved ? (
-        <TopGearItemSelector
-          resolved={resolved}
-          selectedUids={selectedUids}
-          onSelectionChange={setSelectedUids}
-          onResolvedChange={setResolved}
-          onItemAdded={(slot, simcString, origin) =>
-            setLocalItems((prev) => [...prev, { slot, simc_string: simcString, origin }])
-          }
-          onVariantCopiesChange={setSavedVariantCopiesBySlot}
-        onVariantRuleStateChange={setSavedVariantRuleState}
-        savedVariantCopiesBySlot={savedVariantCopiesBySlot}
-        savedVariantRuleState={savedVariantRuleState}
-        savedVariantCount={Object.values(savedVariantCopiesBySlot).reduce(
-          (sum, list) => sum + list.length,
-          0
+      <div data-tour="top-gear-items">
+        {resolved ? (
+          <TopGearItemSelector
+            resolved={resolved}
+            selectedUids={selectedUids}
+            onSelectionChange={setSelectedUids}
+            onResolvedChange={setResolved}
+            onItemAdded={(slot, simcString, origin) =>
+              setLocalItems((prev) => [...prev, { slot, simc_string: simcString, origin }])
+            }
+            onVariantCopiesChange={setSavedVariantCopiesBySlot}
+            onVariantRuleStateChange={setSavedVariantRuleState}
+            savedVariantCopiesBySlot={savedVariantCopiesBySlot}
+            savedVariantRuleState={savedVariantRuleState}
+            savedVariantCount={Object.values(savedVariantCopiesBySlot).reduce(
+              (sum, list) => sum + list.length,
+              0
+            )}
+            globalAffixesEnabled={globalAffixesEnabled}
+            maxUpgrade={maxUpgrade}
+            copyEnchants={copyEnchants}
+            specName={resolved.character.spec}
+            comboCount={comboCount}
+            comboError={comboError}
+          />
+        ) : (
+          <p className="py-6 text-center text-sm text-muted">
+            {resolving
+              ? 'Resolving gear...'
+              : 'Paste your SimC addon export above to see gear options.'}
+          </p>
         )}
-        globalAffixesEnabled={globalAffixesEnabled}
-        maxUpgrade={maxUpgrade}
-        copyEnchants={copyEnchants}
-        specName={resolved.character.spec}
-          comboCount={comboCount}
-          comboError={comboError}
-        />
-      ) : (
-        <p className="py-6 text-center text-sm text-muted">
-          {resolving
-            ? 'Resolving gear...'
-            : 'Paste your SimC addon export above to see gear options.'}
-        </p>
-      )}
+      </div>
 
       <ErrorAlert message={pageLevelError || error} />
 
@@ -970,6 +972,7 @@ export default function TopGearPage() {
           <div className="pointer-events-auto bg-gradient-to-t from-[#111] via-[#111] to-transparent pt-6">
             <button
               onClick={handleSubmit}
+              data-tour="top-gear-submit"
               disabled={submitDisabled}
               className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
             >

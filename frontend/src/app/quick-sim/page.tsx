@@ -97,7 +97,7 @@ export default function QuickSimPage() {
         </div>
       ) : null}
 
-      <div ref={inlineSubmitRef}>
+      <div ref={inlineSubmitRef} data-tour="run-simulation">
         <button
           type="submit"
           disabled={submitting || !canSubmit}

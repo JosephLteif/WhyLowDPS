@@ -1,4 +1,5 @@
 export type SimcUpdateChannel = 'weekly' | 'nightly';
+export const SIMC_RUNTIME_UPDATED_EVENT = 'whylowdps-simc-runtime-updated';
 
 const SIMC_RELEASE_API_BASE =
   'https://api.github.com/repos/JosephLteif/whylowdps-simc-runtime/releases/tags';

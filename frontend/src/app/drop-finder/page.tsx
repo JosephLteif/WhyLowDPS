@@ -841,7 +841,7 @@ export default function DropFinderPage() {
           )}
         </>
       ) : category ? (
-        <div className="card p-5">
+        <div data-tour="drop-finder-selection" className="card p-5">
           <label className="label-text">{isRaid ? 'Select Raids' : 'Select Dungeons'}</label>
           {isRaid ? (
             <div className="flex flex-wrap gap-1.5">
@@ -925,7 +925,7 @@ export default function DropFinderPage() {
       ) : null}
 
       {(isRaid || isDungeon) && selectedId && activeDifficulties.length > 0 && (
-        <div className="card space-y-4 p-4 sm:p-6">
+        <div data-tour="drop-finder-settings" className="card space-y-4 p-4 sm:p-6">
           <div>
             <label className="label-text">Difficulty</label>
             <div className="flex flex-wrap gap-2">
@@ -1135,6 +1135,7 @@ export default function DropFinderPage() {
           <div className="mobile-safe-bottom sticky bottom-0 z-50 -mx-4 bg-gradient-to-t from-[#111] via-[#111] to-transparent px-4 pb-4 pt-6 sm:-mx-6 sm:px-6">
             <button
               onClick={handleSubmit}
+              data-tour="drop-finder-submit"
               disabled={submitting || selected.size === 0 || !hasCharacter}
               className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
             >

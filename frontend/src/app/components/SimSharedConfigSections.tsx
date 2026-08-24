@@ -407,7 +407,7 @@ export function FightSetupOptions() {
   const showTargetCount = fightStyleRules.usesTargetCount;
 
   return (
-    <div className="card space-y-4 p-5">
+    <div data-tour="fight-setup" className="card space-y-4 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[15px] font-medium text-zinc-100">Fight Setup</p>
@@ -819,7 +819,7 @@ export function ConsumablesAndRaidBuffsOptions() {
   const collapsedSummary = `${selectedConsumableCount} consumable categories set - ${enabledRaidBuffCount} raid buffs enabled`;
 
   return (
-    <div className="card p-5">
+    <div data-tour="consumables-raid-buffs" className="card p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
@@ -874,6 +874,7 @@ export function ConsumablesAndRaidBuffsOptions() {
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}
+            data-tour="consumables-raid-buffs-toggle"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
             aria-expanded={!isCollapsed}
             aria-label={isCollapsed ? 'Expand consumables and raid buffs' : 'Collapse consumables and raid buffs'}
@@ -895,6 +896,7 @@ export function ConsumablesAndRaidBuffsOptions() {
       </div>
 
       <div
+        data-tour="consumables-raid-buffs-content"
         className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
           isCollapsed ? 'mt-0 grid-rows-[0fr] opacity-0' : 'mt-5 grid-rows-[1fr] opacity-100'
         }`}
@@ -1078,10 +1080,11 @@ export function AdvancedOptions() {
   const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
 
   return (
-    <div className="card overflow-hidden">
+    <div data-tour="advanced-options" className="card overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        data-tour="advanced-options-toggle"
         className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left"
       >
         <div className="flex items-center gap-2.5">
@@ -1099,7 +1102,10 @@ export function AdvancedOptions() {
         />
       </button>
       {open && (
-        <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
+        <div
+          data-tour="advanced-options-content"
+          className="animate-fade-in space-y-5 border-t border-border px-5 pb-5"
+        >
           <div className="pt-4" />
 
           {/* Custom APL */}

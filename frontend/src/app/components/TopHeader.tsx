@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   ChevronDown,
+  HelpCircle,
   LogOut,
   Menu,
   MoreHorizontal,
@@ -24,6 +25,7 @@ import DesktopWindowTitleBar from './DesktopWindowTitleBar';
 import { CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
 import { COMMAND_PALETTE_OPEN_EVENT } from './CommandPalette';
 import NotificationCenter from './shared/NotificationCenter';
+import { useGuidedTour } from './GuidedTour';
 
 type SearchCharacter = {
   realm: string;
@@ -149,6 +151,7 @@ export default function TopHeader() {
   const router = useRouter();
   const { user, loading, lightMode, disableLightMode, login, logout, checkCredentialsStatus } =
     useAuth();
+  const { currentTour, startCurrentTour, closeTour } = useGuidedTour();
   const headerRef = useRef<HTMLElement | null>(null);
   const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -196,11 +199,17 @@ export default function TopHeader() {
   };
 
   const handleWhatsNew = () => {
+    closeTour();
     window.dispatchEvent(new Event(CHANGELOG_OPEN_EVENT));
   };
 
   const handleCommandPaletteOpen = () => {
+    closeTour();
     window.dispatchEvent(new Event(COMMAND_PALETTE_OPEN_EVENT));
+  };
+
+  const handlePageTourOpen = () => {
+    startCurrentTour();
   };
 
   useEffect(() => {
@@ -362,6 +371,7 @@ export default function TopHeader() {
           {!lightMode && (
             <form
               data-tauri-drag-region="false"
+              data-tour="character-search"
               onSubmit={handleCharacterSearch}
               className="relative mx-auto hidden w-full max-w-[560px] items-center gap-1.5 xl:flex"
             >
@@ -422,6 +432,7 @@ export default function TopHeader() {
               <button
                 type="button"
                 onClick={handleCommandPaletteOpen}
+                data-tour="app-search"
                 className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
                 title="Search app commands (Ctrl K)"
                 aria-label="Search app commands (Ctrl K)"
@@ -436,12 +447,26 @@ export default function TopHeader() {
               <button
                 type="button"
                 onClick={handleWhatsNew}
+                data-tour="whats-new"
                 className="inline-flex h-8 items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 text-[13px] font-semibold text-zinc-200 transition-colors hover:bg-white/[0.1] hover:text-white"
                 title="What's new"
               >
                 <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
                 <span className="hidden md:inline">What&apos;s new</span>
               </button>
+              {currentTour ? (
+                <button
+                  type="button"
+                  onClick={handlePageTourOpen}
+                  data-tour="guided-tour-trigger"
+                  className="inline-flex h-8 items-center gap-2 rounded-md border border-gold/25 bg-gold/10 px-2.5 text-[13px] font-semibold text-gold transition-colors hover:bg-gold/20"
+                  title={`Start the ${currentTour.label} tour`}
+                  aria-label={`Start the ${currentTour.label} tour`}
+                >
+                  <HelpCircle className="h-3.5 w-3.5" strokeWidth={2} />
+                  <span className="hidden md:inline">Tour</span>
+                </button>
+              ) : null}
             </div>
             <div className="relative md:hidden">
               <button
@@ -464,6 +489,7 @@ export default function TopHeader() {
                   <button
                     type="button"
                     role="menuitem"
+                    data-tour="app-search"
                     onClick={() => {
                       setIsMobileActionsOpen(false);
                       handleCommandPaletteOpen();
@@ -476,6 +502,7 @@ export default function TopHeader() {
                   <button
                     type="button"
                     role="menuitem"
+                    data-tour="whats-new"
                     onClick={() => {
                       setIsMobileActionsOpen(false);
                       handleWhatsNew();
@@ -485,6 +512,21 @@ export default function TopHeader() {
                     <Sparkles className="h-4 w-4 text-zinc-400" strokeWidth={2} />
                     What&apos;s new
                   </button>
+                  {currentTour ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      data-tour="guided-tour-trigger"
+                      onClick={() => {
+                        setIsMobileActionsOpen(false);
+                        handlePageTourOpen();
+                      }}
+                      className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-white/[0.07] hover:text-white"
+                    >
+                      <HelpCircle className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+                      Page tour
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -609,6 +651,7 @@ export default function TopHeader() {
         {!lightMode && (
           <form
             data-tauri-drag-region="false"
+            data-tour="character-search"
             onSubmit={handleCharacterSearch}
             className="relative flex items-center gap-1.5 border-t border-white/5 px-2 py-2 md:px-5 xl:hidden"
           >

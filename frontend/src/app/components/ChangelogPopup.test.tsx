@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import ChangelogPopup, { CHANGELOG_CONTENT_REVISION, CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { CHANGELOG_HISTORY_URL } from '../lib/changelog';
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
@@ -22,6 +23,10 @@ describe('ChangelogPopup', () => {
     expect(
       screen.queryByRole('button', { name: /changelog item|changelog page/i })
     ).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /changelog history/i })).toHaveAttribute(
+      'href',
+      CHANGELOG_HISTORY_URL
+    );
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');

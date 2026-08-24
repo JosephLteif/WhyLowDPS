@@ -86,6 +86,7 @@ fn public_security_path(path: &str) -> bool {
             | "/api/auth/bnet/credentials-status"
             | "/api/auth/me"
             | "/api/data/status"
+            | "/api/readiness"
             | "/api/lan/pair"
             | "/api/lan/pair/consume"
     )
@@ -1078,6 +1079,7 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                     "/api/data/status",
                     web::get().to(data_sync::get_sync_status),
                 )
+                .route("/api/readiness", web::get().to(readiness))
                 .route(
                     "/api/data/missives",
                     web::get().to(game_data_handlers::list_missive_options),

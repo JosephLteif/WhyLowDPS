@@ -315,13 +315,18 @@ jobs:
 
           for attempt in $(seq 1 45); do
             if curl --fail --silent http://127.0.0.1:18000/health; then
-              exit 0
+              break
             fi
             sleep 2
           done
 
-          echo "Container did not become healthy"
-          exit 1
+          if ! curl --fail --silent http://127.0.0.1:18000/health >/dev/null; then
+            echo "Container did not become healthy"
+            exit 1
+          fi
+
+          docker exec "${CONTAINER}" sh -lc \
+            'test -x /data/simc-runtime/simc && /data/simc-runtime/simc display_build=2'
 
       - name: Push release image tags
         shell: bash

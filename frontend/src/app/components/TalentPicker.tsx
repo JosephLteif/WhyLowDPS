@@ -194,7 +194,7 @@ export default function TalentPicker() {
   if (allLoadouts.length === 0) return null;
 
   return (
-    <div className="card overflow-hidden">
+    <div data-tour="talent-setup" className="card overflow-hidden">
       {/* Header bar */}
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-3">

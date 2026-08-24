@@ -22,6 +22,7 @@ import PwaRegistration from './components/PwaRegistration';
 import PwaUpdatePrompt from './components/PwaUpdatePrompt';
 import PwaInstallPrompt from './components/PwaInstallPrompt';
 import { NotificationProvider } from './components/shared/NotificationSystem';
+import { GuidedTourProvider } from './components/GuidedTour';
 import './globals.css';
 import React from 'react';
 
@@ -60,37 +61,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           ['--app-header-height' as string]: '3rem',
         }}
       >
-        <NotificationProvider>
-          <AuthProvider>
-            <LanSessionLifecycle />
-            <ActiveCharacterProvider>
-              <DataGuard>
-                <SimProvider>
-                  <TopHeader />
-                  <UpdatePrompt />
-                  <PwaRegistration />
-                  <PwaUpdatePrompt />
-                  <PwaInstallPrompt />
-                  <CloseBehaviorPrompt />
-                  <DiscordInvitePrompt />
-                  <ChangelogPopup />
-                  <DesktopIntegrationListener />
-                  <DesktopRichPresence />
-                  <CommandPalette />
-                  <ScrollToTopOnRouteChange />
-                  <InitialSidebarRoute />
+        <GuidedTourProvider>
+          <NotificationProvider>
+            <AuthProvider>
+              <LanSessionLifecycle />
+              <ActiveCharacterProvider>
+                <DataGuard>
+                  <SimProvider>
+                    <TopHeader />
+                    <UpdatePrompt />
+                    <PwaRegistration />
+                    <PwaUpdatePrompt />
+                    <PwaInstallPrompt />
+                    <CloseBehaviorPrompt />
+                    <DiscordInvitePrompt />
+                    <ChangelogPopup />
+                    <DesktopIntegrationListener />
+                    <DesktopRichPresence />
+                    <CommandPalette />
+                    <ScrollToTopOnRouteChange />
+                    <InitialSidebarRoute />
 
-                  <Sidebar />
+                    <Sidebar />
 
-                  <MainScrollShell>
-                    <SimSharedConfig />
-                    {children}
-                  </MainScrollShell>
-                </SimProvider>
-              </DataGuard>
-            </ActiveCharacterProvider>
-          </AuthProvider>
-        </NotificationProvider>
+                    <MainScrollShell>
+                      <SimSharedConfig />
+                      {children}
+                    </MainScrollShell>
+                  </SimProvider>
+                </DataGuard>
+              </ActiveCharacterProvider>
+            </AuthProvider>
+          </NotificationProvider>
+        </GuidedTourProvider>
       </body>
     </html>
   );

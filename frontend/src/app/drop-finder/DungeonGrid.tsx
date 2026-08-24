@@ -69,7 +69,7 @@ export default function DungeonGrid({
     .slice(0, 4);
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+    <div data-tour="drop-finder-selection" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
       {/* "All" tile */}
       <button
         onClick={() => {

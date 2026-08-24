@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use whylowdps_core::game_data;
 use whylowdps_core::server;
-use whylowdps_core::simc_runtime::{SimcChannel, SimcRuntimeConfig, SimcRuntimeState};
+use whylowdps_core::simc_runtime::{
+    validate_simc_binary, SimcChannel, SimcRuntimeConfig, SimcRuntimeState,
+};
 use whylowdps_core::storage::JobStorage;
 
 fn env_or(key: &str, default: &str) -> String {
@@ -159,6 +161,11 @@ fn validate_bind_configuration(
     server::auth_handlers::validate_jwt_secret(jwt_secret, external).map(|_| ())
 }
 
+fn uses_managed_simc_runtime(simc_path_override: Option<&Path>, managed_simc_path: &Path) -> bool {
+    // Older Docker env files set SIMC_PATH to this same stable managed path.
+    simc_path_override.is_none() || simc_path_override == Some(managed_simc_path)
+}
+
 #[tokio::main]
 async fn main() {
     let base_dir = choose_base_dir(std::path::Path::new("backend/resources").exists());
@@ -221,44 +228,46 @@ async fn main() {
         .get_user_config("system", "simc_channel")
         .and_then(|value| SimcChannel::try_parse(&value))
         .unwrap_or(env_simc_channel);
-    let simc_runtime = simc_path_override.is_none().then(|| {
-        Arc::new(SimcRuntimeState::new(SimcRuntimeConfig::new(
-            simc_channel,
-            PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime")),
-        )))
-    });
-    let simc_path = match simc_path_override {
-        Some(path) => PathBuf::from(path),
-        None => match simc_runtime
-            .as_ref()
-            .expect("SimC runtime state missing")
-            .update(simc_channel)
-            .await
-        {
+    let simc_runtime_config = SimcRuntimeConfig::new(
+        simc_channel,
+        PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime")),
+    );
+    let simc_runtime = uses_managed_simc_runtime(
+        simc_path_override.as_deref().map(Path::new),
+        &simc_runtime_config.simc_path(),
+    )
+    .then(|| Arc::new(SimcRuntimeState::new(simc_runtime_config.clone())));
+    let simc_path = match (simc_path_override, simc_runtime.as_ref()) {
+        (Some(path), None) => {
+            let path = PathBuf::from(path);
+            println!("Using fixed SimC path from SIMC_PATH at {:?}", path);
+            path
+        }
+        (_, Some(simc_runtime)) => match simc_runtime.update(simc_channel).await {
             Ok(status) => {
                 println!(
                     "Using SimC {} channel version {} at {:?}",
                     status.channel,
                     status.version.as_deref().unwrap_or("cached"),
-                    simc_runtime
-                        .as_ref()
-                        .expect("SimC runtime state missing")
-                        .simc_path()
+                    simc_runtime.simc_path()
                 );
-                simc_runtime
-                    .as_ref()
-                    .expect("SimC runtime state missing")
-                    .simc_path()
+                simc_runtime.simc_path()
             }
             Err(err) => {
-                eprintln!("Failed to update SimC runtime: {err}");
-                simc_runtime
-                    .as_ref()
-                    .expect("SimC runtime state missing")
-                    .simc_path()
+                panic!(
+                    "Failed to initialize SimC runtime at {}: {err}",
+                    simc_runtime.simc_path().display()
+                );
             }
         },
+        (None, None) => unreachable!("managed SimC runtime must exist without a path override"),
     };
+
+    if simc_runtime.is_none() {
+        validate_simc_binary(&simc_path).unwrap_or_else(|error| {
+            panic!("SIMC_PATH override is unusable: {error}");
+        });
+    }
 
     let (server, actual_port) = server::start_with_storage_bind_options_and_simc_runtime(
         storage,
@@ -371,6 +380,18 @@ mod tests {
         unsafe {
             env::remove_var(key);
         }
+    }
+
+    #[test]
+    fn managed_simc_runtime_accepts_the_legacy_matching_path_override() {
+        let managed_path = Path::new("/data/simc-runtime/simc");
+
+        assert!(uses_managed_simc_runtime(None, managed_path));
+        assert!(uses_managed_simc_runtime(Some(managed_path), managed_path));
+        assert!(!uses_managed_simc_runtime(
+            Some(Path::new("/opt/simc/simc")),
+            managed_path
+        ));
     }
 
     #[test]

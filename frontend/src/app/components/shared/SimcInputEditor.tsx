@@ -90,6 +90,7 @@ export default function SimcInputEditor({
           )}
         </pre>
         <textarea
+          data-tour="simc-input-field"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onPaste={(e) => onPaste?.(e.clipboardData.getData('text'))}

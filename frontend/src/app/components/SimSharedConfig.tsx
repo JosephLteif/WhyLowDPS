@@ -378,7 +378,7 @@ export default function SimSharedConfig() {
           <ClipboardBanner message={banner.text} onDismiss={() => setBanner(null)} />
         </div>
       )}
-      <div className="card space-y-3 p-5">
+      <div data-tour="simc-input" className="card space-y-3 p-5">
         <div className="flex items-center justify-between">
           <label className="label-text">SimC Addon Export</label>
           <SimcProfileDropdown

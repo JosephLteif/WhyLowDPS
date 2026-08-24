@@ -153,6 +153,7 @@ was recorded.
 | `WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG` | BattleTag such as `YourBattleTag#1234`; it is used only to create the first administrator when the user table is empty. |
 | `WHYLOWDPS_SECURE_COOKIES` | `false` for direct LAN HTTP; set `true` only behind trusted HTTPS. |
 | `SIMC_CHANNEL` | Initial runtime channel: `weekly` or `nightly`; defaults to `weekly`. After an administrator changes the channel in Settings, the persisted setting takes precedence. |
+| `SIMC_PATH` | Legacy fixed-binary override. Leave it unset for managed runtime updates; the standard `/data/simc-runtime/simc` path remains compatible with channel switching. A different path disables managed channel updates. |
 | `MAX_CONCURRENT_SIMULATIONS` | Optional concurrency limit; the Compose example uses `2`. |
 | `MAX_JOBS_PER_USER` | Optional unpinned job-history limit; defaults to `200`. |
 

@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { CheckCircle2, Circle, Database, KeyRound, Play, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { API_URL, fetchJson, listCharacterProfiles, listSims } from '../lib/api';
+import { listCharacterProfiles, listSims } from '../lib/api';
+import { fetchReadiness } from '../lib/readiness';
 import { useAuth } from './AuthContext';
 
 type ChecklistState = {
@@ -21,7 +22,7 @@ const EMPTY_STATE: ChecklistState = {
 };
 
 export default function OnboardingChecklist() {
-  const { lightMode, checkCredentialsStatus } = useAuth();
+  const { lightMode } = useAuth();
   const [state, setState] = useState<ChecklistState>(EMPTY_STATE);
   const [loading, setLoading] = useState(true);
 
@@ -37,22 +38,25 @@ export default function OnboardingChecklist() {
       return;
     }
     try {
-      const [data, credentials, profiles, sims] = await Promise.all([
-        fetchJson<{ status?: string }>(`${API_URL}/api/data/status`).catch(() => ({ status: '' })),
-        checkCredentialsStatus().catch(() => ({ globally_configured: false })),
+      const [readiness, profiles, sims] = await Promise.all([
+        fetchReadiness().catch(() => null),
         listCharacterProfiles().catch(() => []),
         listSims().catch(() => []),
       ]);
       setState({
-        dataReady: data?.status === 'ready',
-        credentialsReady: Boolean(credentials?.globally_configured),
+        dataReady: Boolean(
+          readiness &&
+          readiness.data.required_missing === 0 &&
+          ['ready', 'degraded'].includes(readiness.data.status)
+        ),
+        credentialsReady: Boolean(readiness?.credentials.configured),
         profileReady: profiles.length > 0,
         simulationReady: sims.length > 0,
       });
     } finally {
       setLoading(false);
     }
-  }, [checkCredentialsStatus, lightMode]);
+  }, [lightMode]);
 
   useEffect(() => {
     void refresh();

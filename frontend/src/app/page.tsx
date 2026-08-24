@@ -33,11 +33,7 @@ import {
   listCharacterProfiles,
   listSims,
 } from './lib/api';
-import {
-  buildActivityData,
-  getActivityPeriodTitle,
-  type ActivityPeriod,
-} from './lib/activity';
+import { buildActivityData, getActivityPeriodTitle, type ActivityPeriod } from './lib/activity';
 import { useSimContext } from './components/SimContext';
 import { useAuth } from './components/AuthContext';
 import CharacterQuickLinks from './components/character/CharacterQuickLinks';
@@ -49,6 +45,8 @@ import { computeWeeklyRaidBossKills } from './lib/character-panel-utils';
 import { useDismissOnOutside } from './lib/useDismissOnOutside';
 import { useActiveCharacter } from './components/ActiveCharacterContext';
 import OnboardingChecklist from './components/OnboardingChecklist';
+import ReadinessPanel from './components/ReadinessPanel';
+import { fetchReadiness, type ReadinessSnapshot } from './lib/readiness';
 
 const LOCAL_MAIN_CHARACTER_KEY = 'whylowdps_main_character';
 const LOCAL_TRACKED_CHARACTERS_KEY = 'whylowdps_tracked_characters';
@@ -58,7 +56,8 @@ const LOCAL_DASHBOARD_WIDGET_SIZES_KEY = 'whylowdps_dashboard_widget_sizes';
 const LOCAL_DASHBOARD_STATS_WIDGET_KEY = 'whylowdps_dashboard_stats_cards';
 const LAST_REFRESH_PREFIX = 'whylowdps_last_refresh_';
 
-type DashboardWidgetId = 'stats' | 'activity' | 'quick-links' | 'tracked-characters';
+type DashboardWidgetId =
+  'stats' | 'activity' | 'quick-links' | 'tracked-characters' | 'system-health';
 type DashboardWidgetSize = 1 | 2 | 3;
 type StatCardId = 'active' | 'total' | 'history' | 'system';
 
@@ -78,9 +77,12 @@ const DASHBOARD_WIDGETS: {
   { id: 'activity', label: 'Simulation Activity', defaultSize: 2 },
   { id: 'quick-links', label: 'Quick Links', defaultSize: 1 },
   { id: 'tracked-characters', label: 'Tracked Characters', defaultSize: 3 },
+  { id: 'system-health', label: 'System Health', defaultSize: 3 },
 ];
 
-const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetId[] = DASHBOARD_WIDGETS.map(({ id }) => id);
+const DEFAULT_DASHBOARD_WIDGETS: DashboardWidgetId[] = DASHBOARD_WIDGETS.filter(
+  ({ id }) => id !== 'system-health'
+).map(({ id }) => id);
 const DEFAULT_DASHBOARD_WIDGET_SIZES: Record<DashboardWidgetId, DashboardWidgetSize> =
   DASHBOARD_WIDGETS.reduce(
     (acc, widget) => {
@@ -393,6 +395,8 @@ export default function Home() {
   const [cpuUsage, setCpuUsage] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessSnapshot | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
   const [trackedCharacters, setTrackedCharacters] = useState<
     { region: string; realm: string; name: string }[]
   >([]);
@@ -494,6 +498,16 @@ export default function Home() {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data.');
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const loadReadiness = useCallback(async () => {
+    setReadinessError(null);
+    try {
+      setReadiness(await fetchReadiness());
+    } catch (err) {
+      setReadiness(null);
+      setReadinessError(err instanceof Error ? err.message : 'Failed to read system health.');
     }
   }, []);
 
@@ -1092,21 +1106,24 @@ export default function Home() {
     let active = true;
     (async () => {
       await loadAll();
+      await loadReadiness();
       if (!active) return;
     })();
     return () => {
       active = false;
     };
-  }, [loadAll]);
+  }, [loadAll, loadReadiness]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const onFocus = () => {
       void loadAll();
+      void loadReadiness();
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         void loadAll();
+        void loadReadiness();
       }
     };
     window.addEventListener('focus', onFocus);
@@ -1115,7 +1132,7 @@ export default function Home() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [loadAll]);
+  }, [loadAll, loadReadiness]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1191,7 +1208,7 @@ export default function Home() {
   return (
     <div className="space-y-5">
       <div className="flex items-end justify-between">
-        <div>
+        <div data-tour="dashboard-heading">
           <h1 className="text-xl font-semibold text-zinc-100">Simulation Dashboard</h1>
           <p className="mt-1 text-sm text-zinc-400">
             Live simulation activity, system health, and recent results.
@@ -1222,7 +1239,9 @@ export default function Home() {
         </div>
       </div>
 
-      <OnboardingChecklist />
+      <div data-tour="onboarding-checklist">
+        <OnboardingChecklist />
+      </div>
 
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -1230,7 +1249,10 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+      <div
+        data-tour="dashboard-controls"
+        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2"
+      >
         <div>
           <p className="text-sm font-semibold text-zinc-200">Dashboard Widgets</p>
           <p className="text-xs text-zinc-500">Add, remove, and reorder dashboard sections.</p>
@@ -1283,6 +1305,18 @@ export default function Home() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 xl:grid-flow-row-dense xl:grid-cols-3">
+        {renderWidgetShell(
+          'system-health',
+          <ReadinessPanel
+            snapshot={readiness}
+            loading={!readiness && !readinessError}
+            error={readinessError}
+            authenticated={!lightMode}
+            lightMode={lightMode}
+            onRefresh={() => void loadReadiness()}
+          />
+        )}
+
         {renderWidgetShell(
           'stats',
           <>
@@ -1534,7 +1568,9 @@ export default function Home() {
                         {quickLinksEditMode && (
                           <button
                             type="button"
-                            onClick={() => removeQuickLink(quickLinks.findIndex((item) => item === link))}
+                            onClick={() =>
+                              removeQuickLink(quickLinks.findIndex((item) => item === link))
+                            }
                             aria-label={`Remove ${link.label}`}
                             title={`Remove ${link.label}`}
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-400 transition-colors hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300"
@@ -1551,335 +1587,350 @@ export default function Home() {
           </>
         )}
 
-        {!lightMode && renderWidgetShell(
-          'tracked-characters',
-          <>
-            <section
-              className={`card flex h-full min-h-0 flex-col ${trackedCompact ? 'p-2.5' : 'p-3'}`}
-            >
-              <div
-                className={`mb-2 flex items-center justify-between ${trackedCompact ? 'gap-2' : ''}`}
+        {!lightMode &&
+          renderWidgetShell(
+            'tracked-characters',
+            <>
+              <section
+                className={`card flex h-full min-h-0 flex-col ${trackedCompact ? 'p-2.5' : 'p-3'}`}
               >
-                <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
                 <div
-                  className={`flex items-center gap-2 ${trackedCompact ? 'flex-wrap justify-end' : ''}`}
+                  className={`mb-2 flex items-center justify-between ${trackedCompact ? 'gap-2' : ''}`}
                 >
-                  {trackedCharacters.length > 0 && (
+                  <h2 className="text-sm font-semibold text-zinc-200">Tracked Characters</h2>
+                  <div
+                    className={`flex items-center gap-2 ${trackedCompact ? 'flex-wrap justify-end' : ''}`}
+                  >
+                    {trackedCharacters.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          untrackAtIndex(Math.min(activeTrackedIndex, trackedCharacters.length - 1))
+                        }
+                        className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
+                      >
+                        Untrack
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() =>
-                        untrackAtIndex(Math.min(activeTrackedIndex, trackedCharacters.length - 1))
-                      }
-                      className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-300 hover:bg-red-500/20"
+                      onClick={() => {
+                        pendingTrackedRefreshRef.current = true;
+                        setTrackedRefreshing(true);
+                        setTrackedRefreshToken((v) => v + 1);
+                      }}
+                      disabled={trackedRefreshing}
+                      className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
                     >
-                      Untrack
+                      {trackedRefreshing ? 'Refreshing...' : 'Refresh'}
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      pendingTrackedRefreshRef.current = true;
-                      setTrackedRefreshing(true);
-                      setTrackedRefreshToken((v) => v + 1);
-                    }}
-                    disabled={trackedRefreshing}
-                    className="rounded border border-white/10 bg-black/20 px-2 py-1 text-[11px] font-semibold text-zinc-200 hover:bg-white/10"
-                  >
-                    {trackedRefreshing ? 'Refreshing...' : 'Refresh'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMainCharacterOpen((prev) => !prev)}
-                    className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
-                  >
-                    {mainCharacterOpen ? 'Collapse' : 'Expand'}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setMainCharacterOpen((prev) => !prev)}
+                      className="text-xs text-zinc-400 transition-colors hover:text-zinc-200"
+                    >
+                      {mainCharacterOpen ? 'Collapse' : 'Expand'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-              {(() => {
-                const active =
-                  trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
-                if (!active) return null;
-                const key = `${active.region.toLowerCase()}|${active.realm.toLowerCase()}|${active.name.toLowerCase()}`;
-                const ts = lastRefreshedByCharacter[key];
-                if (!ts) return null;
-                return (
-                  <p className="mb-2 text-[11px] text-zinc-500">
-                    Last refreshed at {new Date(ts).toLocaleString()}
-                  </p>
-                );
-              })()}
-              <div>
-                {mainCharacterOpen && trackedCharacters.length === 0 ? (
-                  <p className="text-sm text-zinc-500">
-                    No tracked characters yet. Open a character and click Track Character.
-                  </p>
-                ) : mainCharacterOpen && trackedCharacters.length > 0 ? (
-                  (() => {
-                    const active =
-                      trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
-                    if (!active) return null;
-                    return (
-                      <div className={`space-y-2 ${trackedCompact ? 'text-[13px]' : ''}`}>
-                        <div className={`flex flex-wrap ${trackedCompact ? 'gap-1.5' : 'gap-2'}`}>
-                          {trackedCharacters.map((c, idx) => (
+                {(() => {
+                  const active =
+                    trackedCharacters[Math.min(activeTrackedIndex, trackedCharacters.length - 1)];
+                  if (!active) return null;
+                  const key = `${active.region.toLowerCase()}|${active.realm.toLowerCase()}|${active.name.toLowerCase()}`;
+                  const ts = lastRefreshedByCharacter[key];
+                  if (!ts) return null;
+                  return (
+                    <p className="mb-2 text-[11px] text-zinc-500">
+                      Last refreshed at {new Date(ts).toLocaleString()}
+                    </p>
+                  );
+                })()}
+                <div>
+                  {mainCharacterOpen && trackedCharacters.length === 0 ? (
+                    <p className="text-sm text-zinc-500">
+                      No tracked characters yet. Open a character and click Track Character.
+                    </p>
+                  ) : mainCharacterOpen && trackedCharacters.length > 0 ? (
+                    (() => {
+                      const active =
+                        trackedCharacters[
+                          Math.min(activeTrackedIndex, trackedCharacters.length - 1)
+                        ];
+                      if (!active) return null;
+                      return (
+                        <div className={`space-y-2 ${trackedCompact ? 'text-[13px]' : ''}`}>
+                          <div className={`flex flex-wrap ${trackedCompact ? 'gap-1.5' : 'gap-2'}`}>
+                            {trackedCharacters.map((c, idx) => (
+                              <div
+                                key={`${c.region}|${c.realm}|${c.name}`}
+                                onPointerEnter={() => {
+                                  const currentDragged = draggedTrackedIndexRef.current;
+                                  if (currentDragged == null || currentDragged === idx) return;
+                                  moveTrackedCharacter(currentDragged, idx);
+                                  setDraggedTrackedIndex(idx);
+                                  setDragOverTrackedIndex(idx);
+                                }}
+                                className={`inline-flex items-center rounded-md border transition-all duration-200 ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'} ${draggedTrackedIndex === idx ? 'pointer-events-none opacity-0' : ''} ${dragOverTrackedIndex === idx && draggedTrackedIndex !== idx ? 'border-gold/50' : ''}`}
+                                style={{
+                                  cursor: draggedTrackedIndex != null ? 'grabbing' : 'grab',
+                                }}
+                              >
+                                {(() => {
+                                  const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
+                                  const className = trackedClassByCharacter[key];
+                                  const classColor = className
+                                    ? CLASS_COLORS[
+                                        className.toLowerCase().replace(/[\s-]+/g, '_')
+                                      ] || '#d4d4d8'
+                                    : '#d4d4d8';
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveTrackedIndex(idx)}
+                                      onPointerDown={(e) => {
+                                        if (e.button !== 0) return;
+                                        const rect = (e.currentTarget as HTMLButtonElement)
+                                          .closest('div')
+                                          ?.getBoundingClientRect();
+                                        if (rect) {
+                                          pendingDragRef.current = {
+                                            idx,
+                                            startX: e.clientX,
+                                            startY: e.clientY,
+                                            offsetX: e.clientX - rect.left,
+                                            offsetY: e.clientY - rect.top,
+                                            width: rect.width,
+                                            label: c.name,
+                                            color: classColor,
+                                          };
+                                        }
+                                      }}
+                                      className={`px-2 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
+                                      style={{ color: classColor }}
+                                      title="Drag to reorder"
+                                    >
+                                      {c.name}
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                            ))}
+                          </div>
+                          {dragPointer && (
                             <div
-                              key={`${c.region}|${c.realm}|${c.name}`}
-                              onPointerEnter={() => {
-                                const currentDragged = draggedTrackedIndexRef.current;
-                                if (currentDragged == null || currentDragged === idx) return;
-                                moveTrackedCharacter(currentDragged, idx);
-                                setDraggedTrackedIndex(idx);
-                                setDragOverTrackedIndex(idx);
+                              className="pointer-events-none fixed z-[90] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
+                              style={{
+                                left: dragPointer.x - dragPointer.offsetX,
+                                top: dragPointer.y - dragPointer.offsetY - 8,
+                                width: dragPointer.width,
+                                transform: 'translateY(-4px) rotate(-2deg) scale(1.06)',
+                                color: dragPointer.color,
                               }}
-                              className={`inline-flex items-center rounded-md border transition-all duration-200 ${idx === activeTrackedIndex ? 'border-gold/40 bg-gold/10' : 'border-border bg-surface-2'} ${draggedTrackedIndex === idx ? 'pointer-events-none opacity-0' : ''} ${dragOverTrackedIndex === idx && draggedTrackedIndex !== idx ? 'border-gold/50' : ''}`}
-                              style={{ cursor: draggedTrackedIndex != null ? 'grabbing' : 'grab' }}
                             >
-                              {(() => {
-                                const key = `${c.region.toLowerCase()}|${c.realm.toLowerCase()}|${c.name.toLowerCase()}`;
-                                const className = trackedClassByCharacter[key];
-                                const classColor = className
-                                  ? CLASS_COLORS[className.toLowerCase().replace(/[\s-]+/g, '_')] ||
-                                    '#d4d4d8'
-                                  : '#d4d4d8';
-                                return (
-                                  <button
-                                    type="button"
-                                    onClick={() => setActiveTrackedIndex(idx)}
-                                    onPointerDown={(e) => {
-                                      if (e.button !== 0) return;
-                                      const rect = (e.currentTarget as HTMLButtonElement)
-                                        .closest('div')
-                                        ?.getBoundingClientRect();
-                                      if (rect) {
-                                        pendingDragRef.current = {
-                                          idx,
-                                          startX: e.clientX,
-                                          startY: e.clientY,
-                                          offsetX: e.clientX - rect.left,
-                                          offsetY: e.clientY - rect.top,
-                                          width: rect.width,
-                                          label: c.name,
-                                          color: classColor,
-                                        };
-                                      }
-                                    }}
-                                    className={`px-2 py-1 text-xs ${idx === activeTrackedIndex ? 'font-semibold' : 'hover:text-zinc-100'}`}
-                                    style={{ color: classColor }}
-                                    title="Drag to reorder"
-                                  >
-                                    {c.name}
-                                  </button>
-                                );
-                              })()}
+                              {dragPointer.label}
                             </div>
-                          ))}
-                        </div>
-                        {dragPointer && (
+                          )}
                           <div
-                            className="pointer-events-none fixed z-[90] inline-flex items-center rounded-md border border-gold/60 bg-[#14151d]/95 px-2.5 py-1 text-xs font-semibold shadow-[0_12px_24px_rgba(0,0,0,0.45)] transition-transform duration-150"
-                            style={{
-                              left: dragPointer.x - dragPointer.offsetX,
-                              top: dragPointer.y - dragPointer.offsetY - 8,
-                              width: dragPointer.width,
-                              transform: 'translateY(-4px) rotate(-2deg) scale(1.06)',
-                              color: dragPointer.color,
-                            }}
+                            className={`flex flex-wrap items-center gap-2 text-zinc-200 ${trackedCompact ? 'text-[13px]' : 'text-sm'}`}
                           >
-                            {dragPointer.label}
-                          </div>
-                        )}
-                        <div
-                          className={`flex flex-wrap items-center gap-2 text-zinc-200 ${trackedCompact ? 'text-[13px]' : 'text-sm'}`}
-                        >
-                          <span className="font-semibold">
-                            {
-                              trackedCharacters[
+                            <span className="font-semibold">
+                              {
+                                trackedCharacters[
+                                  Math.min(activeTrackedIndex, trackedCharacters.length - 1)
+                                ]?.name
+                              }
+                            </span>
+                            <span className="text-zinc-500">
+                              {' '}
+                              ·{' '}
+                              {
+                                trackedCharacters[
+                                  Math.min(activeTrackedIndex, trackedCharacters.length - 1)
+                                ]?.realm
+                              }{' '}
+                              ·{' '}
+                              {trackedCharacters[
                                 Math.min(activeTrackedIndex, trackedCharacters.length - 1)
-                              ]?.name
-                            }
-                          </span>
-                          <span className="text-zinc-500">
-                            {' '}
-                            ·{' '}
-                            {
-                              trackedCharacters[
-                                Math.min(activeTrackedIndex, trackedCharacters.length - 1)
-                              ]?.realm
-                            }{' '}
-                            ·{' '}
-                            {trackedCharacters[
-                              Math.min(activeTrackedIndex, trackedCharacters.length - 1)
-                            ]?.region.toUpperCase()}
-                          </span>
-                        </div>
-                        <CharacterQuickLinks
-                          armoryUrl={`https://${active.region.toLowerCase()}.battle.net/wow/en/character/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
-                          warcraftLogsUrl={`https://www.warcraftlogs.com/character/${active.region.toLowerCase()}/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
-                          raiderIoUrl={`https://raider.io/characters/${active.region.toLowerCase()}/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
-                        />
-                        <div
-                          className={`grid gap-2 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
-                        >
-                          <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                            Level:{' '}
-                            <span className="font-semibold text-zinc-100">
-                              {mainMeta?.level ?? '-'}
+                              ]?.region.toUpperCase()}
                             </span>
                           </div>
-                          <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                            Class:{' '}
-                            <span className="font-semibold text-zinc-100">
-                              {mainMeta?.className ?? '-'}
-                            </span>
+                          <CharacterQuickLinks
+                            armoryUrl={`https://${active.region.toLowerCase()}.battle.net/wow/en/character/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
+                            warcraftLogsUrl={`https://www.warcraftlogs.com/character/${active.region.toLowerCase()}/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
+                            raiderIoUrl={`https://raider.io/characters/${active.region.toLowerCase()}/${active.realm.toLowerCase()}/${active.name.toLowerCase()}`}
+                          />
+                          <div
+                            className={`grid gap-2 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
+                          >
+                            <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                              Level:{' '}
+                              <span className="font-semibold text-zinc-100">
+                                {mainMeta?.level ?? '-'}
+                              </span>
+                            </div>
+                            <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                              Class:{' '}
+                              <span className="font-semibold text-zinc-100">
+                                {mainMeta?.className ?? '-'}
+                              </span>
+                            </div>
+                            <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
+                              iLvl:{' '}
+                              <span className="font-semibold text-zinc-100">
+                                {mainMeta?.ilvl ?? '-'}
+                              </span>
+                            </div>
                           </div>
-                          <div className="rounded border border-white/10 bg-black/20 p-2 text-xs text-zinc-300">
-                            iLvl:{' '}
-                            <span className="font-semibold text-zinc-100">
-                              {mainMeta?.ilvl ?? '-'}
-                            </span>
+                          <div
+                            className={`grid grid-cols-1 gap-2 ${trackedCompact ? '' : 'md:grid-cols-2'}`}
+                          >
+                            <div className="rounded border border-white/10 bg-black/20 p-2">
+                              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                                Mythic+ Vault
+                              </p>
+                              <div
+                                className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
+                              >
+                                {MYTHIC_VAULT_THRESHOLDS.map((threshold, idx) => {
+                                  const current = mainVault?.mplusRuns ?? 0;
+                                  const unlocked = current >= threshold;
+                                  const progress = Math.min(1, current / threshold);
+                                  return (
+                                    <div
+                                      key={`main-mplus-${threshold}`}
+                                      className="rounded border border-white/10 bg-black/25 p-1.5"
+                                    >
+                                      <div className="mb-1 flex items-center justify-between text-[11px]">
+                                        <span className="font-semibold text-zinc-200">
+                                          Slot {idx + 1}
+                                        </span>
+                                        <span
+                                          className={
+                                            unlocked
+                                              ? 'font-bold text-emerald-400'
+                                              : 'text-zinc-500'
+                                          }
+                                        >
+                                          {unlocked
+                                            ? 'Unlocked'
+                                            : `${Math.max(0, threshold - current)} more`}
+                                        </span>
+                                      </div>
+                                      <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                                        <div
+                                          className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                                          style={{ width: `${Math.max(6, progress * 100)}%` }}
+                                        />
+                                      </div>
+                                      <p className="mt-1 text-[10px] text-zinc-500">
+                                        Requires {threshold} runs
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="mt-2 text-[11px] text-zinc-500">
+                                {mainVault?.mplusRuns ?? 0} runs completed this week.
+                              </p>
+                            </div>
+                            <div className="rounded border border-white/10 bg-black/20 p-2">
+                              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
+                                Raid Vault
+                              </p>
+                              <div
+                                className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
+                              >
+                                {RAID_VAULT_THRESHOLDS.map((threshold, idx) => {
+                                  const current = mainVault?.raidKills ?? 0;
+                                  const unlocked = current >= threshold;
+                                  const progress = Math.min(1, current / threshold);
+                                  return (
+                                    <div
+                                      key={`main-raid-${threshold}`}
+                                      className="rounded border border-white/10 bg-black/25 p-1.5"
+                                    >
+                                      <div className="mb-1 flex items-center justify-between text-[11px]">
+                                        <span className="font-semibold text-zinc-200">
+                                          Slot {idx + 1}
+                                        </span>
+                                        <span
+                                          className={
+                                            unlocked
+                                              ? 'font-bold text-emerald-400'
+                                              : 'text-zinc-500'
+                                          }
+                                        >
+                                          {unlocked
+                                            ? 'Unlocked'
+                                            : `${Math.max(0, threshold - current)} more`}
+                                        </span>
+                                      </div>
+                                      <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                                        <div
+                                          className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
+                                          style={{ width: `${Math.max(6, progress * 100)}%` }}
+                                        />
+                                      </div>
+                                      <p className="mt-1 text-[10px] text-zinc-500">
+                                        Requires {threshold} boss kills
+                                      </p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="mt-2 text-[11px] text-zinc-500">
+                                {mainVault?.raidKills ?? 0} boss kills completed this week.
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <div
-                          className={`grid grid-cols-1 gap-2 ${trackedCompact ? '' : 'md:grid-cols-2'}`}
-                        >
-                          <div className="rounded border border-white/10 bg-black/20 p-2">
-                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                              Mythic+ Vault
-                            </p>
-                            <div
-                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
+                          {mainVaultRewards.length > 0 && (
+                            <div className="rounded border border-white/10 bg-black/20 p-2">
+                              <div className="mb-2 text-xs font-semibold text-zinc-200">
+                                Vault Rewards
+                              </div>
+                              <VaultRewardsGrid items={mainVaultRewards} />
+                            </div>
+                          )}
+                          <div className={`flex flex-wrap gap-2 ${trackedCompact ? 'pt-1' : ''}`}>
+                            <Link
+                              href={characterHref(active.region, active.realm, active.name)}
+                              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
                             >
-                              {MYTHIC_VAULT_THRESHOLDS.map((threshold, idx) => {
-                                const current = mainVault?.mplusRuns ?? 0;
-                                const unlocked = current >= threshold;
-                                const progress = Math.min(1, current / threshold);
-                                return (
-                                  <div
-                                    key={`main-mplus-${threshold}`}
-                                    className="rounded border border-white/10 bg-black/25 p-1.5"
-                                  >
-                                    <div className="mb-1 flex items-center justify-between text-[11px]">
-                                      <span className="font-semibold text-zinc-200">
-                                        Slot {idx + 1}
-                                      </span>
-                                      <span
-                                        className={
-                                          unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'
-                                        }
-                                      >
-                                        {unlocked
-                                          ? 'Unlocked'
-                                          : `${Math.max(0, threshold - current)} more`}
-                                      </span>
-                                    </div>
-                                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                                      <div
-                                        className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                                        style={{ width: `${Math.max(6, progress * 100)}%` }}
-                                      />
-                                    </div>
-                                    <p className="mt-1 text-[10px] text-zinc-500">
-                                      Requires {threshold} runs
-                                    </p>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <p className="mt-2 text-[11px] text-zinc-500">
-                              {mainVault?.mplusRuns ?? 0} runs completed this week.
-                            </p>
-                          </div>
-                          <div className="rounded border border-white/10 bg-black/20 p-2">
-                            <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-zinc-500">
-                              Raid Vault
-                            </p>
-                            <div
-                              className={`grid gap-1.5 ${trackedCompact ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-3'}`}
+                              Open Character
+                            </Link>
+                            <button
+                              onClick={() => openMainWorkflow('/quick-sim')}
+                              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
                             >
-                              {RAID_VAULT_THRESHOLDS.map((threshold, idx) => {
-                                const current = mainVault?.raidKills ?? 0;
-                                const unlocked = current >= threshold;
-                                const progress = Math.min(1, current / threshold);
-                                return (
-                                  <div
-                                    key={`main-raid-${threshold}`}
-                                    className="rounded border border-white/10 bg-black/25 p-1.5"
-                                  >
-                                    <div className="mb-1 flex items-center justify-between text-[11px]">
-                                      <span className="font-semibold text-zinc-200">
-                                        Slot {idx + 1}
-                                      </span>
-                                      <span
-                                        className={
-                                          unlocked ? 'font-bold text-emerald-400' : 'text-zinc-500'
-                                        }
-                                      >
-                                        {unlocked
-                                          ? 'Unlocked'
-                                          : `${Math.max(0, threshold - current)} more`}
-                                      </span>
-                                    </div>
-                                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                                      <div
-                                        className={`h-full rounded-full ${unlocked ? 'bg-emerald-400' : 'bg-gold/70'}`}
-                                        style={{ width: `${Math.max(6, progress * 100)}%` }}
-                                      />
-                                    </div>
-                                    <p className="mt-1 text-[10px] text-zinc-500">
-                                      Requires {threshold} boss kills
-                                    </p>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <p className="mt-2 text-[11px] text-zinc-500">
-                              {mainVault?.raidKills ?? 0} boss kills completed this week.
-                            </p>
+                              Run Sim
+                            </button>
+                            <button
+                              onClick={() => openMainWorkflow('/top-gear')}
+                              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                            >
+                              Top Gear
+                            </button>
+                            <Link
+                              href={characterHref(
+                                active.region,
+                                active.realm,
+                                active.name,
+                                'vault'
+                              )}
+                              className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
+                            >
+                              Open Vault
+                            </Link>
                           </div>
                         </div>
-                        {mainVaultRewards.length > 0 && (
-                          <div className="rounded border border-white/10 bg-black/20 p-2">
-                            <div className="mb-2 text-xs font-semibold text-zinc-200">
-                              Vault Rewards
-                            </div>
-                            <VaultRewardsGrid items={mainVaultRewards} />
-                          </div>
-                        )}
-                        <div className={`flex flex-wrap gap-2 ${trackedCompact ? 'pt-1' : ''}`}>
-                          <Link
-                            href={characterHref(active.region, active.realm, active.name)}
-                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
-                          >
-                            Open Character
-                          </Link>
-                          <button
-                            onClick={() => openMainWorkflow('/quick-sim')}
-                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
-                          >
-                            Run Sim
-                          </button>
-                          <button
-                            onClick={() => openMainWorkflow('/top-gear')}
-                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
-                          >
-                            Top Gear
-                          </button>
-                          <Link
-                            href={characterHref(active.region, active.realm, active.name, 'vault')}
-                            className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-zinc-200 hover:bg-surface"
-                          >
-                            Open Vault
-                          </Link>
-                        </div>
-                      </div>
-                    );
-                  })()
-                ) : null}
-              </div>
-            </section>
-          </>
-        )}
+                      );
+                    })()
+                  ) : null}
+                </div>
+              </section>
+            </>
+          )}
       </div>
       {draggingWidgetId && dashboardDragPointer && (
         <div

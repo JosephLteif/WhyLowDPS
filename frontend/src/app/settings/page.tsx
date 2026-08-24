@@ -23,15 +23,20 @@ import DiscordWebhookSettings from './components/DiscordWebhookSettings';
 import LocalBackupSection from './components/LocalBackupSection';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
+import ReadinessPanel from '../components/ReadinessPanel';
+import { APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { CHANGELOG_HISTORY_URL } from '../lib/changelog';
 import {
   fetchSimcRuntimeInfo,
   fetchSimcRuntimeVersions,
+  SIMC_RUNTIME_UPDATED_EVENT,
   type SimcRuntimeInfo,
   type SimcRuntimeVersionOption,
 } from '../lib/simc-runtime-release';
 import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
+import { fetchReadiness, type ReadinessSnapshot } from '../lib/readiness';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3 },
@@ -68,7 +73,7 @@ type LanDevice = {
   active: boolean;
 };
 
-type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
+type SettingsTab = 'health' | 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
 
 function formatLanDeviceDate(timestamp?: number | null): string {
   if (!timestamp) return 'Never';
@@ -165,6 +170,12 @@ export default function SettingsPage() {
   const [simcRuntimeVersionsLoading, setSimcRuntimeVersionsLoading] = useState(false);
   const [simcRuntimeInfoLoading, setSimcRuntimeInfoLoading] = useState(false);
   const [simcRuntimeDownloading, setSimcRuntimeDownloading] = useState(false);
+  const [readiness, setReadiness] = useState<ReadinessSnapshot | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [readinessActionBusy, setReadinessActionBusy] = useState<
+    'refresh' | 'retry' | 'repair' | null
+  >(null);
   const {
     updateCheckState,
     updateMessage,
@@ -181,6 +192,39 @@ export default function SettingsPage() {
   } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
   const simcRuntimeControlAvailable =
     isDesktop || (isHostedPrivate && user?.role === 'admin');
+
+  const refreshReadiness = useCallback(async () => {
+    setReadinessLoading(true);
+    setReadinessError(null);
+    try {
+      setReadiness(await fetchReadiness());
+    } catch (err) {
+      setReadiness(null);
+      setReadinessError(err instanceof Error ? err.message : 'Failed to read system health.');
+    } finally {
+      setReadinessLoading(false);
+    }
+  }, []);
+
+  const retryReadinessData = useCallback(async () => {
+    setReadinessActionBusy('retry');
+    try {
+      await refreshDataCache();
+      await refreshReadiness();
+    } finally {
+      setReadinessActionBusy(null);
+    }
+  }, [refreshDataCache, refreshReadiness]);
+
+  const repairReadinessData = useCallback(async () => {
+    setReadinessActionBusy('repair');
+    try {
+      await downloadAllMissingFiles();
+      await refreshReadiness();
+    } finally {
+      setReadinessActionBusy(null);
+    }
+  }, [downloadAllMissingFiles, refreshReadiness]);
 
   useEffect(() => {
     if (authLoading) {
@@ -216,12 +260,16 @@ export default function SettingsPage() {
   }, [authLoading, user, router, setMaxCombinations, setThreads]);
 
   useEffect(() => {
+    if (!authLoading && user) void refreshReadiness();
+  }, [authLoading, refreshReadiness, user]);
+
+  useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get(
       'tab'
     ) as SettingsTab | null;
     if (
       requestedTab &&
-      ['simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)
+      ['health', 'simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)
     ) {
       setActiveTab(requestedTab);
     }
@@ -753,6 +801,7 @@ export default function SettingsPage() {
       }
       setSelectedSimcChannelState(savedChannel);
       setSelectedSimcRuntimeVersionState(null);
+      window.dispatchEvent(new Event(SIMC_RUNTIME_UPDATED_EVENT));
     } catch (err: any) {
       setSelectedSimcChannelState(previous);
       setSimcChannelMessage({
@@ -836,6 +885,7 @@ export default function SettingsPage() {
         });
       }
       const version = status?.version ? ` (${status.version})` : '';
+      window.dispatchEvent(new Event(SIMC_RUNTIME_UPDATED_EVENT));
       setSimcChannelMessage({
         type: 'success',
         text: status?.updated
@@ -879,6 +929,7 @@ export default function SettingsPage() {
 
       <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-2">
         {[
+          { id: 'health', label: 'Health' },
           { id: 'simulation', label: 'Simulation' },
           { id: 'integrations', label: 'Integrations' },
           { id: 'data', label: 'Data Cache' },
@@ -918,8 +969,19 @@ export default function SettingsPage() {
           </div>
           <span className="text-[11px] text-zinc-600">Use Ctrl K to search these actions</span>
         </div>
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
           {[
+            {
+              tab: 'health' as const,
+              label: 'System health',
+              status: readinessLoading
+                ? 'Checking…'
+                : readiness?.status === 'ready'
+                  ? 'Ready'
+                  : readiness
+                    ? 'Needs attention'
+                    : 'Unavailable',
+            },
             {
               tab: 'simulation' as const,
               label: 'Simulation setup',
@@ -957,6 +1019,22 @@ export default function SettingsPage() {
           ))}
         </div>
       </section>
+
+      {activeTab === 'health' && (
+        <ReadinessPanel
+          variant="details"
+          snapshot={readiness}
+          loading={readinessLoading}
+          error={readinessError}
+          authenticated={Boolean(user)}
+          lightMode={false}
+          onRefresh={() => void refreshReadiness()}
+          onRetryData={() => void retryReadinessData()}
+          onRepairData={() => void repairReadinessData()}
+          onViewData={() => void viewDataStates()}
+          actionBusy={readinessActionBusy}
+        />
+      )}
 
       {activeTab === 'simulation' && (
         <div id="settings-panel-simulation">
@@ -1412,12 +1490,83 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'about' && (
-        <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
-          <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
-          <p className="text-sm text-zinc-400">
-            Your credentials are used solely to fetch character data directly from Blizzard. They
-            are stored in on your device and are never shared with third parties.
-          </p>
+        <section className="space-y-6 rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
+              About WhyLowDPS
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-white">
+              Simulation tools with clear setup
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">
+              WhyLowDPS helps you understand character performance with repeatable SimulationCraft
+              runs and Blizzard character data. The app reports the local setup state so you can
+              repair the next blocker without guessing.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-border/60 bg-surface-2/50 p-4">
+              <p className="text-xs text-zinc-500">Version</p>
+              <p className="mt-1 font-semibold text-zinc-100">
+                {readiness?.app.version || APP_VERSION_WITH_PREFIX}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Revision {readiness?.app.revision || 'unknown'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-surface-2/50 p-4">
+              <p className="text-xs text-zinc-500">Deployment mode</p>
+              <p className="mt-1 font-semibold capitalize text-zinc-100">
+                {readiness?.app.mode || 'unknown'}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Runtime and data remain scoped to this installation or hosted server.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-surface-2/50 p-4">
+            <h3 className="font-semibold text-zinc-100">Privacy and security</h3>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              Blizzard credentials are stored using the app&apos;s existing protected credential
+              flow and are used only for the integrations you enable. Readiness checks expose status
+              and counts, never secrets or local filesystem paths. LAN access remains paired and
+              scoped to the devices you approve.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <a
+              className="text-gold hover:underline"
+              href="https://github.com/JosephLteif/WhyLowDPS"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Documentation
+            </a>
+            <a
+              className="text-gold hover:underline"
+              href={CHANGELOG_HISTORY_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Changelog history
+            </a>
+            <a
+              className="text-gold hover:underline"
+              href="https://github.com/JosephLteif/WhyLowDPS/blob/main/CHANGELOG.md"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Repository changelog
+            </a>
+            <a
+              className="text-gold hover:underline"
+              href="https://github.com/JosephLteif/WhyLowDPS/issues"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Support and issue tracker
+            </a>
+          </div>
         </section>
       )}
 

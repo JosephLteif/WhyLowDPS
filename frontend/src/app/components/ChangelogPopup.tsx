@@ -1,18 +1,18 @@
 'use client';
 
 import { X } from 'lucide-react';
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
   CHANGELOG_CATEGORY_LABELS,
   CHANGELOG_CATEGORY_ORDER,
+  CHANGELOG_HISTORY_URL,
   LATEST_CHANGELOG_RELEASE,
   type ChangelogCategory,
 } from '../lib/changelog';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
-export const CHANGELOG_CONTENT_REVISION = 9;
+export const CHANGELOG_CONTENT_REVISION = 10;
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 const releaseNotes = LATEST_CHANGELOG_RELEASE.entries;
@@ -129,12 +129,14 @@ export default function ChangelogPopup() {
         </article>
 
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 p-5 sm:px-6">
-          <Link
-            href="/changelog"
+          <a
+            href={CHANGELOG_HISTORY_URL}
+            target="_blank"
+            rel="noreferrer"
             className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
           >
-            View full changelog
-          </Link>
+            View changelog history
+          </a>
           <button
             type="button"
             onClick={dismiss}

@@ -1,8 +1,8 @@
 # What's New History
 
-This is the append-only archive for the in-app What's New experience and the public changelog page. The popup intentionally shows only the latest update; older versions remain available here and at their repository release tags.
+This is the append-only archive for the public GitHub Pages changelog. The app popup intentionally shows only the latest update; older versions remain available on the Pages archive and at their repository release tags.
 
-When a release ships, add a dated version section below and update the structured release data in `frontend/src/app/lib/changelog.ts`. Keep the version, date, category headings, and user-facing wording aligned between both files.
+When a release ships, add a dated version section below. The GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
 
 ## Unreleased — 2026-08-22
 

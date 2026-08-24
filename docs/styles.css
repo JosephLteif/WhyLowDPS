@@ -265,6 +265,25 @@ code { padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; back
 .actions-centered { justify-content: center; }
 .cta-note { margin: 24px 0 0; color: var(--text-muted); font-size: .8rem; }
 
+.history-page { min-height: 70vh; padding: clamp(70px, 9vw, 125px) 0; }
+.history-hero { max-width: 760px; margin-bottom: 52px; }
+.history-hero h1 { margin-bottom: 18px; }
+.history-hero > p:last-child { max-width: 650px; color: var(--text-soft); font-size: 1.06rem; line-height: 1.65; }
+.history-content { color: var(--text-soft); font-size: .94rem; line-height: 1.7; }
+.history-content > p { max-width: 760px; }
+.history-content h2 { margin: 64px 0 22px; padding: 18px 20px; border: 1px solid rgba(212, 168, 67, .32); border-radius: var(--radius-md); background: linear-gradient(135deg, rgba(212, 168, 67, .11), transparent 70%), var(--surface-subtle); color: var(--text); font-size: clamp(1.45rem, 3vw, 2rem); }
+.history-content h2:first-child { margin-top: 0; }
+.history-content h3 { margin: 31px 0 10px; color: var(--accent-bright); font-size: .75rem; letter-spacing: .14em; text-transform: uppercase; }
+.history-content h4 { margin: 21px 0 5px; color: var(--text); font-size: 1.05rem; }
+.history-content ul { display: grid; gap: 7px; margin: 10px 0 19px; padding-left: 22px; }
+.history-content a, .history-source a { color: var(--accent-bright); text-decoration: underline; text-decoration-color: rgba(243, 204, 104, .5); text-underline-offset: 3px; }
+.history-table-wrap { overflow-x: auto; margin-top: 20px; border: 1px solid var(--line); border-radius: var(--radius-md); }
+.history-content table { width: 100%; min-width: 540px; border-collapse: collapse; background: var(--surface-subtle); font-size: .86rem; }
+.history-content th, .history-content td { padding: 11px 14px; border-bottom: 1px solid var(--line); text-align: left; }
+.history-content th { color: var(--accent-bright); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; }
+.history-content tr:last-child td { border-bottom: 0; }
+.history-source { margin-top: 52px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--text-muted); font-size: .82rem; }
+
 .site-footer { padding: 43px 0 28px; border-top: 1px solid var(--line); background: #06070a; }
 .footer-layout { display: flex; align-items: flex-start; justify-content: space-between; gap: 40px; }
 .footer-brand p { max-width: 300px; margin: 12px 0 0; color: var(--text-muted); font-size: .84rem; }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,6 +25,7 @@ import IntegrationsSettingsSection from './components/IntegrationsSettingsSectio
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
 import ReadinessPanel from '../components/ReadinessPanel';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { CHANGELOG_HISTORY_URL } from '../lib/changelog';
 import {
   fetchSimcRuntimeInfo,
   fetchSimcRuntimeVersions,
@@ -1542,9 +1542,14 @@ export default function SettingsPage() {
             >
               Documentation
             </a>
-            <Link className="text-gold hover:underline" href="/changelog">
-              Full changelog
-            </Link>
+            <a
+              className="text-gold hover:underline"
+              href={CHANGELOG_HISTORY_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Changelog history
+            </a>
             <a
               className="text-gold hover:underline"
               href="https://github.com/JosephLteif/WhyLowDPS/blob/main/CHANGELOG.md"

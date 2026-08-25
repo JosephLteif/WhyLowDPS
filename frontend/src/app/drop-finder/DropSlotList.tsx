@@ -2,6 +2,7 @@ import { type ReactNode, useMemo, useState } from 'react';
 import { Heart } from 'lucide-react';
 import type { DropItem, UpgradeTracks } from './types';
 import { getTrackInfo, itemMatchesActiveLootSpec, resolveUpgrade, QUALITY_COLORS } from './types';
+import WowIcon from '../components/shared/WowIcon';
 
 const SLOT_ORDER = [
   'Main Hand',
@@ -293,8 +294,8 @@ function DropItemCard({
           }}
           className="block"
         >
-          <img
-            src={`https://render.worldofwarcraft.com/icons/56/${item.icon}.jpg`}
+          <WowIcon
+            icon={item.icon}
             alt=""
             className={`h-8 w-8 rounded ${isOffSpec ? 'opacity-70' : ''}`}
           />

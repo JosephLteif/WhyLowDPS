@@ -189,9 +189,16 @@ export default function SettingsPage() {
     dockerReleases,
     dockerReleaseMetadataStatus,
     loadDockerReleases,
-  } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
-  const simcRuntimeControlAvailable =
-    isDesktop || (isHostedPrivate && user?.role === 'admin');
+    dockerUpdateStatus,
+    loadDockerUpdateStatus,
+    saveDockerUpdateSettings,
+    triggerDockerUpdate,
+  } = useSettingsUpdater({
+    performanceSaved,
+    hasUser: !!user,
+    isAdmin: user?.role === 'admin',
+  });
+  const simcRuntimeControlAvailable = isDesktop || (isHostedPrivate && user?.role === 'admin');
 
   const refreshReadiness = useCallback(async () => {
     setReadinessLoading(true);
@@ -870,14 +877,11 @@ export default function SettingsPage() {
           version: selectedSimcRuntimeVersion,
         });
       } else {
-        status = await fetchJson<SimcRuntimeStatusResponse>(
-          `${API_URL}/api/admin/simc-runtime`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ channel }),
-          }
-        );
+        status = await fetchJson<SimcRuntimeStatusResponse>(`${API_URL}/api/admin/simc-runtime`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel }),
+        });
         setSimcRuntimeInfo({
           channel: status?.channel === 'nightly' ? 'nightly' : 'weekly',
           version: status?.version || 'Unavailable',
@@ -1486,6 +1490,11 @@ export default function SettingsPage() {
           updateMessage={updateMessage}
           deploymentInfo={deploymentInfo}
           loadDockerReleases={loadDockerReleases}
+          dockerUpdateStatus={dockerUpdateStatus}
+          loadDockerUpdateStatus={loadDockerUpdateStatus}
+          saveDockerUpdateSettings={saveDockerUpdateSettings}
+          triggerDockerUpdate={triggerDockerUpdate}
+          dockerUpdateControlAvailable={isHostedPrivate && user?.role === 'admin'}
         />
       )}
 

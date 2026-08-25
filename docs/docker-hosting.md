@@ -128,6 +128,36 @@ The SQLite database, synchronized data, caches, saved encrypted credentials,
 and downloaded SimC runtime live in the Docker-managed `whylowdps-data` volume.
 Do not delete that volume during routine recreation, updates, or rollback.
 
+## Manage Docker application updates
+
+The default Compose deployment leaves application updates under host control. To
+enable the optional in-app update manager, add a long random token to
+`.env.docker`:
+
+```dotenv
+WHYLOWDPS_DOCKER_UPDATE_TOKEN=replace-with-a-long-random-token
+```
+
+Start the app with the `updates` profile so the label-scoped Watchtower
+companion is running:
+
+```shell
+docker compose --env-file .env.docker --profile updates up -d
+```
+
+An administrator can then use **Settings > Docker Updates** to choose **Manual**
+or **Automatic** updates and to press **Update now**. Automatic mode checks the
+published `:latest` image on the selected interval and recreates the app when a
+new digest is available. Manual mode only updates after an administrator starts
+the action. The app may briefly disconnect while its container is recreated.
+
+The companion is optional because it needs access to
+`/var/run/docker.sock`; that access can control the Docker daemon. It is scoped
+to the WhyLowDPS app by the Watchtower enable label, and its HTTP API is only
+available on the private Compose network. If you do not want to grant that
+access, leave the profile disabled and use the host-side commands below or
+Portainer.
+
 Multi-user releases use `/data/whylowdps-multi-user.db`. An earlier
 `/data/whylowdps.db` is intentionally left untouched as a legacy backup; old
 personal records are not imported automatically.
@@ -179,6 +209,10 @@ For a command-line deployment, the update operation is:
 docker compose --env-file .env.docker pull
 docker compose --env-file .env.docker up -d
 ```
+
+The in-app manager follows the same pull-and-recreate behavior through the
+optional Watchtower companion. It does not change `.env.docker`, the selected
+image tag, or the `whylowdps-data` volume.
 
 For Portainer or a similar manager, use the Compose image
 `ghcr.io/josephlteif/whylowdps:latest` and enable its registry polling or

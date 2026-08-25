@@ -30,6 +30,17 @@ export type SettingsStatusMessage = {
   text: string;
 };
 
+export type DockerUpdateMode = 'manual' | 'automatic';
+
+export type DockerUpdateStatus = {
+  available: boolean;
+  configured: boolean;
+  interval_minutes: number;
+  last_triggered_at: string | null;
+  manager: 'watchtower' | null;
+  mode: DockerUpdateMode;
+};
+
 export type DeploymentInfo = {
   mode?: string;
   version?: string;

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import UpdatesSettingsSection from './UpdatesSettingsSection';
 
@@ -220,7 +220,16 @@ describe('UpdatesSettingsSection', () => {
     expect(screen.queryByText('No older weekly versions found yet.')).toBeNull();
   });
 
-  it('shows Docker image tags and host-side update actions in hosted mode', () => {
+  it('shows Docker image tags and host-side update actions in hosted mode', async () => {
+    const triggerDockerUpdate = vi.fn().mockResolvedValue({
+      available: true,
+      configured: true,
+      interval_minutes: 1440,
+      last_triggered_at: '2026-06-22T00:00:00Z',
+      manager: 'watchtower',
+      mode: 'manual',
+    });
+
     render(
       <UpdatesSettingsSection
         selectedSimcChannel="weekly"
@@ -263,6 +272,16 @@ describe('UpdatesSettingsSection', () => {
         downloadAndInstallLatest={noop}
         updateMessage={null}
         deploymentInfo={{ mode: 'hosted', version: '3.3.0', revision: 'abc123' }}
+        dockerUpdateStatus={{
+          available: true,
+          configured: true,
+          interval_minutes: 1440,
+          last_triggered_at: null,
+          manager: 'watchtower',
+          mode: 'manual',
+        }}
+        dockerUpdateControlAvailable={true}
+        triggerDockerUpdate={triggerDockerUpdate}
       />
     );
 
@@ -281,7 +300,11 @@ describe('UpdatesSettingsSection', () => {
     expect(dockerCard?.contains(simcVersion)).toBe(false);
     expect(dockerCard?.contains(simcAsset)).toBe(false);
     expect(screen.getByRole('button', { name: 'Copy update commands' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Update now' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Docker update policy' })).toBeTruthy();
     expect(screen.getByRole('combobox', { name: 'SimC channel' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Update now' }));
+    await waitFor(() => expect(triggerDockerUpdate).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('Stable Version')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Download & Install' })).toBeNull();
   });

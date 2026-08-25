@@ -6,16 +6,26 @@ import {
   type AppReleaseInfo,
   type DockerImageReleaseInfo,
 } from '../lib/updater-release';
-import type { DeploymentInfo, SettingsStatusMessage } from './types';
+import type {
+  DeploymentInfo,
+  DockerUpdateMode,
+  DockerUpdateStatus,
+  SettingsStatusMessage,
+} from './types';
 
 type UpdateCheckState = 'idle' | 'checking' | 'installing';
 
 type UseSettingsUpdaterArgs = {
   performanceSaved: boolean;
   hasUser: boolean;
+  isAdmin?: boolean;
 };
 
-export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpdaterArgs) {
+export function useSettingsUpdater({
+  performanceSaved,
+  hasUser,
+  isAdmin = false,
+}: UseSettingsUpdaterArgs) {
   const [updateCheckState, setUpdateCheckState] = useState<UpdateCheckState>('idle');
   const [updateMessage, setUpdateMessage] = useState<SettingsStatusMessage | null>(null);
   const [appReleases, setAppReleases] = useState<AppReleaseInfo[]>([]);
@@ -28,6 +38,7 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
   const [dockerReleaseMetadataStatus, setDockerReleaseMetadataStatus] = useState<
     'available' | 'rate_limited' | 'unavailable'
   >('unavailable');
+  const [dockerUpdateStatus, setDockerUpdateStatus] = useState<DockerUpdateStatus | null>(null);
 
   useEffect(() => {
     const onUpdaterStatus = (event: Event) => {
@@ -104,10 +115,48 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     setDockerReleaseMetadataStatus(result.metadataStatus);
   }, []);
 
+  const loadDockerUpdateStatus = useCallback(async () => {
+    const result = await fetchJson<DockerUpdateStatus>(`${API_URL}/api/admin/docker-updates`, {
+      timeoutMs: 3000,
+    });
+    setDockerUpdateStatus(result);
+    return result;
+  }, []);
+
+  const saveDockerUpdateSettings = useCallback(
+    async (mode: DockerUpdateMode, intervalMinutes: number) => {
+      const result = await fetchJson<DockerUpdateStatus>(`${API_URL}/api/admin/docker-updates`, {
+        method: 'POST',
+        body: JSON.stringify({ mode, interval_minutes: intervalMinutes }),
+      });
+      setDockerUpdateStatus(result);
+      return result;
+    },
+    []
+  );
+
+  const triggerDockerUpdate = useCallback(async () => {
+    const result = await fetchJson<DockerUpdateStatus>(`${API_URL}/api/admin/docker-updates`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'update' }),
+      timeoutMs: 15000,
+    });
+    setDockerUpdateStatus(result);
+    return result;
+  }, []);
+
   useEffect(() => {
     if (isDesktop) void loadAppReleases();
     if (isHostedPrivate) void loadDockerReleases();
   }, [loadAppReleases, loadDockerReleases]);
+
+  useEffect(() => {
+    if (!isHostedPrivate || !isAdmin) {
+      setDockerUpdateStatus(null);
+      return;
+    }
+    void loadDockerUpdateStatus().catch(() => setDockerUpdateStatus(null));
+  }, [isAdmin, loadDockerUpdateStatus]);
 
   useEffect(() => {
     if (!isHostedPrivate) return;
@@ -158,6 +207,10 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     dockerReleases,
     dockerReleaseMetadataStatus,
     loadDockerReleases,
+    dockerUpdateStatus,
+    loadDockerUpdateStatus,
+    saveDockerUpdateSettings,
+    triggerDockerUpdate,
     checkForUpdatesNow,
     downloadAndInstallLatest,
   };

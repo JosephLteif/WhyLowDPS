@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [4.1.1] - 2026-08-25
+
 ### Fixed
 
 - Drop Finder item icons now use reliable fallback sources when a game icon endpoint is unavailable.

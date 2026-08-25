@@ -2,7 +2,18 @@
 
 This is the append-only archive for the public GitHub Pages changelog. The app popup intentionally shows only the latest update; older versions remain available on the Pages archive and at their repository release tags.
 
-When a release ships, add a dated version section below, then run `npm run sync:changelog`. The app consumes generated data from this file, and the GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
+Add new work under the `Unreleased` section. The release workflow promotes that section to the selected version and date, then the app consumes the synchronized data and the GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
+
+## Unreleased
+
+### Bug fixes
+
+#### Keep loot icons and selected tooltip details in sync
+
+Drop Finder item cards now keep their icons visible through reliable fallback sources, while Wowhead tooltips use the selected difficulty and upgrade level so item levels and stats match the card.
+
+- Show a fallback icon when a primary game icon source is unavailable.
+- Refresh tooltip data when the selected difficulty or upgrade level changes.
 
 ## v4.1.0 — 2026-08-24 — A clearer, more reliable simulation workspace
 
@@ -48,15 +59,6 @@ Readiness checks, staged data refreshes, managed runtime updates, and release me
 - See the current SimC channel and version in the admin sidebar when runtime controls are available.
 - Retry incomplete manifest or release metadata before activating a managed runtime update.
 - Validate runtime binaries before they are used for simulations.
-
-### Bug fixes
-
-#### Keep loot icons and selected tooltip details in sync
-
-Drop Finder item cards now keep their icons visible through reliable fallback sources, while Wowhead tooltips use the selected difficulty and upgrade level so item levels and stats match the card.
-
-- Show a fallback icon when a primary game icon source is unavailable.
-- Refresh tooltip data when the selected difficulty or upgrade level changes.
 
 ## v4.0.0 — 2026-08-21
 

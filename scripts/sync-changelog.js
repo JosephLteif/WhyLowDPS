@@ -43,33 +43,58 @@ function parseChangelogHistory(markdown) {
     entry = null;
   };
 
+  const finishRelease = () => {
+    finishEntry();
+    if (!release) return;
+
+    const { isUnreleased, ...parsedRelease } = release;
+    if (!isUnreleased || parsedRelease.entries.length > 0) {
+      releases.push(parsedRelease);
+    }
+    release = null;
+  };
+
   for (const rawLine of markdown.replace(/\r\n/g, '\n').split('\n')) {
     const line = rawLine.trim();
+    const unreleasedHeading = line.match(/^##\s+Unreleased(?:\s+—\s+(.+))?$/i);
     const releaseHeading = line.match(
       /^##\s+(v\d+\.\d+\.\d+)\s+—\s+(\d{4}-\d{2}-\d{2})(?:\s+—\s+(.+))?$/
     );
 
+    if (unreleasedHeading) {
+      finishRelease();
+      release = {
+        version: 'Unreleased',
+        date: '',
+        title: unreleasedHeading[1]?.trim() || 'Upcoming changes',
+        entries: [],
+        isUnreleased: true,
+      };
+      category = null;
+      continue;
+    }
+
     if (releaseHeading) {
-      finishEntry();
+      finishRelease();
       release = {
         version: releaseHeading[1],
         date: releaseHeading[2],
         title: releaseHeading[3]?.trim() || `Release notes for ${releaseHeading[1]}`,
         entries: [],
+        isUnreleased: false,
       };
-      releases.push(release);
       category = null;
       continue;
     }
 
     if (/^##\s+Release index$/.test(line)) {
-      finishEntry();
-      release = null;
+      finishRelease();
       category = null;
       continue;
     }
 
     if (!release || line === '') continue;
+    if (release.isUnreleased && /^No unreleased changes yet\.$/i.test(line)) continue;
 
     const categoryHeading = line.match(/^###\s+(.+)$/);
     if (categoryHeading) {
@@ -106,7 +131,7 @@ function parseChangelogHistory(markdown) {
     entry.summary.push(line);
   }
 
-  finishEntry();
+  finishRelease();
   if (releases.length === 0) throw new Error('No versioned changelog releases found.');
 
   for (const parsedRelease of releases) {

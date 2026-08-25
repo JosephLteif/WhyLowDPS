@@ -36,6 +36,14 @@ test("release workflow publishes latest and versioned tags and records rollback 
   assert.match(workflow, /whylowdps:latest.*docker-image\.txt/);
   assert.match(workflow, /whylowdps:%s.*docker-image\.txt/);
   assert.match(workflow, /whylowdps@%s.*docker-image\.txt/);
+  assert.match(
+    workflow,
+    /name: Promote Unreleased changelog[\s\S]*node scripts\/promote-changelog\.js[\s\S]*npm run sync:changelog/
+  );
+  assert.match(
+    workflow,
+    /git add[\s\S]*CHANGELOG\.md docs\/whats-new-history\.md frontend\/src\/app\/lib\/changelog\.generated\.json/
+  );
 });
 
 test("release workflow can republish an existing version without bumping it", () => {

@@ -37,6 +37,9 @@ on:
 jobs:
   bump-version-stable:
     if: github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump'
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -103,6 +106,9 @@ jobs:
         run: npm run check:changelog
 
       - name: Commit and tag release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -110,13 +116,19 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock CHANGELOG.md docs/whats-new-history.md frontend/src/app/lib/changelog.generated.json
           if git diff --cached --quiet; then
-            echo "No version changes detected; skipping commit/tag."
-            exit 0
+            echo "No version changes detected; refusing to publish without a release tag."
+            exit 1
           fi
           git commit -m "chore(release): bump version to v${{ steps.bump.outputs.new_version }}"
           git tag "v${{ steps.bump.outputs.new_version }}"
+          # Keep the release token for the master push so Pages still receives its push event.
+          # Push the tag with GITHUB_TOKEN so the tag cannot recursively start Release again.
           git push origin master
-          git push origin "v${{ steps.bump.outputs.new_version }}"
+          AUTH_HEADER="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH_HEADER}" \
+            push "https://github.com/${GITHUB_REPOSITORY}.git" "v${{ steps.bump.outputs.new_version }}"
+          echo "release_tag=v${{ steps.bump.outputs.new_version }}" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   validate_republish:
     if: github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish'
@@ -144,9 +156,10 @@ jobs:
       always() &&
       (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && needs.validate_republish.result == 'success')
       )
-    needs: validate_republish
+    needs: [bump-version-stable, validate_republish]
     permissions:
       contents: write
     strategy:
@@ -159,11 +172,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
 
       - name: setup node
         uses: actions/setup-node@v7
@@ -249,9 +262,10 @@ jobs:
       always() &&
       (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.result == 'success') ||
         (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && needs.validate_republish.result == 'success')
       )
-    needs: validate_republish
+    needs: [bump-version-stable, validate_republish]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -259,11 +273,11 @@ jobs:
     outputs:
       image_digest: ${{ steps.digest.outputs.image_digest }}
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -304,7 +318,7 @@ jobs:
           build-args: |
             WHYLOWDPS_DEPLOYMENT=hosted-private
             WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
-            WHYLOWDPS_REVISION=${{ github.sha }}
+            WHYLOWDPS_REVISION=${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_sha || github.sha }}
 
       - name: Smoke test container
         shell: bash
@@ -371,18 +385,19 @@ jobs:
       always() &&
       (
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.result == 'success') ||
       (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish')
       )
-    needs: [publish, publish-container]
+    needs: [publish, publish-container, bump-version-stable, validate_republish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.existing_version) || github.ref_name }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
 
       - name: Upload private-hosting release bundle
         shell: bash

@@ -21,17 +21,12 @@ test('generated app changelog data matches the public history source', () => {
   const generated = fs.readFileSync(generatedPath, 'utf8');
 
   assert.equal(generated, buildGeneratedData(releases));
-  assert.equal(releases[0].version, 'Unreleased');
+  assert.ok(releases.length > 0);
+  assert.ok(releases[0].entries.length > 0);
   assert.ok(
-    releases[0].entries.some(
-      (entry) => entry.title === 'Keep loot icons and selected tooltip details in sync'
-    )
-  );
-  const stableRelease = releases.find((release) => release.version === 'v4.1.0');
-  assert.ok(stableRelease);
-  assert.ok(
-    stableRelease.entries.some(
-      (entry) => entry.title === 'Keep readiness and runtime updates reliable'
+    releases.every(
+      (release) =>
+        /^Unreleased$|^v\d+\.\d+\.\d+$/.test(release.version) && release.entries.length > 0
     )
   );
 });

@@ -368,8 +368,11 @@ jobs:
 
   finalize-release:
     if: >-
+      always() &&
+      (
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
       (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish')
+      )
     needs: [publish, publish-container]
     runs-on: ubuntu-latest
     permissions:

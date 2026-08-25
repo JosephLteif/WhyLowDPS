@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@tailwindcss/postcss": "^4.3.3",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

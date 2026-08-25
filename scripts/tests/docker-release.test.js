@@ -51,6 +51,7 @@ test("release workflow publishes latest and versioned tags and records rollback 
     workflow,
     /git add[\s\S]*CHANGELOG\.md docs\/whats-new-history\.md frontend\/src\/app\/lib\/changelog\.generated\.json/
   );
+  assert.match(workflow, /finalize-release:[\s\S]*if:[\s\S]*always\(\) &&/);
 });
 
 test("release workflow can republish an existing version without bumping it", () => {

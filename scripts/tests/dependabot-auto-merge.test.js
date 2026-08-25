@@ -26,7 +26,7 @@ test("Dependabot auto-merge does not depend on a hard-coded reviewer", () => {
 
 test("Dependabot auto-merge enables squash auto-merge after metadata checks", () => {
   const workflow = readWorkflow();
-  const metadataStep = workflow.indexOf("dependabot/fetch-metadata@v2");
+  const metadataStep = workflow.indexOf("dependabot/fetch-metadata@v3");
   const mergeCommand = workflow.indexOf('gh pr merge "$PR_URL" --auto --squash');
 
   assert.notEqual(metadataStep, -1);

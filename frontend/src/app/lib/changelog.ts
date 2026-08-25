@@ -17,7 +17,7 @@ export type ChangelogRelease = {
 export const CHANGELOG_HISTORY_URL = 'https://josephlteif.github.io/WhyLowDPS/changelog.html';
 
 export const LATEST_CHANGELOG_RELEASE: ChangelogRelease = {
-  version: 'Unreleased',
+  version: 'v4.1.0',
   date: '2026-08-24',
   title: 'A clearer, more reliable simulation workspace',
   entries: [

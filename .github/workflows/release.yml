@@ -85,8 +85,22 @@ jobs:
           npm install --package-lock-only --prefix frontend
           echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Promote Unreleased changelog
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.new_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/promote-changelog.js \
+            --version "${NEW_VERSION}" \
+            --date "$(date -u +%F)"
+          npm run sync:changelog
+
       - name: Validate synchronized release version
         run: npm run verify:release -- "${{ steps.bump.outputs.new_version }}"
+
+      - name: Validate synchronized changelog
+        run: npm run check:changelog
 
       - name: Commit and tag release
         shell: bash
@@ -94,7 +108,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock
+          git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock CHANGELOG.md docs/whats-new-history.md frontend/src/app/lib/changelog.generated.json
           if git diff --cached --quiet; then
             echo "No version changes detected; skipping commit/tag."
             exit 0

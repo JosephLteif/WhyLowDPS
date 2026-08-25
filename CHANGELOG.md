@@ -6,11 +6,27 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
+### Fixed
+
+- Drop Finder item icons now use reliable fallback sources when a game icon endpoint is unavailable.
+- Wowhead loot tooltips now use the selected difficulty and upgrade level, keeping displayed item levels and stats aligned with the card.
+
+## [4.1.0] - 2026-08-24
+
 ### Added
 
 - Guided tours now cover the dashboard, simulation, upgrade, analysis, and loot workflows, with replay controls from the header help button.
 - Managed SimC runtime controls now expose weekly and nightly channels, available versions, runtime status, and binary validation before use.
 - The public changelog history is now generated and published as a versioned GitHub Pages archive linked from the app.
+
+### Changed
+
+- System Health is now an optional dashboard widget available from Customize, instead of taking a fixed block above the dashboard; detailed diagnostics remain in Settings > Health.
+
+## [4.0.0] - 2026-08-21
+
+### Added
+
 - Multi-user ownership is now the default in desktop and hosted modes: Battle.net users have separate simulations, routes, profiles, history, and browser state, while desktop Light mode remains a persistent device-local guest account.
 - Hosted user administration now supports a BattleTag allowlist, administrator/member roles, disabling access, and revoking active sessions.
 - Hosted Blizzard application credentials can be added, rotated, selected, or removed at runtime without restarting the deployment.
@@ -22,7 +38,6 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
-- System Health is now an optional dashboard widget available from Customize, instead of taking a fixed block above the dashboard; detailed diagnostics remain in Settings > Health.
 - Mobile UI layouts now adapt navigation, action bars, dense results, settings, and dialogs for narrow touch screens, including phone safe-area support and full-height mobile flows where useful.
 - Account switching now revokes the current session and starts a fresh Battle.net login; ordinary sessions persist securely across app and server restarts.
 - Account actions now live under one avatar menu with the BattleTag, My Characters, Switch account, and Manage Users options; the current admin account is protected from self-disable, sign-out, or role changes.

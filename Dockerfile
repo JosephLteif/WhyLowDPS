@@ -6,6 +6,8 @@ RUN npm ci --prefix frontend
 
 COPY frontend ./frontend
 COPY backend/resources ./backend/resources
+COPY docs/whats-new-history.md ./docs/whats-new-history.md
+COPY scripts/sync-changelog.js ./scripts/sync-changelog.js
 ARG WHYLOWDPS_DEPLOYMENT=hosted-private
 ENV NODE_ENV=production \
     WEB_STATIC_BUILD=true \

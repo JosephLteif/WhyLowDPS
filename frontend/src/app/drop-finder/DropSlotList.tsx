@@ -1,7 +1,9 @@
 import { type ReactNode, useMemo, useState } from 'react';
 import { Heart } from 'lucide-react';
+import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import type { DropItem, UpgradeTracks } from './types';
 import { getTrackInfo, itemMatchesActiveLootSpec, resolveUpgrade, QUALITY_COLORS } from './types';
+import WowIcon from '../components/shared/WowIcon';
 
 const SLOT_ORDER = [
   'Main Hand',
@@ -130,6 +132,8 @@ export default function DropSlotList({
     [visibleDrops]
   );
 
+  useWowheadTooltips([visibleDrops, difficulty, dungeonDiff, upgradeLevel, upgradeTracks]);
+
   return (
     <div data-tour="drop-finder-items" className="space-y-4">
       <div className="sticky top-[var(--app-header-height)] z-20 -mx-1 rounded-lg border border-border/70 bg-surface/95 px-2 py-2 shadow-md backdrop-blur-sm sm:px-3">
@@ -232,7 +236,8 @@ function DropItemCard({
 }) {
   const resolved = resolveUpgrade(item, difficulty, dungeonDiff, upgradeLevel, upgradeTracks);
   const trackInfo = getTrackInfo(item, difficulty, dungeonDiff);
-  const effectiveBonusId = trackInfo?.bonus_id;
+  const effectiveBonusId = resolved.bonus_id;
+  const wowheadData = `item=${item.item_id}${effectiveBonusId ? `&bonus=${effectiveBonusId}` : ''}`;
   const isOffSpec = item.off_spec === true;
   const upgradeLabel = trackInfo?.track
     ? `${trackInfo.track}${trackInfo.level ? ` ${trackInfo.level}` : ''}`
@@ -284,7 +289,7 @@ function DropItemCard({
       <div className="relative shrink-0">
         <a
           href={`https://www.wowhead.com/item=${item.item_id}`}
-          data-wowhead={`item=${item.item_id}${effectiveBonusId ? `&bonus=${effectiveBonusId}` : ''}`}
+          data-wowhead={wowheadData}
           target="_blank"
           rel="noreferrer"
           onClick={(e) => {
@@ -293,8 +298,8 @@ function DropItemCard({
           }}
           className="block"
         >
-          <img
-            src={`https://render.worldofwarcraft.com/icons/56/${item.icon}.jpg`}
+          <WowIcon
+            icon={item.icon}
             alt=""
             className={`h-8 w-8 rounded ${isOffSpec ? 'opacity-70' : ''}`}
           />
@@ -311,7 +316,7 @@ function DropItemCard({
       <div className={`min-w-0 ${isOffSpec ? 'opacity-70' : ''}`}>
         <a
           href={`https://www.wowhead.com/item=${item.item_id}`}
-          data-wowhead={`item=${item.item_id}${effectiveBonusId ? `&bonus=${effectiveBonusId}` : ''}`}
+          data-wowhead={wowheadData}
           target="_blank"
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}

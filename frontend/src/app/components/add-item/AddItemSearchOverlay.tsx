@@ -1,5 +1,6 @@
 import { SLOT_LABELS } from '../../lib/types';
 import { ExternalItem } from './useAddItemState';
+import WowIcon from '../shared/WowIcon';
 
 interface AddItemSearchOverlayProps {
   isVisible: boolean;
@@ -42,14 +43,7 @@ export default function AddItemSearchOverlay({
                 onClick={() => onSelect(item)}
                 className="group flex w-full items-center gap-3 border-b border-white/5 p-3 transition-colors last:border-0 hover:bg-white/[0.03]"
               >
-                <img
-                  src={
-                    `https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg` ||
-                    '/assets/unknown.png'
-                  }
-                  className="h-8 w-8 rounded-lg shadow-lg"
-                  alt=""
-                />
+                <WowIcon icon={item.icon} className="h-8 w-8 rounded-lg shadow-lg" alt="" />
                 <div className="min-w-0 flex-1 text-left">
                   <div className="truncate text-xs font-bold text-white transition-colors group-hover:text-blue-400">
                     {item.name}

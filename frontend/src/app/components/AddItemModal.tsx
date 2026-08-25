@@ -29,6 +29,7 @@ import { useAddItemDerivedState } from './add-item/useAddItemDerivedState';
 import AddItemDifficultyToggle from './add-item/AddItemDifficultyToggle';
 import AddItemInstanceSidebar from './add-item/AddItemInstanceSidebar';
 import CustomSelect from './shared/CustomSelect';
+import WowIcon from './shared/WowIcon';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -1267,8 +1268,8 @@ export default function AddItemModal({
                                 onClick={(e) => e.preventDefault()}
                                 className="shrink-0"
                               >
-                                <img
-                                  src={`https://wow.zamimg.com/images/wow/icons/large/${item.icon}.jpg`}
+                                <WowIcon
+                                  icon={item.icon}
                                   className="h-10 w-10 rounded-lg border border-border shadow-sm"
                                   alt=""
                                 />

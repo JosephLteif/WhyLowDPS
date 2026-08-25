@@ -23,6 +23,13 @@ test("Docker environment example does not select the image tag", () => {
   assert.match(environment, /^WHYLOWDPS_HOST_IP=/m);
 });
 
+test("Docker frontend build includes changelog synchronization inputs", () => {
+  const dockerfile = readRepositoryFile("Dockerfile");
+
+  assert.match(dockerfile, /COPY docs\/whats-new-history\.md \.\/docs\/whats-new-history\.md/);
+  assert.match(dockerfile, /COPY scripts\/sync-changelog\.js \.\/scripts\/sync-changelog\.js/);
+});
+
 test("release workflow publishes latest and versioned tags and records rollback references", () => {
   const workflow = readRepositoryFile(".github/workflows/release.yml");
 
@@ -36,6 +43,14 @@ test("release workflow publishes latest and versioned tags and records rollback 
   assert.match(workflow, /whylowdps:latest.*docker-image\.txt/);
   assert.match(workflow, /whylowdps:%s.*docker-image\.txt/);
   assert.match(workflow, /whylowdps@%s.*docker-image\.txt/);
+  assert.match(
+    workflow,
+    /name: Promote Unreleased changelog[\s\S]*node scripts\/promote-changelog\.js[\s\S]*npm run sync:changelog/
+  );
+  assert.match(
+    workflow,
+    /git add[\s\S]*CHANGELOG\.md docs\/whats-new-history\.md frontend\/src\/app\/lib\/changelog\.generated\.json/
+  );
 });
 
 test("release workflow can republish an existing version without bumping it", () => {

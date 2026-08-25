@@ -2,19 +2,111 @@
 
 This is the append-only archive for the public GitHub Pages changelog. The app popup intentionally shows only the latest update; older versions remain available on the Pages archive and at their repository release tags.
 
-When a release ships, add a dated version section below. The GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
+Add new work under the `Unreleased` section. The release workflow promotes that section to the selected version and date, then the app consumes the synchronized data and the GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
 
-## Unreleased — 2026-08-22
+## Unreleased
+
+### Bug fixes
+
+#### Keep loot icons and selected tooltip details in sync
+
+Drop Finder item cards now keep their icons visible through reliable fallback sources, while Wowhead tooltips use the selected difficulty and upgrade level so item levels and stats match the card.
+
+- Show a fallback icon when a primary game icon source is unavailable.
+- Refresh tooltip data when the selected difficulty or upgrade level changes.
+
+## v4.1.0 — 2026-08-24 — A clearer, more reliable simulation workspace
 
 ### New features
+
+#### Explore the app with guided tours
+
+Page-specific tours now walk you through the dashboard, simulation, upgrade, analysis, and loot workflows when you need a quick orientation.
+
+- Start the current page tour from the help button in the header.
+- Tours can follow interactive choices and continue when the next part of a workflow opens.
+- Replay a completed tour whenever you want a refresher.
 
 #### Make System Health an optional dashboard widget
 
 System Health no longer takes up a fixed block above the dashboard. Add it only when you want a live readiness summary alongside the other dashboard widgets.
 
-- Open Customize, choose Add Widget, and select System Health.
-- Drag, resize, or remove the widget; the choice is saved locally.
-- Open Settings > Health for detailed diagnostics and repair actions.
+- Open Customize, choose Add Widget, and select System Health when you want the compact readiness summary on the board.
+- Drag, resize, or remove the widget like the other dashboard sections; your choice is saved locally.
+- Open Settings > Health for detailed diagnostics and repair actions when something needs attention.
+
+### Improvements
+
+#### Choose and monitor the managed SimC runtime
+
+Hosted and desktop runtime controls now expose weekly and nightly channels, available versions, update status, and safer runtime validation.
+
+- Select a SimC channel or a specific available runtime version from Settings > Updates.
+- See the active channel and version in the admin sidebar when hosted runtime controls are available.
+- Runtime updates validate the downloaded binary and retry incomplete manifest or release metadata before use.
+
+#### Browse the permanent changelog history
+
+The full versioned release archive now lives on the generated GitHub Pages changelog, while the in-app popup stays focused on the latest update.
+
+- Open the archive from View changelog history in the What's New popup.
+- Stable releases remain linked to their original GitHub release tags.
+
+#### Keep readiness and runtime updates reliable
+
+Readiness checks, staged data refreshes, managed runtime updates, and release metadata now preserve useful status and the last-known-good state when an update is incomplete.
+
+- See the current SimC channel and version in the admin sidebar when runtime controls are available.
+- Retry incomplete manifest or release metadata before activating a managed runtime update.
+- Validate runtime binaries before they are used for simulations.
+
+## v4.0.0 — 2026-08-21
+
+### New features
+
+#### Use separate accounts by default
+
+Battle.net users now have separate simulations, routes, profiles, history, and browser state in desktop and hosted mode. Desktop Light mode remains a persistent device-local guest account.
+
+#### Manage hosted users and Blizzard credentials
+
+Hosted deployments can manage access and rotate their Blizzard application credentials without restarting the deployment.
+
+- Configure a BattleTag allowlist and administrator/member roles.
+- Disable access or revoke active sessions when needed.
+- Add, rotate, select, or remove hosted Blizzard application credentials at runtime.
+
+#### Install WhyLowDPS as a hosted PWA
+
+The hosted web app now includes an installable manifest, service worker, offline shell, update prompt, and browser or iOS installation guidance.
+
+#### Run a private Docker-hosted instance
+
+WhyLowDPS now has a prebuilt amd64 Docker deployment for private, single-instance hosting with a persistent data volume, release image pinning, health checks, and backup scripts.
+
+#### Share the desktop app over your trusted LAN
+
+Desktop Settings can share WhyLowDPS with phones on the same trusted private network through one-time QR/link pairing and persistent paired-device management.
+
+### Improvements
+
+#### Use WhyLowDPS comfortably on mobile
+
+Navigation, action bars, dense results, settings, and dialogs now adapt to smaller touch screens, including phone safe-area support and full-height mobile flows where useful.
+
+#### Make account, dungeon, and release workflows clearer
+
+Account switching, account actions, Light-mode raid browsing, dungeon fallbacks, Docker hosting, release assets, and the public hosting guides now preserve useful state and expose the important next action more clearly.
+
+#### Keep running simulations and hosted data reliable
+
+Progress, profilesets, and statistics use the available page width more effectively. Hosted game-data and SimulationCraft refreshes validate staged data and retain the last-known-good state during degraded season rollovers.
+
+### Bug fixes
+
+#### Keep simulation and account flows on the right route
+
+Dungeon and Mythic+ route inputs are no longer parsed as character imports when they also contain name-like lines. Related-scenario refresh loops, account switching, and hosted Docker persistence are more reliable.
 
 ## v3.8.0 — 2026-08-16
 
@@ -32,31 +124,7 @@ Control active simulations from the result screen and rerun saved inputs in one 
 
 Review simulation results and app updates from persistent local notification history.
 
-#### Get Discord notifications for finished sims
-
-WhyLowDPS can send rich Discord webhook notifications when simulations finish in desktop and Docker-hosted mode.
-
-- Configure the webhook under Settings > Integrations and choose notification categories.
-- Notifications include DPS details, fight configuration, runtime information, and upgrade highlights.
-- Webhook URLs are stored securely and can be tested, rotated, or removed.
-
-#### Use separate accounts by default
-
-Battle.net users now have separate simulations, routes, profiles, history, and browser state in desktop and hosted mode. Desktop Light mode remains a persistent device-local guest account.
-
 ### Improvements
-
-#### Use WhyLowDPS comfortably on mobile
-
-Navigation, action bars, dense results, settings, and dialogs now adapt to smaller touch screens, including phone safe-area support and full-height mobile flows where useful.
-
-#### Run a private Docker-hosted instance
-
-WhyLowDPS now has a prebuilt amd64 Docker deployment for private, single-instance hosting with a persistent data volume, release image pinning, health checks, and backup scripts.
-
-#### Share the desktop app over your trusted LAN
-
-Desktop Settings can share WhyLowDPS with phones on the same trusted private network through one-time QR/link pairing and persistent paired-device management.
 
 #### Clearer running simulation status
 
@@ -154,6 +222,7 @@ These stable tags are preserved in the repository. Releases whose detailed notes
 
 | Version | Tagged | Version | Tagged |
 | --- | --- | --- | --- |
+| v4.1.0 | 2026-08-24 | v4.0.0 | 2026-08-21 |
 | v3.8.0 | 2026-08-16 | v3.7.0 | 2026-08-14 |
 | v3.6.0 | 2026-08-13 | v3.5.2 | 2026-07-17 |
 | v3.5.1 | 2026-07-17 | v3.5.0 | 2026-07-10 |

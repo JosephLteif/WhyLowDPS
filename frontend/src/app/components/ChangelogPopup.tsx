@@ -5,14 +5,15 @@ import { useEffect, useState } from 'react';
 import {
   CHANGELOG_CATEGORY_LABELS,
   CHANGELOG_CATEGORY_ORDER,
+  CHANGELOG_CONTENT_REVISION,
   CHANGELOG_HISTORY_URL,
   LATEST_CHANGELOG_RELEASE,
   type ChangelogCategory,
 } from '../lib/changelog';
-import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { APP_VERSION } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
-export const CHANGELOG_CONTENT_REVISION = 12;
+export { CHANGELOG_CONTENT_REVISION } from '../lib/changelog';
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 const releaseNotes = LATEST_CHANGELOG_RELEASE.entries;
@@ -64,7 +65,7 @@ export default function ChangelogPopup() {
                   What&apos;s new · WhyLowDPS release
                 </p>
                 <p className="mt-0.5 font-mono text-2xl font-black tracking-tight text-gold">
-                  {APP_VERSION_WITH_PREFIX}
+                  {LATEST_CHANGELOG_RELEASE.version}
                 </p>
                 <p className="mt-2 text-sm text-zinc-400">
                   The latest improvements, features, and fixes.

@@ -2,9 +2,9 @@
 
 This is the append-only archive for the public GitHub Pages changelog. The app popup intentionally shows only the latest update; older versions remain available on the Pages archive and at their repository release tags.
 
-When a release ships, add a dated version section below. The GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
+When a release ships, add a dated version section below, then run `npm run sync:changelog`. The app consumes generated data from this file, and the GitHub Pages workflow renders this Markdown file into the published `changelog.html` page.
 
-## v4.1.0 — 2026-08-24
+## v4.1.0 — 2026-08-24 — A clearer, more reliable simulation workspace
 
 ### New features
 
@@ -40,6 +40,14 @@ The full versioned release archive now lives on the generated GitHub Pages chang
 
 - Open the archive from View changelog history in the What's New popup.
 - Stable releases remain linked to their original GitHub release tags.
+
+#### Keep readiness and runtime updates reliable
+
+Readiness checks, staged data refreshes, managed runtime updates, and release metadata now preserve useful status and the last-known-good state when an update is incomplete.
+
+- See the current SimC channel and version in the admin sidebar when runtime controls are available.
+- Retry incomplete manifest or release metadata before activating a managed runtime update.
+- Validate runtime binaries before they are used for simulations.
 
 ## v4.0.0 — 2026-08-21
 

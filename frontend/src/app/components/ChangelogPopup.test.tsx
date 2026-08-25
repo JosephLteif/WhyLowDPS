@@ -2,8 +2,8 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import ChangelogPopup, { CHANGELOG_CONTENT_REVISION, CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
-import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
-import { CHANGELOG_HISTORY_URL } from '../lib/changelog';
+import { APP_VERSION } from '../lib/version';
+import { CHANGELOG_HISTORY_URL, LATEST_CHANGELOG_RELEASE } from '../lib/changelog';
 
 const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
@@ -18,7 +18,7 @@ describe('ChangelogPopup', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
-    expect(screen.getByText(APP_VERSION_WITH_PREFIX)).toBeInTheDocument();
+    expect(screen.getByText(LATEST_CHANGELOG_RELEASE.version)).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 4 }).length).toBeGreaterThan(0);
     expect(
       screen.queryByRole('button', { name: /changelog item|changelog page/i })

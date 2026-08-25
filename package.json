@@ -33,6 +33,8 @@
     "ensure:cargo": "node scripts/ensure-cargo.js",
     "ensure:tauri-build": "node scripts/ensure-tauri-build-artifacts.js",
     "generate:wow-content": "node scripts/generate-blizzard-wow-content.mjs",
+    "sync:changelog": "node scripts/sync-changelog.js",
+    "check:changelog": "node scripts/sync-changelog.js --check",
     "build:pages-changelog": "node scripts/build-pages-changelog.js",
     "backend:dev": "cd backend && cargo watch -w core/src -w server/src -w core/Cargo.toml -w server/Cargo.toml -w Cargo.toml -x 'run -p whylowdps-server'",
     "web:dev:lan": "npm run dev:lan --prefix frontend",

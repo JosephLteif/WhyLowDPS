@@ -35,6 +35,8 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - 'frontend/package-lock.json'
+              - 'docs/whats-new-history.md'
+              - 'scripts/sync-changelog.js'
               - '.nvmrc'
               - 'rust-toolchain.toml'
             backend:

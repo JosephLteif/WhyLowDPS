@@ -23,6 +23,13 @@ test("Docker environment example does not select the image tag", () => {
   assert.match(environment, /^WHYLOWDPS_HOST_IP=/m);
 });
 
+test("Docker frontend build includes changelog synchronization inputs", () => {
+  const dockerfile = readRepositoryFile("Dockerfile");
+
+  assert.match(dockerfile, /COPY docs\/whats-new-history\.md \.\/docs\/whats-new-history\.md/);
+  assert.match(dockerfile, /COPY scripts\/sync-changelog\.js \.\/scripts\/sync-changelog\.js/);
+});
+
 test("release workflow publishes latest and versioned tags and records rollback references", () => {
   const workflow = readRepositoryFile(".github/workflows/release.yml");
 

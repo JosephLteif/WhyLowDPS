@@ -504,7 +504,7 @@ impl JobStorage for SqliteStorage {
         conn.query_row(
             "SELECT COUNT(*) FROM jobs WHERE owner_id = ?1 AND batch_id = ?2",
             params![owner_id, batch_id],
-            |row| row.get::<_, usize>(0),
+            |row| row.get::<_, i64>(0).map(|count| count as usize),
         )
         .unwrap_or(0)
     }

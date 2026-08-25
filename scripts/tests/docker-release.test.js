@@ -62,7 +62,25 @@ test("release workflow can republish an existing version without bumping it", ()
   assert.match(workflow, /inputs\.release_mode == 'bump'/);
   assert.match(workflow, /inputs\.release_mode == 'republish'/);
   assert.match(workflow, /git ls-remote --exit-code origin "refs\/tags\/v\$\{EXISTING_VERSION\}"/);
-  assert.match(workflow, /ref: \$\{\{ github\.event_name == 'workflow_dispatch' && format\('v\{0\}', inputs\.existing_version\)/);
+  assert.match(
+    workflow,
+    /ref: \$\{\{ github\.event_name == 'workflow_dispatch'[\s\S]*format\('v\{0\}', inputs\.existing_version\)/
+  );
   assert.match(workflow, /name: Ensure container resource paths exist[\s\S]*mkdir -p backend\/resources\/data/);
   assert.match(workflow, /RELEASE_TAG#v/);
+});
+
+test("manual version bumps publish in the same workflow run", () => {
+  const workflow = readRepositoryFile(".github/workflows/release.yml");
+
+  assert.match(workflow, /token: \$\{\{ secrets\.RELEASE_TOKEN \}\}/);
+  assert.match(workflow, /GITHUB_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(workflow, /git push origin master[\s\S]*http\.extraheader=AUTHORIZATION: basic/);
+  assert.doesNotMatch(workflow, /git push origin "v\$\{\{ steps\.bump\.outputs\.new_version \}\}"/);
+  assert.match(workflow, /outputs:[\s\S]*release_tag: \$\{\{ steps\.release\.outputs\.release_tag \}\}/);
+  assert.match(workflow, /needs: \[bump-version-stable, validate_republish\]/);
+  assert.match(
+    workflow,
+    /github\.event_name == 'workflow_dispatch' && inputs\.release_mode == 'bump' && needs\.bump-version-stable\.result == 'success'/
+  );
 });

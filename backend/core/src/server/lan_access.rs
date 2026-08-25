@@ -369,7 +369,7 @@ fn unix_now() -> u64 {
 }
 
 fn hash_access_token(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
 
 fn normalize_device_name(name: &str) -> Option<String> {

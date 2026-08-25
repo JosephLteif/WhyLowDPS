@@ -49,6 +49,15 @@ Readiness checks, staged data refreshes, managed runtime updates, and release me
 - Retry incomplete manifest or release metadata before activating a managed runtime update.
 - Validate runtime binaries before they are used for simulations.
 
+### Bug fixes
+
+#### Keep loot icons and selected tooltip details in sync
+
+Drop Finder item cards now keep their icons visible through reliable fallback sources, while Wowhead tooltips use the selected difficulty and upgrade level so item levels and stats match the card.
+
+- Show a fallback icon when a primary game icon source is unavailable.
+- Refresh tooltip data when the selected difficulty or upgrade level changes.
+
 ## v4.0.0 — 2026-08-21
 
 ### New features

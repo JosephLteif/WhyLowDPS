@@ -20,6 +20,11 @@ No unreleased changes yet.
 
 - System Health is now an optional dashboard widget available from Customize, instead of taking a fixed block above the dashboard; detailed diagnostics remain in Settings > Health.
 
+### Fixed
+
+- Drop Finder item icons now use reliable fallback sources when a game icon endpoint is unavailable.
+- Wowhead loot tooltips now use the selected difficulty and upgrade level, keeping displayed item levels and stats aligned with the card.
+
 ## [4.0.0] - 2026-08-21
 
 ### Added

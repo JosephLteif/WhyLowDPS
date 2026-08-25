@@ -1,5 +1,5 @@
 {
-  "contentRevision": "v4.1.0-66b50540baa8",
+  "contentRevision": "v4.1.0-e078aca73c77",
   "releases": [
     {
       "version": "v4.1.0",
@@ -53,6 +53,15 @@
             "See the current SimC channel and version in the admin sidebar when runtime controls are available.",
             "Retry incomplete manifest or release metadata before activating a managed runtime update.",
             "Validate runtime binaries before they are used for simulations."
+          ]
+        },
+        {
+          "category": "fix",
+          "title": "Keep loot icons and selected tooltip details in sync",
+          "summary": "Drop Finder item cards now keep their icons visible through reliable fallback sources, while Wowhead tooltips use the selected difficulty and upgrade level so item levels and stats match the card.",
+          "items": [
+            "Show a fallback icon when a primary game icon source is unavailable.",
+            "Refresh tooltip data when the selected difficulty or upgrade level changes."
           ]
         }
       ]

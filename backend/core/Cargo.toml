@@ -20,9 +20,9 @@ chrono = { version = "0.4", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 sha2 = "0.10"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 sysinfo = "0.39"
-jsonwebtoken = { version = "10", features = ["rust_crypto"] }
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 urlencoding = "2.1"
 thiserror = "2.0.18"
 zip = "2"
@@ -31,10 +31,10 @@ keyring = { version = "4.1.5", optional = true }
 
 actix-web = { version = "4", optional = true }
 actix-cors = { version = "0.7", optional = true }
-actix-files = { version = "0.6", optional = true }
+actix-files = { version = "0.7", optional = true }
 
 [dependencies.rusqlite]
-version = "0.31"
+version = "0.40"
 features = ["bundled"]
 optional = true
 

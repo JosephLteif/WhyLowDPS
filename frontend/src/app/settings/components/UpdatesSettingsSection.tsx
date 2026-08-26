@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import type { DeploymentInfo, SettingsStatusMessage } from '../types';
+import type {
+  DeploymentInfo,
+  DockerUpdateMode,
+  DockerUpdateStatus,
+  SettingsStatusMessage,
+} from '../types';
 import { formatBytesDecimal } from '../../lib/format';
 import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
+import type { UpdateChannel } from '../../lib/update-channel';
 import type { AppReleaseInfo, DockerImageReleaseInfo } from '../../lib/updater-release';
 import type { SimcRuntimeInfo, SimcRuntimeVersionOption } from '../../lib/simc-runtime-release';
 
@@ -23,6 +29,8 @@ type UpdatesSettingsSectionProps = {
   updateCheckState: 'idle' | 'checking' | 'installing';
   appReleases: AppReleaseInfo[];
   appReleaseMetadataStatus: 'available' | 'rate_limited' | 'unavailable';
+  selectedAppChannel?: UpdateChannel;
+  setSelectedAppChannel?: (channel: UpdateChannel) => void;
   dockerReleases?: DockerImageReleaseInfo[];
   dockerReleaseMetadataStatus?: 'available' | 'rate_limited' | 'unavailable';
   selectedAppVersion: string;
@@ -33,6 +41,14 @@ type UpdatesSettingsSectionProps = {
   isHostedPrivateRuntime?: boolean;
   deploymentInfo?: DeploymentInfo | null;
   loadDockerReleases?: (options?: { forceRefresh?: boolean }) => void;
+  dockerUpdateStatus?: DockerUpdateStatus | null;
+  loadDockerUpdateStatus?: () => Promise<DockerUpdateStatus>;
+  saveDockerUpdateSettings?: (
+    mode: DockerUpdateMode,
+    intervalMinutes: number
+  ) => Promise<DockerUpdateStatus>;
+  triggerDockerUpdate?: () => Promise<DockerUpdateStatus>;
+  dockerUpdateControlAvailable?: boolean;
 };
 
 export default function UpdatesSettingsSection({
@@ -52,6 +68,8 @@ export default function UpdatesSettingsSection({
   updateCheckState,
   appReleases,
   appReleaseMetadataStatus,
+  selectedAppChannel = 'stable',
+  setSelectedAppChannel = () => {},
   selectedAppVersion,
   setSelectedAppVersion,
   loadAppReleases,
@@ -62,6 +80,34 @@ export default function UpdatesSettingsSection({
   dockerReleases = [],
   dockerReleaseMetadataStatus = 'unavailable',
   loadDockerReleases = () => {},
+  dockerUpdateStatus = null,
+  loadDockerUpdateStatus = async () => ({
+    available: false,
+    configured: false,
+    interval_minutes: 1440,
+    last_triggered_at: null,
+    manager: null,
+    mode: 'manual' as DockerUpdateMode,
+  }),
+  saveDockerUpdateSettings = async () =>
+    dockerUpdateStatus || {
+      available: false,
+      configured: false,
+      interval_minutes: 1440,
+      last_triggered_at: null,
+      manager: null,
+      mode: 'manual' as DockerUpdateMode,
+    },
+  triggerDockerUpdate = async () =>
+    dockerUpdateStatus || {
+      available: false,
+      configured: false,
+      interval_minutes: 1440,
+      last_triggered_at: null,
+      manager: null,
+      mode: 'manual' as DockerUpdateMode,
+    },
+  dockerUpdateControlAvailable = false,
 }: UpdatesSettingsSectionProps) {
   const selectedAppRelease =
     appReleases.find((release) => release.version === selectedAppVersion) || appReleases[0] || null;
@@ -90,10 +136,25 @@ export default function UpdatesSettingsSection({
             dockerReleaseMetadataStatus={dockerReleaseMetadataStatus}
             deploymentInfo={deploymentInfo}
             loadDockerReleases={loadDockerReleases}
+            dockerUpdateStatus={dockerUpdateStatus}
+            loadDockerUpdateStatus={loadDockerUpdateStatus}
+            saveDockerUpdateSettings={saveDockerUpdateSettings}
+            triggerDockerUpdate={triggerDockerUpdate}
+            dockerUpdateControlAvailable={dockerUpdateControlAvailable}
           />
         ) : (
           <div data-update-card className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-zinc-300">App Channel</span>
+              <select
+                aria-label="App update channel"
+                value={selectedAppChannel}
+                onChange={(event) => setSelectedAppChannel(event.target.value as UpdateChannel)}
+                className="w-full rounded border border-gold/35 bg-surface-2 px-3 py-2 text-sm font-semibold text-zinc-100 sm:w-auto sm:min-w-[150px]"
+              >
+                <option value="stable">Stable</option>
+                <option value="dev">Dev (pre-release)</option>
+              </select>
               <span className="text-sm font-medium text-zinc-300">App Version</span>
               <select
                 value={selectedAppVersion}
@@ -125,6 +186,11 @@ export default function UpdatesSettingsSection({
                 {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
               </button>
             </div>
+            {selectedAppChannel === 'dev' && (
+              <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                Dev builds are pre-release software and may change or break between updates.
+              </p>
+            )}
             {selectedAppRelease && (
               <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
                 <span>Version: {selectedAppRelease.version}</span>
@@ -235,19 +301,45 @@ type DockerReleaseOption = {
   version?: string;
 };
 
+function formatDockerUpdateTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
 function DockerUpdatesCard({
   dockerReleases,
   dockerReleaseMetadataStatus,
   deploymentInfo,
   loadDockerReleases,
+  dockerUpdateStatus,
+  loadDockerUpdateStatus,
+  saveDockerUpdateSettings,
+  triggerDockerUpdate,
+  dockerUpdateControlAvailable,
 }: {
   dockerReleases: DockerImageReleaseInfo[];
   dockerReleaseMetadataStatus: 'available' | 'rate_limited' | 'unavailable';
   deploymentInfo: DeploymentInfo | null;
   loadDockerReleases: (options?: { forceRefresh?: boolean }) => void;
+  dockerUpdateStatus: DockerUpdateStatus | null;
+  loadDockerUpdateStatus: () => Promise<DockerUpdateStatus>;
+  saveDockerUpdateSettings: (
+    mode: DockerUpdateMode,
+    intervalMinutes: number
+  ) => Promise<DockerUpdateStatus>;
+  triggerDockerUpdate: () => Promise<DockerUpdateStatus>;
+  dockerUpdateControlAvailable: boolean;
 }) {
   const [selectedTag, setSelectedTag] = useState('latest');
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<DockerUpdateMode>('manual');
+  const [selectedInterval, setSelectedInterval] = useState(1440);
+  const [updateManagerBusy, setUpdateManagerBusy] = useState(false);
+  const [updateManagerMessage, setUpdateManagerMessage] = useState<SettingsStatusMessage | null>(
+    null
+  );
   const latestRelease = dockerReleases[0] || null;
   const imageOptions: DockerReleaseOption[] = latestRelease
     ? [
@@ -264,6 +356,65 @@ function DockerUpdatesCard({
     ? `${DOCKER_IMAGE_REPOSITORY}:${selectedRelease.tag}`
     : null;
   const currentVersion = deploymentInfo?.version || null;
+  const updateManagerAvailable =
+    dockerUpdateStatus?.configured === true && dockerUpdateStatus.available === true;
+  useEffect(() => {
+    if (!dockerUpdateStatus) return;
+    setSelectedMode(dockerUpdateStatus.mode);
+    setSelectedInterval(dockerUpdateStatus.interval_minutes);
+  }, [dockerUpdateStatus]);
+
+  const saveUpdatePolicy = async (mode: DockerUpdateMode, intervalMinutes: number) => {
+    setSelectedMode(mode);
+    setSelectedInterval(intervalMinutes);
+    setUpdateManagerBusy(true);
+    setUpdateManagerMessage(null);
+    try {
+      await saveDockerUpdateSettings(mode, intervalMinutes);
+      setUpdateManagerMessage({ type: 'success', text: 'Docker update policy saved.' });
+    } catch (error) {
+      setUpdateManagerMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to save Docker update policy.',
+      });
+    } finally {
+      setUpdateManagerBusy(false);
+    }
+  };
+
+  const requestDockerUpdate = async () => {
+    setUpdateManagerBusy(true);
+    setUpdateManagerMessage(null);
+    try {
+      await triggerDockerUpdate();
+      setUpdateManagerMessage({
+        type: 'success',
+        text: 'Update requested. The app may briefly disconnect while Docker recreates the service.',
+      });
+    } catch (error) {
+      setUpdateManagerMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to request the Docker update.',
+      });
+    } finally {
+      setUpdateManagerBusy(false);
+    }
+  };
+
+  const refreshUpdateManager = async () => {
+    setUpdateManagerBusy(true);
+    setUpdateManagerMessage(null);
+    try {
+      await loadDockerUpdateStatus();
+    } catch (error) {
+      setUpdateManagerMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Failed to read the Docker update manager.',
+      });
+    } finally {
+      setUpdateManagerBusy(false);
+    }
+  };
   const updateCommand =
     selectedRelease?.tag === 'latest'
       ? [
@@ -294,10 +445,100 @@ function DockerUpdatesCard({
         <div>
           <p className="text-sm font-medium text-zinc-200">Docker image</p>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-zinc-500">
-            Docker updates run on the host that runs Compose. This browser can show available image
-            tags and copy the update commands, but it cannot restart the container itself.
+            Published image tags and release metadata are shown here. The optional update manager
+            below can pull and recreate the app for you.
           </p>
         </div>
+
+        {dockerUpdateControlAvailable && (
+          <div className="rounded-md border border-border/60 bg-surface/50 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-zinc-200">Update manager</p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                  {updateManagerAvailable
+                    ? 'Watchtower is connected and only monitors this app container.'
+                    : dockerUpdateStatus?.configured
+                      ? 'The update manager is configured but not reachable. Start the updates profile and refresh.'
+                      : 'The optional Docker update manager is not enabled for this deployment.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void refreshUpdateManager()}
+                disabled={updateManagerBusy}
+                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+              >
+                Refresh status
+              </button>
+            </div>
+
+            {updateManagerAvailable ? (
+              <div className="mt-3 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block text-xs font-medium text-zinc-400">
+                    Update policy
+                    <select
+                      aria-label="Docker update policy"
+                      value={selectedMode}
+                      onChange={(event) =>
+                        void saveUpdatePolicy(
+                          event.target.value as DockerUpdateMode,
+                          selectedInterval
+                        )
+                      }
+                      disabled={updateManagerBusy}
+                      className="mt-1 block w-full rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
+                    >
+                      <option value="manual">Manual — update on demand</option>
+                      <option value="automatic">Automatic — update on a schedule</option>
+                    </select>
+                  </label>
+                  <label className="block text-xs font-medium text-zinc-400">
+                    Automatic interval
+                    <select
+                      aria-label="Docker update interval"
+                      value={selectedInterval}
+                      onChange={(event) =>
+                        void saveUpdatePolicy(selectedMode, Number(event.target.value))
+                      }
+                      disabled={updateManagerBusy || selectedMode !== 'automatic'}
+                      className="mt-1 block w-full rounded border border-border bg-surface px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
+                    >
+                      <option value={60}>Every hour</option>
+                      <option value={360}>Every 6 hours</option>
+                      <option value={1440}>Every day</option>
+                      <option value={10080}>Every week</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void requestDockerUpdate()}
+                    disabled={updateManagerBusy}
+                    className="rounded-lg border border-gold/30 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/20 disabled:opacity-50"
+                  >
+                    Update now
+                  </button>
+                  {dockerUpdateStatus.last_triggered_at && (
+                    <span className="text-xs text-zinc-500">
+                      Last requested {formatDockerUpdateTime(dockerUpdateStatus.last_triggered_at)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs leading-relaxed text-amber-300">
+                Add <code>WHYLOWDPS_DOCKER_UPDATE_TOKEN</code> to <code>.env.docker</code>, then
+                start Compose with <code>--profile updates</code>. The companion needs access to the
+                host Docker socket to recreate this service.
+              </p>
+            )}
+
+            {updateManagerMessage && <StatusMessage message={updateManagerMessage} />}
+          </div>
+        )}
 
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           {imageOptions.length > 0 ? (

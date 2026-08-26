@@ -1794,7 +1794,7 @@ pub struct UpdateHostedUserRequest {
     pub revoke_sessions: bool,
 }
 
-fn require_admin(
+pub(crate) fn require_admin(
     req: &HttpRequest,
     state: &BlizzardAuthState,
     store: &dyn crate::storage::JobStorage,

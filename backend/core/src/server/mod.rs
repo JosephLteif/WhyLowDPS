@@ -8,6 +8,8 @@ mod data_sync;
 #[cfg(feature = "web")]
 mod discord_webhook;
 #[cfg(feature = "web")]
+mod docker_updates;
+#[cfg(feature = "web")]
 pub mod dungeon_data;
 #[cfg(feature = "web")]
 pub mod dungeon_source_blizzard;
@@ -847,6 +849,9 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
         let store_data = web::Data::new(storage);
         let simc_data = web::Data::new(simc_path);
         let simc_runtime_data = simc_runtime.map(web::Data::new);
+        if auth_handlers::hosted_private_deployment() && docker_updates::is_configured() {
+            docker_updates::spawn_scheduler(store_data.get_ref().clone());
+        }
         let log_data = web::Data::new(Arc::new(LogBuffer::new()));
         #[cfg(feature = "desktop")]
         let stats_data = web::Data::new(Arc::new(Mutex::new(SystemStats::new())));
@@ -1074,6 +1079,14 @@ pub async fn start_with_storage_bind_options_and_simc_runtime(
                 .route(
                     "/api/admin/users/{id}",
                     web::patch().to(auth_handlers::update_hosted_user),
+                )
+                .route(
+                    "/api/admin/docker-updates",
+                    web::get().to(docker_updates::get_status),
+                )
+                .route(
+                    "/api/admin/docker-updates",
+                    web::post().to(docker_updates::update),
                 )
                 .route(
                     "/api/data/status",

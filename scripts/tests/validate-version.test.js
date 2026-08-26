@@ -7,7 +7,7 @@ const { spawnSync } = require("node:child_process");
 
 const ROOT = path.resolve(__dirname, "../..");
 const SCRIPT_PATH = path.resolve(__dirname, "../validate-version.js");
-const { validateVersion } = require("../validate-version.js");
+const { normalizeVersion, validateVersion } = require("../validate-version.js");
 
 function writeJson(rootDir, relativePath, value) {
   const filePath = path.join(rootDir, relativePath);
@@ -87,6 +87,10 @@ test("validateVersion accepts the repository's synchronized version", () => {
 
   assert.equal(result.version, repositoryVersion);
   assert.deepEqual(result.errors, []);
+});
+
+test("normalizeVersion accepts a prerelease developer version", () => {
+  assert.equal(normalizeVersion("v3.4.2-dev.12.1"), "3.4.2-dev.12.1");
 });
 
 test("validateVersion reports an expected-version mismatch", () => {

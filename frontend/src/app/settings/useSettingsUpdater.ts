@@ -1,21 +1,33 @@
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, fetchJson, isDesktop, isHostedPrivate } from '../lib/api';
+import { APP_VERSION } from '../lib/version';
 import {
   fetchDockerImageReleases,
-  fetchStableAppReleases,
+  fetchAppReleases,
   type AppReleaseInfo,
   type DockerImageReleaseInfo,
 } from '../lib/updater-release';
-import type { DeploymentInfo, SettingsStatusMessage } from './types';
+import { readStoredUpdateChannel, type UpdateChannel } from '../lib/update-channel';
+import type {
+  DeploymentInfo,
+  DockerUpdateMode,
+  DockerUpdateStatus,
+  SettingsStatusMessage,
+} from './types';
 
 type UpdateCheckState = 'idle' | 'checking' | 'installing';
 
 type UseSettingsUpdaterArgs = {
   performanceSaved: boolean;
   hasUser: boolean;
+  isAdmin?: boolean;
 };
 
-export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpdaterArgs) {
+export function useSettingsUpdater({
+  performanceSaved,
+  hasUser,
+  isAdmin = false,
+}: UseSettingsUpdaterArgs) {
   const [updateCheckState, setUpdateCheckState] = useState<UpdateCheckState>('idle');
   const [updateMessage, setUpdateMessage] = useState<SettingsStatusMessage | null>(null);
   const [appReleases, setAppReleases] = useState<AppReleaseInfo[]>([]);
@@ -23,11 +35,13 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     'available' | 'rate_limited' | 'unavailable'
   >('unavailable');
   const [selectedAppVersion, setSelectedAppVersion] = useState('');
+  const [selectedAppChannel, setSelectedAppChannelState] = useState<UpdateChannel>('stable');
   const [deploymentInfo, setDeploymentInfo] = useState<DeploymentInfo | null>(null);
   const [dockerReleases, setDockerReleases] = useState<DockerImageReleaseInfo[]>([]);
   const [dockerReleaseMetadataStatus, setDockerReleaseMetadataStatus] = useState<
     'available' | 'rate_limited' | 'unavailable'
   >('unavailable');
+  const [dockerUpdateStatus, setDockerUpdateStatus] = useState<DockerUpdateStatus | null>(null);
 
   useEffect(() => {
     const onUpdaterStatus = (event: Event) => {
@@ -71,30 +85,48 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
   }, []);
 
   useEffect(() => {
-    if (!isDesktop) return;
-    try {
-      localStorage.removeItem('whylowdps_update_channel');
-    } catch {}
-    if (!performanceSaved || !hasUser) return;
+    if (isDesktop) {
+      setSelectedAppChannelState(readStoredUpdateChannel(APP_VERSION));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !performanceSaved || !hasUser) return;
     fetchJson(`${API_URL}/api/user/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: 'app_update_channel',
-        value: 'stable',
+        value: selectedAppChannel,
       }),
     }).catch(() => {});
-  }, [hasUser, performanceSaved]);
+  }, [hasUser, performanceSaved, selectedAppChannel]);
 
-  const loadAppReleases = useCallback(async (options?: { forceRefresh?: boolean }) => {
-    const result = await fetchStableAppReleases(options);
-    const releases = result.releases;
-    setAppReleases(releases);
-    setAppReleaseMetadataStatus(result.metadataStatus);
-    setSelectedAppVersion((current) =>
-      current && releases.some((release) => release.version === current)
-        ? current
-        : releases[0]?.version || ''
+  const loadAppReleases = useCallback(
+    async (options?: { forceRefresh?: boolean }) => {
+      const result = await fetchAppReleases(selectedAppChannel, options);
+      const releases = result.releases;
+      setAppReleases(releases);
+      setAppReleaseMetadataStatus(result.metadataStatus);
+      setSelectedAppVersion((current) =>
+        current && releases.some((release) => release.version === current)
+          ? current
+          : releases[0]?.version || ''
+      );
+    },
+    [selectedAppChannel]
+  );
+
+  const setSelectedAppChannel = useCallback((channel: UpdateChannel) => {
+    setSelectedAppChannelState(channel);
+    setSelectedAppVersion('');
+    try {
+      localStorage.setItem('whylowdps_update_channel', channel);
+    } catch {}
+    window.dispatchEvent(
+      new CustomEvent('whylowdps-updater-check', {
+        detail: { channel },
+      })
     );
   }, []);
 
@@ -104,10 +136,48 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     setDockerReleaseMetadataStatus(result.metadataStatus);
   }, []);
 
+  const loadDockerUpdateStatus = useCallback(async () => {
+    const result = await fetchJson<DockerUpdateStatus>(`${API_URL}/api/admin/docker-updates`, {
+      timeoutMs: 3000,
+    });
+    setDockerUpdateStatus(result);
+    return result;
+  }, []);
+
+  const saveDockerUpdateSettings = useCallback(
+    async (mode: DockerUpdateMode, intervalMinutes: number) => {
+      const result = await fetchJson<DockerUpdateStatus>(`${API_URL}/api/admin/docker-updates`, {
+        method: 'POST',
+        body: JSON.stringify({ mode, interval_minutes: intervalMinutes }),
+      });
+      setDockerUpdateStatus(result);
+      return result;
+    },
+    []
+  );
+
+  const triggerDockerUpdate = useCallback(async () => {
+    const result = await fetchJson<DockerUpdateStatus>(`${API_URL}/api/admin/docker-updates`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'update' }),
+      timeoutMs: 15000,
+    });
+    setDockerUpdateStatus(result);
+    return result;
+  }, []);
+
   useEffect(() => {
     if (isDesktop) void loadAppReleases();
     if (isHostedPrivate) void loadDockerReleases();
   }, [loadAppReleases, loadDockerReleases]);
+
+  useEffect(() => {
+    if (!isHostedPrivate || !isAdmin) {
+      setDockerUpdateStatus(null);
+      return;
+    }
+    void loadDockerUpdateStatus().catch(() => setDockerUpdateStatus(null));
+  }, [isAdmin, loadDockerUpdateStatus]);
 
   useEffect(() => {
     if (!isHostedPrivate) return;
@@ -121,10 +191,10 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     setUpdateMessage(null);
     window.dispatchEvent(
       new CustomEvent('whylowdps-updater-check', {
-        detail: { channel: 'stable' },
+        detail: { channel: selectedAppChannel },
       })
     );
-  }, []);
+  }, [selectedAppChannel]);
 
   const downloadAndInstallLatest = useCallback(() => {
     setUpdateCheckState('installing');
@@ -135,22 +205,24 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
       new CustomEvent('whylowdps-updater-install', {
         detail: release
           ? {
-              channel: 'stable',
+              channel: selectedAppChannel,
               version: release.version,
               notes: release.notes,
               manualDownloadUrl: release.downloadUrl,
               fallbackOnly: true,
             }
-          : { channel: 'stable' },
+          : { channel: selectedAppChannel },
       })
     );
-  }, [appReleases, selectedAppVersion]);
+  }, [appReleases, selectedAppChannel, selectedAppVersion]);
 
   return {
     updateCheckState,
     updateMessage,
     appReleases,
     appReleaseMetadataStatus,
+    selectedAppChannel,
+    setSelectedAppChannel,
     selectedAppVersion,
     setSelectedAppVersion,
     loadAppReleases,
@@ -158,6 +230,10 @@ export function useSettingsUpdater({ performanceSaved, hasUser }: UseSettingsUpd
     dockerReleases,
     dockerReleaseMetadataStatus,
     loadDockerReleases,
+    dockerUpdateStatus,
+    loadDockerUpdateStatus,
+    saveDockerUpdateSettings,
+    triggerDockerUpdate,
     checkForUpdatesNow,
     downloadAndInstallLatest,
   };

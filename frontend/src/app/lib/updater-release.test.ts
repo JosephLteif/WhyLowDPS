@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchStableAppReleases,
   parseDockerImageReleases,
+  parseDevAppReleases,
   parseStableAppReleases,
 } from './updater-release';
 
@@ -114,6 +115,47 @@ describe('parseStableAppReleases', () => {
       metadataStatus: 'rate_limited',
       releases: [],
     });
+  });
+});
+
+describe('parseDevAppReleases', () => {
+  it('reads the version from the moving dev release metadata', () => {
+    expect(
+      parseDevAppReleases([
+        {
+          tag_name: 'dev',
+          name: 'WhyLowDps Dev',
+          prerelease: true,
+          body: 'Version: 3.4.0-dev.12.1',
+          assets: [
+            {
+              name: 'WhyLowDPS_3.4.0-dev.12.1_x64-setup.exe',
+              browser_download_url: 'https://example.test/dev.exe',
+              size: 42,
+            },
+          ],
+        },
+        {
+          tag_name: 'v3.4.0',
+          prerelease: false,
+          assets: [
+            {
+              name: 'WhyLowDPS_3.4.0_x64-setup.exe',
+              browser_download_url: 'https://example.test/stable.exe',
+            },
+          ],
+        },
+      ])
+    ).toEqual([
+      {
+        version: '3.4.0-dev.12.1',
+        notes: 'Version: 3.4.0-dev.12.1',
+        downloadUrl: 'https://example.test/dev.exe',
+        assetName: 'WhyLowDPS_3.4.0-dev.12.1_x64-setup.exe',
+        assetSizeBytes: 42,
+        publishedAt: undefined,
+      },
+    ]);
   });
 });
 

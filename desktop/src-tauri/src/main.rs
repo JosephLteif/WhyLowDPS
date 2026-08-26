@@ -13,7 +13,7 @@ use app_logic::*;
 use discord_presence::{
     DiscordPresenceSettingsResponse, DiscordPresenceState, DiscordPresenceUpdate,
 };
-use rusqlite::{Connection, DatabaseName};
+use rusqlite::{Connection, MAIN_DB};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -208,7 +208,7 @@ fn create_backup_database(source: &Path, destination: &Path) -> Result<(), Strin
     let source_connection =
         Connection::open(source).map_err(|e| format!("Unable to open database: {e}"))?;
     source_connection
-        .backup(DatabaseName::Main, destination, None)
+        .backup(MAIN_DB, destination, None)
         .map_err(|e| format!("Unable to snapshot database: {e}"))?;
     drop(source_connection);
     let backup_connection = Connection::open(destination)

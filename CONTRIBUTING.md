@@ -125,14 +125,15 @@ rebuilds the desktop and hosted Docker artifacts. It does not commit, bump, or
 move the release tag; existing release assets and Docker tags are replaced as
 part of the retry.
 
-Developer builds are created by pushing to the `dev` branch. The **Dev Release**
-workflow publishes a signed Windows prerelease with a monotonically increasing
-version under the moving `dev` GitHub release and updates its `latest.json`
-manifest. Stable users are unaffected. Install the dev artifact once, or choose
-**Settings → App Updates → Dev (pre-release)**, then future pushes to `dev` can
-be installed through the normal updater. The dev workflow requires the same
-`TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets as
-stable releases.
+Developer builds use the same release pipeline. Open **Actions → Release → Run
+workflow**, set **Release channel** to **dev**, choose the source branch in
+**Developer release source branch**, and run it. The pipeline publishes a signed
+Windows prerelease with a monotonically increasing version under the moving
+`dev` GitHub release and updates its `latest.json` manifest. Stable users are
+unaffected. Install the dev artifact once, or choose **Settings → App Updates →
+Dev (pre-release)**, then future developer releases can be installed through the
+normal updater. The pipeline requires the same `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets as stable releases.
 
 ## Pull request guidelines
 

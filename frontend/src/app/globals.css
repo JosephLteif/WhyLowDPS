@@ -1,8 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config '../../tailwind.config.ts';
 
 @layer base {
   body {
@@ -27,7 +25,7 @@
     @apply rounded-xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200;
   }
   .card-interactive {
-    @apply card cursor-pointer hover:border-border-light hover:shadow-card-hover;
+    @apply rounded-xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200 cursor-pointer hover:border-border-light hover:shadow-card-hover;
   }
   .btn-primary {
     @apply relative rounded-lg bg-gold px-5 py-2.5 font-semibold text-black shadow-sm transition-all duration-150 hover:bg-gold-light hover:shadow-md active:scale-[0.98] disabled:pointer-events-none disabled:bg-zinc-800 disabled:text-zinc-300 disabled:shadow-none;

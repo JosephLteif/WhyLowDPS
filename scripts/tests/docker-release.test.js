@@ -59,7 +59,11 @@ test('release workflow has a compact stable action selector', () => {
 
   assert.match(workflow, /release_action:[\s\S]*?- patch[\s\S]*?- promote-dev/);
   assert.doesNotMatch(workflow, /release_channel|release_mode|dev_source_ref|source_ref:/);
-  assert.match(workflow, /promote-dev:[\s\S]*ref: refs\/tags\/dev[\s\S]*git tag "v\$\{VERSION\}"/);
+  assert.match(workflow, /dev_version:[\s\S]*?type: string/);
+  assert.match(workflow, /promote-dev:[\s\S]*?DEV_TAG="dev\/\$\{DEV_VERSION\}"/);
+  assert.match(workflow, /git checkout --detach "refs\/tags\/\$\{DEV_TAG\}"/);
+  assert.match(workflow, /git tag "v\$\{VERSION\}"/);
+  assert.doesNotMatch(workflow, /ref: refs\/tags\/dev\s/);
   assert.match(workflow, /needs: \[bump-version-stable, promote-dev, validate_republish\]/);
 });
 
@@ -77,6 +81,9 @@ test('dev release workflow is manual-only with selectable increments', () => {
   );
   assert.match(workflow, /switch \(\$env:DEV_INCREMENT\)/);
   assert.match(workflow, /git ls-remote --exit-code origin "refs\/tags\/v\$targetVersion"/);
+  assert.match(workflow, /Preserve immutable developer source tag/);
+  assert.match(workflow, /git push origin "refs\/tags\/\$devTag"/);
+  assert.match(workflow, /Source ref: dev\/\$env:DEV_VERSION/);
   assert.match(workflow, /tagName: dev/);
   assert.match(workflow, /releases\/download\/dev\/latest\.json/);
   assert.match(workflow, /latest\.json/);

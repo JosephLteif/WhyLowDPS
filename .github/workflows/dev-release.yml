@@ -163,6 +163,7 @@ jobs:
           Version: $env:DEV_VERSION
           Increment: $env:DEV_INCREMENT
           Source: ${{ steps.dev_ref.outputs.dev_sha }}
+          Source ref: dev/$env:DEV_VERSION
           "@ | Set-Content $notesPath
           gh release edit dev --title 'WhyLowDps Dev' --notes-file $notesPath --prerelease --draft=false
 
@@ -175,3 +176,22 @@ jobs:
           if (-not ($assets -contains 'latest.json')) {
             throw 'The dev release does not contain latest.json; the updater cannot update installed dev builds.'
           }
+
+      - name: Preserve immutable developer source tag
+        shell: pwsh
+        env:
+          DEV_SHA: ${{ steps.dev_ref.outputs.dev_sha }}
+          DEV_VERSION: ${{ steps.prepare.outputs.dev_version }}
+        run: |
+          $devTag = "dev/$env:DEV_VERSION"
+          git ls-remote --exit-code origin "refs/tags/$devTag" *> $null
+          $tagCheckExitCode = $LASTEXITCODE
+          if ($tagCheckExitCode -eq 0) {
+            throw "Developer source tag $devTag already exists; refusing to overwrite it."
+          }
+          if ($tagCheckExitCode -ne 2) {
+            throw "Unable to verify whether developer source tag $devTag exists."
+          }
+
+          git tag $devTag $env:DEV_SHA
+          git push origin "refs/tags/$devTag"

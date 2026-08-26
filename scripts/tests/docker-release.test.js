@@ -63,11 +63,20 @@ test('release workflow has a compact stable action selector', () => {
   assert.match(workflow, /needs: \[bump-version-stable, promote-dev, validate_republish\]/);
 });
 
-test('dev release workflow is automatic and input-free', () => {
+test('dev release workflow supports selectable increments and a push default', () => {
   const workflow = readRepositoryFile('.github/workflows/dev-release.yml');
 
   assert.match(workflow, /branches:[\s\S]*?- dev/);
-  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(
+    workflow,
+    /workflow_dispatch:[\s\S]*?dev_increment:[\s\S]*?type: choice[\s\S]*?- patch[\s\S]*?- minor[\s\S]*?- major/
+  );
+  assert.match(
+    workflow,
+    /DEV_INCREMENT: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.dev_increment \|\| 'patch' \}\}/
+  );
+  assert.match(workflow, /switch \(\$env:DEV_INCREMENT\)/);
+  assert.match(workflow, /git ls-remote --exit-code origin "refs\/tags\/v\$targetVersion"/);
   assert.match(workflow, /tagName: dev/);
   assert.match(workflow, /releases\/download\/dev\/latest\.json/);
   assert.match(workflow, /latest\.json/);

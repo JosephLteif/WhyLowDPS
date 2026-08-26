@@ -5,6 +5,16 @@ on:
     branches:
       - dev
   workflow_dispatch:
+    inputs:
+      dev_increment:
+        description: 'Version increment for this developer release'
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 concurrency:
   group: dev-release
@@ -58,13 +68,39 @@ jobs:
         env:
           RUN_NUMBER: ${{ github.run_number }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          DEV_INCREMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.dev_increment || 'patch' }}
         run: |
           $stableVersion = (Get-Content VERSION -Raw).Trim()
           if ($stableVersion -notmatch '^\d+\.\d+\.\d+$') {
             throw "VERSION must contain a stable semantic version before creating a dev build: $stableVersion"
           }
 
-          $devVersion = "$stableVersion-dev.$env:RUN_NUMBER.$env:RUN_ATTEMPT"
+          $versionParts = $stableVersion.Split('.') | ForEach-Object { [int]$_ }
+          switch ($env:DEV_INCREMENT) {
+            'major' {
+              $versionParts[0]++
+              $versionParts[1] = 0
+              $versionParts[2] = 0
+            }
+            'minor' {
+              $versionParts[1]++
+              $versionParts[2] = 0
+            }
+            'patch' { $versionParts[2]++ }
+            default { throw "DEV_INCREMENT must be patch, minor, or major: $env:DEV_INCREMENT" }
+          }
+
+          $targetVersion = $versionParts -join '.'
+          git ls-remote --exit-code origin "refs/tags/v$targetVersion" *> $null
+          $tagCheckExitCode = $LASTEXITCODE
+          if ($tagCheckExitCode -eq 0) {
+            throw "Stable release tag v$targetVersion already exists; choose another increment type."
+          }
+          if ($tagCheckExitCode -ne 2) {
+            throw "Unable to verify whether stable release tag v$targetVersion exists."
+          }
+
+          $devVersion = "$targetVersion-dev.$env:RUN_NUMBER.$env:RUN_ATTEMPT"
           Set-Content -Path VERSION -Value $devVersion -NoNewline
           npm run sync:version
           npm install --package-lock-only --ignore-scripts
@@ -121,12 +157,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEV_VERSION: ${{ steps.prepare.outputs.dev_version }}
+          DEV_INCREMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.dev_increment || 'patch' }}
         run: |
           $notesPath = Join-Path $env:RUNNER_TEMP 'dev-release-notes.md'
           @"
           Automated developer build for testing before a stable release.
 
           Version: $env:DEV_VERSION
+          Increment: $env:DEV_INCREMENT
           Source: ${{ steps.dev_ref.outputs.dev_sha }}
           "@ | Set-Content $notesPath
           gh release edit dev --title 'WhyLowDps Dev' --notes-file $notesPath --prerelease --draft=false

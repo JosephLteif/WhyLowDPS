@@ -704,7 +704,7 @@ mod tests {
         zip.write_all(contents)
             .expect("write recovery fixture entry");
         let archive = zip.finish().expect("finish recovery fixture").into_inner();
-        let sha256 = |bytes: &[u8]| format!("{:x}", Sha256::digest(bytes));
+        let sha256 = |bytes: &[u8]| hex::encode(Sha256::digest(bytes));
         let manifest = serde_json::to_vec(&json!({
             "schema_version": 1,
             "generated_at": chrono::Utc::now(),

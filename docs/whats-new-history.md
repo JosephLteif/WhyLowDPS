@@ -6,7 +6,14 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ## Unreleased
 
-No unreleased changes yet.
+### Improvements
+
+#### Rework the release pipeline
+
+The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.
+
+- Pushes to `dev` publish the tested moving developer release.
+- Stable releases can promote the tested developer build from the Release workflow.
 
 ## v4.1.1 — 2026-08-25 — Release notes for v4.1.1
 

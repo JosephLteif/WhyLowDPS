@@ -6,7 +6,9 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ## [Unreleased]
 
-No unreleased changes yet.
+### Changed
+
+- The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.
 
 ## [4.1.1] - 2026-08-25
 

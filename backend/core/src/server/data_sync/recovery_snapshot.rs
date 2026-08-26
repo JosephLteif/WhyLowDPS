@@ -337,7 +337,7 @@ fn apply_verified_archive(
                     .map_err(|err| format!("Failed to stage recovery file {path}: {err}"))?;
             }
         }
-        if written != expected.size || format!("{:x}", hasher.finalize()) != expected.sha256 {
+        if written != expected.size || hex::encode(hasher.finalize()) != expected.sha256 {
             return Err(format!("Recovery archive checksum mismatch for {path}"));
         }
     }
@@ -496,7 +496,7 @@ fn is_valid_sha256(value: &str) -> bool {
 }
 
 fn sha256_matches(bytes: &[u8], expected: &str) -> bool {
-    format!("{:x}", Sha256::digest(bytes)).eq_ignore_ascii_case(expected)
+    hex::encode(Sha256::digest(bytes)).eq_ignore_ascii_case(expected)
 }
 
 #[cfg(test)]
@@ -522,7 +522,7 @@ mod tests {
     }
 
     fn sha256(bytes: &[u8]) -> String {
-        format!("{:x}", Sha256::digest(bytes))
+        hex::encode(Sha256::digest(bytes))
     }
 
     fn zip_bytes(files: &[(&str, &[u8])]) -> Vec<u8> {

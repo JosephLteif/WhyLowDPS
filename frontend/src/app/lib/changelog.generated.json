@@ -1,6 +1,22 @@
 {
-  "contentRevision": "v4.1.1-13ca994027e7",
+  "contentRevision": "Unreleased-5fe6cf7de466",
   "releases": [
+    {
+      "version": "Unreleased",
+      "date": "",
+      "title": "Upcoming changes",
+      "entries": [
+        {
+          "category": "improvement",
+          "title": "Rework the release pipeline",
+          "summary": "The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.",
+          "items": [
+            "Pushes to `dev` publish the tested moving developer release.",
+            "Stable releases can promote the tested developer build from the Release workflow."
+          ]
+        }
+      ]
+    },
     {
       "version": "v4.1.1",
       "date": "2026-08-25",

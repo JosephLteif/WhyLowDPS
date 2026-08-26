@@ -126,7 +126,7 @@ fn encrypt_secret_blob(secret: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
         let encrypted = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
-        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        let _ = LocalFree(Some(HLOCAL(output.pbData.cast())));
         Ok(encode_secret_blob(&encrypted))
     }
 }
@@ -152,7 +152,7 @@ fn decrypt_secret_blob(blob: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
         let decrypted = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
-        let _ = LocalFree(HLOCAL(output.pbData.cast()));
+        let _ = LocalFree(Some(HLOCAL(output.pbData.cast())));
         String::from_utf8(decrypted).map_err(|e| e.to_string())
     }
 }

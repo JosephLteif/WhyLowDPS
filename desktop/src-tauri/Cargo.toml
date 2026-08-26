@@ -31,7 +31,7 @@ tempfile = "3"
 tauri-build = { version = "2.6.1", features = [] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
+windows = { version = "0.62", features = [
     "ApplicationModel_DataTransfer",
     "Foundation",
     "Foundation_Collections",

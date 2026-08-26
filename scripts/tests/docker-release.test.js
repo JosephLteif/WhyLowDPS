@@ -54,33 +54,34 @@ test('release workflow publishes latest and versioned tags and records rollback 
   assert.match(workflow, /finalize-release:[\s\S]*if:[\s\S]*always\(\) &&/);
 });
 
-test('release workflow exposes a moving developer channel', () => {
+test('release workflow has a compact stable action selector', () => {
   const workflow = readRepositoryFile('.github/workflows/release.yml');
 
-  assert.match(workflow, /release_channel:[\s\S]*?- stable[\s\S]*?- dev/);
-  assert.match(workflow, /dev_source_ref:[\s\S]*default: dev/);
-  assert.match(
-    workflow,
-    /prepare-dev:[\s\S]*git tag --force dev[\s\S]*git push origin refs\/tags\/dev --force/
-  );
+  assert.match(workflow, /release_action:[\s\S]*?- patch[\s\S]*?- promote-dev/);
+  assert.doesNotMatch(workflow, /release_channel|release_mode|dev_source_ref|source_ref:/);
+  assert.match(workflow, /promote-dev:[\s\S]*ref: refs\/tags\/dev[\s\S]*git tag "v\$\{VERSION\}"/);
+  assert.match(workflow, /needs: \[bump-version-stable, promote-dev, validate_republish\]/);
+});
+
+test('dev release workflow is automatic and input-free', () => {
+  const workflow = readRepositoryFile('.github/workflows/dev-release.yml');
+
+  assert.match(workflow, /branches:[\s\S]*?- dev/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /tagName: dev/);
   assert.match(workflow, /releases\/download\/dev\/latest\.json/);
-  assert.match(workflow, /releaseDraft: "\$\{\{ env\.RELEASE_CHANNEL != 'dev' \}\}"/);
-  assert.match(workflow, /prerelease: "\$\{\{ env\.RELEASE_CHANNEL == 'dev' \}\}"/);
-  assert.match(workflow, /finalize-dev:[\s\S]*latest\.json/);
+  assert.match(workflow, /latest\.json/);
+  assert.doesNotMatch(workflow, /release_action|release_channel|release_mode/);
 });
 
 test('release workflow can republish an existing version without bumping it', () => {
   const workflow = readRepositoryFile('.github/workflows/release.yml');
 
-  assert.match(workflow, /release_mode:[\s\S]*?- republish/);
+  assert.match(workflow, /release_action:[\s\S]*?- republish/);
   assert.match(workflow, /existing_version:[\s\S]*?type: string/);
-  assert.match(workflow, /inputs\.release_mode == 'bump'/);
-  assert.match(workflow, /inputs\.release_mode == 'republish'/);
+  assert.match(workflow, /inputs\.release_action == 'republish'/);
   assert.match(workflow, /git ls-remote --exit-code origin "refs\/tags\/v\$\{EXISTING_VERSION\}"/);
-  assert.match(
-    workflow,
-    /ref: \$\{\{ github\.event_name == 'workflow_dispatch'[\s\S]*format\('v\{0\}', inputs\.existing_version\)/
-  );
+  assert.match(workflow, /ref: \$\{\{ env\.RELEASE_TAG \}\}/);
   assert.match(
     workflow,
     /name: Ensure container resource paths exist[\s\S]*mkdir -p backend\/resources\/data/
@@ -99,9 +100,9 @@ test('manual version bumps publish in the same workflow run', () => {
     workflow,
     /outputs:[\s\S]*release_tag: \$\{\{ steps\.release\.outputs\.release_tag \}\}/
   );
-  assert.match(workflow, /needs: \[bump-version-stable, prepare-dev, validate_republish\]/);
+  assert.match(workflow, /needs: \[bump-version-stable, promote-dev, validate_republish\]/);
   assert.match(
     workflow,
-    /github\.event_name == 'workflow_dispatch' && inputs\.release_channel == 'stable' && inputs\.release_mode == 'bump' && needs\.bump-version-stable\.result == 'success'/
+    /github\.event_name == 'workflow_dispatch' && inputs\.release_action != 'republish' && inputs\.release_action != 'promote-dev' && needs\.bump-version-stable\.result == 'success'/
   );
 });

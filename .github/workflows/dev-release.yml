@@ -1,9 +1,6 @@
 name: Dev Release
 
 on:
-  push:
-    branches:
-      - dev
   workflow_dispatch:
     inputs:
       dev_increment:
@@ -68,7 +65,7 @@ jobs:
         env:
           RUN_NUMBER: ${{ github.run_number }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
-          DEV_INCREMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.dev_increment || 'patch' }}
+          DEV_INCREMENT: ${{ inputs.dev_increment }}
         run: |
           $stableVersion = (Get-Content VERSION -Raw).Trim()
           if ($stableVersion -notmatch '^\d+\.\d+\.\d+$') {
@@ -157,7 +154,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEV_VERSION: ${{ steps.prepare.outputs.dev_version }}
-          DEV_INCREMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.dev_increment || 'patch' }}
+          DEV_INCREMENT: ${{ inputs.dev_increment }}
         run: |
           $notesPath = Join-Path $env:RUNNER_TEMP 'dev-release-notes.md'
           @"

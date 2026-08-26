@@ -46,6 +46,7 @@ pub fn load(data_dir: &Path) {
     loader::load_squish_data(data_dir);
     loader::load_catalyst_conversions(data_dir);
     loader::load_consumables(data_dir);
+    loader::load_game_context(data_dir);
 }
 
 // ---- Accessors ----
@@ -75,6 +76,10 @@ pub fn instances() -> Vec<Value> {
 
 pub fn get_runtime_data() -> Value {
     loader::get_runtime_metadata()
+}
+
+pub fn game_context() -> Value {
+    state::GAME_CONTEXT.read().unwrap().clone()
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -208,7 +213,7 @@ pub fn tier_set_bonus_id() -> u64 {
     season_cfg()
         .get("tierSetBonusId")
         .and_then(|v| v.as_u64())
-        .unwrap_or(20)
+        .unwrap_or(0)
 }
 
 pub fn upgrade_tracks() -> Arc<HashMap<state::UpgradeTrackKey, state::UpgradeTrackValue>> {

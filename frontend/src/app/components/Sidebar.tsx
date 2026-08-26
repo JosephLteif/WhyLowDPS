@@ -17,13 +17,31 @@ import {
   ScrollText,
   Settings as SettingsIcon,
   Users,
+  X,
 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
+import { API_URL, fetchJson, isHostedPrivate } from '../lib/api';
+import { SIMC_RUNTIME_UPDATED_EVENT } from '../lib/simc-runtime-release';
 
 const DISCORD_INVITE_URL = 'https://discord.gg/ZjxQv5kFxe';
 const APP_WEBSITE_URL = 'https://josephlteif.github.io/WhyLowDPS/';
+
+type SimcRuntimeSidebarStatus = {
+  channel?: string | null;
+  version?: string | null;
+};
+
+function formatSimcSidebarVersion(version: string | null | undefined): string {
+  if (!version) return 'Unavailable';
+  const match = version.match(/^(?:[^-]+-)?(\d{8})(\d{4})?$/);
+  if (!match) return version;
+
+  const [, datePart, timePart] = match;
+  const date = `${datePart.slice(0, 4)}-${datePart.slice(4, 6)}-${datePart.slice(6, 8)}`;
+  return timePart ? `${date} ${timePart.slice(0, 2)}:${timePart.slice(2, 4)}` : date;
+}
 
 interface NavItem {
   href: string;
@@ -61,7 +79,7 @@ const baseNavItems: NavItem[] = [
     matchPaths: ['/drop-finder', '/upgrade-compare', '/upgrade'],
     children: [
       { href: '/drop-finder', label: 'Drop Finder', description: 'Sim raid & dungeon loot' },
-      { href: '/upgrade-compare', label: 'Crest Upgrades', description: 'Best Dawncrest path' },
+      { href: '/upgrade-compare', label: 'Crest Upgrades', description: 'Best upgrade path' },
     ],
   },
   {
@@ -126,6 +144,10 @@ const SIDEBAR_ORDER_KEY = 'whylowdps_sidebar_order';
 const SIDEBAR_VISIBLE_KEY = 'whylowdps_sidebar_visible';
 const SIDEBAR_DEFAULT_VISIBLE_LABELS = new Set(['Settings']);
 
+function navTourTarget(label: string): string {
+  return `nav-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+}
+
 function ensureDefaultVisibleLabels(labels: string[], availableLabels: string[]): string[] {
   const next = [...labels];
   for (const label of SIDEBAR_DEFAULT_VISIBLE_LABELS) {
@@ -172,11 +194,41 @@ export default function Sidebar() {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const mobileCloseRef = useRef<HTMLButtonElement | null>(null);
   const dragSourceRef = useRef<string | null>(null);
   const dragOverRef = useRef<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const dragOverPosRef = useRef<'before' | 'after'>('before');
   const { user, lightMode } = useAuth();
+  const [simcRuntimeStatus, setSimcRuntimeStatus] = useState<SimcRuntimeSidebarStatus | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSimcRuntimeStatus = () => {
+      if (!isHostedPrivate || user?.role !== 'admin') {
+        setSimcRuntimeStatus(null);
+        return;
+      }
+
+      void fetchJson<SimcRuntimeSidebarStatus>(`${API_URL}/api/admin/simc-runtime`, {
+        cache: 'no-store',
+      })
+        .then((status) => {
+          if (!cancelled) setSimcRuntimeStatus(status);
+        })
+        .catch(() => {
+          if (!cancelled) setSimcRuntimeStatus(null);
+        });
+    };
+
+    loadSimcRuntimeStatus();
+    window.addEventListener(SIMC_RUNTIME_UPDATED_EVENT, loadSimcRuntimeStatus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SIMC_RUNTIME_UPDATED_EVENT, loadSimcRuntimeStatus);
+    };
+  }, [user?.role]);
 
   const navItems = useMemo(() => {
     const items = [...baseNavItems];
@@ -291,6 +343,26 @@ export default function Sidebar() {
   }, [isNarrowViewport]);
 
   useEffect(() => {
+    if (!isNarrowViewport || !isMobileOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement;
+    document.body.style.overflow = 'hidden';
+    mobileCloseRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, [isMobileOpen, isNarrowViewport]);
+
+  useEffect(() => {
     const width = isCollapsed ? '5rem' : '18rem';
     const effectiveWidth = isNarrowViewport ? '0rem' : width;
     document.documentElement.style.setProperty('--sidebar-width', effectiveWidth);
@@ -394,12 +466,23 @@ export default function Sidebar() {
         />
       )}
       <aside
-        className={`fixed bottom-0 left-0 z-50 flex flex-col justify-between border-r border-border bg-surface/90 pb-4 pt-3 transition-all duration-200 ${
-          isCollapsed ? 'w-20' : 'w-72'
+        aria-label="App navigation"
+        className={`fixed bottom-0 left-0 z-50 flex flex-col justify-between border-r border-border bg-surface/95 pb-4 pt-3 shadow-2xl transition-all duration-200 ${
+          isCollapsed ? 'w-20' : 'w-[min(18rem,calc(100vw-1rem))] xl:w-72'
         } ${isNarrowViewport ? (isMobileOpen ? 'translate-x-0' : '-translate-x-full') : 'translate-x-0'}`}
         style={{ top: 'var(--app-header-height)' }}
       >
         <nav className={`flex min-h-0 flex-1 flex-col px-4 ${draggingLabel ? 'select-none' : ''}`}>
+          <button
+            ref={mobileCloseRef}
+            type="button"
+            onClick={() => setIsMobileOpen(false)}
+            className="mb-2 inline-flex min-h-11 items-center justify-between rounded-lg border border-border bg-surface-2 px-3 text-sm font-semibold text-zinc-200 xl:hidden"
+            aria-label="Close navigation"
+          >
+            Close navigation
+            <X className="h-4 w-4 text-zinc-400" strokeWidth={2} />
+          </button>
           {!isCollapsed && (
             <div
               className={`mb-1 flex items-center gap-2 ${isEditMode ? 'justify-between' : 'justify-end'}`}
@@ -475,6 +558,7 @@ export default function Sidebar() {
                 <div
                   key={item.label}
                   data-nav-label={item.label}
+                  data-tour={navTourTarget(item.label)}
                   className={`flex flex-col gap-1 rounded-lg transition-all duration-150 ${
                     dragOverLabel === item.label && draggingLabel !== item.label
                       ? 'bg-gold/[0.04]'
@@ -632,7 +716,7 @@ export default function Sidebar() {
                               }
                               if (isNarrowViewport) setIsMobileOpen(false);
                             }}
-                            className={`flex flex-col rounded-md px-3 py-2 transition-colors ${
+                            className={`flex min-h-11 flex-col justify-center rounded-md px-3 py-2 transition-colors ${
                               childActive
                                 ? 'text-gold'
                                 : 'text-zinc-200 hover:bg-surface-2 hover:text-white'
@@ -679,6 +763,17 @@ export default function Sidebar() {
           <div className="mt-2 px-2 text-center text-xs text-zinc-400">
             {!isCollapsed ? APP_VERSION_WITH_PREFIX : 'v'}
           </div>
+          {!isCollapsed && simcRuntimeStatus && (
+            <div
+              aria-label="SimC runtime status"
+              className="px-2 text-center text-[11px] leading-tight text-zinc-500"
+            >
+              <div className="font-medium text-zinc-300">
+                SimC {simcRuntimeStatus.channel === 'nightly' ? 'Nightly' : 'Weekly'}
+              </div>
+              <div>{formatSimcSidebarVersion(simcRuntimeStatus.version)}</div>
+            </div>
+          )}
           <div className="mx-auto flex items-center gap-2">
             <a
               href={DISCORD_INVITE_URL}

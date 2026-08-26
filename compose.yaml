@@ -1,0 +1,62 @@
+services:
+  app:
+    image: ghcr.io/josephlteif/whylowdps:latest
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      ALLOW_EXTERNAL_BIND: "true"
+      BIND_HOST: 0.0.0.0
+      PORT: 8000
+      FRONTEND_DIR: /app/frontend
+      DATA_DIR: /data
+      DATA_SEED_DIR: /app/data-seed
+      DATABASE_URL: /data/whylowdps-multi-user.db
+      SIMC_RUNTIME_DIR: /data/simc-runtime
+      SIMC_CHANNEL: ${SIMC_CHANNEL:-weekly}
+      WHYLOWDPS_DEPLOYMENT: hosted-private
+      WHYLOWDPS_DOCKER_UPDATE_URL: http://watchtower:8080
+      WHYLOWDPS_DOCKER_UPDATE_TOKEN: ${WHYLOWDPS_DOCKER_UPDATE_TOKEN:-}
+      WHYLOWDPS_SECURE_COOKIES: ${WHYLOWDPS_SECURE_COOKIES:-false}
+      JWT_SECRET: ${JWT_SECRET:-}
+      SESSION_ENCRYPTION_KEY: ${SESSION_ENCRYPTION_KEY:-}
+      WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG: ${WHYLOWDPS_BOOTSTRAP_ADMIN_BATTLETAG:?Set the initial admin BattleTag}
+      MAX_JOBS_PER_USER: ${MAX_JOBS_PER_USER:-200}
+      MAX_CONCURRENT_SIMULATIONS: ${MAX_CONCURRENT_SIMULATIONS:-2}
+      MAX_JOBS: ${MAX_JOBS:-200}
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    volumes:
+      - whylowdps-data:/data
+    ports:
+      - "${WHYLOWDPS_HOST_IP:-0.0.0.0}:${WHYLOWDPS_PORT:-8000}:8000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+
+  watchtower:
+    image: containrrr/watchtower:1.7.1
+    profiles: [updates]
+    command:
+      - --http-api-update
+      - --http-api-token
+      - ${WHYLOWDPS_DOCKER_UPDATE_TOKEN:-disabled}
+      - --label-enable
+      - --cleanup
+    environment:
+      WATCHTOWER_HTTP_API_TOKEN: ${WHYLOWDPS_DOCKER_UPDATE_TOKEN:-disabled}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  whylowdps-data:

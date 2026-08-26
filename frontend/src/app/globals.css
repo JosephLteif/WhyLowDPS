@@ -1,13 +1,20 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@config '../../tailwind.config.ts';
 
 @layer base {
   body {
     @apply bg-bg text-zinc-100 antialiased;
   }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+
   ::selection {
     @apply bg-gold/25 text-white;
   }
@@ -18,7 +25,7 @@
     @apply rounded-xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200;
   }
   .card-interactive {
-    @apply card cursor-pointer hover:border-border-light hover:shadow-card-hover;
+    @apply rounded-xl border border-border bg-surface shadow-card transition-[border-color,box-shadow] duration-200 cursor-pointer hover:border-border-light hover:shadow-card-hover;
   }
   .btn-primary {
     @apply relative rounded-lg bg-gold px-5 py-2.5 font-semibold text-black shadow-sm transition-all duration-150 hover:bg-gold-light hover:shadow-md active:scale-[0.98] disabled:pointer-events-none disabled:bg-zinc-800 disabled:text-zinc-300 disabled:shadow-none;
@@ -31,6 +38,89 @@
   }
   .label-text {
     @apply mb-1.5 block text-[13px] font-semibold uppercase tracking-[0.14em] text-zinc-300;
+  }
+
+  .notification-enter {
+    animation: notification-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .notification-exit {
+    animation: notification-exit 180ms ease-in both;
+    pointer-events: none;
+  }
+
+  .notification-progress {
+    transform-origin: right;
+    animation: notification-progress var(--notification-duration) linear both;
+  }
+}
+
+@keyframes notification-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(1rem, 0, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes notification-exit {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(1rem, 0, 0) scale(0.98);
+  }
+}
+
+@keyframes notification-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-enter,
+  .notification-exit {
+    animation: none;
+  }
+
+  .notification-progress {
+    animation: none;
+    transform: scaleX(0);
+  }
+}
+
+.app-header-safe-area {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.mobile-safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-fixed-bottom {
+  bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-page-bottom {
+  padding-bottom: max(7rem, calc(6rem + env(safe-area-inset-bottom, 0px)));
+}
+
+@media (max-width: 639px) {
+  .mobile-modal-shell {
+    border-radius: 0;
+  }
+
+  .mobile-modal-footer {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
 }
 

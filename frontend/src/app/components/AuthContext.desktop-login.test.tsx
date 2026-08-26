@@ -12,8 +12,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../lib/api', () => ({
   API_URL: 'http://localhost:17384',
+  LAN_ACCESS_REQUIRED_STORAGE_KEY: 'whylowdps_lan_access_required',
+  LAN_ACCESS_REVOKED_EVENT: 'whylowdps-lan-access-revoked',
   fetchJson: mocks.fetchJson,
   isDesktop: true,
+  isHostedPrivate: false,
+  isLanBrowser: vi.fn(() => false),
   isNetworkUnavailableError: vi.fn(() => false),
   saveBlizzardCredentialProfile: mocks.saveBlizzardCredentialProfile,
   setSessionToken: vi.fn(),
@@ -76,6 +80,20 @@ describe('AuthContext desktop login', () => {
     await waitFor(() => {
       expect(mocks.invoke).toHaveBeenCalledWith('open_auth_window', {
         url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&credential_id=profile-123',
+      });
+    });
+  });
+
+  it('requests Battle.net account selection when switching accounts', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await result.current.login(undefined, undefined, undefined, true);
+
+    await waitFor(() => {
+      expect(mocks.invoke).toHaveBeenCalledWith('open_auth_window', {
+        url: 'http://localhost:17384/api/auth/bnet/login?flow_id=flow-123&force_account_selection=true',
       });
     });
   });

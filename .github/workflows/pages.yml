@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - "docs/**"
+      - "scripts/build-pages-changelog.js"
+      - "scripts/sync-changelog.js"
       - ".github/workflows/pages.yml"
   push:
     branches:
       - master
     paths:
       - "docs/**"
+      - "scripts/build-pages-changelog.js"
+      - "scripts/sync-changelog.js"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -30,11 +34,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Check app changelog data
+        run: node scripts/sync-changelog.js --check
+
+      - name: Build changelog page
+        run: node scripts/build-pages-changelog.js
+
       - name: Validate local site assets and links
         shell: bash
         run: |
           set -euo pipefail
           test -s docs/index.html
+          test -s docs/changelog.html
           test -s docs/styles.css
           test -s docs/site.webmanifest
           test -f docs/favicon.ico
@@ -45,19 +56,21 @@ jobs:
           const path = require('node:path');
 
           const docsRoot = path.resolve('docs');
-          const html = fs.readFileSync(path.join(docsRoot, 'index.html'), 'utf8');
-          const targets = [...html.matchAll(/(?:href|src)="([^"]+)"/g)]
-            .map((match) => match[1])
-            .filter((target) => !/^(?:https?:|mailto:|tel:|javascript:|#)/i.test(target));
+          const targets = ['index.html', 'changelog.html'].flatMap((fileName) => {
+            const html = fs.readFileSync(path.join(docsRoot, fileName), 'utf8');
+            return [...html.matchAll(/(?:href|src)="([^"]+)"/g)]
+              .map((match) => ({ fileName, target: match[1] }))
+              .filter(({ target }) => !/^(?:https?:|mailto:|tel:|javascript:|#)/i.test(target));
+          });
 
-          for (const target of targets) {
+          for (const { fileName, target } of targets) {
             const relativePath = target.split('#', 1)[0].split('?', 1)[0];
             const resolved = path.resolve(docsRoot, relativePath);
-            if (!resolved.startsWith(`${docsRoot}${path.sep}`)) {
-              throw new Error(`Site link escapes docs/: ${target}`);
+            if (resolved !== docsRoot && !resolved.startsWith(`${docsRoot}${path.sep}`)) {
+              throw new Error(`Site link escapes docs/: ${fileName} -> ${target}`);
             }
             if (!fs.existsSync(resolved)) {
-              throw new Error(`Missing site asset: ${target}`);
+              throw new Error(`Missing site asset: ${fileName} -> ${target}`);
             }
           }
 
@@ -74,6 +87,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Check app changelog data
+        run: node scripts/sync-changelog.js --check
+
+      - name: Build changelog page
+        run: node scripts/build-pages-changelog.js
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

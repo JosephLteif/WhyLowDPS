@@ -4,8 +4,10 @@ import { Instance } from '../drop-finder/types';
 export function isDesktopRuntime(): boolean {
   const desktopBuild =
     process.env.DESKTOP_BUILD === 'true' || process.env.NEXT_PUBLIC_DESKTOP_BUILD === 'true';
-  if (desktopBuild) return true;
-  if (typeof window === 'undefined') return false;
+  // Keep the build flag for server rendering, but let the browser decide from
+  // its actual runtime. A desktop export can also be opened by a phone from
+  // the PC's LAN address, where Tauri APIs and localhost are not available.
+  if (typeof window === 'undefined') return desktopBuild;
   const isDesktopDevFrontend =
     window.location.protocol === 'http:' &&
     (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
@@ -24,6 +26,29 @@ export function isDesktopRuntime(): boolean {
 }
 
 export const isDesktop = isDesktopRuntime();
+export const isHostedPrivate = process.env.NEXT_PUBLIC_DEPLOYMENT_MODE === 'hosted-private';
+export const LAN_ACCESS_REVOKED_EVENT = 'whylowdps-lan-access-revoked';
+export const LAN_ACCESS_REQUIRED_STORAGE_KEY = 'whylowdps_lan_access_required';
+
+export function isLanHost(hostname: string): boolean {
+  if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return true;
+  const octets = hostname.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet))) return false;
+  return (
+    octets[0] === 10 ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168)
+  );
+}
+
+export function isLanBrowser(): boolean {
+  if (isDesktop || typeof window === 'undefined') return false;
+  if (window.location.port === '17384') return true;
+  return (
+    isLanHost(window.location.hostname) &&
+    !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+  );
+}
 
 if (typeof window !== 'undefined') {
   console.log('[WhyLowDps] Mode:', isDesktop ? 'Desktop' : 'Web');
@@ -39,6 +64,57 @@ let sessionToken: string | null = null;
 
 export function setSessionToken(token: string | null): void {
   sessionToken = token;
+}
+
+const USER_SCOPE_KEY = 'whylowdps_active_user_scope';
+const USER_SCOPE_PREFIX = 'whylowdps_user_scope:';
+const DEVICE_STORAGE_KEYS = new Set([
+  'whylowdps_lan_access_required',
+  'whylowdps_data_ready',
+  'whylowdps_light_mode',
+  'whylowdps_full_mode',
+  'whylowdps_update_channel',
+]);
+
+/** Swap account-owned browser preferences without changing every feature's storage key. */
+export async function switchBrowserUserScope(nextUserId: string): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const currentUserId = localStorage.getItem(USER_SCOPE_KEY);
+  if (currentUserId === nextUserId) return;
+
+  const accountValues: Record<string, string> = {};
+  for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+    const key = localStorage.key(index);
+    if (
+      !key ||
+      key === USER_SCOPE_KEY ||
+      key.startsWith(USER_SCOPE_PREFIX) ||
+      DEVICE_STORAGE_KEYS.has(key) ||
+      key.startsWith('whylowdps_changelog_seen_')
+    ) {
+      continue;
+    }
+    if (key.startsWith('whylowdps_')) {
+      const value = localStorage.getItem(key);
+      if (value !== null) accountValues[key] = value;
+      localStorage.removeItem(key);
+    }
+  }
+  if (currentUserId) {
+    localStorage.setItem(`${USER_SCOPE_PREFIX}${currentUserId}`, JSON.stringify(accountValues));
+  }
+
+  const saved = localStorage.getItem(`${USER_SCOPE_PREFIX}${nextUserId}`);
+  if (saved) {
+    try {
+      const values = JSON.parse(saved) as Record<string, string>;
+      Object.entries(values).forEach(([key, value]) => localStorage.setItem(key, value));
+    } catch {}
+  }
+  localStorage.setItem(USER_SCOPE_KEY, nextUserId);
+  sessionStorage.clear();
+  Object.keys(memoryCache).forEach((key) => delete memoryCache[key]);
+  if ('caches' in window) await caches.delete(PERSISTENT_CACHE_NAME).catch(() => false);
 }
 const DEFAULT_FETCH_TIMEOUT_MS = 8000;
 const GET_RETRY_ATTEMPTS = 2;
@@ -56,6 +132,37 @@ export type BlizzardCredentialProfile = {
   updated_at: number;
   has_secret?: boolean;
 };
+
+export type HostedUser = {
+  id: string;
+  provider_subject: string | null;
+  battletag: string;
+  role: 'admin' | 'member';
+  enabled: boolean;
+  created_at: string;
+  last_login_at: string | null;
+};
+
+export function listHostedUsers(): Promise<HostedUser[]> {
+  return fetchJson<HostedUser[]>(`${API_URL}/api/admin/users`);
+}
+
+export function createHostedUser(battletag: string, role: 'admin' | 'member') {
+  return fetchJson<HostedUser>(`${API_URL}/api/admin/users`, {
+    method: 'POST',
+    body: JSON.stringify({ battletag, role }),
+  });
+}
+
+export function updateHostedUser(
+  id: string,
+  update: { role?: 'admin' | 'member'; enabled?: boolean; revoke_sessions?: boolean }
+) {
+  return fetchJson<HostedUser>(`${API_URL}/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(update),
+  });
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -127,12 +234,24 @@ export async function fetchJson<T>(url: string, init?: FetchJsonInit): Promise<T
   }
 
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    const message = data.detail || data.error || `Server error ${res.status}`;
+    const responseText = await res.text().catch(() => '');
+    let data: any = {};
+    try {
+      data = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      // Actix's default unauthorized response may be plain text.
+    }
+    const message =
+      data.detail || data.error || responseText.trim() || `Server error ${res.status}`;
+    const isLanPairingRequired = message === 'LAN pairing required';
+    if (res.status === 401 && isLanPairingRequired && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(LAN_ACCESS_REVOKED_EVENT));
+    }
     const error = new Error(message) as any;
     error.status = res.status;
     error.detail = data.detail;
     error.error = data.error;
+    if (isLanPairingRequired) error.code = 'LAN_ACCESS_REQUIRED';
     throw error;
   }
   const text = await res.text();
@@ -160,7 +279,7 @@ function cleanupLegacyLocalStorageCache() {
 }
 
 async function readPersistentCache(
-  cacheKey: string,
+  cacheKey: string
 ): Promise<{ data: any; expiry: number } | null> {
   if (typeof window === 'undefined' || !('caches' in window)) return null;
   try {
@@ -254,6 +373,19 @@ export async function deleteSim(id: string): Promise<void> {
   });
 }
 
+export async function pauseSim(id: string): Promise<{ status: 'paused' }> {
+  return fetchJson<{ status: 'paused' }>(`${API_URL}/api/sim/${id}/pause`, {
+    method: 'POST',
+  });
+}
+
+export async function resumeSim(id: string): Promise<{ status: 'pending' | 'running' | 'paused' }> {
+  return fetchJson<{ status: 'pending' | 'running' | 'paused' }>(
+    `${API_URL}/api/sim/${id}/resume`,
+    { method: 'POST' }
+  );
+}
+
 export async function setSimPinned(id: string, pinned: boolean): Promise<void> {
   await fetchJson(`${API_URL}/api/sim/${id}/pin`, {
     method: 'POST',
@@ -263,7 +395,7 @@ export async function setSimPinned(id: string, pinned: boolean): Promise<void> {
 
 export async function listBlizzardCredentialProfiles(): Promise<BlizzardCredentialProfile[]> {
   const data = await fetchJson<{ profiles?: BlizzardCredentialProfile[] }>(
-    `${API_URL}/api/auth/bnet/credential-profiles`,
+    `${API_URL}/api/auth/bnet/credential-profiles`
   );
   return Array.isArray(data?.profiles) ? data.profiles : [];
 }
@@ -278,21 +410,21 @@ export async function saveBlizzardCredentialProfile(input: {
     {
       method: 'POST',
       body: JSON.stringify(input),
-    },
+    }
   );
   return data.profile;
 }
 
 export async function renameBlizzardCredentialProfile(
   id: string,
-  name: string,
+  name: string
 ): Promise<BlizzardCredentialProfile> {
   const data = await fetchJson<{ profile: BlizzardCredentialProfile }>(
     `${API_URL}/api/auth/bnet/credential-profiles/${encodeURIComponent(id)}`,
     {
       method: 'PATCH',
       body: JSON.stringify({ name }),
-    },
+    }
   );
   return data.profile;
 }
@@ -405,7 +537,7 @@ export async function listCharacterProfiles(options?: {
   if (options?.region) params.set('region', options.region);
   const query = params.toString();
   return fetchJson<SavedCharacterProfile[]>(
-    `${API_URL}/api/character-profiles${query ? '?' + query : ''}`,
+    `${API_URL}/api/character-profiles${query ? '?' + query : ''}`
   );
 }
 
@@ -431,6 +563,43 @@ export async function deleteCharacterProfile(id: string): Promise<void> {
 
 export async function listInstances(): Promise<Instance[]> {
   return fetchJson<Instance[]>(`${API_URL}/api/instances`);
+}
+
+export type GameContextCapability = {
+  status: 'ready' | 'degraded' | 'unavailable' | string;
+  reason?: string;
+};
+
+export type GameContext = {
+  schema_version: number;
+  active_season?: {
+    id?: number;
+    name?: string;
+    short_name?: string;
+    periods?: Array<Record<string, unknown>>;
+  };
+  pools?: Record<string, number>;
+  pool_members?: Record<string, number[]>;
+  current_expansion?: { number?: number | null };
+  classes?: Array<{
+    name: string;
+    aliases?: string[];
+    wow_id?: number | null;
+    specs?: Array<{ name: string; id: number }>;
+  }>;
+  rules?: {
+    catalyst_currency_id?: number;
+    item_conversion_id?: number | null;
+    dps_enchant_slots?: string[];
+    upgrade_track_fingerprint?: string[];
+  };
+  source?: Record<string, unknown>;
+  capabilities?: Record<string, GameContextCapability>;
+  warnings?: string[];
+};
+
+export async function getGameContext(): Promise<GameContext> {
+  return fetchJson<GameContext>(`${API_URL}/api/game-context`);
 }
 
 export interface DungeonAffix {
@@ -502,18 +671,18 @@ export async function getDungeonData(): Promise<DungeonSeasonData> {
 }
 
 export async function getMythicKeystoneDungeonIndex(
-  region = 'us',
+  region = 'us'
 ): Promise<MythicKeystoneDungeonIndexResponse> {
   return fetchJson<MythicKeystoneDungeonIndexResponse>(
-    `${API_URL}/api/blizzard/mythic-keystone/dungeon/index?region=${encodeURIComponent(region)}`,
+    `${API_URL}/api/blizzard/mythic-keystone/dungeon/index?region=${encodeURIComponent(region)}`
   );
 }
 
 export async function getMythicKeystoneDungeonDetail(
   dungeonId: number,
-  region = 'us',
+  region = 'us'
 ): Promise<MythicKeystoneDungeonDetail> {
   return fetchJson<MythicKeystoneDungeonDetail>(
-    `${API_URL}/api/blizzard/mythic-keystone/dungeon/${encodeURIComponent(String(dungeonId))}?region=${encodeURIComponent(region)}`,
+    `${API_URL}/api/blizzard/mythic-keystone/dungeon/${encodeURIComponent(String(dungeonId))}?region=${encodeURIComponent(region)}`
   );
 }

@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, Pin, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, GitCompareArrows, Pin, Search, Trash2, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import {
   API_URL,
   clearHistory,
@@ -17,10 +18,11 @@ import {
 import { simResultHref } from '../lib/routes';
 import { clearScenarioSiblings, type ScenarioSibling, storeScenarioSiblings } from '../lib/scenario-siblings';
 import { useAuth } from '../components/AuthContext';
+import { useSimContext } from '../components/SimContext';
 
 interface JobSummary {
   id: string;
-  status: 'pending' | 'running' | 'done' | 'failed';
+  status: 'pending' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled';
   sim_type: string;
   created_at: string;
   fight_style: string;
@@ -40,6 +42,7 @@ interface JobSummary {
 const STATUS_COLORS: Record<string, string> = {
   done: 'bg-emerald-500',
   running: 'bg-amber-500',
+  paused: 'bg-sky-500',
   failed: 'bg-red-500',
   pending: 'bg-zinc-500',
   cancelled: 'bg-zinc-600',
@@ -117,6 +120,60 @@ function formatDateHeader(dateStr: string): string {
   });
 }
 
+function simTypeRoute(simType: string): string {
+  const normalized = String(simType || '').toLowerCase();
+  if (normalized.includes('top_gear') || normalized.includes('top-gear')) return '/top-gear';
+  if (normalized.includes('droptimizer') || normalized.includes('drop_finder')) return '/drop-finder';
+  if (normalized.includes('upgrade')) return '/upgrade';
+  return '/quick-sim';
+}
+
+function SimulationComparison({
+  sims,
+  onClose,
+}: {
+  sims: JobSummary[];
+  onClose: () => void;
+}) {
+  if (sims.length !== 2) return null;
+  const [left, right] = sims;
+  const dpsDelta = (left.dps ?? 0) - (right.dps ?? 0);
+  const renderValue = (value: string | number | null | undefined) =>
+    value == null || value === '' ? '—' : String(value);
+
+  return (
+    <section className="card border-gold/20 bg-gold/[0.03] p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-gold">Comparison</p>
+          <h2 className="mt-1 text-base font-semibold text-zinc-100">Selected simulation results</h2>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-md p-1.5 text-zinc-400 hover:bg-white/10 hover:text-white" aria-label="Close comparison">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {[left, right].map((sim, index) => (
+          <Link key={sim.id} href={simResultHref(sim.id)} className="rounded-lg border border-border bg-surface-2/70 p-3 hover:border-gold/30">
+            <p className="text-xs font-semibold text-zinc-400">{index === 0 ? 'Simulation A' : 'Simulation B'}</p>
+            <p className="mt-1 truncate text-sm font-semibold text-zinc-100">{sim.player_name || 'Unnamed character'}</p>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <dt className="text-zinc-500">DPS</dt><dd className="text-right font-mono text-zinc-200">{sim.dps == null ? '—' : Math.round(sim.dps).toLocaleString()}</dd>
+              <dt className="text-zinc-500">Type</dt><dd className="text-right text-zinc-300">{SIM_TYPE_LABELS[sim.sim_type] || sim.sim_type}</dd>
+              <dt className="text-zinc-500">Fight</dt><dd className="text-right text-zinc-300">{renderValue(sim.fight_style)}</dd>
+              <dt className="text-zinc-500">Iterations</dt><dd className="text-right text-zinc-300">{renderValue(sim.iterations)}</dd>
+              <dt className="text-zinc-500">Status</dt><dd className="text-right text-zinc-300">{renderValue(sim.status)}</dd>
+            </dl>
+          </Link>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-zinc-400">
+        DPS difference: <span className={dpsDelta >= 0 ? 'text-emerald-300' : 'text-red-300'}>{dpsDelta >= 0 ? '+' : ''}{Math.round(dpsDelta).toLocaleString()}</span>
+      </p>
+    </section>
+  );
+}
+
 function SimRow({
   sim,
   compact,
@@ -126,6 +183,7 @@ function SimRow({
   selected,
   onSelectToggle,
   onTogglePinned,
+  onRerun,
 }: {
   sim: JobSummary;
   compact?: boolean;
@@ -135,6 +193,7 @@ function SimRow({
   selected?: boolean;
   onSelectToggle?: (id: string, checked: boolean) => void;
   onTogglePinned?: (id: string, pinned: boolean) => void;
+  onRerun?: (sim: JobSummary) => void;
 }) {
   return (
     <div className="group relative flex items-center">
@@ -207,7 +266,11 @@ function SimRow({
             </span>
           ) : (
             <span className={`block truncate text-zinc-500 ${compact ? 'text-xs' : 'text-sm'}`}>
-              {sim.status === 'running' ? 'Simulating...' : 'Pending...'}
+              {sim.status === 'running'
+                ? 'Simulating...'
+                : sim.status === 'paused'
+                  ? 'Paused'
+                  : 'Pending...'}
             </span>
           )}
         </div>
@@ -238,6 +301,19 @@ function SimRow({
             title={sim.pinned ? 'Unpin' : 'Pin'}
           >
             <PinIcon pinned={!!sim.pinned} />
+          </button>
+        )}
+        {onRerun && sim.status !== 'running' && sim.status !== 'pending' && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRerun(sim);
+            }}
+            className="rounded px-2 py-1 text-[11px] font-semibold text-zinc-300 hover:bg-white/10 hover:text-white"
+            title="Rerun this simulation input"
+          >
+            Rerun
           </button>
         )}
         {onDelete && (
@@ -332,6 +408,7 @@ function BatchGroup({
   onBatchSelectToggle,
   onRowSelectToggle,
   onTogglePinned,
+  onRerun,
 }: {
   entry: Extract<HistoryEntry, { type: 'batch' }>;
   onDelete?: (id: string) => void;
@@ -339,6 +416,7 @@ function BatchGroup({
   onBatchSelectToggle?: (ids: string[], checked: boolean) => void;
   onRowSelectToggle?: (id: string, checked: boolean) => void;
   onTogglePinned?: (id: string, pinned: boolean) => void;
+  onRerun?: (sim: JobSummary) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const first = entry.sims[0];
@@ -425,6 +503,7 @@ function BatchGroup({
                 selected={selectedIds?.has(sim.id)}
                 onSelectToggle={onRowSelectToggle}
                 onTogglePinned={onTogglePinned}
+                onRerun={onRerun}
               />
             ))}
           </div>
@@ -436,6 +515,8 @@ function BatchGroup({
 
 export default function HistoryPage() {
   const { lightMode } = useAuth();
+  const router = useRouter();
+  const { setSimcInput } = useSimContext();
   const [sims, setSims] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [pinFilter, setPinFilter] = useState<'all' | 'pinned' | 'unpinned'>('all');
@@ -454,6 +535,8 @@ export default function HistoryPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkPinning, setBulkPinning] = useState(false);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [rerunError, setRerunError] = useState<string | null>(null);
 
   useEffect(() => {
     // Fetch account characters and historical characters
@@ -523,6 +606,30 @@ export default function HistoryPage() {
     await deleteSim(id);
     refreshHistory();
   };
+
+  const handleRerun = useCallback(
+    async (sim: JobSummary) => {
+      setRerunError(null);
+      try {
+        const response = await fetch(`${API_URL}/api/sim/${encodeURIComponent(sim.id)}/input`, {
+          credentials: 'include',
+        });
+        if (!response.ok) throw new Error(`Unable to load simulation input (${response.status})`);
+        const input = await response.text();
+        if (!input.trim()) throw new Error('Simulation input was empty');
+        setSimcInput(input);
+        try {
+          sessionStorage.setItem('whylowdps_simc_input', input);
+        } catch {
+          // Shared context still carries the input when session storage is unavailable.
+        }
+        router.push(simTypeRoute(sim.sim_type));
+      } catch {
+        setRerunError('This simulation input could not be loaded. The original result is still available.');
+      }
+    },
+    [router, setSimcInput]
+  );
 
   const handleTogglePinned = async (id: string, pinned: boolean) => {
     setSims((prev) => prev.map((sim) => (sim.id === id ? { ...sim, pinned } : sim)));
@@ -615,6 +722,10 @@ export default function HistoryPage() {
 
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
   const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+  const comparisonSims = useMemo(
+    () => compareIds.map((id) => sims.find((sim) => sim.id === id)).filter((sim): sim is JobSummary => !!sim),
+    [compareIds, sims]
+  );
 
   const handleToggleSelectAllVisible = useCallback(
     (checked: boolean) => {
@@ -755,6 +866,15 @@ export default function HistoryPage() {
         </div>
       </div>
 
+      {rerunError && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200" role="alert">
+          {rerunError}
+        </div>
+      )}
+      {comparisonSims.length === 2 && (
+        <SimulationComparison sims={comparisonSims} onClose={() => setCompareIds([])} />
+      )}
+
       {groupKeys.length === 0 ? (
         <div className="card py-12 text-center">
           <p className="text-sm text-muted">
@@ -809,6 +929,7 @@ export default function HistoryPage() {
                           selected={selectedIds.has(entry.sim.id)}
                           onSelectToggle={handleToggleSelection}
                           onTogglePinned={handleTogglePinned}
+                          onRerun={handleRerun}
                         />
                       ) : (
                         <BatchGroup
@@ -818,6 +939,7 @@ export default function HistoryPage() {
                           onBatchSelectToggle={handleToggleBatchSelection}
                           onRowSelectToggle={handleToggleSelection}
                           onTogglePinned={handleTogglePinned}
+                          onRerun={handleRerun}
                         />
                       )}
                     </div>
@@ -829,11 +951,21 @@ export default function HistoryPage() {
         </div>
       )}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-50 flex w-[min(95vw,680px)] -translate-x-1/2 items-center justify-between gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-2xl backdrop-blur">
+        <div className="fixed bottom-4 left-1/2 z-50 flex w-[min(95vw,760px)] -translate-x-1/2 flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-2xl backdrop-blur">
           <div className="text-sm text-zinc-200">
             {selectedIds.size} record{selectedIds.size === 1 ? '' : 's'} selected
           </div>
           <div className="flex items-center gap-2">
+            {selectedIds.size === 2 && (
+              <button
+                onClick={() => setCompareIds(Array.from(selectedIds))}
+                disabled={bulkDeleting || bulkPinning}
+                className="inline-flex items-center gap-1.5 rounded-md border border-sky-400/30 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-200 hover:bg-sky-500/20 disabled:opacity-50"
+              >
+                <GitCompareArrows className="h-3.5 w-3.5" />
+                Compare Selected
+              </button>
+            )}
             <button
               onClick={() => handleBulkPin(true)}
               disabled={bulkDeleting || bulkPinning}

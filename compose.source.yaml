@@ -1,0 +1,9 @@
+services:
+  app:
+    image: whylowdps-local:${WHYLOWDPS_LOCAL_TAG:-dev}
+    build:
+      context: .
+      args:
+        WHYLOWDPS_DEPLOYMENT: hosted-private
+        WHYLOWDPS_VERSION: ${WHYLOWDPS_VERSION:-local}
+        WHYLOWDPS_REVISION: ${WHYLOWDPS_REVISION:-working-tree}

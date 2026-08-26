@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
+use super::state;
 use super::state::*;
 use crate::types::class_data;
 use crate::types::{class_data::ClassDef, class_data::SpecDef, BonusData, EnchantData, GameItem};
@@ -105,7 +106,9 @@ pub fn load_bonuses(data_dir: &Path) {
         }
     }
 
-    *CURRENT_SEASON_ID.write().unwrap() = max_season_id;
+    let active_season_id =
+        active_season_value(data_dir).and_then(|season| season.get("id").and_then(Value::as_u64));
+    *CURRENT_SEASON_ID.write().unwrap() = active_season_id.unwrap_or(max_season_id);
     let mut upgrade_max: HashMap<u64, u64> = HashMap::new();
     for members in groups.values() {
         let max_bonus_id = members
@@ -174,11 +177,9 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
 
     for (group_id_str, entries) in &bus_raw {
         let group_id: u64 = group_id_str.parse().unwrap_or(0);
-        if let Some(ref ag) = active_groups {
-            if !ag.contains(&group_id) {
-                continue;
-            }
-        }
+        let is_active_group = active_groups
+            .as_ref()
+            .is_none_or(|groups| groups.contains(&group_id));
         for entry in entries {
             let name = entry.get("name").and_then(|n| n.as_str()).unwrap_or("");
             let level = entry.get("level").and_then(|l| l.as_u64()).unwrap_or(0);
@@ -191,7 +192,10 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
                 .and_then(|b| b.quality)
                 .unwrap_or(4);
 
-            if !name.is_empty() && level > 0 && max_level > 0 && ilvl > 0 {
+            // Keep the shared track index scoped to the active season. Other
+            // consumers use it for current-season item generation, while the
+            // upgrade comparer resolves item-specific values from BONUSES.
+            if is_active_group && !name.is_empty() && level > 0 && max_level > 0 && ilvl > 0 {
                 tracks.insert(
                     (name.to_string(), level, max_level),
                     (ilvl, bonus_id, quality),
@@ -223,6 +227,39 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
         }
     }
 
+    // Keep currency metadata available even when a data version omits the
+    // legacy entry.currency object from bonus-upgrade-sets.
+    let currency_types_path = data_dir.join("currency-types.json");
+    if let Ok(file) = fs::File::open(currency_types_path) {
+        let currency_types: HashMap<String, Value> =
+            serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
+        for (id, entry) in currency_types {
+            let Ok(cid) = id.parse::<u64>() else {
+                continue;
+            };
+            let name = entry
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            let icon = entry
+                .get("icon")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if name.is_empty() && icon.is_empty() {
+                continue;
+            }
+            let metadata = currencies.entry(cid).or_default();
+            if metadata.0.is_empty() {
+                metadata.0 = name;
+            }
+            if metadata.1.is_empty() {
+                metadata.1 = icon;
+            }
+        }
+    }
+
     println!("Indexed {} upgrade track entries", tracks.len());
     *UPGRADE_TRACKS.write().unwrap() = Arc::new(tracks);
     *UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(step_costs);
@@ -232,7 +269,12 @@ pub fn load_bus_and_seasons(data_dir: &Path) {
 pub fn load_instances(data_dir: &Path) {
     let raidbots_instances = read_json_array(&data_dir.join("instances.json"));
     let wow_instances = crate::game_data::instance_drops::load_instances_from_wow_content(data_dir);
-    let instances = reconcile_instance_sources(raidbots_instances, wow_instances);
+    let active_season_name = read_active_season_metadata(data_dir).0;
+    let instances = reconcile_instance_sources(
+        raidbots_instances,
+        wow_instances,
+        active_season_name.as_deref(),
+    );
     if !instances.is_empty() {
         *INSTANCES.write().unwrap() = instances;
         return;
@@ -246,7 +288,20 @@ fn read_json_array(path: &Path) -> Vec<Value> {
     serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default()
 }
 
-fn reconcile_instance_sources(primary: Vec<Value>, fallback: Vec<Value>) -> Vec<Value> {
+fn read_json_object(path: &Path) -> Value {
+    let Ok(file) = fs::File::open(path) else {
+        return json!({});
+    };
+    serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_else(|_| json!({}))
+}
+
+fn reconcile_instance_sources(
+    primary: Vec<Value>,
+    fallback: Vec<Value>,
+    active_season_name: Option<&str>,
+) -> Vec<Value> {
+    let (mplus_ids, normal_dungeon_ids, raid_ids) =
+        primary_current_instance_pools(&primary, active_season_name);
     let mut fallback_by_id = HashMap::new();
     let mut fallback_order = Vec::new();
     for row in fallback {
@@ -264,7 +319,12 @@ fn reconcile_instance_sources(primary: Vec<Value>, fallback: Vec<Value>) -> Vec<
             continue;
         };
         seen_ids.insert(id);
-        rows.push(merge_instance_rows(fallback_by_id.remove(&id), row));
+        rows.push(apply_primary_season_metadata(
+            merge_instance_rows(fallback_by_id.remove(&id), row),
+            &mplus_ids,
+            &normal_dungeon_ids,
+            &raid_ids,
+        ));
     }
 
     for id in fallback_order {
@@ -275,11 +335,144 @@ fn reconcile_instance_sources(primary: Vec<Value>, fallback: Vec<Value>) -> Vec<
             continue;
         };
         if seen_ids.insert(id) {
-            rows.push(row);
+            rows.push(apply_primary_season_metadata(
+                row,
+                &mplus_ids,
+                &normal_dungeon_ids,
+                &raid_ids,
+            ));
         }
     }
 
     rows
+}
+
+fn instance_pool_ids(primary: &[Value], pool_id: i64) -> HashSet<i64> {
+    let Some(pool) = primary
+        .iter()
+        .find(|row| row.get("id").and_then(Value::as_i64) == Some(pool_id))
+    else {
+        return HashSet::new();
+    };
+
+    pool.get("encounters")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+        .collect()
+}
+
+fn primary_current_instance_pools(
+    primary: &[Value],
+    active_season_name: Option<&str>,
+) -> (HashSet<i64>, HashSet<i64>, HashSet<i64>) {
+    let mplus_ids = instance_pool_ids(primary, -1);
+    let normal_dungeon_ids = instance_pool_ids(primary, -32);
+
+    let active_raid_encounter_ids = active_season_name
+        .and_then(|season_name| {
+            let season_name = season_name.to_ascii_lowercase();
+            primary.iter().find_map(|row| {
+                let name = row.get("name").and_then(Value::as_str)?;
+                let pool_name = name.strip_suffix(" Raids")?;
+                if season_name.contains(&pool_name.to_ascii_lowercase()) {
+                    Some(
+                        row.get("encounters")
+                            .and_then(Value::as_array)
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|encounter| encounter.get("id").and_then(Value::as_i64))
+                            .collect::<HashSet<_>>(),
+                    )
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or_default();
+
+    let mut raid_ids: HashSet<i64> = primary
+        .iter()
+        .filter(|row| {
+            row.get("id")
+                .and_then(Value::as_i64)
+                .is_some_and(|id| id > 0)
+                && row.get("type").and_then(Value::as_str) == Some("raid")
+        })
+        .filter(|row| {
+            row.get("encounters")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .any(|encounter| {
+                    encounter
+                        .get("id")
+                        .and_then(Value::as_i64)
+                        .is_some_and(|id| active_raid_encounter_ids.contains(&id))
+                })
+        })
+        .filter_map(|row| row.get("id").and_then(Value::as_i64))
+        .collect();
+
+    if raid_ids.is_empty() {
+        raid_ids.extend(primary.iter().filter_map(|row| {
+            let id = row.get("id").and_then(Value::as_i64)?;
+            if id > 0
+                && row.get("type").and_then(Value::as_str) == Some("raid")
+                && row.get("current_season").and_then(Value::as_bool) == Some(true)
+            {
+                Some(id)
+            } else {
+                None
+            }
+        }));
+    }
+
+    (mplus_ids, normal_dungeon_ids, raid_ids)
+}
+
+fn apply_primary_season_metadata(
+    mut row: Value,
+    mplus_ids: &HashSet<i64>,
+    normal_dungeon_ids: &HashSet<i64>,
+    raid_ids: &HashSet<i64>,
+) -> Value {
+    let Some(id) = row.get("id").and_then(Value::as_i64) else {
+        return row;
+    };
+    if id <= 0 {
+        return row;
+    }
+
+    let Some(obj) = row.as_object_mut() else {
+        return row;
+    };
+    match obj.get("type").and_then(Value::as_str) {
+        Some("dungeon") if !mplus_ids.is_empty() || !normal_dungeon_ids.is_empty() => {
+            obj.insert(
+                "active_rotation".to_string(),
+                json!(mplus_ids.contains(&id)),
+            );
+            obj.insert(
+                "current_season".to_string(),
+                json!(mplus_ids.contains(&id) || normal_dungeon_ids.contains(&id)),
+            );
+        }
+        Some("raid") if !raid_ids.is_empty() => {
+            let is_current_world_boss =
+                obj.get("name").and_then(Value::as_str).is_some_and(|name| {
+                    name.to_ascii_lowercase().contains("world boss")
+                        && obj.get("current_season").and_then(Value::as_bool) == Some(true)
+                });
+            obj.insert(
+                "current_season".to_string(),
+                json!(raid_ids.contains(&id) || is_current_world_boss),
+            );
+        }
+        _ => {}
+    }
+    row
 }
 
 fn merge_instance_rows(fallback: Option<Value>, primary: Value) -> Value {
@@ -348,31 +541,19 @@ fn inferred_season_label() -> String {
 }
 
 fn read_active_season_metadata(data_dir: &Path) -> (Option<String>, Option<u64>, Option<u64>) {
-    let path = data_dir.join("seasons.json");
-    if !path.exists() {
-        return (None, None, None);
-    }
-
-    let file = match fs::File::open(&path) {
-        Ok(f) => f,
-        Err(_) => return (None, None, None),
-    };
-    let seasons: Vec<Value> =
-        serde_json::from_reader(std::io::BufReader::new(file)).unwrap_or_default();
-
-    let active = seasons
-        .iter()
-        .find(|s| s.get("active").and_then(|v| v.as_bool()) == Some(true))
-        .or_else(|| seasons.first());
+    let active = active_season_value(data_dir);
 
     let season_name = active
+        .as_ref()
         .and_then(|s| s.get("name"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
     let catalyst_currency = active
+        .as_ref()
         .and_then(|s| s.get("itemConversionCurrency"))
         .and_then(|v| v.as_u64());
     let conversion_group_id = active
+        .as_ref()
         .and_then(|s| s.get("itemConversionId"))
         .and_then(|v| v.as_u64());
 
@@ -388,14 +569,7 @@ fn read_conversion_bonus_id(data_dir: &Path, preferred_group_id: Option<u64>) ->
     let data: HashMap<String, Value> =
         serde_json::from_reader(std::io::BufReader::new(file)).ok()?;
 
-    let selected_group = preferred_group_id
-        .and_then(|id| data.get(&id.to_string()))
-        .or_else(|| {
-            data.iter()
-                .filter_map(|(k, v)| k.parse::<u64>().ok().map(|id| (id, v)))
-                .max_by_key(|(id, _)| *id)
-                .map(|(_, v)| v)
-        })?;
+    let selected_group = preferred_group_id.and_then(|id| data.get(&id.to_string()))?;
 
     selected_group
         .get("bonusIds")
@@ -711,10 +885,19 @@ fn generated_season_config(data_dir: &Path) -> Value {
     let (season_name_from_file, catalyst_currency_from_file, conversion_group_id) =
         read_active_season_metadata(data_dir);
     let season_name = season_name_from_file.unwrap_or_else(inferred_season_label);
-    let catalyst_currency_id = catalyst_currency_from_file.unwrap_or(3378);
-    let tier_set_bonus_id = read_conversion_bonus_id(data_dir, conversion_group_id).unwrap_or(20);
+    let catalyst_currency_id = catalyst_currency_from_file.unwrap_or(0);
+    let tier_set_bonus_id = read_conversion_bonus_id(data_dir, conversion_group_id).unwrap_or(0);
 
     let available_tracks = available_track_names();
+    let upgrade_rules_available = ["Adventurer", "Veteran", "Champion", "Hero", "Myth"]
+        .iter()
+        .all(|name| {
+            UPGRADE_TRACKS
+                .read()
+                .unwrap()
+                .keys()
+                .any(|(track, _, max_rank)| track == name && *max_rank > 0)
+        });
     let adventurer_track = pick_track_name("Adventurer", &available_tracks);
     let veteran_track = pick_track_name("Veteran", &available_tracks);
     let champion_track = pick_track_name("Champion", &available_tracks);
@@ -805,7 +988,7 @@ fn generated_season_config(data_dir: &Path) -> Value {
           "poolInstanceId": -32,
           "defaultDifficulty": "heroic",
           "difficulties": [
-            { "key": "normal", "label": "Normal", "track": null, "level": 0, "sortOrder": 1, "fixedIlvl": 214, "fixedQuality": 3 },
+            { "key": "normal", "label": "Normal", "track": null, "level": 0, "sortOrder": 1, "fixedIlvl": 0, "fixedQuality": 3 },
             { "key": "heroic", "label": "Heroic", "track": adventurer_track, "level": heroic_level, "sortOrder": 2 },
             { "key": "mythic", "label": "Mythic", "track": champion_track, "level": mythic_zero_level, "sortOrder": 3 }
           ]
@@ -820,8 +1003,9 @@ fn generated_season_config(data_dir: &Path) -> Value {
         "mythic": myth_track
       },
       "encounterUpgradeLevel": {},
-      "dungeonNormal": { "ilvl": 214, "quality": 3 },
+      "dungeonNormal": { "ilvl": 0, "quality": 3 },
       "dungeonDifficultyTracks": dungeon_difficulty_tracks,
+      "upgradeRulesAvailable": upgrade_rules_available,
       "worldBossTrack": champion_track,
       "worldBossLevel": mythic_zero_level,
       "tierSetBonusId": tier_set_bonus_id,
@@ -831,6 +1015,247 @@ fn generated_season_config(data_dir: &Path) -> Value {
 
 pub fn load_season_config(data_dir: &Path) {
     *SEASON_CONFIG.write().unwrap() = generated_season_config(data_dir);
+}
+
+fn active_season_value(data_dir: &Path) -> Option<Value> {
+    let path = data_dir.join("seasons.json");
+    let file = fs::File::open(path).ok()?;
+    let seasons: Vec<Value> = serde_json::from_reader(std::io::BufReader::new(file)).ok()?;
+    let mut active = seasons
+        .into_iter()
+        .filter(|season| season.get("active").and_then(Value::as_bool) == Some(true));
+    let first = active.next()?;
+    if active.next().is_some() {
+        return None;
+    }
+    Some(first)
+}
+
+fn active_short_name(season: &Value) -> Option<String> {
+    season
+        .get("shortName")
+        .or_else(|| season.get("short_name"))
+        .and_then(Value::as_str)
+        .map(str::to_ascii_lowercase)
+        .filter(|value| !value.is_empty())
+}
+
+fn seasonal_pool(instances: &[Value], season: &Value, category: &str) -> Option<i64> {
+    let short_name = active_short_name(season);
+    let season_name = season
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let mut candidates = instances.iter().filter_map(|row| {
+        let id = row.get("id").and_then(Value::as_i64)?;
+        let kind = row.get("type").and_then(Value::as_str).unwrap_or_default();
+        let matches = match category {
+            "delves" => kind.starts_with("delve-") || kind == "delve",
+            "prey" => kind.starts_with("prey-") || kind == "prey",
+            "catalyst" => kind == "catalyst",
+            "pvp" => kind.starts_with("pvp-"),
+            "raids" => kind == "raid" && id < 0,
+            _ => false,
+        };
+        if !matches {
+            return None;
+        }
+        let name = row
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let type_matches = short_name
+            .as_deref()
+            .is_some_and(|short| kind.contains(short) || name.contains(short));
+        let season_matches = season_name
+            .split_whitespace()
+            .filter(|part| part.chars().all(|c| c.is_ascii_digit()))
+            .next()
+            .is_some_and(|number| name.contains(&format!("season {number}")));
+        Some((id, type_matches, season_matches))
+    });
+
+    let rows: Vec<(i64, bool, bool)> = candidates.by_ref().collect();
+    if rows.len() == 1 {
+        return Some(rows[0].0);
+    }
+    let matching: Vec<i64> = rows
+        .iter()
+        .filter(|(_, type_matches, season_matches)| *type_matches || *season_matches)
+        .map(|(id, _, _)| *id)
+        .collect();
+    if matching.len() == 1 {
+        matching.first().copied()
+    } else {
+        None
+    }
+}
+
+fn resolved_option_expansion() -> Option<i64> {
+    let catalogs = [
+        state::FLASK_OPTIONS_RAW.read().unwrap().clone(),
+        state::FOOD_OPTIONS_RAW.read().unwrap().clone(),
+        state::POTION_OPTIONS_RAW.read().unwrap().clone(),
+        state::AUGMENT_OPTIONS_RAW.read().unwrap().clone(),
+        state::TEMP_ENCHANT_OPTIONS_RAW.read().unwrap().clone(),
+    ];
+    let mut counts: HashMap<i64, usize> = HashMap::new();
+    for catalog in catalogs.iter().filter(|catalog| !catalog.is_empty()) {
+        let mut expansions = catalog
+            .iter()
+            .filter_map(|entry| entry.get("expansion").and_then(Value::as_i64))
+            .collect::<Vec<_>>();
+        expansions.sort_unstable();
+        expansions.dedup();
+        if let Some(expansion) = expansions.last() {
+            *counts.entry(*expansion).or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .filter(|(_, count)| *count >= 3)
+        .max_by_key(|(expansion, _)| *expansion)
+        .map(|(expansion, _)| expansion)
+}
+
+pub fn load_game_context(data_dir: &Path) {
+    let Some(season) = active_season_value(data_dir) else {
+        *state::GAME_CONTEXT.write().unwrap() = json!({
+            "schema_version": 1,
+            "capabilities": { "season": { "status": "unavailable", "reason": "expected exactly one active season" } }
+        });
+        return;
+    };
+
+    let season_id = season.get("id").and_then(Value::as_u64);
+    let season_name = season.get("name").and_then(Value::as_str).unwrap_or("");
+    let short_name = active_short_name(&season);
+    let instances = state::INSTANCES.read().unwrap().clone();
+    let mut pools = serde_json::Map::new();
+    if instances
+        .iter()
+        .any(|instance| instance.get("id").and_then(Value::as_i64) == Some(-1))
+    {
+        pools.insert("mplus".to_string(), json!(-1));
+    }
+    if instances
+        .iter()
+        .any(|instance| instance.get("id").and_then(Value::as_i64) == Some(-32))
+    {
+        pools.insert("normal_dungeons".to_string(), json!(-32));
+    }
+    for category in ["raids", "delves", "prey", "pvp", "catalyst"] {
+        if let Some(id) = seasonal_pool(&instances, &season, category) {
+            pools.insert(category.to_string(), json!(id));
+        }
+    }
+    let pool_members = pools
+        .iter()
+        .filter_map(|(category, pool_id)| {
+            let pool_id = pool_id.as_i64()?;
+            let members = instances
+                .iter()
+                .find(|instance| instance.get("id").and_then(Value::as_i64) == Some(pool_id))
+                .and_then(|instance| instance.get("encounters"))
+                .and_then(Value::as_array)
+                .map(|entries| {
+                    entries
+                        .iter()
+                        .filter_map(|entry| entry.get("id").and_then(Value::as_i64))
+                        .map(Value::from)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            Some((category.clone(), Value::Array(members)))
+        })
+        .collect::<serde_json::Map<_, _>>();
+
+    let classes = class_data::CLASSES
+        .read()
+        .unwrap()
+        .iter()
+        .map(|class| {
+            json!({
+                "name": class.name,
+                "aliases": class.aliases,
+                "wow_id": class_data::class_wow_id(&class.name),
+                "specs": class.specs.iter().map(|spec| json!({
+                    "name": spec.name,
+                    "id": spec.id,
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let mut warnings = Vec::new();
+    let option_expansion = resolved_option_expansion();
+    if option_expansion.is_none() {
+        warnings.push("consumable expansion could not be resolved from live catalogs".to_string());
+    }
+    if !pools.contains_key("raids") {
+        warnings.push("active raid pool could not be selected unambiguously".to_string());
+    }
+    let classes_available = !classes.is_empty();
+    let talents_available = !state::TALENT_TREES.read().unwrap().is_empty();
+
+    let metadata = read_json_object(&data_dir.join("metadata.json"));
+    let runtime = get_runtime_metadata();
+    let season_periods = runtime
+        .get("period_details")
+        .filter(|periods| periods.as_array().is_some_and(|items| !items.is_empty()))
+        .cloned()
+        .or_else(|| {
+            runtime
+                .get("season_api_data")
+                .and_then(|data| data.get("periods"))
+                .cloned()
+        })
+        .unwrap_or_else(|| json!([]));
+    let context = json!({
+        "schema_version": 1,
+        "active_season": {
+            "id": season_id,
+            "name": season_name,
+            "short_name": short_name,
+            "periods": season_periods,
+        },
+        "pools": pools,
+        "pool_members": pool_members,
+        "current_expansion": { "number": option_expansion },
+        "classes": classes,
+        "rules": {
+            "catalyst_currency_id": season.get("itemConversionCurrency").and_then(Value::as_u64).unwrap_or(0),
+            "item_conversion_id": season.get("itemConversionId").and_then(Value::as_u64),
+            "dps_enchant_slots": season.get("dpsEnchantSlots").cloned().unwrap_or_else(|| json!([])),
+            "upgrade_track_fingerprint": state::UPGRADE_TRACKS.read().unwrap().keys().map(|(name, _, max)| format!("{name}:{max}")).collect::<Vec<_>>(),
+            "upgrade_rules_available": crate::item_db::season_cfg().get("upgradeRulesAvailable").and_then(Value::as_bool).unwrap_or(false),
+        },
+        "source": {
+            "environment": metadata.get("environment"),
+            "raidbots_build": metadata.get("wowBuild"),
+            "raidbots_content_hash": metadata.get("contentHash"),
+            "raidbots_generated_at": metadata.get("generatedAt"),
+            "runtime_last_sync": runtime.get("last_sync"),
+        },
+        "capabilities": {
+            "season": { "status": "ready" },
+            "mplus": { "status": if pools.contains_key("mplus") { "ready" } else { "unavailable" } },
+            "normal_dungeons": { "status": if pools.contains_key("normal_dungeons") { "ready" } else { "unavailable" } },
+            "raids": { "status": if pools.contains_key("raids") { "ready" } else { "unavailable" } },
+            "delves": { "status": if pools.contains_key("delves") { "ready" } else { "unavailable" } },
+            "prey": { "status": if pools.contains_key("prey") { "ready" } else { "unavailable" } },
+            "pvp": { "status": if pools.contains_key("pvp") { "ready" } else { "unavailable" } },
+            "consumables": { "status": if option_expansion.is_some() { "ready" } else { "degraded" } },
+            "catalyst": { "status": if season.get("itemConversionCurrency").and_then(Value::as_u64).unwrap_or(0) > 0 { "ready" } else { "unavailable" } },
+            "classes": { "status": if classes_available { "ready" } else { "unavailable" } },
+            "talents": { "status": if talents_available { "ready" } else { "unavailable" } },
+            "upgrade_rules": { "status": if crate::item_db::season_cfg().get("upgradeRulesAvailable").and_then(Value::as_bool) == Some(true) { "ready" } else { "unavailable" } },
+        },
+        "warnings": warnings,
+    });
+    *state::GAME_CONTEXT.write().unwrap() = context;
 }
 
 pub fn load_item_limit_categories(data_dir: &Path) {
@@ -948,6 +1373,7 @@ pub fn load_squish_data(data_dir: &Path) {
 }
 
 pub fn load_catalyst_conversions(data_dir: &Path) {
+    *CATALYST.write().unwrap() = Arc::new(CatalystData::default());
     let path = data_dir.join("item-conversions.json");
     if !path.exists() {
         return;
@@ -1027,7 +1453,7 @@ pub fn load_catalyst_conversions(data_dir: &Path) {
             let catalyst_currency_id = super::season_cfg()
                 .get("catalyst_currency_id")
                 .and_then(|v| v.as_u64())
-                .unwrap_or(3378);
+                .unwrap_or(0);
 
             *CATALYST.write().unwrap() = Arc::new(CatalystData {
                 tier_items,
@@ -1420,19 +1846,45 @@ pub fn hydrate_runtime_metadata(runtime_path: &Path) {
 mod tests {
     use super::*;
     use crate::item_db::state::{
-        BONUSES, CRAFTING_LIMIT_CATS, CURRENT_SEASON_ID, ITEM_LIMIT_CATS, RUNTIME_DATA,
-        UPGRADE_TRACKS,
+        BONUSES, CRAFTING_LIMIT_CATS, CURRENCY_INFO, CURRENT_SEASON_ID, ITEM_LIMIT_CATS,
+        RUNTIME_DATA, UPGRADE_STEP_COSTS, UPGRADE_TRACKS,
     };
     use crate::types::BonusData;
     use std::sync::Arc;
 
     type UpgradeTracks = Arc<HashMap<(String, u64, u64), (u64, u64, u64)>>;
 
+    #[test]
+    fn seasonal_pool_selection_uses_active_short_name_and_rejects_ambiguity() {
+        let season = json!({
+            "id": 37,
+            "name": "Midnight Season 2",
+            "shortName": "mid2",
+            "active": true
+        });
+        let instances = vec![
+            json!({"id": -1, "type": "dungeon", "name": "Mythic+ Dungeons"}),
+            json!({"id": -98, "type": "delve-mid2", "name": "Delves Season 2"}),
+            json!({"id": -99, "type": "prey-mid2", "name": "Prey Season 2"}),
+            json!({"id": -102, "type": "raid", "name": "Season 2 Raids"}),
+        ];
+        assert_eq!(active_short_name(&season).as_deref(), Some("mid2"));
+        assert_eq!(seasonal_pool(&instances, &season, "delves"), Some(-98));
+        assert_eq!(seasonal_pool(&instances, &season, "prey"), Some(-99));
+        assert_eq!(seasonal_pool(&instances, &season, "raids"), Some(-102));
+
+        let mut ambiguous = instances.clone();
+        ambiguous.push(json!({"id": -103, "type": "delve-mid2", "name": "Duplicate"}));
+        assert_eq!(seasonal_pool(&ambiguous, &season, "delves"), None);
+    }
+
     struct StateSnapshot {
         bonuses: Arc<HashMap<u64, crate::types::BonusData>>,
         crafting_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
         item_limit_cats: Arc<HashMap<u64, (u64, u64)>>,
         upgrade_tracks: UpgradeTracks,
+        upgrade_step_costs: Arc<HashMap<u64, HashMap<u64, u64>>>,
+        currency_info: Arc<HashMap<u64, (String, String)>>,
         current_season_id: u64,
         runtime_data: Value,
     }
@@ -1444,6 +1896,8 @@ mod tests {
                 crafting_limit_cats: CRAFTING_LIMIT_CATS.read().unwrap().clone(),
                 item_limit_cats: ITEM_LIMIT_CATS.read().unwrap().clone(),
                 upgrade_tracks: UPGRADE_TRACKS.read().unwrap().clone(),
+                upgrade_step_costs: UPGRADE_STEP_COSTS.read().unwrap().clone(),
+                currency_info: CURRENCY_INFO.read().unwrap().clone(),
                 current_season_id: *CURRENT_SEASON_ID.read().unwrap(),
                 runtime_data: RUNTIME_DATA.read().unwrap().clone(),
             }
@@ -1454,6 +1908,8 @@ mod tests {
             *CRAFTING_LIMIT_CATS.write().unwrap() = self.crafting_limit_cats;
             *ITEM_LIMIT_CATS.write().unwrap() = self.item_limit_cats;
             *UPGRADE_TRACKS.write().unwrap() = self.upgrade_tracks;
+            *UPGRADE_STEP_COSTS.write().unwrap() = self.upgrade_step_costs;
+            *CURRENCY_INFO.write().unwrap() = self.currency_info;
             *CURRENT_SEASON_ID.write().unwrap() = self.current_season_id;
             *RUNTIME_DATA.write().unwrap() = self.runtime_data;
         }
@@ -1519,6 +1975,7 @@ mod tests {
                     "type": "raid"
                 }),
             ],
+            None,
         );
 
         assert_eq!(rows.len(), 2);
@@ -1526,6 +1983,105 @@ mod tests {
         assert_eq!(rows[0]["image_url"], "/api/data/images/instance/1307");
         assert_eq!(rows[0]["encounters"][0]["id"], 2733);
         assert_eq!(rows[1]["id"], 78);
+    }
+
+    #[test]
+    fn reconcile_instance_sources_uses_active_primary_season_pools() {
+        let primary = vec![
+            serde_json::json!({
+                "id": -1,
+                "name": "Mythic+ Dungeons",
+                "encounters": [{"id": 20}]
+            }),
+            serde_json::json!({
+                "id": -32,
+                "name": "Normal Dungeons",
+                "encounters": [{"id": 21}]
+            }),
+            serde_json::json!({
+                "id": -102,
+                "name": "Season 2 Raids",
+                "encounters": [{"id": 100}]
+            }),
+            serde_json::json!({
+                "id": 20,
+                "name": "Current M+ Dungeon",
+                "type": "dungeon"
+            }),
+            serde_json::json!({
+                "id": 21,
+                "name": "Current Normal Dungeon",
+                "type": "dungeon"
+            }),
+            serde_json::json!({
+                "id": 22,
+                "name": "Historical Dungeon",
+                "type": "dungeon"
+            }),
+            serde_json::json!({
+                "id": 30,
+                "name": "Current Raid",
+                "type": "raid",
+                "encounters": [{"id": 100}]
+            }),
+            serde_json::json!({
+                "id": 31,
+                "name": "Historical Raid",
+                "type": "raid",
+                "encounters": [{"id": 200}]
+            }),
+        ];
+        let fallback = vec![
+            serde_json::json!({
+                "id": 20,
+                "name": "Current M+ Dungeon",
+                "type": "dungeon",
+                "current_season": true,
+                "active_rotation": false
+            }),
+            serde_json::json!({
+                "id": 21,
+                "name": "Current Normal Dungeon",
+                "type": "dungeon",
+                "current_season": false,
+                "active_rotation": false
+            }),
+            serde_json::json!({
+                "id": 22,
+                "name": "Historical Dungeon",
+                "type": "dungeon",
+                "current_season": true,
+                "active_rotation": true
+            }),
+            serde_json::json!({
+                "id": 30,
+                "name": "Current Raid",
+                "type": "raid",
+                "current_season": false
+            }),
+            serde_json::json!({
+                "id": 31,
+                "name": "Historical Raid",
+                "type": "raid",
+                "current_season": true
+            }),
+        ];
+
+        let rows = reconcile_instance_sources(primary, fallback, Some("Midnight Season 2"));
+        let row = |id| {
+            rows.iter()
+                .find(|row| row["id"] == id)
+                .expect("instance row")
+        };
+
+        assert_eq!(row(20)["current_season"], true);
+        assert_eq!(row(20)["active_rotation"], true);
+        assert_eq!(row(21)["current_season"], true);
+        assert_eq!(row(21)["active_rotation"], false);
+        assert_eq!(row(22)["current_season"], false);
+        assert_eq!(row(22)["active_rotation"], false);
+        assert_eq!(row(30)["current_season"], true);
+        assert_eq!(row(31)["current_season"], false);
     }
 
     #[test]
@@ -1572,6 +2128,99 @@ mod tests {
     }
 
     #[test]
+    fn load_bus_keeps_upgrade_costs_and_currencies_for_all_seasons() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        fs::write(
+            dir.path().join("bonus-upgrade-sets.json"),
+            serde_json::to_string(&json!({
+                "100": [{
+                    "name": "Hero",
+                    "level": 1,
+                    "max": 4,
+                    "itemLevel": 600,
+                    "bonusId": 1001,
+                    "currency": {
+                        "id": 3008,
+                        "amount": 10,
+                        "name": "Old Crest",
+                        "icon": "old_crest"
+                    }
+                }],
+                "200": [{
+                    "name": "Hero",
+                    "level": 1,
+                    "max": 8,
+                    "itemLevel": 700,
+                    "bonusId": 2001,
+                    "currency": {
+                        "id": 4000,
+                        "amount": 12,
+                        "name": "New Crest",
+                        "icon": "new_crest"
+                    }
+                }]
+            }))
+            .expect("upgrade sets json"),
+        )
+        .expect("write upgrade sets");
+        fs::write(
+            dir.path().join("seasons.json"),
+            serde_json::to_string(&vec![json!({
+                "active": true,
+                "bonusListGroups": [100]
+            })])
+            .expect("seasons json"),
+        )
+        .expect("write seasons");
+        fs::write(
+            dir.path().join("currency-types.json"),
+            serde_json::to_string(&json!({
+                "4001": {
+                    "name": "Catalog Crest",
+                    "icon": "inv_121_crest_catalog"
+                }
+            }))
+            .expect("currency types json"),
+        )
+        .expect("write currency types");
+
+        load_bus_and_seasons(dir.path());
+
+        assert!(UPGRADE_TRACKS
+            .read()
+            .unwrap()
+            .contains_key(&("Hero".to_string(), 1, 4)));
+        assert!(!UPGRADE_TRACKS
+            .read()
+            .unwrap()
+            .contains_key(&("Hero".to_string(), 1, 8)));
+        assert_eq!(
+            UPGRADE_STEP_COSTS
+                .read()
+                .unwrap()
+                .get(&2001)
+                .and_then(|costs| costs.get(&4000)),
+            Some(&12)
+        );
+        assert_eq!(
+            CURRENCY_INFO.read().unwrap().get(&4000),
+            Some(&("New Crest".to_string(), "new_crest".to_string()))
+        );
+        assert_eq!(
+            CURRENCY_INFO.read().unwrap().get(&4001),
+            Some(&(
+                "Catalog Crest".to_string(),
+                "inv_121_crest_catalog".to_string()
+            ))
+        );
+
+        snapshot.restore();
+    }
+
+    #[test]
     fn conversion_bonus_and_runtime_entry_parsing_handle_fallbacks() {
         let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
         let snapshot = StateSnapshot::capture();
@@ -1589,7 +2238,7 @@ mod tests {
         .expect("write conversions");
 
         assert_eq!(read_conversion_bonus_id(dir.path(), Some(7)), Some(70));
-        assert_eq!(read_conversion_bonus_id(dir.path(), Some(999)), Some(90));
+        assert_eq!(read_conversion_bonus_id(dir.path(), Some(999)), None);
         assert_eq!(track_rank_index("Hero"), 4);
         assert_eq!(track_rank_index("Unknown"), usize::MAX / 2);
         assert_eq!(

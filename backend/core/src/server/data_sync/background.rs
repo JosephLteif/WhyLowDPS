@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::{perform_sync, SyncStatus};
+use super::{perform_sync, snapshot_validation_error, SyncStatus};
 use crate::server::auth_handlers::{
     get_available_blizzard_creds, BlizzardAuthState, BlizzardCredentialSecretStore,
 };
@@ -100,13 +100,21 @@ pub fn spawn_background_sync_loop(
                         client_secret,
                         data_dir.clone(),
                         false,
+                        "us".to_string(),
                     )
                     .await;
 
                     let mut status = state.status.lock().await;
                     *status = match result {
                         Ok(_) => SyncStatus::Ready,
-                        Err(err) => SyncStatus::Error(err),
+                        Err(err) => {
+                            if snapshot_validation_error(&data_dir).is_ok() {
+                                *state.progress.lock().await = format!("Degraded:{err}");
+                                SyncStatus::Ready
+                            } else {
+                                SyncStatus::Error(err)
+                            }
+                        }
                     };
                 }
             }

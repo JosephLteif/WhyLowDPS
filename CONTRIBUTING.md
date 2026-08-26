@@ -15,11 +15,15 @@ WhyLowDPS is currently Windows-first and desktop-first. Please keep changes focu
 ## Development
 
 The supported development target is the Windows desktop application. Use Node.js
-20 and Rust 1.94.1; the repository includes `.nvmrc` and `rust-toolchain.toml`
+20 and Rust 1.95; the repository includes `.nvmrc` and `rust-toolchain.toml`
 so local tools and CI use the same versions.
 
-Windows is required for full desktop validation. GitHub Pages is the only
-supported deployment target outside the desktop application.
+End-user installation and Battle.net client setup are documented in
+[Getting started](docs/getting-started.md).
+
+Windows is required for full desktop validation. The project site uses GitHub
+Pages, and the hosted application supports a private, single-instance Docker
+deployment. It is not designed as a public multi-user service.
 
 Install dependencies:
 
@@ -27,6 +31,17 @@ Install dependencies:
 npm ci
 npm ci --prefix frontend
 ```
+
+Sync a local work branch to the latest release commit before continuing work:
+
+```bash
+git fetch origin master --tags
+git merge --ff-only origin/master
+```
+
+The release action commits synchronized version metadata to `master` before it
+creates the release tag. Keep local changes committed or stashed before this
+fast-forward.
 
 Run the desktop app:
 
@@ -40,6 +55,28 @@ Run the backend directly:
 cd backend
 cargo run -p whylowdps-server
 ```
+
+Run the development frontend for a phone on the same LAN:
+
+```bash
+# Terminal 1, from the repository root
+npm run backend:dev
+
+# Terminal 2, from the repository root
+npm run web:dev:lan
+```
+
+Find the PC's private IPv4 address with `ipconfig`, then open
+`http://<PC-LAN-IP>:3000` on the phone. Both devices must be on the same trusted
+Wi-Fi network. If Windows Firewall prompts, allow Node.js on **Private
+networks**; do not enable a Public-network rule or forward the port to the
+internet. The Next.js development server is the LAN-facing process and keeps
+the backend on `127.0.0.1:8000`.
+
+The installed desktop flow is different from the development server: it is
+opt-in, uses port `17384`, and requires device pairing. Follow
+[Desktop LAN sharing](docs/lan-sharing.md) for enablement, pairing, device
+management, security, and troubleshooting.
 
 Run the focused checks used by the repository:
 
@@ -74,6 +111,36 @@ The release workflow creates a draft GitHub release, uploads the signed
 artifacts and checksum metadata, and publishes the release only after those
 steps complete. If a release step fails, leave the draft unpublished until the
 failure is corrected or the draft is deleted.
+
+For a new stable release, open **Actions → Release → Run workflow** and choose
+**patch**, **minor**, or **major**. Stable releases always use `master`.
+
+If the version bump and tag were already created but a later release step
+failed, recover the same release without incrementing the version again:
+
+1. Open **Actions → Release → Run workflow**.
+2. Set **Release action** to **republish**.
+3. Enter the existing version without the `v` prefix, such as `4.0.0`.
+4. Run the workflow.
+
+Republish mode verifies that `v<version>` exists, checks out that tag, and
+rebuilds the desktop and hosted Docker artifacts. It does not commit, bump, or
+move the release tag; existing release assets and Docker tags are replaced as
+part of the retry.
+
+Developer builds have their own simple workflow. Push to `dev`, or open
+**Actions → Dev Release → Run workflow**. It publishes a signed Windows
+prerelease under the moving `dev` GitHub release and updates its `latest.json`
+manifest. Stable users are unaffected. Install the dev artifact once, or
+choose **Settings → App Updates → Dev (pre-release)**, then future developer
+releases can be installed through the normal updater.
+
+When the tested dev build is ready for everyone, open **Actions → Release → Run
+workflow**, choose **promote-dev**, and run it. This promotes the exact commit
+behind the current `dev` release using its stable `VERSION`; it does not bump
+again. It fails if that stable version already has a release tag. Both release
+workflows require the `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets.
 
 ## Pull request guidelines
 

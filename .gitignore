@@ -1,6 +1,7 @@
 # Environment and Secrets
 .env
 .env.local
+.env.docker
 *.db
 main.key
 main.key.pub
@@ -29,9 +30,10 @@ Thumbs.db
 *.log
 
 # Project Specific
+/docs/changelog.html
 .claude/
 .simc-version
-backend/resources/data/
+backend/resources/data/*
 backend/resources/simc/
 backend/resources/frontend/
 !backend/resources/data/.gitkeep

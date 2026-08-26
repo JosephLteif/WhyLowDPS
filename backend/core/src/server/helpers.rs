@@ -391,8 +391,33 @@ pub(super) fn inject_realm(parsed: &mut Value, simc_input: &str) {
 }
 
 /// Spawn a staged (top-gear / droptimizer) simulation in a background task.
+pub(super) async fn prepare_job_run(store: &Arc<dyn JobStorage>, job_id: &str) -> bool {
+    loop {
+        let Some(job) = store.get(job_id) else {
+            return false;
+        };
+
+        match job.status {
+            JobStatus::Pending => {
+                if store.transition_status(job_id, JobStatus::Pending, JobStatus::Running) {
+                    simc_runner::start_job_control(job_id);
+                    return true;
+                }
+            }
+            JobStatus::Paused => {
+                if simc_runner::wait_until_resumed(job_id).await.is_err() {
+                    return false;
+                }
+            }
+            JobStatus::Running => return true,
+            JobStatus::Done | JobStatus::Failed | JobStatus::Cancelled => return false,
+        }
+    }
+}
+
 pub(super) fn spawn_staged_sim(
     store: Arc<dyn JobStorage>,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc: PathBuf,
     options: Value,
     job_id: String,
@@ -400,8 +425,13 @@ pub(super) fn spawn_staged_sim(
     combo_count: usize,
     log_buffer: Arc<LogBuffer>,
 ) {
+    simc_runner::register_job_control(&job_id);
     tokio::spawn(async move {
-        store.update_status(&job_id, JobStatus::Running);
+        if !prepare_job_run(&store, &job_id).await {
+            simc_runner::cleanup_job_control(&job_id);
+            log_buffer.remove(&job_id);
+            return;
+        }
         let store_progress = store.clone();
         let store_stages = store.clone();
         let jid_progress = job_id.clone();
@@ -467,6 +497,11 @@ pub(super) fn spawn_staged_sim(
                 let raw_str = serde_json::to_string(&output.json).ok();
                 store.set_result(&job_id, result_str, raw_str);
                 store.set_report_files(&job_id, output.html_report, output.text_output);
+                super::discord_webhook::spawn_sim_completion_notification(
+                    store.clone(),
+                    auth.clone(),
+                    job_id.clone(),
+                );
             }
             Err(e) => {
                 // Don't overwrite cancelled status with a generic error
@@ -485,6 +520,7 @@ pub(super) fn spawn_staged_sim(
 
 /// Validate batch_id against MAX_SCENARIOS. Returns an error response if rejected.
 pub(super) fn validate_batch(
+    owner_id: &str,
     batch_id: &Option<String>,
     store: &dyn JobStorage,
 ) -> Option<actix_web::HttpResponse> {
@@ -498,7 +534,7 @@ pub(super) fn validate_batch(
             "detail": "Batch scenarios are disabled on this server."
         })));
     }
-    if store.count_batch(bid) >= max {
+    if store.count_batch_owned(owner_id, bid) >= max {
         return Some(actix_web::HttpResponse::BadRequest().json(json!({
             "detail": format!("Batch limit reached ({max} scenarios max).")
         })));
@@ -734,15 +770,15 @@ mod tests {
     async fn validate_batch_allows_empty_and_under_limit_batches() {
         let store = MemoryStorage::new();
 
-        assert!(validate_batch(&None, &store).is_none());
-        assert!(validate_batch(&Some(String::new()), &store).is_none());
+        assert!(validate_batch("local-guest", &None, &store).is_none());
+        assert!(validate_batch("local-guest", &Some(String::new()), &store).is_none());
 
         let max = *storage::MAX_SCENARIOS;
         for _ in 0..max.saturating_sub(1) {
             store.insert(job_in_batch("batch-a"));
         }
 
-        assert!(validate_batch(&Some("batch-a".to_string()), &store).is_none());
+        assert!(validate_batch("local-guest", &Some("batch-a".to_string()), &store).is_none());
     }
 
     #[actix_web::test]
@@ -753,7 +789,7 @@ mod tests {
             store.insert(job_in_batch("batch-full"));
         }
 
-        let resp = validate_batch(&Some("batch-full".to_string()), &store)
+        let resp = validate_batch("local-guest", &Some("batch-full".to_string()), &store)
             .expect("batch should be rejected");
         assert_eq!(resp.status(), 400);
 

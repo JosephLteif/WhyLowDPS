@@ -10,9 +10,6 @@ use crate::server::auth_handlers::BlizzardAuthState;
 use crate::server::blizzard::BlizzardState;
 use crate::storage::JobStorage;
 
-const RAIDER_AFFIXES_URL: &str = "https://raider.io/api/v1/mythic-plus/affixes?region=us&locale=en";
-const BLIZZARD_SEASON_INDEX_URL: &str =
-    "https://us.api.blizzard.com/data/wow/mythic-keystone/season/index?namespace=dynamic-us&locale=en_US";
 const CACHE_TTL_MINUTES: i64 = 15;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +19,8 @@ pub struct GameDataState {
     pub active_affixes: Vec<String>,
     pub mplus_rotation: Vec<u32>,
     pub last_sync: String,
+    #[serde(default)]
+    pub season_periods: Vec<Value>,
 }
 
 #[derive(Debug, Clone)]
@@ -82,17 +81,27 @@ fn extract_dungeon_id(dungeon: &Value) -> Option<u32> {
 
 fn runtime_fallback_state() -> GameDataState {
     let runtime = crate::item_db::get_runtime_data();
+    let context = crate::item_db::game_context();
 
-    let season_id = runtime
-        .get("current_season_id")
-        .and_then(|v| v.as_u64())
-        .and_then(|v| u32::try_from(v).ok())
-        .unwrap_or_else(|| crate::item_db::current_season_id() as u32);
+    let season_id = context
+        .get("active_season")
+        .and_then(|season| season.get("id"))
+        .and_then(Value::as_u64)
+        .or_else(|| runtime.get("current_season_id").and_then(Value::as_u64))
+        .or_else(|| Some(crate::item_db::current_season_id()))
+        .unwrap_or(0) as u32;
 
-    let season_name = runtime
-        .get("season_name")
-        .and_then(|v| v.as_str())
+    let season_name = context
+        .get("active_season")
+        .and_then(|season| season.get("name"))
+        .and_then(Value::as_str)
         .map(ToOwned::to_owned)
+        .or_else(|| {
+            runtime
+                .get("season_name")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
         .unwrap_or_else(|| format!("Season {}", season_id));
 
     let active_affixes = runtime
@@ -109,23 +118,70 @@ fn runtime_fallback_state() -> GameDataState {
                 .collect::<Vec<String>>()
         })
         .unwrap_or_default();
-
-    let mplus_rotation = runtime
-        .get("mplus_rotation")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|id| id.as_u64())
-                .filter_map(|id| u32::try_from(id).ok())
-                .collect::<Vec<u32>>()
+    let season_periods = runtime
+        .get("period_details")
+        .and_then(Value::as_array)
+        .filter(|periods| !periods.is_empty())
+        .cloned()
+        .or_else(|| {
+            runtime
+                .get("season_api_data")
+                .and_then(|data| data.get("periods"))
+                .and_then(Value::as_array)
+                .cloned()
         })
         .unwrap_or_default();
+
+    let context_rotation = context
+        .get("pools")
+        .and_then(|pools| pools.get("mplus"))
+        .and_then(Value::as_i64)
+        .and_then(|pool_id| {
+            crate::item_db::instances()
+                .into_iter()
+                .find(|instance| instance.get("id").and_then(Value::as_i64) == Some(pool_id))
+        })
+        .and_then(|pool| pool.get("encounters").and_then(Value::as_array).cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| entry.get("id").and_then(Value::as_u64))
+        .filter_map(|id| u32::try_from(id).ok())
+        .collect::<Vec<_>>();
+    let mut mplus_rotation = if context_rotation.is_empty() {
+        runtime
+            .get("mplus_rotation")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|id| id.as_u64())
+                    .filter_map(|id| u32::try_from(id).ok())
+                    .collect::<Vec<u32>>()
+            })
+            .unwrap_or_default()
+    } else {
+        context_rotation
+    };
+    if mplus_rotation.is_empty() {
+        if let Some(pool) = crate::item_db::instances()
+            .into_iter()
+            .find(|instance| instance.get("id").and_then(Value::as_i64) == Some(-1))
+        {
+            mplus_rotation = pool
+                .get("encounters")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("id").and_then(Value::as_u64))
+                .filter_map(|id| u32::try_from(id).ok())
+                .collect();
+        }
+    }
 
     let last_sync = runtime
         .get("last_sync")
         .and_then(|v| v.as_str())
         .map(ToOwned::to_owned)
-        .unwrap_or_else(|| Utc::now().to_rfc3339());
+        .unwrap_or_else(|| "unknown".to_string());
 
     GameDataState {
         season_id,
@@ -133,11 +189,16 @@ fn runtime_fallback_state() -> GameDataState {
         active_affixes,
         mplus_rotation,
         last_sync,
+        season_periods,
     }
 }
 
-async fn fetch_raider_affix_names(client: &reqwest::Client) -> Option<Vec<String>> {
-    let res = client.get(RAIDER_AFFIXES_URL).send().await.ok()?;
+async fn fetch_raider_affix_names(client: &reqwest::Client, region: &str) -> Option<Vec<String>> {
+    let url = format!(
+        "https://raider.io/api/v1/mythic-plus/affixes?region={}&locale=en",
+        region
+    );
+    let res = client.get(url).send().await.ok()?;
     if !res.status().is_success() {
         return None;
     }
@@ -162,12 +223,21 @@ async fn fetch_raider_affix_names(client: &reqwest::Client) -> Option<Vec<String
 async fn fetch_blizzard_state(
     client: &reqwest::Client,
     credentials: Option<(String, String)>,
+    region: &str,
 ) -> Option<(u32, String, Vec<u32>)> {
     let (client_id, client_secret) = credentials?;
     let token = BlizzardState::get_token_with_creds(client, &client_id, &client_secret).await?;
 
+    let api_region = match region {
+        "eu" | "kr" | "tw" | "us" => region,
+        _ => "us",
+    };
+    let namespace = format!("dynamic-{api_region}");
+    let index_url = format!(
+        "https://{api_region}.api.blizzard.com/data/wow/mythic-keystone/season/index?namespace={namespace}&locale=en_US"
+    );
     let season_index_res = client
-        .get(BLIZZARD_SEASON_INDEX_URL)
+        .get(index_url)
         .bearer_auth(&token)
         .send()
         .await
@@ -183,8 +253,7 @@ async fn fetch_blizzard_state(
         .and_then(|id| u32::try_from(id).ok())?;
 
     let season_url = format!(
-        "https://us.api.blizzard.com/data/wow/mythic-keystone/season/{}?namespace=dynamic-us&locale=en_US",
-        season_id
+        "https://{api_region}.api.blizzard.com/data/wow/mythic-keystone/season/{season_id}?namespace={namespace}&locale=en_US"
     );
     let season_res = client
         .get(&season_url)
@@ -214,30 +283,51 @@ async fn fetch_blizzard_state(
 async fn fetch_fresh_state(
     client: &reqwest::Client,
     credentials: Option<(String, String)>,
+    region: &str,
 ) -> GameDataState {
     let mut state = runtime_fallback_state();
+    let mut season_refreshed = false;
+    let context = crate::item_db::game_context();
+    let context_has_season = context
+        .get("active_season")
+        .and_then(|season| season.get("id"))
+        .and_then(Value::as_u64)
+        .is_some();
+    let context_has_mplus = context
+        .get("pools")
+        .and_then(|pools| pools.get("mplus"))
+        .and_then(Value::as_i64)
+        .is_some();
 
-    if let Some(active_affixes) = fetch_raider_affix_names(client).await {
+    if let Some(active_affixes) = fetch_raider_affix_names(client, region).await {
         state.active_affixes = active_affixes;
     }
 
     if let Some((season_id, season_name, rotation)) =
-        fetch_blizzard_state(client, credentials).await
+        fetch_blizzard_state(client, credentials, region).await
     {
-        state.season_id = season_id;
-        state.season_name = season_name;
-        state.mplus_rotation = rotation;
+        if !context_has_season {
+            state.season_id = season_id;
+            state.season_name = season_name;
+        }
+        if !context_has_mplus && !rotation.is_empty() {
+            state.mplus_rotation = rotation;
+        }
+        season_refreshed = true;
     }
 
-    state.last_sync = Utc::now().to_rfc3339();
+    if season_refreshed {
+        state.last_sync = Utc::now().to_rfc3339();
+    }
     state
 }
 
 async fn refresh_cache_in_background(
     client: reqwest::Client,
     credentials: Option<(String, String)>,
+    region: String,
 ) {
-    let fresh = fetch_fresh_state(&client, credentials).await;
+    let fresh = fetch_fresh_state(&client, credentials, &region).await;
     let mut cache = GAME_DATA_CACHE.lock().await;
     cache.latest = Some(CachedGameState {
         data: fresh,
@@ -254,6 +344,17 @@ pub async fn get_game_data_state(
 ) -> HttpResponse {
     let credentials =
         BlizzardState::get_effective_credentials(&req, Some(auth_state.get_ref()), &***store);
+    let region = req
+        .uri()
+        .query()
+        .and_then(|query| {
+            query.split('&').find_map(|pair| {
+                let mut parts = pair.splitn(2, '=');
+                (parts.next() == Some("region")).then(|| parts.next().unwrap_or("us"))
+            })
+        })
+        .unwrap_or("us")
+        .to_ascii_lowercase();
     let now = Utc::now();
     let stale_after = Duration::minutes(CACHE_TTL_MINUTES);
 
@@ -264,8 +365,9 @@ pub async fn get_game_data_state(
             cache.refreshing = true;
             let client = blizzard.client.clone();
             let creds = credentials.clone();
+            let refresh_region = region.clone();
             tokio::spawn(async move {
-                refresh_cache_in_background(client, creds).await;
+                refresh_cache_in_background(client, creds, refresh_region).await;
             });
         }
         return HttpResponse::Ok().json(existing.data);
@@ -277,7 +379,7 @@ pub async fn get_game_data_state(
     cache.refreshing = true;
     drop(cache);
 
-    let fresh = fetch_fresh_state(&blizzard.client, credentials).await;
+    let fresh = fetch_fresh_state(&blizzard.client, credentials, &region).await;
     let mut cache = GAME_DATA_CACHE.lock().await;
     cache.latest = Some(CachedGameState {
         data: fresh.clone(),
@@ -457,6 +559,7 @@ mod tests {
                 active_affixes: vec!["Bursting".to_string()],
                 mplus_rotation: vec![801],
                 last_sync: "2026-06-01T10:00:00Z".to_string(),
+                season_periods: vec![],
             },
             fetched_at: Utc::now(),
         });

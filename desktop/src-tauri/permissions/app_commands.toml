@@ -5,6 +5,8 @@ commands.allow = [
     "get_system_info",
     "open_auth_window",
     "open_external_url",
+    "load_session_token",
+    "save_session_token",
     "open_data_dir",
     "get_close_behavior_preference",
     "set_close_behavior_preference",
@@ -16,6 +18,11 @@ commands.allow = [
     "update_simc_runtime",
     "apply_close_behavior_choice",
     "restart_app",
+    "get_lan_access_info",
+    "set_lan_sharing_enabled",
     "quit_app_now",
-    "download_and_install_release"
+    "download_and_install_release",
+    "get_discord_presence_settings",
+    "set_discord_presence_settings",
+    "update_discord_presence"
 ]

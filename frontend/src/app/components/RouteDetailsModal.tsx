@@ -72,17 +72,17 @@ export default function RouteDetailsModal({
   const minPerDps = minGroupDps > 0 ? (minGroupDps * 0.9) / 3 : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-md">
-      <div ref={modalRef} className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-0 backdrop-blur-md sm:p-4">
+      <div ref={modalRef} className="mobile-modal-shell flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 shadow-2xl sm:h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] p-6">
-          <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gold/10 text-gold shadow-inner">
+        <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-white/[0.02] p-4 sm:p-6">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gold/10 text-gold shadow-inner sm:h-12 sm:w-12">
               <Map className="h-6 w-6" strokeWidth={2} />
             </div>
             <div>
-              <h2 className="text-2xl font-black tracking-tight text-white">{route.name}</h2>
-              <div className="flex items-center gap-3 text-sm font-medium text-zinc-500">
+              <h2 className="max-w-[65vw] truncate text-xl font-black tracking-tight text-white sm:max-w-none sm:text-2xl">{route.name}</h2>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-zinc-500 sm:text-sm">
                 <span>{route.dungeon}</span>
                 <span className="h-1 w-1 rounded-full bg-zinc-800" />
                 <span className="text-sky-400">+{route.level} Level</span>
@@ -102,14 +102,15 @@ export default function RouteDetailsModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-xl bg-white/5 p-2 text-zinc-400 transition-all hover:bg-white/10 hover:text-white"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/5 text-zinc-400 transition-all hover:bg-white/10 hover:text-white sm:h-9 sm:w-9"
+            aria-label="Close route details"
           >
             <X className="h-6 w-6" strokeWidth={2} />
           </button>
         </div>
 
         {/* Summary Stats */}
-        <div className="grid grid-cols-6 gap-px bg-white/5">
+        <div className="grid grid-cols-2 gap-px bg-white/5 sm:grid-cols-3 xl:grid-cols-6">
           <div className="bg-zinc-950 p-4 text-center">
             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600">
               Dungeon Timer
@@ -174,7 +175,7 @@ export default function RouteDetailsModal({
         </div>
 
         {/* Pull List */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="space-y-4">
             {info.pulls.map((pull, idx) => {
               const hasBoss = pull.enemies.some((e) => e.name.toLowerCase().includes('boss'));

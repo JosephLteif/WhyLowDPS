@@ -3,6 +3,33 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+pub(crate) fn is_supported_import_path(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| extension.to_ascii_lowercase())
+            .as_deref(),
+        Some("simc") | Some("txt")
+    )
+}
+
+pub(crate) fn importable_file_paths(args: &[String]) -> Vec<PathBuf> {
+    args.iter()
+        .skip(1)
+        .map(PathBuf::from)
+        .filter(|path| is_supported_import_path(path))
+        .collect()
+}
+
+pub(crate) fn is_sensitive_backup_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase();
+    normalized.starts_with("api_cache_")
+        || normalized.contains("token")
+        || normalized.contains("secret")
+        || normalized.contains("password")
+        || normalized.contains("credential")
+}
+
 pub(crate) fn seed_runtime_data_if_missing(bundled_data_dir: &Path, runtime_data_dir: &Path) {
     if !bundled_data_dir.exists() {
         return;
@@ -45,12 +72,19 @@ pub(crate) struct AppClosePreferences {
     pub(crate) simc_update_channel: Option<String>,
     #[serde(default)]
     pub(crate) simc_runtime_version: Option<String>,
+    #[serde(default)]
+    pub(crate) discord_presence_enabled: Option<bool>,
+    #[serde(default)]
+    pub(crate) discord_client_id: Option<String>,
+    #[serde(default)]
+    pub(crate) lan_sharing_enabled: bool,
 }
 
 #[derive(Debug)]
 pub(crate) struct AppClosePreferencesState {
     pub(crate) prefs: Mutex<AppClosePreferences>,
     pub(crate) path: PathBuf,
+    pub(crate) lan_sharing_runtime_enabled: bool,
     pub(crate) simc_runtime: SimcRuntimeCoordinator,
 }
 
@@ -187,6 +221,15 @@ pub(crate) fn clear_close_behavior_preference_internal(
 ) -> Result<(), String> {
     let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
     prefs.minimize_to_tray_on_close = None;
+    save_close_preferences(&state.path, &prefs)
+}
+
+pub(crate) fn set_lan_sharing_enabled_internal(
+    state: &AppClosePreferencesState,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut prefs = state.prefs.lock().map_err(|e| e.to_string())?;
+    prefs.lan_sharing_enabled = enabled;
     save_close_preferences(&state.path, &prefs)
 }
 
@@ -669,6 +712,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            lan_sharing_runtime_enabled: false,
             simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
@@ -692,6 +736,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            lan_sharing_runtime_enabled: false,
             simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
@@ -720,6 +765,7 @@ mod tests {
         let state = AppClosePreferencesState {
             prefs: Mutex::new(AppClosePreferences::default()),
             path: path.clone(),
+            lan_sharing_runtime_enabled: false,
             simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
         };
 
@@ -749,6 +795,28 @@ mod tests {
             load_close_preferences(&path).minimize_to_tray_on_close,
             None
         );
+    }
+
+    #[test]
+    fn lan_sharing_preference_defaults_off_and_persists() {
+        let dir = test_temp_dir("prefs");
+        let path = dir.join("prefs.json");
+
+        assert!(!load_close_preferences(&path).lan_sharing_enabled);
+
+        let state = AppClosePreferencesState {
+            prefs: Mutex::new(AppClosePreferences::default()),
+            path: path.clone(),
+            lan_sharing_runtime_enabled: false,
+            simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
+        };
+
+        set_lan_sharing_enabled_internal(&state, true).unwrap();
+        assert!(state.prefs.lock().unwrap().lan_sharing_enabled);
+        assert!(load_close_preferences(&path).lan_sharing_enabled);
+
+        set_lan_sharing_enabled_internal(&state, false).unwrap();
+        assert!(!load_close_preferences(&path).lan_sharing_enabled);
     }
 
     #[test]
@@ -839,6 +907,31 @@ mod tests {
 
         assert_eq!(meta.sim_type, "quick");
         assert_eq!(meta.player_name.as_deref(), Some("Player"));
+    }
+
+    #[test]
+    fn importable_file_paths_accept_simc_and_text_files_case_insensitively() {
+        let args = vec![
+            "whylowdps.exe".to_string(),
+            "profile.SIMC".to_string(),
+            "notes.txt".to_string(),
+            "image.png".to_string(),
+        ];
+
+        let paths = importable_file_paths(&args);
+
+        assert_eq!(
+            paths,
+            vec![PathBuf::from("profile.SIMC"), PathBuf::from("notes.txt")]
+        );
+    }
+
+    #[test]
+    fn sensitive_backup_keys_exclude_tokens_secrets_and_cache_values() {
+        assert!(is_sensitive_backup_key("api_cache_/api/status"));
+        assert!(is_sensitive_backup_key("session_token"));
+        assert!(is_sensitive_backup_key("blizzard_client_secret"));
+        assert!(!is_sensitive_backup_key("whylowdps_fight_style"));
     }
 
     #[test]

@@ -4,6 +4,7 @@ async function mockBackend(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('whylowdps_data_ready', 'true');
     localStorage.setItem('whylowdps_discord_prompt_dismissed', '1');
+    localStorage.setItem('whylowdps_changelog_seen_3.6.0', '1');
   });
 
   await page.route('**/api/**', async (route) => {

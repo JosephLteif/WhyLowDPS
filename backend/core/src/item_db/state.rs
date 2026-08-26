@@ -152,6 +152,13 @@ pub static CATALYST: Lazy<RwLock<Arc<CatalystData>>> =
 
 pub static RUNTIME_DATA: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_json::json!({})));
 
+/// Current game context derived from the validated runtime data snapshot.
+///
+/// This is intentionally JSON at the storage boundary: upstream Raidbots
+/// metadata evolves by adding fields, while API consumers only need the
+/// stable semantic subset assembled by the loader.
+pub static GAME_CONTEXT: Lazy<RwLock<Value>> = Lazy::new(|| RwLock::new(serde_json::json!({})));
+
 pub static EMPTY_SEASON_CONFIG: once_cell::sync::Lazy<Value> =
     once_cell::sync::Lazy::new(|| serde_json::json!({}));
 
@@ -343,6 +350,7 @@ mod tests {
         assert_eq!(*CURRENT_SEASON_ID.read().expect("season id"), 0);
         assert_eq!(*SEASON_CONFIG.read().expect("season config"), json!({}));
         assert_eq!(*RUNTIME_DATA.read().expect("runtime data"), json!({}));
+        assert_eq!(*GAME_CONTEXT.read().expect("game context"), json!({}));
         assert_eq!(*EMPTY_SEASON_CONFIG, json!({}));
     }
 

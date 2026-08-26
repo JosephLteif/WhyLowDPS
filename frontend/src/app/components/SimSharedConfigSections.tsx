@@ -1,6 +1,15 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, Clock3, Download, Loader2, Map, SlidersHorizontal } from 'lucide-react';
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Clock3,
+  Download,
+  Loader2,
+  Map,
+  SlidersHorizontal,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSimContext } from './SimContext';
@@ -8,7 +17,13 @@ import FightStyleSelector from './FightStyleSelector';
 import ScenarioBuilder from './ScenarioBuilder';
 import { CLASS_COLORS, specDisplayName } from '../lib/types';
 import type { PullInfo } from '@/lib/simc-parser';
-import { parseCharacterInfo } from '@/lib/simc-parser';
+import {
+  isOlderWowVersion,
+  normalizeWowVersion,
+  parseCharacterInfo,
+} from '@/lib/simc-parser';
+import { getCurrentWowPatch } from '../lib/wow-season-content';
+import { useGameContext } from '../lib/useGameContext';
 import { getFightStyleParamRules } from '../lib/fight-style';
 import { useWowheadTooltips } from '../lib/useWowheadTooltips';
 import { useConsumableOptions } from '../lib/useConsumableOptions';
@@ -80,6 +95,13 @@ export function CharacterInfoBar({
       : null;
 
   const classColor = CLASS_COLORS[info.className.toLowerCase().replace(/\s+/g, '')] || '#fff';
+  const gameContext = useGameContext();
+  const currentWowPatch =
+    normalizeWowVersion(gameContext?.source?.raidbots_build) || getCurrentWowPatch();
+  const hasOldPatch = isOlderWowVersion(info.wowVersion, currentWowPatch);
+  const oldPatchMessage = hasOldPatch
+    ? `This SimC export is from WoW ${info.wowVersion}. Current supported patch: ${currentWowPatch}.`
+    : undefined;
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-xl border border-white/5 bg-white/[0.03] transition-all hover:border-white/10 hover:bg-white/[0.05]">
@@ -114,6 +136,17 @@ export function CharacterInfoBar({
         </div>
 
         <div className="flex items-center gap-2">
+          {hasOldPatch && (
+            <span
+              role="status"
+              title={oldPatchMessage}
+              aria-label={oldPatchMessage}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-500/35 bg-red-500/15 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-red-300"
+            >
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Old Patch
+            </span>
+          )}
           {profileUrl && (
             <Link
               href={profileUrl}
@@ -374,7 +407,7 @@ export function FightSetupOptions() {
   const showTargetCount = fightStyleRules.usesTargetCount;
 
   return (
-    <div className="card space-y-4 p-5">
+    <div data-tour="fight-setup" className="card space-y-4 p-5">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[15px] font-medium text-zinc-100">Fight Setup</p>
@@ -513,7 +546,7 @@ export function ConsumablesAndRaidBuffsOptions() {
     lockSingleConsumableOptions,
   } = useSimContext();
 
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions();
   const raidBuffBindings = useMemo(
     (): Record<string, { checked: boolean; setChecked: (v: boolean) => void }> => ({
       bloodlust: { checked: raidBuffBloodlust, setChecked: setRaidBuffBloodlust },
@@ -786,7 +819,7 @@ export function ConsumablesAndRaidBuffsOptions() {
   const collapsedSummary = `${selectedConsumableCount} consumable categories set - ${enabledRaidBuffCount} raid buffs enabled`;
 
   return (
-    <div className="card p-5">
+    <div data-tour="consumables-raid-buffs" className="card p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-medium text-zinc-100">Consumables &amp; Raid Buffs</p>
@@ -841,6 +874,7 @@ export function ConsumablesAndRaidBuffsOptions() {
           <button
             type="button"
             onClick={() => setIsCollapsed((prev) => !prev)}
+            data-tour="consumables-raid-buffs-toggle"
             className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface-2 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
             aria-expanded={!isCollapsed}
             aria-label={isCollapsed ? 'Expand consumables and raid buffs' : 'Collapse consumables and raid buffs'}
@@ -862,6 +896,7 @@ export function ConsumablesAndRaidBuffsOptions() {
       </div>
 
       <div
+        data-tour="consumables-raid-buffs-content"
         className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
           isCollapsed ? 'mt-0 grid-rows-[0fr] opacity-0' : 'mt-5 grid-rows-[1fr] opacity-100'
         }`}
@@ -1045,10 +1080,11 @@ export function AdvancedOptions() {
   const activeTabInfo = EXPERT_TABS.find((t) => t.key === activeTab)!;
 
   return (
-    <div className="card overflow-hidden">
+    <div data-tour="advanced-options" className="card overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        data-tour="advanced-options-toggle"
         className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left"
       >
         <div className="flex items-center gap-2.5">
@@ -1066,7 +1102,10 @@ export function AdvancedOptions() {
         />
       </button>
       {open && (
-        <div className="animate-fade-in space-y-5 border-t border-border px-5 pb-5">
+        <div
+          data-tour="advanced-options-content"
+          className="animate-fade-in space-y-5 border-t border-border px-5 pb-5"
+        >
           <div className="pt-4" />
 
           {/* Custom APL */}

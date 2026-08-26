@@ -13,17 +13,35 @@ import InitialSidebarRoute from './components/InitialSidebarRoute';
 import MainScrollShell from './components/MainScrollShell';
 import { AuthProvider } from './components/AuthContext';
 import DataGuard from './components/DataGuard';
+import { ActiveCharacterProvider } from './components/ActiveCharacterContext';
+import DesktopIntegrationListener from './components/DesktopIntegrationListener';
+import DesktopRichPresence from './components/DesktopRichPresence';
+import CommandPalette from './components/CommandPalette';
+import LanSessionLifecycle from './components/LanSessionLifecycle';
+import PwaRegistration from './components/PwaRegistration';
+import PwaUpdatePrompt from './components/PwaUpdatePrompt';
+import PwaInstallPrompt from './components/PwaInstallPrompt';
+import { NotificationProvider } from './components/shared/NotificationSystem';
+import { GuidedTourProvider } from './components/GuidedTour';
 import './globals.css';
 import React from 'react';
 
 export const metadata: Metadata = {
   title: 'WhyLowDps',
   description: 'Run SimulationCraft simulations from your browser',
+  manifest: '/manifest.webmanifest',
   icons: {
     icon: '/icon.png',
     shortcut: '/icon.png',
     apple: '/icon.png',
   },
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#09090b',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -43,26 +61,39 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           ['--app-header-height' as string]: '3rem',
         }}
       >
-        <AuthProvider>
-          <DataGuard>
-            <SimProvider>
-              <TopHeader />
-              <UpdatePrompt />
-              <CloseBehaviorPrompt />
-              <DiscordInvitePrompt />
-              <ChangelogPopup />
-              <ScrollToTopOnRouteChange />
-              <InitialSidebarRoute />
+        <GuidedTourProvider>
+          <NotificationProvider>
+            <AuthProvider>
+              <LanSessionLifecycle />
+              <ActiveCharacterProvider>
+                <DataGuard>
+                  <SimProvider>
+                    <TopHeader />
+                    <UpdatePrompt />
+                    <PwaRegistration />
+                    <PwaUpdatePrompt />
+                    <PwaInstallPrompt />
+                    <CloseBehaviorPrompt />
+                    <DiscordInvitePrompt />
+                    <ChangelogPopup />
+                    <DesktopIntegrationListener />
+                    <DesktopRichPresence />
+                    <CommandPalette />
+                    <ScrollToTopOnRouteChange />
+                    <InitialSidebarRoute />
 
-              <Sidebar />
+                    <Sidebar />
 
-              <MainScrollShell>
-                <SimSharedConfig />
-                {children}
-              </MainScrollShell>
-            </SimProvider>
-          </DataGuard>
-        </AuthProvider>
+                    <MainScrollShell>
+                      <SimSharedConfig />
+                      {children}
+                    </MainScrollShell>
+                  </SimProvider>
+                </DataGuard>
+              </ActiveCharacterProvider>
+            </AuthProvider>
+          </NotificationProvider>
+        </GuidedTourProvider>
       </body>
     </html>
   );

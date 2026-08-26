@@ -2,18 +2,25 @@
 
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { API_URL, fetchJson, isDesktop, isNetworkUnavailableError } from '../lib/api';
+import {
+  API_URL,
+  fetchJson,
+  isDesktop,
+  isNetworkUnavailableError,
+  LAN_ACCESS_REQUIRED_STORAGE_KEY,
+} from '../lib/api';
 import SplashScreen from './SplashScreen';
 import { useAuth } from './AuthContext';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { invoke } from '@tauri-apps/api/core';
+import { readinessDataMessage } from '../lib/readiness';
 
 const AUTO_RETRY_DELAYS_MS = [2000, 5000, 10000] as const;
 
 export default function DataGuard({ children }: { children: ReactNode }) {
   const [dataStatus, setDataStatus] = useState<any>({ status: 'syncing', progress: '' });
   const [isReady, setIsReady] = useState(false);
-  const { user, loading, lightMode, checkCredentialsStatus } = useAuth();
+  const { user, loading, lanAccessRequired, lightMode, checkCredentialsStatus } = useAuth();
   const [isGloballyConfigured, setIsGloballyConfigured] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(true);
   const [missingRequiredFiles, setMissingRequiredFiles] = useState<string[]>([]);
@@ -113,14 +120,28 @@ export default function DataGuard({ children }: { children: ReactNode }) {
     return 'syncing';
   };
 
-  const toSplashProgress = (value: unknown): string => safeText(value, 'Syncing with Blizzard...');
+  const toSplashProgress = (value: unknown): string => {
+    const progress = safeText(value, '').trim();
+    return (
+      progress ||
+      readinessDataMessage(
+        dataStatus?.status,
+        Boolean(dataStatus?.degraded),
+        'Syncing with Blizzard...'
+      )
+    );
+  };
 
   useEffect(() => {
     setIsReady(localStorage.getItem('whylowdps_data_ready') === 'true');
   }, []);
 
   useEffect(() => {
-    if (lightMode) {
+    if (
+      lightMode ||
+      lanAccessRequired ||
+      localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1'
+    ) {
       setIsGloballyConfigured(false);
       setIsChecking(false);
       return;
@@ -146,9 +167,15 @@ export default function DataGuard({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [checkCredentialsStatus, lightMode]);
+  }, [checkCredentialsStatus, lanAccessRequired, lightMode]);
 
   const checkStatus = useCallback(async () => {
+    if (
+      lanAccessRequired ||
+      localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1'
+    ) {
+      return;
+    }
     try {
       const data = await fetchJson<any>(`${API_URL}/api/data/status`);
       statusFailureCountRef.current = 0;
@@ -233,10 +260,14 @@ export default function DataGuard({ children }: { children: ReactNode }) {
         setDataStatus({ status: 'syncing', progress: 'Waiting for backend to start...' });
       }
     }
-  }, [lightMode, missingDataDownloadBusy]);
+  }, [lanAccessRequired, lightMode, missingDataDownloadBusy]);
 
   useEffect(() => {
-    if (!isReady) {
+    if (
+      !isReady &&
+      !lanAccessRequired &&
+      localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) !== '1'
+    ) {
       setDataStatus({ status: 'syncing', progress: 'Initializing synchronization...' });
       fetchJson(`${API_URL}/api/data/sync`, { method: 'POST' })
         .catch(() => {})
@@ -244,15 +275,21 @@ export default function DataGuard({ children }: { children: ReactNode }) {
           checkStatus();
         });
     }
-  }, [checkStatus, isReady]);
+  }, [checkStatus, isReady, lanAccessRequired]);
 
   useEffect(() => {
-    if (isReady && !missingDataDownloadBusy) return;
+    if (
+      lanAccessRequired ||
+      localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1' ||
+      (isReady && !missingDataDownloadBusy)
+    ) {
+      return;
+    }
     const interval = setInterval(() => {
       checkStatus();
     }, 2000);
     return () => clearInterval(interval);
-  }, [checkStatus, isReady, missingDataDownloadBusy]);
+  }, [checkStatus, isReady, lanAccessRequired, missingDataDownloadBusy]);
 
   const handleRetry = () => {
     if (autoRetryTimerRef.current != null) {
@@ -355,6 +392,12 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (
+      lanAccessRequired ||
+      localStorage.getItem(LAN_ACCESS_REQUIRED_STORAGE_KEY) === '1'
+    ) {
+      return;
+    }
     let cancelled = false;
 
     const checkMissingFiles = async () => {
@@ -404,11 +447,13 @@ export default function DataGuard({ children }: { children: ReactNode }) {
       );
       if (interval) window.clearInterval(interval);
     };
-  }, [showMissingFilesPopup]);
+  }, [lanAccessRequired, showMissingFilesPopup]);
 
   const pathname = usePathname();
+  const router = useRouter();
   const normalizedPath =
     pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  const isLanResyncPage = normalizedPath === '/lan/resync';
   const isSettingsPage = normalizedPath === '/settings';
   const lightModeBlockedRoute =
     lightMode &&
@@ -419,8 +464,17 @@ export default function DataGuard({ children }: { children: ReactNode }) {
        normalizedPath === '/talent-playground');
   const shouldShowMissingFilesPopup = showMissingFilesPopup;
 
+  useEffect(() => {
+    if (!lanAccessRequired || isLanResyncPage) return;
+    router.replace('/lan/resync');
+  }, [isLanResyncPage, lanAccessRequired, router]);
+
   let content: React.ReactNode = children;
-  if (lightModeBlockedRoute) {
+  if (isLanResyncPage) {
+    content = children;
+  } else if (lanAccessRequired) {
+    content = <SplashScreen status="lan_access_required" progress="" />;
+  } else if (lightModeBlockedRoute) {
     content = (
       <main className="flex min-h-[calc(100vh-var(--app-header-height))] items-center justify-center px-4 py-12">
         <section className="w-full max-w-md rounded-lg border border-border bg-surface p-5 text-center">
@@ -470,6 +524,11 @@ export default function DataGuard({ children }: { children: ReactNode }) {
   return (
     <>
       {content}
+      {dataStatus?.degraded && !isSettingsPage && (
+        <div className="mobile-fixed-bottom fixed left-1/2 z-[180] w-[min(92vw,760px)] -translate-x-1/2 rounded-lg border border-amber-400/30 bg-amber-950/90 px-3 py-2 text-xs text-amber-100 shadow-xl backdrop-blur">
+          Using the last validated game-data snapshot. New seasonal data is temporarily degraded; simulations and unrelated browsing remain available.
+        </div>
+      )}
       {shouldShowMissingFilesPopup && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4">
           <div className="w-full max-w-lg rounded-xl border border-amber-500/30 bg-[#1a1306] p-5 shadow-2xl">

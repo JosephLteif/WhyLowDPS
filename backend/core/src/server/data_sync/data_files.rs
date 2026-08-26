@@ -30,6 +30,53 @@ pub struct DataFilePreviewResponse {
     pub truncated: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct DataReadinessSummary {
+    pub available: bool,
+    pub required_missing: usize,
+    pub optional_missing: usize,
+}
+
+fn resolve_file_path(root: &PathBuf, entry: &super::catalog::DataFileEntry) -> PathBuf {
+    if entry.entry_type == DataFileEntryType::Directory
+        || (entry.source == DataFileSource::Local && entry.bundled_path.is_some())
+    {
+        resolve_runtime_path(root, entry)
+    } else {
+        resolve_data_file_read_path(root, entry)
+    }
+}
+
+pub fn summarize_data_files(data_dir: &Option<PathBuf>) -> Result<DataReadinessSummary, String> {
+    let catalog = data_file_catalog()?;
+    let Some(root) = data_dir else {
+        return Ok(DataReadinessSummary {
+            available: false,
+            required_missing: catalog.iter().filter(|entry| entry.required).count(),
+            optional_missing: catalog.iter().filter(|entry| !entry.required).count(),
+        });
+    };
+
+    let mut required_missing = 0;
+    let mut optional_missing = 0;
+    for entry in &catalog {
+        if std::fs::metadata(resolve_file_path(root, entry)).is_ok() {
+            continue;
+        }
+        if entry.required {
+            required_missing += 1;
+        } else {
+            optional_missing += 1;
+        }
+    }
+
+    Ok(DataReadinessSummary {
+        available: true,
+        required_missing,
+        optional_missing,
+    })
+}
+
 pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpResponse {
     let catalog = match data_file_catalog() {
         Ok(entries) => entries,
@@ -52,13 +99,7 @@ pub async fn get_data_file_states(data_dir: web::Data<Option<PathBuf>>) -> HttpR
     let files: Vec<DataFileState> = catalog
         .iter()
         .map(|entry| {
-            let path = if entry.entry_type == DataFileEntryType::Directory
-                || (entry.source == DataFileSource::Local && entry.bundled_path.is_some())
-            {
-                resolve_runtime_path(&root, entry)
-            } else {
-                resolve_data_file_read_path(&root, entry)
-            };
+            let path = resolve_file_path(&root, entry);
             let metadata = std::fs::metadata(&path).ok();
             let is_dir = entry.entry_type == DataFileEntryType::Directory
                 || metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);

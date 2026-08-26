@@ -3,11 +3,14 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { FightScenario } from '../lib/types';
 import { API_URL, fetchJson } from '../lib/api';
+import { createUuid } from '../lib/uuid';
 import {
   getAppDefaultOption,
   getCharacterDefaultsKeyFromSimcInput,
   setLastActiveCharacterDefaultsKey,
 } from '../lib/default-options';
+import { parseCharacterInfo } from '@/lib/simc-parser';
+import { useActiveCharacter } from './ActiveCharacterContext';
 
 interface SimContextType {
   simcInput: string;
@@ -132,6 +135,7 @@ function readSessionString(key: string, fallback: string): string {
 }
 
 export function SimProvider({ children }: { children: ReactNode }) {
+  const { setCharacter: setActiveCharacter } = useActiveCharacter();
   const [simcInput, _setSimcInput] = useState('');
   const [fightStyle, _setFightStyle] = useState('Patchwerk');
   const [threads, _setThreads] = useState(0);
@@ -172,6 +176,23 @@ export function SimProvider({ children }: { children: ReactNode }) {
   const [talentBuilds, setTalentBuilds] = useState<{ name: string; talentString: string }[]>([]);
   const [scenarios, setScenarios] = useState<FightScenario[]>([]);
   const lastAppliedDefaultsCharacterKeyRef = useRef<string | null>(null);
+
+  const syncActiveCharacter = useCallback(
+    (value: string) => {
+      const info = parseCharacterInfo(value);
+      if (info?.kind !== 'character' || !info.region || !info.server) return;
+
+      setActiveCharacter({
+        name: info.name,
+        realm: info.server,
+        region: info.region,
+        className: info.className,
+        spec: info.spec,
+        level: Number(info.level) || undefined,
+      });
+    },
+    [setActiveCharacter]
+  );
 
   const applyDefaultsForCharacter = useCallback((characterKey: string | null) => {
     const fightStyleDefault = getAppDefaultOption('fight.fightStyle', { characterKey });
@@ -244,6 +265,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
       if (characterKey) setLastActiveCharacterDefaultsKey(characterKey);
       lastAppliedDefaultsCharacterKeyRef.current = characterKey;
       _setSimcInput(storedSimcInput);
+      syncActiveCharacter(storedSimcInput);
       _setFightStyle(
         readStoredString(
           'whylowdps_fight_style',
@@ -373,12 +395,12 @@ export function SimProvider({ children }: { children: ReactNode }) {
         rawChannel === 'weekly' || rawChannel === 'latest' ? 'bundled' : rawChannel;
       _setSimcChannel(normalizedChannel);
     } catch {}
-  }, []);
+  }, [syncActiveCharacter]);
 
   const addScenario = useCallback(() => {
     setScenarios((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), fightStyle, targetCount, fightLength },
+      { id: createUuid(), fightStyle, targetCount, fightLength },
     ]);
   }, [fightStyle, targetCount, fightLength]);
 
@@ -392,6 +414,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
 
   const setSimcInput = useCallback((v: string) => {
     _setSimcInput(v);
+    syncActiveCharacter(v);
     try {
       sessionStorage.setItem('whylowdps_simc_input', v);
       const characterKey = getCharacterDefaultsKeyFromSimcInput(v);
@@ -406,7 +429,7 @@ export function SimProvider({ children }: { children: ReactNode }) {
         lastAppliedDefaultsCharacterKeyRef.current = null;
       }
     } catch {}
-  }, [applyDefaultsForCharacter]);
+  }, [applyDefaultsForCharacter, syncActiveCharacter]);
 
   const setThreads = useCallback((v: number) => {
     _setThreads(v);

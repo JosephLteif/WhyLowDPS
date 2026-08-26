@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../components/AuthContext';
 import { useRouter } from 'next/navigation';
 import {
@@ -9,6 +9,7 @@ import {
   deleteBlizzardCredentialProfile,
   fetchJson,
   isDesktop,
+  isHostedPrivate,
   listBlizzardCredentialProfiles,
   renameBlizzardCredentialProfile,
   saveBlizzardCredentialProfile,
@@ -18,17 +19,24 @@ import DefaultOptionsSettingsCard from '../components/DefaultOptionsSettingsCard
 import DataCacheSettingsSection from './components/DataCacheSettingsSection';
 import DataFilePreviewModal from './components/DataFilePreviewModal';
 import DataFileStateModal from './components/DataFileStateModal';
+import DiscordWebhookSettings from './components/DiscordWebhookSettings';
+import LocalBackupSection from './components/LocalBackupSection';
 import IntegrationsSettingsSection from './components/IntegrationsSettingsSection';
 import UpdatesSettingsSection from './components/UpdatesSettingsSection';
+import ReadinessPanel from '../components/ReadinessPanel';
+import { APP_VERSION_WITH_PREFIX } from '../lib/version';
+import { CHANGELOG_HISTORY_URL } from '../lib/changelog';
 import {
   fetchSimcRuntimeInfo,
   fetchSimcRuntimeVersions,
+  SIMC_RUNTIME_UPDATED_EVENT,
   type SimcRuntimeInfo,
   type SimcRuntimeVersionOption,
 } from '../lib/simc-runtime-release';
 import { useDataCacheRefresh } from './useDataCacheRefresh';
 import { useDataFileStateManager } from './useDataFileStateManager';
 import { useSettingsUpdater } from './useSettingsUpdater';
+import { fetchReadiness, type ReadinessSnapshot } from '../lib/readiness';
 
 const PRESETS = [
   { label: 'Balanced', pct: 0.3 },
@@ -52,8 +60,28 @@ type SimcRuntimeStatusResponse = {
   version?: string | null;
   updated?: boolean | null;
 };
+type LanAccessInfo = {
+  enabled: boolean;
+  restart_required: boolean;
+  addresses: string[];
+};
+type LanDevice = {
+  id: string;
+  name: string;
+  paired_at: number;
+  last_seen_at?: number | null;
+  active: boolean;
+};
 
-type SettingsTab = 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
+type SettingsTab = 'health' | 'simulation' | 'integrations' | 'data' | 'updates' | 'about';
+
+function formatLanDeviceDate(timestamp?: number | null): string {
+  if (!timestamp) return 'Never';
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(timestamp * 1000));
+}
 
 export default function SettingsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -114,6 +142,21 @@ export default function SettingsPage() {
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+  const [lanSharingEnabled, setLanSharingEnabled] = useState(false);
+  const [lanSharingLoading, setLanSharingLoading] = useState(false);
+  const [lanSharingRestartRequired, setLanSharingRestartRequired] = useState(false);
+  const [lanSharingMessage, setLanSharingMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [lanPairingUrl, setLanPairingUrl] = useState('');
+  const [lanQrCodeDataUrl, setLanQrCodeDataUrl] = useState('');
+  const [lanDevices, setLanDevices] = useState<LanDevice[]>([]);
+  const [lanDevicesLoading, setLanDevicesLoading] = useState(false);
+  const [lanDeviceActionId, setLanDeviceActionId] = useState<string | null>(null);
+  const [lanDeviceRemovalCandidate, setLanDeviceRemovalCandidate] = useState<LanDevice | null>(
+    null
+  );
   const [selectedSimcChannel, setSelectedSimcChannelState] = useState<SimcUpdateChannel>('weekly');
   const [selectedSimcRuntimeVersion, setSelectedSimcRuntimeVersionState] = useState<string | null>(
     null
@@ -127,16 +170,70 @@ export default function SettingsPage() {
   const [simcRuntimeVersionsLoading, setSimcRuntimeVersionsLoading] = useState(false);
   const [simcRuntimeInfoLoading, setSimcRuntimeInfoLoading] = useState(false);
   const [simcRuntimeDownloading, setSimcRuntimeDownloading] = useState(false);
+  const [readiness, setReadiness] = useState<ReadinessSnapshot | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [readinessActionBusy, setReadinessActionBusy] = useState<
+    'refresh' | 'retry' | 'repair' | null
+  >(null);
   const {
     updateCheckState,
     updateMessage,
     appReleases,
     appReleaseMetadataStatus,
+    selectedAppChannel,
+    setSelectedAppChannel,
     selectedAppVersion,
     setSelectedAppVersion,
     loadAppReleases,
     downloadAndInstallLatest,
-  } = useSettingsUpdater({ performanceSaved, hasUser: !!user });
+    deploymentInfo,
+    dockerReleases,
+    dockerReleaseMetadataStatus,
+    loadDockerReleases,
+    dockerUpdateStatus,
+    loadDockerUpdateStatus,
+    saveDockerUpdateSettings,
+    triggerDockerUpdate,
+  } = useSettingsUpdater({
+    performanceSaved,
+    hasUser: !!user,
+    isAdmin: user?.role === 'admin',
+  });
+  const simcRuntimeControlAvailable = isDesktop || (isHostedPrivate && user?.role === 'admin');
+
+  const refreshReadiness = useCallback(async () => {
+    setReadinessLoading(true);
+    setReadinessError(null);
+    try {
+      setReadiness(await fetchReadiness());
+    } catch (err) {
+      setReadiness(null);
+      setReadinessError(err instanceof Error ? err.message : 'Failed to read system health.');
+    } finally {
+      setReadinessLoading(false);
+    }
+  }, []);
+
+  const retryReadinessData = useCallback(async () => {
+    setReadinessActionBusy('retry');
+    try {
+      await refreshDataCache();
+      await refreshReadiness();
+    } finally {
+      setReadinessActionBusy(null);
+    }
+  }, [refreshDataCache, refreshReadiness]);
+
+  const repairReadinessData = useCallback(async () => {
+    setReadinessActionBusy('repair');
+    try {
+      await downloadAllMissingFiles();
+      await refreshReadiness();
+    } finally {
+      setReadinessActionBusy(null);
+    }
+  }, [downloadAllMissingFiles, refreshReadiness]);
 
   useEffect(() => {
     if (authLoading) {
@@ -170,6 +267,22 @@ export default function SettingsPage() {
         setPageLoading(false);
       });
   }, [authLoading, user, router, setMaxCombinations, setThreads]);
+
+  useEffect(() => {
+    if (!authLoading && user) void refreshReadiness();
+  }, [authLoading, refreshReadiness, user]);
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get(
+      'tab'
+    ) as SettingsTab | null;
+    if (
+      requestedTab &&
+      ['health', 'simulation', 'integrations', 'data', 'updates', 'about'].includes(requestedTab)
+    ) {
+      setActiveTab(requestedTab);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user || !isDesktop) return;
@@ -234,19 +347,88 @@ export default function SettingsPage() {
     };
   }, []);
 
+  const refreshLanDevices = useCallback(async () => {
+    if (!isDesktop) return;
+    setLanDevicesLoading(true);
+    try {
+      const devices = await fetchJson<LanDevice[]>(`${API_URL}/api/lan/devices`);
+      setLanDevices(devices);
+      if (devices.some((device) => device.active)) {
+        setLanPairingUrl('');
+        setLanQrCodeDataUrl('');
+      }
+    } catch {
+      setLanDevices([]);
+    } finally {
+      setLanDevicesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !lanSharingEnabled) {
+      setLanDevices([]);
+      return;
+    }
+    void refreshLanDevices();
+    const interval = window.setInterval(
+      () => void refreshLanDevices(),
+      lanPairingUrl ? 2_000 : 10_000
+    );
+    return () => window.clearInterval(interval);
+  }, [lanPairingUrl, lanSharingEnabled, refreshLanDevices]);
+
   useEffect(() => {
     if (!isDesktop) return;
     let cancelled = false;
     (async () => {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
-        const pref = await invoke<SimcUpdateChannelResponse>('get_simc_update_channel');
-        const versionPref = await invoke<SimcRuntimeVersionPreferenceResponse>(
-          'get_simc_runtime_version'
+        const info = await invoke<LanAccessInfo>('get_lan_access_info');
+        if (!cancelled) {
+          setLanSharingEnabled(info.enabled);
+          setLanSharingRestartRequired(info.restart_required);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setLanSharingEnabled(false);
+          const detail = err?.message || err?.toString?.() || '';
+          if (/command not found|not allowed/i.test(detail)) {
+            setLanSharingMessage({
+              type: 'error',
+              text: 'LAN sharing needs the latest desktop runtime. Close and reopen the latest WhyLowDPS build.',
+            });
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!simcRuntimeControlAvailable) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (isDesktop) {
+          const { invoke } = await import('@tauri-apps/api/core');
+          const pref = await invoke<SimcUpdateChannelResponse>('get_simc_update_channel');
+          const versionPref = await invoke<SimcRuntimeVersionPreferenceResponse>(
+            'get_simc_runtime_version'
+          );
+          if (cancelled) return;
+          setSelectedSimcChannelState(pref?.channel === 'nightly' ? 'nightly' : 'weekly');
+          setSelectedSimcRuntimeVersionState(versionPref?.version || null);
+          return;
+        }
+
+        const status = await fetchJson<SimcRuntimeStatusResponse>(
+          `${API_URL}/api/admin/simc-runtime`
         );
         if (cancelled) return;
-        setSelectedSimcChannelState(pref?.channel === 'nightly' ? 'nightly' : 'weekly');
-        setSelectedSimcRuntimeVersionState(versionPref?.version || null);
+        setSelectedSimcChannelState(status?.channel === 'nightly' ? 'nightly' : 'weekly');
+        setSelectedSimcRuntimeVersionState(null);
       } catch {
         if (!cancelled) {
           setSelectedSimcChannelState('weekly');
@@ -257,7 +439,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [simcRuntimeControlAvailable]);
 
   useEffect(() => {
     if (dataCacheRefreshMinutes >= 7 * 24 * 60) {
@@ -398,15 +580,174 @@ export default function SettingsPage() {
     }
   };
 
+  const updateLanSharing = async (enabled: boolean) => {
+    if (!isDesktop) return;
+    setLanSharingLoading(true);
+    setLanSharingMessage(null);
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('set_lan_sharing_enabled', { enabled });
+      setLanSharingEnabled(enabled);
+      setLanPairingUrl('');
+      setLanQrCodeDataUrl('');
+      const info = await invoke<LanAccessInfo>('get_lan_access_info');
+      setLanSharingRestartRequired(info.restart_required);
+      setLanSharingMessage({
+        type: 'success',
+        text: info.restart_required
+          ? 'Saved. Restart WhyLowDPS to apply this change.'
+          : 'LAN sharing is already using this setting.',
+      });
+    } catch (err: any) {
+      const detail = err?.message || err?.toString?.() || '';
+      setLanSharingMessage({
+        type: 'error',
+        text: /command not found|not allowed/i.test(detail)
+          ? 'LAN sharing needs the latest desktop runtime. Close and reopen the latest WhyLowDPS build, then try again.'
+          : detail || 'Failed to update LAN sharing.',
+      });
+    } finally {
+      setLanSharingLoading(false);
+    }
+  };
+
+  const createLanPairingLink = async (deviceId?: string) => {
+    if (!isDesktop || !lanSharingEnabled) return;
+    setLanSharingLoading(true);
+    setLanSharingMessage(null);
+    try {
+      const query = deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : '';
+      const pairing = await fetchJson<{ path: string }>(`${API_URL}/api/lan/pairing${query}`, {
+        method: 'POST',
+      });
+      const { invoke } = await import('@tauri-apps/api/core');
+      const info = await invoke<LanAccessInfo>('get_lan_access_info');
+      const address = info.addresses[0];
+      if (!address) {
+        throw new Error('No private IPv4 address was detected on this PC.');
+      }
+
+      const url = `http://${address}:17384${pairing.path}`;
+      setLanPairingUrl(url);
+      const { toDataURL } = await import('qrcode');
+      setLanQrCodeDataUrl(
+        await toDataURL(url, {
+          errorCorrectionLevel: 'M',
+          margin: 4,
+          width: 320,
+          color: { dark: '#111111', light: '#ffffff' },
+        })
+      );
+      try {
+        await navigator.clipboard.writeText(url);
+        setLanSharingMessage({
+          type: 'success',
+          text: 'Phone link copied. It expires after five minutes and works once.',
+        });
+      } catch {
+        setLanSharingMessage({
+          type: 'success',
+          text: 'Phone link created. Copy it to your phone within five minutes.',
+        });
+      }
+    } catch (err: any) {
+      setLanSharingMessage({
+        type: 'error',
+        text:
+          err?.message ||
+          err?.toString?.() ||
+          'Could not create a phone link. Restart WhyLowDPS after enabling LAN sharing.',
+      });
+    } finally {
+      setLanSharingLoading(false);
+    }
+  };
+
+  const renameLanDevice = async (device: LanDevice) => {
+    const name = window.prompt('Name this paired device', device.name)?.trim();
+    if (!name || name === device.name) return;
+
+    setLanDeviceActionId(device.id);
+    setLanSharingMessage(null);
+    try {
+      await fetchJson(`${API_URL}/api/lan/devices/${encodeURIComponent(device.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      await refreshLanDevices();
+      setLanSharingMessage({ type: 'success', text: 'Device name updated.' });
+    } catch (err: any) {
+      setLanSharingMessage({
+        type: 'error',
+        text: err?.message || 'Failed to rename the device.',
+      });
+    } finally {
+      setLanDeviceActionId(null);
+    }
+  };
+
+  const removeLanDevice = async (device: LanDevice) => {
+    setLanDeviceActionId(device.id);
+    setLanSharingMessage(null);
+    try {
+      await fetchJson(`${API_URL}/api/lan/devices/${encodeURIComponent(device.id)}`, {
+        method: 'DELETE',
+      });
+      await refreshLanDevices();
+      setLanSharingMessage({ type: 'success', text: `${device.name} no longer has LAN access.` });
+    } catch (err: any) {
+      setLanSharingMessage({
+        type: 'error',
+        text: err?.message || 'Failed to remove the device.',
+      });
+    } finally {
+      setLanDeviceActionId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!lanDeviceRemovalCandidate) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLanDeviceRemovalCandidate(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lanDeviceRemovalCandidate]);
+
+  const restartForLanSharing = async () => {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('restart_app');
+  };
+
   const loadSimcRuntimeInfo = async (
     channel: SimcUpdateChannel,
     options?: { forceRefresh?: boolean }
   ) => {
-    if (!isDesktop) return;
+    if (!simcRuntimeControlAvailable) return;
     setSimcRuntimeInfoLoading(true);
-    const info = await fetchSimcRuntimeInfo(channel, options);
-    setSimcRuntimeInfo(info);
-    setSimcRuntimeInfoLoading(false);
+    try {
+      if (isDesktop) {
+        const info = await fetchSimcRuntimeInfo(channel, options);
+        setSimcRuntimeInfo(info);
+      } else {
+        const status = await fetchJson<SimcRuntimeStatusResponse>(
+          `${API_URL}/api/admin/simc-runtime`
+        );
+        setSimcRuntimeInfo({
+          channel: status?.channel === 'nightly' ? 'nightly' : 'weekly',
+          version: status?.version || 'Unavailable',
+          metadataStatus: status?.version ? 'available' : 'unavailable',
+        });
+      }
+    } catch (err: any) {
+      setSimcChannelMessage({
+        type: 'error',
+        text: err?.message || err?.toString?.() || 'Failed to load SimC runtime status.',
+      });
+    } finally {
+      setSimcRuntimeInfoLoading(false);
+    }
   };
 
   const loadSimcRuntimeVersions = async () => {
@@ -417,9 +758,9 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    if (!isDesktop) return;
+    if (!simcRuntimeControlAvailable) return;
     void loadSimcRuntimeInfo(selectedSimcChannel);
-  }, [selectedSimcChannel]);
+  }, [selectedSimcChannel, simcRuntimeControlAvailable]);
 
   useEffect(() => {
     if (!isDesktop) return;
@@ -438,20 +779,38 @@ export default function SettingsPage() {
   }, []);
 
   const setSelectedSimcChannel = async (nextChannel: SimcUpdateChannel) => {
-    if (!isDesktop) return;
+    if (!simcRuntimeControlAvailable) return;
     const previous = selectedSimcChannel;
     setSelectedSimcChannelState(nextChannel);
     setSimcChannelMessage(null);
-    const { invoke } = await import('@tauri-apps/api/core');
     let savedChannel: SimcUpdateChannel;
     try {
-      const pref = await invoke<SimcUpdateChannelResponse>('set_simc_update_channel', {
-        channel: nextChannel,
-      });
-      await invoke('set_simc_runtime_version', { version: null });
-      savedChannel = pref?.channel === 'nightly' ? 'nightly' : 'weekly';
+      if (isDesktop) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const pref = await invoke<SimcUpdateChannelResponse>('set_simc_update_channel', {
+          channel: nextChannel,
+        });
+        await invoke('set_simc_runtime_version', { version: null });
+        savedChannel = pref?.channel === 'nightly' ? 'nightly' : 'weekly';
+      } else {
+        const status = await fetchJson<SimcRuntimeStatusResponse>(
+          `${API_URL}/api/admin/simc-runtime`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel: nextChannel }),
+          }
+        );
+        savedChannel = status?.channel === 'nightly' ? 'nightly' : 'weekly';
+        setSimcRuntimeInfo({
+          channel: savedChannel,
+          version: status?.version || 'Unavailable',
+          metadataStatus: status?.version ? 'available' : 'unavailable',
+        });
+      }
       setSelectedSimcChannelState(savedChannel);
       setSelectedSimcRuntimeVersionState(null);
+      window.dispatchEvent(new Event(SIMC_RUNTIME_UPDATED_EVENT));
     } catch (err: any) {
       setSelectedSimcChannelState(previous);
       setSimcChannelMessage({
@@ -463,7 +822,9 @@ export default function SettingsPage() {
 
     setSimcChannelMessage({
       type: 'success',
-      text: `SimC channel saved as ${savedChannel}.`,
+      text: isDesktop
+        ? `SimC channel saved as ${savedChannel}.`
+        : `Docker SimC runtime switched to ${savedChannel}.`,
     });
   };
 
@@ -502,20 +863,35 @@ export default function SettingsPage() {
   };
 
   const downloadSelectedSimcRuntime = async () => {
-    if (!isDesktop || simcRuntimeDownloading) return;
+    if (!simcRuntimeControlAvailable || simcRuntimeDownloading) return;
     const channel = selectedSimcChannel;
     setSimcRuntimeDownloading(true);
     setSimcChannelMessage({
       type: 'success',
       text: `Downloading ${channel} SimC runtime...`,
     });
-    const { invoke } = await import('@tauri-apps/api/core');
     try {
-      const status = await invoke<SimcRuntimeStatusResponse>('update_simc_runtime', {
-        channel,
-        version: selectedSimcRuntimeVersion,
-      });
+      let status: SimcRuntimeStatusResponse;
+      if (isDesktop) {
+        const { invoke } = await import('@tauri-apps/api/core');
+        status = await invoke<SimcRuntimeStatusResponse>('update_simc_runtime', {
+          channel,
+          version: selectedSimcRuntimeVersion,
+        });
+      } else {
+        status = await fetchJson<SimcRuntimeStatusResponse>(`${API_URL}/api/admin/simc-runtime`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel }),
+        });
+        setSimcRuntimeInfo({
+          channel: status?.channel === 'nightly' ? 'nightly' : 'weekly',
+          version: status?.version || 'Unavailable',
+          metadataStatus: status?.version ? 'available' : 'unavailable',
+        });
+      }
       const version = status?.version ? ` (${status.version})` : '';
+      window.dispatchEvent(new Event(SIMC_RUNTIME_UPDATED_EVENT));
       setSimcChannelMessage({
         type: 'success',
         text: status?.updated
@@ -537,6 +913,11 @@ export default function SettingsPage() {
     (p) => maxThreads > 0 && Math.max(1, Math.round(maxThreads * p.pct)) === threads
   );
 
+  const selectSettingsTab = (tab: SettingsTab) => {
+    setActiveTab(tab);
+    router.replace(`/settings?tab=${tab}`, { scroll: false });
+  };
+
   if (authLoading || pageLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -552,17 +933,21 @@ export default function SettingsPage() {
         <p className="mt-2 text-zinc-400">Manage your account and integrations.</p>
       </header>
 
-      <div className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="Settings sections" className="flex flex-wrap gap-2">
         {[
+          { id: 'health', label: 'Health' },
           { id: 'simulation', label: 'Simulation' },
           { id: 'integrations', label: 'Integrations' },
           { id: 'data', label: 'Data Cache' },
-          { id: 'updates', label: 'App Updates' },
+          { id: 'updates', label: isHostedPrivate ? 'Docker Updates' : 'App Updates' },
           { id: 'about', label: 'About' },
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as SettingsTab)}
+            onClick={() => selectSettingsTab(tab.id as SettingsTab)}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`settings-panel-${tab.id}`}
             className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors ${
               activeTab === tab.id
                 ? 'border-gold/40 bg-gold/15 text-gold'
@@ -574,28 +959,128 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {activeTab === 'simulation' && <DefaultOptionsSettingsCard />}
+      <section
+        id="settings-panel-overview"
+        aria-labelledby="settings-overview-title"
+        className="rounded-xl border border-border/50 bg-surface/30 p-4 backdrop-blur-sm"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="settings-overview-title" className="text-sm font-semibold text-zinc-100">
+              Quick repairs
+            </h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Jump directly to the settings area that needs attention.
+            </p>
+          </div>
+          <span className="text-[11px] text-zinc-600">Use Ctrl K to search these actions</span>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            {
+              tab: 'health' as const,
+              label: 'System health',
+              status: readinessLoading
+                ? 'Checking…'
+                : readiness?.status === 'ready'
+                  ? 'Ready'
+                  : readiness
+                    ? 'Needs attention'
+                    : 'Unavailable',
+            },
+            {
+              tab: 'simulation' as const,
+              label: 'Simulation setup',
+              status: threads > 0 ? 'Ready' : 'Review defaults',
+            },
+            {
+              tab: 'integrations' as const,
+              label: 'Blizzard access',
+              status: isHostedPrivate
+                ? 'Hosted server configuration'
+                : hasSecret || clientId
+                  ? 'Configured'
+                  : 'Needs attention',
+            },
+            { tab: 'data' as const, label: 'Game data and backups', status: 'Refresh or restore' },
+            {
+              tab: 'updates' as const,
+              label: isHostedPrivate ? 'Docker image updates' : 'App and SimC updates',
+              status: isHostedPrivate
+                ? 'Latest and versioned images'
+                : isDesktop
+                  ? 'Desktop controls'
+                  : 'Release notes',
+            },
+          ].map((item) => (
+            <button
+              key={item.tab}
+              type="button"
+              onClick={() => selectSettingsTab(item.tab)}
+              className="rounded-lg border border-border/70 bg-surface-2/60 px-3 py-3 text-left transition-colors hover:border-gold/30 hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-gold/40"
+            >
+              <span className="block text-xs font-semibold text-zinc-200">{item.label}</span>
+              <span className="mt-1 block text-[11px] text-zinc-500">{item.status}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {activeTab === 'health' && (
+        <ReadinessPanel
+          variant="details"
+          snapshot={readiness}
+          loading={readinessLoading}
+          error={readinessError}
+          authenticated={Boolean(user)}
+          lightMode={false}
+          onRefresh={() => void refreshReadiness()}
+          onRetryData={() => void retryReadinessData()}
+          onRepairData={() => void repairReadinessData()}
+          onViewData={() => void viewDataStates()}
+          actionBusy={readinessActionBusy}
+        />
+      )}
+
+      {activeTab === 'simulation' && (
+        <div id="settings-panel-simulation">
+          <DefaultOptionsSettingsCard />
+        </div>
+      )}
 
       {activeTab === 'integrations' && (
-        <IntegrationsSettingsSection
-          clientId={clientId}
-          setClientId={setClientId}
-          clientSecret={clientSecret}
-          setClientSecret={setClientSecret}
-          credentialName={credentialName}
-          setCredentialName={setCredentialName}
-          credentialProfiles={credentialProfiles}
-          renameSavedCredential={renameSavedCredential}
-          deleteSavedCredential={deleteSavedCredential}
-          secretTouched={secretTouched}
-          setSecretTouched={setSecretTouched}
-          hasSecret={hasSecret}
-          blizzardTesting={blizzardTesting}
-          blizzardSaving={blizzardSaving}
-          testBlizzardCredentials={testBlizzardCredentials}
-          saveBlizzardSettings={saveBlizzardSettings}
-          blizzardMessage={blizzardMessage}
-        />
+        <div className="space-y-6">
+          {isHostedPrivate ? (
+            <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+              <h2 className="mb-3 text-xl font-semibold text-white">API Integrations</h2>
+              <p className="max-w-2xl text-sm leading-relaxed text-zinc-400">
+                Blizzard API access is configured by the hosted server administrator. Client secrets
+                are not entered or stored in this browser.
+              </p>
+            </section>
+          ) : (
+            <IntegrationsSettingsSection
+              clientId={clientId}
+              setClientId={setClientId}
+              clientSecret={clientSecret}
+              setClientSecret={setClientSecret}
+              credentialName={credentialName}
+              setCredentialName={setCredentialName}
+              credentialProfiles={credentialProfiles}
+              renameSavedCredential={renameSavedCredential}
+              deleteSavedCredential={deleteSavedCredential}
+              secretTouched={secretTouched}
+              setSecretTouched={setSecretTouched}
+              hasSecret={hasSecret}
+              blizzardTesting={blizzardTesting}
+              blizzardSaving={blizzardSaving}
+              testBlizzardCredentials={testBlizzardCredentials}
+              saveBlizzardSettings={saveBlizzardSettings}
+              blizzardMessage={blizzardMessage}
+            />
+          )}
+          {isHostedPrivate && <DiscordWebhookSettings />}
+        </div>
       )}
 
       {activeTab === 'simulation' && (
@@ -752,18 +1237,228 @@ export default function SettingsPage() {
         </section>
       )}
 
+      {activeTab === 'simulation' && isDesktop && (
+        <section className="rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <h2 className="mb-3 text-xl font-semibold text-white">Share over LAN</h2>
+          <p className="mb-5 max-w-2xl text-sm text-zinc-400">
+            Open WhyLowDPS from your phone on the same private Wi-Fi network. Anyone with the
+            pairing link can operate this local app and use the PC&apos;s current account session.
+          </p>
+
+          <div className="max-w-2xl space-y-4">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-surface-2/60 px-4 py-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-zinc-200">Share this app over LAN</p>
+                <p className="text-[13px] text-zinc-500">
+                  Keep this off unless the network is trusted. No internet or port-forwarding access
+                  is supported.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={lanSharingLoading}
+                onClick={() => void updateLanSharing(!lanSharingEnabled)}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  lanSharingEnabled ? 'bg-gold' : 'border border-border bg-surface'
+                }`}
+                aria-label="Share this app over LAN"
+                aria-pressed={lanSharingEnabled}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full transition-all ${
+                    lanSharingEnabled ? 'left-[22px] bg-black' : 'left-0.5 bg-gray-500'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {(lanSharingEnabled || lanSharingRestartRequired) && (
+              <div className="space-y-3 rounded-lg border border-gold/20 bg-gold/5 p-4">
+                {lanSharingRestartRequired && (
+                  <p className="text-xs text-gold">
+                    Restart required before this LAN setting takes effect.
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {lanSharingRestartRequired && (
+                    <button
+                      type="button"
+                      onClick={() => void restartForLanSharing()}
+                      className="rounded-lg bg-gold px-3 py-2 text-xs font-semibold text-black transition-colors hover:bg-gold/90"
+                    >
+                      Restart WhyLowDPS
+                    </button>
+                  )}
+                  {lanSharingEnabled && (
+                    <button
+                      type="button"
+                      disabled={lanSharingLoading}
+                      onClick={() => void createLanPairingLink()}
+                      className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-gold/40 hover:text-white disabled:opacity-50"
+                    >
+                      New pairing link
+                    </button>
+                  )}
+                </div>
+                {lanPairingUrl && (
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                    {lanQrCodeDataUrl && (
+                      <div className="shrink-0 space-y-2">
+                        <div className="w-fit rounded-xl bg-white p-3">
+                          <img
+                            src={lanQrCodeDataUrl}
+                            alt="Scan this QR code to open WhyLowDPS on your phone"
+                            width={320}
+                            height={320}
+                            className="h-64 w-64 sm:h-80 sm:w-80"
+                          />
+                        </div>
+                        <p className="max-w-80 text-center text-[11px] text-zinc-500">
+                          Scan with your phone camera while both devices are on the same Wi-Fi.
+                        </p>
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <label
+                        className="block text-xs font-medium text-zinc-400"
+                        htmlFor="lan-pairing-url"
+                      >
+                        One-time phone link
+                      </label>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          id="lan-pairing-url"
+                          readOnly
+                          value={lanPairingUrl}
+                          className="min-w-0 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs text-zinc-200 focus:border-gold/50 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void navigator.clipboard.writeText(lanPairingUrl)}
+                          className="w-fit rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-gold/40 hover:text-white"
+                        >
+                          Copy link
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {lanSharingEnabled && (
+              <div className="space-y-3 rounded-lg border border-border/60 bg-surface-2/40 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-200">Paired devices</h3>
+                    <p className="text-xs text-zinc-500">
+                      Paired sessions survive app restarts. Phones send presence while open and are
+                      marked offline when closed or unreachable.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={lanDevicesLoading}
+                    onClick={() => void refreshLanDevices()}
+                    className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:border-gold/40 hover:text-white disabled:opacity-50"
+                  >
+                    {lanDevicesLoading ? 'Refreshing…' : 'Refresh'}
+                  </button>
+                </div>
+
+                {lanDevices.length === 0 && !lanDevicesLoading ? (
+                  <p className="rounded-lg border border-dashed border-border/70 px-3 py-4 text-xs text-zinc-500">
+                    No phones or browsers have been paired yet. Create a new phone link above to add
+                    one.
+                  </p>
+                ) : null}
+
+                <div className="space-y-2">
+                  {lanDevices.map((device) => (
+                    <div
+                      key={device.id}
+                      className="flex flex-col gap-3 rounded-lg border border-border/60 bg-surface/50 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-medium text-zinc-200">
+                            {device.name}
+                          </p>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                              device.active
+                                ? 'bg-emerald-400/10 text-emerald-300'
+                                : 'bg-zinc-700/40 text-zinc-500'
+                            }`}
+                          >
+                            {device.active ? 'Connected' : 'Offline'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] text-zinc-500">
+                          Paired {formatLanDeviceDate(device.paired_at)} · Last seen{' '}
+                          {formatLanDeviceDate(device.last_seen_at)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          disabled={lanSharingLoading || lanDeviceActionId === device.id}
+                          onClick={() => void createLanPairingLink(device.id)}
+                          className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-gold/40 hover:text-white disabled:opacity-50"
+                        >
+                          New link
+                        </button>
+                        <button
+                          type="button"
+                          disabled={lanDeviceActionId === device.id}
+                          onClick={() => void renameLanDevice(device)}
+                          className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs font-semibold text-zinc-200 hover:border-gold/40 hover:text-white disabled:opacity-50"
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          disabled={lanDeviceActionId === device.id}
+                          onClick={() => setLanDeviceRemovalCandidate(device)}
+                          className="rounded-lg border border-red-400/30 bg-red-400/5 px-3 py-2 text-xs font-semibold text-red-300 hover:border-red-300/60 hover:text-red-200 disabled:opacity-50"
+                        >
+                          Remove access
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {lanSharingMessage ? (
+              <p
+                className={`text-xs ${
+                  lanSharingMessage.type === 'success' ? 'text-emerald-300' : 'text-red-300'
+                }`}
+              >
+                {lanSharingMessage.text}
+              </p>
+            ) : null}
+          </div>
+        </section>
+      )}
+
       {activeTab === 'data' && (
-        <DataCacheSettingsSection
-          refreshPreset={refreshPreset}
-          setRefreshPreset={setRefreshPreset}
-          setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
-          cacheSyncing={cacheSyncing}
-          refreshDataCache={refreshDataCache}
-          viewDataStates={viewDataStates}
-          syncProgress={syncProgress}
-          syncProgressPct={syncProgressPct}
-          cacheMessage={cacheMessage}
-        />
+        <div className="space-y-6">
+          <DataCacheSettingsSection
+            refreshPreset={refreshPreset}
+            setRefreshPreset={setRefreshPreset}
+            setDataCacheRefreshMinutes={setDataCacheRefreshMinutes}
+            cacheSyncing={cacheSyncing}
+            refreshDataCache={refreshDataCache}
+            viewDataStates={viewDataStates}
+            syncProgress={syncProgress}
+            syncProgressPct={syncProgressPct}
+            cacheMessage={cacheMessage}
+          />
+          {isDesktop && <LocalBackupSection />}
+        </div>
       )}
 
       {activeTab === 'updates' && (
@@ -783,25 +1478,108 @@ export default function SettingsPage() {
           }}
           downloadSelectedSimcRuntime={downloadSelectedSimcRuntime}
           simcChannelMessage={simcChannelMessage}
-          isDesktopRuntime={isDesktop}
+          isDesktopRuntime={simcRuntimeControlAvailable}
+          isHostedPrivateRuntime={isHostedPrivate}
           updateCheckState={updateCheckState}
           appReleases={appReleases}
           appReleaseMetadataStatus={appReleaseMetadataStatus}
+          selectedAppChannel={selectedAppChannel}
+          setSelectedAppChannel={setSelectedAppChannel}
+          dockerReleases={dockerReleases}
+          dockerReleaseMetadataStatus={dockerReleaseMetadataStatus}
           selectedAppVersion={selectedAppVersion}
           setSelectedAppVersion={setSelectedAppVersion}
           loadAppReleases={loadAppReleases}
           downloadAndInstallLatest={downloadAndInstallLatest}
           updateMessage={updateMessage}
+          deploymentInfo={deploymentInfo}
+          loadDockerReleases={loadDockerReleases}
+          dockerUpdateStatus={dockerUpdateStatus}
+          loadDockerUpdateStatus={loadDockerUpdateStatus}
+          saveDockerUpdateSettings={saveDockerUpdateSettings}
+          triggerDockerUpdate={triggerDockerUpdate}
+          dockerUpdateControlAvailable={isHostedPrivate && user?.role === 'admin'}
         />
       )}
 
       {activeTab === 'about' && (
-        <section className="rounded-xl border border-border/50 bg-surface/10 p-6 opacity-60">
-          <h2 className="mb-4 text-xl font-semibold text-white">Account Security</h2>
-          <p className="text-sm text-zinc-400">
-            Your credentials are used solely to fetch character data directly from Blizzard. They
-            are stored in on your device and are never shared with third parties.
-          </p>
+        <section className="space-y-6 rounded-xl border border-border/50 bg-surface/30 p-6 backdrop-blur-sm">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold">
+              About WhyLowDPS
+            </p>
+            <h2 className="mt-2 text-2xl font-semibold text-white">
+              Simulation tools with clear setup
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400">
+              WhyLowDPS helps you understand character performance with repeatable SimulationCraft
+              runs and Blizzard character data. The app reports the local setup state so you can
+              repair the next blocker without guessing.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-border/60 bg-surface-2/50 p-4">
+              <p className="text-xs text-zinc-500">Version</p>
+              <p className="mt-1 font-semibold text-zinc-100">
+                {readiness?.app.version || APP_VERSION_WITH_PREFIX}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Revision {readiness?.app.revision || 'unknown'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-surface-2/50 p-4">
+              <p className="text-xs text-zinc-500">Deployment mode</p>
+              <p className="mt-1 font-semibold capitalize text-zinc-100">
+                {readiness?.app.mode || 'unknown'}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Runtime and data remain scoped to this installation or hosted server.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-surface-2/50 p-4">
+            <h3 className="font-semibold text-zinc-100">Privacy and security</h3>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              Blizzard credentials are stored using the app&apos;s existing protected credential
+              flow and are used only for the integrations you enable. Readiness checks expose status
+              and counts, never secrets or local filesystem paths. LAN access remains paired and
+              scoped to the devices you approve.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <a
+              className="text-gold hover:underline"
+              href="https://github.com/JosephLteif/WhyLowDPS"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Documentation
+            </a>
+            <a
+              className="text-gold hover:underline"
+              href={CHANGELOG_HISTORY_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Changelog history
+            </a>
+            <a
+              className="text-gold hover:underline"
+              href="https://github.com/JosephLteif/WhyLowDPS/blob/main/CHANGELOG.md"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Repository changelog
+            </a>
+            <a
+              className="text-gold hover:underline"
+              href="https://github.com/JosephLteif/WhyLowDPS/issues"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Support and issue tracker
+            </a>
+          </div>
         </section>
       )}
 
@@ -830,6 +1608,58 @@ export default function SettingsPage() {
         dataFilePreviewLoading={dataFilePreviewLoading}
         dataFilePreviewError={dataFilePreviewError}
       />
+      {lanDeviceRemovalCandidate && (
+        <div
+          className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setLanDeviceRemovalCandidate(null);
+          }}
+        >
+          <section
+            className="w-full max-w-md rounded-2xl border border-red-400/25 bg-[#171012] p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-lan-device-title"
+            aria-describedby="remove-lan-device-description"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-300/80">
+              Revoke device access
+            </p>
+            <h2 id="remove-lan-device-title" className="mt-2 text-xl font-semibold text-white">
+              Remove {lanDeviceRemovalCandidate.name}?
+            </h2>
+            <p
+              id="remove-lan-device-description"
+              className="mt-3 text-sm leading-relaxed text-zinc-400"
+            >
+              This immediately ends the device&apos;s current session. The device can only reconnect
+              after you create and scan a new pairing QR code.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setLanDeviceRemovalCandidate(null)}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10"
+              >
+                Keep access
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const device = lanDeviceRemovalCandidate;
+                  setLanDeviceRemovalCandidate(null);
+                  void removeLanDevice(device);
+                }}
+                className="rounded-lg bg-red-500 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-400"
+              >
+                Remove access
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

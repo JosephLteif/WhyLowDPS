@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
-import ChangelogPopup, { CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
+import ChangelogPopup, { CHANGELOG_CONTENT_REVISION, CHANGELOG_OPEN_EVENT } from './ChangelogPopup';
 import { APP_VERSION } from '../lib/version';
+import { CHANGELOG_HISTORY_URL, LATEST_CHANGELOG_RELEASE } from '../lib/changelog';
 
-const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
+const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
 
 describe('ChangelogPopup', () => {
   beforeEach(() => {
@@ -17,11 +18,15 @@ describe('ChangelogPopup', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /what's new/i });
     expect(dialog).toBeInTheDocument();
+    expect(screen.getByText(LATEST_CHANGELOG_RELEASE.version)).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 4 }).length).toBeGreaterThan(0);
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Live Dungeons & Raids' })
-    ).toBeInTheDocument();
-    expect(screen.getByText(/The Venomous Abyss/)).toBeInTheDocument();
-    expect(dialog.querySelector('article p, article ul')).not.toBeNull();
+      screen.queryByRole('button', { name: /changelog item|changelog page/i })
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /changelog history/i })).toHaveAttribute(
+      'href',
+      CHANGELOG_HISTORY_URL
+    );
 
     await user.click(screen.getByRole('button', { name: /got it/i }));
     expect(localStorage.getItem(seenKey)).toBe('1');
@@ -55,44 +60,39 @@ describe('ChangelogPopup', () => {
     expect(overlay).toHaveStyle({ top: 'var(--app-header-height)' });
   });
 
-  it('pages through changelog items with bottom progress dots', async () => {
-    const user = userEvent.setup();
+  it('renders every release note in one categorized scrollable page', async () => {
     render(<ChangelogPopup />);
 
-    await screen.findByRole('dialog', { name: /what's new/i });
+    const dialog = await screen.findByRole('dialog', { name: /what's new/i });
 
-    const firstHeading = screen.getByRole('heading', { level: 3 }).textContent;
-    expect(firstHeading).toBeTruthy();
-    expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
-      'aria-current',
-      'true'
-    );
-    expect(screen.getByRole('button', { name: /show changelog item 2/i })).toHaveAttribute(
-      'aria-current',
-      'false'
-    );
+    expect(dialog.querySelector('header')).toHaveClass('shrink-0', 'bg-[#111218]');
+    const article = dialog.querySelector('article');
+    expect(article).toHaveClass('overflow-y-auto');
 
-    await user.click(screen.getByRole('button', { name: /next changelog item/i }));
+    const categories = dialog.querySelectorAll<HTMLElement>(
+      'section[aria-labelledby^="changelog-"]'
+    );
+    expect(categories.length).toBeGreaterThan(0);
+    for (const category of categories) {
+      expect(within(category).getByRole('heading', { level: 3 })).toBeInTheDocument();
+      expect(within(category).getAllByRole('heading', { level: 4 }).length).toBeGreaterThan(0);
+    }
 
-    expect(screen.getByRole('heading', { level: 3 }).textContent).not.toBe(firstHeading);
-    expect(screen.getByRole('button', { name: /show changelog item 1/i })).toHaveAttribute(
-      'aria-current',
-      'false'
-    );
-    expect(screen.getByRole('button', { name: /show changelog item 2/i })).toHaveAttribute(
-      'aria-current',
-      'true'
-    );
+    expect(screen.queryByRole('button', { name: /next changelog item/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /previous changelog item/i })
+    ).not.toBeInTheDocument();
   });
 
   it('renders detailed changelog content as rich text', async () => {
-    const user = userEvent.setup();
     render(<ChangelogPopup />);
 
     await screen.findByRole('dialog', { name: /what's new/i });
-    await user.click(screen.getByRole('button', { name: /show changelog item 2/i }));
 
-    expect(screen.getByRole('heading', { level: 3 })).toBeInTheDocument();
-    expect(document.querySelector('article p, article ul')).not.toBeNull();
+    const noteHeadings = screen.getAllByRole('heading', { level: 4 });
+    expect(noteHeadings.length).toBeGreaterThan(0);
+    for (const heading of noteHeadings) {
+      expect(heading.parentElement?.querySelector('p, ul')).not.toBeNull();
+    }
   });
 });

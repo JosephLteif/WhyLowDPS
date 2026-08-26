@@ -12,6 +12,7 @@ import { type MythicKeystoneDungeonDetail } from '../lib/api';
 import VaultRewardsGrid, { type VaultRewardItem } from './VaultRewardsGrid';
 import SectionCard from './shared/SectionCard';
 import ProgressSlotCard from './shared/ProgressSlotCard';
+import { RAID_VAULT_THRESHOLDS } from '../lib/game-rules';
 import { buildCharacterTalentString } from '../lib/character-panel-talent';
 import type {
   CharacterPanelEquipment,
@@ -36,8 +37,8 @@ import {
 } from '../lib/character-panel-utils';
 import { parseTalentLoadouts, type TalentLoadoutParsed } from '../lib/types';
 import { useMythicDungeonDetails } from '../lib/useMythicDungeonDetails';
+import { useGameContext } from '../lib/useGameContext';
 
-const RAID_VAULT_THRESHOLDS = [2, 4, 6] as const;
 
 function getUpgradeLabel(item: Record<string, any>): string {
   const upgrade = item?.upgrade;
@@ -79,6 +80,8 @@ export default function CharacterPanel({
   latestSimcInput,
   initialTab,
 }: CharacterPanelProps) {
+  const gameContext = useGameContext();
+  const seasonPeriods = gameContext?.active_season?.periods;
   const realmSlug = realm.toLowerCase().replace(/'/g, '').replace(/\s+/g, '-');
   const armoryUrl = `https://worldofwarcraft.blizzard.com/en-us/character/${region.toLowerCase()}/${realmSlug}/${name.toLowerCase()}`;
 
@@ -186,13 +189,21 @@ export default function CharacterPanel({
       )}
 
       {pageTab === 'mythic' && (
-        <MythicPlusCard mythicPlus={mythicPlus} region={region} realm={realm} name={name} />
+        <MythicPlusCard
+          mythicPlus={mythicPlus}
+          region={region}
+          periods={seasonPeriods}
+          realm={realm}
+          name={name}
+        />
       )}
 
       {pageTab === 'raiding' && (
         <RaidSectionCard
           raidEncounters={raidEncounters}
           region={region}
+          periods={seasonPeriods}
+          activeRaidInstanceIds={gameContext?.pool_members?.raids}
           realm={realm}
           name={name}
         />
@@ -203,6 +214,7 @@ export default function CharacterPanel({
           raidEncounters={raidEncounters}
           latestSimcInput={latestSimcInput}
           region={region}
+          periods={seasonPeriods}
         />
       )}
     </div>
@@ -214,27 +226,29 @@ function VaultOverviewCard({
   raidEncounters,
   latestSimcInput,
   region,
+  periods,
 }: {
   mythicPlus: MythicPlusPayload;
   raidEncounters: RaidEncountersPayload;
   latestSimcInput?: string | null;
   region?: string;
+  periods?: Array<Record<string, unknown>>;
 }) {
   useMemo(
-    () => computeMythicVaultProgress(mythicPlus, region).runsForVault,
-    [mythicPlus, region]
+    () => computeMythicVaultProgress(mythicPlus, region, periods).runsForVault,
+    [mythicPlus, periods, region]
   );
   const raidBossesThisWeek = useMemo(() => {
-    return computeWeeklyRaidBossKills(raidEncounters, region);
-  }, [raidEncounters, region]);
+    return computeWeeklyRaidBossKills(raidEncounters, region, periods);
+  }, [periods, raidEncounters, region]);
 
   const vaultItems = useMemo(
     () => parseVaultRewardsFromSimcInput(latestSimcInput) as VaultRewardItem[],
     [latestSimcInput]
   );
   const mythicVaultProgress = useMemo(
-    () => computeMythicVaultProgress(mythicPlus, region),
-    [mythicPlus, region]
+    () => computeMythicVaultProgress(mythicPlus, region, periods),
+    [mythicPlus, periods, region]
   );
   const mythicSlots = mythicVaultProgress.slots;
 
@@ -314,9 +328,11 @@ function VaultOverviewCard({
 function MythicPlusCard({
   mythicPlus,
   region,
+  periods,
 }: {
   mythicPlus: MythicPlusPayload;
   region?: string;
+  periods?: Array<Record<string, unknown>>;
   realm: string;
   name: string;
 }) {
@@ -486,7 +502,7 @@ function MythicPlusCard({
     const timedStatusKnownCount = recentRuns.filter((run) => getRunTimed(run) !== null).length;
 
     collectRuns(mythicPlusObj.current_period || {});
-    const vaultProgress = computeMythicVaultProgress(mythicPlus, region);
+    const vaultProgress = computeMythicVaultProgress(mythicPlus, region, periods);
     const runsForVault = vaultProgress.runsForVault;
     const topLevels = [...recentRuns].map(getRunLevel).sort((a, b) => b - a);
     const rewardMap = collectRewardMap(mythicPlusObj.current_period || mythicPlus);
@@ -536,7 +552,7 @@ function MythicPlusCard({
       vaultProgressCount: runsForVault,
       hasAnyVaultIlvl,
     };
-  }, [mplusDungeonDetailsByName, mythicPlus, region]);
+  }, [mplusDungeonDetailsByName, mythicPlus, periods, region]);
 
   const formatRelative = (timestamp: number) => {
     if (!timestamp || timestamp <= 0) return 'Unknown time';
@@ -776,9 +792,13 @@ function MythicPlusCard({
 function RaidSectionCard({
   raidEncounters,
   region,
+  periods,
+  activeRaidInstanceIds,
 }: {
   raidEncounters: RaidEncountersPayload;
   region: string;
+  periods?: Array<Record<string, unknown>>;
+  activeRaidInstanceIds?: number[];
   realm: string;
   name: string;
 }) {
@@ -788,7 +808,7 @@ function RaidSectionCard({
   const expansionOptions = useMemo(() => {
     const normalizeExpansionKey = (value: unknown) => {
       const raw = String(value ?? '').trim();
-      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Midnight' : raw;
+      const canonical = isCurrentExpansionPlaceholder(raw) ? 'Current expansion' : raw;
       return canonical.toLowerCase().replace(/[\s_]+/g, '-');
     };
     const expansions = Array.isArray(raidEncounters?.expansions) ? raidEncounters.expansions : [];
@@ -805,7 +825,7 @@ function RaidSectionCard({
         'Unknown expansion';
       const rawLabel = String(raw || 'Unknown expansion').trim() || 'Unknown expansion';
       const isCurrent = isCurrentExpansionPlaceholder(rawLabel);
-      const label = isCurrent ? 'Midnight' : rawLabel;
+      const label = isCurrent ? 'Current expansion' : rawLabel;
       const key = normalizeExpansionKey(label) || 'unknown-expansion';
       const existing = out.get(key);
       if (!existing) {
@@ -846,7 +866,7 @@ function RaidSectionCard({
             aria-label="Raid expansion"
             value={selectedExpansion}
             onChange={(e) => setSelectedExpansion(e.target.value)}
-            className="input-field h-9 w-[180px] px-2 py-1 text-[11px] text-zinc-100"
+            className="input-field h-9 w-full px-2 py-1 text-[11px] text-zinc-100 sm:w-[180px]"
             style={{ colorScheme: 'dark' }}
           >
             {expansionOptions.map((opt) => (
@@ -862,6 +882,8 @@ function RaidSectionCard({
           raidEncounters={raidEncounters}
           embedded
           region={region}
+          periods={periods}
+          activeRaidInstanceIds={activeRaidInstanceIds}
           selectedExpansion={selectedExpansion}
           selectedRaidName="all"
         />
@@ -874,6 +896,8 @@ function RaidProgressCard({
   raidEncounters,
   embedded = false,
   region,
+  periods,
+  activeRaidInstanceIds,
   selectedExpansion = 'all',
   selectedRaidName = 'all',
   onActiveRaidNameChange,
@@ -881,6 +905,8 @@ function RaidProgressCard({
   raidEncounters: RaidEncountersPayload;
   embedded?: boolean;
   region?: string;
+  periods?: Array<Record<string, unknown>>;
+  activeRaidInstanceIds?: number[];
   selectedExpansion?: string;
   selectedRaidName?: string;
   onActiveRaidNameChange?: (raidName: string | null) => void;
@@ -888,6 +914,7 @@ function RaidProgressCard({
   const raids = useMemo(() => {
     if (!raidEncounters || typeof raidEncounters !== 'object') return [];
     const expansions = Array.isArray(raidEncounters.expansions) ? raidEncounters.expansions : [];
+    const activeIds = activeRaidInstanceIds ? new Set(activeRaidInstanceIds) : null;
     const byName = new Map<
       string,
       {
@@ -959,6 +986,8 @@ function RaidProgressCard({
       const expansionKey = normalize(expansionLabel) || canonicalExpansionKey(rawExpansionLabel);
       const instances = Array.isArray(exp?.instances) ? exp.instances : [];
       for (const inst of instances) {
+        const instanceId = Number((inst as any)?.instance?.id ?? (inst as any)?.id ?? 0);
+        if (activeIds && !activeIds.has(instanceId)) continue;
         const modes = Array.isArray(inst?.modes) ? inst.modes : [];
         const getMode = (modeName: string) =>
           modes.find((mode: RaidMode) => (mode?.difficulty?.type || '').toLowerCase() === modeName);
@@ -1032,6 +1061,8 @@ function RaidProgressCard({
         <RaidProgressionGrid
           raidEncounters={raidEncounters}
           region={region}
+          periods={periods}
+          activeRaidInstanceIds={activeRaidInstanceIds}
           selectedExpansion={selectedExpansion}
           selectedRaidName={selectedRaidName}
           onActiveRaidNameChange={onActiveRaidNameChange}
@@ -1242,7 +1273,7 @@ function TalentsCard({
               <select
                 value={selectedSimcTalent}
                 onChange={(e) => setSelectedSimcTalent(e.target.value)}
-                className="input-field h-8 min-w-[180px] px-2 py-1 text-[11px] font-bold text-zinc-100"
+                className="input-field h-8 w-full min-w-0 px-2 py-1 text-[11px] font-bold text-zinc-100 sm:min-w-[180px] sm:w-auto"
                 style={{ colorScheme: 'dark' }}
               >
                 {simcLoadouts.map((loadout, idx) => (

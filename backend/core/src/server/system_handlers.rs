@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use actix_files::NamedFile;
@@ -9,6 +10,8 @@ use serde_json::json;
 use std::sync::Mutex;
 
 use super::types::FrontendDir;
+use super::{auth_handlers, data_sync};
+use crate::simc_runtime::validate_simc_binary;
 use crate::storage::{self, JobStorage};
 
 #[cfg(feature = "desktop")]
@@ -60,14 +63,145 @@ pub(super) async fn update_config(
     HttpResponse::Ok().json(json!({"status": "updated"}))
 }
 
+fn app_metadata() -> (&'static str, String, String) {
+    let version = std::env::var("WHYLOWDPS_VERSION")
+        .ok()
+        .filter(|value| !value.trim().is_empty() && value != "unknown")
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_owned());
+    let revision = std::env::var("WHYLOWDPS_REVISION")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "unknown".to_owned());
+    let mode = if auth_handlers::hosted_private_deployment() {
+        "hosted"
+    } else if cfg!(feature = "desktop") {
+        "desktop"
+    } else {
+        "web"
+    };
+    (mode, version, revision)
+}
+
+fn last_sync_timestamp() -> Option<String> {
+    crate::item_db::get_runtime_data()
+        .get("last_sync")
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned)
+}
+
+fn data_readiness_state(
+    sync_status: &data_sync::SyncStatus,
+    degraded: bool,
+    summary: &data_sync::DataReadinessSummary,
+) -> (&'static str, &'static str) {
+    if !summary.available {
+        return ("blocked", "The data directory is unavailable.");
+    }
+    if summary.required_missing > 0 {
+        return ("blocked", "Required game data files are missing.");
+    }
+    if degraded {
+        return ("degraded", "Using the last validated game-data snapshot.");
+    }
+    match sync_status {
+        data_sync::SyncStatus::Ready => ("ready", "Game data is ready."),
+        data_sync::SyncStatus::Syncing => ("syncing", "Refreshing game data."),
+        data_sync::SyncStatus::NeedsCredentials => (
+            "needs_credentials",
+            "Blizzard credentials are required to refresh game data.",
+        ),
+        data_sync::SyncStatus::Error(_) => (
+            "error",
+            "Game data refresh failed. Retry or repair missing files.",
+        ),
+    }
+}
+
+fn overall_readiness_status(
+    simulation_available: bool,
+    data_status: &str,
+    credentials_configured: bool,
+) -> &'static str {
+    if !simulation_available || data_status == "blocked" {
+        "blocked"
+    } else if data_status == "degraded" {
+        "degraded"
+    } else if data_status == "error" || data_status == "needs_credentials" {
+        "attention"
+    } else if data_status == "syncing" {
+        "checking"
+    } else if !credentials_configured {
+        "attention"
+    } else {
+        "ready"
+    }
+}
+
+pub(super) async fn readiness(
+    data_dir: web::Data<Option<PathBuf>>,
+    simc_path: web::Data<PathBuf>,
+    sync_state: web::Data<Arc<data_sync::DataSyncState>>,
+    auth_state: web::Data<Arc<auth_handlers::BlizzardAuthState>>,
+    store: web::Data<Arc<dyn JobStorage>>,
+    secrets: web::Data<Arc<dyn auth_handlers::BlizzardCredentialSecretStore>>,
+) -> HttpResponse {
+    let sync_status = sync_state.status.lock().await.clone();
+    let progress = sync_state.progress.lock().await.clone();
+    let degraded = progress.starts_with("Degraded:");
+    let summary = data_sync::summarize_data_files(data_dir.get_ref()).unwrap_or(
+        data_sync::DataReadinessSummary {
+            available: false,
+            required_missing: 0,
+            optional_missing: 0,
+        },
+    );
+    let (data_status, data_message) = data_readiness_state(&sync_status, degraded, &summary);
+    let credentials_configured =
+        auth_handlers::get_available_blizzard_creds(&***auth_state, &***store, &***secrets)
+            .is_some();
+    let simulation_error = validate_simc_binary(simc_path.get_ref()).err();
+    let simulation_available = simulation_error.is_none();
+    let overall_status =
+        overall_readiness_status(simulation_available, data_status, credentials_configured);
+    let (mode, version, revision) = app_metadata();
+
+    HttpResponse::Ok().json(json!({
+        "status": overall_status,
+        "app": {
+            "mode": mode,
+            "version": version,
+            "revision": revision,
+        },
+        "credentials": {
+            "configured": credentials_configured,
+        },
+        "data": {
+            "status": data_status,
+            "message": data_message,
+            "degraded": degraded,
+            "last_sync": last_sync_timestamp(),
+            "required_missing": summary.required_missing,
+            "optional_missing": summary.optional_missing,
+            "available": summary.available,
+        },
+        "simulation": {
+            "available": simulation_available,
+            "error": simulation_error,
+        },
+    }))
+}
+
 pub(super) async fn health_check() -> HttpResponse {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4);
+    let (mode, version, revision) = app_metadata();
     HttpResponse::Ok().json(json!({
         "status": "ok",
         "threads": threads,
-        "mode": "desktop",
+        "mode": mode,
+        "version": version,
+        "revision": revision,
     }))
 }
 
@@ -90,6 +224,11 @@ pub(super) async fn spa_fallback(
     let trimmed = path.trim_start_matches('/').trim_end_matches('/');
 
     if !trimmed.is_empty() {
+        let asset = frontend_dir.0.join(trimmed);
+        if asset.is_file() {
+            return Ok(NamedFile::open(asset)?);
+        }
+
         let folder_index = frontend_dir.0.join(trimmed).join("index.html");
         if folder_index.exists() {
             return Ok(NamedFile::open(folder_index)?);
@@ -249,7 +388,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn health_check_reports_ok_desktop_mode_and_threads() {
+    async fn health_check_reports_ok_mode_and_threads() {
         let health = health_check().await;
 
         assert_eq!(health.status(), 200);
@@ -257,8 +396,73 @@ mod tests {
         let payload = response_json(health).await;
 
         assert_eq!(payload["status"].as_str(), Some("ok"));
-        assert_eq!(payload["mode"].as_str(), Some("desktop"));
+        let expected_mode = if cfg!(feature = "desktop") {
+            "desktop"
+        } else {
+            "web"
+        };
+        assert_eq!(payload["mode"].as_str(), Some(expected_mode));
         assert!(payload["threads"].as_u64().unwrap_or(0) >= 1);
+        assert!(payload["version"].as_str().is_some_and(|value| !value.is_empty()));
+        assert!(payload["revision"].as_str().is_some_and(|value| !value.is_empty()));
+    }
+
+    #[test]
+    fn readiness_reports_ready_without_sensitive_details() {
+        let summary = data_sync::DataReadinessSummary {
+            available: true,
+            required_missing: 0,
+            optional_missing: 0,
+        };
+        let (status, message) =
+            data_readiness_state(&data_sync::SyncStatus::Ready, false, &summary);
+
+        assert_eq!(status, "ready");
+        assert_eq!(message, "Game data is ready.");
+        assert!(!message.contains("C:"));
+        assert!(!message.contains('/'));
+    }
+
+    #[test]
+    fn readiness_reports_degraded_data_and_missing_data() {
+        let complete = data_sync::DataReadinessSummary {
+            available: true,
+            required_missing: 0,
+            optional_missing: 0,
+        };
+        let missing = data_sync::DataReadinessSummary {
+            available: true,
+            required_missing: 2,
+            optional_missing: 1,
+        };
+
+        assert_eq!(
+            data_readiness_state(&data_sync::SyncStatus::Ready, true, &complete).0,
+            "degraded"
+        );
+        assert_eq!(
+            data_readiness_state(&data_sync::SyncStatus::Ready, false, &missing).0,
+            "blocked"
+        );
+    }
+
+    #[test]
+    fn readiness_reports_missing_credentials_and_simulation_runtime() {
+        let summary = data_sync::DataReadinessSummary {
+            available: true,
+            required_missing: 0,
+            optional_missing: 0,
+        };
+
+        assert_eq!(
+            data_readiness_state(&data_sync::SyncStatus::NeedsCredentials, false, &summary).0,
+            "needs_credentials"
+        );
+        assert_eq!(
+            overall_readiness_status(true, "needs_credentials", false),
+            "attention"
+        );
+        assert_eq!(overall_readiness_status(false, "ready", true), "blocked");
     }
 
     #[cfg(feature = "desktop")]
@@ -352,6 +556,25 @@ mod tests {
             fs::read_to_string(file.path()).expect("about body"),
             "about"
         );
+    }
+
+    #[actix_web::test]
+    async fn spa_fallback_serves_root_frontend_assets_before_html_fallback() {
+        let dir = tempfile::tempdir().expect("frontend temp dir");
+        let asset_path = dir.path().join("icon.png");
+        let asset_bytes = [0x89, b'P', b'N', b'G'];
+        fs::write(&asset_path, asset_bytes).expect("icon asset");
+
+        let frontend = web::Data::new(FrontendDir(dir.path().to_path_buf()));
+        let file = spa_fallback(
+            TestRequest::with_uri("/icon.png").to_http_request(),
+            frontend,
+        )
+        .await
+        .expect("icon fallback");
+
+        assert_eq!(file.path(), asset_path.as_path());
+        assert_eq!(fs::read(file.path()).expect("icon body"), asset_bytes);
     }
 
     #[actix_web::test]

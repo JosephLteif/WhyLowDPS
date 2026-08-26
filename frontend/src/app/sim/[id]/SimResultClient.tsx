@@ -44,6 +44,7 @@ interface JobData {
   status: string;
   sim_type?: string;
   simc_input?: string;
+  options?: Record<string, unknown> | null;
   created_at?: string;
   progress: number;
   progress_stage?: string;
@@ -64,6 +65,8 @@ interface JobData {
   linked_realm?: string;
   linked_name?: string;
   batch_id?: string | null;
+  pause_available?: boolean;
+  resume_available?: boolean;
 }
 
 interface TimelinePoint {
@@ -397,8 +400,11 @@ export default function SimResultClient() {
   const [siblingStatuses, setSiblingStatuses] = useState<Record<string, string>>({});
   const [stageTimings, setStageTimings] = useState<StageTiming[]>([]);
   const [activeStageElapsed, setActiveStageElapsed] = useState(0);
+  const [rerunError, setRerunError] = useState('');
+  const [rerunning, setRerunning] = useState(false);
   const activeStageNameRef = useRef<string | null>(null);
   const activeStageStartedAtRef = useRef<number | null>(null);
+  const activeStageAccumulatedRef = useRef(0);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -577,7 +583,6 @@ export default function SimResultClient() {
       pushAnchor(job?.id);
       pushAnchor(job?.batch_id || null);
       (siblings || []).forEach((s) => pushAnchor(s.id));
-      (liveRelatedScenarios || []).forEach((s) => pushAnchor(s.id));
 
       if (anchorIds.size === 0) {
         if (active) setLiveRelatedScenarios([]);
@@ -618,7 +623,7 @@ export default function SimResultClient() {
     return () => {
       active = false;
     };
-  }, [activeScenarioId, job?.id, job?.batch_id, siblings, liveRelatedScenarios]);
+  }, [activeScenarioId, job?.id, job?.batch_id, siblings]);
 
   const toolbarScenarios = useMemo(() => {
     const base = siblings || [];
@@ -704,7 +709,8 @@ export default function SimResultClient() {
     const siblingList = toolbarScenarios;
     const maxPolledSiblings = 40;
     const limitedSiblings = siblingList.slice(0, maxPolledSiblings);
-    const currentIsActive = job?.status === 'pending' || job?.status === 'running';
+    const currentIsActive =
+      job?.status === 'pending' || job?.status === 'running' || job?.status === 'paused';
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
 
@@ -747,13 +753,18 @@ export default function SimResultClient() {
     setTimelineFallback(null);
     setAplFallback(null);
     setTimelineLoading(false);
+    setLogLines([]);
+    logCursorRef.current = 0;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
         const data = await fetchJson<JobData>(`${API_URL}/api/sim/${activeScenarioId}`);
         if (active) setJob(data);
-        if (active && (data.status === 'pending' || data.status === 'running')) {
+        if (
+          active &&
+          (data.status === 'pending' || data.status === 'running' || data.status === 'paused')
+        ) {
           timer = setTimeout(poll, 2000);
         }
       } catch (err) {
@@ -767,9 +778,10 @@ export default function SimResultClient() {
     };
   }, [activeScenarioId]);
 
-  // Poll logs only when the log console is expanded and the sim is active
+  // Keep polling while active so the stats card can show the current phase ETA
+  // even when the log console is collapsed.
   useEffect(() => {
-    if (!showLogs || !activeScenarioId || activeScenarioId === '_') return;
+    if (!activeScenarioId || activeScenarioId === '_') return;
     if (job?.status !== 'pending' && job?.status !== 'running') return;
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -796,22 +808,38 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [showLogs, activeScenarioId, job?.status]);
+  }, [activeScenarioId, job?.status]);
 
   useEffect(() => {
     if (!job) return;
     const isActive = job.status === 'running' || job.status === 'pending';
+    const isPaused = job.status === 'paused';
     const stage = job.progress_stage?.trim();
     const now = Date.now();
 
-    if (!isActive) {
+    if (!isActive && !isPaused) {
       if (activeStageNameRef.current && activeStageStartedAtRef.current) {
-        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        const elapsed =
+          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
         appendStageTiming(activeStageNameRef.current, elapsed);
       }
       activeStageNameRef.current = null;
       activeStageStartedAtRef.current = null;
+      activeStageAccumulatedRef.current = 0;
       setActiveStageElapsed(0);
+      if (stageTickRef.current) {
+        clearInterval(stageTickRef.current);
+        stageTickRef.current = null;
+      }
+      return;
+    }
+
+    if (isPaused) {
+      if (activeStageNameRef.current && activeStageStartedAtRef.current) {
+        activeStageAccumulatedRef.current += (now - activeStageStartedAtRef.current) / 1000;
+        activeStageStartedAtRef.current = null;
+        setActiveStageElapsed(activeStageAccumulatedRef.current);
+      }
       if (stageTickRef.current) {
         clearInterval(stageTickRef.current);
         stageTickRef.current = null;
@@ -824,26 +852,36 @@ export default function SimResultClient() {
     if (!activeStageNameRef.current) {
       activeStageNameRef.current = stage;
       activeStageStartedAtRef.current = now;
+      activeStageAccumulatedRef.current = 0;
       setActiveStageElapsed(0);
     } else if (activeStageNameRef.current !== stage) {
       if (activeStageStartedAtRef.current) {
-        const elapsed = (now - activeStageStartedAtRef.current) / 1000;
+        const elapsed =
+          activeStageAccumulatedRef.current + (now - activeStageStartedAtRef.current) / 1000;
         appendStageTiming(activeStageNameRef.current, elapsed);
       }
       activeStageNameRef.current = stage;
       activeStageStartedAtRef.current = now;
+      activeStageAccumulatedRef.current = 0;
       setActiveStageElapsed(0);
+    } else if (!activeStageStartedAtRef.current) {
+      activeStageStartedAtRef.current = now;
     }
 
+    setActiveStageElapsed(
+      activeStageAccumulatedRef.current +
+        (activeStageStartedAtRef.current ? (now - activeStageStartedAtRef.current) / 1000 : 0)
+    );
     if (!stageTickRef.current) {
       stageTickRef.current = setInterval(() => {
-        if (!activeStageStartedAtRef.current) return;
-        setActiveStageElapsed((Date.now() - activeStageStartedAtRef.current) / 1000);
+        const startedAt = activeStageStartedAtRef.current;
+        if (!startedAt) return;
+        setActiveStageElapsed(activeStageAccumulatedRef.current + (Date.now() - startedAt) / 1000);
       }, 1000);
     }
 
     return () => {
-      if (stageTickRef.current && !isActive) {
+      if (stageTickRef.current) {
         clearInterval(stageTickRef.current);
         stageTickRef.current = null;
       }
@@ -889,6 +927,7 @@ export default function SimResultClient() {
     if (isCurrent) return 'text-gold';
     if (status === 'running') return 'text-blue-300';
     if (status === 'pending') return 'text-zinc-300';
+    if (status === 'paused') return 'text-sky-300';
     if (status === 'done') return 'text-emerald-300';
     if (status === 'failed' || status === 'cancelled') return 'text-red-300';
     return 'text-zinc-300';
@@ -908,6 +947,35 @@ export default function SimResultClient() {
     }
     router.push(getSimTypeFallbackUrl(job?.sim_type));
   }, [getCurrentSimId, getSimTypeFallbackUrl, job?.sim_type, router]);
+
+  const handleRerunInput = useCallback(async () => {
+    const input = job?.simc_input;
+    if (!input || rerunning) return;
+
+    setRerunError('');
+    setRerunning(true);
+    try {
+      const storedOptions = job.options && typeof job.options === 'object' ? job.options : {};
+      const response = await fetchJson<{ id?: string }>(`${API_URL}/api/sim`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ...storedOptions,
+          simc_input: input,
+          sim_type: job.sim_type || storedOptions.sim_type || 'quick',
+          iterations: job.iterations ?? storedOptions.iterations ?? 10000,
+          fight_style: job.fight_style || storedOptions.fight_style || 'Patchwerk',
+        }),
+      });
+      if (!response?.id) throw new Error('The simulation could not be started.');
+      router.push(simResultHref(response.id));
+    } catch (error: unknown) {
+      setRerunError(
+        error instanceof Error ? error.message : 'The simulation could not be started.'
+      );
+    } finally {
+      setRerunning(false);
+    }
+  }, [job, rerunning, router]);
 
   const handleCancelled = useCallback(() => {
     const currentSimId = getCurrentSimId();
@@ -979,10 +1047,10 @@ export default function SimResultClient() {
   }
 
   const scenarioToolbar = (
-    <div className="sticky top-[var(--app-header-height)] z-40 flex flex-wrap items-center justify-between gap-4 py-2">
+    <div className="sticky top-[var(--app-header-height)] z-40 flex flex-col items-stretch gap-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       {toolbarScenarios.length > 1 ? (
-        <div className="rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="w-full overflow-x-auto rounded-xl border border-border/70 bg-surface/90 p-3 shadow-lg backdrop-blur sm:w-auto">
+          <div className="flex min-w-max items-center gap-2">
             <span className="shrink-0 text-[13px] uppercase tracking-wider text-muted">
               Scenarios
             </span>
@@ -1008,13 +1076,15 @@ export default function SimResultClient() {
                         ? 'In Progress'
                         : status === 'pending'
                           ? 'Pending'
-                          : status === 'done'
-                            ? 'Done'
-                            : status === 'failed'
-                              ? 'Failed'
-                              : status === 'cancelled'
-                                ? 'Cancelled'
-                                : ''}
+                          : status === 'paused'
+                            ? 'Paused'
+                            : status === 'done'
+                              ? 'Done'
+                              : status === 'failed'
+                                ? 'Failed'
+                                : status === 'cancelled'
+                                  ? 'Cancelled'
+                                  : ''}
                     </span>
                   </span>
                 </button>
@@ -1026,13 +1096,21 @@ export default function SimResultClient() {
         <div />
       )}
       {job.status === 'done' ? (
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-surface-2/90 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-2xl border border-border bg-surface-2/90 px-3 py-2 shadow-[0_10px_30px_rgba(0,0,0,0.35)] backdrop-blur-md sm:w-auto sm:gap-3">
           <button
             type="button"
             onClick={handleSimAgain}
-            className="inline-flex items-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white"
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-emerald-400/65 bg-emerald-500/30 px-4 py-2.5 text-[15px] font-semibold text-emerald-50 transition-colors hover:bg-emerald-500/45 hover:text-white sm:flex-none"
           >
             Sim Again
+          </button>
+          <button
+            type="button"
+            onClick={handleRerunInput}
+            disabled={!job.simc_input || rerunning}
+            className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[0.05] px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40 sm:flex-none"
+          >
+            {rerunning ? 'Rerunning…' : 'Rerun This Input'}
           </button>
           {!lightMode && (
             <CharacterLinkButton
@@ -1042,6 +1120,11 @@ export default function SimResultClient() {
               currentLinkedRegion={job.linked_region}
             />
           )}
+          {rerunError && (
+            <span role="alert" className="text-xs text-red-300">
+              {rerunError}
+            </span>
+          )}
         </div>
       ) : (
         <div />
@@ -1049,7 +1132,7 @@ export default function SimResultClient() {
     </div>
   );
 
-  if (job.status === 'pending' || job.status === 'running') {
+  if (job.status === 'pending' || job.status === 'running' || job.status === 'paused') {
     return (
       <div className="space-y-4">
         {scenarioToolbar}
@@ -1064,6 +1147,14 @@ export default function SimResultClient() {
           activeStageElapsed={activeStageElapsed}
           jobId={activeScenarioId}
           onCancelled={handleCancelled}
+          onStatusChange={(status) =>
+            setJob((previous) => (previous ? { ...previous, status } : previous))
+          }
+          resumeAvailable={
+            job.status === 'paused' ? job.resume_available !== false : job.pause_available !== false
+          }
+          onRerun={handleRerunInput}
+          rerunning={rerunning}
           logLines={logLines}
           showLogs={showLogs}
           onToggleLogs={handleToggleLogs}
@@ -1247,7 +1338,7 @@ export default function SimResultClient() {
             avgIlevel={avgIlevel}
           >
             {info?.kind === 'dungeon' && (
-              <div className="mt-6 grid grid-cols-3 gap-4 border-t border-white/5 pt-6">
+              <div className="mt-6 grid grid-cols-1 gap-3 border-t border-white/5 pt-6 sm:grid-cols-3 sm:gap-4">
                 <div className="text-center">
                   <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
                     Route HP

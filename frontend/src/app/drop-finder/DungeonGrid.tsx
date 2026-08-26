@@ -16,15 +16,22 @@ interface DungeonGridProps {
 
 function instanceImageSrc(inst: Instance): string | null {
   if (inst.id <= 0) return null;
-  return `${API_URL}/api/data/images/instance/${inst.id}?v=bapi3`;
+  return `${API_URL}/api/data/images/instance/${inst.id}`;
 }
 
-function backgroundStyleFor(src: string | null): Record<string, string> | null {
-  if (!src) return null;
-
-  return {
-    backgroundImage: `url(${src})`,
-  };
+function ImageLayer({ src }: { src: string }) {
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={(event) => {
+        event.currentTarget.hidden = true;
+      }}
+      className="absolute inset-0 h-full w-full object-cover transition-all duration-300"
+    />
+  );
 }
 
 function MissingImageFallback() {
@@ -33,7 +40,7 @@ function MissingImageFallback() {
       <img
         src="/wow-logo.png"
         alt="WoW"
-        className="-translate-y-2 h-[72%] w-[72%] max-h-36 max-w-36 object-contain opacity-95"
+        className="h-[72%] max-h-36 w-[72%] max-w-36 -translate-y-2 object-contain opacity-95"
       />
     </div>
   );
@@ -62,7 +69,7 @@ export default function DungeonGrid({
     .slice(0, 4);
 
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+    <div data-tour="drop-finder-selection" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
       {/* "All" tile */}
       <button
         onClick={() => {
@@ -71,23 +78,23 @@ export default function DungeonGrid({
         }}
         className={`group relative flex aspect-[16/9] items-end overflow-hidden rounded-lg border transition-all duration-150 ${
           isAllActive
-            ? 'border-gold/60 ring-1 ring-gold/30 shadow-[0_0_12px_rgba(200,153,42,0.14)]'
+            ? 'border-gold/60 shadow-[0_0_12px_rgba(200,153,42,0.14)] ring-1 ring-gold/30'
             : 'border-border hover:border-gold/20'
         }`}
       >
         <div className="absolute inset-0 bg-black" />
-        {allTileImages.length === 0 && <MissingImageFallback />}
+        <MissingImageFallback />
         <div
           className="absolute inset-0 grid"
-          style={{ gridTemplateColumns: `repeat(${Math.max(allTileImages.length, 1)}, minmax(0, 1fr))` }}
+          style={{
+            gridTemplateColumns: `repeat(${Math.max(allTileImages.length, 1)}, minmax(0, 1fr))`,
+          }}
         >
-          {allTileImages.map(({ inst }) => (
-              <div
-                key={inst.id}
-                className="h-full w-full bg-cover bg-center bg-no-repeat"
-                style={backgroundStyleFor(instanceImageSrc(inst)) ?? undefined}
-              />
-            ))}
+          {allTileImages.map(({ inst, src }) => (
+            <div key={inst.id} className="relative h-full w-full overflow-hidden">
+              {src && <ImageLayer src={src} />}
+            </div>
+          ))}
         </div>
         <div className="relative w-full px-3 pb-3 pt-1">
           <p
@@ -108,7 +115,7 @@ export default function DungeonGrid({
           }}
           className={`group relative flex aspect-[16/9] items-end overflow-hidden rounded-lg border transition-all duration-150 ${
             isTileActive(String(inst.id))
-              ? 'border-gold/60 ring-1 ring-gold/30 shadow-[0_0_10px_rgba(200,153,42,0.14)]'
+              ? 'border-gold/60 shadow-[0_0_10px_rgba(200,153,42,0.14)] ring-1 ring-gold/30'
               : 'border-border hover:border-gold/20'
           }`}
         >
@@ -116,10 +123,7 @@ export default function DungeonGrid({
           <MissingImageFallback />
           {instanceImageSrc(inst) && (
             <div className="absolute inset-0 overflow-hidden">
-              <div
-                className="absolute inset-0 bg-cover bg-center bg-no-repeat transition-all duration-300"
-                style={backgroundStyleFor(instanceImageSrc(inst)) ?? undefined}
-              />
+              <ImageLayer src={instanceImageSrc(inst)!} />
             </div>
           )}
           <div className="relative w-full px-3 pb-3 pt-1">

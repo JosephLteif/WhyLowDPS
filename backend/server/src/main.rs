@@ -1,9 +1,12 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use whylowdps_core::game_data;
 use whylowdps_core::server;
-use whylowdps_core::simc_runtime::{resolve_simc_runtime, SimcChannel, SimcRuntimeConfig};
+use whylowdps_core::simc_runtime::{
+    validate_simc_binary, SimcChannel, SimcRuntimeConfig, SimcRuntimeState,
+};
 use whylowdps_core::storage::JobStorage;
 
 fn env_or(key: &str, default: &str) -> String {
@@ -16,6 +19,115 @@ fn choose_base_dir(has_backend_resources: bool) -> &'static str {
     } else {
         "resources"
     }
+}
+
+fn copy_missing_seed_tree(source: &Path, target: &Path) -> Result<(), String> {
+    fs::create_dir_all(target).map_err(|error| {
+        format!(
+            "failed to create data directory {}: {error}",
+            target.display()
+        )
+    })?;
+
+    for entry in fs::read_dir(source)
+        .map_err(|error| format!("failed to read data seed {}: {error}", source.display()))?
+    {
+        let entry = entry.map_err(|error| format!("failed to read data seed entry: {error}"))?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        let file_type = entry
+            .file_type()
+            .map_err(|error| format!("failed to inspect {}: {error}", source_path.display()))?;
+
+        if file_type.is_dir() {
+            copy_missing_seed_tree(&source_path, &target_path)?;
+        } else if file_type.is_file() && !target_path.exists() {
+            fs::copy(&source_path, &target_path).map_err(|error| {
+                format!(
+                    "failed to seed {} from {}: {error}",
+                    target_path.display(),
+                    source_path.display()
+                )
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+fn bootstrap_data_dir(seed_dir: Option<&Path>, data_dir: &Path) -> Result<(), String> {
+    fs::create_dir_all(data_dir).map_err(|error| {
+        format!(
+            "failed to create data directory {}: {error}",
+            data_dir.display()
+        )
+    })?;
+
+    if let Some(seed_dir) = seed_dir.filter(|path| path.exists()) {
+        copy_missing_seed_tree(seed_dir, data_dir)?;
+    }
+
+    Ok(())
+}
+
+fn ensure_persistent_secret(data_dir: &Path, env_key: &str, file_name: &str) -> Result<(), String> {
+    if std::env::var(env_key)
+        .ok()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return Ok(());
+    }
+
+    let path = data_dir.join(file_name);
+    let secret = match fs::read_to_string(&path) {
+        Ok(value) => {
+            let value = value.trim().to_string();
+            if value.is_empty() {
+                return Err(format!("generated secret file {} is empty", path.display()));
+            }
+            value
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let value = whylowdps_core::server::auth_handlers::generate_random_secret();
+            let temporary_path = data_dir.join(format!("{file_name}.tmp"));
+            fs::write(&temporary_path, format!("{value}\n")).map_err(|write_error| {
+                format!(
+                    "failed to write generated secret {}: {write_error}",
+                    temporary_path.display()
+                )
+            })?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&temporary_path, fs::Permissions::from_mode(0o600)).map_err(
+                    |permission_error| {
+                        format!(
+                            "failed to protect generated secret {}: {permission_error}",
+                            temporary_path.display()
+                        )
+                    },
+                )?;
+            }
+            fs::rename(&temporary_path, &path).map_err(|rename_error| {
+                format!(
+                    "failed to store generated secret {}: {rename_error}",
+                    path.display()
+                )
+            })?;
+            value
+        }
+        Err(error) => {
+            return Err(format!(
+                "failed to read generated secret {}: {error}",
+                path.display()
+            ));
+        }
+    };
+
+    unsafe {
+        std::env::set_var(env_key, secret);
+    }
+    Ok(())
 }
 
 fn resolve_port<I>(args: I, env_port: u16) -> u16
@@ -49,32 +161,30 @@ fn validate_bind_configuration(
     server::auth_handlers::validate_jwt_secret(jwt_secret, external).map(|_| ())
 }
 
+fn uses_managed_simc_runtime(simc_path_override: Option<&Path>, managed_simc_path: &Path) -> bool {
+    // Older Docker env files set SIMC_PATH to this same stable managed path.
+    simc_path_override.is_none() || simc_path_override == Some(managed_simc_path)
+}
+
 #[tokio::main]
 async fn main() {
     let base_dir = choose_base_dir(std::path::Path::new("backend/resources").exists());
 
     let data_dir_default = format!("{}/data", base_dir);
     let data_dir = PathBuf::from(env_or("DATA_DIR", &data_dir_default));
+    let data_seed_dir = std::env::var("DATA_SEED_DIR").ok().map(PathBuf::from);
     let frontend_dir = std::env::var("FRONTEND_DIR").ok().map(PathBuf::from);
-    let simc_runtime_dir = PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime"));
-    let simc_channel = SimcChannel::parse(&env_or("SIMC_CHANNEL", "weekly"));
-    let simc_config = SimcRuntimeConfig::new(simc_channel, simc_runtime_dir);
-    let simc_path = match std::env::var("SIMC_PATH") {
-        Ok(path) if !path.trim().is_empty() => PathBuf::from(path),
-        _ => match resolve_simc_runtime(&simc_config).await {
-            Ok(resolution) => {
-                println!(
-                    "Using SimC {} channel version {} at {:?}",
-                    resolution.channel, resolution.version, resolution.simc_path
-                );
-                resolution.simc_path
-            }
-            Err(err) => {
-                eprintln!("Failed to update SimC runtime: {err}");
-                simc_config.simc_path()
-            }
-        },
-    };
+
+    bootstrap_data_dir(data_seed_dir.as_deref(), &data_dir)
+        .unwrap_or_else(|error| panic!("failed to bootstrap data directory: {error}"));
+    ensure_persistent_secret(&data_dir, "JWT_SECRET", ".jwt-secret")
+        .unwrap_or_else(|error| panic!("failed to initialize JWT secret: {error}"));
+    ensure_persistent_secret(
+        &data_dir,
+        "SESSION_ENCRYPTION_KEY",
+        ".session-encryption-key",
+    )
+    .unwrap_or_else(|error| panic!("failed to initialize session encryption key: {error}"));
 
     let bind_host = env_or("BIND_HOST", "127.0.0.1");
     validate_bind_configuration(
@@ -92,7 +202,7 @@ async fn main() {
     println!("Loading game data from {:?}", data_dir);
     game_data::load(&data_dir);
 
-    let _db_url = env_or("DATABASE_URL", "whylowdps.db");
+    let _db_url = env_or("DATABASE_URL", "whylowdps-multi-user.db");
     println!("Starting WhyLowDps server on {}:{}", bind_host, port);
 
     let storage: Arc<dyn JobStorage> = {
@@ -110,13 +220,64 @@ async fn main() {
         }
     };
 
-    let (server, actual_port) = server::start_with_storage_bind(
+    let simc_path_override = std::env::var("SIMC_PATH")
+        .ok()
+        .filter(|path| !path.trim().is_empty());
+    let env_simc_channel = SimcChannel::parse(&env_or("SIMC_CHANNEL", "weekly"));
+    let simc_channel = storage
+        .get_user_config("system", "simc_channel")
+        .and_then(|value| SimcChannel::try_parse(&value))
+        .unwrap_or(env_simc_channel);
+    let simc_runtime_config = SimcRuntimeConfig::new(
+        simc_channel,
+        PathBuf::from(env_or("SIMC_RUNTIME_DIR", "simc-runtime")),
+    );
+    let simc_runtime = uses_managed_simc_runtime(
+        simc_path_override.as_deref().map(Path::new),
+        &simc_runtime_config.simc_path(),
+    )
+    .then(|| Arc::new(SimcRuntimeState::new(simc_runtime_config.clone())));
+    let simc_path = match (simc_path_override, simc_runtime.as_ref()) {
+        (Some(path), None) => {
+            let path = PathBuf::from(path);
+            println!("Using fixed SimC path from SIMC_PATH at {:?}", path);
+            path
+        }
+        (_, Some(simc_runtime)) => match simc_runtime.update(simc_channel).await {
+            Ok(status) => {
+                println!(
+                    "Using SimC {} channel version {} at {:?}",
+                    status.channel,
+                    status.version.as_deref().unwrap_or("cached"),
+                    simc_runtime.simc_path()
+                );
+                simc_runtime.simc_path()
+            }
+            Err(err) => {
+                panic!(
+                    "Failed to initialize SimC runtime at {}: {err}",
+                    simc_runtime.simc_path().display()
+                );
+            }
+        },
+        (None, None) => unreachable!("managed SimC runtime must exist without a path override"),
+    };
+
+    if simc_runtime.is_none() {
+        validate_simc_binary(&simc_path).unwrap_or_else(|error| {
+            panic!("SIMC_PATH override is unusable: {error}");
+        });
+    }
+
+    let (server, actual_port) = server::start_with_storage_bind_options_and_simc_runtime(
         storage,
         simc_path,
         &bind_host,
         port,
         frontend_dir,
         Some(data_dir),
+        server::ServerSecurityOptions::default(),
+        simc_runtime,
     )
     .await;
 
@@ -135,6 +296,52 @@ mod tests {
     fn choose_base_dir_prefers_backend_resources_when_present() {
         assert_eq!(choose_base_dir(true), "backend/resources");
         assert_eq!(choose_base_dir(false), "resources");
+    }
+
+    #[test]
+    fn bootstrap_data_dir_copies_missing_seed_files_without_overwriting_existing_data() {
+        let seed = tempfile::tempdir().expect("seed temp dir");
+        let data = tempfile::tempdir().expect("data temp dir");
+        fs::write(seed.path().join("seed.json"), "seed").expect("write seed");
+        fs::write(data.path().join("existing.json"), "keep").expect("write existing");
+
+        bootstrap_data_dir(Some(seed.path()), data.path()).expect("bootstrap data");
+
+        assert_eq!(
+            fs::read_to_string(data.path().join("seed.json")).expect("read seeded file"),
+            "seed"
+        );
+        assert_eq!(
+            fs::read_to_string(data.path().join("existing.json")).expect("read existing file"),
+            "keep"
+        );
+    }
+
+    #[test]
+    fn ensure_persistent_secret_generates_and_reuses_a_data_volume_secret() {
+        let data = tempfile::tempdir().expect("data temp dir");
+        let env_key = "WHYLOWDPS_TEST_PERSISTENT_SECRET";
+        unsafe {
+            env::remove_var(env_key);
+        }
+
+        ensure_persistent_secret(data.path(), env_key, ".test-secret").expect("generate secret");
+        let generated = env::var(env_key).expect("generated environment secret");
+        assert_eq!(generated.len(), 64);
+        assert!(server::auth_handlers::validate_jwt_secret(Some(generated.clone()), true).is_ok());
+
+        unsafe {
+            env::remove_var(env_key);
+        }
+        ensure_persistent_secret(data.path(), env_key, ".test-secret").expect("reuse secret");
+        assert_eq!(
+            env::var(env_key).expect("reused environment secret"),
+            generated
+        );
+
+        unsafe {
+            env::remove_var(env_key);
+        }
     }
 
     #[test]
@@ -173,6 +380,18 @@ mod tests {
         unsafe {
             env::remove_var(key);
         }
+    }
+
+    #[test]
+    fn managed_simc_runtime_accepts_the_legacy_matching_path_override() {
+        let managed_path = Path::new("/data/simc-runtime/simc");
+
+        assert!(uses_managed_simc_runtime(None, managed_path));
+        assert!(uses_managed_simc_runtime(Some(managed_path), managed_path));
+        assert!(!uses_managed_simc_runtime(
+            Some(Path::new("/opt/simc/simc")),
+            managed_path
+        ));
     }
 
     #[test]

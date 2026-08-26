@@ -111,6 +111,15 @@ fn blizzard_instances_from_content(
         .unwrap_or_default();
     let active_mplus_journal_ids: HashSet<i64> =
         active_mplus_journal_ids_ordered.iter().copied().collect();
+    let mut active_raid_instance_ids = HashSet::new();
+    for key in ["raidInstanceIds", "worldBossInstanceIds"] {
+        if let Some(ids) = active_season
+            .and_then(|season| season.get(key))
+            .and_then(Value::as_array)
+        {
+            active_raid_instance_ids.extend(ids.iter().filter_map(Value::as_i64));
+        }
+    }
 
     let mut encounters_by_instance: HashMap<i64, Vec<Value>> = HashMap::new();
     for encounter in encounters {
@@ -157,6 +166,7 @@ fn blizzard_instances_from_content(
                     .get(&id)
                     .is_some_and(|journal_id| active_mplus_journal_ids.contains(journal_id))
             });
+        let current_season = active_raid_instance_ids.contains(&id) || active_rotation;
         let instance_encounters = encounters_by_instance.remove(&id).unwrap_or_default();
 
         instance_names_by_id.insert(id, name.to_string());
@@ -166,6 +176,7 @@ fn blizzard_instances_from_content(
             "name": name,
             "type": instance_type,
             "expansion": expansion,
+            "current_season": current_season,
             "encounters": instance_encounters,
             "image_url": format!("/api/data/images/instance/{}", id),
         });
@@ -200,6 +211,7 @@ fn blizzard_instances_from_content(
                 .and_then(|season| season.get("expansionId"))
                 .and_then(Value::as_i64)
                 .unwrap_or_default(),
+            "current_season": true,
             "encounters": mplus_bucket_encounters,
         }));
     }

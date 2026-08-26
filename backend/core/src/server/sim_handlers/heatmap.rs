@@ -113,11 +113,11 @@ pub(super) fn item_specs_match_role_pools(
             .any(|sid| selected_pools.contains(&spec_id_to_role_pool(*sid)));
     }
 
-    const KNOWN_CLASS_IDS: &[u64] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+    let known_class_ids = crate::types::class_data::known_wow_class_ids();
     let class_entries: Vec<u64> = specs
         .iter()
         .copied()
-        .filter(|id| KNOWN_CLASS_IDS.contains(id))
+        .filter(|id| (*id >= 1 && *id <= 13) || known_class_ids.contains(id))
         .collect();
     if class_entries.is_empty() {
         return true;
@@ -146,11 +146,11 @@ pub(super) fn item_specs_match_active_spec(
         return active_spec_id.is_some_and(|id| spec_entries.contains(&id));
     }
 
-    const KNOWN_CLASS_IDS: &[u64] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+    let known_class_ids = crate::types::class_data::known_wow_class_ids();
     let class_entries: Vec<u64> = specs
         .iter()
         .copied()
-        .filter(|id| KNOWN_CLASS_IDS.contains(id))
+        .filter(|id| (*id >= 1 && *id <= 13) || known_class_ids.contains(id))
         .collect();
     if class_entries.is_empty() {
         return true;
@@ -1347,6 +1347,8 @@ fn build_heatmap_profileset_input(
 }
 
 pub(super) async fn create_trinket_tier_heatmap_sim(
+    owner_id: String,
+    auth: Arc<crate::server::auth_handlers::BlizzardAuthState>,
     simc_input: String,
     class_name: String,
     matrix_flags: (bool, bool),
@@ -1388,7 +1390,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
     };
     generated_input.push_str(&format!("\nthreads={}\n", resolved_threads));
 
-    if let Some(resp) = validate_batch(&options.batch_id, store.get_ref().as_ref()) {
+    if let Some(resp) = validate_batch(&owner_id, &options.batch_id, store.get_ref().as_ref()) {
         return resp;
     }
 
@@ -1399,6 +1401,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
         options.fight_style.clone(),
         options.target_error,
     );
+    job.owner_id = owner_id;
     job.options = Some(options.to_json_with_sim_type("trinket_tier_heatmap"));
     job.batch_id = options.batch_id.clone();
     let job_id = job.id.clone();
@@ -1419,6 +1422,7 @@ pub(super) async fn create_trinket_tier_heatmap_sim(
 
     spawn_staged_sim(
         store.get_ref().clone(),
+        auth,
         simc_binary,
         options.to_json_with_sim_type("trinket_tier_heatmap"),
         job_id.clone(),

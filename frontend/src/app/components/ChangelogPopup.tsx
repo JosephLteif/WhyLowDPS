@@ -1,118 +1,31 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
+import {
+  CHANGELOG_CATEGORY_LABELS,
+  CHANGELOG_CATEGORY_ORDER,
+  CHANGELOG_CONTENT_REVISION,
+  CHANGELOG_HISTORY_URL,
+  LATEST_CHANGELOG_RELEASE,
+  type ChangelogCategory,
+} from '../lib/changelog';
+import { APP_VERSION } from '../lib/version';
 
 export const CHANGELOG_OPEN_EVENT = 'whylowdps:open-changelog';
+export { CHANGELOG_CONTENT_REVISION } from '../lib/changelog';
 
-const seenKey = `whylowdps_changelog_seen_${APP_VERSION}`;
-
-type ReleaseNoteCategory = 'feature' | 'fix' | 'improvement';
-
-type ReleaseNote = {
-  category: ReleaseNoteCategory;
-  title: string;
-  body: Array<
-    | {
-        type: 'paragraph';
-        text: string;
-      }
-    | {
-        type: 'list';
-        items: string[];
-      }
-  >;
-};
-
-const releaseNotes: ReleaseNote[] = [
-  {
-    category: 'feature',
-    title: 'Live Dungeons & Raids',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Dungeons and raids are now organized by expansion and season, with current-season rotation details and Blizzard-provided raid information in one place.',
-      },
-      {
-        type: 'list',
-        items: [
-          'See current dungeon affixes, timers, Mythic+ scores, and encounters.',
-          'Browse raid names, artwork, and encounters, including The Venomous Abyss.',
-        ],
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Season-aware Loot Browser',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Loot is now organized by expansion, season, and the current active dungeon rotation, including legacy dungeons that return to the active pool.',
-      },
-    ],
-  },
-  {
-    category: 'improvement',
-    title: 'Accurate item upgrade controls',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Current active-season loot keeps its correct ilvl controls, while items from older seasons and expansions no longer expose misleading current-season sliders.',
-      },
-    ],
-  },
-  {
-    category: 'fix',
-    title: 'Clearer dungeon source navigation',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Selecting a dungeon in Active Dungeons stays in that group. Its source expansion is shown beside the dungeon and can be opened directly when you want the historical expansion view.',
-      },
-    ],
-  },
-  {
-    category: 'feature',
-    title: 'Resizable loot navigation',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'The left instance panel can now be resized by dragging its divider or using the keyboard, making longer expansion and dungeon names easier to read.',
-      },
-    ],
-  },
-  {
-    category: 'fix',
-    title: 'More resilient seasonal data',
-    body: [
-      {
-        type: 'paragraph',
-        text: 'Loot metadata now reconciles incomplete instance records with trusted fallback data, so new seasons and Raidbots updates continue to resolve to the correct expansion and dungeon.',
-      },
-    ],
-  },
-];
-
-const releaseNoteCategoryLabels: Record<ReleaseNoteCategory, string> = {
-  feature: 'Features',
-  fix: 'Fixes',
-  improvement: 'Improvements',
-};
+const seenKey = `whylowdps_changelog_seen_${APP_VERSION}_${CHANGELOG_CONTENT_REVISION}`;
+const releaseNotes = LATEST_CHANGELOG_RELEASE.entries;
 
 export default function ChangelogPopup() {
   const [isOpen, setIsOpen] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const currentNote = releaseNotes[currentIndex];
-  const hasMultipleNotes = releaseNotes.length > 1;
 
   useEffect(() => {
     const seen = localStorage.getItem(seenKey) === '1';
     if (!seen) setIsOpen(true);
 
     const open = () => {
-      setCurrentIndex(0);
       setIsOpen(true);
     };
     window.addEventListener(CHANGELOG_OPEN_EVENT, open);
@@ -135,106 +48,103 @@ export default function ChangelogPopup() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="changelog-title"
-        className="flex max-h-[min(720px,calc(100vh-var(--app-header-height)-3rem))] w-full max-w-xl flex-col rounded-xl border border-white/10 bg-[#111218] shadow-2xl"
+        className="flex max-h-[min(800px,calc(100vh-var(--app-header-height)-3rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/10 bg-[#111218] shadow-2xl"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold">
-              {APP_VERSION_WITH_PREFIX}
-            </p>
-            <h2 id="changelog-title" className="mt-1 text-lg font-semibold text-zinc-100">
-              What&apos;s new
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={dismiss}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
-            aria-label="Close changelog"
-          >
-            <X className="h-4 w-4" strokeWidth={2} />
-          </button>
-        </div>
-
-        <article className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
-            {releaseNoteCategoryLabels[currentNote.category]}
-          </p>
-          <h3 className="mt-2 text-xl font-semibold text-zinc-100">{currentNote.title}</h3>
-          <div className="mt-4 space-y-3 text-sm leading-6 text-zinc-300">
-            {currentNote.body.map((block, blockIndex) =>
-              block.type === 'paragraph' ? (
-                <p key={`${currentNote.title}-${blockIndex}`}>{block.text}</p>
-              ) : (
-                <ul
-                  key={`${currentNote.title}-${blockIndex}`}
-                  className="list-disc space-y-2 pl-5 marker:text-gold"
-                >
-                  {block.items.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              )
-            )}
-          </div>
-        </article>
-
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 border-t border-white/10 p-5">
-          <button
-            type="button"
-            onClick={() => setCurrentIndex((index) => Math.max(0, index - 1))}
-            disabled={currentIndex === 0}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white disabled:cursor-not-allowed disabled:opacity-35"
-            aria-label="Previous changelog item"
-          >
-            <ChevronLeft className="h-4 w-4" strokeWidth={2} />
-          </button>
-
-          {hasMultipleNotes ? (
-            <div className="flex items-center justify-center gap-2" aria-label="Changelog pages">
-              {releaseNotes.map((note, index) => {
-                const isCurrent = index === currentIndex;
-                return (
-                  <button
-                    key={note.title}
-                    type="button"
-                    onClick={() => setCurrentIndex(index)}
-                    aria-label={`Show changelog item ${index + 1}`}
-                    aria-current={isCurrent}
-                    className={`h-2.5 w-2.5 rounded-full border transition-colors ${
-                      isCurrent
-                        ? 'border-gold bg-gold'
-                        : 'border-white/30 bg-transparent hover:border-zinc-200'
-                    }`}
-                  />
-                );
-              })}
+        <header className="relative isolate z-10 shrink-0 overflow-hidden border-b border-white/10 bg-[#111218] px-6 py-8 shadow-[0_8px_20px_-18px_rgba(0,0,0,0.9)] sm:px-8 sm:py-9">
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(212,168,67,0.18),transparent_58%)]"
+          />
+          <div className="relative flex items-start justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <span className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-gold/40 bg-gold/10 font-mono text-lg font-black tracking-tight text-gold shadow-[0_0_24px_rgba(212,168,67,0.14)]">
+                v
+              </span>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-gold/75">
+                  What&apos;s new · WhyLowDPS release
+                </p>
+                <p className="mt-0.5 font-mono text-2xl font-black tracking-tight text-gold">
+                  {LATEST_CHANGELOG_RELEASE.version}
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  The latest improvements, features, and fixes.
+                </p>
+              </div>
             </div>
-          ) : (
-            <span />
-          )}
-
-          <div className="flex justify-end gap-2">
-            {currentIndex < releaseNotes.length - 1 ? (
-              <button
-                type="button"
-                onClick={() =>
-                  setCurrentIndex((index) => Math.min(releaseNotes.length - 1, index + 1))
-                }
-                className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
-                aria-label="Next changelog item"
-              >
-                <ChevronRight className="h-4 w-4" strokeWidth={2} />
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={dismiss}
-              className="rounded-md border border-gold/35 bg-gold/15 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/25"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+              aria-label="Close changelog"
             >
-              Got it
+              <X className="h-4 w-4" strokeWidth={2} />
             </button>
           </div>
+          <h2 id="changelog-title" className="sr-only">
+            What&apos;s new
+          </h2>
+        </header>
+
+        <article className="relative z-0 min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-6">
+          <div className="space-y-8">
+            {CHANGELOG_CATEGORY_ORDER.map((category: ChangelogCategory) => {
+              const notes = releaseNotes.filter((note) => note.category === category);
+              if (notes.length === 0) return null;
+
+              return (
+                <section key={category} aria-labelledby={`changelog-${category}`}>
+                  <div className="mb-3 flex items-center gap-3">
+                    <h3
+                      id={`changelog-${category}`}
+                      className="text-xs font-bold uppercase tracking-[0.18em] text-gold"
+                    >
+                      {CHANGELOG_CATEGORY_LABELS[category]}
+                    </h3>
+                    <div className="h-px flex-1 bg-gradient-to-r from-gold/25 to-transparent" />
+                  </div>
+                  <div className="space-y-3">
+                    {notes.map((note) => (
+                      <div
+                        key={note.title}
+                        className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4 transition-colors hover:border-gold/25"
+                      >
+                        <h4 className="text-base font-semibold text-zinc-100">{note.title}</h4>
+                        <div className="mt-3 space-y-3 text-sm leading-6 text-zinc-300">
+                          <p>{note.summary}</p>
+                          {note.items && (
+                            <ul className="list-disc space-y-2 pl-5 marker:text-gold">
+                              {note.items.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </article>
+
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 p-5 sm:px-6">
+          <a
+            href={CHANGELOG_HISTORY_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-zinc-300 transition-colors hover:bg-white/[0.1] hover:text-white"
+          >
+            View changelog history
+          </a>
+          <button
+            type="button"
+            onClick={dismiss}
+            className="rounded-md border border-gold/35 bg-gold/15 px-4 py-2 text-sm font-semibold text-gold transition-colors hover:bg-gold/25"
+          >
+            Got it
+          </button>
         </div>
       </section>
     </div>

@@ -3,6 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useSimContext } from '../components/SimContext';
 import { useAuth } from '../components/AuthContext';
 import { API_URL, fetchJson, isDesktop } from './api';
+import { createUuid } from './uuid';
 import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
@@ -53,8 +54,7 @@ function extractSimcIdentity(
   let realm = '';
   let region = 'us';
 
-  const classLine =
-    /^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name)\s*=\s*"?([^"\s,]+)"?/i;
+  const classLine = /^([a-z_][a-z0-9_]*)\s*=\s*"?([^"\s,]+)"?/i;
   const armoryLine = /^armory\s*=\s*([^,\s]+)\s*,\s*([^,\s]+)\s*,\s*([^,\s]+)\s*$/i;
 
   for (const raw of lines) {
@@ -71,7 +71,7 @@ function extractSimcIdentity(
 
     if (!name) {
       const cls = line.match(classLine);
-      if (cls) name = cls[1];
+      if (cls && !['server', 'region', 'spec', 'talents', 'level', 'race', 'role'].includes(cls[1].toLowerCase())) name = cls[2];
     }
     if (!realm && line.toLowerCase().startsWith('server=')) {
       realm = line.slice(7).trim().replace(/^"|"$/g, '');
@@ -238,7 +238,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
       const configs: FightScenario[] =
         scenarios.length > 0 ? scenarios : [{ id: '', fightStyle, targetCount, fightLength }];
 
-      const batchId = scenarios.length > 0 ? crypto.randomUUID() : undefined;
+      const batchId = scenarios.length > 0 ? createUuid() : undefined;
       const baselineLiveStats = await fetchBaselineLiveStats();
 
       const sharedPayload = {

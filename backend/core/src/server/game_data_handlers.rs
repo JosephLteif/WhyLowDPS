@@ -211,6 +211,20 @@ pub(super) async fn list_upgrade_tracks() -> HttpResponse {
     HttpResponse::Ok().json(game_data::get_upgrade_tracks())
 }
 
+pub(super) async fn get_game_context() -> HttpResponse {
+    let context = crate::item_db::game_context();
+    if context
+        .get("capabilities")
+        .and_then(|value| value.get("season"))
+        .and_then(|value| value.get("status"))
+        .and_then(Value::as_str)
+        == Some("unavailable")
+    {
+        return HttpResponse::ServiceUnavailable().json(context);
+    }
+    HttpResponse::Ok().json(context)
+}
+
 pub(super) async fn list_consumable_options(
     query: web::Query<ConsumableOptionsQuery>,
     data_dir: web::Data<Option<std::path::PathBuf>>,
@@ -276,14 +290,10 @@ pub(super) async fn list_consumable_options(
     let target_expansion = if query.expansion > 0 {
         Some(query.expansion)
     } else {
-        [&flasks, &foods, &potions, &augments, &temp_enchants]
-            .iter()
-            .flat_map(|items| {
-                items
-                    .iter()
-                    .filter_map(|v| v.get("expansion").and_then(|e| e.as_i64()))
-            })
-            .max()
+        crate::item_db::game_context()
+            .get("current_expansion")
+            .and_then(|value| value.get("number"))
+            .and_then(Value::as_i64)
     };
 
     if let Some(expansion) = target_expansion {
@@ -292,6 +302,14 @@ pub(super) async fn list_consumable_options(
         keep_expansion_only(&mut potions, expansion);
         keep_expansion_only(&mut augments, expansion);
         keep_expansion_only(&mut temp_enchants, expansion);
+    } else if query.expansion <= 0 {
+        // A current catalog without a resolvable expansion is unsafe to
+        // submit: do not expose a mixed historical option set.
+        flasks.clear();
+        foods.clear();
+        potions.clear();
+        augments.clear();
+        temp_enchants.clear();
     }
 
     HttpResponse::Ok().json(json!({
@@ -300,6 +318,8 @@ pub(super) async fn list_consumable_options(
         "potions": potions,
         "augments": augments,
         "temp_enchants": temp_enchants,
+        "resolved_expansion": target_expansion,
+        "capability": if target_expansion.is_some() { "ready" } else { "degraded" },
     }))
 }
 
@@ -337,6 +357,10 @@ pub(super) async fn catalyst_convert(
                 .json(json!({"detail": "Slot not eligible for catalyst"}))
         }
     };
+    if crate::item_db::catalyst_currency_id() == 0 {
+        return HttpResponse::ServiceUnavailable()
+            .json(json!({"detail": "Catalyst metadata is unavailable for the active season"}));
+    }
     let tier_info = match crate::item_db::catalyst_tier_item(class_id, inv_type) {
         Some(t) => t,
         None => {
@@ -401,24 +425,32 @@ pub(super) async fn get_season_config() -> HttpResponse {
     use crate::types::season::*;
     let cfg = crate::item_db::season_cfg();
     let runtime = crate::item_db::get_runtime_data();
+    let context = crate::item_db::game_context();
 
-    let season = runtime
+    let runtime_season = runtime
         .get("season_api_data")
         .and_then(|data| data.get("season_name"))
         .and_then(|s| s.as_str())
         .filter(|s| !s.trim().is_empty())
-        .map(|s| s.to_string())
+        .map(str::to_string)
         .or_else(|| {
             runtime
                 .get("season_name")
                 .and_then(|s| s.as_str())
                 .filter(|s| !s.trim().is_empty())
-                .map(|s| s.to_string())
-        })
+                .map(str::to_string)
+        });
+    let season = context
+        .get("active_season")
+        .and_then(|active| active.get("name"))
+        .and_then(|s| s.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(str::to_string)
+        .or(runtime_season)
         .or_else(|| {
             cfg.get("season")
                 .and_then(|s| s.as_str())
-                .map(|s| s.to_string())
+                .map(str::to_string)
         })
         .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(|| {
@@ -577,13 +609,13 @@ mod tests {
     }
 
     #[test]
-    fn midnight_season_disables_back_and_wrist_enchants_only() {
+    fn enchant_slots_follow_active_game_context() {
         let _guard = state::TEST_STATE_LOCK.lock().unwrap();
-        let prev_cfg = state::SEASON_CONFIG.read().unwrap().clone();
-        let prev_runtime = state::RUNTIME_DATA.read().unwrap().clone();
+        let prev_context = state::GAME_CONTEXT.read().unwrap().clone();
 
-        *state::SEASON_CONFIG.write().unwrap() = json!({"season": "Midnight Season 1"});
-        *state::RUNTIME_DATA.write().unwrap() = json!({});
+        *state::GAME_CONTEXT.write().unwrap() = json!({
+            "rules": {"dps_enchant_slots": ["main_hand", "wrist"]}
+        });
 
         assert!(!slot_has_active_expansion_enchants(&EnchantOptionsQuery {
             slot: "back".to_string(),
@@ -591,7 +623,7 @@ mod tests {
             spec: String::new(),
             item_id: 0,
         }));
-        assert!(!slot_has_active_expansion_enchants(&EnchantOptionsQuery {
+        assert!(slot_has_active_expansion_enchants(&EnchantOptionsQuery {
             slot: "wrist".to_string(),
             class_name: String::new(),
             spec: String::new(),
@@ -604,8 +636,7 @@ mod tests {
             item_id: 0,
         }));
 
-        *state::SEASON_CONFIG.write().unwrap() = prev_cfg;
-        *state::RUNTIME_DATA.write().unwrap() = prev_runtime;
+        *state::GAME_CONTEXT.write().unwrap() = prev_context;
     }
 
     #[test]

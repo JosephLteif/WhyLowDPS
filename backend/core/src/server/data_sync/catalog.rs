@@ -78,13 +78,9 @@ pub(super) fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
     let manifest_path = data_manifest_path();
     let content = match std::fs::read_to_string(&manifest_path) {
         Ok(content) => content,
-        Err(err) => {
-            // Release bundles don't have the source checkout path; use embedded manifest fallback.
-            eprintln!(
-                "Failed to read data manifest at {}: {}. Falling back to embedded manifest.",
-                manifest_path.display(),
-                err
-            );
+        Err(_) => {
+            // Release bundles do not have the source checkout path; the embedded
+            // manifest is the expected packaged-build fallback.
             EMBEDDED_DATA_MANIFEST.to_string()
         }
     };
@@ -96,6 +92,42 @@ pub(super) fn data_file_catalog() -> Result<Vec<DataFileEntry>, String> {
         )
     })?;
     Ok(parsed.files.into_iter().map(DataFileEntry::from).collect())
+}
+
+/// Metadata is the upstream file index. Keep repair tolerant of new files by
+/// deriving entries from it instead of requiring a static manifest edit for
+/// every Raidbots addition.
+pub(super) fn metadata_derived_raidbots_entries(root: &Path) -> Vec<DataFileEntry> {
+    let Ok(content) = std::fs::read_to_string(root.join("metadata.json")) else {
+        return Vec::new();
+    };
+    let Ok(file_re) = regex::Regex::new(r#"\"([^\"]+\.(?:json|txt|lua))\""#) else {
+        return Vec::new();
+    };
+    let mut seen = std::collections::HashSet::new();
+    file_re
+        .captures_iter(&content)
+        .filter_map(|capture| capture.get(1).map(|match_| match_.as_str().to_string()))
+        .filter(|file| {
+            let path = Path::new(file);
+            !file.is_empty()
+                && path
+                    .components()
+                    .all(|component| matches!(component, std::path::Component::Normal(_)))
+        })
+        .filter(|file| seen.insert(file.clone()))
+        .map(|file| DataFileEntry {
+            key: format!("raidbots:{file}"),
+            label: file.clone(),
+            section: "Raidbots (discovered)".to_string(),
+            source: DataFileSource::Raidbots,
+            remote_path: Some(file.clone()),
+            local_path: file,
+            required: false,
+            entry_type: DataFileEntryType::File,
+            bundled_path: None,
+        })
+        .collect()
 }
 
 pub(super) fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBuf {
@@ -118,9 +150,8 @@ pub(super) fn resolve_catalog_path(root: &Path, entry: &DataFileEntry) -> PathBu
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         {
-            if let Some(file_name) = Path::new(bundled_path).file_name() {
-                let exe_bundled = exe_dir.join("resources").join(file_name);
-                for candidate in path_variants_with_json_alias(&exe_bundled) {
+            for packaged_path in packaged_resource_candidates(&exe_dir, Path::new(bundled_path)) {
+                for candidate in path_variants_with_json_alias(&packaged_path) {
                     if candidate.exists() {
                         return candidate;
                     }
@@ -155,11 +186,30 @@ fn resolve_bundled_path(entry: &DataFileEntry) -> Option<PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))?;
-    let file_name = Path::new(bundled_path).file_name()?;
-    let exe_bundled = exe_dir.join("resources").join(file_name);
-    path_variants_with_json_alias(&exe_bundled)
+    packaged_resource_candidates(&exe_dir, Path::new(bundled_path))
         .into_iter()
+        .flat_map(|path| path_variants_with_json_alias(&path))
         .find(|candidate| candidate.exists())
+}
+
+fn packaged_resource_candidates(exe_dir: &Path, bundled_path: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    // Keep supporting older bundles that flattened resources beside the binary.
+    if let Some(file_name) = bundled_path.file_name() {
+        candidates.push(exe_dir.join("resources").join(file_name));
+    }
+
+    // Docker packages resources at /app/resources while the binary is at
+    // /app/bin/whylowdps-server. Preserve the subdirectory from the manifest
+    // instead of looking only for its basename.
+    if let Ok(relative_path) = bundled_path.strip_prefix(Path::new("../resources")) {
+        if let Some(app_dir) = exe_dir.parent() {
+            candidates.push(app_dir.join("resources").join(relative_path));
+        }
+    }
+
+    candidates
 }
 
 pub(super) fn restore_local_file_from_bundle(
@@ -300,5 +350,18 @@ mod tests {
             )
             .expect("source manifest")
         );
+    }
+
+    #[test]
+    fn packaged_resource_candidates_preserve_resource_subdirectories() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let resource = temp.path().join("resources").join("wow");
+        fs::create_dir_all(&resource).expect("resource dir");
+        let bundled = Path::new("../resources/wow/wow-expansions.json");
+        let expected = resource.join("wow-expansions.json");
+
+        let candidates = packaged_resource_candidates(&temp.path().join("bin"), bundled);
+
+        assert!(candidates.contains(&expected));
     }
 }

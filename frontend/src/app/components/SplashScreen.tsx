@@ -2,12 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { LogIn, X } from 'lucide-react';
-import { API_URL, type BlizzardCredentialProfile, isDesktop, listBlizzardCredentialProfiles } from '../lib/api';
+import {
+  API_URL,
+  type BlizzardCredentialProfile,
+  isDesktop,
+  isHostedPrivate,
+  listBlizzardCredentialProfiles,
+} from '../lib/api';
 import { useAuth } from './AuthContext';
 import { invoke } from '@tauri-apps/api/core';
 import { APP_VERSION, APP_VERSION_WITH_PREFIX } from '../lib/version';
 import { formatBytesDecimal, formatElapsedCompact, formatTransferSpeed } from '../lib/format';
 import DesktopWindowTitleBar from './DesktopWindowTitleBar';
+import LanPairingScanner from './LanPairingScanner';
+import { readinessDataMessage } from '../lib/readiness';
 
 interface SplashScreenProps {
   status: string;
@@ -38,6 +46,12 @@ export default function SplashScreen({
   retriesTotal = 0,
 }: SplashScreenProps) {
   const { login, setSystemCredentials, enableLightMode } = useAuth();
+  const redirectUri =
+    !isDesktop && typeof window !== 'undefined'
+      ? `${window.location.origin}/api/auth/bnet/callback`
+      : 'http://localhost:17384/api/auth/bnet/callback';
+  const allowedDomain =
+    !isDesktop && typeof window !== 'undefined' ? window.location.hostname : 'localhost';
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [credentialProfiles, setCredentialProfiles] = useState<BlizzardCredentialProfile[]>([]);
@@ -49,10 +63,10 @@ export default function SplashScreen({
   const [showDebugButton, setShowDebugButton] = useState(false);
   const isDebugMode = process.env.NODE_ENV === 'development';
   const usableCredentialProfiles = credentialProfiles.filter(
-    (profile) => profile.has_secret !== false,
+    (profile) => profile.has_secret !== false
   );
   const missingSecretProfiles = credentialProfiles.filter(
-    (profile) => profile.has_secret === false,
+    (profile) => profile.has_secret === false
   );
   const selectedProfile = credentialProfiles.find((profile) => profile.id === selectedCredentialId);
 
@@ -64,18 +78,16 @@ export default function SplashScreen({
   }, []);
 
   useEffect(() => {
-    if (!isDesktop) return;
     let cancelled = false;
     listBlizzardCredentialProfiles()
       .then((profiles) => {
         if (cancelled) return;
         setCredentialProfiles(profiles);
         setSelectedCredentialId(
-          (current) => current || profiles.find((profile) => profile.has_secret !== false)?.id || '',
+          (current) => current || profiles.find((profile) => profile.has_secret !== false)?.id || ''
         );
       })
-      .catch(() => {
-      });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -130,7 +142,7 @@ export default function SplashScreen({
       if (selectedCredentialId) {
         if (selectedProfile?.has_secret === false) {
           alert(
-            'These saved Blizzard credentials are missing their secure secret on this device. Re-enter the client secret and save again.',
+            'These saved Blizzard credentials are missing their secure secret on this device. Re-enter the client secret and save again.'
           );
           setSelectedCredentialId('');
           return;
@@ -193,7 +205,10 @@ export default function SplashScreen({
     };
   };
 
-  const progressData = parseProgress(progress);
+  const progressData = parseProgress(
+    progress ||
+      readinessDataMessage(statusString, statusString === 'degraded', 'Syncing with Blizzard...')
+  );
   const extractedUrls = Array.from(statusString.matchAll(/https?:\/\/[^\s)]+/g)).map((m) => m[0]);
   const primaryFailedUrl = extractedUrls[0] || '';
   const primaryFailedFile = primaryFailedUrl
@@ -304,9 +319,32 @@ export default function SplashScreen({
                   )}
                 </div>
               </div>
+            ) : status === 'lan_access_required' ? (
+              <div className="w-full space-y-4 text-center">
+                <p className="text-sm font-semibold text-zinc-100">Access required</p>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  This phone is not paired with the WhyLowDPS desktop app, or its access was
+                  removed. Scan a new QR code from the desktop app to continue.
+                </p>
+                <LanPairingScanner />
+              </div>
             ) : status === 'unauthenticated' ? (
               <div className="w-full text-center">
                 <p className="mb-6 text-sm font-medium text-zinc-300">Authentication Required</p>
+                {usableCredentialProfiles.length > 1 && (
+                  <select
+                    value={selectedCredentialId}
+                    onChange={(event) => setSelectedCredentialId(event.target.value)}
+                    className="mb-3 w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 focus:border-gold/50 focus:outline-none"
+                    aria-label="Blizzard application credentials"
+                  >
+                    {usableCredentialProfiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   onClick={() => login(undefined, undefined, selectedCredentialId || undefined)}
                   className="flex w-full items-center justify-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:bg-blue-500 active:scale-95"
@@ -314,12 +352,14 @@ export default function SplashScreen({
                   <LogIn className="h-5 w-5" strokeWidth={2.25} />
                   Login with Battle.net
                 </button>
-                <button
-                  onClick={enableLightMode}
-                  className="mt-3 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
-                >
-                  Continue in Light mode
-                </button>
+                {!isHostedPrivate && (
+                  <button
+                    onClick={enableLightMode}
+                    className="mt-3 flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                  >
+                    Continue in Light mode
+                  </button>
+                )}
               </div>
             ) : status === 'unauthenticated_needs_keys' ? (
               <div className="w-full space-y-4 text-center">
@@ -373,8 +413,7 @@ export default function SplashScreen({
                     </div>
                   )}
                   {missingSecretProfiles.length > 0 && (
-                    <p
-                      className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-left text-[12px] text-amber-100">
+                    <p className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-left text-[12px] text-amber-100">
                       One or more saved credentials are incomplete on this device. Enter the client
                       secret again to repair them.
                     </p>
@@ -407,7 +446,8 @@ export default function SplashScreen({
                           onChange={(e) => setSaveNewCredentials(e.target.checked)}
                           className="h-4 w-4 rounded border-white/20 bg-white/5"
                         />
-                        Save these credentials securely on this device
+                        Save these credentials securely on this{' '}
+                        {isHostedPrivate ? 'instance' : 'device'}
                       </label>
                     </>
                   )}
@@ -419,18 +459,26 @@ export default function SplashScreen({
                     <br />
                     1. Create a client on the{' '}
                     <a
-                      href="https://develop.battle.net/access/clients"
+                      href="https://community.developer.battle.net/access/clients"
                       target="_blank"
                       className="text-gold hover:underline"
                     >
                       Blizzard Developer Portal
                     </a>
                     .<br />
-                    2. Add{' '}
-                    <code className="text-zinc-300">
-                      http://localhost:17384/api/auth/bnet/callback
-                    </code>{' '}
-                    to your **Redirect URIs**.
+                    2. In the portal&apos;s{' '}
+                    <span className="font-bold text-zinc-400">Redirect URLs</span> field, add this
+                    exact value:
+                    <br />
+                    <code className="mt-1 block break-all text-zinc-300">{redirectUri}</code>
+                    <br />
+                    If it asks for an{' '}
+                    <span className="font-bold text-zinc-400">Allowed Domain</span> or service URL,
+                    use the hostname only:
+                    <br />
+                    <code className="mt-1 block break-all text-zinc-300">{allowedDomain}</code>
+                    <br />
+                    Do not add a trailing slash or the callback path to the domain field.
                   </p>
                 </div>
 
@@ -453,12 +501,14 @@ export default function SplashScreen({
                     </>
                   )}
                 </button>
-                <button
-                  onClick={enableLightMode}
-                  className="flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
-                >
-                  Continue in Light mode
-                </button>
+                {!isHostedPrivate && (
+                  <button
+                    onClick={enableLightMode}
+                    className="flex w-full items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-zinc-100 transition-all hover:bg-white/10 active:scale-95"
+                  >
+                    Continue in Light mode
+                  </button>
+                )}
               </div>
             ) : isError ? (
               <div className="w-full text-left">

@@ -1,12 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app_logic;
+mod discord_presence;
 
-use std::path::PathBuf;
+use std::io::{Read, Seek, Write};
+use std::net::{IpAddr, UdpSocket};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use app_logic::*;
+use discord_presence::{
+    DiscordPresenceSettingsResponse, DiscordPresenceState, DiscordPresenceUpdate,
+};
+use rusqlite::{Connection, MAIN_DB};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::path::BaseDirectory;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -22,6 +29,7 @@ use whylowdps_core::simc_runtime::{
     resolve_simc_runtime, resolve_simc_runtime_with_progress, SimcChannel, SimcRuntimeConfig,
 };
 use whylowdps_core::storage::{JobStorage, SqliteStorage};
+use zip::{ZipArchive, ZipWriter};
 
 #[cfg(target_os = "windows")]
 fn enable_high_dpi_awareness() {
@@ -52,6 +60,55 @@ async fn open_auth_window(handle: tauri::AppHandle, url: String) -> Result<(), S
     .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+const SESSION_KEYRING_SERVICE: &str = "WhyLowDPS Session";
+const SESSION_KEYRING_ACCOUNT: &str = "active-bnet-session";
+const SESSION_KEYRING_ENCRYPTION_ACCOUNT: &str = "session-encryption-key";
+
+fn install_session_encryption_key() -> Result<(), String> {
+    let entry = keyring::Entry::new(SESSION_KEYRING_SERVICE, SESSION_KEYRING_ENCRYPTION_ACCOUNT)
+        .map_err(|error| error.to_string())?;
+    let key = match entry.get_password() {
+        Ok(key) => key,
+        Err(keyring::Error::NoEntry) => {
+            let key = format!("{}{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+            entry
+                .set_password(&key)
+                .map_err(|error| error.to_string())?;
+            key
+        }
+        Err(error) => return Err(error.to_string()),
+    };
+    std::env::set_var("SESSION_ENCRYPTION_KEY", key);
+    Ok(())
+}
+
+#[tauri::command]
+fn load_session_token() -> Result<Option<String>, String> {
+    match keyring::Entry::new(SESSION_KEYRING_SERVICE, SESSION_KEYRING_ACCOUNT)
+        .map_err(|error| error.to_string())?
+        .get_password()
+    {
+        Ok(token) => Ok(Some(token)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_session_token(token: Option<String>) -> Result<(), String> {
+    let entry = keyring::Entry::new(SESSION_KEYRING_SERVICE, SESSION_KEYRING_ACCOUNT)
+        .map_err(|error| error.to_string())?;
+    match token {
+        Some(token) => entry
+            .set_password(&token)
+            .map_err(|error| error.to_string()),
+        None => match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(error.to_string()),
+        },
+    }
 }
 
 #[tauri::command]
@@ -100,6 +157,284 @@ fn open_data_dir(app: tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+const BACKUP_FORMAT_VERSION: u32 = 1;
+const BACKUP_DB_FILE: &str = "whylowdps-multi-user.db";
+const BACKUP_PREFS_FILE: &str = "desktop_prefs.json";
+const BACKUP_FRONTEND_FILE: &str = "frontend-preferences.json";
+const PENDING_DB_FILE: &str = "whylowdps-restore-pending.db";
+const PENDING_PREFS_FILE: &str = "desktop_prefs.restore-pending.json";
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BackupManifest {
+    format_version: u32,
+    created_at: String,
+    files: Vec<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FrontendPreferencesBackup {
+    local_storage: std::collections::BTreeMap<String, String>,
+}
+
+fn backup_path(app: &tauri::AppHandle, path: Option<String>) -> Result<PathBuf, String> {
+    if let Some(path) = path.filter(|value| !value.trim().is_empty()) {
+        return Ok(PathBuf::from(path));
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data directory: {e}"))?
+        .join("backups");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create backup directory: {e}"))?;
+    Ok(dir.join(format!(
+        "whylowdps-backup-{}.zip",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S")
+    )))
+}
+
+fn add_file_to_zip<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    name: &str,
+    path: &Path,
+) -> Result<(), String> {
+    let mut file = std::fs::File::open(path).map_err(|e| format!("Unable to read {name}: {e}"))?;
+    zip.start_file::<_, ()>(name, zip::write::FileOptions::default())
+        .map_err(|e| format!("Unable to add {name} to backup: {e}"))?;
+    std::io::copy(&mut file, zip).map_err(|e| format!("Unable to write {name}: {e}"))?;
+    Ok(())
+}
+
+fn create_backup_database(source: &Path, destination: &Path) -> Result<(), String> {
+    let source_connection =
+        Connection::open(source).map_err(|e| format!("Unable to open database: {e}"))?;
+    source_connection
+        .backup(MAIN_DB, destination, None)
+        .map_err(|e| format!("Unable to snapshot database: {e}"))?;
+    drop(source_connection);
+    let backup_connection = Connection::open(destination)
+        .map_err(|e| format!("Unable to open backup database: {e}"))?;
+
+    let sensitive_keys: Vec<(String, String)> = {
+        let mut statement = backup_connection
+            .prepare("SELECT user_id, key FROM user_configs")
+            .map_err(|e| format!("Unable to inspect backup database: {e}"))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Unable to inspect backup keys: {e}"))?;
+        rows.filter_map(Result::ok)
+            .filter(|(_, key)| is_sensitive_backup_key(key))
+            .collect()
+    };
+
+    for (user_id, key) in sensitive_keys {
+        backup_connection
+            .execute(
+                "DELETE FROM user_configs WHERE user_id = ?1 AND key = ?2",
+                rusqlite::params![user_id, key],
+            )
+            .map_err(|e| format!("Unable to remove sensitive backup data: {e}"))?;
+    }
+    backup_connection
+        .execute("DELETE FROM app_cache", [])
+        .map_err(|e| format!("Unable to remove cache data from backup: {e}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn export_local_backup(
+    app: tauri::AppHandle,
+    frontend_preferences: FrontendPreferencesBackup,
+    path: Option<String>,
+) -> Result<String, String> {
+    let output_path = backup_path(&app, path)?;
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Unable to create backup folder: {e}"))?;
+    }
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data directory: {e}"))?;
+    let db_path = app_data_dir.join(BACKUP_DB_FILE);
+    let temp_db = app_data_dir.join("whylowdps-backup-snapshot.db");
+    if temp_db.exists() {
+        std::fs::remove_file(&temp_db)
+            .map_err(|e| format!("Unable to replace temporary snapshot: {e}"))?;
+    }
+    create_backup_database(&db_path, &temp_db)?;
+
+    let prefs_path = app_data_dir.join(BACKUP_PREFS_FILE);
+    let frontend_json = serde_json::to_vec_pretty(&frontend_preferences)
+        .map_err(|e| format!("Unable to encode frontend preferences: {e}"))?;
+    let file = std::fs::File::create(&output_path)
+        .map_err(|e| format!("Unable to create backup archive: {e}"))?;
+    let mut zip = ZipWriter::new(file);
+    add_file_to_zip(&mut zip, BACKUP_DB_FILE, &temp_db)?;
+    let mut files = vec![BACKUP_DB_FILE.to_string(), BACKUP_FRONTEND_FILE.to_string()];
+    if prefs_path.exists() {
+        files.push(BACKUP_PREFS_FILE.to_string());
+    }
+    let manifest = BackupManifest {
+        format_version: BACKUP_FORMAT_VERSION,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        files,
+    };
+    zip.start_file::<_, ()>("manifest.json", zip::write::FileOptions::default())
+        .map_err(|e| format!("Unable to write backup manifest: {e}"))?;
+    zip.write_all(&serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?)
+        .map_err(|e| format!("Unable to write backup manifest: {e}"))?;
+    if prefs_path.exists() {
+        add_file_to_zip(&mut zip, BACKUP_PREFS_FILE, &prefs_path)?;
+    }
+    zip.start_file::<_, ()>(BACKUP_FRONTEND_FILE, zip::write::FileOptions::default())
+        .map_err(|e| format!("Unable to write frontend preferences: {e}"))?;
+    zip.write_all(&frontend_json)
+        .map_err(|e| format!("Unable to write frontend preferences: {e}"))?;
+    zip.finish()
+        .map_err(|e| format!("Unable to finish backup archive: {e}"))?;
+    let _ = std::fs::remove_file(temp_db);
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+#[derive(serde::Serialize)]
+struct LocalBackupRestoreResult {
+    recovery_path: Option<String>,
+    frontend_preferences: FrontendPreferencesBackup,
+}
+
+fn validate_backup_database(path: &Path) -> Result<(), String> {
+    let connection =
+        Connection::open(path).map_err(|e| format!("Backup database is invalid: {e}"))?;
+    for table in ["jobs", "settings", "dungeon_routes", "character_profiles"] {
+        let exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                rusqlite::params![table],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Unable to validate backup database: {e}"))?;
+        if !exists {
+            return Err(format!("Backup database is missing the {table} table."));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn import_local_backup(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<LocalBackupRestoreResult, String> {
+    let source_path = PathBuf::from(path);
+    let file =
+        std::fs::File::open(&source_path).map_err(|e| format!("Unable to open backup: {e}"))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Backup is not a valid ZIP archive: {e}"))?;
+    let mut manifest_file = archive
+        .by_name("manifest.json")
+        .map_err(|_| "Backup manifest is missing.".to_string())?;
+    let mut manifest_json = String::new();
+    manifest_file
+        .read_to_string(&mut manifest_json)
+        .map_err(|e| format!("Unable to read backup manifest: {e}"))?;
+    let manifest: BackupManifest = serde_json::from_str(&manifest_json)
+        .map_err(|e| format!("Backup manifest is invalid: {e}"))?;
+    if manifest.format_version != BACKUP_FORMAT_VERSION
+        || !manifest.files.iter().any(|name| name == BACKUP_DB_FILE)
+    {
+        return Err(
+            "Backup format is unsupported or does not contain simulation data.".to_string(),
+        );
+    }
+    drop(manifest_file);
+
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data directory: {e}"))?;
+    let db_path = app_data_dir.join(BACKUP_DB_FILE);
+    let recovery_path = if db_path.exists() {
+        let recovery_path = app_data_dir.join(format!(
+            "whylowdps-recovery-{}.db",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        ));
+        std::fs::copy(&db_path, &recovery_path)
+            .map_err(|e| format!("Unable to preserve recovery copy: {e}"))?;
+        Some(recovery_path)
+    } else {
+        None
+    };
+    let temp_db = app_data_dir.join(PENDING_DB_FILE);
+    if temp_db.exists() {
+        let _ = std::fs::remove_file(&temp_db);
+    }
+    {
+        let mut entry = archive
+            .by_name(BACKUP_DB_FILE)
+            .map_err(|_| "Backup database is missing.".to_string())?;
+        let mut output = std::fs::File::create(&temp_db)
+            .map_err(|e| format!("Unable to prepare restore: {e}"))?;
+        std::io::copy(&mut entry, &mut output)
+            .map_err(|e| format!("Unable to extract backup database: {e}"))?;
+    }
+    validate_backup_database(&temp_db)?;
+
+    let mut frontend_preferences = FrontendPreferencesBackup {
+        local_storage: std::collections::BTreeMap::new(),
+    };
+    if manifest.files.iter().any(|name| name == BACKUP_PREFS_FILE) {
+        let mut entry = archive
+            .by_name(BACKUP_PREFS_FILE)
+            .map_err(|_| "Backup preferences are missing.".to_string())?;
+        let pending_prefs_path = app_data_dir.join(PENDING_PREFS_FILE);
+        let mut output = std::fs::File::create(&pending_prefs_path)
+            .map_err(|e| format!("Unable to restore desktop preferences: {e}"))?;
+        std::io::copy(&mut entry, &mut output)
+            .map_err(|e| format!("Unable to restore desktop preferences: {e}"))?;
+        let prefs = std::fs::read_to_string(&pending_prefs_path)
+            .map_err(|e| format!("Unable to validate desktop preferences: {e}"))?;
+        serde_json::from_str::<AppClosePreferences>(&prefs)
+            .map_err(|e| format!("Desktop preferences are invalid: {e}"))?;
+    }
+    if manifest
+        .files
+        .iter()
+        .any(|name| name == BACKUP_FRONTEND_FILE)
+    {
+        let mut entry = archive
+            .by_name(BACKUP_FRONTEND_FILE)
+            .map_err(|_| "Frontend preferences are missing.".to_string())?;
+        let mut frontend_json = String::new();
+        entry
+            .read_to_string(&mut frontend_json)
+            .map_err(|e| format!("Unable to read frontend preferences: {e}"))?;
+        frontend_preferences = serde_json::from_str(&frontend_json)
+            .map_err(|e| format!("Frontend preferences are invalid: {e}"))?;
+    }
+    Ok(LocalBackupRestoreResult {
+        recovery_path: recovery_path.map(|path| path.to_string_lossy().to_string()),
+        frontend_preferences,
+    })
+}
+
+fn apply_pending_restore(app_data_dir: &Path) -> Result<(), String> {
+    let pending_db = app_data_dir.join(PENDING_DB_FILE);
+    if pending_db.exists() {
+        let db_path = app_data_dir.join(BACKUP_DB_FILE);
+        std::fs::rename(&pending_db, &db_path)
+            .map_err(|e| format!("Unable to apply pending database restore: {e}"))?;
+    }
+    let pending_prefs = app_data_dir.join(PENDING_PREFS_FILE);
+    if pending_prefs.exists() {
+        let prefs_path = app_data_dir.join(BACKUP_PREFS_FILE);
+        std::fs::rename(&pending_prefs, &prefs_path)
+            .map_err(|e| format!("Unable to apply pending preferences restore: {e}"))?;
+    }
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 struct SystemInfo {
     os: String,
@@ -135,6 +470,61 @@ struct SimcRuntimeProgressEvent {
     message: Option<String>,
 }
 
+#[derive(Clone, serde::Serialize)]
+struct FileImportEvent {
+    path: String,
+    content: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct SimCompletedEvent {
+    id: String,
+    status: String,
+    sim_type: String,
+    player_name: String,
+}
+
+fn emit_file_imports(app: &tauri::AppHandle, args: &[String]) {
+    for path in importable_file_paths(args) {
+        if let Ok(payload) = read_import_file_path(path) {
+            let _ = app.emit("whylowdps-file-import", payload);
+        }
+    }
+}
+
+fn read_import_file_path(path: PathBuf) -> Result<FileImportEvent, String> {
+    if !is_supported_import_path(&path) {
+        return Err("Only .simc and .txt files can be imported.".to_string());
+    }
+    let metadata = std::fs::metadata(&path).map_err(|e| format!("Unable to inspect file: {e}"))?;
+    if !metadata.is_file() || metadata.len() > 5 * 1024 * 1024 {
+        return Err("The selected file is missing, not a file, or larger than 5 MB.".to_string());
+    }
+    let content =
+        std::fs::read_to_string(&path).map_err(|e| format!("Unable to read file: {e}"))?;
+    Ok(FileImportEvent {
+        path: path.to_string_lossy().to_string(),
+        content,
+    })
+}
+
+#[tauri::command]
+fn read_import_file(path: String) -> Result<FileImportEvent, String> {
+    read_import_file_path(PathBuf::from(path))
+}
+
+fn schedule_startup_file_imports(app: tauri::AppHandle) {
+    let args: Vec<String> = std::env::args().collect();
+    if importable_file_paths(&args).is_empty() {
+        return;
+    }
+
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1200)).await;
+        emit_file_imports(&app, &args);
+    });
+}
+
 #[tauri::command]
 fn get_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
@@ -163,6 +553,33 @@ fn clear_close_behavior_preference(
     state: tauri::State<'_, AppClosePreferencesState>,
 ) -> Result<(), String> {
     clear_close_behavior_preference_internal(&state)
+}
+
+#[tauri::command]
+fn get_discord_presence_settings(
+    preferences: tauri::State<'_, AppClosePreferencesState>,
+    presence: tauri::State<'_, DiscordPresenceState>,
+) -> DiscordPresenceSettingsResponse {
+    presence.settings(&preferences)
+}
+
+#[tauri::command]
+fn set_discord_presence_settings(
+    preferences: tauri::State<'_, AppClosePreferencesState>,
+    presence: tauri::State<'_, DiscordPresenceState>,
+    enabled: bool,
+    client_id: Option<String>,
+) -> Result<DiscordPresenceSettingsResponse, String> {
+    presence.apply_settings(&preferences, enabled, client_id)
+}
+
+#[tauri::command]
+fn update_discord_presence(
+    preferences: tauri::State<'_, AppClosePreferencesState>,
+    presence: tauri::State<'_, DiscordPresenceState>,
+    update: DiscordPresenceUpdate,
+) -> DiscordPresenceSettingsResponse {
+    presence.update(&preferences, update)
 }
 
 #[tauri::command]
@@ -345,6 +762,55 @@ fn apply_close_behavior_choice(
 #[tauri::command]
 fn restart_app(app: tauri::AppHandle) {
     app.restart();
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LanAccessInfo {
+    enabled: bool,
+    restart_required: bool,
+    addresses: Vec<String>,
+}
+
+fn detected_private_ipv4() -> Vec<String> {
+    let Ok(socket) = UdpSocket::bind("0.0.0.0:0") else {
+        return Vec::new();
+    };
+
+    // Connecting a UDP socket selects the route without sending a packet. The
+    // selected local address is the address another device on the LAN should use.
+    let _ = socket.connect("192.0.2.1:80");
+    let Some(IpAddr::V4(address)) = socket.local_addr().ok().map(|value| value.ip()) else {
+        return Vec::new();
+    };
+
+    if address.is_loopback() || address.is_unspecified() || !address.is_private() {
+        return Vec::new();
+    }
+
+    vec![address.to_string()]
+}
+
+#[tauri::command]
+fn get_lan_access_info(state: tauri::State<'_, AppClosePreferencesState>) -> LanAccessInfo {
+    let enabled = state
+        .prefs
+        .lock()
+        .map(|prefs| prefs.lan_sharing_enabled)
+        .unwrap_or(false);
+
+    LanAccessInfo {
+        enabled,
+        restart_required: enabled != state.lan_sharing_runtime_enabled,
+        addresses: detected_private_ipv4(),
+    }
+}
+
+#[tauri::command]
+fn set_lan_sharing_enabled(
+    state: tauri::State<'_, AppClosePreferencesState>,
+    enabled: bool,
+) -> Result<(), String> {
+    set_lan_sharing_enabled_internal(&state, enabled)
 }
 
 #[tauri::command]
@@ -571,6 +1037,18 @@ async fn run_sim_notification_watcher(
                     }
 
                     let body = build_sim_notification_body(&status, &meta);
+                    let sim_type = resolve_notification_sim_type(&status, &meta).to_string();
+                    let player_name = resolve_notification_player(&status, &meta);
+
+                    let _ = notifier_handle.emit(
+                        "whylowdps-sim-completed",
+                        SimCompletedEvent {
+                            id: id.clone(),
+                            status: status.status.clone(),
+                            sim_type,
+                            player_name,
+                        },
+                    );
 
                     let _ = notifier_handle
                         .notification()
@@ -618,12 +1096,13 @@ fn main() {
     enable_high_dpi_awareness();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
+            emit_file_imports(app, &argv);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -632,8 +1111,13 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             open_auth_window,
+            load_session_token,
+            save_session_token,
             open_external_url,
             open_data_dir,
+            read_import_file,
+            export_local_backup,
+            import_local_backup,
             get_system_info,
             get_close_behavior_preference,
             set_close_behavior_preference,
@@ -644,12 +1128,19 @@ fn main() {
             set_simc_runtime_version,
             update_simc_runtime,
             get_simc_runtime_status,
+            get_discord_presence_settings,
+            set_discord_presence_settings,
+            update_discord_presence,
             apply_close_behavior_choice,
             restart_app,
+            get_lan_access_info,
+            set_lan_sharing_enabled,
             quit_app_now,
             download_and_install_release
         ])
         .setup(|app| {
+            install_session_encryption_key()
+                .map_err(|error| format!("Failed to initialize session encryption: {error}"))?;
             let app_data_dir = app
                 .path()
                 .app_data_dir()
@@ -659,8 +1150,13 @@ fn main() {
                 let _ = std::fs::create_dir_all(&app_data_dir);
             }
 
+            if let Err(error) = apply_pending_restore(&app_data_dir) {
+                eprintln!("Failed to apply pending local restore: {error}");
+            }
+
             let close_prefs_path = app_data_dir.join("desktop_prefs.json");
             let close_prefs = load_close_preferences(&close_prefs_path);
+            let lan_sharing_enabled = close_prefs.lan_sharing_enabled;
             let simc_channel = close_prefs
                 .simc_update_channel
                 .clone()
@@ -670,11 +1166,14 @@ fn main() {
             app.manage(AppClosePreferencesState {
                 prefs: std::sync::Mutex::new(close_prefs),
                 path: close_prefs_path,
+                lan_sharing_runtime_enabled: lan_sharing_enabled,
                 simc_runtime: SimcRuntimeCoordinator::new(SimcReadiness::Missing),
             });
+            app.manage(DiscordPresenceState::default());
 
             let app_handle = app.handle().clone();
             let notifier_handle = app_handle.clone();
+            schedule_startup_file_imports(app_handle.clone());
 
             let show_item = MenuItemBuilder::with_id("show_app", "Show WhyLowDps").build(app)?;
             let dashboard_item =
@@ -804,9 +1303,14 @@ fn main() {
             let bundled_data_dir = resolve_bundled_resource("data", "../../backend/resources/data");
             let bundled_wow_dir =
                 resolve_bundled_resource("data/wow", "../../backend/resources/wow");
+            let bundled_frontend_dir = lan_sharing_enabled
+                .then(|| resolve_bundled_resource("frontend", "../../frontend/out"));
 
             println!("Resolved bundled_data_dir: {:?}", bundled_data_dir);
             println!("Resolved bundled_wow_dir: {:?}", bundled_wow_dir);
+            if let Some(frontend_dir) = &bundled_frontend_dir {
+                println!("Resolved bundled_frontend_dir: {:?}", frontend_dir);
+            }
 
             let app_data_dir = app_handle
                 .path()
@@ -829,7 +1333,7 @@ fn main() {
             let simc_dir = app_data_dir.join("simc");
             let simc_bin = simc_dir.join(simc_binary_name());
 
-            let db_path = app_data_dir.join("whylowdps.db");
+            let db_path = app_data_dir.join(BACKUP_DB_FILE);
             let db_path_str = db_path.to_string_lossy().to_string();
 
             let simc_runtime = app.state::<AppClosePreferencesState>().simc_runtime.clone();
@@ -839,6 +1343,7 @@ fn main() {
                 let simc_runtime_version = simc_runtime_version.clone();
                 let simc_bin = simc_bin.clone();
                 let app_handle = app_handle.clone();
+                let bundled_frontend_dir = bundled_frontend_dir.clone();
                 async move {
                     let _runtime_guard = simc_runtime.update_lock.lock().await;
                     simc_runtime.set_readiness(SimcReadiness::Downloading);
@@ -883,13 +1388,22 @@ fn main() {
 
                     let storage: Arc<dyn JobStorage> = Arc::new(SqliteStorage::new(&db_path_str));
 
-                    let (server, _actual_port) = server::start_with_storage_bind(
+                    let bind_host = if lan_sharing_enabled {
+                        "0.0.0.0"
+                    } else {
+                        "127.0.0.1"
+                    };
+                    let security = server::ServerSecurityOptions {
+                        lan_pairing: lan_sharing_enabled,
+                    };
+                    let (server, _actual_port) = server::start_with_storage_bind_options(
                         storage,
                         resolved_simc,
-                        "127.0.0.1",
+                        bind_host,
                         17384,
-                        None,
+                        bundled_frontend_dir,
                         Some(data_dir),
+                        security,
                     )
                     .await;
 

@@ -2,11 +2,23 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AppUser {
+    pub id: String,
+    pub provider_subject: Option<String>,
+    pub battletag: String,
+    pub role: String,
+    pub enabled: bool,
+    pub created_at: String,
+    pub last_login_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum JobStatus {
     Pending,
     Running,
+    Paused,
     Done,
     Failed,
     Cancelled,
@@ -40,6 +52,8 @@ pub struct SavedCharacterProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub id: String,
+    #[serde(default = "default_job_owner", skip_serializing)]
+    pub owner_id: String,
     pub status: JobStatus,
     pub sim_type: String,
     pub simc_input: String,
@@ -166,19 +180,29 @@ pub fn extract_result_summary(result_json: &Option<String>, simc_input: &str) ->
 
     // If player_name not in result yet, extract from simc input
     if summary.player_name.is_none() {
-        // Match line like: deathknight="Name" OR player="Name" OR name="Name" OR armory=us,realm,Name
-        let re = Regex::new(
-            r#"(?i)^(?:warrior|paladin|hunter|rogue|priest|death_knight|deathknight|shaman|mage|warlock|monk|druid|demon_hunter|demonhunter|evoker|player|name)\s*=\s*"?([^"\s,]+)"?"#
-        ).unwrap();
+        // Match any SimC profile declaration so newly added classes do not
+        // require a parser release. Reserved scalar settings are ignored.
+        let re = Regex::new(r#"(?i)^([a-z_][a-z0-9_]*)\s*=\s*"([^"]+)""#).unwrap();
+        let name_re = Regex::new(r#"(?i)^(?:name|player)\s*=\s*([^\s]+)"#).unwrap();
         let armory_re = Regex::new(r#"(?i)^armory=[^,]+,[^,]+,([^,\s]+)"#).unwrap();
 
         for line in simc_input.lines() {
             let trimmed = line.trim();
             if let Some(caps) = re.captures(trimmed) {
+                let key = caps[1].to_ascii_lowercase();
+                if !matches!(
+                    key.as_str(),
+                    "server" | "region" | "spec" | "talents" | "race"
+                ) {
+                    summary.player_name = Some(caps[2].to_string());
+                    break;
+                }
+            }
+            if let Some(caps) = armory_re.captures(trimmed) {
                 summary.player_name = Some(caps[1].to_string());
                 break;
             }
-            if let Some(caps) = armory_re.captures(trimmed) {
+            if let Some(caps) = name_re.captures(trimmed) {
                 summary.player_name = Some(caps[1].to_string());
                 break;
             }
@@ -198,6 +222,7 @@ impl Job {
     ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
+            owner_id: default_job_owner(),
             status: JobStatus::Pending,
             sim_type,
             simc_input,
@@ -237,6 +262,10 @@ impl Job {
         total += self.text_output.as_ref().map(|s| s.len()).unwrap_or(0) as u64;
         total
     }
+}
+
+fn default_job_owner() -> String {
+    "local-guest".to_string()
 }
 
 #[cfg(test)]
@@ -367,6 +396,10 @@ mod tests {
             "\"running\""
         );
         assert_eq!(
+            serde_json::to_string(&JobStatus::Paused).expect("serialize paused"),
+            "\"paused\""
+        );
+        assert_eq!(
             serde_json::to_string(&JobStatus::Done).expect("serialize done"),
             "\"done\""
         );
@@ -386,6 +419,10 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<JobStatus>("\"running\"").expect("deserialize running"),
             JobStatus::Running
+        );
+        assert_eq!(
+            serde_json::from_str::<JobStatus>("\"paused\"").expect("deserialize paused"),
+            JobStatus::Paused
         );
         assert_eq!(
             serde_json::from_str::<JobStatus>("\"done\"").expect("deserialize done"),

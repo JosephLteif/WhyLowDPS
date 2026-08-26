@@ -32,7 +32,7 @@ describe('api helpers', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      fetchJson('/api/test', { method: 'PATCH', body: JSON.stringify({ a: 1 }) }),
+      fetchJson('/api/test', { method: 'PATCH', body: JSON.stringify({ a: 1 }) })
     ).resolves.toEqual({ ok: true });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -59,7 +59,7 @@ describe('api helpers', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValueOnce(jsonResponse({ detail: 'Bad input' }, { status: 400 })),
+      vi.fn().mockResolvedValueOnce(jsonResponse({ detail: 'Bad input' }, { status: 400 }))
     );
     await expect(fetchJson('/api/bad')).rejects.toMatchObject({
       message: 'Bad input',
@@ -71,7 +71,7 @@ describe('api helpers', () => {
       'fetch',
       vi
         .fn()
-        .mockResolvedValueOnce(jsonResponse({ error: 'Missing saved secret' }, { status: 400 })),
+        .mockResolvedValueOnce(jsonResponse({ error: 'Missing saved secret' }, { status: 400 }))
     );
     await expect(fetchJson('/api/bad-secret')).rejects.toMatchObject({
       message: 'Missing saved secret',
@@ -95,7 +95,7 @@ describe('api helpers', () => {
 
   it('treats the dedicated Tauri dev frontend port as desktop runtime', () => {
     vi.stubGlobal('window', {
-      ...(window),
+      ...window,
       location: {
         protocol: 'http:',
         hostname: '127.0.0.1',
@@ -104,6 +104,49 @@ describe('api helpers', () => {
     });
 
     expect(isDesktopRuntime()).toBe(true);
+  });
+
+  it('treats a packaged frontend opened from a LAN address as web runtime', () => {
+    vi.stubGlobal('window', {
+      ...window,
+      location: {
+        protocol: 'http:',
+        hostname: '192.168.1.42',
+        port: '17384',
+      },
+    });
+
+    expect(isDesktopRuntime()).toBe(false);
+  });
+
+  it('uses relative API URLs for a LAN browser session', async () => {
+    vi.stubGlobal('window', {
+      ...window,
+      location: {
+        protocol: 'http:',
+        hostname: '192.168.1.42',
+        port: '17384',
+      },
+    });
+    vi.resetModules();
+
+    const { API_URL } = await import('./api');
+    expect(API_URL).toBe('');
+  });
+
+  it('keeps the desktop API URL for a Tauri development session', async () => {
+    vi.stubGlobal('window', {
+      ...window,
+      location: {
+        protocol: 'http:',
+        hostname: '127.0.0.1',
+        port: '1420',
+      },
+    });
+    vi.resetModules();
+
+    const { API_URL } = await import('./api');
+    expect(API_URL).toBe('http://localhost:17384');
   });
 
   it('dedupes cached GET requests and uses persistent cache storage when fresh', async () => {

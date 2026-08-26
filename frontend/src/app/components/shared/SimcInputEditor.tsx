@@ -5,6 +5,7 @@ import { useRef, useState, type UIEvent } from 'react';
 type SimcInputEditorProps = {
   value: string;
   onChange: (value: string) => void;
+  onPaste?: (value: string) => void;
   placeholder: string;
 };
 
@@ -39,7 +40,12 @@ function renderSimcLine(line: string) {
   );
 }
 
-export default function SimcInputEditor({ value, onChange, placeholder }: SimcInputEditorProps) {
+export default function SimcInputEditor({
+  value,
+  onChange,
+  onPaste,
+  placeholder,
+}: SimcInputEditorProps) {
   const [expanded, setExpanded] = useState(false);
   const preRef = useRef<HTMLPreElement | null>(null);
   const editorHeight = expanded ? 'h-[28rem]' : 'h-40';
@@ -84,8 +90,10 @@ export default function SimcInputEditor({ value, onChange, placeholder }: SimcIn
           )}
         </pre>
         <textarea
+          data-tour="simc-input-field"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onPaste={(e) => onPaste?.(e.clipboardData.getData('text'))}
           onScroll={syncScroll}
           placeholder={placeholder}
           spellCheck={false}

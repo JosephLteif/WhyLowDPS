@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use super::JobStorage;
 use crate::models::{
-    extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
+    extract_result_summary, AppUser, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
 };
 
 pub struct SqliteStorage {
@@ -14,6 +14,10 @@ pub struct SqliteStorage {
 impl SqliteStorage {
     pub fn new(path: &str) -> Self {
         let mut conn = Connection::open(path).expect("Failed to open SQLite database");
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .expect("Failed to enable SQLite foreign keys");
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .expect("Failed to enable SQLite WAL mode");
         initialize_schema(&mut conn).expect("Failed to initialize SQLite schema");
 
         let max_jobs = conn
@@ -34,7 +38,7 @@ impl SqliteStorage {
     }
 }
 
-const SQLITE_SCHEMA_VERSION: i64 = 1;
+const SQLITE_SCHEMA_VERSION: i64 = 2;
 
 fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
@@ -42,6 +46,7 @@ fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
     tx.execute_batch(
         "CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending',
                 sim_type TEXT NOT NULL,
                 simc_input TEXT NOT NULL,
@@ -74,8 +79,25 @@ fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
                 value TEXT NOT NULL,
                 PRIMARY KEY (user_id, key)
             );
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                provider_subject TEXT UNIQUE,
+                battletag TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                role TEXT NOT NULL DEFAULT 'member',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                last_login_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                encrypted_access_token TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
             CREATE TABLE IF NOT EXISTS dungeon_routes (
                 id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 dungeon TEXT NOT NULL,
                 level INTEGER,
@@ -87,6 +109,7 @@ fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
             );
             CREATE TABLE IF NOT EXISTS character_profiles (
                 id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
                 name TEXT NOT NULL,
                 realm TEXT NOT NULL,
                 region TEXT NOT NULL,
@@ -112,6 +135,17 @@ fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
             ("dungeon_routes", "pull_count", "INTEGER"),
             ("dungeon_routes", "timer_seconds", "INTEGER"),
             ("dungeon_routes", "affixes", "TEXT"),
+            ("jobs", "owner_id", "TEXT NOT NULL DEFAULT 'local-guest'"),
+            (
+                "dungeon_routes",
+                "owner_id",
+                "TEXT NOT NULL DEFAULT 'local-guest'",
+            ),
+            (
+                "character_profiles",
+                "owner_id",
+                "TEXT NOT NULL DEFAULT 'local-guest'",
+            ),
         ] {
             let mut columns = tx.prepare(&format!("PRAGMA table_info({table})"))?;
             let exists = columns
@@ -126,6 +160,13 @@ fn initialize_schema(conn: &mut Connection) -> rusqlite::Result<()> {
         }
     }
 
+    tx.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id ON auth_sessions(user_id);
+         CREATE INDEX IF NOT EXISTS idx_jobs_owner_created_at ON jobs(owner_id, created_at DESC);
+         CREATE INDEX IF NOT EXISTS idx_routes_owner_created_at ON dungeon_routes(owner_id, created_at DESC);
+         CREATE INDEX IF NOT EXISTS idx_profiles_owner_created_at ON character_profiles(owner_id, created_at DESC);",
+    )?;
+
     tx.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
     tx.commit()
 }
@@ -135,6 +176,7 @@ impl SqliteStorage {
         match status {
             JobStatus::Pending => "pending",
             JobStatus::Running => "running",
+            JobStatus::Paused => "paused",
             JobStatus::Done => "done",
             JobStatus::Failed => "failed",
             JobStatus::Cancelled => "cancelled",
@@ -144,6 +186,7 @@ impl SqliteStorage {
     fn str_to_status(s: &str) -> JobStatus {
         match s {
             "running" => JobStatus::Running,
+            "paused" => JobStatus::Paused,
             "done" => JobStatus::Done,
             "failed" => JobStatus::Failed,
             "cancelled" => JobStatus::Cancelled,
@@ -160,6 +203,7 @@ impl SqliteStorage {
 
         Ok(Job {
             id: row.get(0)?,
+            owner_id: row.get(24).unwrap_or_else(|_| "local-guest".to_string()),
             status: SqliteStorage::str_to_status(&status_str),
             sim_type: row.get(2)?,
             simc_input: row.get(3)?,
@@ -190,6 +234,7 @@ impl SqliteStorage {
 impl JobStorage for SqliteStorage {
     fn insert(&self, job: Job) {
         let conn = self.conn.lock().unwrap();
+        let owner_id = job.owner_id.clone();
         let stages_json = serde_json::to_string(&job.stages_completed).unwrap();
         let options_json = job
             .options
@@ -198,8 +243,8 @@ impl JobStorage for SqliteStorage {
         conn.execute(
             "INSERT INTO jobs (id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-             iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name, pinned)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
+             iterations, fight_style, target_error, created_at, batch_id, raw_json, html_report, text_output, linked_region, linked_realm, linked_name, pinned, owner_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             params![
                 job.id,
                 Self::status_to_str(&job.status),
@@ -225,6 +270,7 @@ impl JobStorage for SqliteStorage {
                 job.linked_realm,
                 job.linked_name,
                 if job.pinned { 1 } else { 0 },
+                owner_id,
             ],
         )
         .expect("Failed to insert job");
@@ -232,8 +278,8 @@ impl JobStorage for SqliteStorage {
         // Garbage collect oldest jobs beyond limit
         let limit = *self.max_jobs.lock().unwrap();
         conn.execute(
-            "DELETE FROM jobs WHERE pinned = 0 AND id NOT IN (SELECT id FROM jobs WHERE pinned = 0 ORDER BY created_at DESC LIMIT ?1)",
-            params![limit as u32],
+            "DELETE FROM jobs WHERE owner_id = ?1 AND pinned = 0 AND id NOT IN (SELECT id FROM jobs WHERE owner_id = ?1 AND pinned = 0 ORDER BY created_at DESC LIMIT ?2)",
+            params![job.owner_id, limit as u32],
         ).ok();
     }
 
@@ -242,7 +288,7 @@ impl JobStorage for SqliteStorage {
         conn.query_row(
             "SELECT id, status, sim_type, simc_input, options, result_json, combo_metadata_json,
              error_message, progress_pct, progress_stage, progress_detail, stages_completed,
-             iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name, pinned
+             iterations, fight_style, target_error, created_at, raw_json, html_report, text_output, batch_id, linked_region, linked_realm, linked_name, pinned, owner_id
              FROM jobs WHERE id = ?1",
             params![id],
             Self::row_to_job,
@@ -250,8 +296,9 @@ impl JobStorage for SqliteStorage {
         .ok()
     }
 
-    fn list_recent(
+    fn list_recent_owned(
         &self,
+        owner_id: &str,
         limit: usize,
         player: Option<&str>,
         realm: Option<&str>,
@@ -268,10 +315,10 @@ impl JobStorage for SqliteStorage {
         let mut stmt = conn.prepare(
             "SELECT id, status, sim_type, created_at, fight_style, iterations, error_message, result_json, simc_input, batch_id,
              raw_json, html_report, text_output, combo_metadata_json, linked_region, linked_realm, linked_name, pinned
-             FROM jobs ORDER BY created_at DESC LIMIT ?1"
+             FROM jobs WHERE owner_id = ?1 ORDER BY created_at DESC LIMIT ?2"
         ).unwrap();
         let all: Vec<JobSummary> = stmt
-            .query_map(params![fetch_limit], |row| {
+            .query_map(params![owner_id, fetch_limit], |row| {
                 let status_str: String = row.get(1)?;
                 let result_json: Option<String> = row.get(7)?;
                 let simc_input: String = row.get::<_, String>(8).unwrap_or_default();
@@ -385,6 +432,16 @@ impl JobStorage for SqliteStorage {
         .ok();
     }
 
+    fn transition_status(&self, id: &str, from: JobStatus, to: JobStatus) -> bool {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE jobs SET status = ?1 WHERE id = ?2 AND status = ?3",
+            params![Self::status_to_str(&to), id, Self::status_to_str(&from)],
+        )
+        .map(|changed| changed == 1)
+        .unwrap_or(false)
+    }
+
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str) {
         let conn = self.conn.lock().unwrap();
         conn.execute(
@@ -442,12 +499,12 @@ impl JobStorage for SqliteStorage {
         .ok();
     }
 
-    fn count_batch(&self, batch_id: &str) -> usize {
+    fn count_batch_owned(&self, owner_id: &str, batch_id: &str) -> usize {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
-            "SELECT COUNT(*) FROM jobs WHERE batch_id = ?1",
-            params![batch_id],
-            |row| row.get::<_, usize>(0),
+            "SELECT COUNT(*) FROM jobs WHERE owner_id = ?1 AND batch_id = ?2",
+            params![owner_id, batch_id],
+            |row| row.get::<_, i64>(0).map(|count| count as usize),
         )
         .unwrap_or(0)
     }
@@ -458,7 +515,16 @@ impl JobStorage for SqliteStorage {
             .ok();
     }
 
-    fn get_storage_size(&self) -> u64 {
+    fn delete_owned(&self, owner_id: &str, id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM jobs WHERE owner_id = ?1 AND id = ?2",
+            params![owner_id, id],
+        )
+        .ok();
+    }
+
+    fn get_storage_size_owned(&self, owner_id: &str) -> u64 {
         let conn = self.conn.lock().unwrap();
         conn.query_row(
             "SELECT SUM(
@@ -468,8 +534,8 @@ impl JobStorage for SqliteStorage {
                 IFNULL(LENGTH(CAST(html_report AS BLOB)), 0) +
                 IFNULL(LENGTH(CAST(text_output AS BLOB)), 0) +
                 IFNULL(LENGTH(CAST(combo_metadata_json AS BLOB)), 0)
-            ) FROM jobs",
-            [],
+            ) FROM jobs WHERE owner_id = ?1",
+            params![owner_id],
             |row| {
                 row.get::<_, Option<f64>>(0)
                     .map(|v| v.unwrap_or(0.0) as u64)
@@ -478,10 +544,10 @@ impl JobStorage for SqliteStorage {
         .unwrap_or(0)
     }
 
-    fn clear_history(&self) {
+    fn clear_history_owned(&self, owner_id: &str) {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM jobs", []).ok();
-        conn.execute("VACUUM", []).ok();
+        conn.execute("DELETE FROM jobs WHERE owner_id = ?1", params![owner_id])
+            .ok();
     }
 
     fn get_max_jobs(&self) -> usize {
@@ -537,8 +603,9 @@ impl JobStorage for SqliteStorage {
             .ok();
     }
 
-    fn link_character(
+    fn link_character_owned(
         &self,
+        owner_id: &str,
         id: &str,
         region: Option<String>,
         realm: Option<String>,
@@ -546,17 +613,17 @@ impl JobStorage for SqliteStorage {
     ) {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE jobs SET linked_region = ?1, linked_realm = ?2, linked_name = ?3 WHERE id = ?4",
-            params![region, realm, name, id],
+            "UPDATE jobs SET linked_region = ?1, linked_realm = ?2, linked_name = ?3 WHERE owner_id = ?4 AND id = ?5",
+            params![region, realm, name, owner_id, id],
         )
         .ok();
     }
 
-    fn set_pinned(&self, id: &str, pinned: bool) {
+    fn set_pinned_owned(&self, owner_id: &str, id: &str, pinned: bool) {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE jobs SET pinned = ?1 WHERE id = ?2",
-            params![if pinned { 1 } else { 0 }, id],
+            "UPDATE jobs SET pinned = ?1 WHERE owner_id = ?2 AND id = ?3",
+            params![if pinned { 1 } else { 0 }, owner_id, id],
         )
         .ok();
     }
@@ -590,14 +657,134 @@ impl JobStorage for SqliteStorage {
         .ok();
     }
 
-    fn save_route(&self, route: SavedRoute) {
+    fn list_users(&self) -> Vec<AppUser> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT id, provider_subject, battletag, role, enabled, created_at, last_login_at FROM users ORDER BY created_at")
+            .unwrap();
+        stmt.query_map([], |row| {
+            Ok(AppUser {
+                id: row.get(0)?,
+                provider_subject: row.get(1)?,
+                battletag: row.get(2)?,
+                role: row.get(3)?,
+                enabled: row.get::<_, i64>(4)? != 0,
+                created_at: row.get(5)?,
+                last_login_at: row.get(6)?,
+            })
+        })
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect()
+    }
+
+    fn get_user(&self, id: &str) -> Option<AppUser> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT id, provider_subject, battletag, role, enabled, created_at, last_login_at FROM users WHERE id = ?1",
+            params![id],
+            |row| Ok(AppUser {
+                id: row.get(0)?, provider_subject: row.get(1)?, battletag: row.get(2)?,
+                role: row.get(3)?, enabled: row.get::<_, i64>(4)? != 0,
+                created_at: row.get(5)?, last_login_at: row.get(6)?,
+            }),
+        ).ok()
+    }
+
+    fn find_user_by_provider_subject(&self, provider_subject: &str) -> Option<AppUser> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT id, provider_subject, battletag, role, enabled, created_at, last_login_at FROM users WHERE provider_subject = ?1",
+            params![provider_subject],
+            |row| Ok(AppUser {
+                id: row.get(0)?, provider_subject: row.get(1)?, battletag: row.get(2)?,
+                role: row.get(3)?, enabled: row.get::<_, i64>(4)? != 0,
+                created_at: row.get(5)?, last_login_at: row.get(6)?,
+            }),
+        ).ok()
+    }
+
+    fn find_user_by_battletag(&self, battletag: &str) -> Option<AppUser> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT id, provider_subject, battletag, role, enabled, created_at, last_login_at FROM users WHERE battletag = ?1 COLLATE NOCASE",
+            params![battletag],
+            |row| Ok(AppUser {
+                id: row.get(0)?, provider_subject: row.get(1)?, battletag: row.get(2)?,
+                role: row.get(3)?, enabled: row.get::<_, i64>(4)? != 0,
+                created_at: row.get(5)?, last_login_at: row.get(6)?,
+            }),
+        ).ok()
+    }
+
+    fn save_user(&self, user: AppUser) {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO dungeon_routes (id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-             ON CONFLICT(id) DO UPDATE SET name = ?2, dungeon = ?3, level = ?4, pull_count = ?5, timer_seconds = ?6, affixes = ?7, route_data = ?8",
+            "INSERT INTO users (id, provider_subject, battletag, role, enabled, created_at, last_login_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(id) DO UPDATE SET provider_subject = excluded.provider_subject, battletag = excluded.battletag, role = excluded.role, enabled = excluded.enabled, last_login_at = excluded.last_login_at",
+            params![user.id, user.provider_subject, user.battletag, user.role, if user.enabled { 1 } else { 0 }, user.created_at, user.last_login_at],
+        ).expect("Failed to save user");
+    }
+
+    fn delete_user(&self, id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM users WHERE id = ?1", params![id])
+            .ok();
+    }
+
+    fn save_auth_session(
+        &self,
+        session_id: &str,
+        user_id: &str,
+        encrypted_access_token: &str,
+        expires_at: i64,
+    ) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO auth_sessions (id, user_id, encrypted_access_token, expires_at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(id) DO UPDATE SET encrypted_access_token = excluded.encrypted_access_token, expires_at = excluded.expires_at",
+            params![session_id, user_id, encrypted_access_token, expires_at],
+        ).expect("Failed to save auth session");
+    }
+
+    fn get_auth_session(&self, session_id: &str) -> Option<(String, String, i64)> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT user_id, encrypted_access_token, expires_at FROM auth_sessions WHERE id = ?1",
+            params![session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .ok()
+    }
+
+    fn delete_auth_session(&self, session_id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM auth_sessions WHERE id = ?1",
+            params![session_id],
+        )
+        .ok();
+    }
+
+    fn delete_user_auth_sessions(&self, user_id: &str) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "DELETE FROM auth_sessions WHERE user_id = ?1",
+            params![user_id],
+        )
+        .ok();
+    }
+
+    fn save_route_owned(&self, owner_id: &str, route: SavedRoute) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO dungeon_routes (id, owner_id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, dungeon = excluded.dungeon, level = excluded.level, pull_count = excluded.pull_count, timer_seconds = excluded.timer_seconds, affixes = excluded.affixes, route_data = excluded.route_data WHERE dungeon_routes.owner_id = excluded.owner_id",
             params![
                 route.id,
+                owner_id,
                 route.name,
                 route.dungeon,
                 route.level,
@@ -611,12 +798,12 @@ impl JobStorage for SqliteStorage {
         .expect("Failed to save route");
     }
 
-    fn list_routes(&self) -> Vec<SavedRoute> {
+    fn list_routes_owned(&self, owner_id: &str) -> Vec<SavedRoute> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn
-            .prepare("SELECT id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at FROM dungeon_routes ORDER BY created_at DESC")
+            .prepare("SELECT id, name, dungeon, level, pull_count, timer_seconds, affixes, route_data, created_at FROM dungeon_routes WHERE owner_id = ?1 ORDER BY created_at DESC")
             .unwrap();
-        stmt.query_map([], |row| {
+        stmt.query_map(params![owner_id], |row| {
             Ok(SavedRoute {
                 id: row.get(0)?,
                 name: row.get(1)?,
@@ -634,20 +821,24 @@ impl JobStorage for SqliteStorage {
         .collect()
     }
 
-    fn delete_route(&self, id: &str) {
-        let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM dungeon_routes WHERE id = ?1", params![id])
-            .ok();
-    }
-
-    fn save_character_profile(&self, profile: SavedCharacterProfile) {
+    fn delete_route_owned(&self, owner_id: &str, id: &str) {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO character_profiles (id, name, realm, region, class, spec, simc_input, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(id) DO UPDATE SET name = ?2, realm = ?3, region = ?4, class = ?5, spec = ?6, simc_input = ?7",
+            "DELETE FROM dungeon_routes WHERE owner_id = ?1 AND id = ?2",
+            params![owner_id, id],
+        )
+        .ok();
+    }
+
+    fn save_character_profile_owned(&self, owner_id: &str, profile: SavedCharacterProfile) {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO character_profiles (id, owner_id, name, realm, region, class, spec, simc_input, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, realm = excluded.realm, region = excluded.region, class = excluded.class, spec = excluded.spec, simc_input = excluded.simc_input WHERE character_profiles.owner_id = excluded.owner_id",
             params![
                 profile.id,
+                owner_id,
                 profile.name,
                 profile.realm,
                 profile.region,
@@ -660,15 +851,16 @@ impl JobStorage for SqliteStorage {
         .expect("Failed to save character profile");
     }
 
-    fn list_character_profiles(
+    fn list_character_profiles_owned(
         &self,
+        owner_id: &str,
         name: Option<&str>,
         realm: Option<&str>,
         region: Option<&str>,
     ) -> Vec<SavedCharacterProfile> {
         let conn = self.conn.lock().unwrap();
-        let mut sql = "SELECT id, name, realm, region, class, spec, simc_input, created_at FROM character_profiles WHERE 1=1".to_string();
-        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let mut sql = "SELECT id, name, realm, region, class, spec, simc_input, created_at FROM character_profiles WHERE owner_id = ?".to_string();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(owner_id.to_string())];
 
         if let Some(n) = name {
             sql.push_str(" AND LOWER(name) = LOWER(?)");
@@ -704,10 +896,13 @@ impl JobStorage for SqliteStorage {
         .collect()
     }
 
-    fn delete_character_profile(&self, id: &str) {
+    fn delete_character_profile_owned(&self, owner_id: &str, id: &str) {
         let conn = self.conn.lock().unwrap();
-        conn.execute("DELETE FROM character_profiles WHERE id = ?1", params![id])
-            .ok();
+        conn.execute(
+            "DELETE FROM character_profiles WHERE owner_id = ?1 AND id = ?2",
+            params![owner_id, id],
+        )
+        .ok();
     }
 }
 
@@ -773,6 +968,7 @@ mod tests {
     ) -> Job {
         Job {
             id: id.to_string(),
+            owner_id: "local-guest".to_string(),
             status: JobStatus::Pending,
             sim_type: "quick".to_string(),
             simc_input: simc_input.to_string(),
@@ -803,6 +999,7 @@ mod tests {
     fn sqlite_status_string_conversion_covers_all_known_and_unknown_values() {
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Pending), "pending");
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Running), "running");
+        assert_eq!(SqliteStorage::status_to_str(&JobStatus::Paused), "paused");
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Done), "done");
         assert_eq!(SqliteStorage::status_to_str(&JobStatus::Failed), "failed");
         assert_eq!(
@@ -812,6 +1009,7 @@ mod tests {
 
         assert_eq!(SqliteStorage::str_to_status("pending"), JobStatus::Pending);
         assert_eq!(SqliteStorage::str_to_status("running"), JobStatus::Running);
+        assert_eq!(SqliteStorage::str_to_status("paused"), JobStatus::Paused);
         assert_eq!(SqliteStorage::str_to_status("done"), JobStatus::Done);
         assert_eq!(SqliteStorage::str_to_status("failed"), JobStatus::Failed);
         assert_eq!(
@@ -959,6 +1157,10 @@ mod tests {
             false,
         ));
 
+        assert!(storage.transition_status("job-1", JobStatus::Pending, JobStatus::Paused));
+        assert!(!storage.transition_status("job-1", JobStatus::Pending, JobStatus::Running));
+        assert_eq!(storage.get("job-1").unwrap().status, JobStatus::Paused);
+        assert!(storage.transition_status("job-1", JobStatus::Paused, JobStatus::Running));
         storage.update_status("job-1", JobStatus::Running);
         storage.update_progress("job-1", 55, "simulating", "stage-2");
         storage.complete_stage("job-1", "parsed profile");
@@ -1332,6 +1534,75 @@ mod tests {
                 .list_character_profiles(Some("mymain"), None, None)
                 .len(),
             0
+        );
+    }
+
+    #[test]
+    fn sqlite_isolates_jobs_routes_profiles_and_history_by_owner() {
+        let (_dir, storage) = create_storage();
+        let mut alice_job = make_job(
+            "alice-job",
+            "2026-01-01T00:00:00Z",
+            "mage=Alice",
+            None,
+            false,
+        );
+        alice_job.owner_id = "alice".to_string();
+        let mut bob_job = make_job("bob-job", "2026-01-02T00:00:00Z", "mage=Bob", None, false);
+        bob_job.owner_id = "bob".to_string();
+        storage.insert(alice_job);
+        storage.insert(bob_job);
+
+        assert!(storage.get_owned("alice", "alice-job").is_some());
+        assert!(storage.get_owned("bob", "alice-job").is_none());
+        assert_eq!(
+            storage
+                .list_recent_owned("alice", 10, None, None, false, false, false)
+                .len(),
+            1
+        );
+        storage.clear_history_owned("alice");
+        assert!(storage.get("alice-job").is_none());
+        assert!(storage.get("bob-job").is_some());
+
+        storage.save_route_owned(
+            "alice",
+            SavedRoute {
+                id: "route".to_string(),
+                name: "Alice route".to_string(),
+                dungeon: "Test".to_string(),
+                level: None,
+                pull_count: None,
+                timer_seconds: None,
+                affixes: None,
+                route_data: "A".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        );
+        assert_eq!(storage.list_routes_owned("alice").len(), 1);
+        assert!(storage.list_routes_owned("bob").is_empty());
+
+        storage.save_character_profile_owned(
+            "bob",
+            SavedCharacterProfile {
+                id: "profile".to_string(),
+                name: "Bob".to_string(),
+                realm: "Realm".to_string(),
+                region: "US".to_string(),
+                class: None,
+                spec: None,
+                simc_input: "mage=Bob".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+        );
+        assert!(storage
+            .list_character_profiles_owned("alice", None, None, None)
+            .is_empty());
+        assert_eq!(
+            storage
+                .list_character_profiles_owned("bob", None, None, None)
+                .len(),
+            1
         );
     }
 }

@@ -1,6 +1,9 @@
 'use client';
 
+import { useState } from 'react';
+import { API_URL } from '../lib/api';
 import type { DungeonAffix, DungeonInfo, MythicKeystoneDungeonDetail } from '../lib/api';
+import { wowInstances } from '../lib/wow-season-content';
 
 export type DisplayAffix = DungeonAffix;
 
@@ -29,6 +32,61 @@ function formatMs(ms?: number | null): string | null {
   return `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`;
 }
 
+function resolveAssetUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  return url.startsWith('/') ? `${API_URL}${url}` : url;
+}
+
+function dungeonImageSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2019']/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function fallbackDungeonImages(dungeon: DungeonInfo): string[] {
+  const catalogImage = wowInstances.find(
+    (instance) =>
+      instance.id === dungeon.id || instance.name.toLowerCase() === dungeon.name.toLowerCase()
+  )?.imageUrl;
+  const zoneImage = dungeon.name
+    ? `https://render.worldofwarcraft.com/us/zones/${dungeonImageSlug(dungeon.name)}-small.jpg`
+    : undefined;
+  return [catalogImage, zoneImage].filter(
+    (url, index, urls): url is string => Boolean(url) && urls.indexOf(url) === index
+  );
+}
+
+function DungeonArtwork({ dungeon }: { dungeon: DungeonInfo }) {
+  const apiImageUrl = resolveAssetUrl(dungeon.image_url);
+  const fallbackImageUrls = fallbackDungeonImages(dungeon);
+  const [imageUrl, setImageUrl] = useState(
+    apiImageUrl && !apiImageUrl.includes('/api/data/images/')
+      ? apiImageUrl
+      : (fallbackImageUrls[0] ?? apiImageUrl)
+  );
+
+  return imageUrl ? (
+    <img
+      src={imageUrl}
+      alt=""
+      className="h-40 w-full object-cover"
+      loading="lazy"
+      decoding="async"
+      onError={() => {
+        setImageUrl((current) => {
+          const nextFallbackIndex = fallbackImageUrls.indexOf(current) + 1;
+          return fallbackImageUrls[nextFallbackIndex] ?? undefined;
+        });
+      }}
+    />
+  ) : (
+    <div className="h-40 bg-zinc-800" aria-hidden="true" />
+  );
+}
+
 export function fallbackUpgradeTimers(timerMs?: number | null, upgradeLevels?: number[]) {
   if (!timerMs || timerMs <= 0) return [];
   const levels = upgradeLevels?.length ? upgradeLevels : [1, 2, 3];
@@ -53,10 +111,15 @@ export function DungeonCard({
   mplusDetail?: MythicKeystoneDungeonDetail | null;
   showDetails?: boolean;
 }) {
+  const dungeonImage = <DungeonArtwork dungeon={dungeon} />;
+
   if (!showDetails) {
     return (
-      <article className="rounded-xl border border-white/15 bg-zinc-900/80 p-4">
-        <p className="truncate text-xl font-bold text-zinc-100 sm:text-2xl">{dungeon.name}</p>
+      <article className="overflow-hidden rounded-xl border border-white/15 bg-zinc-900/80">
+        {dungeonImage}
+        <div className="p-4">
+          <p className="truncate text-xl font-bold text-zinc-100 sm:text-2xl">{dungeon.name}</p>
+        </div>
       </article>
     );
   }
@@ -79,50 +142,54 @@ export function DungeonCard({
   const encounterCount = dungeon.encounters?.length || dungeon.num_bosses || null;
 
   return (
-    <article className="rounded-xl border border-white/15 bg-zinc-900/80 p-4">
-      <div className="mb-3 min-w-0">
+    <article className="overflow-hidden rounded-xl border border-white/15 bg-zinc-900/80">
+      {dungeonImage}
+
+      <div className="p-4">
         <p className="truncate text-xl font-bold text-zinc-100 sm:text-2xl">{dungeon.name}</p>
-        {dungeon.zone ? <p className="truncate text-sm text-zinc-300">{dungeon.zone}</p> : null}
-      </div>
+        {dungeon.zone ? (
+          <p className="mt-1 truncate text-sm text-zinc-300">{dungeon.zone}</p>
+        ) : null}
 
-      {isMplusDetailLoading ? (
-        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Loading keystone timers">
-          {[1, 2, 3].map((idx) => (
-            <span
-              key={`${dungeon.id}-timer-skeleton-${idx}`}
-              className="h-5 w-20 animate-pulse rounded bg-white/10"
-            />
-          ))}
-        </div>
-      ) : displayedUpgrades.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-1.5" aria-label="Keystone score and timers">
-          {displayedUpgrades.map((upgrade) => (
-            <span
-              key={`${dungeon.id}-${upgrade.upgrade_level}`}
-              className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold"
-            >
-              Score +{upgrade.upgrade_level} ({formatMs(upgrade.qualifying_duration)})
-            </span>
-          ))}
-        </div>
-      ) : dungeon.keystone_timer_ms ? (
-        <p className="mt-2 text-xs font-semibold text-gold">
-          Timer: {formatMs(dungeon.keystone_timer_ms)}
-        </p>
-      ) : null}
-
-      {dungeon.encounters && dungeon.encounters.length > 0 ? (
-        <div className="mt-3">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Encounters ({encounterCount})
-          </p>
-          <ul className="space-y-1 text-sm text-zinc-100">
-            {dungeon.encounters.map((encounter, index) => (
-              <li key={`${dungeon.id}-${index}-${encounter}`}>{encounter}</li>
+        {isMplusDetailLoading ? (
+          <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Loading keystone timers">
+            {[1, 2, 3].map((idx) => (
+              <span
+                key={`${dungeon.id}-timer-skeleton-${idx}`}
+                className="h-5 w-20 animate-pulse rounded bg-white/10"
+              />
             ))}
-          </ul>
-        </div>
-      ) : null}
+          </div>
+        ) : displayedUpgrades.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Keystone score and timers">
+            {displayedUpgrades.map((upgrade) => (
+              <span
+                key={`${dungeon.id}-${upgrade.upgrade_level}`}
+                className="rounded bg-gold/10 px-2 py-0.5 text-[11px] text-gold"
+              >
+                Score +{upgrade.upgrade_level} ({formatMs(upgrade.qualifying_duration)})
+              </span>
+            ))}
+          </div>
+        ) : dungeon.keystone_timer_ms ? (
+          <p className="mt-3 text-xs font-semibold text-gold">
+            Timer: {formatMs(dungeon.keystone_timer_ms)}
+          </p>
+        ) : null}
+
+        {dungeon.encounters && dungeon.encounters.length > 0 ? (
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              {encounterCount} encounters
+            </p>
+            <ul className="mt-4 space-y-2 text-sm text-zinc-200">
+              {dungeon.encounters.map((encounter, index) => (
+                <li key={`${dungeon.id}-${index}-${encounter}`}>{encounter}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
     </article>
   );
 }

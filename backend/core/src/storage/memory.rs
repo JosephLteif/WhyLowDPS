@@ -3,7 +3,7 @@ use std::sync::Mutex;
 
 use super::JobStorage;
 use crate::models::{
-    extract_result_summary, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
+    extract_result_summary, AppUser, Job, JobStatus, JobSummary, SavedCharacterProfile, SavedRoute,
 };
 
 pub struct MemoryStorage {
@@ -13,6 +13,8 @@ pub struct MemoryStorage {
     user_configs: Mutex<HashMap<(String, String), String>>,
     routes: Mutex<HashMap<String, SavedRoute>>,
     character_profiles: Mutex<HashMap<String, SavedCharacterProfile>>,
+    users: Mutex<HashMap<String, AppUser>>,
+    auth_sessions: Mutex<HashMap<String, (String, String, i64)>>,
 }
 
 impl Default for MemoryStorage {
@@ -30,19 +32,22 @@ impl MemoryStorage {
             user_configs: Mutex::new(HashMap::new()),
             routes: Mutex::new(HashMap::new()),
             character_profiles: Mutex::new(HashMap::new()),
+            users: Mutex::new(HashMap::new()),
+            auth_sessions: Mutex::new(HashMap::new()),
         }
     }
 }
 
 impl JobStorage for MemoryStorage {
     fn insert(&self, job: Job) {
+        let owner_id = job.owner_id.clone();
         let mut jobs = self.jobs.lock().unwrap();
         jobs.insert(job.id.clone(), job);
         let limit = *self.max_jobs.lock().unwrap();
-        if jobs.len() > limit {
+        if jobs.values().filter(|job| job.owner_id == owner_id).count() > limit {
             let mut entries: Vec<(String, String)> = jobs
                 .iter()
-                .filter(|(_, j)| !j.pinned)
+                .filter(|(_, j)| j.owner_id == owner_id && !j.pinned)
                 .map(|(id, j)| (id.clone(), j.created_at.clone()))
                 .collect();
             entries.sort_by(|a, b| a.1.cmp(&b.1));
@@ -58,8 +63,9 @@ impl JobStorage for MemoryStorage {
         self.jobs.lock().unwrap().get(id).cloned()
     }
 
-    fn list_recent(
+    fn list_recent_owned(
         &self,
+        owner_id: &str,
         limit: usize,
         player: Option<&str>,
         realm: Option<&str>,
@@ -72,6 +78,9 @@ impl JobStorage for MemoryStorage {
         entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         let mut results: Vec<JobSummary> = Vec::new();
         for j in entries {
+            if j.owner_id != owner_id {
+                continue;
+            }
             if results.len() >= limit {
                 break;
             }
@@ -147,6 +156,18 @@ impl JobStorage for MemoryStorage {
         }
     }
 
+    fn transition_status(&self, id: &str, from: JobStatus, to: JobStatus) -> bool {
+        let mut jobs = self.jobs.lock().unwrap();
+        let Some(job) = jobs.get_mut(id) else {
+            return false;
+        };
+        if job.status != from {
+            return false;
+        }
+        job.status = to;
+        true
+    }
+
     fn update_progress(&self, id: &str, pct: u8, stage: &str, detail: &str) {
         if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
             job.progress_pct = pct;
@@ -183,12 +204,12 @@ impl JobStorage for MemoryStorage {
         }
     }
 
-    fn count_batch(&self, batch_id: &str) -> usize {
+    fn count_batch_owned(&self, owner_id: &str, batch_id: &str) -> usize {
         self.jobs
             .lock()
             .unwrap()
             .values()
-            .filter(|j| j.batch_id.as_deref() == Some(batch_id))
+            .filter(|j| j.owner_id == owner_id && j.batch_id.as_deref() == Some(batch_id))
             .count()
     }
 
@@ -196,13 +217,26 @@ impl JobStorage for MemoryStorage {
         self.jobs.lock().unwrap().remove(id);
     }
 
-    fn get_storage_size(&self) -> u64 {
-        let jobs = self.jobs.lock().unwrap();
-        jobs.values().map(|j| j.estimate_size()).sum()
+    fn delete_owned(&self, owner_id: &str, id: &str) {
+        let mut jobs = self.jobs.lock().unwrap();
+        if jobs.get(id).is_some_and(|job| job.owner_id == owner_id) {
+            jobs.remove(id);
+        }
     }
 
-    fn clear_history(&self) {
-        self.jobs.lock().unwrap().clear();
+    fn get_storage_size_owned(&self, owner_id: &str) -> u64 {
+        let jobs = self.jobs.lock().unwrap();
+        jobs.values()
+            .filter(|job| job.owner_id == owner_id)
+            .map(|job| job.estimate_size())
+            .sum()
+    }
+
+    fn clear_history_owned(&self, owner_id: &str) {
+        self.jobs
+            .lock()
+            .unwrap()
+            .retain(|_, job| job.owner_id != owner_id);
     }
 
     fn get_max_jobs(&self) -> usize {
@@ -248,22 +282,35 @@ impl JobStorage for MemoryStorage {
         cache.remove(key);
     }
 
-    fn link_character(
+    fn link_character_owned(
         &self,
+        owner_id: &str,
         id: &str,
         region: Option<String>,
         realm: Option<String>,
         name: Option<String>,
     ) {
-        if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+        if let Some(job) = self
+            .jobs
+            .lock()
+            .unwrap()
+            .get_mut(id)
+            .filter(|job| job.owner_id == owner_id)
+        {
             job.linked_region = region;
             job.linked_realm = realm;
             job.linked_name = name;
         }
     }
 
-    fn set_pinned(&self, id: &str, pinned: bool) {
-        if let Some(job) = self.jobs.lock().unwrap().get_mut(id) {
+    fn set_pinned_owned(&self, owner_id: &str, id: &str, pinned: bool) {
+        if let Some(job) = self
+            .jobs
+            .lock()
+            .unwrap()
+            .get_mut(id)
+            .filter(|job| job.owner_id == owner_id)
+        {
             job.pinned = pinned;
         }
     }
@@ -285,37 +332,115 @@ impl JobStorage for MemoryStorage {
         configs.remove(&(user_id.to_string(), key.to_string()));
     }
 
-    fn save_route(&self, route: SavedRoute) {
-        let mut routes = self.routes.lock().unwrap();
-        routes.insert(route.id.clone(), route);
+    fn list_users(&self) -> Vec<AppUser> {
+        let mut users: Vec<_> = self.users.lock().unwrap().values().cloned().collect();
+        users.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        users
     }
 
-    fn list_routes(&self) -> Vec<SavedRoute> {
+    fn get_user(&self, id: &str) -> Option<AppUser> {
+        self.users.lock().unwrap().get(id).cloned()
+    }
+
+    fn find_user_by_provider_subject(&self, provider_subject: &str) -> Option<AppUser> {
+        self.users
+            .lock()
+            .unwrap()
+            .values()
+            .find(|user| user.provider_subject.as_deref() == Some(provider_subject))
+            .cloned()
+    }
+
+    fn find_user_by_battletag(&self, battletag: &str) -> Option<AppUser> {
+        self.users
+            .lock()
+            .unwrap()
+            .values()
+            .find(|user| user.battletag.eq_ignore_ascii_case(battletag))
+            .cloned()
+    }
+
+    fn save_user(&self, user: AppUser) {
+        self.users.lock().unwrap().insert(user.id.clone(), user);
+    }
+
+    fn delete_user(&self, id: &str) {
+        self.users.lock().unwrap().remove(id);
+        self.delete_user_auth_sessions(id);
+    }
+
+    fn save_auth_session(
+        &self,
+        session_id: &str,
+        user_id: &str,
+        encrypted_access_token: &str,
+        expires_at: i64,
+    ) {
+        self.auth_sessions.lock().unwrap().insert(
+            session_id.to_string(),
+            (
+                user_id.to_string(),
+                encrypted_access_token.to_string(),
+                expires_at,
+            ),
+        );
+    }
+
+    fn get_auth_session(&self, session_id: &str) -> Option<(String, String, i64)> {
+        self.auth_sessions.lock().unwrap().get(session_id).cloned()
+    }
+
+    fn delete_auth_session(&self, session_id: &str) {
+        self.auth_sessions.lock().unwrap().remove(session_id);
+    }
+
+    fn delete_user_auth_sessions(&self, user_id: &str) {
+        self.auth_sessions
+            .lock()
+            .unwrap()
+            .retain(|_, (owner, _, _)| owner != user_id);
+    }
+
+    fn save_route_owned(&self, owner_id: &str, route: SavedRoute) {
+        let mut routes = self.routes.lock().unwrap();
+        routes.insert(format!("{owner_id}:{}", route.id), route);
+    }
+
+    fn list_routes_owned(&self, owner_id: &str) -> Vec<SavedRoute> {
+        let prefix = format!("{owner_id}:");
         let routes = self.routes.lock().unwrap();
-        let mut results: Vec<SavedRoute> = routes.values().cloned().collect();
+        let mut results: Vec<SavedRoute> = routes
+            .iter()
+            .filter(|(key, _)| key.starts_with(&prefix))
+            .map(|(_, route)| route.clone())
+            .collect();
         results.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         results
     }
 
-    fn delete_route(&self, id: &str) {
+    fn delete_route_owned(&self, owner_id: &str, id: &str) {
         let mut routes = self.routes.lock().unwrap();
-        routes.remove(id);
+        routes.remove(&format!("{owner_id}:{id}"));
     }
 
-    fn save_character_profile(&self, profile: SavedCharacterProfile) {
+    fn save_character_profile_owned(&self, owner_id: &str, profile: SavedCharacterProfile) {
         let mut profiles = self.character_profiles.lock().unwrap();
-        profiles.insert(profile.id.clone(), profile);
+        profiles.insert(format!("{owner_id}:{}", profile.id), profile);
     }
 
-    fn list_character_profiles(
+    fn list_character_profiles_owned(
         &self,
+        owner_id: &str,
         name: Option<&str>,
         realm: Option<&str>,
         region: Option<&str>,
     ) -> Vec<SavedCharacterProfile> {
         let profiles = self.character_profiles.lock().unwrap();
+        let prefix = format!("{owner_id}:");
         profiles
-            .values()
+            .iter()
+            .filter(|(key, _)| key.starts_with(&prefix))
+            .map(|(_, profile)| profile)
             .filter(|p| {
                 if let Some(n) = name {
                     if p.name.to_lowercase() != n.to_lowercase() {
@@ -338,9 +463,9 @@ impl JobStorage for MemoryStorage {
             .collect()
     }
 
-    fn delete_character_profile(&self, id: &str) {
+    fn delete_character_profile_owned(&self, owner_id: &str, id: &str) {
         let mut profiles = self.character_profiles.lock().unwrap();
-        profiles.remove(id);
+        profiles.remove(&format!("{owner_id}:{id}"));
     }
 }
 
@@ -369,6 +494,7 @@ mod tests {
 
         Job {
             id: id.to_string(),
+            owner_id: "local-guest".to_string(),
             status: JobStatus::Done,
             sim_type: "quick".to_string(),
             simc_input: simc_input.to_string(),
@@ -486,7 +612,12 @@ mod tests {
             false,
             None,
         ));
+        storage.update_status("job-1", JobStatus::Pending);
 
+        assert!(storage.transition_status("job-1", JobStatus::Pending, JobStatus::Paused));
+        assert!(!storage.transition_status("job-1", JobStatus::Pending, JobStatus::Running));
+        assert_eq!(storage.get("job-1").unwrap().status, JobStatus::Paused);
+        assert!(storage.transition_status("job-1", JobStatus::Paused, JobStatus::Running));
         storage.update_status("job-1", JobStatus::Running);
         storage.update_progress("job-1", 55, "simulating", "stage-2");
         storage.complete_stage("job-1", "parsed profile");

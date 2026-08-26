@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import UpdatesSettingsSection from './UpdatesSettingsSection';
 
@@ -61,7 +61,7 @@ describe('UpdatesSettingsSection', () => {
       />
     );
 
-    const appCard = screen.getByText('Stable Version').closest('[data-update-card]');
+    const appCard = screen.getByText('App Version').closest('[data-update-card]');
     const simcCard = screen.getByText('SimC Version').closest('[data-update-card]');
     const appMessage = screen.getByText('You are on the latest version (3.3.1).');
     const simcMessage = screen.getByText('SimC channel saved as nightly.');
@@ -218,5 +218,130 @@ describe('UpdatesSettingsSection', () => {
 
     expect(screen.getByText('No older nightly versions found yet.')).toBeTruthy();
     expect(screen.queryByText('No older weekly versions found yet.')).toBeNull();
+  });
+
+  it('shows Docker image tags and host-side update actions in hosted mode', async () => {
+    const triggerDockerUpdate = vi.fn().mockResolvedValue({
+      available: true,
+      configured: true,
+      interval_minutes: 1440,
+      last_triggered_at: '2026-06-22T00:00:00Z',
+      manager: 'watchtower',
+      mode: 'manual',
+    });
+
+    render(
+      <UpdatesSettingsSection
+        selectedSimcChannel="weekly"
+        setSelectedSimcChannel={noop}
+        selectedSimcRuntimeVersion={null}
+        setSelectedSimcRuntimeVersion={noop}
+        simcRuntimeVersions={[]}
+        simcRuntimeVersionsLoading={false}
+        simcRuntimeInfo={{
+          channel: 'weekly',
+          version: 'weekly-202606240831',
+          assetName: 'simc-linux-x64.zip',
+          assetSizeBytes: 15055959,
+          metadataStatus: 'available',
+        }}
+        simcRuntimeInfoLoading={false}
+        simcRuntimeDownloading={false}
+        refreshSimcRuntimeInfo={noop}
+        downloadSelectedSimcRuntime={noop}
+        simcChannelMessage={null}
+        isDesktopRuntime={true}
+        isHostedPrivateRuntime={true}
+        updateCheckState="idle"
+        appReleases={[]}
+        dockerReleases={[
+          {
+            version: '3.3.1',
+            publishedAt: '2026-06-22T00:00:00Z',
+          },
+          {
+            version: '3.3.0',
+            publishedAt: '2026-06-20T00:00:00Z',
+          },
+        ]}
+        appReleaseMetadataStatus="available"
+        dockerReleaseMetadataStatus="available"
+        selectedAppVersion="3.3.1"
+        setSelectedAppVersion={noop}
+        loadAppReleases={noop}
+        downloadAndInstallLatest={noop}
+        updateMessage={null}
+        deploymentInfo={{ mode: 'hosted', version: '3.3.0', revision: 'abc123' }}
+        dockerUpdateStatus={{
+          available: true,
+          configured: true,
+          interval_minutes: 1440,
+          last_triggered_at: null,
+          manager: 'watchtower',
+          mode: 'manual',
+        }}
+        dockerUpdateControlAvailable={true}
+        triggerDockerUpdate={triggerDockerUpdate}
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: 'Docker Updates' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'latest (3.3.1)' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: '3.3.0' })).toBeTruthy();
+    expect(screen.getByText('3.3.0', { selector: 'code' })).toBeTruthy();
+    const dockerCard = screen.getByText('Docker image').closest('[data-update-card]');
+    const simcCard = screen
+      .getByRole('combobox', { name: 'SimC channel' })
+      .closest('[data-update-card]');
+    const simcVersion = screen.getByText(/2026-06-24 08:31/);
+    const simcAsset = screen.getByText(/simc-linux-x64\.zip/);
+    expect(simcCard?.contains(simcVersion)).toBe(true);
+    expect(simcCard?.contains(simcAsset)).toBe(true);
+    expect(dockerCard?.contains(simcVersion)).toBe(false);
+    expect(dockerCard?.contains(simcAsset)).toBe(false);
+    expect(screen.getByRole('button', { name: 'Copy update commands' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Update now' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Docker update policy' })).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'SimC channel' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Update now' }));
+    await waitFor(() => expect(triggerDockerUpdate).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('Stable Version')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Download & Install' })).toBeNull();
+  });
+
+  it('does not show Docker image controls when no image was published', () => {
+    render(
+      <UpdatesSettingsSection
+        selectedSimcChannel="weekly"
+        setSelectedSimcChannel={noop}
+        selectedSimcRuntimeVersion={null}
+        setSelectedSimcRuntimeVersion={noop}
+        simcRuntimeVersions={[]}
+        simcRuntimeVersionsLoading={false}
+        simcRuntimeInfo={null}
+        simcRuntimeInfoLoading={false}
+        simcRuntimeDownloading={false}
+        refreshSimcRuntimeInfo={noop}
+        downloadSelectedSimcRuntime={noop}
+        simcChannelMessage={null}
+        isDesktopRuntime={false}
+        isHostedPrivateRuntime={true}
+        updateCheckState="idle"
+        appReleases={[]}
+        appReleaseMetadataStatus="available"
+        selectedAppVersion=""
+        setSelectedAppVersion={noop}
+        loadAppReleases={noop}
+        downloadAndInstallLatest={noop}
+        updateMessage={null}
+        dockerReleases={[]}
+        dockerReleaseMetadataStatus="available"
+        deploymentInfo={{ mode: 'hosted', version: '3.8.0', revision: 'working-tree' }}
+      />
+    );
+
+    expect(screen.getByText('No published Docker image tags were found.')).toBeTruthy();
+    expect(screen.getByText(/No Docker image has been published/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Copy image reference' })).toBeNull();
   });
 });

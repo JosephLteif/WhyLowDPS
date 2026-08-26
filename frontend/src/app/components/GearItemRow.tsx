@@ -76,7 +76,7 @@ function getIconUrl(iconName: string): string {
   if (/^https?:\/\//i.test(raw)) return raw;
   const noExt = raw.replace(/\.(jpg|jpeg|png|webp)$/i, '');
   const base = noExt.split('/').pop() || noExt;
-  return `https://render.worldofwarcraft.com/icons/56/${base}.jpg`;
+  return `https://wow.zamimg.com/images/wow/icons/large/${base}.jpg`;
 }
 
 export default function GearItemRow({

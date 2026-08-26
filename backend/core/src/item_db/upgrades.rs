@@ -1,10 +1,12 @@
-use super::bonuses::upgrade_track_max;
 use super::state::*;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
 pub fn encounter_upgrade_level(encounter_id: i64) -> Option<u64> {
     let cfg = super::season_cfg();
+    if cfg.get("upgradeRulesAvailable").and_then(Value::as_bool) == Some(false) {
+        return None;
+    }
 
     // Current config shape: explicit encounter -> upgrade level map.
     if let Some(map) = cfg.get("encounterUpgradeLevel").and_then(|v| v.as_object()) {
@@ -34,6 +36,9 @@ pub fn encounter_upgrade_level(encounter_id: i64) -> Option<u64> {
 
 pub fn difficulty_track_name(difficulty: &str) -> Option<String> {
     let cfg = super::season_cfg();
+    if cfg.get("upgradeRulesAvailable").and_then(Value::as_bool) == Some(false) {
+        return None;
+    }
     let raid_diffs = cfg.get("raidDifficulties")?.as_array()?;
     for diff in raid_diffs {
         let key = diff.get("key").and_then(|n| n.as_str());
@@ -54,7 +59,7 @@ pub fn dungeon_normal_ilvl() -> u64 {
         .and_then(|v| v.get("ilvl"))
         .and_then(|v| v.as_u64())
         .or_else(|| cfg.get("dungeonNormalIlvl").and_then(|v| v.as_u64()))
-        .unwrap_or(214)
+        .unwrap_or(0)
 }
 
 pub fn dungeon_normal_quality() -> u64 {
@@ -67,6 +72,13 @@ pub fn dungeon_normal_quality() -> u64 {
 }
 
 pub fn get_upgrade_tracks() -> Value {
+    if super::season_cfg()
+        .get("upgradeRulesAvailable")
+        .and_then(Value::as_bool)
+        == Some(false)
+    {
+        return json!([]);
+    }
     let tracks = UPGRADE_TRACKS.read().unwrap();
     let mut result = Vec::new();
     let mut tracks_vec: Vec<_> = tracks.iter().collect();
@@ -112,69 +124,173 @@ pub struct UpgradeOption {
     pub cumulative_costs: HashMap<u64, u64>,
 }
 
+fn parse_track_name_and_max(full_name: &str) -> Option<(String, u64)> {
+    let mut parts = full_name.split_whitespace();
+    let name = parts.next()?.to_string();
+    let rank = parts.next()?;
+    let max_level = rank.split_once('/')?.1.parse().ok()?;
+    Some((name, max_level))
+}
+
 pub fn get_upgrade_options(bonus_ids: &[u64]) -> Vec<UpgradeOption> {
     let bonuses = BONUSES.read().unwrap();
     let tracks = UPGRADE_TRACKS.read().unwrap();
-    let max_level = upgrade_track_max();
 
-    let mut current_track: Option<(String, u64, u64)> = None;
+    let mut current_track: Option<(String, u64, u64, Option<u64>)> = None;
     for &bid in bonus_ids {
         if let Some(bonus) = bonuses.get(&bid) {
             if let Some(upgrade) = &bonus.upgrade {
                 if let (Some(full_name), Some(group), Some(level)) =
                     (&upgrade.full_name, upgrade.group, upgrade.level)
                 {
-                    if let Some(pos) = full_name.find(' ') {
-                        let name = &full_name[..pos];
-                        current_track = Some((name.to_string(), group, level));
-                        break;
+                    let track_name = full_name
+                        .split_whitespace()
+                        .next()
+                        .map(str::to_string)
+                        .unwrap_or_default();
+                    if track_name.is_empty() {
+                        continue;
                     }
+                    let max_level = parse_track_name_and_max(full_name).map(|(_, max)| max);
+                    current_track = Some((track_name, group, level, max_level));
+                    break;
                 }
             }
         }
     }
 
-    let (track_name, group_id, current_level) = match current_track {
+    let (track_name, group_id, current_level, max_level_hint) = match current_track {
         Some(t) => t,
         None => return vec![],
     };
 
+    // The same track names are reused between seasons. Use the equipped
+    // bonus's own `X/Y` metadata instead of the globally most common max.
+    let max_level = max_level_hint.unwrap_or_else(|| {
+        bonuses
+            .values()
+            .filter_map(|bonus| bonus.upgrade.as_ref())
+            .filter(|upgrade| {
+                upgrade.group == Some(group_id)
+                    && upgrade
+                        .full_name
+                        .as_deref()
+                        .is_some_and(|name| name.starts_with(&format!("{} ", track_name)))
+            })
+            .filter_map(|upgrade| upgrade.level)
+            .max()
+            .or_else(|| {
+                tracks
+                    .keys()
+                    .filter(|(name, _, _)| name == &track_name)
+                    .map(|(_, _, max)| *max)
+                    .max()
+            })
+            .unwrap_or(current_level)
+    });
+
+    let costs_map = UPGRADE_STEP_COSTS.read().unwrap();
+    build_upgrade_options(
+        bonus_ids,
+        &bonuses,
+        &tracks,
+        &costs_map,
+        &track_name,
+        group_id,
+        current_level,
+        max_level,
+    )
+}
+
+fn build_upgrade_options(
+    bonus_ids: &[u64],
+    bonuses: &HashMap<u64, crate::types::BonusData>,
+    tracks: &HashMap<UpgradeTrackKey, UpgradeTrackValue>,
+    costs_map: &HashMap<u64, HashMap<u64, u64>>,
+    track_name: &str,
+    group_id: u64,
+    current_level: u64,
+    max_level: u64,
+) -> Vec<UpgradeOption> {
     let mut options = Vec::new();
     // Include the current level as the first option so UIs can identify
     // which existing bonus_id should be replaced when applying an upgrade.
     for l in current_level..=max_level {
-        if let Some(&(ilvl, bonus_id, quality)) = tracks.get(&(track_name.clone(), l, max_level)) {
-            // Calculate cumulative costs from current_level to l
-            let mut cumulative_costs = HashMap::new();
-            {
-                let costs_map = UPGRADE_STEP_COSTS.read().unwrap();
-                for bid in bonuses.keys() {
-                    if let Some(b) = bonuses.get(bid) {
-                        if let Some(u) = &b.upgrade {
-                            if u.group == Some(group_id)
-                                && u.level.is_some_and(|lvl| lvl > current_level && lvl <= l)
-                            {
-                                if let Some(step_cost) = costs_map.get(bid) {
-                                    for (&cid, &amt) in step_cost {
-                                        *cumulative_costs.entry(cid).or_default() += amt;
-                                    }
-                                }
-                            }
-                        }
+        let metadata_bonus = bonuses
+            .iter()
+            .filter_map(|(bid, bonus)| {
+                let upgrade = bonus.upgrade.as_ref()?;
+                if upgrade.group != Some(group_id) || upgrade.level != Some(l) {
+                    return None;
+                }
+                let full_name = upgrade.full_name.as_deref()?;
+                full_name
+                    .starts_with(&format!("{} ", track_name))
+                    .then_some((*bid, bonus))
+            })
+            .min_by_key(|(bid, _)| *bid);
+        let current_bonus = bonus_ids.iter().find_map(|bid| {
+            bonuses.get(bid).and_then(|bonus| {
+                bonus.upgrade.as_ref().and_then(|upgrade| {
+                    (upgrade.group == Some(group_id) && upgrade.level == Some(l))
+                        .then_some((*bid, bonus))
+                })
+            })
+        });
+        let bonus = current_bonus.or(metadata_bonus);
+        let track_value = tracks.get(&(track_name.to_string(), l, max_level)).copied();
+
+        let (bonus_id, bonus_ilevel, bonus_quality, bonus_name) = match bonus {
+            Some((bid, bonus)) => {
+                let upgrade = bonus.upgrade.as_ref();
+                (
+                    bid,
+                    upgrade.and_then(|value| value.ilevel),
+                    bonus.quality,
+                    upgrade.and_then(|value| value.full_name.clone()),
+                )
+            }
+            None => (0, None, None, None),
+        };
+        let (track_ilevel, track_bonus_id, track_quality) = track_value.unwrap_or((0, 0, 4));
+        let Some(ilevel) = bonus_ilevel.or((track_ilevel > 0).then_some(track_ilevel)) else {
+            continue;
+        };
+        let resolved_bonus_id = if bonus_id > 0 {
+            bonus_id
+        } else {
+            track_bonus_id
+        };
+        if resolved_bonus_id == 0 {
+            continue;
+        }
+
+        // Calculate cumulative costs from current_level to l.
+        let mut cumulative_costs = HashMap::new();
+        for (bid, bonus) in bonuses.iter() {
+            if bonus.upgrade.as_ref().is_some_and(|upgrade| {
+                upgrade.group == Some(group_id)
+                    && upgrade
+                        .level
+                        .is_some_and(|level| level > current_level && level <= l)
+            }) {
+                if let Some(step_cost) = costs_map.get(bid) {
+                    for (&cid, &amount) in step_cost {
+                        *cumulative_costs.entry(cid).or_default() += amount;
                     }
                 }
             }
-
-            options.push(UpgradeOption {
-                level: l,
-                max_level,
-                ilevel: ilvl,
-                bonus_id,
-                quality,
-                name: format!("{} {}/{}", track_name, l, max_level),
-                cumulative_costs,
-            });
         }
+
+        options.push(UpgradeOption {
+            level: l,
+            max_level,
+            ilevel,
+            bonus_id: resolved_bonus_id,
+            quality: bonus_quality.unwrap_or(track_quality),
+            name: bonus_name.unwrap_or_else(|| format!("{} {}/{}", track_name, l, max_level)),
+            cumulative_costs,
+        });
     }
     options
 }
@@ -459,6 +575,65 @@ trinket1=item=299999,bonus_id=7777
         let between = get_upgrade_cost_between(101, 103);
         assert_eq!(between.get(&3008), Some(&30));
         assert_eq!(between.get(&3009), Some(&5));
+        snapshot.restore();
+    }
+
+    #[test]
+    fn user_upgrade_options_follow_equipped_season_metadata() {
+        let _lock = crate::item_db::state::TEST_STATE_LOCK.lock().unwrap();
+        let snapshot = StateSnapshot::capture();
+
+        let mut bonuses = HashMap::new();
+        for (group, max_level, first_bonus_id, first_ilevel) in [
+            (77_u64, 4_u64, 101_u64, 600_u64),
+            (88_u64, 8_u64, 201_u64, 700_u64),
+        ] {
+            for level in 1..=max_level {
+                let bonus_id = first_bonus_id + level - 1;
+                bonuses.insert(
+                    bonus_id,
+                    BonusData {
+                        quality: Some(4),
+                        upgrade: Some(BonusUpgrade {
+                            full_name: Some(format!("Hero {level}/{max_level}")),
+                            group: Some(group),
+                            level: Some(level),
+                            ilevel: Some(first_ilevel + level),
+                            ..BonusUpgrade::default()
+                        }),
+                        ..BonusData::default()
+                    },
+                );
+            }
+        }
+        *BONUSES.write().unwrap() = Arc::new(bonuses);
+        *UPGRADE_TRACKS.write().unwrap() = Arc::new(HashMap::new());
+        *UPGRADE_STEP_COSTS.write().unwrap() = Arc::new(
+            (102_u64..=104)
+                .map(|bonus_id| (bonus_id, HashMap::from([(3008_u64, 10_u64)])))
+                .chain(
+                    (202_u64..=208).map(|bonus_id| (bonus_id, HashMap::from([(4000_u64, 5_u64)]))),
+                )
+                .collect(),
+        );
+
+        let old_season = get_upgrade_options(&[101]);
+        assert_eq!(old_season.len(), 4);
+        assert_eq!(old_season.last().unwrap().ilevel, 604);
+        assert_eq!(
+            old_season.last().unwrap().cumulative_costs.get(&3008),
+            Some(&30)
+        );
+
+        let new_season = get_upgrade_options(&[201]);
+        assert_eq!(new_season.len(), 8);
+        assert_eq!(new_season.last().unwrap().max_level, 8);
+        assert_eq!(new_season.last().unwrap().ilevel, 708);
+        assert_eq!(
+            new_season.last().unwrap().cumulative_costs.get(&4000),
+            Some(&35)
+        );
+
         snapshot.restore();
     }
 

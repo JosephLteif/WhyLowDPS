@@ -1,13 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)$/;
+const VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
 function normalizeVersion(value) {
   const match = String(value || "")
     .trim()
     .match(VERSION_PATTERN);
-  return match ? `${match[1]}.${match[2]}.${match[3]}` : null;
+  return match ? match[0].replace(/^v/i, "") : null;
 }
 
 function readText(rootDir, relativePath, errors) {
@@ -37,6 +37,14 @@ function addVersionCheck(errors, label, actual, expected) {
   if (actual !== expected) {
     errors.push(`${label}: expected ${expected}, found ${actual || "missing"}`);
   }
+}
+
+function cargoLockPackageVersion(content, packageName) {
+  const packageBlock = content
+    .split(/\r?\n(?=\[\[package\]\])/)
+    .find((block) => block.includes(`name = "${packageName}"`));
+  const match = packageBlock && packageBlock.match(/\bversion\s*=\s*"([^"]+)"/);
+  return match ? match[1] : null;
 }
 
 function cargoWorkspaceVersion(content) {
@@ -89,6 +97,22 @@ function validateVersion({ rootDir, expectedVersion }) {
         lockfile.packages[""].version,
       version,
     );
+  }
+
+  for (const [relativePath, packageNames] of [
+    ["Cargo.lock", ["whylowdps-core", "whylowdps-server", "whylowdps-desktop"]],
+    ["backend/Cargo.lock", ["whylowdps-core", "whylowdps-server"]],
+  ]) {
+    const lockfile = readText(rootDir, relativePath, errors);
+    if (lockfile === null) continue;
+    for (const packageName of packageNames) {
+      addVersionCheck(
+        errors,
+        `${relativePath} ${packageName}`,
+        cargoLockPackageVersion(lockfile, packageName),
+        version,
+      );
+    }
   }
 
   for (const relativePath of ["Cargo.toml", "backend/Cargo.toml"]) {
@@ -146,6 +170,7 @@ if (require.main === module) {
 
 module.exports = {
   cargoWorkspaceVersion,
+  cargoLockPackageVersion,
   normalizeVersion,
   validateVersion,
 };

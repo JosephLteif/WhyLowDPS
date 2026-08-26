@@ -1,8 +1,10 @@
 import { APP_VERSION } from './version';
 import { classifyReleaseChannel, type UpdateChannel } from './update-channel';
 
-const GITHUB_RELEASES_API = 'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
-const APP_RELEASES_CACHE_KEY = 'whylowdps_app_releases_stable';
+const GITHUB_RELEASES_API =
+  'https://api.github.com/repos/JosephLteif/simcraft/releases?per_page=100';
+const APP_RELEASES_CACHE_KEY_PREFIX = 'whylowdps_app_releases_';
+const DOCKER_RELEASES_CACHE_KEY = 'whylowdps_docker_releases';
 const APP_RELEASES_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 type ParsedSemver = {
@@ -29,12 +31,23 @@ export type AppReleaseListResult = {
   metadataStatus: 'available' | 'rate_limited' | 'unavailable';
 };
 
+export type DockerImageReleaseInfo = {
+  version: string;
+  notes?: string;
+  publishedAt?: string;
+};
+
+export type DockerImageReleaseListResult = {
+  releases: DockerImageReleaseInfo[];
+  metadataStatus: 'available' | 'rate_limited' | 'unavailable';
+};
+
 type CachedAppReleaseListResult = {
   cachedAt?: unknown;
   result?: unknown;
 };
 
-type FetchStableAppReleasesOptions = {
+type FetchAppReleasesOptions = {
   forceRefresh?: boolean;
 };
 
@@ -59,10 +72,25 @@ function isAppReleaseListResult(value: unknown): value is AppReleaseListResult {
   );
 }
 
-function readCachedAppReleases(): AppReleaseListResult | null {
+function isDockerImageReleaseListResult(value: unknown): value is DockerImageReleaseListResult {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<DockerImageReleaseListResult>;
+  return (
+    Array.isArray(candidate.releases) &&
+    (candidate.metadataStatus === 'available' ||
+      candidate.metadataStatus === 'rate_limited' ||
+      candidate.metadataStatus === 'unavailable')
+  );
+}
+
+function appReleasesCacheKey(channel: UpdateChannel): string {
+  return `${APP_RELEASES_CACHE_KEY_PREFIX}${channel}`;
+}
+
+function readCachedAppReleases(channel: UpdateChannel): AppReleaseListResult | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(APP_RELEASES_CACHE_KEY);
+    const raw = window.localStorage.getItem(appReleasesCacheKey(channel));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedAppReleaseListResult;
     if (typeof parsed.cachedAt !== 'number') return null;
@@ -73,15 +101,42 @@ function readCachedAppReleases(): AppReleaseListResult | null {
   }
 }
 
-function writeCachedAppReleases(result: AppReleaseListResult) {
+function writeCachedAppReleases(channel: UpdateChannel, result: AppReleaseListResult) {
   if (typeof window === 'undefined' || result.metadataStatus !== 'available') return;
   try {
     window.localStorage.setItem(
-      APP_RELEASES_CACHE_KEY,
+      appReleasesCacheKey(channel),
       JSON.stringify({
         cachedAt: Date.now(),
         result,
-      }),
+      })
+    );
+  } catch {}
+}
+
+function readCachedDockerImageReleases(): DockerImageReleaseListResult | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DOCKER_RELEASES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedAppReleaseListResult;
+    if (typeof parsed.cachedAt !== 'number') return null;
+    if (Date.now() - parsed.cachedAt > APP_RELEASES_CACHE_TTL_MS) return null;
+    return isDockerImageReleaseListResult(parsed.result) ? parsed.result : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedDockerImageReleases(result: DockerImageReleaseListResult) {
+  if (typeof window === 'undefined' || result.metadataStatus !== 'available') return;
+  try {
+    window.localStorage.setItem(
+      DOCKER_RELEASES_CACHE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        result,
+      })
     );
   } catch {}
 }
@@ -161,7 +216,7 @@ function compareBaseVersions(a: string, b: string): number | null {
 export function isRemoteNewerForSelectedChannel(
   currentVersion: string | null | undefined,
   remoteVersion: string,
-  selectedChannel: UpdateChannel,
+  selectedChannel: UpdateChannel
 ): boolean {
   if (!currentVersion) return true;
 
@@ -202,8 +257,26 @@ function isStableVersion(value: string): boolean {
   return Boolean(parsed && parsed.prerelease.length === 0);
 }
 
+function releaseVersion(entry: GitHubRelease): string {
+  const tag =
+    typeof entry.tag_name === 'string'
+      ? entry.tag_name
+      : typeof entry.name === 'string'
+        ? entry.name
+        : '';
+  if (parseVersion(tag)) return normalizeVersion(tag);
+
+  for (const candidate of [entry.name, entry.body]) {
+    if (typeof candidate !== 'string') continue;
+    const match = candidate.match(/\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/);
+    if (match) return normalizeVersion(match[1]);
+  }
+
+  return '';
+}
+
 function pickWindowsAsset(
-  assets: Array<{ browser_download_url?: unknown; name?: unknown; size?: unknown }>,
+  assets: Array<{ browser_download_url?: unknown; name?: unknown; size?: unknown }>
 ): { url: string; name?: string; size?: number } | undefined {
   const urls = (assets || [])
     .map((asset) => ({
@@ -220,22 +293,21 @@ function pickWindowsAsset(
   );
 }
 
-export function parseStableAppReleases(payload: GitHubRelease[]): AppReleaseInfo[] {
+export function parseAppReleases(
+  payload: GitHubRelease[],
+  channel: UpdateChannel
+): AppReleaseInfo[] {
   return (payload || [])
     .flatMap((entry) => {
-      if (entry?.draft || entry?.prerelease) return [];
-      const tagRaw =
-        typeof entry.tag_name === 'string'
-          ? entry.tag_name
-          : typeof entry.name === 'string'
-            ? entry.name
-            : '';
-      if (!tagRaw || !isStableVersion(tagRaw)) return [];
+      if (entry?.draft) return [];
+      const version = releaseVersion(entry);
+      if (!version || classifyReleaseChannel(version) !== channel) return [];
+      if (channel === 'stable' && (entry?.prerelease || !isStableVersion(version))) return [];
       const asset = pickWindowsAsset(entry.assets || []);
       if (!asset?.url) return [];
       return [
         {
-          version: normalizeVersion(tagRaw),
+          version,
           notes: typeof entry.body === 'string' ? entry.body : undefined,
           downloadUrl: asset.url,
           assetName: asset.name || undefined,
@@ -251,7 +323,47 @@ export function parseStableAppReleases(payload: GitHubRelease[]): AppReleaseInfo
     });
 }
 
-async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
+export function parseStableAppReleases(payload: GitHubRelease[]): AppReleaseInfo[] {
+  return parseAppReleases(payload, 'stable');
+}
+
+export function parseDevAppReleases(payload: GitHubRelease[]): AppReleaseInfo[] {
+  return parseAppReleases(payload, 'dev');
+}
+
+export function parseDockerImageReleases(payload: GitHubRelease[]): DockerImageReleaseInfo[] {
+  return (payload || [])
+    .flatMap((entry) => {
+      if (entry?.draft || entry?.prerelease) return [];
+      const tagRaw =
+        typeof entry.tag_name === 'string'
+          ? entry.tag_name
+          : typeof entry.name === 'string'
+            ? entry.name
+            : '';
+      if (!tagRaw || !isStableVersion(tagRaw)) return [];
+      const hasPublishedImage = (entry.assets || []).some(
+        (asset) => typeof asset.name === 'string' && asset.name.toLowerCase() === 'docker-image.txt'
+      );
+      if (!hasPublishedImage) return [];
+      return [
+        {
+          version: normalizeVersion(tagRaw),
+          notes: typeof entry.body === 'string' ? entry.body : undefined,
+          publishedAt: typeof entry.published_at === 'string' ? entry.published_at : undefined,
+        },
+      ];
+    })
+    .sort((a, b) => {
+      const comparison = compareVersions(a.version, b.version);
+      if (comparison != null && comparison !== 0) return -comparison;
+      return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''));
+    });
+}
+
+async function fetchManifestVersionFromGitHubApi(
+  channel: UpdateChannel
+): Promise<RemoteReleaseInfo | null> {
   try {
     const response = await fetch(GITHUB_RELEASES_API, {
       cache: 'no-store',
@@ -261,7 +373,7 @@ async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promis
     });
     if (!response.ok) return null;
 
-    const releases = parseStableAppReleases((await response.json()) as GitHubRelease[]);
+    const releases = parseAppReleases((await response.json()) as GitHubRelease[], channel);
     const match = releases.find((release) => classifyReleaseChannel(release.version) === channel);
     if (!match) return null;
 
@@ -275,15 +387,18 @@ async function fetchManifestVersionFromGitHubApi(channel: UpdateChannel): Promis
   }
 }
 
-export async function fetchManifestVersion(channel: UpdateChannel): Promise<RemoteReleaseInfo | null> {
+export async function fetchManifestVersion(
+  channel: UpdateChannel
+): Promise<RemoteReleaseInfo | null> {
   return fetchManifestVersionFromGitHubApi(channel);
 }
 
-export async function fetchStableAppReleases(
-  options: FetchStableAppReleasesOptions = {},
+export async function fetchAppReleases(
+  channel: UpdateChannel,
+  options: FetchAppReleasesOptions = {}
 ): Promise<AppReleaseListResult> {
   if (!options.forceRefresh) {
-    const cached = readCachedAppReleases();
+    const cached = readCachedAppReleases(channel);
     if (cached) return cached;
   }
 
@@ -299,10 +414,46 @@ export async function fetchStableAppReleases(
     }
     if (!response.ok) return { releases: [], metadataStatus: 'unavailable' };
     const result = {
-      releases: parseStableAppReleases((await response.json()) as GitHubRelease[]),
+      releases: parseAppReleases((await response.json()) as GitHubRelease[], channel),
       metadataStatus: 'available' as const,
     };
-    writeCachedAppReleases(result);
+    writeCachedAppReleases(channel, result);
+    return result;
+  } catch {
+    return { releases: [], metadataStatus: 'unavailable' };
+  }
+}
+
+export async function fetchStableAppReleases(
+  options: FetchAppReleasesOptions = {}
+): Promise<AppReleaseListResult> {
+  return fetchAppReleases('stable', options);
+}
+
+export async function fetchDockerImageReleases(
+  options: FetchAppReleasesOptions = {}
+): Promise<DockerImageReleaseListResult> {
+  if (!options.forceRefresh) {
+    const cached = readCachedDockerImageReleases();
+    if (cached) return cached;
+  }
+
+  try {
+    const response = await fetch(GITHUB_RELEASES_API, {
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (response.status === 403 || response.status === 429) {
+      return { releases: [], metadataStatus: 'rate_limited' };
+    }
+    if (!response.ok) return { releases: [], metadataStatus: 'unavailable' };
+    const result = {
+      releases: parseDockerImageReleases((await response.json()) as GitHubRelease[]),
+      metadataStatus: 'available' as const,
+    };
+    writeCachedDockerImageReleases(result);
     return result;
   } catch {
     return { releases: [], metadataStatus: 'unavailable' };

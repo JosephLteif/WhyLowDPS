@@ -38,6 +38,12 @@ There are also additional modes and features that are not fully listed here yet,
 - The app does not have a custom backend for user data outside what is already running on your machine.
 - Simulations run locally using SimulationCraft.
 - Network requests are used for Blizzard APIs, GitHub updates/data, and documented external data sources.
+- Optional LAN sharing is disabled by default. The installed desktop app can
+  pair phones on the same trusted private network with a one-time QR/link.
+  Valid device access survives app restarts, expires after 24 hours, and can be
+  renamed, refreshed, or revoked from the desktop. See
+  [Desktop LAN sharing](docs/lan-sharing.md). No internet exposure or port
+  forwarding is supported.
 - You can build the app yourself from source.
 - Data about the current season are downloaded from raidbot once on startup and refreshed occasionally (manually or on
   schedule set from the settings page)
@@ -51,14 +57,26 @@ gains reputation or is code-signed.
 
 ## Platform support
 
-WhyLowDPS currently supports **Windows only**. There are no current plans to support additional platforms.
+The installed desktop app supports **Windows only**. The separate private
+Docker-hosted web deployment runs on amd64 Linux or Docker Desktop's WSL2 Linux
+engine.
 
 ## Development and deployment
 
-The supported development and release path is the Windows desktop application.
-Use the setup and validation commands in [CONTRIBUTING.md](CONTRIBUTING.md).
-The project site is deployed to GitHub Pages; there is no supported Docker or
-web-server deployment for the application.
+- [Getting started](docs/getting-started.md) covers installation, Light mode,
+  creating Battle.net API credentials, redirect URLs, credential storage, and
+  first-run setup.
+- [Desktop LAN sharing](docs/lan-sharing.md) explains how to pair a phone with
+  the installed app and how LAN access differs during development.
+- [Docker-hosted private WhyLowDPS](docs/docker-hosting.md) covers production
+  setup, updates, rollback, Battle.net configuration, and backups for a private
+  single-instance web deployment.
+- [CONTRIBUTING.md](CONTRIBUTING.md) contains the Windows development, testing,
+  and release workflow.
+
+Desktop LAN sharing and Docker hosting are separate modes. Docker runs its own
+Linux SimulationCraft runtime and data volume; it does not connect to the
+desktop app.
 
 ## Pictures
 

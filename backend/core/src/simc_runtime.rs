@@ -4,12 +4,17 @@ use std::fmt;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
 const DEFAULT_MANIFEST_BASE_URL: &str =
     "https://github.com/JosephLteif/whylowdps-simc-runtime/releases/download";
 const MANIFEST_FILE: &str = "simc-metadata.json";
+const MANIFEST_PLATFORM_RETRY_ATTEMPTS: usize = 3;
+const MANIFEST_PLATFORM_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimcChannel {
@@ -22,6 +27,14 @@ impl SimcChannel {
         match value.trim().to_ascii_lowercase().as_str() {
             "nightly" => Self::Nightly,
             _ => Self::Weekly,
+        }
+    }
+
+    pub fn try_parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "weekly" => Some(Self::Weekly),
+            "nightly" => Some(Self::Nightly),
+            _ => None,
         }
     }
 
@@ -129,6 +142,69 @@ pub struct SimcRuntimeResolution {
     pub updated: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SimcRuntimeStatus {
+    pub channel: String,
+    pub version: Option<String>,
+    pub updated: bool,
+}
+
+/// Shared runtime state for hosted deployments. The binary path stays stable
+/// so existing simulation handlers can keep using their current path while a
+/// newly selected channel is downloaded into it.
+pub struct SimcRuntimeState {
+    config: SimcRuntimeConfig,
+    channel: RwLock<SimcChannel>,
+    update_lock: Mutex<()>,
+}
+
+impl SimcRuntimeState {
+    pub fn new(config: SimcRuntimeConfig) -> Self {
+        let channel = config.channel;
+        Self {
+            config,
+            channel: RwLock::new(channel),
+            update_lock: Mutex::new(()),
+        }
+    }
+
+    pub fn channel(&self) -> SimcChannel {
+        *self.channel.read().expect("SimC channel lock poisoned")
+    }
+
+    pub fn simc_path(&self) -> PathBuf {
+        self.config.simc_path()
+    }
+
+    pub fn status(&self) -> SimcRuntimeStatus {
+        let channel = self.channel();
+        let version = read_cached_metadata(&self.config.metadata_path())
+            .filter(|metadata| metadata.channel.eq_ignore_ascii_case(channel.as_str()))
+            .map(|metadata| metadata.version);
+        SimcRuntimeStatus {
+            channel: channel.to_string(),
+            version,
+            updated: false,
+        }
+    }
+
+    pub async fn update(&self, channel: SimcChannel) -> Result<SimcRuntimeStatus, String> {
+        let _guard = self.update_lock.lock().await;
+        let config = SimcRuntimeConfig {
+            channel,
+            ..self.config.clone()
+        };
+        let resolution = resolve_simc_runtime(&config).await?;
+        let resolved_channel = SimcChannel::try_parse(&resolution.channel).unwrap_or(channel);
+        *self.channel.write().expect("SimC channel lock poisoned") = resolved_channel;
+        Ok(SimcRuntimeStatus {
+            channel: resolved_channel.to_string(),
+            version: Some(resolution.version),
+            updated: resolution.updated,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SimcDownloadProgress {
     pub downloaded_bytes: u64,
@@ -185,6 +261,67 @@ pub fn simc_binary_name() -> &'static str {
     }
 }
 
+pub fn validate_simc_binary(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("simc binary not found at: {}", path.display()));
+    }
+    if !path.is_file() {
+        return Err(format!(
+            "simc binary path is not a file: {}",
+            path.display()
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = fs::metadata(path)
+            .map_err(|error| format!("failed to inspect SimC binary {}: {error}", path.display()))?
+            .permissions()
+            .mode();
+        if mode & 0o111 == 0 {
+            return Err(format!(
+                "simc binary is not executable at: {}",
+                path.display()
+            ));
+        }
+    }
+
+    let mut command = Command::new(path);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+
+        command.creation_flags(0x08000000 | 0x00004000);
+    }
+    let output = command
+        .arg("display_build=2")
+        .output()
+        .map_err(|error| format!("failed to start SimC at {}: {error}", path.display()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() { stderr } else { stdout };
+    if detail.is_empty() {
+        Err(format!(
+            "SimC validation failed at {} with status {}",
+            path.display(),
+            output.status
+        ))
+    } else {
+        Err(format!(
+            "SimC validation failed at {} with status {}: {}",
+            path.display(),
+            output.status,
+            detail
+        ))
+    }
+}
+
 pub fn current_platform() -> &'static str {
     if cfg!(windows) {
         "win64"
@@ -229,8 +366,26 @@ fn promote_simc_binary(staged: &Path, target: &Path) -> Result<(), String> {
 
     #[cfg(not(windows))]
     {
-        fs::rename(staged, target).map_err(|error| format!("Failed to promote SimC binary: {error}"))
+        fs::rename(staged, target)
+            .map_err(|error| format!("Failed to promote SimC binary: {error}"))
     }
+}
+
+#[cfg(unix)]
+fn mark_executable(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .map_err(|error| format!("Failed to inspect SimC binary: {error}"))?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .map_err(|error| format!("Failed to mark SimC binary executable: {error}"))
+}
+
+#[cfg(not(unix))]
+fn mark_executable(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 pub fn read_cached_metadata(path: &Path) -> Option<SimcCachedMetadata> {
@@ -257,9 +412,13 @@ where
     let cached_metadata = read_cached_metadata(&config.metadata_path());
     let cached_path = config.simc_path();
 
-    let manifest = match fetch_manifest(&config.manifest_url()).await {
+    let manifest_url = config.manifest_url();
+    let mut manifest = match fetch_manifest(&manifest_url).await {
         Ok(manifest) => manifest,
         Err(err) if cached_path.exists() => {
+            validate_simc_binary(&cached_path).map_err(|validation| {
+                format!("{err}; cached SimC validation failed: {validation}")
+            })?;
             let metadata = cached_metadata.unwrap_or(SimcCachedMetadata {
                 channel: config.channel.as_str().to_string(),
                 version: "cached".to_string(),
@@ -277,9 +436,34 @@ where
     };
 
     let platform = current_platform();
-    let asset = manifest
-        .asset_for_platform(platform)
-        .ok_or_else(|| format!("SimC runtime manifest has no asset for platform {platform}"))?;
+    if manifest.asset_for_platform(platform).is_none() {
+        for attempt in 0..MANIFEST_PLATFORM_RETRY_ATTEMPTS {
+            tokio::time::sleep(MANIFEST_PLATFORM_RETRY_DELAY).await;
+            if let Ok(candidate) = fetch_manifest(&manifest_url).await {
+                let has_platform_asset = candidate.asset_for_platform(platform).is_some();
+                manifest = candidate;
+                if has_platform_asset {
+                    break;
+                }
+            }
+            eprintln!(
+                "SimC manifest has no {platform} asset yet; retrying ({}/{})",
+                attempt + 1,
+                MANIFEST_PLATFORM_RETRY_ATTEMPTS
+            );
+        }
+    }
+    let asset = manifest.asset_for_platform(platform).ok_or_else(|| {
+        let available_platforms = manifest
+            .assets
+            .iter()
+            .map(|asset| asset.platform.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "SimC runtime manifest has no asset for platform {platform} (available: {available_platforms})"
+        )
+    })?;
 
     if cached_path.exists()
         && !needs_update(
@@ -289,6 +473,7 @@ where
             asset,
         )
     {
+        validate_simc_binary(&cached_path)?;
         return Ok(SimcRuntimeResolution {
             simc_path: cached_path,
             channel: manifest.channel,
@@ -321,6 +506,9 @@ where
         .install_dir
         .join(format!("{}.next", simc_binary_name()));
     fs::copy(&staged_simc, &next_simc).map_err(|e| format!("Failed to stage SimC binary: {e}"))?;
+    mark_executable(&next_simc)?;
+    validate_simc_binary(&next_simc)
+        .map_err(|error| format!("Downloaded SimC binary failed validation: {error}"))?;
 
     promote_simc_binary(&next_simc, &cached_path)?;
 
@@ -404,7 +592,7 @@ where
 
 fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
     let bytes = fs::read(path).map_err(|e| format!("Failed to read SimC archive: {e}"))?;
-    let actual = format!("{:x}", Sha256::digest(&bytes));
+    let actual = hex::encode(Sha256::digest(&bytes));
     if actual.eq_ignore_ascii_case(expected.trim()) {
         Ok(())
     } else {
@@ -474,8 +662,31 @@ mod tests {
         assert_eq!(SimcChannel::parse(" WEEKLY "), SimcChannel::Weekly);
         assert_eq!(SimcChannel::parse("stable"), SimcChannel::Weekly);
         assert_eq!(SimcChannel::parse(""), SimcChannel::Weekly);
+        assert_eq!(
+            SimcChannel::try_parse(" NIGHTLY "),
+            Some(SimcChannel::Nightly)
+        );
+        assert_eq!(SimcChannel::try_parse("stable"), None);
         assert_eq!(SimcChannel::Nightly.to_string(), "nightly");
         assert_eq!(SimcChannel::Weekly.to_string(), "weekly");
+    }
+
+    #[test]
+    fn runtime_state_reports_selected_channel_and_matching_cached_version() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config = SimcRuntimeConfig::new(SimcChannel::Nightly, dir.path().to_path_buf());
+        fs::write(
+            dir.path().join(MANIFEST_FILE),
+            r#"{"channel":"nightly","version":"nightly-202608210100","sha256":"abc"}"#,
+        )
+        .expect("cached metadata");
+
+        let state = SimcRuntimeState::new(config);
+        assert_eq!(state.status().channel, "nightly");
+        assert_eq!(
+            state.status().version.as_deref(),
+            Some("nightly-202608210100")
+        );
     }
 
     #[test]
@@ -526,6 +737,30 @@ mod tests {
         assert!(!staged.exists());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn mark_executable_sets_owner_execute_permission() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let path = dir.path().join("simc");
+        fs::write(&path, b"simc").expect("write binary");
+        let mut permissions = fs::metadata(&path).expect("metadata").permissions();
+        permissions.set_mode(0o644);
+        fs::set_permissions(&path, permissions).expect("set initial permissions");
+
+        mark_executable(&path).expect("mark executable");
+
+        assert_ne!(
+            fs::metadata(path)
+                .expect("executable metadata")
+                .permissions()
+                .mode()
+                & 0o100,
+            0
+        );
+    }
+
     #[test]
     fn read_cached_metadata_returns_none_for_missing_or_invalid_files() {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -553,6 +788,39 @@ mod tests {
     fn current_platform_and_binary_name_are_non_empty() {
         assert!(!current_platform().is_empty());
         assert!(!simc_binary_name().is_empty());
+    }
+
+    #[test]
+    fn validate_simc_binary_reports_missing_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let missing = dir.path().join(simc_binary_name());
+
+        let error = validate_simc_binary(&missing).expect_err("missing binary should fail");
+
+        assert_eq!(
+            error,
+            format!("simc binary not found at: {}", missing.display())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_simc_binary_surfaces_process_errors() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("simc");
+        fs::write(
+            &script,
+            b"#!/bin/sh\nprintf 'loader failure\\n' >&2\nexit 127\n",
+        )
+        .expect("write fake SimC");
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+            .expect("make fake SimC executable");
+
+        let error = validate_simc_binary(&script).expect_err("failed binary should fail");
+
+        assert!(error.contains("loader failure"));
     }
 
     #[test]
@@ -646,7 +914,7 @@ mod tests {
         let path = dir.path().join("simc.zip");
         fs::write(&path, b"runtime-bytes").expect("runtime bytes");
 
-        let expected = format!("{:x}", Sha256::digest(b"runtime-bytes")).to_uppercase();
+        let expected = hex::encode(Sha256::digest(b"runtime-bytes")).to_uppercase();
         assert!(verify_sha256(&path, &expected).is_ok());
 
         let err = verify_sha256(&path, "deadbeef").expect_err("checksum mismatch");

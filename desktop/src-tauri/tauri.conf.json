@@ -1,6 +1,6 @@
 {
   "productName": "WhyLowDps",
-  "version": "3.5.1",
+  "version": "4.1.1",
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",
@@ -38,8 +38,19 @@
     "resources": {
       "../../backend/resources/data": "data",
       "../../backend/resources/wow": "data/wow",
-      "../../backend/resources/zones-encounters-index.json": "data/zones-encounters-index.json"
-    }
+      "../../backend/resources/zones-encounters-index.json": "data/zones-encounters-index.json",
+      "../../frontend/out": "frontend"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "simc",
+          "txt"
+        ],
+        "mimeType": "text/plain",
+        "role": "Editor"
+      }
+    ]
   },
   "plugins": {
     "updater": {

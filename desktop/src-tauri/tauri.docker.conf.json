@@ -1,6 +1,6 @@
 {
   "productName": "WhyLowDps",
-  "version": "3.5.1",
+  "version": "4.1.1",
   "identifier": "com.whylowdps",
   "build": {
     "frontendDist": "../../frontend/out",
@@ -34,7 +34,8 @@
     ],
     "resources": {
       "../../backend/resources/data": "data",
-      "../../backend/resources/wow": "data/wow"
+      "../../backend/resources/wow": "data/wow",
+      "../../frontend/out": "frontend"
     }
   },
   "plugins": {

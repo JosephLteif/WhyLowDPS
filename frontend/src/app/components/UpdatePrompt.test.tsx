@@ -21,6 +21,15 @@ vi.mock('@tauri-apps/plugin-updater', () => ({
 }));
 
 import UpdatePrompt from './UpdatePrompt';
+import { NotificationProvider } from './shared/NotificationSystem';
+
+function renderUpdatePrompt() {
+  return render(
+    <NotificationProvider>
+      <UpdatePrompt />
+    </NotificationProvider>
+  );
+}
 
 describe('UpdatePrompt', () => {
   beforeEach(() => {
@@ -45,9 +54,10 @@ describe('UpdatePrompt', () => {
       statuses.push((event as CustomEvent<{ status: string }>).detail.status);
     });
 
-    render(<UpdatePrompt />);
+    renderUpdatePrompt();
 
     await screen.findByText('App Update');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     await userEvent.click(screen.getByLabelText('Dismiss update prompt'));
 
     expect(statuses).toContain('none');
@@ -58,7 +68,7 @@ describe('UpdatePrompt', () => {
       .fn()
       .mockResolvedValue({ version: '3.4.2' });
 
-    render(<UpdatePrompt />);
+    renderUpdatePrompt();
 
     await waitFor(() => {
       expect(window.electronAPI?.checkForUpdate).toHaveBeenCalled();
@@ -70,7 +80,7 @@ describe('UpdatePrompt', () => {
     delete (window as any).electronAPI;
     mocks.check.mockResolvedValue({ version: '3.4.2' });
 
-    render(<UpdatePrompt />);
+    renderUpdatePrompt();
 
     await waitFor(() => {
       expect(mocks.check).toHaveBeenCalled();

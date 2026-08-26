@@ -36,36 +36,35 @@ export default function CategorySelector({
   }, [dungeonCats]);
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      {tabs.map((cat) => (
-        (() => {
-          const Icon = cat.icon;
-          return (
-        <button
-          key={cat.key}
-          onClick={() => onChange(cat.key)}
-          className={`card min-h-[106px] p-6 text-center transition-all ${category === cat.key ? 'border-gold/50 bg-gold/[0.03]' : 'hover:border-gold/20'}`}
-        >
-          <div
-            className={`mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl border ${
-              category === cat.key
-                ? 'border-gold/40 bg-gold/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
-                : 'border-gold/20 bg-gold/[0.10]'
-            }`}
+    <div data-tour="drop-finder-category" className="grid grid-cols-3 gap-3">
+      {tabs.map((cat) => {
+        const Icon = cat.icon;
+        return (
+          <button
+            key={cat.key}
+            data-tour={`drop-finder-category-${cat.key}`}
+            onClick={() => onChange(cat.key)}
+            className={`card min-h-[106px] p-6 text-center transition-all ${category === cat.key ? 'border-gold/50 bg-gold/[0.03]' : 'hover:border-gold/20'}`}
           >
-            <Icon className="h-6 w-6 text-gold" strokeWidth={1.65} />
-          </div>
-          <p
-            className={`text-[1.05rem] font-semibold leading-tight transition-colors ${
-              category === cat.key ? 'text-gold' : 'text-white'
-            }`}
-          >
-            {cat.label}
-          </p>
-        </button>
-          );
-        })()
-      ))}
+            <div
+              className={`mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl border ${
+                category === cat.key
+                  ? 'border-gold/40 bg-gold/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]'
+                  : 'border-gold/20 bg-gold/[0.10]'
+              }`}
+            >
+              <Icon className="h-6 w-6 text-gold" strokeWidth={1.65} />
+            </div>
+            <p
+              className={`text-[1.05rem] font-semibold leading-tight transition-colors ${
+                category === cat.key ? 'text-gold' : 'text-white'
+              }`}
+            >
+              {cat.label}
+            </p>
+          </button>
+        );
+      })}
     </div>
   );
 }

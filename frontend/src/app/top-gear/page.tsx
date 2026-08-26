@@ -165,7 +165,7 @@ export default function TopGearPage() {
   const comboRequestSeqRef = useRef(0);
   const resolveRequestSeqRef = useRef(0);
   const [forceResolveSignal, setForceResolveSignal] = useState(0);
-  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions(11);
+  const { flasks, foods, potions, augments, tempEnchants } = useConsumableOptions();
   const hasConsumableMatrix = compareConsumables
     && (matrixFlasks.length > 0
       || matrixFoods.length > 0
@@ -839,7 +839,7 @@ export default function TopGearPage() {
   const submitDisabled = submitting || !!pageLevelError || !resolved;
 
   return (
-    <div className="space-y-6 pb-28">
+    <div className="mobile-page-bottom space-y-6 pb-28">
       {returnNotice ? (
         <SimReturnNotice
           title={returnNotice.title}
@@ -847,7 +847,7 @@ export default function TopGearPage() {
           onDismiss={() => setReturnNotice(null)}
         />
       ) : null}
-      <div className="card space-y-4 p-5">
+      <div data-tour="top-gear-options" className="card space-y-4 p-4 sm:p-5">
         <div className="flex justify-end">
           <button
             type="button"
@@ -926,41 +926,43 @@ export default function TopGearPage() {
         </div>
       </div>
 
-      {resolved ? (
-        <TopGearItemSelector
-          resolved={resolved}
-          selectedUids={selectedUids}
-          onSelectionChange={setSelectedUids}
-          onResolvedChange={setResolved}
-          onItemAdded={(slot, simcString, origin) =>
-            setLocalItems((prev) => [...prev, { slot, simc_string: simcString, origin }])
-          }
-          onVariantCopiesChange={setSavedVariantCopiesBySlot}
-        onVariantRuleStateChange={setSavedVariantRuleState}
-        savedVariantCopiesBySlot={savedVariantCopiesBySlot}
-        savedVariantRuleState={savedVariantRuleState}
-        savedVariantCount={Object.values(savedVariantCopiesBySlot).reduce(
-          (sum, list) => sum + list.length,
-          0
+      <div data-tour="top-gear-items">
+        {resolved ? (
+          <TopGearItemSelector
+            resolved={resolved}
+            selectedUids={selectedUids}
+            onSelectionChange={setSelectedUids}
+            onResolvedChange={setResolved}
+            onItemAdded={(slot, simcString, origin) =>
+              setLocalItems((prev) => [...prev, { slot, simc_string: simcString, origin }])
+            }
+            onVariantCopiesChange={setSavedVariantCopiesBySlot}
+            onVariantRuleStateChange={setSavedVariantRuleState}
+            savedVariantCopiesBySlot={savedVariantCopiesBySlot}
+            savedVariantRuleState={savedVariantRuleState}
+            savedVariantCount={Object.values(savedVariantCopiesBySlot).reduce(
+              (sum, list) => sum + list.length,
+              0
+            )}
+            globalAffixesEnabled={globalAffixesEnabled}
+            maxUpgrade={maxUpgrade}
+            copyEnchants={copyEnchants}
+            specName={resolved.character.spec}
+            comboCount={comboCount}
+            comboError={comboError}
+          />
+        ) : (
+          <p className="py-6 text-center text-sm text-muted">
+            {resolving
+              ? 'Resolving gear...'
+              : 'Paste your SimC addon export above to see gear options.'}
+          </p>
         )}
-        globalAffixesEnabled={globalAffixesEnabled}
-        maxUpgrade={maxUpgrade}
-        copyEnchants={copyEnchants}
-        specName={resolved.character.spec}
-          comboCount={comboCount}
-          comboError={comboError}
-        />
-      ) : (
-        <p className="py-6 text-center text-sm text-muted">
-          {resolving
-            ? 'Resolving gear...'
-            : 'Paste your SimC addon export above to see gear options.'}
-        </p>
-      )}
+      </div>
 
       <ErrorAlert message={pageLevelError || error} />
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 ml-[var(--sidebar-width)] px-3 pb-4 pt-6 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16">
+      <div className="mobile-safe-bottom pointer-events-none fixed inset-x-0 bottom-0 z-50 ml-[var(--sidebar-width)] px-3 pb-4 pt-6 transition-[margin-left] duration-200 md:px-4 xl:px-10 2xl:px-16">
         <div
           className="mx-auto w-full min-w-0"
           style={{
@@ -970,6 +972,7 @@ export default function TopGearPage() {
           <div className="pointer-events-auto bg-gradient-to-t from-[#111] via-[#111] to-transparent pt-6">
             <button
               onClick={handleSubmit}
+              data-tour="top-gear-submit"
               disabled={submitDisabled}
               className="btn-primary flex w-full items-center justify-center gap-2 py-3 text-sm"
             >

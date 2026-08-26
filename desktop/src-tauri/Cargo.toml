@@ -11,13 +11,18 @@ tauri-plugin-updater = "2"
 tauri-plugin-clipboard-manager = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = "0.4"
 tokio = { version = "1", features = ["full"] }
 whylowdps-core = { path = "../../backend/core", default-features = false, features = ["desktop", "web"] }
 url = "2.5.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-zip = "2"
+zip = "4"
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
+discord-rich-presence = "1.1"
+keyring = "4.1.5"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tempfile = "3"
@@ -26,7 +31,7 @@ tempfile = "3"
 tauri-build = { version = "2.6.1", features = [] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", features = [
+windows = { version = "0.62", features = [
     "ApplicationModel_DataTransfer",
     "Foundation",
     "Foundation_Collections",

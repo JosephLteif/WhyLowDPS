@@ -101,22 +101,22 @@ export default function RouteSelectorModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-6">
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
         ref={modalRef}
-        className="relative flex max-h-[84vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl"
+        className="mobile-modal-shell relative flex h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-zinc-900 shadow-2xl sm:h-auto sm:max-h-[84vh]"
       >
         <div className="flex items-center justify-between border-b border-white/5 p-4">
           <div className="flex items-center gap-2">
             <Map className="h-5 w-5 text-sky-400" strokeWidth={2} />
             <h2 className="text-lg font-bold text-white">Select Saved Route</h2>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white">
+          <button onClick={onClose} className="inline-flex h-10 w-10 items-center justify-center rounded-md text-zinc-400 hover:text-white sm:h-8 sm:w-8" aria-label="Close route selector">
             <X className="h-6 w-6" strokeWidth={2} />
           </button>
         </div>
-        <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 py-3 text-xs text-zinc-400">
+        <div className="flex flex-col gap-1 border-b border-white/5 bg-white/[0.02] px-4 py-3 text-xs text-zinc-400 sm:flex-row sm:items-center sm:justify-between">
           <span>
             {filteredRouteCards.length} of {routes.length} saved route{routes.length === 1 ? '' : 's'}
           </span>
@@ -129,13 +129,13 @@ export default function RouteSelectorModal({
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search route, dungeon, affix, level..."
-              className="w-full rounded-md border border-white/10 bg-zinc-900 py-1.5 pl-8 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-sky-400/50 focus:outline-none"
+              className="h-10 w-full rounded-md border border-white/10 bg-zinc-900 py-1.5 pl-8 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-sky-400/50 focus:outline-none sm:h-auto"
             />
           </div>
           <select
             value={dungeonFilter}
             onChange={(event) => setDungeonFilter(event.target.value)}
-            className="rounded-md border border-white/10 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-200 focus:border-sky-400/50 focus:outline-none"
+            className="h-10 rounded-md border border-white/10 bg-zinc-900 px-2.5 py-1.5 text-sm text-zinc-200 focus:border-sky-400/50 focus:outline-none sm:h-auto"
           >
             <option value="all">All dungeons</option>
             {dungeonOptions.map((dungeon) => (
@@ -147,7 +147,7 @@ export default function RouteSelectorModal({
           <Link
             href="/dungeon-routes"
             onClick={onClose}
-            className="inline-flex items-center justify-center rounded-md border border-sky-400/35 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-300 transition-all hover:bg-sky-500/20"
+            className="inline-flex min-h-10 items-center justify-center rounded-md border border-sky-400/35 bg-sky-500/10 px-3 py-1.5 text-sm font-semibold text-sky-300 transition-all hover:bg-sky-500/20 sm:min-h-0"
           >
             Open Dungeon Routes
           </Link>

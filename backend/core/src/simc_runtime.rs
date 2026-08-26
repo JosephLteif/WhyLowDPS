@@ -592,7 +592,7 @@ where
 
 fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
     let bytes = fs::read(path).map_err(|e| format!("Failed to read SimC archive: {e}"))?;
-    let actual = format!("{:x}", Sha256::digest(&bytes));
+    let actual = hex::encode(Sha256::digest(&bytes));
     if actual.eq_ignore_ascii_case(expected.trim()) {
         Ok(())
     } else {
@@ -914,7 +914,7 @@ mod tests {
         let path = dir.path().join("simc.zip");
         fs::write(&path, b"runtime-bytes").expect("runtime bytes");
 
-        let expected = format!("{:x}", Sha256::digest(b"runtime-bytes")).to_uppercase();
+        let expected = hex::encode(Sha256::digest(b"runtime-bytes")).to_uppercase();
         assert!(verify_sha256(&path, &expected).is_ok());
 
         let err = verify_sha256(&path, "deadbeef").expect_err("checksum mismatch");

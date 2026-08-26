@@ -6,34 +6,8 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
-      release_channel:
-        description: 'Publish to the stable or developer release channel'
-        required: true
-        default: stable
-        type: choice
-        options:
-          - stable
-          - dev
-      release_mode:
-        description: 'Stable release mode; ignored for dev releases'
-        required: true
-        default: bump
-        type: choice
-        options:
-          - bump
-          - republish
-      source_ref:
-        description: 'Stable release source branch (must be master)'
-        required: true
-        default: master
-        type: string
-      dev_source_ref:
-        description: 'Developer release source branch'
-        required: true
-        default: dev
-        type: string
-      release_type:
-        description: 'Semantic version bump type (used for bump mode)'
+      release_action:
+        description: 'Choose a stable bump, republish, or promote the tested dev build'
         required: true
         default: patch
         type: choice
@@ -41,15 +15,23 @@ on:
           - patch
           - minor
           - major
+          - republish
+          - promote-dev
       existing_version:
-        description: 'Existing version to republish, without the v prefix (republish mode)'
+        description: 'Version to republish, without the v prefix (republish only)'
         required: false
         default: ''
         type: string
 
 jobs:
   bump-version-stable:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'bump'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      (
+        inputs.release_action == 'patch' ||
+        inputs.release_action == 'minor' ||
+        inputs.release_action == 'major'
+      )
     outputs:
       release_tag: ${{ steps.release.outputs.release_tag }}
       release_sha: ${{ steps.release.outputs.release_sha }}
@@ -60,20 +42,9 @@ jobs:
       - name: Checkout master
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.source_ref }}
+          ref: master
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Require master release source
-        shell: bash
-        env:
-          SOURCE_REF: ${{ github.event.inputs.source_ref }}
-        run: |
-          set -euo pipefail
-          if [[ "${SOURCE_REF}" != "master" ]]; then
-            echo "Stable releases must be created from master."
-            exit 1
-          fi
 
       - name: Setup node
         uses: actions/setup-node@v7
@@ -94,7 +65,7 @@ jobs:
           set -euo pipefail
           CURRENT_VERSION="$(tr -d '\r\n' < VERSION)"
           echo "Current version: ${CURRENT_VERSION}"
-          NEW_VERSION="$(npm version "${{ github.event.inputs.release_type }}" --no-git-tag-version | sed 's/^v//')"
+          NEW_VERSION="$(npm version "${{ github.event.inputs.release_action }}" --no-git-tag-version | sed 's/^v//')"
           echo "${NEW_VERSION}" > VERSION
           npm run sync:version
           npm install --package-lock-only
@@ -143,76 +114,60 @@ jobs:
           echo "release_tag=v${{ steps.bump.outputs.new_version }}" >> "$GITHUB_OUTPUT"
           echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-  prepare-dev:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_channel == 'dev'
+  promote-dev:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev'
     outputs:
-      release_tag: ${{ steps.prepare.outputs.release_tag }}
-      release_sha: ${{ steps.prepare.outputs.release_sha }}
-      source_ref: ${{ steps.prepare.outputs.source_ref }}
-      dev_version: ${{ steps.prepare.outputs.dev_version }}
+      release_tag: ${{ steps.promote.outputs.release_tag }}
+      release_sha: ${{ steps.promote.outputs.release_sha }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout developer source
+      - name: Checkout the tested dev build
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.inputs.dev_source_ref }}
+          ref: refs/tags/dev
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
-      - name: Setup node
-        uses: actions/setup-node@v7
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: |
-            package-lock.json
-            frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci && npm ci --prefix frontend
-
-      - name: Prepare developer version and moving tag
-        id: prepare
+      - name: Create stable tag from tested dev build
+        id: promote
         shell: bash
         env:
-          DEV_SOURCE_REF: ${{ github.event.inputs.dev_source_ref }}
-          DEV_UPDATE_ENDPOINT: https://github.com/JosephLteif/simcraft/releases/download/dev/latest.json
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          CURRENT_VERSION="$(tr -d '\r\n' < VERSION)"
-          if [[ ! "${CURRENT_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "VERSION must contain a stable semantic version before creating a dev build: ${CURRENT_VERSION}"
+          VERSION="$(tr -d '\r\n' < VERSION)"
+          if [[ "${VERSION}" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dev\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            printf '%s\n' "${VERSION}" > VERSION
+            npm run sync:version
+            npm install --package-lock-only --ignore-scripts
+            npm install --prefix frontend --package-lock-only --ignore-scripts
+            git add VERSION package.json frontend/package.json Cargo.toml backend/Cargo.toml desktop/src-tauri/tauri.conf.json desktop/src-tauri/tauri.docker.conf.json package-lock.json frontend/package-lock.json Cargo.lock backend/Cargo.lock
+            git commit -m "chore(release): promote dev build to v${VERSION}"
+          fi
+
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "The tested dev build must contain a stable version or a -dev version: ${VERSION}"
+            exit 1
+          fi
+          if git ls-remote --exit-code origin "refs/tags/v${VERSION}" >/dev/null; then
+            echo "Stable release tag v${VERSION} already exists; bump the dev version before promoting it."
             exit 1
           fi
 
-          DEV_VERSION="${CURRENT_VERSION}-dev.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          npm run verify:release -- "${VERSION}"
           RELEASE_SHA="$(git rev-parse HEAD)"
-          git tag --force dev "${RELEASE_SHA}"
-          git push origin refs/tags/dev --force
-
-          printf '%s\n' "${DEV_VERSION}" > VERSION
-          npm run sync:version
-          npm install --package-lock-only
-          npm install --package-lock-only --prefix frontend
-
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = 'desktop/src-tauri/tauri.conf.json';
-          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-          config.plugins.updater.endpoints = [process.env.DEV_UPDATE_ENDPOINT];
-          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
-          NODE
-
-          npm run verify:release -- "${DEV_VERSION}"
-          echo "release_tag=dev" >> "$GITHUB_OUTPUT"
+          git tag "v${VERSION}"
+          AUTH_HEADER="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
+          git -c "http.extraheader=AUTHORIZATION: basic ${AUTH_HEADER}" \
+            push "https://github.com/${GITHUB_REPOSITORY}.git" "v${VERSION}"
+          echo "release_tag=v${VERSION}" >> "$GITHUB_OUTPUT"
           echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
-          echo "source_ref=${DEV_SOURCE_REF}" >> "$GITHUB_OUTPUT"
-          echo "dev_version=${DEV_VERSION}" >> "$GITHUB_OUTPUT"
 
   validate_republish:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'republish'
+    if: github.event_name == 'workflow_dispatch' && inputs.release_action == 'republish'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -237,11 +192,11 @@ jobs:
       always() &&
       (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-        (github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'bump' && needs.bump-version-stable.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'republish' && needs.validate_republish.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && inputs.release_channel == 'dev' && needs.prepare-dev.result == 'success')
+        (github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_action == 'republish' && needs.validate_republish.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.result == 'success')
       )
-    needs: [bump-version-stable, prepare-dev, validate_republish]
+    needs: [bump-version-stable, promote-dev, validate_republish]
     permissions:
       contents: write
     strategy:
@@ -254,14 +209,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     env:
-      RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.release_channel || 'stable' }}
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_channel == 'dev' && needs.prepare-dev.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
-      RELEASE_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_channel == 'dev' && needs.prepare-dev.outputs.source_ref || github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
-      DEV_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.release_channel == 'dev' && needs.prepare-dev.outputs.dev_version || '' }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_action == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_SOURCE_REF }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: setup node
         uses: actions/setup-node@v7
@@ -282,32 +234,7 @@ jobs:
 
       - name: Validate release version from tag
         shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${RELEASE_CHANNEL}" == "dev" ]]; then
-            npm run verify:release -- "${DEV_VERSION}"
-          else
-            npm run verify:release -- "${RELEASE_TAG#v}"
-          fi
-
-      - name: Prepare developer build configuration
-        if: env.RELEASE_CHANNEL == 'dev'
-        shell: bash
-        env:
-          DEV_UPDATE_ENDPOINT: https://github.com/JosephLteif/simcraft/releases/download/dev/latest.json
-        run: |
-          set -euo pipefail
-          printf '%s\n' "${DEV_VERSION}" > VERSION
-          npm run sync:version
-          npm install --package-lock-only
-          npm install --package-lock-only --prefix frontend
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = 'desktop/src-tauri/tauri.conf.json';
-          const config = JSON.parse(fs.readFileSync(path, 'utf8'));
-          config.plugins.updater.endpoints = [process.env.DEV_UPDATE_ENDPOINT];
-          fs.writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
-          NODE
+        run: npm run verify:release -- "${RELEASE_TAG#v}"
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -352,10 +279,10 @@ jobs:
         with:
           projectPath: desktop
           tagName: ${{ env.RELEASE_TAG }}
-          releaseName: "${{ env.RELEASE_CHANNEL == 'dev' && 'WhyLowDps Dev' || format('WhyLowDps {0}', env.RELEASE_TAG) }}"
-          releaseBody: "${{ env.RELEASE_CHANNEL == 'dev' && format('Automated developer build. Version: {0}', env.DEV_VERSION) || 'Release assets uploaded. Checksums will be added automatically.' }}"
-          releaseDraft: "${{ env.RELEASE_CHANNEL != 'dev' }}"
-          prerelease: "${{ env.RELEASE_CHANNEL == 'dev' }}"
+          releaseName: 'WhyLowDps ${{ env.RELEASE_TAG }}'
+          releaseBody: 'Release assets uploaded. Checksums will be added automatically.'
+          releaseDraft: true
+          prerelease: false
           args: ${{ matrix.args }}
 
       - name: Upload zones encounters index asset
@@ -367,31 +294,16 @@ jobs:
           set -euo pipefail
           gh release upload "${RELEASE_TAG}" backend/resources/zones-encounters-index.json --clobber
 
-      - name: Refresh moving developer release metadata
-        if: env.RELEASE_CHANNEL == 'dev'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          NOTES_FILE="$(mktemp)"
-          cat > "${NOTES_FILE}" <<EOF
-          Automated developer build for testing before a stable release.
-
-          Version: ${DEV_VERSION}
-          Source: ${RELEASE_SOURCE_REF}
-          EOF
-          gh release edit "${RELEASE_TAG}" --title "WhyLowDps Dev" --notes-file "${NOTES_FILE}" --draft=false --prerelease
-
   publish-container:
     if: >-
       always() &&
       (
         (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-        (github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'bump' && needs.bump-version-stable.result == 'success') ||
-        (github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'republish' && needs.validate_republish.result == 'success')
+        (github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_action == 'republish' && needs.validate_republish.result == 'success') ||
+        (github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.result == 'success')
       )
-    needs: [bump-version-stable, validate_republish]
+    needs: [bump-version-stable, promote-dev, validate_republish]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -399,11 +311,11 @@ jobs:
     outputs:
       image_digest: ${{ steps.digest.outputs.image_digest }}
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_action == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -418,8 +330,8 @@ jobs:
         with:
           images: ghcr.io/josephlteif/whylowdps
           tags: |
-            type=semver,pattern={{version}},value=${{ github.event_name == 'workflow_dispatch' && inputs.existing_version || github.ref_name }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ github.event_name == 'workflow_dispatch' && inputs.existing_version || github.ref_name }}
+            type=semver,pattern={{version}},value=${{ env.RELEASE_TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.RELEASE_TAG }}
             type=raw,value=latest
 
       - name: Ensure container resource paths exist
@@ -444,7 +356,7 @@ jobs:
           build-args: |
             WHYLOWDPS_DEPLOYMENT=hosted-private
             WHYLOWDPS_VERSION=${{ steps.meta.outputs.version }}
-            WHYLOWDPS_REVISION=${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_sha || github.sha }}
+            WHYLOWDPS_REVISION=${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_sha || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_sha || github.sha }}
 
       - name: Smoke test container
         shell: bash
@@ -511,19 +423,20 @@ jobs:
       always() &&
       (
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
-      (github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'bump' && needs.bump-version-stable.result == 'success') ||
-      (github.event_name == 'workflow_dispatch' && inputs.release_channel == 'stable' && inputs.release_mode == 'republish' && needs.validate_republish.result == 'success')
+      (github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_action == 'republish' && needs.validate_republish.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.result == 'success')
       )
-    needs: [publish, publish-container, bump-version-stable, validate_republish]
+    needs: [publish, publish-container, bump-version-stable, promote-dev, validate_republish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_action == 'promote-dev' && needs.promote-dev.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_action != 'republish' && inputs.release_action != 'promote-dev' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_action == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'bump' && needs.bump-version-stable.outputs.release_tag || github.event_name == 'workflow_dispatch' && inputs.release_mode == 'republish' && format('v{0}', inputs.existing_version) || github.ref_name }}
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Upload private-hosting release bundle
         shell: bash
@@ -602,29 +515,3 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/notify-discord-release.js
-
-  finalize-dev:
-    if: >-
-      always() &&
-      github.event_name == 'workflow_dispatch' &&
-      inputs.release_channel == 'dev' &&
-      needs.publish.result == 'success'
-    needs: [publish, prepare-dev]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_TAG: ${{ needs.prepare-dev.outputs.release_tag }}
-      DEV_VERSION: ${{ needs.prepare-dev.outputs.dev_version }}
-    steps:
-      - name: Verify developer release
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh release edit "${RELEASE_TAG}" --title "WhyLowDps Dev" --draft=false --prerelease
-          ASSETS="$(gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name')"
-          if ! grep -qx 'latest.json' <<< "${ASSETS}"; then
-            echo "The dev release does not contain latest.json; the updater cannot update installed dev builds."
-            exit 1
-          fi

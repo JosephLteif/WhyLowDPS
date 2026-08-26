@@ -112,11 +112,14 @@ artifacts and checksum metadata, and publishes the release only after those
 steps complete. If a release step fails, leave the draft unpublished until the
 failure is corrected or the draft is deleted.
 
+For a new stable release, open **Actions → Release → Run workflow** and choose
+**patch**, **minor**, or **major**. Stable releases always use `master`.
+
 If the version bump and tag were already created but a later release step
 failed, recover the same release without incrementing the version again:
 
 1. Open **Actions → Release → Run workflow**.
-2. Set **Release mode** to **republish**.
+2. Set **Release action** to **republish**.
 3. Enter the existing version without the `v` prefix, such as `4.0.0`.
 4. Run the workflow.
 
@@ -125,15 +128,19 @@ rebuilds the desktop and hosted Docker artifacts. It does not commit, bump, or
 move the release tag; existing release assets and Docker tags are replaced as
 part of the retry.
 
-Developer builds use the same release pipeline. Open **Actions → Release → Run
-workflow**, set **Release channel** to **dev**, choose the source branch in
-**Developer release source branch**, and run it. The pipeline publishes a signed
-Windows prerelease with a monotonically increasing version under the moving
-`dev` GitHub release and updates its `latest.json` manifest. Stable users are
-unaffected. Install the dev artifact once, or choose **Settings → App Updates →
-Dev (pre-release)**, then future developer releases can be installed through the
-normal updater. The pipeline requires the same `TAURI_SIGNING_PRIVATE_KEY` and
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets as stable releases.
+Developer builds have their own simple workflow. Push to `dev`, or open
+**Actions → Dev Release → Run workflow**. It publishes a signed Windows
+prerelease under the moving `dev` GitHub release and updates its `latest.json`
+manifest. Stable users are unaffected. Install the dev artifact once, or
+choose **Settings → App Updates → Dev (pre-release)**, then future developer
+releases can be installed through the normal updater.
+
+When the tested dev build is ready for everyone, open **Actions → Release → Run
+workflow**, choose **promote-dev**, and run it. This promotes the exact commit
+behind the current `dev` release using its stable `VERSION`; it does not bump
+again. It fails if that stable version already has a release tag. Both release
+workflows require the `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets.
 
 ## Pull request guidelines
 

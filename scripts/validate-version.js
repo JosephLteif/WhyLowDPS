@@ -1,13 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)$/;
+const VERSION_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
 
 function normalizeVersion(value) {
   const match = String(value || "")
     .trim()
     .match(VERSION_PATTERN);
-  return match ? `${match[1]}.${match[2]}.${match[3]}` : null;
+  return match ? match[0].replace(/^v/i, "") : null;
 }
 
 function readText(rootDir, relativePath, errors) {

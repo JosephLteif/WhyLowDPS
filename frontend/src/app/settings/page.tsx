@@ -181,6 +181,8 @@ export default function SettingsPage() {
     updateMessage,
     appReleases,
     appReleaseMetadataStatus,
+    selectedAppChannel,
+    setSelectedAppChannel,
     selectedAppVersion,
     setSelectedAppVersion,
     loadAppReleases,
@@ -1481,6 +1483,8 @@ export default function SettingsPage() {
           updateCheckState={updateCheckState}
           appReleases={appReleases}
           appReleaseMetadataStatus={appReleaseMetadataStatus}
+          selectedAppChannel={selectedAppChannel}
+          setSelectedAppChannel={setSelectedAppChannel}
           dockerReleases={dockerReleases}
           dockerReleaseMetadataStatus={dockerReleaseMetadataStatus}
           selectedAppVersion={selectedAppVersion}

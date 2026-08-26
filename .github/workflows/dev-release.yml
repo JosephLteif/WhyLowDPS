@@ -1,0 +1,148 @@
+name: Dev Release
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+concurrency:
+  group: dev-release
+  cancel-in-progress: false
+
+jobs:
+  publish-dev:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      DEV_RELEASE_TAG: dev
+      DEV_UPDATE_ENDPOINT: https://github.com/JosephLteif/simcraft/releases/download/dev/latest.json
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v7
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Move dev release tag
+        id: dev_ref
+        shell: pwsh
+        run: |
+          $devSha = (git rev-parse HEAD).Trim()
+          git tag --force $env:DEV_RELEASE_TAG $devSha
+          git push origin "refs/tags/$env:DEV_RELEASE_TAG" --force
+          "dev_sha=$devSha" >> $env:GITHUB_OUTPUT
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95
+
+      - name: Install dependencies
+        shell: pwsh
+        run: npm ci; npm ci --prefix frontend
+
+      - name: Prepare developer version
+        id: prepare
+        shell: pwsh
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          $stableVersion = (Get-Content VERSION -Raw).Trim()
+          if ($stableVersion -notmatch '^\d+\.\d+\.\d+$') {
+            throw "VERSION must contain a stable semantic version before creating a dev build: $stableVersion"
+          }
+
+          $devVersion = "$stableVersion-dev.$env:RUN_NUMBER.$env:RUN_ATTEMPT"
+          Set-Content -Path VERSION -Value $devVersion -NoNewline
+          npm run sync:version
+          npm install --package-lock-only --ignore-scripts
+          npm install --prefix frontend --package-lock-only --ignore-scripts
+
+          $configPath = 'desktop/src-tauri/tauri.conf.json'
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          $config.plugins.updater.endpoints = @($env:DEV_UPDATE_ENDPOINT)
+          $config | ConvertTo-Json -Depth 100 | Set-Content $configPath
+
+          npm run verify:release -- $devVersion
+          "dev_version=$devVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            desktop/src-tauri -> target
+
+      - name: Ensure bundled resource paths exist
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force backend/resources/data | Out-Null
+          if (-not (Test-Path backend/resources/zones-encounters-index.json)) {
+            throw 'backend/resources/zones-encounters-index.json is required for dev bundles'
+          }
+          foreach ($file in @('wow-expansions.json', 'wow-instances.json', 'wow-encounters.json', 'wow-seasons.json')) {
+            if (-not (Test-Path "backend/resources/wow/$file")) {
+              throw "backend/resources/wow/$file is required for dev bundles"
+            }
+          }
+          Copy-Item backend/resources/zones-encounters-index.json backend/resources/data/zones-encounters-index.json -Force
+          New-Item -ItemType File -Force backend/resources/data/.keep | Out-Null
+
+      - name: Build and publish developer desktop app
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          DESKTOP_BUILD: true
+          NEXT_PUBLIC_DESKTOP_BUILD: true
+        with:
+          projectPath: desktop
+          tagName: dev
+          releaseName: WhyLowDps Dev
+          releaseBody: 'Automated developer build. Version: ${{ steps.prepare.outputs.dev_version }}'
+          releaseDraft: false
+          prerelease: true
+          args: --config src-tauri/tauri.conf.json --bundles nsis
+
+      - name: Upload developer data asset
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload dev backend/resources/zones-encounters-index.json --clobber
+
+      - name: Refresh moving developer release metadata
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEV_VERSION: ${{ steps.prepare.outputs.dev_version }}
+        run: |
+          $notesPath = Join-Path $env:RUNNER_TEMP 'dev-release-notes.md'
+          @"
+          Automated developer build for testing before a stable release.
+
+          Version: $env:DEV_VERSION
+          Source: ${{ steps.dev_ref.outputs.dev_sha }}
+          "@ | Set-Content $notesPath
+          gh release edit dev --title 'WhyLowDps Dev' --notes-file $notesPath --prerelease
+
+      - name: Verify developer updater manifest
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $assets = @(gh release view dev --json assets --jq '.assets[].name' | ForEach-Object { $_.Trim() })
+          if (-not ($assets -contains 'latest.json')) {
+            throw 'The dev release does not contain latest.json; the updater cannot update installed dev builds.'
+          }

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { API_URL, fetchJson, isDesktop, isHostedPrivate } from '../lib/api';
+import { APP_VERSION } from '../lib/version';
 import {
   fetchDockerImageReleases,
-  fetchStableAppReleases,
+  fetchAppReleases,
   type AppReleaseInfo,
   type DockerImageReleaseInfo,
 } from '../lib/updater-release';
+import { readStoredUpdateChannel, type UpdateChannel } from '../lib/update-channel';
 import type {
   DeploymentInfo,
   DockerUpdateMode,
@@ -33,6 +35,7 @@ export function useSettingsUpdater({
     'available' | 'rate_limited' | 'unavailable'
   >('unavailable');
   const [selectedAppVersion, setSelectedAppVersion] = useState('');
+  const [selectedAppChannel, setSelectedAppChannelState] = useState<UpdateChannel>('stable');
   const [deploymentInfo, setDeploymentInfo] = useState<DeploymentInfo | null>(null);
   const [dockerReleases, setDockerReleases] = useState<DockerImageReleaseInfo[]>([]);
   const [dockerReleaseMetadataStatus, setDockerReleaseMetadataStatus] = useState<
@@ -82,30 +85,48 @@ export function useSettingsUpdater({
   }, []);
 
   useEffect(() => {
-    if (!isDesktop) return;
-    try {
-      localStorage.removeItem('whylowdps_update_channel');
-    } catch {}
-    if (!performanceSaved || !hasUser) return;
+    if (isDesktop) {
+      setSelectedAppChannelState(readStoredUpdateChannel(APP_VERSION));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktop || !performanceSaved || !hasUser) return;
     fetchJson(`${API_URL}/api/user/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         key: 'app_update_channel',
-        value: 'stable',
+        value: selectedAppChannel,
       }),
     }).catch(() => {});
-  }, [hasUser, performanceSaved]);
+  }, [hasUser, performanceSaved, selectedAppChannel]);
 
-  const loadAppReleases = useCallback(async (options?: { forceRefresh?: boolean }) => {
-    const result = await fetchStableAppReleases(options);
-    const releases = result.releases;
-    setAppReleases(releases);
-    setAppReleaseMetadataStatus(result.metadataStatus);
-    setSelectedAppVersion((current) =>
-      current && releases.some((release) => release.version === current)
-        ? current
-        : releases[0]?.version || ''
+  const loadAppReleases = useCallback(
+    async (options?: { forceRefresh?: boolean }) => {
+      const result = await fetchAppReleases(selectedAppChannel, options);
+      const releases = result.releases;
+      setAppReleases(releases);
+      setAppReleaseMetadataStatus(result.metadataStatus);
+      setSelectedAppVersion((current) =>
+        current && releases.some((release) => release.version === current)
+          ? current
+          : releases[0]?.version || ''
+      );
+    },
+    [selectedAppChannel]
+  );
+
+  const setSelectedAppChannel = useCallback((channel: UpdateChannel) => {
+    setSelectedAppChannelState(channel);
+    setSelectedAppVersion('');
+    try {
+      localStorage.setItem('whylowdps_update_channel', channel);
+    } catch {}
+    window.dispatchEvent(
+      new CustomEvent('whylowdps-updater-check', {
+        detail: { channel },
+      })
     );
   }, []);
 
@@ -170,10 +191,10 @@ export function useSettingsUpdater({
     setUpdateMessage(null);
     window.dispatchEvent(
       new CustomEvent('whylowdps-updater-check', {
-        detail: { channel: 'stable' },
+        detail: { channel: selectedAppChannel },
       })
     );
-  }, []);
+  }, [selectedAppChannel]);
 
   const downloadAndInstallLatest = useCallback(() => {
     setUpdateCheckState('installing');
@@ -184,22 +205,24 @@ export function useSettingsUpdater({
       new CustomEvent('whylowdps-updater-install', {
         detail: release
           ? {
-              channel: 'stable',
+              channel: selectedAppChannel,
               version: release.version,
               notes: release.notes,
               manualDownloadUrl: release.downloadUrl,
               fallbackOnly: true,
             }
-          : { channel: 'stable' },
+          : { channel: selectedAppChannel },
       })
     );
-  }, [appReleases, selectedAppVersion]);
+  }, [appReleases, selectedAppChannel, selectedAppVersion]);
 
   return {
     updateCheckState,
     updateMessage,
     appReleases,
     appReleaseMetadataStatus,
+    selectedAppChannel,
+    setSelectedAppChannel,
     selectedAppVersion,
     setSelectedAppVersion,
     loadAppReleases,

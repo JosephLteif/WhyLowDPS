@@ -9,7 +9,11 @@ import {
   formatEta,
   formatTransferSpeed,
 } from '../lib/format';
-import { readStoredUpdateChannel, type UpdateChannel } from '../lib/update-channel';
+import {
+  detectVersionChannel,
+  readStoredUpdateChannel,
+  type UpdateChannel,
+} from '../lib/update-channel';
 import {
   fetchManifestVersion,
   isRemoteNewerForSelectedChannel,
@@ -396,16 +400,17 @@ export default function UpdatePrompt() {
   const checkForUpdates = useCallback(
     async (channelOverride?: UpdateChannel, installIfAvailable = false) => {
       if (!isDesktopRuntime() || isCheckingRef.current) return;
-      const selectedChannel = channelOverride ?? readStoredUpdateChannel();
       isCheckingRef.current = true;
       setState('checking');
       setErrorText('');
       emitUpdaterStatus('checking');
 
       try {
+        const currentVersion = resolveCurrentVersion(await getCurrentAppVersion());
+        const selectedChannel = channelOverride ?? readStoredUpdateChannel(currentVersion);
+
         if (window.electronAPI) {
           const result = await window.electronAPI.checkForUpdate();
-          const currentVersion = resolveCurrentVersion(await getCurrentAppVersion());
           if (
             !result ||
             !isRemoteNewerForSelectedChannel(currentVersion, result.version, selectedChannel)
@@ -435,9 +440,7 @@ export default function UpdatePrompt() {
           check: () => Promise<any>;
         };
 
-        const tauriVersion = await getCurrentAppVersion();
-        const currentVersion = resolveCurrentVersion(tauriVersion);
-        const canUseNativeUpdater = selectedChannel === 'stable';
+        const canUseNativeUpdater = selectedChannel === detectVersionChannel(currentVersion);
         const update = canUseNativeUpdater ? await updaterModule.check() : null;
         if (!update) {
           const manifest = await fetchManifestVersion(selectedChannel);

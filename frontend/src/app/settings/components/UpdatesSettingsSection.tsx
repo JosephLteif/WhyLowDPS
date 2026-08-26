@@ -8,6 +8,7 @@ import type {
 } from '../types';
 import { formatBytesDecimal } from '../../lib/format';
 import { useDismissOnOutside } from '../../lib/useDismissOnOutside';
+import type { UpdateChannel } from '../../lib/update-channel';
 import type { AppReleaseInfo, DockerImageReleaseInfo } from '../../lib/updater-release';
 import type { SimcRuntimeInfo, SimcRuntimeVersionOption } from '../../lib/simc-runtime-release';
 
@@ -28,6 +29,8 @@ type UpdatesSettingsSectionProps = {
   updateCheckState: 'idle' | 'checking' | 'installing';
   appReleases: AppReleaseInfo[];
   appReleaseMetadataStatus: 'available' | 'rate_limited' | 'unavailable';
+  selectedAppChannel?: UpdateChannel;
+  setSelectedAppChannel?: (channel: UpdateChannel) => void;
   dockerReleases?: DockerImageReleaseInfo[];
   dockerReleaseMetadataStatus?: 'available' | 'rate_limited' | 'unavailable';
   selectedAppVersion: string;
@@ -65,6 +68,8 @@ export default function UpdatesSettingsSection({
   updateCheckState,
   appReleases,
   appReleaseMetadataStatus,
+  selectedAppChannel = 'stable',
+  setSelectedAppChannel = () => {},
   selectedAppVersion,
   setSelectedAppVersion,
   loadAppReleases,
@@ -140,6 +145,16 @@ export default function UpdatesSettingsSection({
         ) : (
           <div data-update-card className="rounded-lg border border-border bg-surface-2 p-3">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-zinc-300">App Channel</span>
+              <select
+                aria-label="App update channel"
+                value={selectedAppChannel}
+                onChange={(event) => setSelectedAppChannel(event.target.value as UpdateChannel)}
+                className="w-full rounded border border-gold/35 bg-surface-2 px-3 py-2 text-sm font-semibold text-zinc-100 sm:w-auto sm:min-w-[150px]"
+              >
+                <option value="stable">Stable</option>
+                <option value="dev">Dev (pre-release)</option>
+              </select>
               <span className="text-sm font-medium text-zinc-300">App Version</span>
               <select
                 value={selectedAppVersion}
@@ -171,6 +186,11 @@ export default function UpdatesSettingsSection({
                 {updateCheckState === 'installing' ? 'Starting...' : 'Download & Install'}
               </button>
             </div>
+            {selectedAppChannel === 'dev' && (
+              <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                Dev builds are pre-release software and may change or break between updates.
+              </p>
+            )}
             {selectedAppRelease && (
               <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
                 <span>Version: {selectedAppRelease.version}</span>

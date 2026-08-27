@@ -163,7 +163,7 @@ jobs:
           Version: $env:DEV_VERSION
           Increment: $env:DEV_INCREMENT
           Source: ${{ steps.dev_ref.outputs.dev_sha }}
-          Source ref: dev/$env:DEV_VERSION
+          Source ref: dev-build/$env:DEV_VERSION
           "@ | Set-Content $notesPath
           gh release edit dev --title 'WhyLowDps Dev' --notes-file $notesPath --prerelease --draft=false
 
@@ -183,7 +183,7 @@ jobs:
           DEV_SHA: ${{ steps.dev_ref.outputs.dev_sha }}
           DEV_VERSION: ${{ steps.prepare.outputs.dev_version }}
         run: |
-          $devTag = "dev/$env:DEV_VERSION"
+          $devTag = "dev-build/$env:DEV_VERSION"
           git ls-remote --exit-code origin "refs/tags/$devTag" *> $null
           $tagCheckExitCode = $LASTEXITCODE
           if ($tagCheckExitCode -eq 0) {

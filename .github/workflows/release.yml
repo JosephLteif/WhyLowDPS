@@ -133,6 +133,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
+          persist-credentials: false
 
       - name: Select tested dev build
         id: select

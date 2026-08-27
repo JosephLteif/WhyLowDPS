@@ -146,7 +146,7 @@ jobs:
             exit 1
           fi
           VERSION="${BASH_REMATCH[1]}"
-          DEV_TAG="dev/${DEV_VERSION}"
+          DEV_TAG="dev-build/${DEV_VERSION}"
           if ! git ls-remote --exit-code origin "refs/tags/${DEV_TAG}" >/dev/null; then
             echo "Developer source tag ${DEV_TAG} does not exist; run a new Dev Release after the immutable-tag workflow is deployed."
             exit 1

@@ -33,6 +33,7 @@ import {
 } from '../../lib/sim-options-catalog';
 import { parseCharacterInfo, parseSimcBuffs, SimcBuff } from '@/lib/simc-parser';
 import { useWowheadTooltips } from '../../lib/useWowheadTooltips';
+import { useNotifications } from '../../components/shared/NotificationSystem';
 
 import { API_URL, fetchJson } from '../../lib/api';
 import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
@@ -80,6 +81,29 @@ interface TimelineEvent {
   spell_id?: number;
   target?: string;
   queue_failed?: boolean;
+}
+
+function simTypeLabel(simType?: string): string {
+  return (
+    (
+      {
+        quick: 'Quick Sim',
+        top_gear: 'Top Gear',
+        droptimizer: 'Drop Finder',
+        upgrade_compare: 'Upgrade Compare',
+      } as Record<string, string>
+    )[simType || ''] ||
+    simType ||
+    'Simulation'
+  );
+}
+
+function isActiveSimStatus(status: string): boolean {
+  return status === 'pending' || status === 'running' || status === 'paused';
+}
+
+function isTerminalSimStatus(status: string): boolean {
+  return status === 'done' || status === 'failed' || status === 'cancelled';
 }
 
 const iconCache = new Map<string, string>();
@@ -364,6 +388,7 @@ function CollapsibleSection({
 export default function SimResultClient() {
   const router = useRouter();
   const { lightMode } = useAuth();
+  const { notify } = useNotifications();
   const params = useParams();
   const searchParams = useSearchParams();
   const paramId = params.id as string;
@@ -406,12 +431,17 @@ export default function SimResultClient() {
   const activeStageStartedAtRef = useRef<number | null>(null);
   const activeStageAccumulatedRef = useRef(0);
   const stageTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previousStatusRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (id && id !== '_' && id !== activeScenarioId) {
       setActiveScenarioId(id);
     }
   }, [id, activeScenarioId]);
+
+  useEffect(() => {
+    previousStatusRef.current = null;
+  }, [activeScenarioId]);
 
   const r = job?.result as any;
   const timelineFallbackData = timelineFallback;
@@ -760,7 +790,38 @@ export default function SimResultClient() {
     async function poll() {
       try {
         const data = await fetchJson<JobData>(`${API_URL}/api/sim/${activeScenarioId}`);
-        if (active) setJob(data);
+        if (active) {
+          const previousStatus = previousStatusRef.current;
+          if (
+            previousStatus &&
+            isActiveSimStatus(previousStatus) &&
+            isTerminalSimStatus(data.status)
+          ) {
+            const parsedCharacter = data.simc_input ? parseCharacterInfo(data.simc_input) : null;
+            const playerName =
+              data.linked_name ||
+              (parsedCharacter?.kind === 'character'
+                ? parsedCharacter.name
+                : parsedCharacter?.kind === 'dungeon'
+                  ? parsedCharacter.title
+                  : 'Simulation');
+
+            notify({
+              title: data.status === 'done' ? 'Simulation finished' : 'Simulation update',
+              description: `${playerName} · ${simTypeLabel(data.sim_type)}`,
+              variant: data.status === 'done' ? 'success' : 'info',
+              durationMs: 6000,
+              href: simResultHref(activeScenarioId),
+              dedupeKey: `simulation:${activeScenarioId}`,
+              action: {
+                label: 'Open result',
+                onClick: () => router.push(simResultHref(activeScenarioId)),
+              },
+            });
+          }
+          previousStatusRef.current = data.status;
+          setJob(data);
+        }
         if (
           active &&
           (data.status === 'pending' || data.status === 'running' || data.status === 'paused')
@@ -776,7 +837,7 @@ export default function SimResultClient() {
       active = false;
       clearTimeout(timer);
     };
-  }, [activeScenarioId]);
+  }, [activeScenarioId, notify, router]);
 
   // Keep polling while active so the stats card can show the current phase ETA
   // even when the log console is collapsed.

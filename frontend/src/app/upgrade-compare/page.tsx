@@ -125,12 +125,15 @@ export default function UpgradeComparePage() {
   const { data, loading } = useUpgradeData(simcInput);
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [comboCount, setComboCount] = useState(0);
+  const [comboComputing, setComboComputing] = useState(false);
+  const [comboLimitReached, setComboLimitReached] = useState(false);
   const [upgradeMode, setUpgradeMode] = useState<
     'highest_affordable' | 'all_affordable' | 'highest_any' | 'all_any'
   >('highest_affordable');
   const [budgetOverride, setBudgetOverride] = useState<Record<string, string>>({});
   const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
   const skipNextDataResetRef = useRef(false);
+  const effectiveMaxCombinations = maxCombinations ?? 500;
 
   useEffect(() => {
     const restored = consumeSimAgainState<UpgradeCompareSimAgainState>(
@@ -192,6 +195,8 @@ export default function UpgradeComparePage() {
     }
     setSelectedSlots(new Set());
     setComboCount(0);
+    setComboComputing(false);
+    setComboLimitReached(false);
     setBudgetOverride({});
   }, [data]);
 
@@ -204,13 +209,20 @@ export default function UpgradeComparePage() {
 
   // Debounced combo count
   const comboTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const comboRequestSeqRef = useRef(0);
   useEffect(() => {
+    const requestSeq = ++comboRequestSeqRef.current;
     if (selectedSlots.size === 0 || !simcInput.trim()) {
       setComboCount(0);
+      setComboComputing(false);
+      setComboLimitReached(false);
       return;
     }
 
     if (comboTimer.current) clearTimeout(comboTimer.current);
+    const controller = new AbortController();
+    setComboComputing(true);
+    setComboLimitReached(false);
     comboTimer.current = setTimeout(async () => {
       try {
         const res = await fetch(`${API_URL}/api/upgrade-compare/combo-count`, {
@@ -231,16 +243,27 @@ export default function UpgradeComparePage() {
             upgrade_budget_override: budgetOverridePayload,
             max_combinations: maxCombinations,
           }),
+          signal: controller.signal,
         });
         const result = await res.json();
+        if (requestSeq !== comboRequestSeqRef.current) return;
         setComboCount(result.combo_count ?? 0);
-      } catch {
+        setComboComputing(false);
+        setComboLimitReached(
+          result.limit_reached === true || /Too many upgrade combinations/i.test(result.error ?? '')
+        );
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === 'AbortError') return;
+        if (requestSeq !== comboRequestSeqRef.current) return;
         setComboCount(0);
+        setComboComputing(false);
+        setComboLimitReached(false);
       }
     }, 300);
 
     return () => {
       if (comboTimer.current) clearTimeout(comboTimer.current);
+      controller.abort();
     };
   }, [simcInput, selectedSlots, maxCombinations, upgradeMode, budgetOverridePayload]);
 
@@ -317,7 +340,12 @@ export default function UpgradeComparePage() {
   }, [candidates, currencies]);
 
   const hasCharacter = simcInput.trim().length >= 10;
-  const displayComboCount = selectedSlots.size > 0 ? comboCount + 1 : 0;
+  const displayComboCount =
+    selectedSlots.size > 0
+      ? comboLimitReached
+        ? effectiveMaxCombinations
+        : comboCount + 1
+      : 0;
   const modeLabel =
     upgradeMode === 'highest_affordable'
       ? 'Highest Affordable'
@@ -372,7 +400,11 @@ export default function UpgradeComparePage() {
     ? 'No upgrade currencies found'
     : selectedSlots.size === 0
       ? 'Select items to upgrade'
-      : buttonLabel(`Sim Upgrades (${displayComboCount} combos, ${modeLabel})`);
+      : buttonLabel(
+          comboComputing
+            ? `Sim Upgrades (computing combinations, ${modeLabel})`
+            : `Sim Upgrades (${displayComboCount} combos, ${modeLabel})`
+        );
 
   return (
     <div className="mobile-page-bottom space-y-6 pb-28">
@@ -549,9 +581,11 @@ export default function UpgradeComparePage() {
           right={
             <ComboSummary
               comboCount={displayComboCount}
-              maxCombinations={maxCombinations ?? undefined}
+              maxCombinations={effectiveMaxCombinations}
+              isComputing={comboComputing}
+              limitReached={comboLimitReached}
               breakdown={
-                comboCount !== 0
+                !comboComputing && !comboLimitReached && comboCount !== 0
                   ? `${comboCount.toLocaleString()} normal combos | +1 Currently Equipped`
                   : null
               }

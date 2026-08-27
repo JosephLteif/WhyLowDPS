@@ -170,6 +170,8 @@ export default function TopGearPage() {
   const [catalystCharges, setCatalystCharges] = useState<number | null>(null);
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
+  const [comboComputing, setComboComputing] = useState(false);
+  const [comboLimitReached, setComboLimitReached] = useState(false);
   const [comboError, setComboError] = useState('');
   const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
   const [compareConsumables, setCompareConsumables] = useState(false);
@@ -647,12 +649,23 @@ export default function TopGearPage() {
     const hasTalentCompare = talentBuilds.length > 1;
     if (!resolved || (!hasRawGearSelection && !hasTalentCompare)) {
       setComboCount(0);
+      setComboComputing(false);
+      setComboLimitReached(false);
       setComboError('');
       return;
     }
     // Keep the previous value while a selection is being normalized against a
     // freshly resolved item list instead of flashing back to zero.
-    if (!hasGearSelection && !hasTalentCompare) return;
+    if (!hasGearSelection && !hasTalentCompare) {
+      setComboComputing(true);
+      setComboLimitReached(false);
+      setComboError('');
+      return;
+    }
+
+    setComboComputing(true);
+    setComboLimitReached(false);
+    setComboError('');
 
     const controller = new AbortController();
     (async () => {
@@ -720,17 +733,29 @@ export default function TopGearPage() {
         if (!res.ok) {
           if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
+          setComboComputing(false);
+          setComboLimitReached(false);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
           return;
         }
         const data = await res.json();
         if (requestSeq !== comboRequestSeqRef.current) return;
+        const limitReached =
+          data.limit_reached === true || /Too many combinations/i.test(data.error ?? '');
         setComboCount(data.combo_count ?? 0);
-        setComboError(data.error ?? '');
+        setComboComputing(false);
+        setComboLimitReached(limitReached);
+        setComboError(
+          limitReached
+            ? `Combination count reached the configured limit of ${(maxCombinations ?? 500).toLocaleString()}. Please deselect some items.`
+            : data.error ?? ''
+        );
       } catch (e: unknown) {
         if (e instanceof Error && e.name !== 'AbortError') {
           if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
+          setComboComputing(false);
+          setComboLimitReached(false);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
         }
       }
@@ -982,6 +1007,8 @@ export default function TopGearPage() {
             copyEnchants={copyEnchants}
             specName={resolved.character.spec}
             comboCount={comboCount}
+            comboComputing={comboComputing}
+            comboLimitReached={comboLimitReached}
             comboError={comboError}
           />
         ) : (

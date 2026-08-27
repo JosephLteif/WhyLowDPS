@@ -3,6 +3,8 @@ import ComboSummary from '../ComboSummary';
 interface TopGearQuickSelectProps {
   comboCount: number;
   maxCombinations: number;
+  isComputing?: boolean;
+  limitReached?: boolean;
   hasSelection: boolean;
   vaultCount: number;
   allVaultSelected: boolean;
@@ -18,6 +20,8 @@ interface TopGearQuickSelectProps {
 export default function TopGearQuickSelect({
   comboCount,
   maxCombinations,
+  isComputing = false,
+  limitReached = false,
   vaultCount,
   catalystCount,
   allCatalystSelected,
@@ -78,6 +82,8 @@ export default function TopGearQuickSelect({
         <ComboSummary
           comboCount={comboCount}
           maxCombinations={maxCombinations}
+          isComputing={isComputing}
+          limitReached={limitReached}
         />
       </div>
       <p

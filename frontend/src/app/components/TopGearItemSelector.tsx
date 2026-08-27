@@ -47,6 +47,8 @@ interface TopGearItemSelectorProps {
   savedVariantCount?: number;
   globalAffixesEnabled?: boolean;
   comboCount: number;
+  comboComputing?: boolean;
+  comboLimitReached?: boolean;
   copyEnchants?: boolean;
   specName?: string | null;
   maxUpgrade?: boolean;
@@ -243,6 +245,8 @@ export default function TopGearItemSelector({
   savedVariantCount = 0,
   globalAffixesEnabled = false,
   comboCount,
+  comboComputing = false,
+  comboLimitReached = false,
   copyEnchants = false,
   specName = null,
   comboError,
@@ -2063,13 +2067,15 @@ export default function TopGearItemSelector({
     [resolved.slots, canManageAffixesForItem]
   );
   const comboBreakdown =
-    comboCount > 0
+    !comboComputing && !comboLimitReached && comboCount > 0
       ? `${Math.max(comboCount - 1, 0).toLocaleString()} normal combo(s) | +1 Currently Equipped`
       : null;
   const quickSelect = (
     <TopGearQuickSelect
       comboCount={comboCount}
       maxCombinations={effectiveMaxCombinations}
+      isComputing={comboComputing}
+      limitReached={comboLimitReached}
       comboBreakdown={comboBreakdown}
       hasSelection={hasSelection}
       vaultCount={vaultUids.length}

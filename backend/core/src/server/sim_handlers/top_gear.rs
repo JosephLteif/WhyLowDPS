@@ -190,7 +190,10 @@ pub(in crate::server) async fn get_top_gear_combo_count(
     req: web::Json<TopGearRequest>,
 ) -> HttpResponse {
     match generate_top_gear_profilesets(&req) {
-        Ok(generation) => HttpResponse::Ok().json(json!({ "combo_count": generation.combo_count })),
+        Ok(generation) => HttpResponse::Ok().json(json!({
+            "combo_count": generation.combo_count,
+            "limit_reached": false
+        })),
         Err(e) => {
             let e_str = e.to_string();
             let count: usize = e_str
@@ -199,7 +202,11 @@ pub(in crate::server) async fn get_top_gear_combo_count(
                 .and_then(|s| s.split(')').next())
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
-            HttpResponse::Ok().json(json!({ "combo_count": count, "error": e_str }))
+            HttpResponse::Ok().json(json!({
+                "combo_count": count,
+                "error": e_str,
+                "limit_reached": e_str.contains("Too many combinations")
+            }))
         }
     }
 }

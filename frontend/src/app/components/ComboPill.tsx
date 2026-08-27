@@ -1,6 +1,10 @@
+import { Loader2 } from 'lucide-react';
+
 interface ComboPillProps {
   comboCount: number;
   maxCombinations?: number;
+  isComputing?: boolean;
+  limitReached?: boolean;
   size?: 'sm' | 'md';
   glowWhenActive?: boolean;
   activeBy?: 'combos' | 'items';
@@ -10,6 +14,8 @@ interface ComboPillProps {
 export default function ComboPill({
   comboCount,
   maxCombinations,
+  isComputing = false,
+  limitReached = false,
   size = 'sm',
   glowWhenActive = false,
   activeBy = 'combos',
@@ -17,17 +23,26 @@ export default function ComboPill({
 }: ComboPillProps) {
   const hasItems = itemCount > 0;
   const isActive = activeBy === 'items' ? hasItems : comboCount > 0;
-  const isOverLimit =
-    Number.isFinite(maxCombinations) &&
-    (maxCombinations as number) > 0 &&
-    comboCount > (maxCombinations as number);
-  const comboLabel = `${comboCount.toLocaleString()} combo(s)`;
+  const configuredLimit =
+    typeof maxCombinations === 'number' && Number.isFinite(maxCombinations) && maxCombinations > 0
+      ? maxCombinations
+      : null;
+  const isOverLimit = limitReached || (configuredLimit != null && comboCount > configuredLimit);
+  const comboLabel = isComputing
+    ? 'Computing…'
+    : isOverLimit
+      ? configuredLimit != null
+        ? `${configuredLimit.toLocaleString()}+ combo(s) (limit)`
+        : 'Combination limit reached'
+      : `${comboCount.toLocaleString()} combo(s)`;
 
-  const comboColorClass = isOverLimit
-    ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-    : isActive
-      ? 'bg-surface-2 text-white border border-white/5'
-      : 'bg-surface-2 text-muted border border-white/5';
+  const comboColorClass = isComputing
+    ? 'bg-gold/10 text-gold border border-gold/20'
+    : isOverLimit
+      ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+      : isActive
+        ? 'bg-surface-2 text-white border border-white/5'
+        : 'bg-surface-2 text-muted border border-white/5';
 
   const dotClass = isOverLimit ? 'bg-red-500' : isActive ? 'bg-emerald-500' : 'bg-gray-600';
 
@@ -44,8 +59,22 @@ export default function ComboPill({
   return (
     <span
       className={`inline-flex items-center gap-1.5 shadow-inner ${comboColorClass} ${sizeClass} ${glowClass}`}
+      title={
+        isComputing
+          ? 'Calculating combination count…'
+          : isOverLimit
+            ? configuredLimit != null
+              ? `Combination count reached the configured limit of ${configuredLimit.toLocaleString()}.`
+              : 'Combination count reached its configured limit.'
+            : undefined
+      }
+      aria-live="polite"
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+      {isComputing ? (
+        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+      ) : (
+        <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+      )}
       {comboLabel}
     </span>
   );

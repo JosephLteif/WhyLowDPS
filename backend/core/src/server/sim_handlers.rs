@@ -892,6 +892,10 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .contains("Too many combinations (2)"));
+        assert_eq!(
+            payload.get("limit_reached").and_then(Value::as_bool),
+            Some(true)
+        );
     }
 
     #[actix_web::test]

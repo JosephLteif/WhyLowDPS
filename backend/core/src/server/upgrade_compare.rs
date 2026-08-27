@@ -352,7 +352,10 @@ pub(super) async fn get_upgrade_compare_combo_count(
         &req.upgrade_depth,
         &req.budget_mode,
     ) {
-        Ok((_, count, _)) => HttpResponse::Ok().json(json!({ "combo_count": count })),
+        Ok((_, count, _)) => HttpResponse::Ok().json(json!({
+            "combo_count": count,
+            "limit_reached": false
+        })),
         Err(e) => {
             let e_str = e.to_string();
             let count: usize = e_str
@@ -361,7 +364,11 @@ pub(super) async fn get_upgrade_compare_combo_count(
                 .and_then(|s| s.split(')').next())
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
-            HttpResponse::Ok().json(json!({ "combo_count": count, "error": e_str }))
+            HttpResponse::Ok().json(json!({
+                "combo_count": count,
+                "error": e_str,
+                "limit_reached": e_str.contains("Too many upgrade combinations")
+            }))
         }
     }
 }
@@ -713,6 +720,10 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .contains("Too many upgrade combinations (1)"));
+        assert_eq!(
+            payload.get("limit_reached").and_then(Value::as_bool),
+            Some(true)
+        );
 
         *state::BONUSES.write().unwrap() = prev_bonuses;
         *state::UPGRADE_TRACKS.write().unwrap() = prev_tracks;

@@ -8,12 +8,25 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Keep simulation progress visible across pages
+
+Active simulations now remain easy to monitor after navigating to another page, with a compact progress card and a completion notification when the result is ready.
+
+- The activity card appears on other pages and can be minimized to a small bottom-right indicator.
+- The duplicate activity card is hidden while viewing that simulation's own progress or result page.
+
 #### Rework the release pipeline
 
 The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.
 
 - Pushes to `dev` publish the tested moving developer release.
 - Stable releases can promote the tested developer build from the Release workflow.
+
+### Bug fixes
+
+#### Show accurate Top Gear combination counts
+
+Selecting all available gear items now keeps the selected item identities aligned with the resolved gear data, so the combination count no longer remains at zero during the selection update.
 
 ## v4.1.1 — 2026-08-25 — Release notes for v4.1.1
 

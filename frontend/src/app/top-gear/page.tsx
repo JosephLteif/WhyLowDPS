@@ -27,7 +27,6 @@ interface LocalGearItem {
   simc_string: string;
   origin: string;
 }
-
 function appendLocalItemsToSimcInput(baseInput: string, localItems: LocalGearItem[]): string {
   let result = baseInput;
   if (localItems.length === 0) return result;
@@ -60,6 +59,31 @@ function pairedTopGearSlot(slot: string): string | null {
   if (slot === 'trinket1') return 'trinket2';
   if (slot === 'trinket2') return 'trinket1';
   return null;
+}
+
+function uidIdentity(uid: string): string {
+  const index = uid.lastIndexOf(':');
+  return index >= 0 ? uid.slice(0, index) : uid;
+}
+
+function uidCoreKey(uid: string): string | null {
+  const parts = uid.split(':');
+  const itemId = Number(parts[0]);
+  if (!Number.isFinite(itemId) || itemId <= 0) return null;
+  const origin = parts.find((part) => part === 'equipped' || part === 'bags' || part === 'vault');
+  return origin ? `${itemId}:${origin}` : null;
+}
+
+function itemCoreKey(item: Pick<ResolvedItem, 'item_id' | 'origin'>): string {
+  return `${item.item_id}:${item.origin}`;
+}
+
+function uidMatchesItem(uid: string, item: ResolvedItem): boolean {
+  return (
+    uid === item.uid ||
+    uidIdentity(uid) === uidIdentity(item.uid) ||
+    uidCoreKey(uid) === itemCoreKey(item)
+  );
 }
 
 function buildVariantRuleBaseKey(item: ResolvedItem): string {
@@ -493,17 +517,22 @@ export default function TopGearPage() {
       const allSlotItems = [...slotItems, ...virtualItems];
       const included = new Set<string>();
       for (const uid of uids) {
-        const item = allSlotItems.find((candidate) => candidate.uid === uid);
-        if (!item) continue;
-        if (
-          globalAffixesEnabled &&
-          replacedBaseKeys.size > 0 &&
-          !virtualItems.some((virtualItem) => virtualItem.uid === item.uid) &&
-          replacedBaseKeys.has(buildVariantRuleBaseKey(item))
-        ) {
+        const matches = allSlotItems.filter((candidate) => uidMatchesItem(uid, candidate));
+        if (matches.length === 0) {
+          included.add(uid);
           continue;
         }
-        included.add(item.uid);
+        for (const item of matches) {
+          if (
+            globalAffixesEnabled &&
+            replacedBaseKeys.size > 0 &&
+            !virtualItems.some((virtualItem) => virtualItem.uid === item.uid) &&
+            replacedBaseKeys.has(buildVariantRuleBaseKey(item))
+          ) {
+            continue;
+          }
+          included.add(item.uid);
+        }
       }
       if (globalAffixesEnabled) {
         for (const item of virtualItems) {
@@ -613,13 +642,17 @@ export default function TopGearPage() {
   useEffect(() => {
     const requestSeq = ++comboRequestSeqRef.current;
     const selectedItemsForSubmit = buildSelectedUidsJson();
+    const hasRawGearSelection = Object.values(selectedUids).some((uids) => uids.size > 0);
     const hasGearSelection = Object.values(selectedItemsForSubmit).some((uids) => uids.length > 0);
     const hasTalentCompare = talentBuilds.length > 1;
-    if (!resolved || (!hasGearSelection && !hasTalentCompare)) {
+    if (!resolved || (!hasRawGearSelection && !hasTalentCompare)) {
       setComboCount(0);
       setComboError('');
       return;
     }
+    // Keep the previous value while a selection is being normalized against a
+    // freshly resolved item list instead of flashing back to zero.
+    if (!hasGearSelection && !hasTalentCompare) return;
 
     const controller = new AbortController();
     (async () => {

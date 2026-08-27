@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-5fe6cf7de466",
+  "contentRevision": "Unreleased-1c7049ee77c0",
   "releases": [
     {
       "version": "Unreleased",
@@ -8,12 +8,26 @@
       "entries": [
         {
           "category": "improvement",
+          "title": "Keep simulation progress visible across pages",
+          "summary": "Active simulations now remain easy to monitor after navigating to another page, with a compact progress card and a completion notification when the result is ready.",
+          "items": [
+            "The activity card appears on other pages and can be minimized to a small bottom-right indicator.",
+            "The duplicate activity card is hidden while viewing that simulation's own progress or result page."
+          ]
+        },
+        {
+          "category": "improvement",
           "title": "Rework the release pipeline",
           "summary": "The release pipeline now separates automated developer builds from stable release promotion for a cleaner, more reliable release cycle.",
           "items": [
             "Pushes to `dev` publish the tested moving developer release.",
             "Stable releases can promote the tested developer build from the Release workflow."
           ]
+        },
+        {
+          "category": "fix",
+          "title": "Show accurate Top Gear combination counts",
+          "summary": "Selecting all available gear items now keeps the selected item identities aligned with the resolved gear data, so the combination count no longer remains at zero during the selection update."
         }
       ]
     },

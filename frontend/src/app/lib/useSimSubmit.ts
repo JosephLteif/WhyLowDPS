@@ -8,6 +8,7 @@ import type { CharacterStatisticsPayload } from './character-domain-types';
 import type { FightScenario } from './types';
 import { storeScenarioSiblings, clearScenarioSiblings } from './scenario-siblings';
 import { simResultHref } from './routes';
+import { trackSimulations } from './sim-tracking';
 import { buildFightStylePayload } from './fight-style';
 import { normalizeLiveCharacterStats } from './stat-snapshot';
 import {
@@ -310,6 +311,7 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
       if (scenarios.length === 0) {
         const r = results[0];
         if (r.status === 'fulfilled') {
+          trackSimulations([{ id: r.value.id, simType, playerName: identity?.name }]);
           if (simAgainTarget) {
             registerSimReturnTarget(r.value.id, simAgainTarget);
           }
@@ -337,6 +339,13 @@ export function useSimSubmit({ endpoint, buildPayload, validate, simAgain }: Use
           .filter((s): s is NonNullable<typeof s> => s !== null);
 
         if (siblings.length > 0) {
+          trackSimulations(
+            siblings.map((s) => ({
+              id: s.id,
+              simType,
+              playerName: identity?.name,
+            }))
+          );
           if (simAgainTarget) {
             registerSimReturnTargets(
               siblings.map((s) => s.id),

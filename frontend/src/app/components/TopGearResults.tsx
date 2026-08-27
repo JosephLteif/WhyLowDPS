@@ -22,6 +22,7 @@ import RankedResults from './top-gear-results/RankedResults';
 import SimResultTalentsCard from './SimResultTalentsCard';
 import { addItemsToWishlist, buildWishlistOwnerKey, isWishlisted, removeFromWishlist } from '../lib/wishlist';
 import type { DropItem, Instance } from '../drop-finder/types';
+import { trackSimulations } from '../lib/sim-tracking';
 
 interface TopGearResultsProps {
   parentSimId?: string;
@@ -445,6 +446,7 @@ export default function TopGearResults({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions, parentSimId)),
         });
+        trackSimulations([{ id: created.id, simType: 'top_gear_exact_stats', playerName }]);
         await linkSimToParentCharacter({
           jobId: created.id,
           name: playerName,
@@ -517,6 +519,7 @@ export default function TopGearResults({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildExactStatsRequest(exactInput, simOptions, parentSimId)),
         });
+        trackSimulations([{ id: created.id, simType: 'top_gear_exact_stats', playerName }]);
         await linkSimToParentCharacter({
           jobId: created.id,
           name: playerName,

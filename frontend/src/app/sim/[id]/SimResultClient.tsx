@@ -38,6 +38,7 @@ import { useNotifications } from '../../components/shared/NotificationSystem';
 import { API_URL, fetchJson } from '../../lib/api';
 import { formatScenarioLabel, getScenarioSiblings, type ScenarioSibling } from '../../lib/scenario-siblings';
 import { simResultHref } from '../../lib/routes';
+import { trackSimulations } from '../../lib/sim-tracking';
 import { getSimReturnTarget, resolveSimAgainNavigation, setSimReturnNotice } from '../../lib/sim-return';
 
 interface JobData {
@@ -1028,6 +1029,7 @@ export default function SimResultClient() {
         }),
       });
       if (!response?.id) throw new Error('The simulation could not be started.');
+      trackSimulations([{ id: response.id, simType: job.sim_type }]);
       router.push(simResultHref(response.id));
     } catch (error: unknown) {
       setRerunError(

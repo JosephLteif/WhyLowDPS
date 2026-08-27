@@ -1,5 +1,5 @@
 {
-  "contentRevision": "Unreleased-bf4839d595ce",
+  "contentRevision": "Unreleased-96df0d6ff49d",
   "releases": [
     {
       "version": "Unreleased",
@@ -42,6 +42,11 @@
             "Pushes to `dev` publish the tested moving developer release.",
             "Stable releases can promote the tested developer build from the Release workflow."
           ]
+        },
+        {
+          "category": "fix",
+          "title": "Select restored SimC profiles automatically",
+          "summary": "SimC exports restored or supplied outside the profile selector now automatically select the matching saved or recent profile instead of leaving the selector blank."
         },
         {
           "category": "fix",

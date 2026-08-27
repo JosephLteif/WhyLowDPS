@@ -39,6 +39,10 @@ The release pipeline now separates automated developer builds from stable releas
 
 ### Bug fixes
 
+#### Select restored SimC profiles automatically
+
+SimC exports restored or supplied outside the profile selector now automatically select the matching saved or recent profile instead of leaving the selector blank.
+
 #### Use the selected target item level for trinket candidates
 
 Trinket heatmaps now apply the selected target item level to fallback drops, preventing base-level variants from being simulated alongside the selected Myth upgrade level.

@@ -1,7 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { deleteCharacterProfile, listCharacterProfiles, type SavedCharacterProfile } from '../lib/api';
+import {
+  deleteCharacterProfile,
+  listCharacterProfiles,
+  type SavedCharacterProfile,
+} from '../lib/api';
 import { parseCharacterInfo } from '@/lib/simc-parser';
 import { useDismissOnOutside } from '../lib/useDismissOnOutside';
 import { formatRealmName, resolveClassColor } from '../lib/profile-format';
@@ -31,20 +35,18 @@ type UseSimcProfileSelectorArgs = {
   setSimcInput: (value: string) => void;
 };
 
-export function useSimcProfileSelector({
-  setSimcInput,
-}: UseSimcProfileSelectorArgs) {
+export function useSimcProfileSelector({ simcInput, setSimcInput }: UseSimcProfileSelectorArgs) {
   const [simcInputHistory, setSimcInputHistory] = useState<string[]>([]);
   const [selectedHistoryIdx, setSelectedHistoryIdx] = useState<number | null>(null);
   const [selectedSavedId, setSelectedSavedId] = useState<string | null>(null);
   const [historyDropdownOpen, setHistoryDropdownOpen] = useState(false);
   const [historyTab, setHistoryTab] = useState<HistoryTab>('saved');
   const [bnetProfiles, setBnetProfiles] = useState<SavedCharacterProfile[]>([]);
+  const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null);
   const historyDropdownRef = useRef<HTMLDivElement>(null);
-  useDismissOnOutside(historyDropdownRef, historyDropdownOpen, () =>
-    setHistoryDropdownOpen(false)
-  );
+  const lastAutoSelectedInputRef = useRef<string | null>(null);
+  useDismissOnOutside(historyDropdownRef, historyDropdownOpen, () => setHistoryDropdownOpen(false));
 
   const deleteTargetProfile = useMemo(
     () => bnetProfiles.find((p) => p.id === deleteProfileId) || null,
@@ -104,19 +106,87 @@ export function useSimcProfileSelector({
       setSimcInput(value);
       if (!value || value.length < 50) {
         setSelectedHistoryIdx(null);
+        setSelectedSavedId(null);
         return;
       }
 
       const newIdx = addToHistoryWithSelection(value);
+      setSelectedSavedId(null);
       setSelectedHistoryIdx(newIdx);
     },
     [addToHistoryWithSelection, setSimcInput]
   );
 
+  useEffect(() => {
+    const normalizedInput = simcInput.trim();
+    if (!normalizedInput || simcInput.length < 50) {
+      lastAutoSelectedInputRef.current = normalizedInput;
+      if (selectedHistoryIdx !== null) setSelectedHistoryIdx(null);
+      if (selectedSavedId !== null) setSelectedSavedId(null);
+      return;
+    }
+
+    const selectedSavedProfile = bnetProfiles.find((profile) => profile.id === selectedSavedId);
+    if (selectedSavedProfile?.simc_input.trim() === normalizedInput) {
+      if (selectedHistoryIdx !== null) setSelectedHistoryIdx(null);
+      return;
+    }
+
+    const selectedHistoryProfile =
+      selectedHistoryIdx !== null ? simcInputHistory[selectedHistoryIdx] : undefined;
+    if (selectedHistoryProfile?.trim() === normalizedInput) {
+      if (selectedSavedId !== null) setSelectedSavedId(null);
+      return;
+    }
+
+    const matchingSavedProfile = bnetProfiles.find(
+      (profile) => profile.simc_input.trim() === normalizedInput
+    );
+    if (matchingSavedProfile) {
+      setSelectedSavedId(matchingSavedProfile.id);
+      setSelectedHistoryIdx(null);
+      lastAutoSelectedInputRef.current = normalizedInput;
+      return;
+    }
+
+    const matchingHistoryIdx = simcInputHistory.findIndex(
+      (profile) => profile.trim() === normalizedInput
+    );
+    if (matchingHistoryIdx >= 0) {
+      setSelectedSavedId(null);
+      setSelectedHistoryIdx(matchingHistoryIdx);
+      lastAutoSelectedInputRef.current = normalizedInput;
+      return;
+    }
+
+    // Inputs restored or supplied by another page bypass handleSetSimcInput. Treat them
+    // like editor input once, so the profile still appears as the selected recent export.
+    if (profilesLoaded && lastAutoSelectedInputRef.current !== normalizedInput) {
+      const newIdx = addToHistoryWithSelection(simcInput);
+      setSelectedSavedId(null);
+      setSelectedHistoryIdx(newIdx);
+      lastAutoSelectedInputRef.current = normalizedInput;
+    }
+  }, [
+    addToHistoryWithSelection,
+    bnetProfiles,
+    profilesLoaded,
+    selectedHistoryIdx,
+    selectedSavedId,
+    simcInput,
+    simcInputHistory,
+  ]);
+
   const loadProfiles = useCallback(() => {
     listCharacterProfiles()
-      .then(setBnetProfiles)
-      .catch(() => setBnetProfiles([]));
+      .then((profiles) => {
+        setBnetProfiles(profiles);
+        setProfilesLoaded(true);
+      })
+      .catch(() => {
+        setBnetProfiles([]);
+        setProfilesLoaded(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -152,6 +222,7 @@ export function useSimcProfileSelector({
 
   const handleSelectHistoryProfile = useCallback(
     (idx: number) => {
+      setSelectedSavedId(null);
       setSelectedHistoryIdx(idx);
       setSimcInput(simcInputHistory[idx]);
       setHistoryDropdownOpen(false);
@@ -195,7 +266,10 @@ export function useSimcProfileSelector({
     if (selectedSavedId !== null) {
       const saved = bnetProfiles.find((profile) => profile.id === selectedSavedId);
       if (!saved) return null;
-      const classLabel = [saved.spec ? specDisplayName(saved.spec) : null, titleCaseWords(saved.class)]
+      const classLabel = [
+        saved.spec ? specDisplayName(saved.spec) : null,
+        titleCaseWords(saved.class),
+      ]
         .filter(Boolean)
         .join(' ');
       const realmLabel = [formatRealmName(saved.realm), saved.region ? `(${saved.region})` : null]
@@ -244,8 +318,26 @@ export function useSimcProfileSelector({
       };
     }
 
+    const info = simcInput.length >= 50 ? parseCharacterInfo(simcInput) : null;
+    if (info?.kind === 'character') {
+      const classLabel = [specDisplayName(info.spec), titleCaseWords(info.className)]
+        .filter(Boolean)
+        .join(' ');
+      const realmLabel = [info.server, info.region ? `(${info.region})` : null]
+        .filter(Boolean)
+        .join(' ');
+      return {
+        name: info.name,
+        classLabel,
+        classColor: resolveClassColor(info.className),
+        combinedLabel:
+          info.name && classLabel ? `${info.name} - ${classLabel}` : info.name || classLabel,
+        realmLabel: realmLabel || null,
+      };
+    }
+
     return null;
-  }, [bnetProfiles, selectedHistoryIdx, selectedSavedId, simcInputHistory]);
+  }, [bnetProfiles, selectedHistoryIdx, selectedSavedId, simcInput, simcInputHistory]);
 
   return {
     simcInputHistory,

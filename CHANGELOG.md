@@ -17,6 +17,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 - Trinket heatmaps now use the selected target item level for fallback drops, so Myth 6/6 no longer simulates raw 108 item-level variants alongside 334 candidates.
 - Top Gear now keeps the combination count accurate when selecting all available gear items.
+- SimC exports restored or supplied outside the profile selector now automatically select the matching saved or recent profile.
 
 ## [4.1.1] - 2026-08-25
 

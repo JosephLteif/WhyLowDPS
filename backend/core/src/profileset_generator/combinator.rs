@@ -136,6 +136,86 @@ pub fn filter_valid_combos(
     valid
 }
 
+fn visit_cartesian_product<F>(
+    index: usize,
+    indices: &mut Vec<usize>,
+    option_lists: &[&Vec<ResolvedItem>],
+    visit: &mut F,
+) -> bool
+where
+    F: FnMut(&[usize]) -> bool,
+{
+    if index == option_lists.len() {
+        return visit(indices);
+    }
+
+    for option_index in 0..option_lists[index].len() {
+        indices.push(option_index);
+        let should_stop = visit_cartesian_product(index + 1, indices, option_lists, visit);
+        indices.pop();
+        if should_stop {
+            return true;
+        }
+    }
+    false
+}
+
+pub struct LimitedComboResult {
+    pub valid_combos: Vec<HashMap<String, ResolvedItem>>,
+    pub exceeded_limit: bool,
+}
+
+pub fn filter_valid_combos_limited(
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+    max_valid_combos: usize,
+) -> LimitedComboResult {
+    let mut valid_combos = Vec::new();
+    let mut indices = Vec::with_capacity(option_lists.len());
+    let mut seen = HashSet::new();
+    let exceeded_limit = visit_cartesian_product(0, &mut indices, option_lists, &mut |indices| {
+        let gear_set =
+            build_gear_set_from_combo(indices, varying_slots, option_lists, slot_item_lists, spec);
+        if is_valid_gear_set(&gear_set, spec, catalyst_charges) && !is_baseline_gear_set(&gear_set)
+        {
+            let key = gear_set_identity_key(&gear_set);
+            if seen.insert(key) {
+                valid_combos.push(gear_set);
+                return valid_combos.len() > max_valid_combos;
+            }
+        }
+        false
+    });
+
+    LimitedComboResult {
+        valid_combos,
+        exceeded_limit,
+    }
+}
+
+pub fn has_item_limit_only_blockers(
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+) -> bool {
+    let mut indices = Vec::with_capacity(option_lists.len());
+    visit_cartesian_product(0, &mut indices, option_lists, &mut |indices| {
+        let gear_set =
+            build_gear_set_from_combo(indices, varying_slots, option_lists, slot_item_lists, spec);
+        let passes_non_limit_checks = validation::validate_unique_equipped(&gear_set)
+            && validation::validate_vault_constraint(&gear_set)
+            && validation::validate_weapon_constraint(&gear_set, spec)
+            && catalyst_charges
+                .is_none_or(|c| validation::validate_catalyst_constraint(&gear_set, c));
+        passes_non_limit_checks && !validation::validate_item_limits(&gear_set)
+    })
+}
+
 pub fn build_gear_set_from_combo(
     indices: &[usize],
     varying_slots: &[String],
@@ -538,6 +618,39 @@ mod tests {
         let product = generate_cartesian_product(&options);
         assert_eq!(product.len(), 6);
         assert!(product.iter().all(|combo| combo.len() == 2));
+    }
+
+    #[test]
+    fn limited_filter_stops_after_valid_combo_limit() {
+        let head = vec![
+            make_item("h-eq", "head", 1, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("h-alt", "head", 2, ItemOrigin::Bags, 0, 0, ""),
+            make_item("h-alt2", "head", 3, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let neck = vec![
+            make_item("n-eq", "neck", 10, ItemOrigin::Equipped, 0, 0, ""),
+            make_item("n-alt", "neck", 11, ItemOrigin::Bags, 0, 0, ""),
+            make_item("n-alt2", "neck", 12, ItemOrigin::Bags, 0, 0, ""),
+        ];
+        let slot_item_lists =
+            HashMap::from([("head".to_string(), head), ("neck".to_string(), neck)]);
+        let varying_slots = vec!["head".to_string(), "neck".to_string()];
+        let option_lists = vec![
+            slot_item_lists.get("head").unwrap(),
+            slot_item_lists.get("neck").unwrap(),
+        ];
+
+        let result = filter_valid_combos_limited(
+            &varying_slots,
+            &option_lists,
+            &slot_item_lists,
+            "arcane",
+            None,
+            2,
+        );
+
+        assert!(result.exceeded_limit);
+        assert_eq!(result.valid_combos.len(), 3);
     }
 
     #[test]

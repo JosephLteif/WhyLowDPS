@@ -9,41 +9,6 @@ pub mod combinator;
 pub mod parser;
 pub mod writer;
 
-fn has_item_limit_only_blockers(
-    all_combos: &[Vec<usize>],
-    varying_slots: &[String],
-    option_lists: &[&Vec<ResolvedItem>],
-    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
-    spec: &str,
-    catalyst_charges: Option<u32>,
-) -> bool {
-    for indices in all_combos {
-        let gear_set = combinator::build_gear_set_from_combo(
-            indices,
-            varying_slots,
-            option_lists,
-            slot_item_lists,
-            spec,
-        );
-
-        let passes_non_limit_checks =
-            crate::profileset::validation::validate_unique_equipped(&gear_set)
-                && crate::profileset::validation::validate_vault_constraint(&gear_set)
-                && crate::profileset::validation::validate_weapon_constraint(&gear_set, spec)
-                && catalyst_charges.is_none_or(|c| {
-                    crate::profileset::validation::validate_catalyst_constraint(&gear_set, c)
-                });
-        if !passes_non_limit_checks {
-            continue;
-        }
-
-        if !crate::profileset::validation::validate_item_limits(&gear_set) {
-            return true;
-        }
-    }
-    false
-}
-
 fn prune_equipped_limit_overflow_candidates(
     slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
 ) -> HashMap<String, Vec<ResolvedItem>> {
@@ -145,22 +110,44 @@ pub fn generate_top_gear_input_with_talents(
         .iter()
         .map(|slot| slot_item_lists.get(slot).unwrap())
         .collect();
-    let all_combos = combinator::generate_cartesian_product(&option_lists);
-    let mut valid_combos = combinator::filter_valid_combos(
-        &all_combos,
+    let effective_talents = get_effective_talents(talent_builds, &talents_string);
+    let consumable_scenarios = build_consumable_scenarios(consumables);
+    let consumable_factor = consumable_scenarios.len().max(1);
+    let scenario_factor = effective_talents
+        .len()
+        .max(1)
+        .saturating_mul(consumable_factor);
+    let limit = max_combos_override.unwrap_or(*MAX_COMBINATIONS);
+    let max_valid_gear_combos = limit
+        .checked_div(scenario_factor)
+        .unwrap_or(0)
+        .saturating_sub(1);
+    let limited_result = combinator::filter_valid_combos_limited(
         &varying_slots,
         &option_lists,
         &slot_item_lists,
         &spec,
         catalyst_charges,
+        max_valid_gear_combos,
     );
+    let mut valid_combos = limited_result.valid_combos;
+
+    if limited_result.exceeded_limit {
+        let total_combo_count = valid_combos
+            .len()
+            .saturating_add(1)
+            .saturating_mul(scenario_factor);
+        return Err(crate::error::AppError::SimcError(format!(
+            "Too many combinations ({}). Maximum is {}. Please deselect some items.",
+            total_combo_count, limit
+        )));
+    }
 
     let mut gear_combo_count = valid_combos.len();
 
     if gear_combo_count == 0
         && !varying_slots.is_empty()
-        && has_item_limit_only_blockers(
-            &all_combos,
+        && combinator::has_item_limit_only_blockers(
             &varying_slots,
             &option_lists,
             &slot_item_lists,
@@ -175,19 +162,30 @@ pub fn generate_top_gear_input_with_talents(
                 .iter()
                 .map(|slot| pruned_slot_item_lists.get(slot).unwrap())
                 .collect();
-            let pruned_all_combos = combinator::generate_cartesian_product(&pruned_option_lists);
-            let pruned_valid_combos = combinator::filter_valid_combos(
-                &pruned_all_combos,
+            let pruned_result = combinator::filter_valid_combos_limited(
                 &pruned_varying_slots,
                 &pruned_option_lists,
                 &pruned_slot_item_lists,
                 &spec,
                 catalyst_charges,
+                max_valid_gear_combos,
             );
 
-            if !pruned_valid_combos.is_empty() {
+            if pruned_result.exceeded_limit {
+                let total_combo_count = pruned_result
+                    .valid_combos
+                    .len()
+                    .saturating_add(1)
+                    .saturating_mul(scenario_factor);
+                return Err(crate::error::AppError::SimcError(format!(
+                    "Too many combinations ({}). Maximum is {}. Please deselect some items.",
+                    total_combo_count, limit
+                )));
+            }
+
+            if !pruned_result.valid_combos.is_empty() {
                 slot_item_lists = pruned_slot_item_lists;
-                valid_combos = pruned_valid_combos;
+                valid_combos = pruned_result.valid_combos;
                 gear_combo_count = valid_combos.len();
             }
         }
@@ -199,14 +197,10 @@ pub fn generate_top_gear_input_with_talents(
         }
     }
 
-    let effective_talents = get_effective_talents(talent_builds, &talents_string);
-    let consumable_scenarios = build_consumable_scenarios(consumables);
-    let consumable_factor = consumable_scenarios.len().max(1);
     let total_combo_count =
         calculate_total_profileset_count(gear_combo_count, effective_talents.len())
             * consumable_factor;
 
-    let limit = max_combos_override.unwrap_or(*MAX_COMBINATIONS);
     if total_combo_count > limit {
         return Err(crate::error::AppError::SimcError(format!(
             "Too many combinations ({}). Maximum is {}. Please deselect some items.",

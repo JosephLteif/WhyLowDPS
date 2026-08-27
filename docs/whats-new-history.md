@@ -8,6 +8,12 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### Persist recent SimC profile history
+
+Recent SimC exports in the History list now persist locally, so they remain available after reloading the app or navigating between SimC pages.
+
+- History remains limited to the 20 most recent exports and can still be cleared from the profile dropdown.
+
 #### Filter legacy trinkets from Upgrade simulations
 
 Upgrade Trinkets now defaults to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets when those items are still relevant.

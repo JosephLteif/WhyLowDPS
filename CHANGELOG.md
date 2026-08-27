@@ -8,6 +8,7 @@ The format is based on Keep a Changelog and this project uses semantic versionin
 
 ### Changed
 
+- Recent SimC exports in the History list now persist locally across reloads and navigation, while remaining limited to the 20 most recent profiles and clearable from the profile dropdown.
 - Upgrade Trinkets now default to current-season raid and dungeon sources, with an opt-in setting for old-season and Turbulent trinkets; excluded trinkets are removed before simulation combinations are generated.
 - Top Gear and Upgrade Compare now calculate the full combination count before launch, keep simulation start disabled while it is computing, and explain when the exact total exceeds the configured limit.
 - Active simulations now remain monitorable across pages with a minimizable progress indicator, while the duplicate indicator is hidden on the simulation's own progress or result page; completion notifications still link back to the result.

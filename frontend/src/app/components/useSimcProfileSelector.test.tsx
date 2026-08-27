@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -11,7 +11,7 @@ vi.mock('../lib/api', () => ({
   listCharacterProfiles: mocks.listCharacterProfiles,
 }));
 
-import { useSimcProfileSelector } from './useSimcProfileSelector';
+import { SIMC_INPUT_HISTORY_STORAGE_KEY, useSimcProfileSelector } from './useSimcProfileSelector';
 
 const simcInput = `# Manaia - Arcane - 2026-08-27 10:58 - EU/Turalyon
 Mage="Manaia"
@@ -28,6 +28,7 @@ describe('useSimcProfileSelector', () => {
   beforeEach(() => {
     mocks.deleteCharacterProfile.mockReset();
     mocks.listCharacterProfiles.mockReset();
+    localStorage.removeItem(SIMC_INPUT_HISTORY_STORAGE_KEY);
   });
 
   it('selects SimC restored through the shared input as a recent profile', async () => {
@@ -64,5 +65,27 @@ describe('useSimcProfileSelector', () => {
 
     expect(result.current.selectedHistoryIdx).toBeNull();
     expect(result.current.selectedProfileMeta?.combinedLabel).toBe('Manaia - Arcane Mage');
+  });
+
+  it('persists recent SimC exports and restores them on the next mount', async () => {
+    mocks.listCharacterProfiles.mockResolvedValue([]);
+    const first = renderHook(() =>
+      useSimcProfileSelector({ simcInput: '', setSimcInput: vi.fn() })
+    );
+
+    await waitFor(() => expect(first.result.current.simcInputHistory).toEqual([]));
+    act(() => first.result.current.handleSetSimcInput(simcInput));
+
+    await waitFor(() =>
+      expect(localStorage.getItem(SIMC_INPUT_HISTORY_STORAGE_KEY)).toBe(JSON.stringify([simcInput]))
+    );
+    first.unmount();
+
+    const second = renderHook(() =>
+      useSimcProfileSelector({ simcInput: '', setSimcInput: vi.fn() })
+    );
+
+    await waitFor(() => expect(second.result.current.simcInputHistory).toEqual([simcInput]));
+    expect(second.result.current.selectedHistoryIdx).toBeNull();
   });
 });

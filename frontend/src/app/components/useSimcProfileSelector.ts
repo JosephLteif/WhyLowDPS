@@ -22,6 +22,8 @@ function titleCaseWords(value: string | null | undefined): string {
 
 export type HistoryTab = 'saved' | 'history';
 
+export const SIMC_INPUT_HISTORY_STORAGE_KEY = 'whylowdps_simc_input_history';
+
 export type SelectedProfileMeta = {
   name: string;
   classLabel: string | null;
@@ -37,6 +39,7 @@ type UseSimcProfileSelectorArgs = {
 
 export function useSimcProfileSelector({ simcInput, setSimcInput }: UseSimcProfileSelectorArgs) {
   const [simcInputHistory, setSimcInputHistory] = useState<string[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [selectedHistoryIdx, setSelectedHistoryIdx] = useState<number | null>(null);
   const [selectedSavedId, setSelectedSavedId] = useState<string | null>(null);
   const [historyDropdownOpen, setHistoryDropdownOpen] = useState(false);
@@ -52,6 +55,37 @@ export function useSimcProfileSelector({ simcInput, setSimcInput }: UseSimcProfi
     () => bnetProfiles.find((p) => p.id === deleteProfileId) || null,
     [bnetProfiles, deleteProfileId]
   );
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(SIMC_INPUT_HISTORY_STORAGE_KEY);
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setSimcInputHistory(
+            parsed
+              .filter((value): value is string => typeof value === 'string' && value.length >= 50)
+              .slice(-20)
+          );
+        }
+      }
+    } catch {}
+    setHistoryLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!historyLoaded) return;
+    try {
+      if (simcInputHistory.length === 0) {
+        window.localStorage.removeItem(SIMC_INPUT_HISTORY_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(
+          SIMC_INPUT_HISTORY_STORAGE_KEY,
+          JSON.stringify(simcInputHistory)
+        );
+      }
+    } catch {}
+  }, [historyLoaded, simcInputHistory]);
 
   const addToHistory = useCallback((value: string) => {
     if (!value || value.length < 50) return;

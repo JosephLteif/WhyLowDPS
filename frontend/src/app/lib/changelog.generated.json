@@ -1,11 +1,19 @@
 {
-  "contentRevision": "Unreleased-96df0d6ff49d",
+  "contentRevision": "Unreleased-9b8805521548",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "Persist recent SimC profile history",
+          "summary": "Recent SimC exports in the History list now persist locally, so they remain available after reloading the app or navigating between SimC pages.",
+          "items": [
+            "History remains limited to the 20 most recent exports and can still be cleared from the profile dropdown."
+          ]
+        },
         {
           "category": "improvement",
           "title": "Filter legacy trinkets from Upgrade simulations",

@@ -63,6 +63,7 @@ test('release workflow has a compact stable action selector', () => {
   assert.match(workflow, /promote-dev:[\s\S]*?DEV_TAG="dev-build\/\$\{DEV_VERSION\}"/);
   assert.match(workflow, /git checkout --detach "refs\/tags\/\$\{DEV_TAG\}"/);
   assert.match(workflow, /git tag "v\$\{VERSION\}"/);
+  assert.match(workflow, /promote-dev:[\s\S]*?git config user\.name "github-actions\[bot\]"[\s\S]*?git commit -m "chore\(release\): promote/);
   assert.doesNotMatch(workflow, /ref: refs\/tags\/dev\s/);
   assert.match(workflow, /needs: \[bump-version-stable, promote-dev, validate_republish\]/);
 });

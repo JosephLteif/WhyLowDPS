@@ -846,7 +846,7 @@ mod tests {
     }
 
     #[actix_web::test]
-    async fn top_gear_combo_count_reports_limit_error_count() {
+    async fn top_gear_combo_count_reports_exact_count_over_configured_limit() {
         let req = parse_top_gear_req(json!({
             "simc_input": "warrior=\"Tester\"\nspec=fury\n",
             "selected_items": {
@@ -887,11 +887,7 @@ mod tests {
         let body = to_bytes(resp.into_body()).await.expect("response body");
         let payload: Value = serde_json::from_slice(&body).expect("json body");
         assert_eq!(payload.get("combo_count").and_then(Value::as_u64), Some(2));
-        assert!(payload
-            .get("error")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .contains("Too many combinations (2)"));
+        assert!(payload.get("error").is_none());
         assert_eq!(
             payload.get("limit_reached").and_then(Value::as_bool),
             Some(true)

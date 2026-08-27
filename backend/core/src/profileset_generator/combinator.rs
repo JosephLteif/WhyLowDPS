@@ -223,6 +223,52 @@ pub fn filter_valid_combos_limited(
     }
 }
 
+pub fn count_valid_combos(
+    varying_slots: &[String],
+    option_lists: &[&Vec<ResolvedItem>],
+    slot_item_lists: &HashMap<String, Vec<ResolvedItem>>,
+    spec: &str,
+    catalyst_charges: Option<u32>,
+) -> usize {
+    let mut count: usize = 0;
+    let mut indices = Vec::with_capacity(option_lists.len());
+    let mut seen = HashSet::new();
+    let item_limit_category_cache = build_item_limit_category_cache(slot_item_lists);
+    let mut partial_state =
+        PartialComboState::new(varying_slots, slot_item_lists, &item_limit_category_cache);
+    visit_cartesian_product_pruned(
+        0,
+        &mut indices,
+        varying_slots,
+        option_lists,
+        &item_limit_category_cache,
+        &mut partial_state,
+        &mut |indices| {
+            let gear_set = build_gear_set_from_combo(
+                indices,
+                varying_slots,
+                option_lists,
+                slot_item_lists,
+                spec,
+            );
+            if is_valid_gear_set_with_cache(
+                &gear_set,
+                spec,
+                catalyst_charges,
+                &item_limit_category_cache,
+            ) && !is_baseline_gear_set(&gear_set)
+            {
+                let key = gear_set_identity_key(&gear_set);
+                if seen.insert(key) {
+                    count = count.saturating_add(1);
+                }
+            }
+            false
+        },
+    );
+    count
+}
+
 pub fn has_item_limit_only_blockers(
     varying_slots: &[String],
     option_lists: &[&Vec<ResolvedItem>],
@@ -664,6 +710,8 @@ pub struct UpgradeDfsCtx<'a> {
     pub spent: HashMap<u64, u64>,
     pub current: Vec<(String, usize)>,
     pub retain_all: bool,
+    pub count_only: bool,
+    pub count: usize,
 }
 
 impl UpgradeDfsCtx<'_> {
@@ -676,6 +724,24 @@ impl UpgradeDfsCtx<'_> {
 
     pub fn dfs(&mut self, idx: usize) {
         if idx == self.slots.len() {
+            if self.count_only {
+                let is_baseline = self.current.iter().all(|(_, choice)| *choice == 0);
+                if self.retain_all {
+                    if !is_baseline {
+                        self.count = self.count.saturating_add(1);
+                    }
+                } else {
+                    let total: u64 = self.spent.values().sum();
+                    if total > self.best_spend {
+                        self.best_spend = total;
+                        self.count = 0;
+                    }
+                    if total == self.best_spend && !is_baseline {
+                        self.count = self.count.saturating_add(1);
+                    }
+                }
+                return;
+            }
             if self.retain_all {
                 self.retained.push(UpgradeCombo {
                     choices: self.current.clone(),
@@ -720,7 +786,7 @@ impl UpgradeDfsCtx<'_> {
                 let e = self.spent.entry(*cid).or_insert(0);
                 *e = e.saturating_sub(*amount);
             }
-            if self.retained.len() > self.limit * 2 {
+            if !self.count_only && self.retained.len() > self.limit * 2 {
                 return;
             }
         }
@@ -1056,6 +1122,8 @@ mod tests {
             spent: HashMap::new(),
             current: Vec::new(),
             retain_all,
+            count_only: false,
+            count: 0,
         };
         ctx.dfs(0);
         ctx

@@ -1,11 +1,21 @@
 {
-  "contentRevision": "Unreleased-1c7049ee77c0",
+  "contentRevision": "Unreleased-9256504ee6d7",
   "releases": [
     {
       "version": "Unreleased",
       "date": "",
       "title": "Upcoming changes",
       "entries": [
+        {
+          "category": "improvement",
+          "title": "See the exact combination count before launching",
+          "summary": "Top Gear and Upgrade Compare now finish calculating the full combination count before a simulation can start, and explain clearly when the total is above the configured launch limit.",
+          "items": [
+            "The count continues past the configured limit so the exact total is shown.",
+            "Simulation launch stays disabled while the count is computing or above the limit.",
+            "Over-limit counts show the configured maximum and why the simulation cannot start."
+          ]
+        },
         {
           "category": "improvement",
           "title": "Keep simulation progress visible across pages",

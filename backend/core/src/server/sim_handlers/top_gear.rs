@@ -83,7 +83,6 @@ fn generate_top_gear_profilesets(
             &base_profile,
             &items_by_slot,
             &req.selected_items,
-            req.max_combinations,
             &talent_builds,
             catalyst_charges,
             consumables.as_ref(),
@@ -205,22 +204,21 @@ pub(in crate::server) async fn get_top_gear_combo_count(
     req: web::Json<TopGearRequest>,
 ) -> HttpResponse {
     match generate_top_gear_profilesets(&req, false) {
-        Ok(generation) => HttpResponse::Ok().json(json!({
-            "combo_count": generation.combo_count,
-            "limit_reached": false
-        })),
+        Ok(generation) => {
+            let limit = req
+                .max_combinations
+                .unwrap_or(*profileset_generator::MAX_COMBINATIONS);
+            HttpResponse::Ok().json(json!({
+                "combo_count": generation.combo_count,
+                "limit_reached": generation.combo_count > limit
+            }))
+        }
         Err(e) => {
             let e_str = e.to_string();
-            let count: usize = e_str
-                .split('(')
-                .nth(1)
-                .and_then(|s| s.split(')').next())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
             HttpResponse::Ok().json(json!({
-                "combo_count": count,
+                "combo_count": 0,
                 "error": e_str,
-                "limit_reached": e_str.contains("Too many combinations")
+                "limit_reached": false
             }))
         }
     }

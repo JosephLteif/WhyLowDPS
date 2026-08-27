@@ -171,6 +171,7 @@ export default function TopGearPage() {
   const [resolving, setResolving] = useState(false);
   const [comboCount, setComboCount] = useState(0);
   const [comboComputing, setComboComputing] = useState(false);
+  const [comboCountComputed, setComboCountComputed] = useState(false);
   const [comboLimitReached, setComboLimitReached] = useState(false);
   const [comboError, setComboError] = useState('');
   const [returnNotice, setReturnNotice] = useState<SimReturnNoticeType | null>(null);
@@ -650,6 +651,7 @@ export default function TopGearPage() {
     if (!resolved || (!hasRawGearSelection && !hasTalentCompare)) {
       setComboCount(0);
       setComboComputing(false);
+      setComboCountComputed(false);
       setComboLimitReached(false);
       setComboError('');
       return;
@@ -658,12 +660,14 @@ export default function TopGearPage() {
     // freshly resolved item list instead of flashing back to zero.
     if (!hasGearSelection && !hasTalentCompare) {
       setComboComputing(true);
+      setComboCountComputed(false);
       setComboLimitReached(false);
       setComboError('');
       return;
     }
 
     setComboComputing(true);
+    setComboCountComputed(false);
     setComboLimitReached(false);
     setComboError('');
 
@@ -707,7 +711,6 @@ export default function TopGearPage() {
             items_by_slot: buildItemsBySlotJson(),
             max_upgrade: maxUpgrade,
             copy_enchants: globalAffixesEnabled ? false : copyEnchants,
-            ...(maxCombinations != null ? { max_combinations: maxCombinations } : {}),
             ...(talentBuilds.length > 1
               ? {
                   talent_builds: talentBuilds.map((tb) => ({
@@ -734,20 +737,23 @@ export default function TopGearPage() {
           if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
           setComboComputing(false);
+          setComboCountComputed(false);
           setComboLimitReached(false);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
           return;
         }
         const data = await res.json();
         if (requestSeq !== comboRequestSeqRef.current) return;
-        const limitReached =
-          data.limit_reached === true || /Too many combinations/i.test(data.error ?? '');
-        setComboCount(data.combo_count ?? 0);
+        const count = data.combo_count ?? 0;
+        const configuredLimit = maxCombinations ?? 500;
+        const limitReached = data.limit_reached === true || count > configuredLimit;
+        setComboCount(count);
         setComboComputing(false);
+        setComboCountComputed(true);
         setComboLimitReached(limitReached);
         setComboError(
           limitReached
-            ? `Combination count reached the configured limit of ${(maxCombinations ?? 500).toLocaleString()}. Please deselect some items.`
+            ? `Cannot start a simulation: ${count.toLocaleString()} combinations exceeds the configured limit of ${configuredLimit.toLocaleString()}. Please deselect some items.`
             : data.error ?? ''
         );
       } catch (e: unknown) {
@@ -755,6 +761,7 @@ export default function TopGearPage() {
           if (requestSeq !== comboRequestSeqRef.current) return;
           setComboCount(0);
           setComboComputing(false);
+          setComboCountComputed(false);
           setComboLimitReached(false);
           setComboError('Failed to calculate combinations. Try selecting fewer items.');
         }
@@ -861,9 +868,24 @@ export default function TopGearPage() {
 
   const validate = useCallback(() => {
     if (!resolved) return 'No gear resolved';
+    if (comboComputing || !comboCountComputed) {
+      return comboError || 'Combination count is still being computed. Please wait.';
+    }
+    if (comboLimitReached) {
+      return comboError || 'Cannot start a simulation: the combination count exceeds the configured limit.';
+    }
+    if (comboCount === 0) return 'No valid combinations found.';
     if (pageLevelError) return pageLevelError;
     return null;
-  }, [resolved, pageLevelError]);
+  }, [
+    resolved,
+    pageLevelError,
+    comboComputing,
+    comboCountComputed,
+    comboLimitReached,
+    comboError,
+    comboCount,
+  ]);
 
   const { submit, submitting, error, buttonLabel } = useSimSubmit({
     endpoint: '/api/top-gear/sim',
@@ -898,7 +920,14 @@ export default function TopGearPage() {
     void submit();
   }, [submit]);
   const hasSimcInput = simcInput.trim().length >= 10;
-  const submitDisabled = submitting || !!pageLevelError || !resolved;
+  const submitDisabled =
+    submitting ||
+    !!pageLevelError ||
+    !resolved ||
+    comboComputing ||
+    !comboCountComputed ||
+    comboLimitReached ||
+    comboCount === 0;
 
   return (
     <div className="mobile-page-bottom space-y-6 pb-28">

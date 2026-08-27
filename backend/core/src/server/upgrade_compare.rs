@@ -344,30 +344,26 @@ pub(super) async fn get_upgrade_compare_combo_count(
         Err(resp) => return resp,
     };
 
-    match profileset_generator::generate_upgrade_compare_input(
-        &prepared.base_profile,
+    match profileset_generator::count_upgrade_compare_combinations(
         &prepared.upgraded_options_by_slot,
         &prepared.upgrade_budget,
-        req.max_combinations,
-        &req.upgrade_depth,
         &req.budget_mode,
     ) {
-        Ok((_, count, _)) => HttpResponse::Ok().json(json!({
+        Ok(count) => {
+            let limit = req
+                .max_combinations
+                .unwrap_or(*profileset_generator::MAX_COMBINATIONS);
+            HttpResponse::Ok().json(json!({
             "combo_count": count,
-            "limit_reached": false
-        })),
+            "limit_reached": count.saturating_add(1) > limit
+            }))
+        }
         Err(e) => {
             let e_str = e.to_string();
-            let count: usize = e_str
-                .split('(')
-                .nth(1)
-                .and_then(|s| s.split(')').next())
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
             HttpResponse::Ok().json(json!({
-                "combo_count": count,
+                "combo_count": 0,
                 "error": e_str,
-                "limit_reached": e_str.contains("Too many upgrade combinations")
+                "limit_reached": false
             }))
         }
     }
@@ -638,7 +634,7 @@ mod tests {
 
     #[actix_web::test]
     #[allow(clippy::await_holding_lock)]
-    async fn combo_count_reports_upgrade_limit_error_count() {
+    async fn combo_count_reports_exact_count_over_configured_limit() {
         let _guard = state::TEST_STATE_LOCK.lock().unwrap();
         let prev_bonuses = state::BONUSES.read().unwrap().clone();
         let prev_tracks = state::UPGRADE_TRACKS.read().unwrap().clone();
@@ -715,11 +711,7 @@ mod tests {
         let body = to_bytes(resp.into_body()).await.expect("response body");
         let payload: Value = serde_json::from_slice(&body).expect("json body");
         assert_eq!(payload.get("combo_count").and_then(Value::as_u64), Some(1));
-        assert!(payload
-            .get("error")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .contains("Too many upgrade combinations (1)"));
+        assert!(payload.get("error").is_none());
         assert_eq!(
             payload.get("limit_reached").and_then(Value::as_bool),
             Some(true)

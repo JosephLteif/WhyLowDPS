@@ -8,6 +8,14 @@ Add new work under the `Unreleased` section. The release workflow promotes that 
 
 ### Improvements
 
+#### See the exact combination count before launching
+
+Top Gear and Upgrade Compare now finish calculating the full combination count before a simulation can start, and explain clearly when the total is above the configured launch limit.
+
+- The count continues past the configured limit so the exact total is shown.
+- Simulation launch stays disabled while the count is computing or above the limit.
+- Over-limit counts show the configured maximum and why the simulation cannot start.
+
 #### Keep simulation progress visible across pages
 
 Active simulations now remain easy to monitor after navigating to another page, with a compact progress card and a completion notification when the result is ready.

@@ -31,9 +31,7 @@ export default function ComboPill({
   const comboLabel = isComputing
     ? 'Computing…'
     : isOverLimit
-      ? configuredLimit != null
-        ? `${configuredLimit.toLocaleString()}+ combo(s) (limit)`
-        : 'Combination limit reached'
+      ? `${comboCount.toLocaleString()} combo(s) (over limit)`
       : `${comboCount.toLocaleString()} combo(s)`;
 
   const comboColorClass = isComputing
@@ -64,8 +62,8 @@ export default function ComboPill({
           ? 'Calculating combination count…'
           : isOverLimit
             ? configuredLimit != null
-              ? `Combination count reached the configured limit of ${configuredLimit.toLocaleString()}.`
-              : 'Combination count reached its configured limit.'
+              ? `Cannot start a simulation: ${comboCount.toLocaleString()} combinations exceeds the configured limit of ${configuredLimit.toLocaleString()}.`
+              : `Cannot start a simulation: ${comboCount.toLocaleString()} combinations exceeds its configured limit.`
             : undefined
       }
       aria-live="polite"

@@ -10,10 +10,10 @@ describe('ComboPill', () => {
     expect(screen.queryByText('42 combo(s)')).not.toBeInTheDocument();
   });
 
-  it('shows the configured limit instead of the discovered over-limit count', () => {
+  it('shows the exact over-limit count', () => {
     render(<ComboPill comboCount={501} limitReached maxCombinations={500} />);
 
-    expect(screen.getByText('500+ combo(s) (limit)')).toBeInTheDocument();
-    expect(screen.queryByText('501 combo(s)')).not.toBeInTheDocument();
+    expect(screen.getByText('501 combo(s) (over limit)')).toBeInTheDocument();
+    expect(screen.getByTitle(/Cannot start a simulation/)).toBeInTheDocument();
   });
 });
